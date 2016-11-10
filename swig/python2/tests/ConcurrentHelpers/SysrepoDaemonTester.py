@@ -17,14 +17,14 @@ __license__ = "Apache 2.0"
 # limitations under the License.
 
 from ConcurrentHelpers import *
-from SysrepoWrappers import *
 from time import sleep
 import subprocess
+import libsysrepoPython2 as sr
 
 
 class SysrepodDaemonTester(SysrepoTester):
 
-    def startDaemonStep(self, log_level = SR_LL_INF):
+    def startDaemonStep(self, log_level = sr.SR_LL_INF):
         self.process = subprocess.Popen(["sysrepod", "-d", "-l {0}".format(log_level)])
         self.report_pid(self.process.pid)
         sleep(0.1)

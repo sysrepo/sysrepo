@@ -18,7 +18,7 @@
 # Brief: Sets the environment variable and execute python test. This is needed
 # to setup PYTHONPATH for ctest
 #
- 
+
 if [ "$#" -ne 4 ] ; then
   echo "Usage: $0 PATH PythonPath PythonExecutable Test" >&2
   exit 1

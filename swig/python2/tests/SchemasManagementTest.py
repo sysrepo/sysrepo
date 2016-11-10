@@ -19,26 +19,27 @@ __license__ = "Apache 2.0"
 # sysrepod must be in PATH
 
 from ConcurrentHelpers import *
-from SysrepoWrappers import *
 import subprocess
 import TestModule
-
+import libsysrepoPython2
 
 
 class SysrepoctlTester(SysrepoTester):
 
-    def installModuleStep(self, yang_file, log_level = SR_LL_INF):
-        self.process = subprocess.Popen(["sysrepoctl", "-i", "--yang={0}".format(yang_file), "-L {0}".format(log_level)])
+    sysrepoctl = "{}/src/sysrepoctl".format(os.path.realpath(os.curdir))
+
+    def installModuleStep(self, yang_file, log_level = sr.SR_LL_INF):
+        self.process = subprocess.Popen([self.sysrepoctl, "-i", "--yang={0}".format(yang_file), "-L {0}".format(log_level)])
         rc = self.process.wait()
         self.tc.assertEqual(rc, 0)
 
-    def uninstallModuleFailStep(self, module_name, log_level = SR_LL_INF):
-        self.process = subprocess.Popen(["sysrepoctl", "--uninstall", "--module={0}".format(module_name), "-L {0}".format(log_level)])
+    def uninstallModuleFailStep(self, module_name, log_level = sr.SR_LL_INF):
+        self.process = subprocess.Popen([self.sysrepoctl, "--uninstall", "--module={0}".format(module_name), "-L {0}".format(log_level)])
         rc = self.process.wait()
         self.tc.assertNotEquals(rc, 0)
 
-    def uninstallModuleStep(self, module_name, log_level = SR_LL_INF):
-        self.process = subprocess.Popen(["sysrepoctl", "--uninstall", "--module={0}".format(module_name), "-L {0}".format(log_level)])
+    def uninstallModuleStep(self, module_name, log_level = sr.SR_LL_INF):
+        self.process = subprocess.Popen([self.sysrepoctl, "--uninstall", "--module={0}".format(module_name), "-L {0}".format(log_level)])
         rc = self.process.wait()
         self.tc.assertEqual(rc, 0)
 
@@ -56,10 +57,10 @@ class SchemasManagementTest(unittest.TestCase):
         tm = TestManager()
 
         srd = SysrepodDaemonTester("Srd")
-        tester1 = SysrepoTester("First", SR_DS_STARTUP, SR_CONN_DAEMON_REQUIRED, False)
-        tester2 = SysrepoTester("Second", SR_DS_STARTUP, SR_CONN_DAEMON_REQUIRED, False)
-        tester3 = SysrepoTester("Third", SR_DS_STARTUP, SR_CONN_DAEMON_REQUIRED, False)
-        tester4 = SysrepoTester("Fourth", SR_DS_STARTUP, SR_CONN_DAEMON_REQUIRED, False)
+        tester1 = SysrepoTester("First", sr.SR_DS_STARTUP, sr.SR_CONN_DAEMON_REQUIRED, False)
+        tester2 = SysrepoTester("Second", sr.SR_DS_STARTUP, sr.SR_CONN_DAEMON_REQUIRED, False)
+        tester3 = SysrepoTester("Third", sr.SR_DS_STARTUP, sr.SR_CONN_DAEMON_REQUIRED, False)
+        tester4 = SysrepoTester("Fourth", sr.SR_DS_STARTUP, sr.SR_CONN_DAEMON_REQUIRED, False)
 
 
         srd.add_step(srd.startDaemonStep)
@@ -93,14 +94,14 @@ class SchemasManagementTest(unittest.TestCase):
         """A schema can not be uninstalled until it is used by a session.
         Test simulates the request of sysrepoctl trying to uninstall/install module.
         """
-        tmp_file = "/tmp/test-module.yang"
-        tmp_file_dep = "/tmp/referenced-data.yang"
+        tmp_file = "/tmp/test-module.yang"  # used to reinstall 'test-module' after uninstall
+        dep_file = "/tmp/referenced-data.yang"  # 'test-module' depends on 'referenced-data'
         tm = TestManager()
 
         srd = SysrepodDaemonTester("Srd")
-        tester1 = SysrepoTester("First", SR_DS_STARTUP, SR_CONN_DAEMON_REQUIRED, False)
-        tester2 = SysrepoTester("Second", SR_DS_STARTUP, SR_CONN_DAEMON_REQUIRED, False)
-        tester3 = SysrepoTester("Third", SR_DS_STARTUP, SR_CONN_DAEMON_REQUIRED, False)
+        tester1 = SysrepoTester("First", sr.SR_DS_STARTUP, sr.SR_CONN_DAEMON_REQUIRED, False)
+        tester2 = SysrepoTester("Second", sr.SR_DS_STARTUP, sr.SR_CONN_DAEMON_REQUIRED, False)
+        tester3 = SysrepoTester("Third", sr.SR_DS_STARTUP, sr.SR_CONN_DAEMON_REQUIRED, False)
         admin = SysrepoctlTester()
 
 
@@ -118,7 +119,7 @@ class SchemasManagementTest(unittest.TestCase):
 
         srd.add_step(srd.waitStep)
         tester1.add_step(tester1.getItemsStepExpectedCount, "/test-module:main/*", 19)
-        tester2.add_step(tester2.setItemStep, "/test-module:main/string", Value(None, SR_STRING_T, "abcd"))
+        tester2.add_step(tester2.setItemStep, "/test-module:main/string", sr.Val("abcd", sr.SR_STRING_T))
         tester3.add_step(tester3.lockModelStep, "test-module")
         admin.add_step(admin.waitStep)
 
@@ -133,7 +134,7 @@ class SchemasManagementTest(unittest.TestCase):
         srd.add_step(srd.waitStep)
         admin.add_step(admin.waitStep)
         tester1.add_step(tester1.getSchemaToFileStep, "test-module", tmp_file)
-        tester2.add_step(tester2.getSchemaToFileStep, "referenced-data", tmp_file_dep)
+        tester2.add_step(tester2.getSchemaToFileStep, "referenced-data", dep_file)
         tester3.add_step(tester3.unlockModelStep, "test-module")
 
 
@@ -142,7 +143,7 @@ class SchemasManagementTest(unittest.TestCase):
         admin.add_step(admin.waitStep)
         tester3.add_step(tester3.waitStep)
 
-        #uninstall succed
+        #uninstall succeed
         srd.add_step(srd.waitStep)
         admin.add_step(admin.uninstallModuleStep, "test-module")
         tester3.add_step(tester3.waitStep)
@@ -150,7 +151,7 @@ class SchemasManagementTest(unittest.TestCase):
         #module is uninstalled
         srd.add_step(srd.waitStep)
         admin.add_step(admin.waitStep)
-        tester3.add_step(tester3.setItemFailStep, "/test-module:main/string", Value(None, SR_STRING_T, "abcd"))
+        tester3.add_step(tester3.setItemFailStep, "/test-module:main/string", sr.Val("abcd", sr.SR_STRING_T))
 
         #install module back
         srd.add_step(srd.waitStep)
@@ -159,7 +160,7 @@ class SchemasManagementTest(unittest.TestCase):
 
         #request work again
         srd.add_step(srd.waitStep)
-        tester3.add_step(tester3.setItemStep, "/test-module:main/string", Value(None, SR_STRING_T, "abcd"))
+        tester3.add_step(tester3.setItemStep, "/test-module:main/string", sr.Val("abcd", sr.SR_STRING_T))
 
         srd.add_step(srd.stopDaemonStep)
 

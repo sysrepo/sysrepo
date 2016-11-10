@@ -17,8 +17,8 @@ __license__ = "Apache 2.0"
 # limitations under the License.
 
 from ConcurrentHelpers import *
-from SysrepoWrappers import *
 import TestModule
+import libsysrepoPython2 as sr
 
 class CommitTester(SysrepoTester):
     def setup(self):
@@ -30,13 +30,12 @@ class CommitTester(SysrepoTester):
         self.add_step(self.checkItemStep)
 
     def setItemStep(self):
-        v = Value("/test-module:main/i8", SR_INT8_T, 99)
-        self.session.set_item(v.xpath, v)
+        v = sr.Val(99, sr.SR_INT8_T)
+        self.session.set_item("/test-module:main/i8", v)
 
     def checkItemStep(self):
         v = self.session.get_item("/test-module:main/i8")
-        self.tc.assertEqual(99, v.value)
-
+        self.tc.assertEqual(99, v.data().get_int8())
 
 class CommitTest(unittest.TestCase):
 
