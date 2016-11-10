@@ -1836,7 +1836,7 @@ cl_notification_test(void **state)
 
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
-    int callback_called = 0;
+    volatile int callback_called = 0;
     sr_val_t value = { 0, };
     sr_list_t *module_states = NULL;
     int rc = SR_ERR_OK;
