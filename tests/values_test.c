@@ -538,12 +538,6 @@ sr_print_val_test(void **state)
     sr_test_all_printers(value, XPATH1" = true\n");
     sr_free_val(value);
 
-    assert_int_equal(SR_ERR_OK, sr_new_val(XPATH2, &value));
-    value->type = SR_STRING_T;
-    value->data.string_val = "192.168.1.1";
-    sr_test_all_printers(value, XPATH2" = 192.168.1.1\n");
-    sr_free_val(value);
-
     assert_int_equal(SR_ERR_OK, sr_new_val(XPATH3, &value));
     value->type = SR_LIST_T;
     sr_test_all_printers(value, XPATH3" (list instance)\n");
@@ -552,6 +546,11 @@ sr_print_val_test(void **state)
     assert_int_equal(SR_ERR_OK, sr_new_val(XPATH4, &value));
     value->type = SR_CONTAINER_T;
     sr_test_all_printers(value, XPATH4" (container)\n");
+    sr_free_val(value);
+
+    assert_int_equal(SR_ERR_OK, sr_new_val(XPATH2, &value));
+    sr_val_set_str_data(value, SR_STRING_T, "192.168.1.1");
+    sr_test_all_printers(value, XPATH2" = 192.168.1.1\n");
     sr_free_val(value);
 }
 
