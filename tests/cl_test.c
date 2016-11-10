@@ -1856,20 +1856,20 @@ cl_notification_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe to some notifications */
-    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, SR_SUBSCR_DEFAULT, &subscription);
+    rc = sr_module_install_subscribe(session, test_module_install_cb, (void*)&callback_called, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_module_install_subscribe(session, test_module_install_state_cb, module_states, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, SR_SUBSCR_CTX_REUSE, &subscription);
+    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, (void*)&callback_called, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", test_module_change_cb, &callback_called,
+    rc = sr_module_change_subscribe(session, "example-module", test_module_change_cb, (void*)&callback_called,
             0, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_subtree_change_subscribe(session, "/example-module:container/list", test_subtree_change_cb, &callback_called,
+    rc = sr_subtree_change_subscribe(session, "/example-module:container/list", test_subtree_change_cb, (void*)&callback_called,
             0, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
