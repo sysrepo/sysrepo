@@ -469,6 +469,7 @@ sr_mem_edit_string_va(sr_mem_ctx_t *sr_mem, char **string_p, const char *format,
     /* determine required length - need to use a copy of args! */
     va_copy(args_copy, args);
     len = vsnprintf(NULL, 0, format, args_copy);
+    va_end(args_copy);
 
     if (NULL != *string_p && strlen(*string_p) >= len) {
         /* buffer large enough - overwrite */

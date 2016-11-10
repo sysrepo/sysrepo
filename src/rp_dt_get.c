@@ -1383,10 +1383,10 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes_p)
     sr_list_t *deleted = NULL;
 
     rc = sr_list_init(&changes);
-    CHECK_RC_MSG_RETURN(rc, "List init failed");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     rc = sr_list_init(&deleted);
-    CHECK_RC_MSG_RETURN(rc, "List init failed");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     /* collect the list of deleted nodes */
     for(size_t d_cnt = 0; LYD_DIFF_END != difflist->type[d_cnt]; d_cnt++) {
