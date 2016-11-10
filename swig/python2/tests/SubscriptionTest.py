@@ -19,11 +19,12 @@ __license__ = "Apache 2.0"
 # sysrepod and subscription_test_app must be in PATH
 
 from ConcurrentHelpers import *
-from SysrepoWrappers import *
 import signal
 import os
 import subprocess
 import TestModule
+import libsysrepoPython2 as sr
+import unittest
 
 class SubscriptionTester(SysrepoTester):
 
@@ -52,7 +53,7 @@ class SubscriptionTest(unittest.TestCase):
         tm = TestManager()
 
         srd = SysrepodDaemonTester("Srd")
-        reader = SysrepoTester("First", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
+        reader = SysrepoTester("First", sr.SR_DS_RUNNING, sr.SR_CONN_DAEMON_REQUIRED, False)
         subscriber = SubscriptionTester("Second")
 
         srd.add_step(srd.startDaemonStep)
@@ -98,7 +99,7 @@ class SubscriptionTest(unittest.TestCase):
         tm = TestManager()
 
         srd = SysrepodDaemonTester("Srd")
-        reader = SysrepoTester("First", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
+        reader = SysrepoTester("First", sr.SR_DS_RUNNING, sr.SR_CONN_DAEMON_REQUIRED, False)
         subscriber = SubscriptionTester("Second")
 
         srd.add_step(srd.startDaemonStep)

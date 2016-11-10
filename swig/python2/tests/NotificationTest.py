@@ -19,12 +19,12 @@ __license__ = "Apache 2.0"
 # sysrepod and notifications_test_app must be in PATH
 
 from ConcurrentHelpers import *
-from SysrepoWrappers import *
 from random import randint
 import signal
 import os
 import subprocess
 import TestModule
+import libsysrepoPython2 as sr
 
 
 class NotificationTester(SysrepoTester):
@@ -51,7 +51,7 @@ class NotificationTester(SysrepoTester):
                 self.notifications.append(line.split("|"))
 
         if len(expected) != len(self.notifications):
-            for n in self.notifications:
+           for n in self.notifications:
                 print >> sys.stderr, n
 
         self.tc.assertEqual(len(expected), len(self.notifications))
@@ -80,7 +80,7 @@ class NotificationTest(unittest.TestCase):
         tm = TestManager()
 
         srd = SysrepodDaemonTester("Srd")
-        tester = SysrepoTester("Tester", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
+        tester = SysrepoTester("Tester", sr.SR_DS_RUNNING, sr.SR_CONN_DAEMON_REQUIRED, False)
         subscriber = NotificationTester("Subscriber")
         subscriber2 = NotificationTester("Subscriber2")
         subscriber3 = NotificationTester("Subscriber3")
@@ -139,8 +139,8 @@ class NotificationTest(unittest.TestCase):
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"],
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/ip"],
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/prefix-length"],
-         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled"],
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu"],
+         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled"],
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/forwarding"]])
         subscriber2.add_step(subscriber2.checkNotificationStep,
         [["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"],
@@ -169,7 +169,7 @@ class NotificationTest(unittest.TestCase):
         tm = TestManager()
 
         srd = SysrepodDaemonTester("Srd")
-        tester = SysrepoTester("Tester", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
+        tester = SysrepoTester("Tester", sr.SR_DS_RUNNING, sr.SR_CONN_DAEMON_REQUIRED, False)
         subscriber = NotificationTester("Subscriber")
         subscriber2 = NotificationTester("Subscriber2")
         subscriber3 = NotificationTester("Subscriber3")
@@ -199,7 +199,7 @@ class NotificationTest(unittest.TestCase):
         subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", Value(leaf_type=SR_BOOL_T, value= False))
+        tester.add_step(tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", sr.Val(False, sr.SR_BOOL_T))
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
@@ -243,7 +243,7 @@ class NotificationTest(unittest.TestCase):
         tm = TestManager()
 
         srd = SysrepodDaemonTester("Srd")
-        tester = SysrepoTester("Tester", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
+        tester = SysrepoTester("Tester", sr.SR_DS_RUNNING, sr.SR_CONN_DAEMON_REQUIRED, False)
         subscriber = NotificationTester("Subscriber")
         subscriber2 = NotificationTester("Subscriber2")
         subscriber3 = NotificationTester("Subscriber3")
@@ -273,13 +273,13 @@ class NotificationTest(unittest.TestCase):
         subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", Value(leaf_type=SR_BOOL_T, value= False))
+        tester.add_step(tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", sr.Val(False, sr.SR_BOOL_T))
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.setItemStep, "/example-module:container/list[key1='abc'][key2='def']/leaf", Value(leaf_type=SR_STRING_T, value= "new value"))
+        tester.add_step(tester.setItemStep, "/example-module:container/list[key1='abc'][key2='def']/leaf", sr.Val("new value", sr.SR_STRING_T))
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
@@ -338,7 +338,7 @@ class NotificationTest(unittest.TestCase):
         tm = TestManager()
 
         srd = SysrepodDaemonTester("Srd")
-        tester = SysrepoTester("Tester", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
+        tester = SysrepoTester("Tester", sr.SR_DS_RUNNING, sr.SR_CONN_DAEMON_REQUIRED, False)
         subscriber = NotificationTester("Subscriber")
         subscriber2 = NotificationTester("Subscriber2")
         subscriber3 = NotificationTester("Subscriber3")
@@ -411,8 +411,8 @@ class NotificationTest(unittest.TestCase):
         expected_changes = [["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']"],
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/name"],
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/type"],
-         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/enabled"],
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/description"],
+         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/enabled"],
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"],
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"],
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/ip"],
@@ -450,7 +450,7 @@ class NotificationTest(unittest.TestCase):
         tm = TestManager()
 
         srd = SysrepodDaemonTester("Srd")
-        tester = SysrepoTester("Tester", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
+        tester = SysrepoTester("Tester", sr.SR_DS_RUNNING, sr.SR_CONN_DAEMON_REQUIRED, False)
         subscriber = NotificationTester("Subscriber")
 
         srd.add_step(srd.startDaemonStep)
@@ -467,7 +467,7 @@ class NotificationTest(unittest.TestCase):
 
         #set to non default value
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/forwarding", Value(None, SR_BOOL_T, True))
+        tester.add_step(tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/forwarding", sr.Val(True, sr.SR_BOOL_T))
         subscriber.add_step(subscriber.waitStep)
 
         srd.add_step(srd.waitStep)
@@ -508,7 +508,7 @@ class NotificationTest(unittest.TestCase):
         TestModule.create_ietf_interfaces()
         tm = TestManager()
         srd = SysrepodDaemonTester("Srd")
-        tester = SysrepoTester("Tester", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
+        tester = SysrepoTester("Tester", sr.SR_DS_RUNNING, sr.SR_CONN_DAEMON_REQUIRED, False)
         subscriber = NotificationTester("Subscriber")
 
         srd.add_step(srd.startDaemonStep)
@@ -536,7 +536,7 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/forwarding", Value(None, SR_BOOL_T, True))
+        tester.add_step(tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/forwarding", sr.Val(True, sr.SR_BOOL_T))
         subscriber.add_step(subscriber.waitStep)
 
         srd.add_step(srd.waitStep)

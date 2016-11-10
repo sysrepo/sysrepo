@@ -108,30 +108,6 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
         VERBATIM
     )
 
-    if(GEN_LANGUAGE_BINDINGS AND GEN_PYTHON_BINDINGS AND ${GEN_PYTHON_VERSION} STREQUAL "2")
-        # Python tests
-        FIND_PACKAGE(PythonInterp)
-        FIND_PACKAGE(SWIG)
-        FIND_PACKAGE(PythonLibs 2)
-    endif()
-
-    if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
-        macro(ADD_PYTHON_TEST TEST_NAME)
-            add_test(NAME python_${TEST_NAME}
-                COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_python_test.sh "${CMAKE_BINARY_DIR}/src:${CMAKE_BINARY_DIR}/tests" "${CMAKE_BINARY_DIR}/swig/python:${PROJECT_SOURCE_DIR}/swig/python" ${PYTHON_EXECUTABLE}
-                    ${CMAKE_CURRENT_SOURCE_DIR}/python/${TEST_NAME}.py
-                WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-            )
-        endmacro(ADD_PYTHON_TEST)
-        ADD_PYTHON_TEST(SysrepoBasicTest)
-        ADD_PYTHON_TEST(SchemasManagementTest)
-        ADD_PYTHON_TEST(LockingTest)
-        ADD_PYTHON_TEST(CommitTest)
-        ADD_PYTHON_TEST(MoveTest)
-        ADD_PYTHON_TEST(SubscriptionTest)
-        ADD_PYTHON_TEST(NotificationTest)
-        ADD_PYTHON_TEST(PerfTest)
-    endif()
     add_executable(measure_perf measure_performance.c ${TEST_HELPERS_DIR}test_module_helper.c)
     target_link_libraries(measure_perf ${CMOCKA_LIBRARIES} sysrepo_a)
     add_executable(subscription_test_app subscription_test_app.c)
@@ -178,6 +154,7 @@ INSTALL_YANG_MODULE("state-module@2016-07-01")
 INSTALL_YANG_MODULE("top-level-mandatory")
 INSTALL_YANG_MODULE("referenced-data")
 INSTALL_YANG_MODULE("cross-module")
+INSTALL_YANG_MODULE("turing-machine")
 
 # dummy testing plugins
 add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)

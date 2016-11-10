@@ -240,7 +240,9 @@ S_Trees Session::get_subtrees(const char *xpath, sr_get_subtree_options_t opts)
 
 void Session::set_item(const char *xpath, S_Val value, const sr_edit_options_t opts)
 {
-    int ret = sr_set_item(_sess, xpath, value->get(), opts);
+    sr_val_t *val = value ? value->get() : NULL;
+
+    int ret = sr_set_item(_sess, xpath, val, opts);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }

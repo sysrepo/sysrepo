@@ -24,49 +24,14 @@
 #include <signal.h>
 #include <pthread.h>
 #include "sysrepo.h"
+#include "sysrepo/values.h"
 
 
 typedef struct changes_s{
     pthread_mutex_t mutex;
     pthread_cond_t cond;
     int count;
-}changes_t;
-
-static void
-print_value(sr_val_t *value)
-{
-    printf("%s ", value->xpath);
-
-    switch (value->type) {
-    case SR_CONTAINER_T:
-    case SR_CONTAINER_PRESENCE_T:
-        printf("(container)\n");
-        break;
-    case SR_LIST_T:
-        printf("(list instance)\n");
-        break;
-    case SR_STRING_T:
-        printf("= %s\n", value->data.string_val);
-        break;
-    case SR_BOOL_T:
-        printf("= %s\n", value->data.bool_val ? "true" : "false");
-        break;
-    case SR_UINT8_T:
-        printf("= %u\n", value->data.uint8_val);
-        break;
-    case SR_UINT16_T:
-        printf("= %u\n", value->data.uint16_val);
-        break;
-    case SR_UINT32_T:
-        printf("= %u\n", value->data.uint32_val);
-        break;
-    case SR_IDENTITYREF_T:
-        printf("= %s\n", value->data.identityref_val);
-        break;
-    default:
-        printf("(unprintable)\n");
-    }
-}
+} changes_t;
 
 static void
 print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val) {
@@ -74,22 +39,22 @@ print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val) {
     case SR_OP_CREATED:
         if (NULL != new_val) {
            printf("CREATED: ");
-           print_value(new_val);
+           sr_print_val(new_val);
         }
         break;
     case SR_OP_DELETED:
         if (NULL != old_val) {
            printf("DELETED: ");
-           print_value(old_val);
+           sr_print_val(old_val);
         }
 	break;
     case SR_OP_MODIFIED:
         if (NULL != old_val && NULL != new_val) {
            printf("MODIFIED: ");
            printf("old value");
-           print_value(old_val);
+           sr_print_val(old_val);
            printf("new value");
-           print_value(new_val);
+           sr_print_val(new_val);
         }
 	break;
     case SR_OP_MOVED:

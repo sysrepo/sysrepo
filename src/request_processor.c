@@ -1904,7 +1904,14 @@ finalize:
         /* send the response with error */
         rc_tmp = sr_gpb_resp_alloc(sr_mem, action ? SR__OPERATION__ACTION : SR__OPERATION__RPC,
                                    session->id, &resp);
+        if (SR_ERR_OK != rc_tmp) {
+            SR_LOG_ERR_MSG("Failed to allocate RPC response message");
+        }
         if (SR_ERR_OK == rc_tmp) {
+            rc_tmp = rp_resp_fill_errors(resp, session->dm_session);
+            if (SR_ERR_OK != rc_tmp) {
+                SR_LOG_WRN_MSG("Copying errors to gpb failed");
+            }
             resp->response->result = rc;
             resp->response->rpc_resp->action = action;
             if (sr_mem) {
@@ -2472,7 +2479,7 @@ rp_notification_ack_process(rp_ctx_t *rp_ctx, Sr__Msg *msg)
     }
 
     rc = np_commit_notification_ack(rp_ctx->np_ctx, notif->commit_id, subs_xpath, sr_notification_event_gpb_to_sr(event),
-            msg->notification_ack->result, err_msg, err_xpath);
+            msg->notification_ack->result, msg->notification_ack->do_not_send_abort, err_msg, err_xpath);
 
     return rc;
 }

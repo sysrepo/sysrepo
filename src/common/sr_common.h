@@ -33,6 +33,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "sysrepo.h"
 #include "sysrepo/values.h"

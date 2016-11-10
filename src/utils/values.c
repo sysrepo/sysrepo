@@ -20,6 +20,8 @@
  * limitations under the License.
  */
 
+#include <unistd.h>
+#include <inttypes.h>
 #include <stdarg.h>
 
 #include "sr_common.h"
@@ -238,7 +240,7 @@ sr_val_build_str_data(sr_val_t *value, sr_type_t type, const char *format, ...)
 }
 
 int
-sr_dup_val_data(sr_val_t *dest, sr_val_t *source)
+sr_dup_val_data(sr_val_t *dest, const sr_val_t *source)
 {
     int rc = SR_ERR_OK;
     CHECK_NULL_ARG2(source, dest);
@@ -287,7 +289,7 @@ sr_dup_val_data(sr_val_t *dest, sr_val_t *source)
 }
 
 int
-sr_dup_val_ctx(sr_val_t *value, sr_mem_ctx_t *sr_mem_dest, sr_val_t **value_dup_p)
+sr_dup_val_ctx(const sr_val_t *value, sr_mem_ctx_t *sr_mem_dest, sr_val_t **value_dup_p)
 {
     int rc = SR_ERR_OK;
     sr_val_t *val_dup = NULL;
@@ -311,13 +313,13 @@ cleanup:
 }
 
 int
-sr_dup_val(sr_val_t *value, sr_val_t **value_dup_p)
+sr_dup_val(const sr_val_t *value, sr_val_t **value_dup_p)
 {
     return sr_dup_val_ctx(value, NULL, value_dup_p);
 }
 
 int
-sr_dup_values_ctx(sr_val_t *values, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_val_t **values_dup_p)
+sr_dup_values_ctx(const sr_val_t *values, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_val_t **values_dup_p)
 {
     int rc = SR_ERR_OK;
     sr_val_t *values_dup = NULL;
@@ -345,8 +347,143 @@ cleanup:
 }
 
 int
-sr_dup_values(sr_val_t *values, size_t count, sr_val_t **values_dup_p)
+sr_dup_values(const sr_val_t *values, size_t count, sr_val_t **values_dup_p)
 {
     return sr_dup_values_ctx(values, count, NULL, values_dup_p);
 }
 
+int
+sr_print_val_ctx(sr_print_ctx_t *print_ctx, const sr_val_t *value)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(print_ctx);
+
+    if (NULL == value) {
+        return rc;
+    }
+
+    rc = sr_print(print_ctx, "%s ", value->xpath);
+    CHECK_RC_MSG_RETURN(rc, "Failed to print xpath of a sysrepo value");
+
+    switch (value->type) {
+    case SR_CONTAINER_T:
+    case SR_CONTAINER_PRESENCE_T:
+        rc = sr_print(print_ctx, "(container)\n");
+        break;
+    case SR_LIST_T:
+        rc = sr_print(print_ctx, "(list instance)\n");
+        break;
+    case SR_STRING_T:
+        rc = sr_print(print_ctx, "= %s\n", value->data.string_val);
+        break;
+    case SR_BOOL_T:
+        rc = sr_print(print_ctx, "= %s\n", value->data.bool_val ? "true" : "false");
+        break;
+    case SR_DECIMAL64_T:
+        rc = sr_print(print_ctx, "= %g\n", value->data.decimal64_val);
+        break;
+    case SR_INT8_T:
+        rc = sr_print(print_ctx, "= %" PRId8 "\n", value->data.int8_val);
+        break;
+    case SR_INT16_T:
+        rc = sr_print(print_ctx, "= %" PRId16 "\n", value->data.int16_val);
+        break;
+    case SR_INT32_T:
+        rc = sr_print(print_ctx, "= %" PRId32 "\n", value->data.int32_val);
+        break;
+    case SR_INT64_T:
+        rc = sr_print(print_ctx, "= %" PRId64 "\n", value->data.int64_val);
+        break;
+    case SR_UINT8_T:
+        rc = sr_print(print_ctx, "= %" PRIu8 "\n", value->data.uint8_val);
+        break;
+    case SR_UINT16_T:
+        rc = sr_print(print_ctx, "= %" PRIu16 "\n", value->data.uint16_val);
+        break;
+    case SR_UINT32_T:
+        rc = sr_print(print_ctx, "= %" PRIu32 "\n", value->data.uint32_val);
+        break;
+    case SR_UINT64_T:
+        rc = sr_print(print_ctx, "= %" PRIu64 "\n", value->data.uint64_val);
+        break;
+    case SR_IDENTITYREF_T:
+        rc = sr_print(print_ctx, "= %s\n", value->data.identityref_val);
+        break;
+    case SR_INSTANCEID_T:
+        rc = sr_print(print_ctx, "= %s\n", value->data.instanceid_val);
+        break;
+    case SR_BITS_T:
+        rc = sr_print(print_ctx, "= %s\n", value->data.bits_val);
+        break;
+    case SR_BINARY_T:
+        rc = sr_print(print_ctx, "= %s\n", value->data.binary_val);
+        break;
+    case SR_ENUM_T:
+        rc = sr_print(print_ctx, "= %s\n", value->data.enum_val);
+        break;
+    case SR_LEAF_EMPTY_T:
+        rc = sr_print(print_ctx, "(empty leaf)\n");
+        break;
+    default:
+        rc = sr_print(print_ctx, "(unprintable)\n");
+    }
+
+    CHECK_RC_MSG_RETURN(rc, "Failed to print data of a sysrepo value");
+    return rc;
+}
+
+int
+sr_print_val(const sr_val_t *value)
+{
+    sr_print_ctx_t print_ctx = { 0, };
+
+    print_ctx.type = SR_PRINT_STREAM;
+    print_ctx.method.stream = stdout;
+
+    return sr_print_val_ctx(&print_ctx, value);
+}
+
+int
+sr_print_val_fd(int fd, const sr_val_t *value)
+{
+    sr_print_ctx_t print_ctx = { 0, };
+
+    print_ctx.type = SR_PRINT_FD;
+    print_ctx.method.fd = fd;
+
+    return sr_print_val_ctx(&print_ctx, value);
+}
+
+int
+sr_print_val_stream(FILE *stream, const sr_val_t *value)
+{
+    sr_print_ctx_t print_ctx = { 0, };
+
+    print_ctx.type = SR_PRINT_STREAM;
+    print_ctx.method.stream = stream;
+
+    return sr_print_val_ctx(&print_ctx, value);
+}
+
+int
+sr_print_val_mem(char **mem_p, const sr_val_t *value)
+{
+    int rc = SR_ERR_OK;
+    sr_print_ctx_t print_ctx = { 0, };
+
+    CHECK_NULL_ARG(mem_p);
+
+    print_ctx.type = SR_PRINT_MEM;
+    print_ctx.method.mem.buf = NULL;
+    print_ctx.method.mem.len = 0;
+    print_ctx.method.mem.size = 0;
+
+    rc = sr_print_val_ctx(&print_ctx, value);
+    if (SR_ERR_OK == rc) {
+        *mem_p = print_ctx.method.mem.buf;
+    } else {
+        free(print_ctx.method.mem.buf);
+    }
+    return rc;
+}

@@ -91,7 +91,10 @@ class TestManager:
                             p.terminate()
                         while not self.sub_proc.empty():
                             pid = self.sub_proc.get()
-                            os.kill(pid, signal.SIGKILL)
+                            try:
+                                os.kill(pid, signal.SIGKILL)
+                            except:
+                                pass
                         raise status
 
             if len(will_continue) == 0:

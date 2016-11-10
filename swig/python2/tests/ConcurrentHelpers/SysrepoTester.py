@@ -17,33 +17,32 @@ __license__ = "Apache 2.0"
 # limitations under the License.
 
 from ConcurrentHelpers import *
-from SysrepoWrappers import *
 from time import sleep
+import libsysrepoPython2 as sr
 
 
 class SysrepoTester(Tester):
-    def __init__(self, name="SysrepoUser", ds=SR_DS_STARTUP, conn=SR_CONN_DEFAULT, connectInSetup=True):
+    def __init__(self, name="SysrepoUser", ds=sr.SR_DS_STARTUP, conn_mode=sr.SR_CONN_DEFAULT, connectInSetup=True):
         super(SysrepoTester, self).__init__(name)
         self.ds = ds
-        self.conn = conn
+        self.conn = conn_mode
         self.autoconnect = connectInSetup
 
     def setup(self):
         if self.autoconnect:
-            self.sr = Sysrepo(self.name, self.conn)
-            self.session = Session(self.sr, self.ds)
-            self.sr.log_stderr(SR_LL_INF)
+            self.sr = sr.Connection(self.name, self.conn)
+            self.session = sr.Session(self.sr, self.ds)
 
     def restartConnection(self):
         try:
-            self.sr = Sysrepo(self.name, self.conn)
+            self.sr = sr.Connection(self.name, self.conn)
         except RuntimeError as r:
-            if self.conn == SR_CONN_DAEMON_REQUIRED and r.message == "The peer disconnected":
+            if self.conn == sr.SR_CONN_DAEMON_REQUIRED and r.message == "The peer disconnected":
                 sleep(1) #wait for daemon to start
-                self.sr = Sysrepo(self.name, self.conn)
+                self.sr = sr.Connection(self.name, self.conn)
             else:
                 raise r
-        self.session = Session(self.sr, self.ds)
+        self.session = sr.Session(self.sr, self.ds)
 
     def lockStep(self):
         self.session.lock_datastore()
@@ -74,14 +73,16 @@ class SysrepoTester(Tester):
 
     def getItemsStep(self, xpath):
         self.session.get_items(xpath)
+        self.session.get_items(xpath)
 
     def getItemsStepExpectedCount(self, xpath, count):
         items = self.session.get_items(xpath)
-        self.tc.assertEqual(len(items), count)
+        self.tc.assertEqual(items.val_cnt(), count)
 
     def getItemsFailStep(self, xpath):
         with self.tc.assertRaisesRegexp(RuntimeError, ".* found"):
-            self.session.get_items(xpath)
+            vs = self.session.get_items(xpath)
+            if vs is None: raise (RuntimeError(".* found")) # likely a hack!
 
     def deleteItemStep(self, xpath):
         self.session.delete_item(xpath)
@@ -100,6 +101,6 @@ class SysrepoTester(Tester):
         sleep(timeout)
 
     def getSchemaToFileStep(self, module_name, file_name):
-        content = self.session.get_schema(module_name, None, None, SR_SCHEMA_YANG)
+        content = self.session.get_schema(module_name, None, None, sr.SR_SCHEMA_YANG)
         with open(file_name, 'w') as f:
-            f.write(content)
+            f.write(content.get())
