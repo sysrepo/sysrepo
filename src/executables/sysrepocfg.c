@@ -473,6 +473,12 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
             }
         }
 
+        /* skip implicitly added default nodes */
+        if (elem->dflt) {
+            SR_LOG_DBG("Skipping default node '%s'.", elem->schema->name);
+            goto next_node;
+        }
+
         /* get appropriate xpath and value */
         free(xpath);
         xpath = value.xpath = NULL;
