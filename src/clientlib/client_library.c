@@ -2329,6 +2329,10 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
 
     sm_subscription->callback.module_change_cb = callback;
 
+    if (opts & SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG) {
+        sm_subscription->dont_send_abort_on_failure = true;
+    }
+
     /* fill-in subscription details */
     sr_mem = (sr_mem_ctx_t *)msg_req->_sysrepo_mem_ctx;
     msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
@@ -2399,6 +2403,10 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
     sm_subscription->callback.subtree_change_cb = callback;
+
+    if (opts & SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG) {
+        sm_subscription->dont_send_abort_on_failure = true;
+    }
 
     /* fill-in subscription details */
     sr_mem = (sr_mem_ctx_t *)msg_req->_sysrepo_mem_ctx;

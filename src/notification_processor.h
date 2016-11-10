@@ -255,13 +255,14 @@ int np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool 
  * @param[in] subs_xpath XPath where the subscription is subscribed to.
  * @param[in] event Event that is currently being processed.
  * @param[in] result Result of the processing by the subscriber.
+ * @param[in] do_not_send_abort if true the xpath will be added to the list of subscriptions that do no want abort
  * @param[in] err_msg Error message (in case that result != SR_ERR_OK and it was provided).
  * @param[in] xpath XPath to the node where the error occured (in case that result != SR_ERR_OK and it was provided).
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, char *subs_xpath, sr_notif_event_t event,
-        int result, const char *err_msg, const char *err_xpath);
+        int result, bool do_not_send_abort, const char *err_msg, const char *err_xpath);
 
 /**
  * @brief Cleans up a subscription context (including all its content).

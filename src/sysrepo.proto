@@ -948,6 +948,9 @@ message NotificationAck {
   required Notification notif = 1;  /**< Original notification. */
   required uint32 result = 2;       /**< Result of the notification (success / error code). */
   optional Error error = 3;         /**< Additional error information. */
+  required bool do_not_send_abort = 4; /**< If the result is error and this flag is set to true abort notification
+                                       * will not be delivered to this subscriber
+                                       * (Subscriber doesn't want notification about changes that he refused). */
 }
 
 /**

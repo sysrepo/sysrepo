@@ -3058,7 +3058,7 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
 /**
  * @brief Decides whether a subscription should be skipped or not. Takes into account:
  * SR_EV_VERIFY: skip SR_SUBSCR_APPLY_ONLY subscription
- * SR_EV_ABORT: skip subscription that returned an error
+ * SR_EV_ABORT: skip subscription that returned an error and specified SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG flag
  */
 static bool
 dm_should_skip_subscription(np_subscription_t *subscription, dm_commit_context_t *c_ctx, sr_notif_event_t ev)

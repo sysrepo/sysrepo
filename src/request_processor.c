@@ -2472,7 +2472,7 @@ rp_notification_ack_process(rp_ctx_t *rp_ctx, Sr__Msg *msg)
     }
 
     rc = np_commit_notification_ack(rp_ctx->np_ctx, notif->commit_id, subs_xpath, sr_notification_event_gpb_to_sr(event),
-            msg->notification_ack->result, err_msg, err_xpath);
+            msg->notification_ack->result, msg->notification_ack->do_not_send_abort, err_msg, err_xpath);
 
     return rc;
 }
