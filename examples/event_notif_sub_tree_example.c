@@ -28,6 +28,7 @@
 #include <signal.h>
 #include <string.h>
 #include <limits.h>
+#include <time.h>
 
 #include "sysrepo.h"
 #include "sysrepo/trees.h"
@@ -36,10 +37,10 @@ volatile int exit_application = 0;
 
 static void
 event_notif_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
-       void *private_ctx)
+       time_t timestamp, void *private_ctx)
 {
     /* print notification */
-    printf("\n\n ========== RECEIVED EVENT NOTIFICATION ==========\n\n");
+    printf("\n\n ========== RECEIVED EVENT NOTIFICATION ======%s\n\n", ctime(&timestamp));
     printf(">>> Notification content:\n\n");
     for (size_t i = 0; i < tree_cnt; ++i) {
         sr_print_tree(trees+i, INT_MAX);
