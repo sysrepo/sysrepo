@@ -40,7 +40,7 @@ if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
 
-set(PLUGINS_DIR "${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
+set(PLUGINS_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
 
 # set build-type specific settings
 if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
