@@ -980,10 +980,10 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
 
     if (SR_API_VALUES == subscription->api_variant) {
         subscription->callback.event_notif_cb(msg->request->event_notif_req->xpath, values, values_cnt,
-                subscription->private_ctx);
+                msg->request->event_notif_req->timestamp, subscription->private_ctx);
     } else {
         subscription->callback.event_notif_tree_cb(msg->request->event_notif_req->xpath, trees, tree_cnt,
-                subscription->private_ctx);
+                msg->request->event_notif_req->timestamp, subscription->private_ctx);
     }
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);

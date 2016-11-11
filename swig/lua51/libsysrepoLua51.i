@@ -131,7 +131,7 @@ public:
         lua_call(fn.L, 3, 0);
     }
 
-    void event_notif(const char *xpath, const sr_val_t *values, const size_t values_cnt, void *private_ctx) {
+    void event_notif(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
 
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
         if (in_vals == NULL)
@@ -140,11 +140,12 @@ public:
         swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
+        lua_pushnumber(fn.L, timestamp);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 3, 0);
+        lua_call(fn.L, 4, 0);
     }
 
-    void event_notif_tree(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, void *private_ctx) {
+    void event_notif_tree(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
 
         Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, NULL);
         if (in_vals == NULL)
@@ -153,8 +154,9 @@ public:
         swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
+        lua_pushnumber(fn.L, timestamp);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 3, 0);
+        lua_call(fn.L, 4, 0);
     }
 
 
@@ -220,16 +222,16 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
     return SR_ERR_OK;
 }
 
-static void g_event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, void *private_ctx)
+static void g_event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->event_notif(xpath, values, values_cnt, ctx->private_ctx);
+    ctx->event_notif(xpath, values, values_cnt, timestamp, ctx->private_ctx);
 }
 
-static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, void *private_ctx)
+static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->event_notif_tree(xpath, trees, tree_cnt, ctx->private_ctx);
+    ctx->event_notif_tree(xpath, trees, tree_cnt, timestamp, ctx->private_ctx);
 }
 
 

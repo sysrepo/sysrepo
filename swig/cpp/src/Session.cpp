@@ -415,15 +415,15 @@ static int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t i
     wrap->rpc_tree(xpath, in_tree, out_tree, wrap->private_ctx["rpc_tree"]);
     return SR_ERR_OK;
 }
-static void event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, void *private_ctx) {
+static void event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
     S_Vals vals(new Vals(values, values_cnt, NULL));
     Callback *wrap = (Callback*) private_ctx;
-    return wrap->event_notif(xpath, vals, wrap->private_ctx["event_notif"]);
+    return wrap->event_notif(xpath, vals, timestamp, wrap->private_ctx["event_notif"]);
 }
-static void event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, void *private_ctx) {
+static void event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
     S_Trees vals(new Trees(trees, tree_cnt, NULL));
     Callback *wrap = (Callback*) private_ctx;
-    return wrap->event_notif_tree(xpath, vals, wrap->private_ctx["event_notif_tree"]);
+    return wrap->event_notif_tree(xpath, vals, timestamp, wrap->private_ctx["event_notif_tree"]);
 }
 static int dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
     S_Vals_Holder vals(new Vals_Holder(values, values_cnt));

@@ -216,7 +216,7 @@ public:
         }
     }
 
-    void event_notif(const char *xpath, const sr_val_t *values, const size_t values_cnt, void *private_ctx) {
+    void event_notif(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
         PyObject *arglist;
 
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
@@ -226,7 +226,7 @@ public:
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Vals_t, SWIG_POINTER_DISOWN);
 
         PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(sOO)", xpath, in, p);
+        arglist = Py_BuildValue("(sOO)", xpath, in, timestamp, p);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL) {
@@ -238,7 +238,7 @@ public:
         }
     }
 
-    void event_notif_tree(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, void *private_ctx) {
+    void event_notif_tree(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
         PyObject *arglist;
 
         Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, NULL);
@@ -248,7 +248,7 @@ public:
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Trees_t, SWIG_POINTER_DISOWN);
 
         PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(sOO)", xpath, in, p);
+        arglist = Py_BuildValue("(sOO)", xpath, in, timestamp, p);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL) {
@@ -322,16 +322,16 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
     return SR_ERR_OK;
 }
 
-static void g_event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, void *private_ctx)
+static void g_event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->event_notif(xpath, values, values_cnt, ctx->private_ctx);
+    ctx->event_notif(xpath, values, values_cnt, timestamp, ctx->private_ctx);
 }
 
-static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, void *private_ctx)
+static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->event_notif_tree(xpath, trees, tree_cnt, ctx->private_ctx);
+    ctx->event_notif_tree(xpath, trees, tree_cnt, timestamp, ctx->private_ctx);
 }
 
 

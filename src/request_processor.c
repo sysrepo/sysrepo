@@ -2397,6 +2397,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
             }
             CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate event notification (%s) input data.",
                               msg->request->event_notif_req->xpath);
+            req->request->event_notif_req->timestamp = msg->request->event_notif_req->timestamp;
             /*  -- subscription info */
             req->request->event_notif_req->subscriber_address = strdup(subscriptions[i].dst_address);
             CHECK_NULL_NOMEM_ERROR(req->request->event_notif_req->subscriber_address, rc);

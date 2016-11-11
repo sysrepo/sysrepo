@@ -54,6 +54,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#ifdef __APPLE__
+    #include <sys/types.h>
+#endif
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1448,13 +1451,14 @@ int sr_rpc_send_tree(sr_session_ctx_t *session, const char *xpath,
  * @param[in] xpath XPath identifying the event notification.
  * @param[in] values Array of all nodes that hold some data in event notification subtree.
  * @param[in] values_cnt Number of items inside the values array.
+ * @param[in] timestamp Time when the notification was generated
  * @param[in] private_ctx Private context opaque to sysrepo,
  * as passed to ::sr_event_notif_subscribe call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 typedef void (*sr_event_notif_cb)(const char *xpath, const sr_val_t *values, const size_t values_cnt,
-        void *private_ctx);
+        time_t timestamp, void *private_ctx);
 
 /**
  * @brief Callback to be called by the delivery of event notification specified by xpath.
@@ -1464,12 +1468,13 @@ typedef void (*sr_event_notif_cb)(const char *xpath, const sr_val_t *values, con
  * @param[in] xpath XPath identifying the event notification.
  * @param[in] trees Array of subtrees carrying event notification data.
  * @param[in] tree_cnt Number of subtrees with data.
+ * @param[in] timestamp Time when the notification was generated
  * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_event_notif_subscribe_tree call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 typedef void (*sr_event_notif_tree_cb)(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
-        void *private_ctx);
+        time_t timestamp, void *private_ctx);
 
 /**
  * @brief Subscribes for delivery of an event notification specified by xpath.
