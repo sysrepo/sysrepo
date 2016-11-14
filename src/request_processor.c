@@ -55,6 +55,12 @@ typedef struct rp_request_s {
     Sr__Msg *msg;           /**< Message to be processed. */
 } rp_request_t;
 
+typedef enum rp_capability_change_type_e {
+    SR_CAPABILITY_ADDED,
+    SR_CAPABILITY_DELETED,
+    SR_CAPABILITY_MODIFIED,
+}rp_capability_change_type_t;
+
 /**
  * @brief Copy errors saved in the Data Manager session into the GPB response.
  */
@@ -167,6 +173,39 @@ rp_set_oper_request_timeout(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *re
     return rc;
 }
 
+static int
+rp_prepare_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, rp_capability_change_type_t change_type, Sr__Msg **msg)
+{
+    CHECK_NULL_ARG4(rp_ctx, session, module_name, msg);
+
+    int rc = SR_ERR_OK;
+
+    return rc;
+}
+
+static int
+rp_send_capability_change_notification(rp_ctx_t *rp_ctx, Sr__Msg *msg) {
+    return SR_ERR_OK;
+}
+
+static int
+rp_generate_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, rp_capability_change_type_t change_type)
+{
+    CHECK_NULL_ARG3(rp_ctx, session, module_name);
+
+    int rc = SR_ERR_OK;
+    SR_LOG_DBG("Capability changes notification for module %s", module_name);
+
+    Sr__Msg *msg = NULL;
+
+    rc = rp_prepare_capability_change_notification(rp_ctx, session, module_name, change_type, &msg);
+
+    //enque msg to rp
+    rc = rp_send_capability_change_notification(rp_ctx, msg);
+
+    return rc;
+}
+
 /**
  * @brief Processes a list_schemas request.
  */
@@ -275,25 +314,36 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
         return SR_ERR_NOMEM;
     }
 
+    const char *module_name = msg->request->module_install_req->module_name;
     /* check for write permission */
-    oper_rc = ac_check_module_permissions(session->ac_session, msg->request->module_install_req->module_name, AC_OPER_READ_WRITE);
+    oper_rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
     if (SR_ERR_OK != oper_rc) {
-        SR_LOG_ERR("Access control check failed for xpath '%s'", msg->request->module_install_req->module_name);
+        SR_LOG_ERR("Access control check failed for xpath '%s'", module_name);
     }
 
     /* install the module in the DM */
     if (SR_ERR_OK == oper_rc) {
-        oper_rc = msg->request->module_install_req->installed ?
-                dm_install_module(rp_ctx->dm_ctx,
-                        msg->request->module_install_req->module_name,
+        if (msg->request->module_install_req->installed) {
+            oper_rc = dm_install_module(rp_ctx->dm_ctx,
+                        module_name,
                         msg->request->module_install_req->revision,
                         msg->request->module_install_req->file_name,
-                        &implicitly_installed)
-                :
-                dm_uninstall_module(rp_ctx->dm_ctx,
-                        msg->request->module_install_req->module_name,
+                        &implicitly_installed);
+            if (SR_ERR_OK == oper_rc) {
+                rp_generate_capability_change_notification(rp_ctx, session, module_name, SR_CAPABILITY_ADDED);
+            }
+        } else {
+            Sr__Msg *notif = NULL;
+            rp_prepare_capability_change_notification(rp_ctx, session, module_name, SR_CAPABILITY_ADDED, &notif);
+
+            oper_rc = dm_uninstall_module(rp_ctx->dm_ctx,
+                        module_name,
                         msg->request->module_install_req->revision,
                         &implicitly_removed);
+            if (SR_ERR_OK == oper_rc) {
+                rp_send_capability_change_notification(rp_ctx, notif);
+            }
+        }
     }
 
     /* set response code */
@@ -362,6 +412,8 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
         if (SR_ERR_OK != oper_rc) {
             /* rollback of the change in DM */
             dm_feature_enable(rp_ctx->dm_ctx, req->module_name, req->feature_name, !req->enabled);
+        } else {
+            rp_generate_capability_change_notification(rp_ctx, session, req->module_name, SR_CAPABILITY_MODIFIED);
         }
     }
 
