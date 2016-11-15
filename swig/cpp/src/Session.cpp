@@ -33,6 +33,7 @@
 
 extern "C" {
 #include "sysrepo.h"
+#include "sysrepo/trees.h"
 }
 
 using namespace std;
@@ -248,6 +249,42 @@ S_Trees Session::get_subtrees(const char *xpath, sr_get_subtree_options_t opts)
     }
 
     return trees;
+}
+
+S_Tree Session::get_child(S_Tree in_tree)
+{
+    sr_node_t *node = sr_node_get_child(_sess, in_tree->tree());
+    if (node == NULL) {
+        return NULL;
+    }
+
+    S_Tree out_tree(new Tree(node, NULL));
+    if (out_tree == NULL) throw_exception(SR_ERR_NOMEM);
+    return out_tree;
+}
+
+S_Tree Session::get_next_sibling(S_Tree in_tree)
+{
+    sr_node_t *node = sr_node_get_next_sibling(_sess, in_tree->tree());
+    if (node == NULL) {
+        return NULL;
+    }
+
+    S_Tree out_tree(new Tree(node, NULL));
+    if (out_tree == NULL) throw_exception(SR_ERR_NOMEM);
+    return out_tree;
+}
+
+S_Tree Session::get_parent(S_Tree in_tree)
+{
+    sr_node_t *node = sr_node_get_parent(_sess, in_tree->tree());
+    if (node == NULL) {
+        return NULL;
+    }
+
+    S_Tree out_tree(new Tree(node, NULL));
+    if (out_tree == NULL) throw_exception(SR_ERR_NOMEM);
+    return out_tree;
 }
 
 void Session::set_item(const char *xpath, S_Val value, const sr_edit_options_t opts)
