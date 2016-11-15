@@ -217,10 +217,16 @@ S_Val Session::get_item_next(S_Iter_Value iter)
 S_Tree Session::get_subtree(const char *xpath, sr_get_subtree_options_t opts)
 {
     S_Tree tree(new Tree());
+    if (tree == NULL) throw_exception(SR_ERR_NOMEM);
 
     int ret = sr_get_subtree(_sess, xpath, opts, tree->get());
-    if (ret != SR_ERR_OK) {
+    if (SR_ERR_OK == ret) {
+        return tree;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
         throw_exception(ret);
+	return NULL;
     }
 
     return tree;
@@ -229,10 +235,16 @@ S_Tree Session::get_subtree(const char *xpath, sr_get_subtree_options_t opts)
 S_Trees Session::get_subtrees(const char *xpath, sr_get_subtree_options_t opts)
 {
     S_Trees trees(new Trees());
+    if (trees == NULL) throw_exception(SR_ERR_NOMEM);
 
     int ret = sr_get_subtrees(_sess, xpath, opts, trees->p_trees(), trees->p_trees_cnt());
-    if (ret != SR_ERR_OK) {
+    if (SR_ERR_OK == ret) {
+        return trees;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
         throw_exception(ret);
+	return NULL;
     }
 
     return trees;
