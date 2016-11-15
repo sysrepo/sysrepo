@@ -81,6 +81,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
     char *xpath = NULL;
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_container *sch_cont = NULL;
+    struct lyd_node_anydata *sch_any = NULL;
 
     rc = rp_dt_create_xpath_for_node(val->_sr_mem, node, &xpath);
     CHECK_RC_MSG_RETURN(rc, "Create xpath for node failed");
@@ -104,10 +105,16 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
         break;
     case LYS_LEAFLIST:
         data_leaf = (struct lyd_node_leaf_list *) node;
-
         val->type = sr_libyang_leaf_get_type(data_leaf);
-
         rc = sr_libyang_leaf_copy_value(data_leaf, val);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Copying of value failed");
+        break;
+    case LYS_ANYXML:
+    case LYS_ANYDATA:
+        sch_any = (struct lyd_node_anydata *) node;
+        val->dflt = node->dflt;
+        val->type = (LYS_ANYXML == node->schema->nodetype) ? SR_ANYXML_T : SR_ANYDATA_T;
+        rc = sr_libyang_anydata_copy_value(sch_any, val);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Copying of value failed");
         break;
     default:
