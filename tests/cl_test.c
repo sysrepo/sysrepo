@@ -4859,6 +4859,50 @@ cl_cross_module_dependency(void **state)
     sr_session_stop(session);
 }
 
+static void
+cl_data_in_submodule(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subs = NULL;
+
+    int rc = SR_ERR_OK;
+    sr_val_t *value = NULL;
+    sr_val_t val = {0};
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* clean prev data */
+    val.type = SR_STRING_T;
+    val.data.string_val = "abc";
+
+    rc = sr_set_item(session, "/module-a:sub-two-leaf", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_session_switch_ds(session, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_module_change_subscribe(session, "module-a", empty_module_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(session, "/module-a:sub-two-leaf", &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_non_null(value);
+    assert_int_equal(SR_STRING_T, value->type);
+    assert_string_equal("/module-a:sub-two-leaf", value->xpath);
+    sr_free_val(value);
+
+    sr_unsubscribe(session, subs);
+    sr_session_stop(session);
+}
+
 int
 main()
 {
@@ -4906,6 +4950,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_event_notif_tree_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_event_notif_combo_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_cross_module_dependency, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_data_in_submodule, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

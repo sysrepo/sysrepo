@@ -30,10 +30,15 @@ rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
 {
     CHECK_NULL_ARG3(dm_ctx, xpath, nodes);
     int rc = SR_ERR_OK;
+    struct lys_submodule *sub = NULL;
     if (NULL == data_tree) {
         return SR_ERR_NOT_FOUND;
     }
     CHECK_NULL_ARG3(data_tree->schema, data_tree->schema->module, data_tree->schema->module->name);
+    if (data_tree->schema->module->type) {
+        sub = (struct lys_submodule *) data_tree->schema->module;
+        CHECK_NULL_ARG3(sub, sub->belongsto, sub->belongsto->name);
+    }
     struct ly_set *res = lyd_find_xpath(data_tree, xpath);
     if (NULL == res) {
         SR_LOG_ERR_MSG("Lyd get node failed");
@@ -42,10 +47,13 @@ rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
 
     if (check_enable) {
         /* lock ly_ctx_lock to schema_info_tree*/
+        /* for submodule lock the main module*/
+        const char *module_name = sub == NULL ? data_tree->schema->module->name : sub->belongsto->name;
+
         dm_schema_info_t *si = NULL;
-        rc = dm_get_module_and_lock((dm_ctx_t *) dm_ctx, data_tree->schema->module->name, &si);
+        rc = dm_get_module_and_lock((dm_ctx_t *) dm_ctx, module_name, &si);
         if (rc != SR_ERR_OK) {
-            SR_LOG_ERR("Get schema info failed for %s", data_tree->schema->module->name);
+            SR_LOG_ERR("Get schema info failed for %s", module_name);
             ly_set_free(res);
             return rc;
         }
