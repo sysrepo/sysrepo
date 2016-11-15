@@ -583,11 +583,12 @@ Change_Iter::Change_Iter(sr_change_iter_t *iter) {_iter = iter;}
 Change_Iter::~Change_Iter() {return;}
 
 // Error
+Error::Error() {_info = NULL;}
 Error::Error(const sr_error_info_t *info) {_info = info;}
 Error::~Error() {return;}
 
 // Errors
-Errors::Errors(const sr_error_info_t *info, size_t cnt) {_info = info; _cnt = cnt;}
+Errors::Errors() {_info = NULL; _cnt = 0;}
 Errors::~Errors() {return;}
 S_Error Errors::error(size_t n) {
     if (n >= _cnt)

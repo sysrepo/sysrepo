@@ -138,12 +138,13 @@
 %shared_ptr(Error);
 #endif
 %ignore Error::Error(const sr_error_info_t *);
+%ignore Error::p_error();
 
 #ifndef SWIGLUA
 %shared_ptr(Errors);
 #endif
-%ignore Errors::Errors(const sr_error_info_t *, size_t);
-%ignore Errors::Errors(const sr_error_info_t *);
+%ignore Error::p_error();
+%ignore Error::p_error_cnt();
 %newobject Errors::error;
 
 #ifndef SWIGLUA

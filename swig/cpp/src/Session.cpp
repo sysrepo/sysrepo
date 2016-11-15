@@ -95,29 +95,34 @@ void Session::session_switch_ds(sr_datastore_t ds)
 
 S_Error Session::get_last_error()
 {
-    const sr_error_info_t *info;
+    S_Error error(new Error());
+    if (error == NULL) throw_exception(SR_ERR_NOMEM);
 
-    int ret = sr_get_last_error(_sess, &info);
-    if (ret != SR_ERR_OK) {
+    int ret = sr_get_last_error(_sess, error->p_error());
+    if (SR_ERR_OK == ret) {
+        return error;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
         throw_exception(ret);
+        return NULL;
     }
-
-    S_Error error(new Error(info));
-    return error;
 }
 
 S_Errors Session::get_last_errors()
 {
-    size_t cnt;
-    const sr_error_info_t *info;
+    S_Errors errors(new Errors());
+    if (errors == NULL) throw_exception(SR_ERR_NOMEM);
 
-    int ret = sr_get_last_errors(_sess, &info, &cnt);
-    if (ret != SR_ERR_OK) {
+    int ret = sr_get_last_errors(_sess, errors->p_error(), errors->p_error_cnt());
+    if (SR_ERR_OK == ret) {
+        return errors;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
         throw_exception(ret);
+        return NULL;
     }
-
-    S_Errors error(new Errors(info, cnt));
-    return error;
 }
 
 S_Schemas Session::list_schemas()

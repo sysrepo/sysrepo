@@ -169,10 +169,12 @@ private:
 class Error
 {
 public:
+    Error();
     Error(const sr_error_info_t *info);
     ~Error();
-    const char *message() {return _info->message;};
-    const char *xpath() {return _info->xpath;};
+    const char *message() {if (_info) return _info->message; else return NULL;};
+    const char *xpath() {if (_info) return _info->message; else return NULL;};
+    const sr_error_info_t **p_error() {return &_info;};
 
 private:
     const sr_error_info_t *_info;
@@ -182,10 +184,12 @@ private:
 class Errors
 {
 public:
-    Errors(const sr_error_info_t *info, size_t cnt);
+    Errors();
     ~Errors();
     S_Error error(size_t n);
     size_t error_cnt() {return _cnt;};
+    size_t *p_error_cnt() {return &_cnt;};
+    const sr_error_info_t **p_error() {return &_info;};
 
 private:
     size_t _cnt;
