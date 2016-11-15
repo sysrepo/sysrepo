@@ -6,7 +6,7 @@ include(GNUInstallDirs)
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 5)
-set(SYSREPO_MICRO_VERSION 0)
+set(SYSREPO_MICRO_VERSION 1)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # setup bindings
@@ -40,7 +40,7 @@ if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
 
-set(PLUGINS_DIR "${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
+set(PLUGINS_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
 
 # set build-type specific settings
 if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
