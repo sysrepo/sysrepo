@@ -228,6 +228,7 @@ public:
     const char *module_name() {return _sch->module_name;};
     const char *ns() {return _sch->ns;};
     const char *prefix() {return _sch->prefix;};
+    bool implemented() {return _sch->implemented;};
     S_Schema_Revision revision();
     S_Schema_Submodule submodule(size_t n);
     size_t submodule_cnt() {return _sch->submodule_count;};
