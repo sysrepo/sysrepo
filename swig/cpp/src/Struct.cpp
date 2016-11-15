@@ -493,6 +493,23 @@ void Val::set(const char *xpath, uint64_t uint64_val, sr_type_t type) {
 
     _val->type = type;
 }
+S_String Val::to_string() {
+    char *mem = NULL;
+
+    int ret = sr_print_val_mem(&mem, _val);
+    if (SR_ERR_OK == ret) {
+        if (mem == NULL)
+            return NULL;
+        S_String string_val = mem;
+        free(mem);
+        return string_val;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
+        throw_exception(ret);
+        return NULL;
+    }
+}
 S_Val Val::dup() {
     sr_val_t *new_val = NULL;
     int ret = sr_dup_val(_val, &new_val);

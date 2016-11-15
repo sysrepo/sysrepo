@@ -98,6 +98,7 @@ public:
     bool dflt() {return _val->dflt;};
     void dflt_set(bool data) {_val->dflt = data;};
     S_Data data() {S_Data data(new Data(_val->data, _val->type, _deleter)); return data;};
+    S_String to_string();
     sr_val_t *get() {return _val;};
     sr_val_t **p_get() {return &_val;};
     S_Val dup();

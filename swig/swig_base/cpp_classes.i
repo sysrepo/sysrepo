@@ -5,6 +5,7 @@
 
 %include <typemaps.i>
 %include <stdint.i>
+%include "std_string.i"
 
 #ifndef SWIGLUA
 %include "std_shared_ptr.i"
@@ -99,6 +100,7 @@
 %ignore Val::p_get();
 %newobject Val::data;
 %newobject Val::dup;
+%newobject Val::to_string;
 
 #ifndef SWIGLUA
 %shared_ptr(Vals);
@@ -222,6 +224,7 @@
 %newobject Tree::prev;
 %newobject Tree::first_child;
 %newobject Tree::last_child;
+%newobject Tree::to_string;
 
 #ifndef SWIGLUA
 %shared_ptr(Trees);

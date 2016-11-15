@@ -51,6 +51,7 @@
     #define S_Change           Change*
     #define S_Counter          std::shared_ptr<Counter>
     #define S_Callback         Callback*
+    #define S_String           std::string
 #else
     #define S_Iter_Value       std::shared_ptr<Iter_Value>
     #define S_Iter_Change      std::shared_ptr<Iter_Change>
@@ -80,6 +81,7 @@
     #define S_Change           std::shared_ptr<Change>
     #define S_Counter          std::shared_ptr<Counter>
     #define S_Callback         std::shared_ptr<Callback>
+    #define S_String           std::string
 #endif
 
 #define SESS_DEFAULT 0
