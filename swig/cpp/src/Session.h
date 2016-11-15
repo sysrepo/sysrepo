@@ -95,7 +95,9 @@ public:
     virtual void module_install(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx) {return;};
     virtual void feature_enable(const char *module_name, const char *feature_name, bool enabled, void *private_ctx) {return;};
     virtual void rpc(const char *xpath, S_Vals input, S_Vals_Holder output, void *private_ctx) {return;};
+    virtual void action(const char *xpath, S_Vals input, S_Vals_Holder output, void *private_ctx) {return;};
     virtual void rpc_tree(const char *xpath, S_Trees input, S_Trees_Holder output, void *private_ctx) {return;};
+    virtual void action_tree(const char *xpath, S_Trees input, S_Trees_Holder output, void *private_ctx) {return;};
     virtual void dp_get_items(const char *xpath, S_Vals_Holder vals, void *private_ctx) {return;};
     virtual void event_notif(const char *xpath, S_Vals vals, time_t timestamp, void *private_ctx) {return;};
     virtual void event_notif_tree(const char *xpath, S_Trees trees, time_t timestamp, void *private_ctx) {return;};
@@ -115,9 +117,11 @@ public:
     void module_install_subscribe(S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void feature_enable_subscribe(S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void rpc_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void action_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void event_notif_subscribe_tree(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void event_notif_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void rpc_subscribe_tree(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void action_subscribe_tree(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void dp_get_items_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     std::vector<S_Callback > cb_list;
 
@@ -125,7 +129,9 @@ public:
     S_Iter_Change get_changes_iter(const char *xpath);
     S_Change get_change_next(S_Iter_Change iter);
     S_Vals rpc_send(const char *xpath, S_Vals input);
+    S_Vals action_send(const char *xpath, S_Vals input);
     S_Trees rpc_send_tree(const char *xpath, S_Trees input);
+    S_Trees action_send_tree(const char *xpath, S_Trees input);
     ~Subscribe();
 
     // SWIG specific

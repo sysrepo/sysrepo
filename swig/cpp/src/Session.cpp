@@ -408,11 +408,25 @@ static int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_c
     wrap->rpc(xpath, in_vals, out_vals, wrap->private_ctx["rpc_cb"]);
     return SR_ERR_OK;
 }
+static int action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx) {
+    S_Vals in_vals(new Vals(input, input_cnt, NULL));
+    S_Vals_Holder out_vals(new Vals_Holder(output, output_cnt));
+    Callback *wrap = (Callback*) private_ctx;
+    wrap->action(xpath, in_vals, out_vals, wrap->private_ctx["action_cb"]);
+    return SR_ERR_OK;
+}
 static int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx) {
     S_Trees in_tree(new Trees(input, input_cnt, NULL));
     S_Trees_Holder out_tree(new Trees_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
     wrap->rpc_tree(xpath, in_tree, out_tree, wrap->private_ctx["rpc_tree"]);
+    return SR_ERR_OK;
+}
+static int action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx) {
+    S_Trees in_tree(new Trees(input, input_cnt, NULL));
+    S_Trees_Holder out_tree(new Trees_Holder(output, output_cnt));
+    Callback *wrap = (Callback*) private_ctx;
+    wrap->action_tree(xpath, in_tree, out_tree, wrap->private_ctx["action_tree"]);
     return SR_ERR_OK;
 }
 static void event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
@@ -490,12 +504,34 @@ void Subscribe::rpc_subscribe(const char *xpath, S_Callback callback, void *priv
     }
 }
 
+void Subscribe::action_subscribe(const char *xpath, S_Callback callback, void *private_ctx, sr_subscr_options_t opts)
+{
+    callback->private_ctx["action_cb"] = private_ctx;
+    cb_list.push_back(callback);
+
+    int ret = sr_action_subscribe(_sess->get(), xpath, action_cb, callback->get(), opts, &_sub);
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+}
+
 void Subscribe::rpc_subscribe_tree(const char *xpath, S_Callback callback, void *private_ctx, sr_subscr_options_t opts)
 {
     callback->private_ctx["rpc_tree"] =  private_ctx;
     cb_list.push_back(callback);
 
     int ret = sr_rpc_subscribe_tree(_sess->get(), xpath, rpc_tree_cb, callback->get(), opts, &_sub);
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+}
+
+void Subscribe::action_subscribe_tree(const char *xpath, S_Callback callback, void *private_ctx, sr_subscr_options_t opts)
+{
+    callback->private_ctx["action_tree"] =  private_ctx;
+    cb_list.push_back(callback);
+
+    int ret = sr_action_subscribe_tree(_sess->get(), xpath, action_tree_cb, callback->get(), opts, &_sub);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -593,11 +629,45 @@ S_Vals Subscribe::rpc_send(const char *xpath, S_Vals input)
     return output;
 }
 
+S_Vals Subscribe::action_send(const char *xpath, S_Vals input)
+{
+    S_Vals output(new Vals());
+
+    int ret = sr_action_send(_sess->get(), xpath, input->val(), input->val_cnt(), output->p_val(), output->p_val_cnt());
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+
+    // ensure that the class is not freed before
+    if (input->val() == NULL) {
+	throw_exception(SR_ERR_INTERNAL);
+    }
+
+    return output;
+}
+
 S_Trees Subscribe::rpc_send_tree(const char *xpath, S_Trees input)
 {
     S_Trees output(new Trees());
 
     int ret = sr_rpc_send_tree(_sess->get(), xpath, input->trees(), input->tree_cnt(), output->p_trees(), output->p_trees_cnt());
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+
+    // ensure that the class is not freed before
+    if (input == NULL) {
+	throw_exception(SR_ERR_INTERNAL);
+    }
+
+    return output;
+}
+
+S_Trees Subscribe::action_send_tree(const char *xpath, S_Trees input)
+{
+    S_Trees output(new Trees());
+
+    int ret = sr_action_send_tree(_sess->get(), xpath, input->trees(), input->tree_cnt(), output->p_trees(), output->p_trees_cnt());
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
