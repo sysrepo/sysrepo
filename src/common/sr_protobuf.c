@@ -1106,6 +1106,12 @@ sr_set_val_t_type_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     case SR_UINT64_T:
         gpb_value->type = SR__VALUE__TYPES__UINT64;
         break;
+    case SR_ANYXML_T:
+        gpb_value->type = SR__VALUE__TYPES__ANYXML;
+        break;
+    case SR_ANYDATA_T:
+        gpb_value->type = SR__VALUE__TYPES__ANYDATA;
+        break;
 
     default:
         SR_LOG_ERR("Type can not be mapped to gpb type '%s' type %d", value->xpath, value->type);
@@ -1227,6 +1233,22 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
         gpb_value->uint64_val = value->data.uint64_val;
         gpb_value->has_uint64_val = true;
         break;
+    case SR_ANYXML_T:
+        if (value->_sr_mem) {
+            gpb_value->anyxml_val = value->data.anyxml_val;
+        } else {
+            gpb_value->anyxml_val = strdup(value->data.anyxml_val);
+            CHECK_NULL_NOMEM_RETURN(gpb_value->anyxml_val);
+        }
+        return SR_ERR_OK;
+    case SR_ANYDATA_T:
+        if (value->_sr_mem) {
+            gpb_value->anydata_val = value->data.anydata_val;
+        } else {
+            gpb_value->anydata_val = strdup(value->data.anydata_val);
+            CHECK_NULL_NOMEM_RETURN(gpb_value->anydata_val);
+        }
+        return SR_ERR_OK;
     default:
         SR_LOG_ERR("Conversion of value type not supported '%s'", value->xpath);
         return SR_ERR_INTERNAL;
@@ -1335,6 +1357,12 @@ sr_set_gpb_type_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
     case SR__VALUE__TYPES__UINT64:
         value->type = SR_UINT64_T;
         break;
+    case SR__VALUE__TYPES__ANYXML:
+        value->type = SR_ANYXML_T;
+        break;
+    case SR__VALUE__TYPES__ANYDATA:
+        value->type = SR_ANYDATA_T;
+        break;
     default:
         SR_LOG_ERR_MSG("Type can not be mapped to sr_val_t");
         return SR_ERR_INTERNAL;
@@ -1442,6 +1470,22 @@ sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
         return SR_ERR_OK;
     case SR__VALUE__TYPES__UINT64:
         value->data.uint64_val = gpb_value->uint64_val;
+        return SR_ERR_OK;
+    case SR__VALUE__TYPES__ANYXML:
+        if (value->_sr_mem) {
+            value->data.anyxml_val = gpb_value->anyxml_val;
+        } else {
+            value->data.anyxml_val = strdup(gpb_value->anyxml_val);
+            CHECK_NULL_NOMEM_RETURN(gpb_value->anyxml_val);
+        }
+        return SR_ERR_OK;
+    case SR__VALUE__TYPES__ANYDATA:
+        if (value->_sr_mem) {
+            value->data.anydata_val = gpb_value->anydata_val;
+        } else {
+            value->data.anydata_val = strdup(gpb_value->anydata_val);
+            CHECK_NULL_NOMEM_RETURN(gpb_value->anydata_val);
+        }
         return SR_ERR_OK;
     default:
         SR_LOG_ERR_MSG("Copy of value failed");
