@@ -414,7 +414,7 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
 
 
     const struct lys_node *start_node = NULL;
-    if (NULL != schema_info->module) {
+    if (NULL != schema_info->module && NULL != schema_info->module->data) {
         start_node = schema_info->module->data;
     } else {
         const struct lys_module *m = NULL;

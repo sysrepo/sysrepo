@@ -4903,6 +4903,34 @@ cl_data_in_submodule(void **state)
     sr_session_stop(session);
 }
 
+static void
+cl_get_schema_with_subscription(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subs = NULL;
+
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_subtree_change_subscribe(session, "/ietf-interfaces:interfaces/interface", empty_module_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    char *content = NULL;
+    rc = sr_get_schema(session, "ietf-ip", NULL, NULL, SR_SCHEMA_YANG, &content);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    assert_non_null(content);
+    free(content);
+
+    sr_unsubscribe(session, subs);
+    sr_session_stop(session);
+}
+
 int
 main()
 {
@@ -4951,6 +4979,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_event_notif_combo_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_cross_module_dependency, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_data_in_submodule, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_schema_with_subscription, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
