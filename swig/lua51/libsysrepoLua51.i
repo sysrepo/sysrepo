@@ -90,7 +90,7 @@ public:
                size_t *output_cnt, void *private_ctx) {
 
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
-        Vals *out_vals =(Vals *)new Vals(output, output_cnt, NULL);
+        Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
         if (in_vals == NULL && out_vals == NULL)
             throw std::runtime_error("No memory for class Vals in callback rpc_cb.\n");
 
@@ -106,7 +106,7 @@ public:
                          sr_node_t **output, size_t *output_cnt, void *private_ctx) {
 
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
-        Trees *out_vals =(Trees *)new Trees(output, output_cnt, NULL);
+        Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
         if (in_vals == NULL && out_vals == NULL)
             throw std::runtime_error("No memory for class Trees in callback rpc_tree_cb.\n");
 
