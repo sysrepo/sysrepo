@@ -67,7 +67,7 @@ public class javaApplicationExample {
 
 			My_Callback cb = new My_Callback();
 
-			subscribe.module_change_subscribe(module_name, cb);
+			subscribe.module_change_subscribe(module_name, cb, null, 0, sr_subscr_flag_t.SR_SUBSCR_DEFAULT.swigValue() | sr_subscr_flag_t.SR_SUBSCR_APPLY_ONLY.swigValue());
 
 			System.out.println("\n\n ========== READING STARTUP CONFIG: ==========\n");
 
