@@ -69,7 +69,7 @@ def module_change_cb(sess, module_name, event, private_ctx):
 
         print("\n ========== CHANGES: =============================================\n")
 
-        change_path = "/", module_name + ":*"
+        change_path = "/" + module_name + ":*"
 
         subscribe = sr.Subscribe(sess);
         it = subscribe.get_changes_iter(change_path);
