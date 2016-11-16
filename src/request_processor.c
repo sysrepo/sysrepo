@@ -61,6 +61,11 @@ typedef enum rp_capability_change_type_e {
     SR_CAPABILITY_MODIFIED,
 }rp_capability_change_type_t;
 
+#define CAPABILITY_ADDED_XPATH "/ietf-netconf-notifications:netconf-capability-change/added-capability"
+#define CAPABILITY_DELETED_XPATH "/ietf-netconf-notifications:netconf-capability-change/deleted-capability"
+#define CAPABILITY_MODIFIED_XPATH "/ietf-netconf-notifications:netconf-capability-change/modified-capability"
+#define CAPABILITY_CHANGED_BY_SERVER "/ietf-netconf-notifications:netconf-capability-change/changed-by/server"
+
 /**
  * @brief Copy errors saved in the Data Manager session into the GPB response.
  */
@@ -174,18 +179,104 @@ rp_set_oper_request_timeout(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *re
 }
 
 static int
-rp_prepare_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, rp_capability_change_type_t change_type, Sr__Msg **msg)
+rp_create_capability_change_values(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, rp_capability_change_type_t change_type, sr_val_t **value, size_t *val_cnt)
 {
-    CHECK_NULL_ARG4(rp_ctx, session, module_name, msg);
-
+    CHECK_NULL_ARG5(rp_ctx, session, module_name, value, val_cnt);
     int rc = SR_ERR_OK;
+    sr_val_t *val = NULL;
+    dm_schema_info_t *si = NULL;
+    char *uri = NULL;
+
+    rc = sr_new_values(2, &val);
+    CHECK_RC_MSG_RETURN(rc, "Failed to allocate values");
+
+    rc = sr_val_set_xpath(&val[0], CAPABILITY_CHANGED_BY_SERVER);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath");
+
+    val[0].type = SR_LEAF_EMPTY_T;
+
+    switch (change_type) {
+    case SR_CAPABILITY_ADDED:
+        rc = sr_val_set_xpath(&val[1], CAPABILITY_ADDED_XPATH);
+        break;
+    case SR_CAPABILITY_DELETED:
+        rc = sr_val_set_xpath(&val[1], CAPABILITY_DELETED_XPATH);
+        break;
+    case SR_CAPABILITY_MODIFIED:
+        rc = sr_val_set_xpath(&val[1], CAPABILITY_MODIFIED_XPATH);
+        break;
+    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create value for capability change notification");
+
+    val[1].type = SR_STRING_T;
+
+    rc = dm_get_module_and_lock(rp_ctx->dm_ctx, module_name, &si);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to lookup schema context for %s", module_name);
+
+    rc = sr_create_uri_for_module(si->module, &uri);
+    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to create URI for module %s", si->module_name);
+
+    rc = sr_mem_edit_string(val[0]._sr_mem, &val[1].data.string_val, uri);
+    free(uri);
+
+    SR_LOG_DBG("Generated notification %s %s", val[1].xpath, val[1].data.string_val);
+unlock:
+    pthread_rwlock_unlock(&si->model_lock);
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        sr_free_val(val);
+    } else {
+        *value = val;
+        *val_cnt = 2;
+    }
 
     return rc;
 }
 
 static int
-rp_send_capability_change_notification(rp_ctx_t *rp_ctx, Sr__Msg *msg) {
-    return SR_ERR_OK;
+rp_prepare_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, rp_capability_change_type_t change_type, Sr__Msg **msg)
+{
+    CHECK_NULL_ARG4(rp_ctx, session, module_name, msg);
+
+    int rc = SR_ERR_OK;
+    Sr__Msg *req = NULL;
+    sr_val_t *values = NULL;
+    size_t val_cnt = 0;
+
+    rc = rp_create_capability_change_values(rp_ctx, session, module_name, change_type, &values, &val_cnt);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create value for capability change notification");
+
+    rc = sr_gpb_req_alloc(values->_sr_mem, SR__OPERATION__EVENT_NOTIF, session->id, &req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to allocate message");
+
+    req->session_id = session->id;
+    req->request->event_notif_req->do_not_send_reply = true;
+
+    rc = sr_mem_edit_string(values->_sr_mem, &req->request->event_notif_req->xpath, "/ietf-netconf-notifications:netconf-capability-change");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath in the message");
+
+    rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
+
+cleanup:
+    sr_free_val(values);
+    if (SR_ERR_OK != rc) {
+        sr_msg_free(req);
+    } else {
+        *msg = req;
+    }
+    return rc;
+}
+
+static int
+rp_send_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg) {
+
+    CHECK_NULL_ARG3(rp_ctx, session, msg);
+    int rc = SR_ERR_OK;
+
+    rc = rp_msg_process(rp_ctx, session, msg);
+    return rc;
 }
 
 static int
@@ -194,15 +285,14 @@ rp_generate_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *sessi
     CHECK_NULL_ARG3(rp_ctx, session, module_name);
 
     int rc = SR_ERR_OK;
-    SR_LOG_DBG("Capability changes notification for module %s", module_name);
-
     Sr__Msg *msg = NULL;
 
+    SR_LOG_DBG("Capability changes notification for module %s", module_name);
+
     rc = rp_prepare_capability_change_notification(rp_ctx, session, module_name, change_type, &msg);
+    CHECK_RC_LOG_RETURN(rc, "Failed to prepare capability notification message for module %s", module_name);
 
-    //enque msg to rp
-    rc = rp_send_capability_change_notification(rp_ctx, msg);
-
+    rc = rp_send_capability_change_notification(rp_ctx, session, msg);
     return rc;
 }
 
@@ -292,7 +382,7 @@ rp_get_schema_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, S
  * @brief Processes a module_install request.
  */
 static int
-rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_module_install_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
@@ -341,7 +431,9 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
                         msg->request->module_install_req->revision,
                         &implicitly_removed);
             if (SR_ERR_OK == oper_rc) {
-                rp_send_capability_change_notification(rp_ctx, notif);
+                rp_send_capability_change_notification(rp_ctx, session, notif);
+            } else {
+                sr_msg_free(notif);
             }
         }
     }
@@ -380,7 +472,7 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
  * @brief Processes a feature_enable request.
  */
 static int
-rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_feature_enable_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
@@ -2487,12 +2579,17 @@ finalize:
     }
 
     /* send the response with return code */
-    rc_tmp = sr_gpb_resp_alloc(sr_mem_msg, SR__OPERATION__EVENT_NOTIF, session->id, &resp);
-    sr_msg_free(msg);
-    if (SR_ERR_OK == rc_tmp) {
-        resp->response->result = rc;
-        rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+    if (!msg->request->event_notif_req->do_not_send_reply) {
+        rc_tmp = sr_gpb_resp_alloc(sr_mem_msg, SR__OPERATION__EVENT_NOTIF, session->id, &resp);
+        if (SR_ERR_OK == rc_tmp) {
+            resp->response->result = rc;
+            rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+        }
+    } else {
+        SR_LOG_DBG("Internally generated event notification %s response not sent", msg->request->event_notif_req->xpath);
     }
+
+    sr_msg_free(msg);
 
     return rc;
 }
