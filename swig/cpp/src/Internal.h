@@ -39,6 +39,19 @@ typedef enum free_type_e {
     SCHEMAS,
 } free_type_t;
 
+typedef union value_e {
+    sr_val_t *_val;
+    sr_val_t **p_vals;
+    sr_node_t *_tree;
+    sr_node_t **p_trees;
+    sr_schema_t *_sch;
+} value_t;
+
+typedef union count_e {
+    size_t _cnt;
+    size_t *p_cnt;
+} count_t;
+
 class Deleter
 {
 public:
@@ -52,18 +65,8 @@ public:
     ~Deleter();
 
 private:
-    void init_all();
-    size_t _cnt;
-    size_t *p_cnt;
-
-    sr_val_t *_val;
-    sr_val_t **p_vals;
-
-    sr_node_t *_tree;
-    sr_node_t **p_trees;
-
-    sr_schema_t *_sch;
-
+    count_t c;
+    value_t v;
     free_type_t _t;
 };
 
