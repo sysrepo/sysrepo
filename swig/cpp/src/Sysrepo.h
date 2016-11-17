@@ -30,7 +30,6 @@
     #define S_Connection       Connection*
     #define S_Operation        Operation*
     #define S_Schema_Content   Schema_Content*
-    #define S_Schemas          Schemas*
     #define S_Error            Error*
     #define S_Errors           Errors*
     #define S_Data             Data*
@@ -60,7 +59,6 @@
     #define S_Connection       std::shared_ptr<Connection>
     #define S_Operation        std::shared_ptr<Operation>
     #define S_Schema_Content   std::shared_ptr<Schema_Content>
-    #define S_Schemas          std::shared_ptr<Schemas>
     #define S_Error            std::shared_ptr<Error>
     #define S_Errors           std::shared_ptr<Errors>
     #define S_Data             std::shared_ptr<Data>
@@ -108,25 +106,6 @@ public:
     Logs();
     void set_stderr(sr_log_level_t log_level);
     void set_syslog(sr_log_level_t log_level);
-};
-
-class Schemas
-{
-public:
-    Schemas(sr_schema_t *sch = NULL, size_t cnt = 0);
-    sr_schema_t *get_val() {return &_sch[_pos];};
-    const char *get_module_name() {return _sch[_pos].module_name;};
-    size_t get_cnt() {return _cnt;};
-    sr_schema_t **p_sch() {return &_sch;};
-    size_t *p_cnt() {return &_cnt;};
-    bool Next();
-    bool Prev();
-    ~Schemas();
-
-private:
-    sr_schema_t *_sch;
-    size_t _cnt;
-    size_t _pos;
 };
 
 class Schema_Content

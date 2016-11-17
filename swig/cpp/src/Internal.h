@@ -36,6 +36,7 @@ typedef enum free_type_e {
     TREE,
     TREES,
     TREES_POINTER,
+    SCHEMAS,
 } free_type_t;
 
 class Deleter
@@ -47,6 +48,7 @@ public:
     Deleter(sr_node_t *tree);
     Deleter(sr_node_t *trees, size_t cnt);
     Deleter(sr_node_t **trees, size_t *cnt);
+    Deleter(sr_schema_t *sch, size_t cnt);
     ~Deleter();
 
 private:
@@ -59,6 +61,8 @@ private:
 
     sr_node_t *_tree;
     sr_node_t **p_trees;
+
+    sr_schema_t *_sch;
 
     free_type_t _t;
 };

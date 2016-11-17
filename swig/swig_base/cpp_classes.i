@@ -38,13 +38,6 @@
 %ignore Connection::get_conn();
 
 #ifndef SWIGLUA
-%shared_ptr(Schemas);
-#endif
-%ignore Schemas::p_sch();
-%ignore Schemas::p_cnt();
-%ignore Schemas::p_val();
-
-#ifndef SWIGLUA
 %shared_ptr(Schema_Content);
 #endif
 %ignore Schema_Content::p_get();
@@ -170,9 +163,9 @@
 #ifndef SWIGLUA
 %shared_ptr(Yang_Schemas);
 #endif
-%ignore Yang_Schemas::Yang_Schemas(sr_schema_t *, size_t);
-%ignore Yang_Schemas::Yang_Schemas(sr_schema_t *);
 %newobject Yang_Schemas::schema;
+%ignore Yang_Schemas::p_schema_cnt;
+%ignore Yang_Schemas::p_schema;
 
 #ifndef SWIGLUA
 %shared_ptr(Fd_Change);

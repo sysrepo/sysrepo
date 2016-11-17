@@ -72,6 +72,12 @@ Deleter::Deleter(sr_node_t **trees, size_t *cnt) {
     p_cnt = cnt;
     _t = TREES_POINTER;
 }
+Deleter::Deleter(sr_schema_t *sch, size_t cnt) {
+    Deleter::init_all();
+    _sch = sch;
+    _cnt = cnt;
+    _t = SCHEMAS;
+}
 Deleter::~Deleter() {
     switch(_t) {
     case VAL:
@@ -97,6 +103,9 @@ Deleter::~Deleter() {
     case TREES_POINTER:
         if (*p_trees) sr_free_trees(*p_trees, *p_cnt);
 	*p_trees = NULL;
+    case SCHEMAS:
+        if (_sch) sr_free_schemas(_sch, _cnt);
+	_sch = NULL;
     break;
     }
     return;

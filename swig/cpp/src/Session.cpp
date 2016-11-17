@@ -125,12 +125,12 @@ S_Errors Session::get_last_errors()
     }
 }
 
-S_Schemas Session::list_schemas()
+S_Yang_Schemas Session::list_schemas()
 {
-    S_Schemas schema(new Schemas());
+    S_Yang_Schemas schema(new Yang_Schemas());
     if (schema == NULL) throw_exception(SR_ERR_NOMEM);
 
-    int ret = sr_list_schemas(_sess, schema->p_sch(), schema->p_cnt());
+    int ret = sr_list_schemas(_sess, schema->p_schema(), schema->p_schema_cnt());
     if (SR_ERR_OK == ret) {
         return schema;
     } else if (SR_ERR_NOT_FOUND == ret) {

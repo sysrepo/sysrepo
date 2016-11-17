@@ -51,7 +51,7 @@ public:
     void session_switch_ds(sr_datastore_t ds);
     S_Error get_last_error();
     S_Errors get_last_errors();
-    S_Schemas list_schemas();
+    S_Yang_Schemas list_schemas();
     S_Schema_Content get_schema(const char *module_name, const char *revision,\
                                const char *submodule_name, sr_schema_format_t format);
     S_Val get_item(const char *xpath);
