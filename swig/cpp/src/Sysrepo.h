@@ -108,17 +108,4 @@ public:
     void set_syslog(sr_log_level_t log_level);
 };
 
-class Schema_Content
-{
-
-public:
-    Schema_Content(char *con = NULL);
-    char *get();
-    char **p_get() {return &_con;};
-    ~Schema_Content();
-
-private:
-    char *_con;
-};
-
 #endif

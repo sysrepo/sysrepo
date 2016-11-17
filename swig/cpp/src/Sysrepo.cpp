@@ -86,18 +86,3 @@ void Logs::set_syslog(sr_log_level_t log_level)
 {
     sr_log_stderr(log_level);
 }
-
-Schema_Content::Schema_Content(char *con)
-{
-    _con = con;
-}
-
-char *Schema_Content::get()
-{
-    return _con;
-}
-
-Schema_Content::~Schema_Content()
-{
-    free(_con);
-}

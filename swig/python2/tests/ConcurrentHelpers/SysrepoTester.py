@@ -103,4 +103,4 @@ class SysrepoTester(Tester):
     def getSchemaToFileStep(self, module_name, file_name):
         content = self.session.get_schema(module_name, None, None, sr.SR_SCHEMA_YANG)
         with open(file_name, 'w') as f:
-            f.write(content.get())
+            f.write(content)

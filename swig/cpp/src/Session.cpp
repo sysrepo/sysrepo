@@ -141,15 +141,18 @@ S_Yang_Schemas Session::list_schemas()
     }
 }
 
-S_Schema_Content Session::get_schema(const char *module_name, const char *revision,\
+S_String Session::get_schema(const char *module_name, const char *revision,\
                                const char *submodule_name, sr_schema_format_t format)
 {
-    S_Schema_Content con(new Schema_Content());
-    if (con == NULL) throw_exception(SR_ERR_NOMEM);
+    char *mem = NULL;
 
-    int ret = sr_get_schema(_sess, module_name, revision, submodule_name, format, con->p_get());
+    int ret = sr_get_schema(_sess, module_name, revision, submodule_name, format, &mem);
     if (SR_ERR_OK == ret) {
-        return con;
+        if (mem == NULL)
+            return NULL;
+        S_String string_val = mem;
+        free(mem);
+        return string_val;
     } else if (SR_ERR_NOT_FOUND == ret) {
         return NULL;
     } else {
