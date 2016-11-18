@@ -369,64 +369,79 @@ sr_print_val_ctx(sr_print_ctx_t *print_ctx, const sr_val_t *value)
     switch (value->type) {
     case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
-        rc = sr_print(print_ctx, "(container)\n");
+        rc = sr_print(print_ctx, "(container)");
         break;
     case SR_LIST_T:
-        rc = sr_print(print_ctx, "(list instance)\n");
+        rc = sr_print(print_ctx, "(list instance)");
         break;
     case SR_STRING_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.string_val);
+        rc = sr_print(print_ctx, "= %s", value->data.string_val);
         break;
     case SR_BOOL_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.bool_val ? "true" : "false");
+        rc = sr_print(print_ctx, "= %s", value->data.bool_val ? "true" : "false");
         break;
     case SR_DECIMAL64_T:
-        rc = sr_print(print_ctx, "= %g\n", value->data.decimal64_val);
+        rc = sr_print(print_ctx, "= %g", value->data.decimal64_val);
         break;
     case SR_INT8_T:
-        rc = sr_print(print_ctx, "= %" PRId8 "\n", value->data.int8_val);
+        rc = sr_print(print_ctx, "= %" PRId8, value->data.int8_val);
         break;
     case SR_INT16_T:
-        rc = sr_print(print_ctx, "= %" PRId16 "\n", value->data.int16_val);
+        rc = sr_print(print_ctx, "= %" PRId16, value->data.int16_val);
         break;
     case SR_INT32_T:
-        rc = sr_print(print_ctx, "= %" PRId32 "\n", value->data.int32_val);
+        rc = sr_print(print_ctx, "= %" PRId32, value->data.int32_val);
         break;
     case SR_INT64_T:
-        rc = sr_print(print_ctx, "= %" PRId64 "\n", value->data.int64_val);
+        rc = sr_print(print_ctx, "= %" PRId64, value->data.int64_val);
         break;
     case SR_UINT8_T:
-        rc = sr_print(print_ctx, "= %" PRIu8 "\n", value->data.uint8_val);
+        rc = sr_print(print_ctx, "= %" PRIu8, value->data.uint8_val);
         break;
     case SR_UINT16_T:
-        rc = sr_print(print_ctx, "= %" PRIu16 "\n", value->data.uint16_val);
+        rc = sr_print(print_ctx, "= %" PRIu16, value->data.uint16_val);
         break;
     case SR_UINT32_T:
-        rc = sr_print(print_ctx, "= %" PRIu32 "\n", value->data.uint32_val);
+        rc = sr_print(print_ctx, "= %" PRIu32, value->data.uint32_val);
         break;
     case SR_UINT64_T:
-        rc = sr_print(print_ctx, "= %" PRIu64 "\n", value->data.uint64_val);
+        rc = sr_print(print_ctx, "= %" PRIu64, value->data.uint64_val);
         break;
     case SR_IDENTITYREF_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.identityref_val);
+        rc = sr_print(print_ctx, "= %s", value->data.identityref_val);
         break;
     case SR_INSTANCEID_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.instanceid_val);
+        rc = sr_print(print_ctx, "= %s", value->data.instanceid_val);
         break;
     case SR_BITS_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.bits_val);
+        rc = sr_print(print_ctx, "= %s", value->data.bits_val);
         break;
     case SR_BINARY_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.binary_val);
+        rc = sr_print(print_ctx, "= %s", value->data.binary_val);
         break;
     case SR_ENUM_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.enum_val);
+        rc = sr_print(print_ctx, "= %s", value->data.enum_val);
         break;
     case SR_LEAF_EMPTY_T:
-        rc = sr_print(print_ctx, "(empty leaf)\n");
+        rc = sr_print(print_ctx, "(empty leaf)");
         break;
     default:
-        rc = sr_print(print_ctx, "(unprintable)\n");
+        rc = sr_print(print_ctx, "(unprintable)");
+    }
+
+    if (SR_ERR_OK == rc) {
+        switch (value->type) {
+        case SR_UNKNOWN_T:
+        case SR_TREE_ITERATOR_T:
+        case SR_CONTAINER_T:
+        case SR_CONTAINER_PRESENCE_T:
+        case SR_LIST_T:
+        case SR_LEAF_EMPTY_T:
+            rc = sr_print(print_ctx, "\n");
+            break;
+        default:
+            rc = sr_print(print_ctx, "%s\n", value->dflt ? " [default]" : "");
+        }
     }
 
     CHECK_RC_MSG_RETURN(rc, "Failed to print data of a sysrepo value");
