@@ -1416,7 +1416,7 @@ dm_load_dependant_data(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *
             dep = (md_dep_t *)ll_node->data;
             if (MD_DEP_DATA == dep->type && dep->dest->latest_revision) {
                 const char *dependant_module = dep->dest->name;
-                rc = dm_append_data_tree(session->dm_ctx, session, info, dep->dest->name);
+                rc = dm_append_data_tree(session->dm_ctx, session, info, dependant_module);
                 CHECK_RC_LOG_GOTO(rc, unlock, "Failed to append data tree %s", dependant_module);
                 SR_LOG_DBG("Data tree %s appended because of validation", dependant_module);
             }
