@@ -1267,22 +1267,37 @@ md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revisio
 static md_module_t *
 md_get_imported_module(const md_ctx_t *md_ctx, const struct lys_module *orig_module, const char *name)
 {
-    struct lys_module *imp_module = NULL;
+    md_module_t *imp_module = NULL;
+    struct lys_module *imp_module_schema = NULL;
     md_module_t module_lkp = { 0, };
 
     for (size_t i = 0; i < orig_module->imp_size; ++i) {
-        imp_module = orig_module->imp[i].module;
-        if (0 == strcmp(imp_module->name, name)) {
-            module_lkp.name = (char *)imp_module->name;
-            module_lkp.revision_date = (char *)md_get_module_revision(imp_module);
+        imp_module_schema = orig_module->imp[i].module;
+        if (0 == strcmp(imp_module_schema->name, name)) {
+            module_lkp.name = (char *)imp_module_schema->name;
+            module_lkp.revision_date = (char *)md_get_module_revision(imp_module_schema);
             break;
         }
     }
 
     if (NULL == module_lkp.name || NULL == module_lkp.revision_date) {
+        /* try transitive imports */
+        for (size_t i = 0; i < orig_module->imp_size; ++i) {
+            imp_module_schema = orig_module->imp[i].module;
+            imp_module = md_get_imported_module(md_ctx, imp_module_schema, name);
+            if (NULL != imp_module) {
+                return imp_module;
+            }
+        }
+    }
+
+    if (NULL == module_lkp.name || NULL == module_lkp.revision_date) {
+        /* not found */
         return NULL;
     }
-    return (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
+
+    imp_module = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
+    return imp_module;
 }
 
 static int
