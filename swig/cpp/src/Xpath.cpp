@@ -26,8 +26,6 @@ extern "C" {
 #include "sysrepo/xpath.h"
 }
 
-
-
 using namespace std;
 
 Xpath_Ctx::Xpath_Ctx() {
@@ -37,11 +35,9 @@ Xpath_Ctx::Xpath_Ctx() {
     if (state == NULL)
         throw_exception(SR_ERR_NOMEM);
 
-    _free = true;
     _state = state;
 }
-Xpath_Ctx::Xpath_Ctx(sr_xpath_ctx_t *state) {_state = state; _free = false;}
 Xpath_Ctx::~Xpath_Ctx() {
-    if (_state != NULL && _free)
+    if (_state != NULL)
         free(_state);
 }

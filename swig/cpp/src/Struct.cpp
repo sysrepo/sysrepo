@@ -493,6 +493,23 @@ void Val::set(const char *xpath, uint64_t uint64_val, sr_type_t type) {
 
     _val->type = type;
 }
+S_String Val::to_string() {
+    char *mem = NULL;
+
+    int ret = sr_print_val_mem(&mem, _val);
+    if (SR_ERR_OK == ret) {
+        if (mem == NULL)
+            return NULL;
+        S_String string_val = mem;
+        free(mem);
+        return string_val;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
+        throw_exception(ret);
+        return NULL;
+    }
+}
 S_Val Val::dup() {
     sr_val_t *new_val = NULL;
     int ret = sr_dup_val(_val, &new_val);
@@ -583,11 +600,12 @@ Change_Iter::Change_Iter(sr_change_iter_t *iter) {_iter = iter;}
 Change_Iter::~Change_Iter() {return;}
 
 // Error
+Error::Error() {_info = NULL;}
 Error::Error(const sr_error_info_t *info) {_info = info;}
 Error::~Error() {return;}
 
 // Errors
-Errors::Errors(const sr_error_info_t *info, size_t cnt) {_info = info; _cnt = cnt;}
+Errors::Errors() {_info = NULL; _cnt = 0;}
 Errors::~Errors() {return;}
 S_Error Errors::error(size_t n) {
     if (n >= _cnt)
@@ -602,7 +620,10 @@ Schema_Revision::Schema_Revision(sr_sch_revision_t rev) {_rev = rev;}
 Schema_Revision::~Schema_Revision() {return;}
 
 // Schema_Submodule
-Schema_Submodule::Schema_Submodule(sr_sch_submodule_t sub) {_sub = sub;}
+Schema_Submodule::Schema_Submodule(sr_sch_submodule_t sub, S_Deleter deleter) {
+    _sub = sub;
+    _deleter = deleter;
+}
 Schema_Submodule::~Schema_Submodule() {return;}
 S_Schema_Revision Schema_Submodule::revision() {
     S_Schema_Revision rev(new Schema_Revision(_sub.revision));
@@ -610,7 +631,7 @@ S_Schema_Revision Schema_Submodule::revision() {
 }
 
 // Yang_Schema
-Yang_Schema::Yang_Schema(sr_schema_t *sch) {_sch = sch;}
+Yang_Schema::Yang_Schema(sr_schema_t *sch, S_Deleter deleter) {_sch = sch; _deleter = deleter;}
 Yang_Schema::~Yang_Schema() {return;}
 S_Schema_Revision Yang_Schema::revision() {
     S_Schema_Revision rev(new Schema_Revision(_sch->revision));
@@ -620,7 +641,7 @@ S_Schema_Submodule Yang_Schema::submodule(size_t n) {
     if (n >= _sch->submodule_count)
         return NULL;
 
-    S_Schema_Submodule sub(new Schema_Submodule(_sch->submodules[n]));
+    S_Schema_Submodule sub(new Schema_Submodule(_sch->submodules[n], _deleter));
     return sub;
 }
 char *Yang_Schema::enabled_features(size_t n) {
@@ -631,13 +652,18 @@ char *Yang_Schema::enabled_features(size_t n) {
 }
 
 // Yang_Schemas
-Yang_Schemas::Yang_Schemas(sr_schema_t *sch, size_t cnt) {_sch = sch; _cnt = cnt;}
+Yang_Schemas::Yang_Schemas() {
+    _sch = NULL;
+    _cnt = 0;
+    S_Deleter deleter(new Deleter(_sch, _cnt));
+    _deleter = deleter;
+}
 Yang_Schemas::~Yang_Schemas() {return;}
 S_Yang_Schema Yang_Schemas::schema(size_t n) {
     if (n >= _cnt)
         return NULL;
 
-    S_Yang_Schema rev(new Yang_Schema((sr_schema_t *) &_sch[n]));
+    S_Yang_Schema rev(new Yang_Schema((sr_schema_t *) &_sch[n], _deleter));
     return rev;
 }
 

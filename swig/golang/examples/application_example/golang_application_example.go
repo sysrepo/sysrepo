@@ -29,7 +29,9 @@ import (
 /*
 #cgo LDFLAGS: -lsysrepo
 
+#include <stdio.h>
 #include <sysrepo.h>
+#include <sysrepo/values.h>
 #include "helper.h"
 */
 import "C"
@@ -114,6 +116,16 @@ func print_value(value *C.sr_val_t) {
 	}
 }
 
+func sysrepo_print_value(value *C.sr_val_t) {
+	var mem *C.char = nil
+	rc := C.sr_print_val_mem(&mem, value)
+	if (C.SR_ERR_OK != rc) {
+		fmt.Printf("Error by sr_print_val_mem: %d", C.sr_strerror(rc))
+	} else {
+		fmt.Printf("%s", C.GoString(mem))
+	}
+}
+
 func print_current_config(session *C.sr_session_ctx_t, module_name *C.char) {
 	var values *C.sr_val_t = nil
 	var count C.size_t = 0
@@ -131,7 +143,9 @@ func print_current_config(session *C.sr_session_ctx_t, module_name *C.char) {
 	var i C.size_t = 0
 	for i = 0; i < count; i++ {
 		val := C.get_val(values, i)
-		print_value(val)
+		sysrepo_print_value(val)
+		// you can manually print the value, like in the function
+		// func print_value(value *C.sr_val_t)
 	}
 }
 

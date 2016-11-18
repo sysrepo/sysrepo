@@ -23,51 +23,6 @@ import java.io.*;
 import java.util.Scanner;
 
 class Print {
-	/* Function for printing out values depending on their type. */
-	public void print_value(Val value) {
-		System.out.print(value.xpath() + " ");
-
-		if (value.type() == sr_type_t.SR_CONTAINER_T)
-			System.out.println( "(container)" );
-		else if (value.type() == sr_type_t.SR_CONTAINER_PRESENCE_T)
-			System.out.println( "(container)" );
-		else if (value.type() == sr_type_t.SR_LIST_T)
-			System.out.println( "(list instance)" );
-		else if (value.type() == sr_type_t.SR_STRING_T)
-			System.out.println( "= " + value.data().get_string() );
-		else if (value.type() == sr_type_t.SR_BOOL_T)
-			if (value.data().get_bool())
-				System.out.println( "= true" );
-			else
-				System.out.println( "= false" );
-		else if (value.type() == sr_type_t.SR_ENUM_T)
-			System.out.println( "= " + value.data().get_enum() );
-		else if (value.type() == sr_type_t.SR_UINT8_T)
-			System.out.println( "= " + value.data().get_uint8() );
-		else if (value.type() == sr_type_t.SR_UINT16_T)
-			System.out.println( "= " + value.data().get_uint16() );
-		else if (value.type() == sr_type_t.SR_UINT32_T)
-			System.out.println( "= " + value.data().get_uint32() );
-		else if (value.type() == sr_type_t.SR_UINT64_T)
-			System.out.println( "= " + value.data().get_uint64() );
-		else if (value.type() == sr_type_t.SR_INT8_T)
-			System.out.println( "= " + value.data().get_int8() );
-		else if (value.type() == sr_type_t.SR_INT16_T)
-			System.out.println( "= " + value.data().get_int16() );
-		else if (value.type() == sr_type_t.SR_INT32_T)
-			System.out.println( "= " + value.data().get_int32() );
-		else if (value.type() == sr_type_t.SR_INT64_T)
-			System.out.println( "= " + value.data().get_int64() );
-		else if (value.type() == sr_type_t.SR_IDENTITYREF_T)
-			System.out.println( "= " + value.data().get_identityref() );
-		else if (value.type() == sr_type_t.SR_BITS_T)
-			System.out.println( "= " + value.data().get_bits() );
-		else if (value.type() == sr_type_t.SR_BINARY_T)
-			System.out.println( "= " + value.data().get_binary() );
-		else
-			System.out.println( "(unprintable)");
-	}
-
 	/* Function to print current configuration state.
 	 * It does so by loading all the items of a session and printing them out. */
 	public void current_config(Session session, String module_name) {
@@ -76,7 +31,7 @@ class Print {
 		Vals values = session.get_items(select_xpath);
 
 		for (int i = 0; i < values.val_cnt(); i++) {
-			print_value(values.val(i));
+			System.out.print(values.val(i).to_string());
 		}
 	}
 }
@@ -112,7 +67,7 @@ public class javaApplicationExample {
 
 			My_Callback cb = new My_Callback();
 
-			subscribe.module_change_subscribe(module_name, cb);
+			subscribe.module_change_subscribe(module_name, cb, null, 0, sr_subscr_flag_t.SR_SUBSCR_DEFAULT.swigValue() | sr_subscr_flag_t.SR_SUBSCR_APPLY_ONLY.swigValue());
 
 			System.out.println("\n\n ========== READING STARTUP CONFIG: ==========\n");
 

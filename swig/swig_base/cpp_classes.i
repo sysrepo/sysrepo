@@ -5,6 +5,7 @@
 
 %include <typemaps.i>
 %include <stdint.i>
+%include "std_string.i"
 
 #ifndef SWIGLUA
 %include "std_shared_ptr.i"
@@ -35,19 +36,6 @@
 %shared_ptr(Connection);
 #endif
 %ignore Connection::get_conn();
-
-#ifndef SWIGLUA
-%shared_ptr(Schemas);
-#endif
-%ignore Schemas::p_sch();
-%ignore Schemas::p_cnt();
-%ignore Schemas::p_val();
-
-#ifndef SWIGLUA
-%shared_ptr(Schema_Content);
-#endif
-%ignore Schema_Content::p_get();
-
 
 #ifndef SWIGLUA
 %shared_ptr(Session);
@@ -99,6 +87,7 @@
 %ignore Val::p_get();
 %newobject Val::data;
 %newobject Val::dup;
+%newobject Val::to_string;
 
 #ifndef SWIGLUA
 %shared_ptr(Vals);
@@ -138,12 +127,13 @@
 %shared_ptr(Error);
 #endif
 %ignore Error::Error(const sr_error_info_t *);
+%ignore Error::p_error();
 
 #ifndef SWIGLUA
 %shared_ptr(Errors);
 #endif
-%ignore Errors::Errors(const sr_error_info_t *, size_t);
-%ignore Errors::Errors(const sr_error_info_t *);
+%ignore Error::p_error();
+%ignore Error::p_error_cnt();
 %newobject Errors::error;
 
 #ifndef SWIGLUA
@@ -167,9 +157,9 @@
 #ifndef SWIGLUA
 %shared_ptr(Yang_Schemas);
 #endif
-%ignore Yang_Schemas::Yang_Schemas(sr_schema_t *, size_t);
-%ignore Yang_Schemas::Yang_Schemas(sr_schema_t *);
 %newobject Yang_Schemas::schema;
+%ignore Yang_Schemas::p_schema_cnt;
+%ignore Yang_Schemas::p_schema;
 
 #ifndef SWIGLUA
 %shared_ptr(Fd_Change);
@@ -221,6 +211,7 @@
 %newobject Tree::prev;
 %newobject Tree::first_child;
 %newobject Tree::last_child;
+%newobject Tree::to_string;
 
 #ifndef SWIGLUA
 %shared_ptr(Trees);
