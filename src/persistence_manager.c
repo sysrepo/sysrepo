@@ -203,7 +203,7 @@ pm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
  */
 static int
 pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const char *xpath, const char *value,
-        bool add, bool *running_affected)
+        bool add, bool excl, bool *running_affected)
 {
     struct lyd_node *node = NULL, *new_node = NULL;
     struct ly_set *node_set = NULL;
@@ -223,8 +223,15 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const
             *data_tree = new_node;
         }
         if (NULL == new_node) {
-            SR_LOG_ERR("Unable to add new persistent data (xpath=%s): %s.", xpath, ly_errmsg());
-            return SR_ERR_DATA_EXISTS;
+            if (LY_EVALID == ly_errno && LYVE_PATH_EXISTS == ly_vecode) {
+                if (excl) {
+                    SR_LOG_ERR("Persistent data already exist (xpath=%s).", xpath);
+                }
+                return SR_ERR_DATA_EXISTS;
+            } else {
+                SR_LOG_ERR("Unable to add new persistent data (xpath=%s): %s.", xpath, ly_errmsg());
+                return SR_ERR_INTERNAL;
+            }
         }
     } else {
         /* delete persistent data */
@@ -235,7 +242,9 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const
             goto cleanup;
         }
         if (0 == node_set->number) {
-            SR_LOG_DBG("Requested persistent data is missing (xpath=%s).", xpath);
+            if (excl) {
+                SR_LOG_DBG("Requested persistent data are missing (xpath=%s).", xpath);
+            }
             rc = SR_ERR_DATA_MISSING;
             goto cleanup;
         }
@@ -275,7 +284,7 @@ cleanup:
  */
 static int
 pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
-        const char *xpath, const char *value, bool add, struct lyd_node **data_tree_p, bool *running_affected)
+        const char *xpath, const char *value, bool add, bool excl, struct lyd_node **data_tree_p, bool *running_affected)
 {
     struct lyd_node *data_tree = NULL;
     int fd = -1;
@@ -296,7 +305,12 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
         CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
     }
 
-    rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, add, running_affected);
+    rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, add, excl, running_affected);
+    if ((add && SR_ERR_DATA_EXISTS == rc) || (!add && SR_ERR_DATA_MISSING == rc)) {
+        if (!excl) {
+            goto cleanup;
+        }
+    }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to modify persist data tree.");
 
     /* save the changes to the persist file */
@@ -475,7 +489,7 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
         /* enable the feature */
         snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES, module_name);
 
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, feature_name, true, NULL, NULL);
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, feature_name, true, false, NULL, NULL);
 
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Feature '%s' successfully enabled in '%s' persist data tree.", feature_name, module_name);
@@ -484,7 +498,7 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
         /* disable the feature */
         snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES_BY_NAME, module_name, feature_name);
 
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, NULL, NULL);
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, false, NULL, NULL);
 
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Feature '%s' successfully disabled in '%s' persist file.", feature_name, module_name);
@@ -637,7 +651,7 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
 
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH, module_name,
                 sr_subscription_type_gpb_to_str(subscription->type), subscription->xpath);
-        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, false, NULL);
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, false, true, NULL);
         if (SR_ERR_OK != rc) {
             SR_LOG_WRN("Unable to delete existing %s subscriptions.", sr_subscription_type_gpb_to_str(subscription->type));
         }
@@ -646,21 +660,21 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
     /* create the subscription */
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
             sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
-    rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+    rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, true, NULL);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new subscription into the data tree.");
 
     /* set subscription details */
     if (subscription->enable_running) {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING, module_name,
                 sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
-        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, true, NULL);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
     }
     if (NULL != subscription->xpath) {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_XPATH, module_name,
                 sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
         value = subscription->xpath;
-        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, true, NULL);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
     }
     if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type ||
@@ -668,7 +682,7 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_EVENT, module_name,
                 sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
         value = sr_notification_event_gpb_to_str(subscription->notif_event);
-        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, true, NULL);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
     }
     if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type ||
@@ -677,7 +691,7 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
                 sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
         snprintf(buff, sizeof(buff), "%"PRIu32, subscription->priority);
         value = buff;
-        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, true, NULL);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
     }
     if (SR__SUBSCRIPTION_TYPE__RPC_SUBS == subscription->type ||
@@ -686,7 +700,7 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_API_VARIANT, module_name,
                 sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
         value = sr_api_variant_to_str(subscription->api_variant);
-        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, true, NULL);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
     }
 
@@ -717,7 +731,7 @@ pm_remove_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
             sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
 
-    rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, &data_tree, &running_affected);
+    rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, true, &data_tree, &running_affected);
     if (NULL != data_tree) {
         if (running_affected) {
             /* check if some subscriptions that enable running left */
@@ -752,7 +766,7 @@ pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_nam
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR, module_name, dst_address);
 
     /* remove the subscriptions */
-    rc = pm_save_persistent_data(pm_ctx, NULL, module_name, xpath, NULL, false, &data_tree, &running_affected);
+    rc = pm_save_persistent_data(pm_ctx, NULL, module_name, xpath, NULL, false, true, &data_tree, &running_affected);
     if (NULL != data_tree) {
         /* check if some subscriptions that enable running left */
         if (running_affected) {
