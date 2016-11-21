@@ -98,6 +98,7 @@ public:
     bool dflt() {return _val->dflt;};
     void dflt_set(bool data) {_val->dflt = data;};
     S_Data data() {S_Data data(new Data(_val->data, _val->type, _deleter)); return data;};
+    S_String to_string();
     sr_val_t *get() {return _val;};
     sr_val_t **p_get() {return &_val;};
     S_Val dup();
@@ -169,10 +170,12 @@ private:
 class Error
 {
 public:
+    Error();
     Error(const sr_error_info_t *info);
     ~Error();
-    const char *message() {return _info->message;};
-    const char *xpath() {return _info->xpath;};
+    const char *message() {if (_info) return _info->message; else return NULL;};
+    const char *xpath() {if (_info) return _info->message; else return NULL;};
+    const sr_error_info_t **p_error() {return &_info;};
 
 private:
     const sr_error_info_t *_info;
@@ -182,10 +185,12 @@ private:
 class Errors
 {
 public:
-    Errors(const sr_error_info_t *info, size_t cnt);
+    Errors();
     ~Errors();
     S_Error error(size_t n);
     size_t error_cnt() {return _cnt;};
+    size_t *p_error_cnt() {return &_cnt;};
+    const sr_error_info_t **p_error() {return &_info;};
 
 private:
     size_t _cnt;
@@ -210,24 +215,26 @@ private:
 class Schema_Submodule
 {
 public:
-    Schema_Submodule(sr_sch_submodule_t sub);
+    Schema_Submodule(sr_sch_submodule_t sub, S_Deleter deleter);
     ~Schema_Submodule();
     const char *submodule_name() {return _sub.submodule_name;};
     S_Schema_Revision revision();
 
 private:
     sr_sch_submodule_t _sub;
+    S_Deleter _deleter;
 };
 
 // class for sysrepo C struct sr_schema_t
 class Yang_Schema
 {
 public:
-    Yang_Schema(sr_schema_t *sch);
+    Yang_Schema(sr_schema_t *sch, S_Deleter deleter);
     ~Yang_Schema();
     const char *module_name() {return _sch->module_name;};
     const char *ns() {return _sch->ns;};
     const char *prefix() {return _sch->prefix;};
+    bool implemented() {return _sch->implemented;};
     S_Schema_Revision revision();
     S_Schema_Submodule submodule(size_t n);
     size_t submodule_cnt() {return _sch->submodule_count;};
@@ -236,20 +243,24 @@ public:
 
 private:
     sr_schema_t *_sch;
+    S_Deleter _deleter;
 };
 
 // class for list of sysrepo C structs sr_schema_t
 class Yang_Schemas
 {
 public:
-    Yang_Schemas(sr_schema_t *sch, size_t cnt);
+    Yang_Schemas();
     ~Yang_Schemas();
     S_Yang_Schema schema(size_t n);
     size_t schema_cnt() {return _cnt;};
+    size_t *p_schema_cnt() {return &_cnt;};
+    sr_schema_t **p_schema() {return &_sch;};
 
 private:
     size_t _cnt;
-    const sr_schema_t *_sch;
+    sr_schema_t *_sch;
+    S_Deleter _deleter;
 };
 
 // class for sysrepo C struct sr_fd_change_t

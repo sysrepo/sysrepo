@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "sysrepo.h"
+#include "sysrepo/values.h"
 
 int
 main(int argc, char **argv)
@@ -51,7 +52,7 @@ main(int argc, char **argv)
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-    printf("\nValue on xpath: %s = %s\n\n", value->xpath, (value->data.bool_val ? "true" : "false"));
+    sr_print_val(value);
     sr_free_val(value);
 
 cleanup:

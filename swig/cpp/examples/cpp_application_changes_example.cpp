@@ -34,74 +34,6 @@ using namespace std;
 
 volatile int exit_application = 0;
 
-/* Function for printing out values depending on their type. */
-void
-print_value(S_Val value)
-{
-    cout << value->xpath();
-    cout << " ";
-    switch (value->type()) {
-    case SR_CONTAINER_T:
-    case SR_CONTAINER_PRESENCE_T:
-        cout << "(container)" << endl;
-        break;
-    case SR_LIST_T:
-        cout << "(list instance)" << endl;
-        break;
-    case SR_STRING_T:
-        cout << "= " << value->data()->get_string() << endl;;
-        break;
-    case SR_BOOL_T:
-	if (value->data()->get_bool())
-            cout << "= true" << endl;
-	else
-            cout << "= false" << endl;
-        break;
-    case SR_ENUM_T:
-        cout << "= " << value->data()->get_enum() << endl;;
-        break;
-    case SR_UINT8_T:
-        cout << "= " << unsigned(value->data()->get_uint8()) << endl;
-        break;
-    case SR_UINT16_T:
-        cout << "= " << unsigned(value->data()->get_uint16()) << endl;
-        break;
-    case SR_UINT32_T:
-        cout << "= " << unsigned(value->data()->get_uint32()) << endl;
-        break;
-    case SR_UINT64_T:
-        cout << "= " << unsigned(value->data()->get_uint64()) << endl;
-        break;
-    case SR_INT8_T:
-        cout << "= " << value->data()->get_int8() << endl;
-        break;
-    case SR_INT16_T:
-        cout << "= " << value->data()->get_int16() << endl;
-        break;
-    case SR_INT32_T:
-        cout << "= " << value->data()->get_int32() << endl;
-        break;
-    case SR_INT64_T:
-        cout << "= " << value->data()->get_int64() << endl;
-        break;
-    case SR_DECIMAL64_T:
-        cout << "= " << std::to_string(value->data()->get_decimal64()) << endl;
-        break;
-     case SR_IDENTITYREF_T:
-        cout << "= " << value->data()->get_identityref() << endl;
-        break;
-    case SR_BITS_T:
-        cout << "= " << value->data()->get_bits() << endl;
-        break;
-    case SR_BINARY_T:
-        cout << "= " << value->data()->get_binary() << endl;
-        break;
-    default:
-        cout << "(unprintable)" << endl;
-    }
-    return;
-}
-
 /* Helper function for printing changes given operation, old and new value. */
 static void
 print_change(S_Change change) {
@@ -110,22 +42,22 @@ print_change(S_Change change) {
     case SR_OP_CREATED:
         if (NULL != change->new_val()) {
            cout <<"CREATED: ";
-           print_value(change->new_val());
+           cout << change->new_val()->to_string();
         }
         break;
     case SR_OP_DELETED:
         if (NULL != change->old_val()) {
            cout << "DELETED: ";
-           print_value(change->old_val());
+           cout << change->old_val()->to_string();
         }
 	break;
     case SR_OP_MODIFIED:
         if (NULL != change->old_val() && NULL != change->new_val()) {
            cout << "MODIFIED: ";
            cout << "old value ";
-           print_value(change->old_val());
+           cout << change->old_val()->to_string();
            cout << "new value ";
-           print_value(change->new_val());
+           cout << change->new_val()->to_string();
         }
 	break;
     case SR_OP_MOVED:
@@ -150,7 +82,7 @@ print_current_config(S_Session session, const char *module_name)
             return;
 
         for(unsigned int i = 0; i < values->val_cnt(); i++)
-            print_value(values->val(i));
+            cout << values->val(i)->to_string();
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
     }
