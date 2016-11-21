@@ -736,19 +736,19 @@ sr_print_tree_test(void **state)
     /* 2 levels */
     tree->type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(tree, "root-child1", NULL, &node));
-    node->type = SR_BOOL_T;
-    node->data.bool_val = true;
+    node->type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(tree, "root-child2", NULL, &node));
-    assert_int_equal(SR_ERR_OK, sr_node_set_str_data(node, SR_STRING_T, "string value"));
+    node->type = SR_CONTAINER_T;
+    node->dflt = true;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(tree, "root-child3", NULL, &node));
     node->type = SR_LIST_T;
 
 #define TREE_WITH_TWO_LEVELS \
     "test-module:root (container)\n"\
     " |\n"\
-    " -- root-child1 = true\n"\
+    " -- root-child1 (container)\n"\
     " |\n"\
-    " -- root-child2 = string value\n"\
+    " -- root-child2 (container)\n"\
     " |\n"\
     " -- root-child3 (list instance)\n"
 
@@ -757,19 +757,18 @@ sr_print_tree_test(void **state)
     /* 3 levels */
     node = tree->first_child;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "a", "another-module", &node));
-    node->type = SR_UINT8_T;
-    node->data.uint8_val = 56;
+    node->type = SR_CONTAINER_T;
     node = node->parent;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "b", "another-module", &node));
     node->type = SR_UINT16_T;
     node->data.uint16_val = 1234;
     node = node->parent;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "c", "another-module", &node));
-    node->type = SR_UINT32_T;
-    node->data.uint32_val = 10000;
+    node->type = SR_CONTAINER_T;
     node = node->parent->next;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "leaf", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
+    node->dflt = true;
     node = node->parent->next;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "list1", NULL, &node));
     node->type = SR_LIST_T;
@@ -783,15 +782,15 @@ sr_print_tree_test(void **state)
 #define TREE_WITH_THREE_LEVELS \
     "test-module:root (container)\n"\
     " |\n"\
-    " -- root-child1 = true\n"\
+    " -- root-child1 (container)\n"\
     " |   |\n"\
-    " |   -- another-module:a = 56\n"\
+    " |   -- another-module:a (container)\n"\
     " |   |\n"\
     " |   -- another-module:b = 1234\n"\
     " |   |\n"\
-    " |   -- another-module:c = 10000\n"\
+    " |   -- another-module:c (container)\n"\
     " |\n"\
-    " -- root-child2 = string value\n"\
+    " -- root-child2 (container)\n"\
     " |   |\n"\
     " |   -- leaf (empty leaf)\n"\
     " |\n"\
@@ -812,10 +811,12 @@ sr_print_tree_test(void **state)
     node = node->parent;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "a2", NULL, &node));
     assert_int_equal(SR_ERR_OK, sr_node_set_str_data(node, SR_STRING_T, "def"));
+    node->dflt = true;
     node = node->parent->next->next;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "c1", NULL, &node));
     node->type = SR_BOOL_T;
     node->data.bool_val = true;
+    node->dflt = true;
     node = node->parent;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "c2", NULL, &node));
     node->type = SR_BOOL_T;
@@ -840,25 +841,25 @@ sr_print_tree_test(void **state)
 #define TREE_WITH_FOUR_LEVELS \
     "test-module:root (container)\n"\
     " |\n"\
-    " -- root-child1 = true\n"\
+    " -- root-child1 (container)\n"\
     " |   |\n"\
-    " |   -- another-module:a = 56\n"\
+    " |   -- another-module:a (container)\n"\
     " |   |   |\n"\
     " |   |   -- a1 = abc\n"\
     " |   |   |\n"\
-    " |   |   -- a2 = def\n"\
+    " |   |   -- a2 = def [default]\n"\
     " |   |\n"\
     " |   -- another-module:b = 1234\n"\
     " |   |\n"\
-    " |   -- another-module:c = 10000\n"\
+    " |   -- another-module:c (container)\n"\
     " |       |\n"\
-    " |       -- c1 = true\n"\
+    " |       -- c1 = true [default]\n"\
     " |       |\n"\
     " |       -- c2 = true\n"\
     " |       |\n"\
     " |       -- c3 = false\n"\
     " |\n"\
-    " -- root-child2 = string value\n"\
+    " -- root-child2 (container)\n"\
     " |   |\n"\
     " |   -- leaf (empty leaf)\n"\
     " |\n"\
@@ -893,11 +894,11 @@ sr_print_tree_test(void **state)
 #define DEPTH_LIMIT_TWO \
     "test-module:root (container)\n"\
     " |\n"\
-    " -- root-child1 = true\n"\
+    " -- root-child1 (container)\n"\
     " |   |\n"\
     " |   ...\n"\
     " |\n"\
-    " -- root-child2 = string value\n"\
+    " -- root-child2 (container)\n"\
     " |   |\n"\
     " |   ...\n"\
     " |\n"\
@@ -911,19 +912,19 @@ sr_print_tree_test(void **state)
 #define DEPTH_LIMIT_THREE \
     "test-module:root (container)\n"\
     " |\n"\
-    " -- root-child1 = true\n"\
+    " -- root-child1 (container)\n"\
     " |   |\n"\
-    " |   -- another-module:a = 56\n"\
+    " |   -- another-module:a (container)\n"\
     " |   |   |\n"\
     " |   |   ...\n"\
     " |   |\n"\
     " |   -- another-module:b = 1234\n"\
     " |   |\n"\
-    " |   -- another-module:c = 10000\n"\
+    " |   -- another-module:c (container)\n"\
     " |       |\n"\
     " |       ...\n"\
     " |\n"\
-    " -- root-child2 = string value\n"\
+    " -- root-child2 (container)\n"\
     " |   |\n"\
     " |   -- leaf (empty leaf)\n"\
     " |\n"\
@@ -945,19 +946,19 @@ sr_print_tree_test(void **state)
 
     /* subtree */
 #define SUBTREE \
-    "root-child1 = true\n"\
+    "root-child1 (container)\n"\
     " |\n"\
-    " -- another-module:a = 56\n"\
+    " -- another-module:a (container)\n"\
     " |   |\n"\
     " |   -- a1 = abc\n"\
     " |   |\n"\
-    " |   -- a2 = def\n"\
+    " |   -- a2 = def [default]\n"\
     " |\n"\
     " -- another-module:b = 1234\n"\
     " |\n"\
-    " -- another-module:c = 10000\n"\
+    " -- another-module:c (container)\n"\
     "     |\n"\
-    "     -- c1 = true\n"\
+    "     -- c1 = true [default]\n"\
     "     |\n"\
     "     -- c2 = true\n"\
     "     |\n"\
@@ -975,27 +976,27 @@ sr_print_tree_test(void **state)
 #define TREE_WITH_ITERATOR \
     "test-module:root (container)\n"\
     " |\n"\
-    " -- root-child1 = true\n"\
+    " -- root-child1 (container)\n"\
     " |   |\n"\
-    " |   -- another-module:a = 56\n"\
+    " |   -- another-module:a (container)\n"\
     " |   |   |\n"\
     " |   |   -- a1 = abc\n"\
     " |   |   |\n"\
-    " |   |   -- a2 = def\n"\
+    " |   |   -- a2 = def [default]\n"\
     " |   |   |\n"\
     " |   |   ...\n"\
     " |   |\n"\
     " |   -- another-module:b = 1234\n"\
     " |   |\n"\
-    " |   -- another-module:c = 10000\n"\
+    " |   -- another-module:c (container)\n"\
     " |       |\n"\
-    " |       -- c1 = true\n"\
+    " |       -- c1 = true [default]\n"\
     " |       |\n"\
     " |       -- c2 = true\n"\
     " |       |\n"\
     " |       -- c3 = false\n"\
     " |\n"\
-    " -- root-child2 = string value\n"\
+    " -- root-child2 (container)\n"\
     " |   |\n"\
     " |   -- leaf (empty leaf)\n"\
     " |\n"\
