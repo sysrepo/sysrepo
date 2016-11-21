@@ -2573,9 +2573,8 @@ finalize:
 
     if (!sub_match && SR_ERR_OK == rc) {
         /* no subscription for this event notification */
-        SR_LOG_ERR("No subscription found for event notification delivery (xpath = '%s').",
+        SR_LOG_DBG("No subscription found for event notification delivery (xpath = '%s').",
                    msg->request->event_notif_req->xpath);
-        rc = SR_ERR_NOT_FOUND;
     }
 
     /* send the response with return code */
