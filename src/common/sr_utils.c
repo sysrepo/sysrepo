@@ -2277,7 +2277,7 @@ sr_create_uri_for_module(const struct lys_module *module, char **uri)
 
         for (size_t i = 0; i < features->count; i++) {
             snprintf(buffer+ptr, len-ptr, "%s,", (char *)features->data[i]);
-            ptr += strlen((char *)features->data[i]);
+            ptr += strlen((char *)features->data[i])+1;
         }
         /* overwrite last comma by terminating NULL byte*/
         buffer[len-1] = 0;
