@@ -424,7 +424,7 @@ rp_module_install_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *
             }
         } else {
             Sr__Msg *notif = NULL;
-            rp_prepare_capability_change_notification(rp_ctx, session, module_name, SR_CAPABILITY_ADDED, &notif);
+            rp_prepare_capability_change_notification(rp_ctx, session, module_name, SR_CAPABILITY_DELETED, &notif);
 
             oper_rc = dm_uninstall_module(rp_ctx->dm_ctx,
                         module_name,
