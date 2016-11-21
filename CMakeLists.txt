@@ -144,6 +144,16 @@ option (LOG_THREAD_ID
 # add subdirectories
 add_subdirectory(src)
 
+# execute command at the install time
+macro(EXEC_AT_INSTALL_TIME CMD)
+    install(CODE "message(STATUS \"Exec: ${CMD}\")
+        execute_process(COMMAND ${CMD} OUTPUT_QUIET RESULT_VARIABLE ret)
+        if (NOT \${ret} EQUAL 0)
+          message(FATAL_ERROR \"Error: \${ret}\")
+        endif()"
+        )
+endmacro()
+
 # Examples
 SET(BUILD_EXAMPLES 1 CACHE BOOL "Build examples and install example YANG models.")
 if(BUILD_EXAMPLES)
@@ -208,6 +218,12 @@ install(DIRECTORY DESTINATION ${PLUGINS_DIR})
 # install internal YANGs
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
+
+# install NACM YANG module
+SET(ENABLE_NACM 1 CACHE BOOL "Enable NETCONF Access Control Model (RFC 6536).")
+if(ENABLE_NACM)
+    EXEC_AT_INSTALL_TIME("${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_SOURCE_DIR}/yang/ietf-netconf-acm@2012-02-22.yang --permissions=600")
+endif(ENABLE_NACM)
 
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
