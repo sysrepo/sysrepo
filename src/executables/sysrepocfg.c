@@ -933,7 +933,7 @@ cleanup:
 static int
 srcfg_prompt(const char *question, const char *positive, const char *negative)
 {
-    char input[PATH_MAX] = { 0, };
+    char input[PATH_MAX + 1] = { 0, };
     int ret = 0;
 
     CHECK_NULL_ARG3(question, positive, negative);
