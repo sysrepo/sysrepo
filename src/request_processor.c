@@ -334,6 +334,7 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
 {
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
+    bool notify = true;
     int rc = SR_ERR_OK, oper_rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->feature_enable_req);
@@ -359,6 +360,10 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
     if (SR_ERR_OK == oper_rc) {
         oper_rc = pm_save_feature_state(rp_ctx->pm_ctx, session->user_credentials,
                 req->module_name, req->feature_name, req->enabled);
+        if ((req->enabled && SR_ERR_DATA_EXISTS == oper_rc) || (!req->enabled && SR_ERR_DATA_MISSING == oper_rc)) {
+            oper_rc = SR_ERR_OK;
+            notify = false;
+        }
         if (SR_ERR_OK != oper_rc) {
             /* rollback of the change in DM */
             dm_feature_enable(rp_ctx->dm_ctx, req->module_name, req->feature_name, !req->enabled);
@@ -372,7 +377,7 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
     /* notify subscribers */
-    if (SR_ERR_OK == oper_rc) {
+    if (SR_ERR_OK == oper_rc && notify) {
         rc = np_feature_enable_notify(rp_ctx->np_ctx, msg->request->feature_enable_req->module_name,
                 msg->request->feature_enable_req->feature_name, msg->request->feature_enable_req->enabled);
     }
