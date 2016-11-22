@@ -226,10 +226,6 @@ if(GEN_CPP_BINDINGS AND BUILD_CPP_EXAMPLES)
 endif()
 
 # build Lua bindings
-if(LUA51_FOUND)
-    add_subdirectory(lua51)
-elseif(LUA_FOUND AND ${GEN_LUA_VERSION} STREQUAL "5.2")
-    add_subdirectory(lua52)
-elseif(LUA_FOUND AND ${GEN_LUA_VERSION} STREQUAL "5.3")
-    add_subdirectory(lua53)
+if(LUA51_FOUND OR LUA_FOUND)
+    add_subdirectory(lua)
 endif()
