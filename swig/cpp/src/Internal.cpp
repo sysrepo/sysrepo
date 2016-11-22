@@ -87,6 +87,7 @@ Deleter::~Deleter() {
     case TREES_POINTER:
         if (*v.p_trees) sr_free_trees(*v.p_trees, *c.p_cnt);
 	*v.p_trees = NULL;
+    break;
     case SCHEMAS:
         if (v._sch) sr_free_schemas(v._sch, c._cnt);
 	v._sch = NULL;
