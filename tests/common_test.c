@@ -1160,6 +1160,37 @@ sr_error_info_test(void **state)
     sr_free_errors(errors, error_cnt);
 }
 
+static void
+sr_create_uri_test(void **state)
+{
+    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    char *buffer = NULL;
+    int rc = SR_ERR_OK;
+    const struct lys_module *module = ly_ctx_load_module(ctx, "test-module", NULL);
+
+    rc = sr_create_uri_for_module(module, &buffer);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(buffer, "urn:ietf:params:xml:ns:yang:test-module?module=test-module");
+    free(buffer);
+
+    //ietf-interfaces
+    module = ly_ctx_load_module(ctx, "ietf-interfaces", NULL);
+    rc = sr_create_uri_for_module(module, &buffer);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(buffer, "urn:ietf:params:xml:ns:yang:ietf-interfaces?module=ietf-interfaces&amp;revision=2014-05-08");
+    free(buffer);
+
+    assert_int_equal(0, lys_features_enable(module, "arbitrary-names"));
+    assert_int_equal(0, lys_features_enable(module, "pre-provisioning"));
+    assert_int_equal(0, lys_features_enable(module, "if-mib"));
+    rc = sr_create_uri_for_module(module, &buffer);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(buffer, "urn:ietf:params:xml:ns:yang:ietf-interfaces?module=ietf-interfaces&amp;revision=2014-05-08&amp;features=arbitrary-names,pre-provisioning,if-mib");
+    free(buffer);
+
+    ly_ctx_destroy(ctx, NULL);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -1177,6 +1208,7 @@ main() {
             cmocka_unit_test_setup_teardown(sr_free_schema_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_copy_first_ns_from_expr_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_error_info_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_create_uri_test, logging_setup, logging_cleanup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

@@ -590,6 +590,15 @@ bool sr_lys_module_has_data(const struct lys_module *module);
  */
 int sr_print(sr_print_ctx_t *print_ctx, const char *format, ...);
 
+/**
+ * @brief Creates the uri for module with the following pattern:
+ * NAMESPACE?module=MODULE_NAME&amp;revision=REVISION&amp;features=FEATURE1,FEATURE2
+ * @param [in] module - module to generate uri from
+ * @param [out] uri
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_create_uri_for_module(const struct lys_module *module, char **uri);
+
 /**@} utils */
 
 #endif /* SR_UTILS_H_ */
