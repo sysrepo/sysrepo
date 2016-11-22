@@ -293,11 +293,12 @@ rp_dt_create_xpath_for_node(sr_mem_ctx_t *sr_mem, const struct lyd_node *node, c
  * @brief Removes trailing characters from xpath to make it validateable by ly_ctx_get_node
  * @param [in] dm_ctx
  * @param [in] xpath
+ * @param [in] schema_info
  * @param [out] trimmed
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, char **trimmed)
+rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, dm_schema_info_t *schema_info, char **trimmed)
 {
     CHECK_NULL_ARG3(dm_ctx, xpath, trimmed);
     int rc = SR_ERR_OK;
@@ -337,10 +338,8 @@ rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, char **trimmed)
             }
 
             namespace = strdup(last_slash + 1); /* do not copy leading slash */
-            dm_schema_info_t *tmp_sch_info = NULL;
-            rc = dm_get_module_without_lock(dm_ctx, namespace, &tmp_sch_info);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Get module %s failed", namespace);
+            if (NULL == ly_ctx_get_module(schema_info->ly_ctx, namespace, NULL)) {
+                SR_LOG_ERR("Module %s not found", namespace);
                 free(namespace);
                 free(xp_copy);
                 return rc;
@@ -400,7 +399,7 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
     }
     free(namespace);
 
-    rc = rp_dt_trim_xpath(dm_ctx, xpath, &xp_copy);
+    rc = rp_dt_trim_xpath(dm_ctx, xpath, schema_info, &xp_copy);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Error while xpath trim %s", xpath);
         return rc;
