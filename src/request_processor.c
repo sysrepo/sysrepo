@@ -225,7 +225,7 @@ unlock:
 
 cleanup:
     if (SR_ERR_OK != rc) {
-        sr_free_val(val);
+        sr_free_values(val, 2);
     } else {
         *value = val;
         *val_cnt = 2;
@@ -260,7 +260,7 @@ rp_prepare_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *sessio
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
 
 cleanup:
-    sr_free_val(values);
+    sr_free_values(values, val_cnt);
     if (SR_ERR_OK != rc) {
         sr_msg_free(req);
     } else {
