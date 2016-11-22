@@ -316,6 +316,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     dm_data_info_t *info = NULL;
     dm_schema_info_t *schema_info = NULL;
     struct lyd_node *node = NULL;
+    char *module_name = NULL;
 
     /* validate xpath */
     rc = rp_dt_validate_node_xpath_lock(dm_ctx, session, xpath, &schema_info, &sch_node);
@@ -329,25 +330,24 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         pthread_rwlock_unlock(&schema_info->model_lock);
         return SR_ERR_INVAL_ARG;
     }
+    module_name = strdup(module->name);
+    pthread_rwlock_unlock(&schema_info->model_lock);
+    CHECK_NULL_NOMEM_RETURN(module_name);
+
 
     /* get data tree to be update */
-    rc = dm_get_data_info(dm_ctx, session, module->name, &info);
-    if (SR_ERR_OK != rc) {
-        pthread_rwlock_unlock(&schema_info->model_lock);
-    }
-
+    rc = dm_get_data_info(dm_ctx, session, module_name, &info);
+    free(module_name);
+    module_name = NULL;
     CHECK_RC_LOG_RETURN(rc, "Getting data tree failed for xpath '%s'", xpath);
 
     /* check if node is enabled */
     if (dm_is_running_ds_session(session)) {
         if (!dm_is_enabled_check_recursively(sch_node)) {
             SR_LOG_ERR("The node is not enabled in running datastore %s", xpath);
-            pthread_rwlock_unlock(&schema_info->model_lock);
             return SR_ERR_INVAL_ARG;
         }
     }
-
-    pthread_rwlock_unlock(&schema_info->model_lock);
 
     /* non-presence container can not be created */
     if (LYS_CONTAINER == sch_node->nodetype && NULL == ((struct lys_node_container *) sch_node)->presence) {
@@ -456,12 +456,18 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
     struct lyd_node *sibling = NULL;
     dm_schema_info_t *schema_info = NULL;
     dm_data_info_t *info = NULL;
+    char *module_name = NULL;
 
     rc = rp_dt_validate_node_xpath_lock(dm_ctx, session, xpath, &schema_info, NULL);
     CHECK_RC_LOG_RETURN(rc, "Requested node is not valid %s", xpath);
 
-    rc = dm_get_data_info(dm_ctx, session, schema_info->module_name, &info);
+    module_name = strdup(schema_info->module_name);
     pthread_rwlock_unlock(&schema_info->model_lock);
+    CHECK_NULL_NOMEM_RETURN(module_name);
+
+    rc = dm_get_data_info(dm_ctx, session, module_name, &info);
+    free(module_name);
+    module_name = NULL;
     CHECK_RC_LOG_RETURN(rc, "Getting data tree failed for xpath '%s'", xpath);
 
 

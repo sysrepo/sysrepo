@@ -4187,19 +4187,16 @@ dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name,
     rc = sr_list_init(&module_list);
     CHECK_RC_MSG_RETURN(rc, "List init failed");
 
-    rc = dm_get_module_and_lock(dm_ctx, module_name, &schema_info);
+    rc = dm_get_module_without_lock(dm_ctx, module_name, &schema_info);
     CHECK_RC_MSG_GOTO(rc, cleanup, "dm_get_module failed");
 
-    rc = sr_list_add(module_list, schema_info->module_name);
+    rc = sr_list_add(module_list, (void *) module_name);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
 
     rc = dm_copy_config(dm_ctx, session, module_list, src, dst, subscription);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Dm copy config failed");
 
 cleanup:
-    if (NULL != schema_info) {
-        pthread_rwlock_unlock(&schema_info->model_lock);
-    }
     sr_list_cleanup(module_list);
     return rc;
 }
