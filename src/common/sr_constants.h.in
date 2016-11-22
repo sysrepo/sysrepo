@@ -38,6 +38,9 @@
 /** Use libavl (if defined) or libredblack (if not defined) for binary tree manipulations. */
 #cmakedefine USE_AVL_LIB
 
+/** Enable NETCONF Access Control Model (RFC 6536). */
+#cmakedefine ENABLE_NACM
+
 /** Use Sysrepo's own memory management. */
 #cmakedefine USE_SR_MEM_MGMT
 

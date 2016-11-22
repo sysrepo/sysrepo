@@ -131,6 +131,8 @@ CHECK_FUNCTION_EXISTS(setfsuid HAVE_SETFSUID)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
 # user options
+SET(ENABLE_NACM 1 CACHE BOOL "Enable NETCONF Access Control Model (RFC 6536).")
+
 option (USE_SR_MEM_MGMT
         "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs)."
         ON)
@@ -220,7 +222,6 @@ install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATI
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 
 # install NACM YANG module
-SET(ENABLE_NACM 1 CACHE BOOL "Enable NETCONF Access Control Model (RFC 6536).")
 if(ENABLE_NACM)
     EXEC_AT_INSTALL_TIME("${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_SOURCE_DIR}/yang/ietf-netconf-acm@2012-02-22.yang --permissions=600")
 endif(ENABLE_NACM)

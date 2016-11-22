@@ -141,7 +141,7 @@ macro(INSTALL_YANG_MODULE MODULE_NAME)
 endmacro(INSTALL_YANG_MODULE)
 
 if(ENABLE_NACM)
-INSTALL_YANG_MODULE("ietf-netconf-acm@2012-02-22")
+    INSTALL_YANG_MODULE("ietf-netconf-acm@2012-02-22")
 endif(ENABLE_NACM)
 INSTALL_YANG_MODULE("example-module")
 INSTALL_YANG_MODULE("test-module")
