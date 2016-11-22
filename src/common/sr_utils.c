@@ -2301,3 +2301,64 @@ cleanup:
     va_end(va);
     return rc;
 }
+
+int
+sr_create_uri_for_module(const struct lys_module *module, char **uri)
+{
+    CHECK_NULL_ARG4(module, uri, module->name, module->ns);
+
+    int rc = SR_ERR_OK;
+    char *buffer = NULL;
+    sr_list_t *features = NULL;
+
+    rc = sr_list_init(&features);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
+
+    size_t len = strlen(module->ns)+strlen("?module=")+strlen(module->name)+1;
+
+    if (0 < module->rev_size) {
+        len += strlen("&amp;revision=")+strlen(module->rev[0].date);
+    }
+
+    if (0 < module->features_size) {
+        for (uint8_t i = 0; i < module->features_size; i++) {
+            if (module->features[i].flags & LYS_FENABLED) {
+                len += strlen(module->features[i].name);
+                rc = sr_list_add(features, (void *) module->features[i].name);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add feature into list");
+            }
+        }
+        if (features->count > 0) {
+            len += strlen("&amp;features=");
+            len += features->count -1; /*commas among feature names*/
+        }
+    }
+    buffer = calloc(len, sizeof(*buffer));
+    CHECK_NULL_NOMEM_GOTO(buffer, rc, cleanup);
+
+    snprintf(buffer, len, "%s?module=%s", module->ns, module->name);
+    size_t ptr = strlen(buffer);
+    snprintf(buffer + ptr, len-ptr, "&amp;revision=%s", module->rev[0].date);
+
+    if (features->count > 0) {
+        ptr = strlen(buffer);
+        snprintf(buffer + ptr, len-ptr, "&amp;features=");
+        ptr += strlen("&amp;features=");
+
+        for (size_t i = 0; i < features->count; i++) {
+            snprintf(buffer+ptr, len-ptr, "%s,", (char *)features->data[i]);
+            ptr += strlen((char *)features->data[i])+1;
+        }
+        /* overwrite last comma by terminating NULL byte*/
+        buffer[len-1] = 0;
+    }
+
+cleanup:
+    sr_list_cleanup(features);
+    if (SR_ERR_OK == rc ) {
+        *uri = buffer;
+    } else {
+        free(buffer);
+    }
+    return rc;
+}

@@ -10,65 +10,20 @@
 
 sr = require("libsysrepoLua51")
 
--- Function for printing out values depending on their type.
-function print_value(value)
-   local x = value:xpath()
-   x = x .. " = "
-   if (value:type() == sr.SR_CONTAINER_T) then
-      print(x .. "(container)")
-   elseif (value:type() == sr.SR_CONTAINER_PRESENCE_T) then
-      print(x .. "(container)")
-   elseif (value:type() == sr.SR_LIST_T) then
-      print(x .. "(list instance)")
-   elseif (value:type() == sr.SR_STRING_T) then
-      print(x .. value:data():get_string())
-   elseif (value:type() == sr.SR_BOOL_T) then
-      if (value:data():get_bool()) then
-         print(x .. "true")
-      else
-         print(x .. "false")
-      end
-   elseif (value:type() == sr.SR_INT8_T) then
-      print(x .. value:data():get_int8())
-   elseif (value:type() == sr.SR_INT16_T) then
-      print(x .. value:data():get_int16())
-   elseif (value:type() == sr.SR_INT32_T) then
-      print(x .. value:data():get_int32())
-   elseif (value:type() == sr.SR_INT64_T) then
-      print(x .. value:data():get_int64())
-   elseif (value:type() == sr.SR_UINT8_T) then
-      print(x .. value:data():get_uint8())
-   elseif (value:type() == sr.SR_UINT16_T) then
-      print(x .. value:data():get_uint16())
-   elseif (value:type() == sr.SR_UINT32_T) then
-      print(x .. value:data():get_uint32())
-   elseif (value:type() == sr.SR_UINT64_T) then
-      print(x .. value:data():get_uint64())
-   elseif (value:type() == sr.SR_IDENTITYREF_T) then
-      print(x .. value:data():get_identityref())
-   elseif (value:type() == sr.SR_BITS_T) then
-      print(x .. value:data():get_bits())
-   elseif (value:type() == sr.SR_BINARY_T) then
-      print(x .. value:data():get_binary())
-   else
-      print(x .. "(unprintable)")
-   end
-end
-
 -- Helper function for printing changes given operation, old and new value.
 function print_change(op, old_val, new_val)
     if (op == sr.SR_OP_CREATED) then
            print ("CREATED: ")
-           print_value(new_val)
+           print(new_val:to_string())
     elseif (op == sr.SR_OP_DELETED) then
            print ("DELETED: ")
-           print_value(old_val);
+           print(old_val:to_string());
     elseif (op == sr.SR_OP_MODIFIED) then
            print ("MODIFIED: ")
            print ("old value")
-           print_value(old_val)
+           print(old_val:to_string())
            print ("new value")
-           print_value(new_val)
+           print(new_val:to_string())
     elseif (op == sr.SR_OP_MOVED) then
         print ("MOVED: " .. new_val.get_xpath() .. " after " .. old_val.get_xpath())
     end
@@ -85,7 +40,7 @@ function print_current_config(sess, module_name)
 	if (values == nil) then return end
 
 	for i=0, values:val_cnt() - 1, 1 do
-            print_value(values:val(i))
+            print(values:val(i):to_string())
 	end
     end
 

@@ -155,6 +155,7 @@ INSTALL_YANG_MODULE("top-level-mandatory")
 INSTALL_YANG_MODULE("referenced-data")
 INSTALL_YANG_MODULE("cross-module")
 INSTALL_YANG_MODULE("turing-machine")
+INSTALL_YANG_MODULE("ietf-netconf-notifications")
 
 # dummy testing plugins
 add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)

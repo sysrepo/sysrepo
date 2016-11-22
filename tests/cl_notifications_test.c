@@ -2390,6 +2390,132 @@ cl_auto_enable_manadatory_nodes(void **state)
 
 }
 
+typedef struct capability_change_s{
+    pthread_mutex_t mutex;
+    pthread_cond_t cv;
+    sr_val_t *values;
+    size_t val_cnt;
+}capability_change_t;
+
+static void
+capability_changed_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
+{
+    capability_change_t *change = (capability_change_t *) private_ctx;
+    pthread_mutex_lock(&change->mutex);
+    sr_dup_values(values, values_cnt, &change->values);
+    change->val_cnt = values_cnt;
+    pthread_cond_signal(&change->cv);
+    pthread_mutex_unlock(&change->mutex);
+}
+
+#define CHECK_CAPABILITY(CHANGE, TYPE, URI)         \
+    do {                                            \
+        assert_int_equal(3, (CHANGE).val_cnt);      \
+        assert_string_equal("/ietf-netconf-notifications:netconf-capability-change/changed-by", (CHANGE).values[0].xpath);\
+        assert_string_equal("/ietf-netconf-notifications:netconf-capability-change/changed-by/server", (CHANGE).values[1].xpath);\
+        assert_string_equal("/ietf-netconf-notifications:netconf-capability-change/" TYPE "-capability", (CHANGE).values[2].xpath);\
+        assert_string_equal((URI), (CHANGE).values[2].data.string_val);\
+        sr_free_values((CHANGE).values, (CHANGE).val_cnt);\
+        (CHANGE).values = NULL;\
+        (CHANGE).val_cnt = 0;\
+    } while(0)
+
+#define SET_COND_WAIT_TIMED(CV, MUTEX, TS) \
+    do { \
+        sr_clock_get_time(CLOCK_REALTIME, (TS)); \
+        ts.tv_sec += COND_WAIT_SEC;             \
+        pthread_cond_timedwait((CV), (MUTEX), (TS));\
+    } while(0)
+
+static void
+capability_changed_notif_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+    capability_change_t change = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER};
+    struct timespec ts = {0};
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_event_notif_subscribe(session, "/ietf-netconf-notifications:netconf-capability-change", capability_changed_cb, &change, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    char example_module_path[PATH_MAX] = {0}, ietf_ip_path[PATH_MAX] = {0};
+    snprintf(example_module_path, PATH_MAX, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
+    snprintf(ietf_ip_path, PATH_MAX, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "ietf-ip@2014-06-16");
+
+    /* deleted capability */
+    pthread_mutex_lock(&change.mutex);
+    rc = sr_module_install(session, "example-module", NULL, example_module_path, false);
+    assert_int_equal(SR_ERR_OK, rc);
+    SET_COND_WAIT_TIMED(&change.cv, &change.mutex, &ts);
+    CHECK_CAPABILITY(change, "deleted", "urn:ietf:params:xml:ns:yang:example?module=example-module");
+    pthread_mutex_unlock(&change.mutex);
+
+    pthread_mutex_lock(&change.mutex);
+    rc = sr_module_install(session, "ietf-ip", NULL, ietf_ip_path, false);
+    assert_int_equal(SR_ERR_OK, rc);
+    SET_COND_WAIT_TIMED(&change.cv, &change.mutex, &ts);
+    CHECK_CAPABILITY(change, "deleted", "urn:ietf:params:xml:ns:yang:ietf-ip?module=ietf-ip&amp;revision=2014-06-16");
+    pthread_mutex_unlock(&change.mutex);
+
+    /* added capability */
+    pthread_mutex_lock(&change.mutex);
+    rc = sr_module_install(session, "example-module", NULL, example_module_path, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    SET_COND_WAIT_TIMED(&change.cv, &change.mutex, &ts);
+    CHECK_CAPABILITY(change, "added", "urn:ietf:params:xml:ns:yang:example?module=example-module");
+    pthread_mutex_unlock(&change.mutex);
+
+    pthread_mutex_lock(&change.mutex);
+    rc = sr_module_install(session, "ietf-ip", NULL, ietf_ip_path, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    SET_COND_WAIT_TIMED(&change.cv, &change.mutex, &ts);
+    CHECK_CAPABILITY(change, "added", "urn:ietf:params:xml:ns:yang:ietf-ip?module=ietf-ip&amp;revision=2014-06-16");
+    pthread_mutex_unlock(&change.mutex);
+
+    /* modified capability */
+    pthread_mutex_lock(&change.mutex);
+    rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", true);
+    assert_int_equal(SR_ERR_OK, rc);
+    SET_COND_WAIT_TIMED(&change.cv, &change.mutex, &ts);
+    CHECK_CAPABILITY(change, "modified", "urn:ietf:params:xml:ns:yang:ietf-interfaces?module=ietf-interfaces&amp;revision=2014-05-08&amp;features=pre-provisioning");
+    pthread_mutex_unlock(&change.mutex);
+
+    /* enable another feature */
+    pthread_mutex_lock(&change.mutex);
+    rc = sr_feature_enable(session, "ietf-interfaces", "if-mib", true);
+    assert_int_equal(SR_ERR_OK, rc);
+    SET_COND_WAIT_TIMED(&change.cv, &change.mutex, &ts);
+    CHECK_CAPABILITY(change, "modified", "urn:ietf:params:xml:ns:yang:ietf-interfaces?module=ietf-interfaces&amp;revision=2014-05-08&amp;features=pre-provisioning,if-mib");
+    pthread_mutex_unlock(&change.mutex);
+
+    /* disable feature */
+    pthread_mutex_lock(&change.mutex);
+    rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", false);
+    assert_int_equal(SR_ERR_OK, rc);
+    SET_COND_WAIT_TIMED(&change.cv, &change.mutex, &ts);
+    CHECK_CAPABILITY(change, "modified", "urn:ietf:params:xml:ns:yang:ietf-interfaces?module=ietf-interfaces&amp;revision=2014-05-08&amp;features=if-mib");
+    pthread_mutex_unlock(&change.mutex);
+
+    /* cleanup */
+    pthread_mutex_destroy(&change.mutex);
+    pthread_cond_destroy(&change.cv);
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_feature_enable(session, "ietf-interfaces", "if-mib", false);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -2420,6 +2546,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_subtree_empty_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_module_empty_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_auto_enable_manadatory_nodes, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(capability_changed_notif_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

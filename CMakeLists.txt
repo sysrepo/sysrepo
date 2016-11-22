@@ -230,6 +230,21 @@ if(WITH_SYSTEMD)
         FILES_MATCHING PATTERN "*.service")
 endif()
 
+macro(EXEC_AT_INSTALL_TIME CMD)
+    install(CODE "message(STATUS \"Exec: ${CMD}\")
+        execute_process(COMMAND ${CMD} OUTPUT_QUIET RESULT_VARIABLE ret)
+        if (NOT \${ret} EQUAL 0)
+          message(FATAL_ERROR \"Error: \${ret}\")
+        endif()"
+        )
+endmacro()
+
+macro(INSTALL_YANG MODULE_NAME REVISION)
+    EXEC_AT_INSTALL_TIME("${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=666")
+endmacro(INSTALL_YANG)
+
+INSTALL_YANG("ietf-netconf-notifications" "")
+
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(swig)
 endif()

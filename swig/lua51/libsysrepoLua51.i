@@ -52,6 +52,7 @@ public:
         lua_pushnumber(fn.L, (lua_Number)(int)(event));
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 4, 0);
+        sess->~Session();
     }
 
     void subtree_change(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
@@ -66,6 +67,7 @@ public:
         lua_pushnumber(fn.L, (lua_Number)(int)(event));
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 4, 0);
+        sess->~Session();
     }
 
     void module_install(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx) {
@@ -90,7 +92,7 @@ public:
                size_t *output_cnt, void *private_ctx) {
 
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
-        Vals *out_vals =(Vals *)new Vals(output, output_cnt, NULL);
+        Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
         if (in_vals == NULL && out_vals == NULL)
             throw std::runtime_error("No memory for class Vals in callback rpc_cb.\n");
 
@@ -100,13 +102,33 @@ public:
         SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 4, 0);
+        in_vals->~Vals();
+        out_vals->~Vals_Holder();
+    }
+
+    void action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
+               size_t *output_cnt, void *private_ctx) {
+
+        Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
+        Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
+        if (in_vals == NULL && out_vals == NULL)
+            throw std::runtime_error("No memory for class Vals in callback action_cb.\n");
+
+        swiglua_ref_get(&fn);
+        lua_pushstring(fn.L, xpath);
+        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
+        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals, 0);
+        SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
+        lua_call(fn.L, 4, 0);
+        in_vals->~Vals();
+        out_vals->~Vals_Holder();
     }
 
     void rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx) {
 
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
-        Trees *out_vals =(Trees *)new Trees(output, output_cnt, NULL);
+        Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
         if (in_vals == NULL && out_vals == NULL)
             throw std::runtime_error("No memory for class Trees in callback rpc_tree_cb.\n");
 
@@ -116,6 +138,26 @@ public:
         SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Trees, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 4, 0);
+        in_vals->~Trees();
+        out_vals->~Trees_Holder();
+    }
+
+    void action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
+                         sr_node_t **output, size_t *output_cnt, void *private_ctx) {
+
+        Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
+        Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
+        if (in_vals == NULL && out_vals == NULL)
+            throw std::runtime_error("No memory for class Trees in callback action_tree_cb.\n");
+
+        swiglua_ref_get(&fn);
+        lua_pushstring(fn.L, xpath);
+        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
+        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Trees, 0);
+        SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
+        lua_call(fn.L, 4, 0);
+        in_vals->~Trees();
+        out_vals->~Trees_Holder();
     }
 
     void dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
@@ -129,9 +171,10 @@ public:
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 3, 0);
+        in_vals->~Vals();
     }
 
-    void event_notif(const char *xpath, const sr_val_t *values, const size_t values_cnt, void *private_ctx) {
+    void event_notif(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
 
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
         if (in_vals == NULL)
@@ -140,11 +183,13 @@ public:
         swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
+        lua_pushnumber(fn.L, timestamp);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 3, 0);
+        lua_call(fn.L, 4, 0);
+        in_vals->~Vals();
     }
 
-    void event_notif_tree(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, void *private_ctx) {
+    void event_notif_tree(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
 
         Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, NULL);
         if (in_vals == NULL)
@@ -153,8 +198,10 @@ public:
         swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
+        lua_pushnumber(fn.L, timestamp);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 3, 0);
+        lua_call(fn.L, 4, 0);
+        in_vals->~Trees();
     }
 
 
@@ -203,11 +250,29 @@ static int g_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input
     return SR_ERR_OK;
 }
 
+static int g_action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
+                     size_t *output_cnt, void *private_ctx)
+{
+    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    ctx->action_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
+
+    return SR_ERR_OK;
+}
+
 static int g_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
     ctx->rpc_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
+
+    return SR_ERR_OK;
+}
+
+static int g_action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
+                         sr_node_t **output, size_t *output_cnt, void *private_ctx)
+{
+    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    ctx->action_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 
     return SR_ERR_OK;
 }
@@ -220,16 +285,16 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
     return SR_ERR_OK;
 }
 
-static void g_event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, void *private_ctx)
+static void g_event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->event_notif(xpath, values, values_cnt, ctx->private_ctx);
+    ctx->event_notif(xpath, values, values_cnt, timestamp, ctx->private_ctx);
 }
 
-static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, void *private_ctx)
+static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->event_notif_tree(xpath, trees, tree_cnt, ctx->private_ctx);
+    ctx->event_notif_tree(xpath, trees, tree_cnt, timestamp, ctx->private_ctx);
 }
 
 
@@ -356,6 +421,26 @@ static void global_loop() {
         }
     }
 
+    void action_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
+                       sr_subscr_options_t opts = SUBSCR_DEFAULT) {
+        SWIGLUA_REF callback = cb->fn;
+        Wrap_cb *class_ctx = NULL;
+        class_ctx = new Wrap_cb(callback);
+
+        if (class_ctx == NULL)
+            throw std::runtime_error("Ne enough space for helper class!\n");
+
+        self->wrap_cb_l.push_back(class_ctx);
+        class_ctx->private_ctx = private_ctx;
+
+        int ret = sr_action_subscribe(self->swig_sess->get(), xpath, g_action_cb, class_ctx, opts,\
+                                   &self->swig_sub);
+
+        if (SR_ERR_OK != ret) {
+            throw std::runtime_error(sr_strerror(ret));
+        }
+    }
+
     void rpc_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
@@ -369,6 +454,26 @@ static void global_loop() {
         class_ctx->private_ctx = private_ctx;
 
         int ret = sr_rpc_subscribe_tree(self->swig_sess->get(), xpath, g_rpc_tree_cb, class_ctx, opts,\
+                                   &self->swig_sub);
+
+        if (SR_ERR_OK != ret) {
+            throw std::runtime_error(sr_strerror(ret));
+        }
+    }
+
+    void action_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
+                       sr_subscr_options_t opts = SUBSCR_DEFAULT) {
+        SWIGLUA_REF callback = cb->fn;
+        Wrap_cb *class_ctx = NULL;
+        class_ctx = new Wrap_cb(callback);
+
+        if (class_ctx == NULL)
+            throw std::runtime_error("Ne enough space for helper class!\n");
+
+        self->wrap_cb_l.push_back(class_ctx);
+        class_ctx->private_ctx = private_ctx;
+
+        int ret = sr_action_subscribe_tree(self->swig_sess->get(), xpath, g_action_tree_cb, class_ctx, opts,\
                                    &self->swig_sub);
 
         if (SR_ERR_OK != ret) {

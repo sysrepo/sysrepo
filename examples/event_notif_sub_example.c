@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <time.h>
 
 #include "sysrepo.h"
 #include "sysrepo/values.h"
@@ -35,10 +36,10 @@ volatile int exit_application = 0;
 
 static void
 event_notif_cb(const char *xpath, const sr_val_t *values, const size_t value_cnt,
-       void *private_ctx)
+       time_t timestamp, void *private_ctx)
 {
     /* print notification */
-    printf("\n\n ========== RECEIVED EVENT NOTIFICATION ==========\n\n");
+    printf("\n\n ========== RECEIVED EVENT NOTIFICATION ======%s\n\n", ctime(&timestamp));
     printf(">>> Notification content:\n\n");
     for (size_t i = 0; i < value_cnt; ++i) {
         sr_print_val(values+i);

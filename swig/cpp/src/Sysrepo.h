@@ -30,7 +30,6 @@
     #define S_Connection       Connection*
     #define S_Operation        Operation*
     #define S_Schema_Content   Schema_Content*
-    #define S_Schemas          Schemas*
     #define S_Error            Error*
     #define S_Errors           Errors*
     #define S_Data             Data*
@@ -51,6 +50,7 @@
     #define S_Change           Change*
     #define S_Counter          std::shared_ptr<Counter>
     #define S_Callback         Callback*
+    #define S_String           std::string
 #else
     #define S_Iter_Value       std::shared_ptr<Iter_Value>
     #define S_Iter_Change      std::shared_ptr<Iter_Change>
@@ -59,7 +59,6 @@
     #define S_Connection       std::shared_ptr<Connection>
     #define S_Operation        std::shared_ptr<Operation>
     #define S_Schema_Content   std::shared_ptr<Schema_Content>
-    #define S_Schemas          std::shared_ptr<Schemas>
     #define S_Error            std::shared_ptr<Error>
     #define S_Errors           std::shared_ptr<Errors>
     #define S_Data             std::shared_ptr<Data>
@@ -80,6 +79,7 @@
     #define S_Change           std::shared_ptr<Change>
     #define S_Counter          std::shared_ptr<Counter>
     #define S_Callback         std::shared_ptr<Callback>
+    #define S_String           std::string
 #endif
 
 #define SESS_DEFAULT 0
@@ -106,38 +106,6 @@ public:
     Logs();
     void set_stderr(sr_log_level_t log_level);
     void set_syslog(sr_log_level_t log_level);
-};
-
-class Schemas
-{
-public:
-    Schemas(sr_schema_t *sch = NULL, size_t cnt = 0);
-    sr_schema_t *get_val() {return &_sch[_pos];};
-    const char *get_module_name() {return _sch[_pos].module_name;};
-    size_t get_cnt() {return _cnt;};
-    sr_schema_t **p_sch() {return &_sch;};
-    size_t *p_cnt() {return &_cnt;};
-    bool Next();
-    bool Prev();
-    ~Schemas();
-
-private:
-    sr_schema_t *_sch;
-    size_t _cnt;
-    size_t _pos;
-};
-
-class Schema_Content
-{
-
-public:
-    Schema_Content(char *con = NULL);
-    char *get();
-    char **p_get() {return &_con;};
-    ~Schema_Content();
-
-private:
-    char *_con;
 };
 
 #endif
