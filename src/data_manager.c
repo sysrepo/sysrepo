@@ -4505,10 +4505,13 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
         }
     }
 
+    // TODO: remove from here
+    np_store_notification(dm_ctx->np_ctx, xpath, time(NULL), data_tree);
+
 cleanup:
     free(module_name);
     if (data_tree) {
-        lyd_free_withsiblings(data_tree);
+        //lyd_free_withsiblings(data_tree); // TODO
     }
 
     return rc;

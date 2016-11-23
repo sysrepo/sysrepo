@@ -288,6 +288,11 @@ void np_free_subscription_content(np_subscription_t *subscription);
  */
 void np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt);
 
+/**
+ * @brief TODO
+ */
+int np_store_notification(np_ctx_t *np_ctx, const char *xpath, const time_t time, const struct lyd_node *data_tree);
+
 /**@} np */
 
 #endif /* NOTIFICATION_PROCESSOR_H_ */

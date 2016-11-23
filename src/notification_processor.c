@@ -21,8 +21,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <stdio.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <fcntl.h>
+#include <math.h>
+#include <time.h>
 
 #include "sr_common.h"
 #include "rp_internal.h"
@@ -66,7 +71,9 @@ typedef struct np_ctx_s {
     sr_llist_t *commits;                  /**< Linked-list of ongoing commits. */
     pthread_rwlock_t lock;                /**< Read-write lock for the context. */
     struct ly_ctx *ly_ctx;                /**< libyang context used locally in NP. */
+    const char *data_search_dir;          /**< Directory containing the data files. */
     const struct lys_module *ns_schema;   /**< Schema tree of the notification store YANG. */
+    sr_locking_set_t *lock_ctx;           /**< Context for locking notification store files. */
 } np_ctx_t;
 
 /**
@@ -367,11 +374,19 @@ np_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     rc = sr_llist_init(&ctx->commits);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate commits linked-list.");
 
-    /* initialize subscriptions lock */
+    /* init subscriptions lock */
     ret = pthread_rwlock_init(&ctx->lock, NULL);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Subscriptions lock initialization failed.");
 
-    /* initialize libyang */
+    /* init notif. data files locking set */
+    rc = sr_locking_set_init(&ctx->lock_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize locking set.");
+
+    /* save data search directory */
+    ctx->data_search_dir = strdup(data_search_dir);
+    CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
+
+    /* init libyang ctx */
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
     if (NULL == ctx->ly_ctx) {
         SR_LOG_ERR("libyang initialization failed: %s", ly_errmsg());
@@ -427,6 +442,13 @@ np_cleanup(np_ctx_t *np_ctx)
 
         sr_btree_cleanup(np_ctx->dst_info_btree);
         pthread_rwlock_destroy(&np_ctx->lock);
+
+        sr_locking_set_cleanup(np_ctx->lock_ctx);
+        free((void*)np_ctx->data_search_dir);
+        if (NULL != np_ctx->ly_ctx) {
+            ly_ctx_destroy(np_ctx->ly_ctx, NULL);
+        }
+
         free(np_ctx);
     }
 }
@@ -1126,4 +1148,176 @@ np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt
         np_free_subscription_content(&subscriptions[i]);
     }
     free(subscriptions);
+}
+
+/**
+ * @brief Saves the data tree into the file specified by file descriptor.
+ */
+static int
+np_save_data_tree(struct lyd_node *data_tree, int fd)
+{
+    int ret = 0;
+
+    CHECK_NULL_ARG(data_tree);
+
+    /* empty file content */
+    ret = ftruncate(fd, 0);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File truncate failed: %s", sr_strerror_safe(errno));
+
+    /* print data tree to file */
+    ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving persist data tree failed: %s", ly_errmsg());
+
+    /* flush in-core data to the disc */
+    ret = fsync(fd);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", sr_strerror_safe(errno));
+
+    SR_LOG_DBG_MSG("Persist data tree successfully saved.");
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Cleans up specified data tree and closes specified file descriptor.
+ */
+static void
+np_cleanup_data_tree(np_ctx_t *np_ctx, struct lyd_node *data_tree, int fd)
+{
+    if (NULL != data_tree) {
+        lyd_free_withsiblings(data_tree);
+    }
+    if (-1 != fd && NULL != np_ctx) {
+        sr_locking_set_unlock_close_fd(np_ctx->lock_ctx, fd);
+    }
+}
+
+/**
+ * @brief Loads the data tree of persistent data file tied to specified YANG module.
+ */
+static int
+np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        bool read_only, struct lyd_node **data_tree, int *fd_p)
+{
+    char *data_filename = NULL;
+    int fd = -1;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, module_name, data_tree);
+
+//    rc = sr_get_persist_data_file_name(np_ctx->data_search_dir, module_name, &data_filename);
+//    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
+    // TODO
+    data_filename = strdup("/home/rasto/sysrepo/build/notif.data");
+
+    /* open the file as the proper user */
+    if (NULL != user_cred) {
+        ac_set_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
+    }
+
+    fd = open(data_filename, (read_only ? O_RDONLY : O_RDWR));
+
+    if (NULL != user_cred) {
+        ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx);
+    }
+
+    if (-1 == fd) {
+        /* error by open */
+        if (ENOENT == errno) {
+            SR_LOG_DBG("Persist data file '%s' does not exist.", data_filename);
+            if (read_only) {
+                SR_LOG_DBG("No persistent data for module '%s' will be loaded.", module_name);
+                rc = SR_ERR_DATA_MISSING;
+            } else {
+                /* create new persist file */
+                ac_set_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
+                fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+                ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx);
+                if (-1 == fd) {
+                    SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, sr_strerror_safe(errno));
+                    rc = SR_ERR_INTERNAL;
+                }
+            }
+        } else if (EACCES == errno) {
+            SR_LOG_ERR("Insufficient permissions to access persist data file '%s'.", data_filename);
+            rc = SR_ERR_UNAUTHORIZED;
+        } else {
+            SR_LOG_ERR("Unable to open persist data file '%s': %s.", data_filename, sr_strerror_safe(errno));
+            rc = SR_ERR_INTERNAL;
+        }
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
+    }
+
+    /* lock & load the data tree */
+    rc = sr_locking_set_lock_fd(np_ctx->lock_ctx, fd, data_filename, (read_only ? false : true), true);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to lock persist data file for '%s'.", module_name);
+
+    *data_tree = lyd_parse_fd(np_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_OPT_NOAUTODEL);
+    if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
+        SR_LOG_ERR("Parsing persist data from file '%s' failed: %s", data_filename, ly_errmsg());
+        rc = SR_ERR_INTERNAL;
+    } else {
+        SR_LOG_DBG("Persist data successfully loaded from file '%s'.", data_filename);
+    }
+
+    if ((SR_ERR_OK != rc) || (true == read_only) || (NULL == fd_p)) {
+        /* unlock and close fd in case of read_only has been requested */
+        sr_locking_set_unlock_close_fd(np_ctx->lock_ctx, fd);
+    } else {
+        /* return open fd to locked file otherwise */
+        *fd_p = fd;
+    }
+
+cleanup:
+    free(data_filename);
+    return rc;
+}
+
+#define TIME_BUF_SIZE 64
+static void
+get_time_as_string(char (*out)[TIME_BUF_SIZE])
+{
+    time_t curtime = time(NULL);
+    strftime(*out, sizeof(*out), "%Y-%m-%dT%H:%M:%S%z", localtime(&curtime));
+    // timebuf ends in +hhmm but should be +hh:mm
+    memmove(*out+strlen(*out)-1, *out+strlen(*out)-2, 3);
+    (*out)[strlen(*out)-3] = ':';
+}
+
+int
+np_store_notification(np_ctx_t *np_ctx, const char *xpath, const time_t time, const struct lyd_node *notif_data_tree)
+{
+    struct lyd_node *data_tree = NULL, *new_node = NULL;
+    int fd = -1;
+    int rc = SR_ERR_OK;
+
+    const char *module_name = "module-name";
+
+    rc = np_load_data_tree(np_ctx, NULL, module_name, false, &data_tree, &fd);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load notification store data for module '%s'.", module_name);
+
+    char data_path[PATH_MAX] = { 0, };
+    char time_buf[TIME_BUF_SIZE];
+    get_time_as_string(&time_buf);
+    struct timespec spec;
+    clock_gettime(CLOCK_REALTIME, &spec);
+
+    snprintf(data_path, PATH_MAX - 1, "/sysrepo-notification-store:notifications/notification[xpath='%s'][generated-time='%s'][logged-time='%u']",
+            xpath, time_buf, (uint32_t) (((spec.tv_sec * 100) + (uint32_t)(spec.tv_nsec / 1.0e7)) % UINT32_MAX));
+    new_node = lyd_new_path(data_tree, np_ctx->ly_ctx, data_path, NULL, 0, 0);
+    if (NULL == data_tree) {
+        /* if the new data tree has been just created */
+        data_tree = new_node;
+    }
+    new_node = lyd_new_anydata(new_node, NULL, "data", (void*)notif_data_tree, LYD_ANYDATA_DATATREE);
+
+    rc = np_save_data_tree(data_tree, fd);
+    if (SR_ERR_OK == rc) {
+        SR_LOG_DBG("Notification successfully logged into '%s' notification store.", module_name);
+    }
+
+cleanup:
+    np_cleanup_data_tree(np_ctx, data_tree, fd);
+    return rc;
 }

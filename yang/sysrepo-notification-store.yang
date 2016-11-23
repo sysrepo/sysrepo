@@ -2,7 +2,7 @@ module sysrepo-notification-store {
 
   yang-version 1.1;
 
-  namespace "urn:ietf:params:xml:ns:yang:sysrepo-persistent-data";
+  namespace "urn:ietf:params:xml:ns:yang:sysrepo-notification-store";
 
   prefix srns;
 
@@ -24,20 +24,30 @@ module sysrepo-notification-store {
     reference "sysrepo.org";
   }
 
-  list notification {
-    key "xpath time";
-    description "A notification stored in Sysrepo datastore.";
+  container notifications {
+    description "Holds all notifications stored in Sysrepo datastore.";
 
-    leaf xpath {
-      type string;
-      description "XPath of the notification.";
+    list notification {
+      key "xpath generated-time logged-time";
+      description "A notification stored in Sysrepo datastore.";
+
+      leaf xpath {
+        type string;
+        description "XPath of the notification.";
+      }
+
+      leaf generated-time {
+        type yang:date-and-time;
+        description "Time when notification was generated.";
+      }
+
+      leaf logged-time {
+        type yang:timestamp;
+        description "Time when notification was logged into notification store
+          (in hundredths of a second since the Unix epoch, modulo 2^32).";
+      }
+
+      anydata data;
     }
-
-    leaf time {
-      type yang:date-and-time;
-      description "Time when notification was generated.";
-    }
-
-    anydata data;
   }
 }
