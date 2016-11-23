@@ -30,6 +30,8 @@
 #include "notification_processor.h"
 #include "request_processor.h"
 
+#define NP_NS_SCHEMA_FILE "sysrepo-notification-store.yang"  /**< Schema of notification store. */
+
 /**
  * @brief Information about a notification destination.
  */
@@ -63,6 +65,8 @@ typedef struct np_ctx_s {
     sr_btree_t *dst_info_btree;           /**< Binary tree used for fast destination info lookup. */
     sr_llist_t *commits;                  /**< Linked-list of ongoing commits. */
     pthread_rwlock_t lock;                /**< Read-write lock for the context. */
+    struct ly_ctx *ly_ctx;                /**< libyang context used locally in NP. */
+    const struct lys_module *ns_schema;   /**< Schema tree of the notification store YANG. */
 } np_ctx_t;
 
 /**
@@ -329,11 +333,23 @@ np_commit_error_add(np_commit_ctx_t *commit_ctx, const char *err_subs_xpath, boo
     return rc;
 }
 
+/**
+ * @brief Logging callback called from libyang for each log entry.
+ */
+static void
+np_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
+{
+    if (LY_LLERR == level) {
+        SR_LOG_DBG("libyang error: %s", msg);
+    }
+}
+
 int
-np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
+np_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search_dir, np_ctx_t **np_ctx_p)
 {
     np_ctx_t *ctx = NULL;
-    int rc = 0, ret = 0;
+    char *schema_filename = NULL;
+    int rc = SR_ERR_OK, ret = 0;
 
     CHECK_NULL_ARG2(rp_ctx, np_ctx_p);
 
@@ -354,6 +370,29 @@ np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
     /* initialize subscriptions lock */
     ret = pthread_rwlock_init(&ctx->lock, NULL);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Subscriptions lock initialization failed.");
+
+    /* initialize libyang */
+    ctx->ly_ctx = ly_ctx_new(schema_search_dir);
+    if (NULL == ctx->ly_ctx) {
+        SR_LOG_ERR("libyang initialization failed: %s", ly_errmsg());
+        rc = SR_ERR_INIT_FAILED;
+        goto cleanup;
+    }
+    ly_set_log_clb(np_ly_log_cb, 0);
+
+    rc = sr_str_join(schema_search_dir, NP_NS_SCHEMA_FILE, &schema_filename);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
+
+    /* load persist files schema to the context */
+    ctx->ns_schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YANG);
+    free(schema_filename);
+    if (NULL == ctx->ns_schema) {
+        SR_LOG_ERR("Unable to parse the schema file '%s': %s", NP_NS_SCHEMA_FILE, ly_errmsg());
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
 
     SR_LOG_DBG_MSG("Notification Processor initialized successfully.");
 

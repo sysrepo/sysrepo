@@ -206,8 +206,12 @@ install (DIRECTORY DESTINATION ${SUBSCRIPTIONS_SOCKET_DIR} DIRECTORY_PERMISSIONS
 install(DIRECTORY DESTINATION ${PLUGINS_DIR})
 
 # install internal YANGs
-install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
-install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
+set(INTERNAL_YANGS
+    ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang
+    ${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang
+    ${PROJECT_SOURCE_DIR}/yang/sysrepo-notification-store.yang
+)
+install (FILES ${INTERNAL_YANGS} DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)

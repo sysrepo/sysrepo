@@ -3078,7 +3078,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Commit rwlock initialization failed.");
 
     /* initialize Notification Processor */
-    rc = np_init(ctx, &ctx->np_ctx);
+    rc = np_init(ctx, SR_INTERNAL_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->np_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Notification Processor initialization failed.");
         goto cleanup;

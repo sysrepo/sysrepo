@@ -60,11 +60,13 @@ typedef struct np_subscription_s {
  * @brief Initializes a Notification Processor instance.
  *
  * @param[in] rp_ctx Request Processor context.
+ * @param[in] schema_search_dir Directory containing PM's YANG module schema.
+ * @param[in] data_search_dir Directory containing the data files.
  * @param[out] np_ctx Allocated Notification Processor context that can be used in subsequent NP API calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx);
+int np_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search_dir, np_ctx_t **np_ctx);
 
 /**
  * @brief Cleans up the Notification Processor instance.
