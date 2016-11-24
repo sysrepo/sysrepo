@@ -613,13 +613,14 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
 
     ll_node = module->deps->first;
     while (ll_node) {
-        dep = (md_dep_t *)ll_node->data;
-        if (dep->dest->has_persist) {
+        dep = (md_dep_t *) ll_node->data;
+        if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) && dep->dest->has_persist) {
             rc = dm_apply_persist_data_for_model(dm_ctx, dep->dest->name, si);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", dep->dest->name);
         }
         ll_node = ll_node->next;
     }
+
 
     /* distinguish between modules that can and cannot be locked */
     si->can_not_be_locked = !module->has_data;
@@ -3367,8 +3368,8 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
 
         ll_node = module->deps->first;
         while (ll_node) {
-            dep = (md_dep_t *)ll_node->data;
-            if (dep->dest->has_persist) {
+            dep = (md_dep_t *) ll_node->data;
+            if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) && dep->dest->has_persist) {
                 rc = dm_apply_persist_data_for_model(dm_ctx, dep->dest->name, si);
                 CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", dep->dest->name);
             }
