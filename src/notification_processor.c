@@ -341,6 +341,123 @@ np_commit_error_add(np_commit_ctx_t *commit_ctx, const char *err_subs_xpath, boo
 }
 
 /**
+ * @brief Loads the data tree from provided file.
+ */
+static int
+np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *data_filename,
+        const bool read_only, struct lyd_node **data_tree, int *fd_p)
+{
+    int fd = -1;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, data_filename, data_tree);
+
+    /* open the file as the proper user */
+    if (NULL != user_cred) {
+        ac_set_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
+    }
+
+    fd = open(data_filename, (read_only ? O_RDONLY : O_RDWR));
+
+    if (NULL != user_cred) {
+        ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx);
+    }
+
+    if (-1 == fd) {
+        /* error by open */
+        if (ENOENT == errno) {
+            SR_LOG_DBG("Data file '%s' does not exist.", data_filename);
+            if (read_only) {
+                SR_LOG_DBG("No data for '%s' will be loaded.", data_filename);
+                rc = SR_ERR_DATA_MISSING;
+            } else {
+                /* create new persist file */
+                ac_set_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
+                fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+                ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx);
+                if (-1 == fd) {
+                    SR_LOG_ERR("Unable to create a new data file '%s': %s", data_filename, sr_strerror_safe(errno));
+                    rc = SR_ERR_INTERNAL;
+                }
+            }
+        } else if (EACCES == errno) {
+            SR_LOG_ERR("Insufficient permissions to access the data file '%s'.", data_filename);
+            rc = SR_ERR_UNAUTHORIZED;
+        } else {
+            SR_LOG_ERR("Unable to open the data file '%s': %s.", data_filename, sr_strerror_safe(errno));
+            rc = SR_ERR_INTERNAL;
+        }
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
+    }
+
+    /* lock & load the data tree */
+    rc = sr_locking_set_lock_fd(np_ctx->lock_ctx, fd, data_filename, (read_only ? false : true), true);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to lock data file '%s'.", data_filename);
+
+    *data_tree = lyd_parse_fd(np_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_OPT_NOAUTODEL);
+    if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
+        SR_LOG_ERR("Parsing data from file '%s' failed: %s", data_filename, ly_errmsg());
+        rc = SR_ERR_INTERNAL;
+    } else {
+        SR_LOG_DBG("Data successfully loaded from file '%s'.", data_filename);
+    }
+
+    if ((SR_ERR_OK != rc) || (true == read_only) || (NULL == fd_p)) {
+        /* unlock and close fd in case of read_only has been requested */
+        sr_locking_set_unlock_close_fd(np_ctx->lock_ctx, fd);
+    } else {
+        /* return open fd to locked file otherwise */
+        *fd_p = fd;
+    }
+
+cleanup:
+    return rc;
+}
+
+/**
+ * @brief Saves the data tree into the file specified by file descriptor.
+ */
+static int
+np_save_data_tree(struct lyd_node *data_tree, int fd)
+{
+    int ret = 0;
+
+    CHECK_NULL_ARG(data_tree);
+
+    /* empty file content */
+    ret = ftruncate(fd, 0);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File truncate failed: %s", sr_strerror_safe(errno));
+
+    /* print data tree to file */
+    ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_EXPLICIT);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving notif. store data tree failed: %s", ly_errmsg());
+
+    /* flush in-core data to the disc */
+    ret = fsync(fd);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", sr_strerror_safe(errno));
+
+    SR_LOG_DBG_MSG("Data tree successfully saved.");
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Cleans up specified data tree and closes specified file descriptor.
+ */
+static void
+np_cleanup_data_tree(np_ctx_t *np_ctx, struct lyd_node *data_tree, int fd)
+{
+    if (NULL != data_tree) {
+        lyd_free_withsiblings(data_tree);
+    }
+    if (-1 != fd && NULL != np_ctx) {
+        sr_locking_set_unlock_close_fd(np_ctx->lock_ctx, fd);
+    }
+}
+
+/**
  * @brief Logging callback called from libyang for each log entry.
  */
 static void
@@ -1150,156 +1267,35 @@ np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt
     free(subscriptions);
 }
 
-/**
- * @brief Saves the data tree into the file specified by file descriptor.
- */
-static int
-np_save_data_tree(struct lyd_node *data_tree, int fd)
-{
-    int ret = 0;
-
-    CHECK_NULL_ARG(data_tree);
-
-    /* empty file content */
-    ret = ftruncate(fd, 0);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File truncate failed: %s", sr_strerror_safe(errno));
-
-    /* print data tree to file */
-    ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving persist data tree failed: %s", ly_errmsg());
-
-    /* flush in-core data to the disc */
-    ret = fsync(fd);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", sr_strerror_safe(errno));
-
-    SR_LOG_DBG_MSG("Persist data tree successfully saved.");
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Cleans up specified data tree and closes specified file descriptor.
- */
-static void
-np_cleanup_data_tree(np_ctx_t *np_ctx, struct lyd_node *data_tree, int fd)
-{
-    if (NULL != data_tree) {
-        lyd_free_withsiblings(data_tree);
-    }
-    if (-1 != fd && NULL != np_ctx) {
-        sr_locking_set_unlock_close_fd(np_ctx->lock_ctx, fd);
-    }
-}
-
-/**
- * @brief Loads the data tree of persistent data file tied to specified YANG module.
- */
-static int
-np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *module_name,
-        bool read_only, struct lyd_node **data_tree, int *fd_p)
-{
-    char *data_filename = NULL;
-    int fd = -1;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, module_name, data_tree);
-
-//    rc = sr_get_persist_data_file_name(np_ctx->data_search_dir, module_name, &data_filename);
-//    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
-    // TODO
-    data_filename = strdup("/home/rasto/sysrepo/build/notif.data");
-
-    /* open the file as the proper user */
-    if (NULL != user_cred) {
-        ac_set_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
-    }
-
-    fd = open(data_filename, (read_only ? O_RDONLY : O_RDWR));
-
-    if (NULL != user_cred) {
-        ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx);
-    }
-
-    if (-1 == fd) {
-        /* error by open */
-        if (ENOENT == errno) {
-            SR_LOG_DBG("Persist data file '%s' does not exist.", data_filename);
-            if (read_only) {
-                SR_LOG_DBG("No persistent data for module '%s' will be loaded.", module_name);
-                rc = SR_ERR_DATA_MISSING;
-            } else {
-                /* create new persist file */
-                ac_set_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
-                fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx);
-                if (-1 == fd) {
-                    SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, sr_strerror_safe(errno));
-                    rc = SR_ERR_INTERNAL;
-                }
-            }
-        } else if (EACCES == errno) {
-            SR_LOG_ERR("Insufficient permissions to access persist data file '%s'.", data_filename);
-            rc = SR_ERR_UNAUTHORIZED;
-        } else {
-            SR_LOG_ERR("Unable to open persist data file '%s': %s.", data_filename, sr_strerror_safe(errno));
-            rc = SR_ERR_INTERNAL;
-        }
-        if (SR_ERR_OK != rc) {
-            goto cleanup;
-        }
-    }
-
-    /* lock & load the data tree */
-    rc = sr_locking_set_lock_fd(np_ctx->lock_ctx, fd, data_filename, (read_only ? false : true), true);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to lock persist data file for '%s'.", module_name);
-
-    *data_tree = lyd_parse_fd(np_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_OPT_NOAUTODEL);
-    if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
-        SR_LOG_ERR("Parsing persist data from file '%s' failed: %s", data_filename, ly_errmsg());
-        rc = SR_ERR_INTERNAL;
-    } else {
-        SR_LOG_DBG("Persist data successfully loaded from file '%s'.", data_filename);
-    }
-
-    if ((SR_ERR_OK != rc) || (true == read_only) || (NULL == fd_p)) {
-        /* unlock and close fd in case of read_only has been requested */
-        sr_locking_set_unlock_close_fd(np_ctx->lock_ctx, fd);
-    } else {
-        /* return open fd to locked file otherwise */
-        *fd_p = fd;
-    }
-
-cleanup:
-    free(data_filename);
-    return rc;
-}
-
 #define TIME_BUF_SIZE 64
 static void
-get_time_as_string(char (*out)[TIME_BUF_SIZE])
+get_time_as_string(time_t time, char *buff, size_t buff_size)
 {
-    time_t curtime = time(NULL);
-    strftime(*out, sizeof(*out), "%Y-%m-%dT%H:%M:%S%z", localtime(&curtime));
-    // timebuf ends in +hhmm but should be +hh:mm
-    memmove(*out+strlen(*out)-1, *out+strlen(*out)-2, 3);
-    (*out)[strlen(*out)-3] = ':';
+    strftime(buff, buff_size - 1, "%Y-%m-%dT%H:%M:%S%z", localtime(&time));
+    /* time buff ends in '+hhmm' but should be '+hh:mm' */
+    memmove(buff + strlen(buff) - 1, buff + strlen(buff) - 2, 3);
+    buff[strlen(buff) - 3] = ':';
 }
 
 int
-np_store_notification(np_ctx_t *np_ctx, const char *xpath, const time_t time, const struct lyd_node *notif_data_tree)
+np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t time,
+        struct lyd_node **notif_data_tree)
 {
     struct lyd_node *data_tree = NULL, *new_node = NULL;
     int fd = -1;
     int rc = SR_ERR_OK;
 
-    const char *module_name = "module-name";
+    const char *module_name = "module-name"; // TODO from xpath
 
-    rc = np_load_data_tree(np_ctx, NULL, module_name, false, &data_tree, &fd);
+    //    rc = sr_get_persist_data_file_name(np_ctx->data_search_dir, module_name, &data_filename);
+    //    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
+
+    rc = np_load_data_tree(np_ctx, user_cred, "/home/rasto/sysrepo/build/notif.data", false, &data_tree, &fd);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load notification store data for module '%s'.", module_name);
 
     char data_path[PATH_MAX] = { 0, };
     char time_buf[TIME_BUF_SIZE];
-    get_time_as_string(&time_buf);
+    get_time_as_string(time, time_buf, TIME_BUF_SIZE);
     struct timespec spec;
     clock_gettime(CLOCK_REALTIME, &spec);
 
@@ -1309,8 +1305,14 @@ np_store_notification(np_ctx_t *np_ctx, const char *xpath, const time_t time, co
     if (NULL == data_tree) {
         /* if the new data tree has been just created */
         data_tree = new_node;
+        new_node = new_node->child; /* new_node is 'notifications' container */
     }
-    new_node = lyd_new_anydata(new_node, NULL, "data", (void*)notif_data_tree, LYD_ANYDATA_DATATREE);
+    new_node = lyd_new_anydata(new_node, NULL, "data", (void*)*notif_data_tree, LYD_ANYDATA_DATATREE);
+    if (NULL == new_node) {
+        // TODO: error
+    } else {
+        *notif_data_tree = NULL; /* data tree freed in lyd_new_anydata */
+    }
 
     rc = np_save_data_tree(data_tree, fd);
     if (SR_ERR_OK == rc) {

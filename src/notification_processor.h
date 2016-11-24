@@ -291,7 +291,8 @@ void np_free_subscriptions(np_subscription_t *subscriptions, size_t subscription
 /**
  * @brief TODO
  */
-int np_store_notification(np_ctx_t *np_ctx, const char *xpath, const time_t time, const struct lyd_node *data_tree);
+int np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t time,
+        struct lyd_node **data_tree);
 
 /**@} np */
 
