@@ -88,10 +88,10 @@ typedef struct rp_state_data_ctx_s {
     np_subscription_t **subscriptions; /**< Array of subscriptions from np for a module */
     size_t subscription_cnt;           /**< Length of subscriptions array */
     sr_list_t *subtrees;               /**< List of state data subtrees to be loaded*/
-    size_t *subscr_index;              /**< Index into subscription array (pointing to the subscription)
-                                        * where subtree subtree at n-th position in subtrees list can be found */
+    sr_list_t *subtree_nodes;          /**< List of schema nodes corresponding to state data subtrees */
     sr_list_t *subscription_nodes;     /**< Schema node corresponding to the subscriptions */
     sr_list_t *requested_xpaths;       /**< List of xpath that has been requested and response has not been processed yet */
+    bool overlapping_leaf_subscription;/**< Flags signalizing that ther is a subscription for leaf or leaf-list under a container or a list */
 }rp_state_data_ctx_t;
 
 /**
