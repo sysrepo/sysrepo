@@ -41,6 +41,9 @@
 /** Use Sysrepo's own memory management. */
 #cmakedefine USE_SR_MEM_MGMT
 
+/** Enable event notifications store. */
+#cmakedefine ENABLE_NOTIF_STORE
+
 /** Controls whether thread IDs should be printed. */
 #cmakedefine LOG_THREAD_ID
 

@@ -2513,9 +2513,11 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
     CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
 
+#ifdef ENABLE_NOTIF_STORE
     /* store the notification in the datastore */
     rc = np_store_notification(rp_ctx->np_ctx, session->user_credentials, msg->request->event_notif_req->xpath,
             msg->request->event_notif_req->timestamp, &notif_data_tree);
+#endif
 
     /* get event-notification subscriptions */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS,

@@ -134,6 +134,9 @@ CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 option (USE_SR_MEM_MGMT
         "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs)."
         ON)
+option (ENABLE_NOTIF_STORE
+        "Enable event notifications store & notifications replay."
+        ON)
 
 set(COMMIT_TIMEOUT 10 CACHE INTEGER "Commit operation timeout (in seconds).")
 
