@@ -6,7 +6,7 @@ include(GNUInstallDirs)
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 5)
-set(SYSREPO_MICRO_VERSION 3)
+set(SYSREPO_MICRO_VERSION 5)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # setup bindings
@@ -42,8 +42,14 @@ endif()
 
 set(PLUGINS_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
 
+if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug" AND NOT CMAKE_BUILD_TYPE_LOWER MATCHES "^rel")
+    set(IS_DEBUG_BUILD true)
+else()
+    set(IS_DEBUG_BUILD false)
+endif()
+
 # set build-type specific settings
-if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
+if(${IS_DEBUG_BUILD})
     MESSAGE(STATUS "Preparing debug build of sysrepo v. ${SYSREPO_VERSION}")
     set(DAEMON_PID_FILE "/tmp/sysrepod.pid" CACHE PATH "Sysrepo daemon PID file.")
     set(DAEMON_SOCKET "/tmp/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
@@ -58,7 +64,7 @@ else()
 endif()
 
 # location of system repository
-if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
+if(${IS_DEBUG_BUILD})
     set(REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository" CACHE PATH "System repository location, contains configuration schema and data files.")
 else()
     set(REPOSITORY_LOC "/etc/sysrepo" CACHE PATH "System repository location, contains configuration schema and data files.")

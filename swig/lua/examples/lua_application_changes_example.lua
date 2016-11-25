@@ -8,7 +8,13 @@
 -- The original c implementation is also available in the source, so one can refer to it to evaluate trade-offs.
 --
 
-sr = require("libsysrepoLua52")
+if (_VERSION == "Lua 5.1") then
+    sr = require("libsysrepoLua51")
+elseif (_VERSION == "Lua 5.2") then
+    sr = require("libsysrepoLua52")
+elseif (_VERSION == "Lua 5.3") then
+    sr = require("libsysrepoLua53")
+end
 
 -- Helper function for printing changes given operation, old and new value.
 function print_change(op, old_val, new_val)

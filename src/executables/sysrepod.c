@@ -109,7 +109,7 @@ main(int argc, char* argv[])
     }
 
     /* init logger */
-    sr_logger_init("sysrepo-plugind");
+    sr_logger_init("sysrepod");
 
     /* daemonize the process */
     parent_pid = sr_daemonize(debug_mode, log_level, SR_DAEMON_PID_FILE, &pidfile_fd);

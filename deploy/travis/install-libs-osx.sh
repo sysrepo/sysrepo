@@ -3,7 +3,7 @@ brew update
 brew install protobuf-c
 brew install libev
 brew install pcre
-brew install swig
+brew install swig305
 
 set -e
 
