@@ -281,7 +281,7 @@ bool rp_dt_depth_under_subtree(struct lys_node *subtree, struct lys_node *node, 
 
 /**
  * @brief Tries to find a subscription that covers the subtree either exact match or a subscription
- * to a parent node
+ * to a parent node.
  * @param [in] rp_session
  * @param [in] subtree_node
  * @param [out] found_index
@@ -290,7 +290,7 @@ bool rp_dt_depth_under_subtree(struct lys_node *subtree, struct lys_node *node, 
 bool rp_dt_find_subscription_covering_subtree(rp_session_t *rp_session, struct lys_node *subtree_node, size_t *found_index);
 
 /**
- * @brief Simillar to the ::bool rp_dt_find_subscription_covering_subtree however looks up
+ * @brief Similar to the ::bool rp_dt_find_subscription_covering_subtree however looks up
  * only exact match
  * @param [in] rp_session
  * @param [in] node

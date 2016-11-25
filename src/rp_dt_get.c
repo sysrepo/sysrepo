@@ -900,6 +900,8 @@ rp_dt_send_first_set_of_dp_requests(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
             rc = sr_list_add(rp_session->loaded_state_data[rp_session->datastore], xp);
             CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
             xp = NULL;
+        } else {
+            SR_LOG_DBG("No data provider for xpath %s", subtree);
         }
     }
 
