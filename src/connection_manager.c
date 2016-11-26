@@ -1026,13 +1026,12 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
         }
     }
 
-    if ((0 != buff_pos) && (buff_size - buff_pos) > 0) {
-        /* move unprocessed data to the front of the buffer */
-        memmove(buff->data, (buff->data + buff_pos), (buff_size - buff_pos));
+    if (0 != buff_pos) {
+        if (buff_size - buff_pos > 0) {
+            /* move unprocessed data to the front of the buffer */
+            memmove(buff->data, (buff->data + buff_pos), (buff_size - buff_pos));
+        }
         buff->pos = buff_size - buff_pos;
-    } else {
-        /* no more unprocessed data left in the buffer */
-        buff->pos = 0;
     }
 
     return rc;
