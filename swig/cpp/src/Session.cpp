@@ -163,10 +163,11 @@ S_String Session::get_schema(const char *module_name, const char *revision,\
 
 S_Val Session::get_item(const char *xpath)
 {
-    sr_val_t *val;
-    int ret = sr_get_item(_sess, xpath, &val);
+    S_Val value(new Val());
+    if (value == NULL) throw_exception(SR_ERR_NOMEM);
+
+    int ret = sr_get_item(_sess, xpath, value->p_get());
     if (SR_ERR_OK == ret) {
-        S_Val value(new Val(val, std::make_shared<Deleter>(val)));
         return value;
     } else if (SR_ERR_NOT_FOUND == ret) {
         return NULL;
@@ -640,11 +641,10 @@ void Subscribe::unsubscribe()
 
 S_Iter_Change Subscribe::get_changes_iter(const char *xpath)
 {
-    sr_change_iter_t *tmp_iter = NULL;
+    S_Iter_Change iter(new Iter_Change());
 
-    int ret = sr_get_changes_iter(_sess->get(), xpath, &tmp_iter);
+    int ret = sr_get_changes_iter(_sess->get(), xpath, iter->p_get());
     if (SR_ERR_OK == ret) {
-        S_Iter_Change iter(new Iter_Change(tmp_iter));
         return iter;
     } else if (SR_ERR_NOT_FOUND == ret) {
         return NULL;

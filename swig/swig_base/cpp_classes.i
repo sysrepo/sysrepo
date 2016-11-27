@@ -184,6 +184,8 @@
 %shared_ptr(Iter_Change);
 #endif
 %ignore Iter_Change::Iter_Change(sr_change_iter_t *);
+%ignore Iter_Change::get();
+%ignore Iter_Change::p_get();
 
 #ifndef SWIGLUA
 %shared_ptr(Change);
