@@ -320,9 +320,8 @@ cm_session_neg_test(void **state) {
 
     fd1 = cm_connect_to_server();
 
-    /* try to stop session via another connection */
-    /* session_start request with nonexisting username */
-    cm_session_start_generate("nonexisting-username", &msg_buf, &msg_size);
+    /* try a session_start request with non-existing username */
+    cm_session_start_generate("non-existing-username", &msg_buf, &msg_size);
     cm_message_send(fd1, msg_buf, msg_size);
     free(msg_buf);
     /* receive the response */
