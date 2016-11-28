@@ -676,7 +676,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     }
 
     /* send the response */
-    rc = cm_msg_send_connection(cm_ctx, session->connection, msg);
+    rc = cm_msg_send_connection(cm_ctx, conn, msg);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to send session_start response (conn=%p).", (void*)conn);
     }
