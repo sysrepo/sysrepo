@@ -1307,7 +1307,7 @@ np_get_notif_store_filename(const char *module_name, char *filename_buff, size_t
 
     time(&rawtime);
     strftime(filename_buff + strlen(filename_buff), filename_buff_size - strlen(filename_buff) - 1,
-            "%Y-%m-%d_%H:%M.xml", localtime(&rawtime));
+            "%Y-%m-%d_%H-%M.xml", localtime(&rawtime));
 
     // TODO: create file if not exists & apply access permissions
 
@@ -1333,7 +1333,7 @@ np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char 
     CHECK_RC_LOG_RETURN(rc, "Unable to compose notif. data file name for '%s'.", module_name);
 
     /* load notif. data */
-    rc = np_load_data_tree(np_ctx, user_cred, "/home/rasto/sysrepo/build/notif.data", false, &data_tree, &fd);
+    rc = np_load_data_tree(np_ctx, user_cred, data_filename, false, &data_tree, &fd);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load notification store data for module '%s'.", module_name);
 
     char data_path[PATH_MAX] = { 0, };
