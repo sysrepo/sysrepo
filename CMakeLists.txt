@@ -67,6 +67,7 @@ set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/internal/")
 set(INTERNAL_DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/internal/")
+set(NOTIF_DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/notifications/")
 MESSAGE(STATUS "sysrepo repository location: ${REPOSITORY_LOC}")
 
 # include custom Modules

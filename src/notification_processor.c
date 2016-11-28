@@ -1277,19 +1277,62 @@ get_time_as_string(time_t time, char *buff, size_t buff_size)
     buff[strlen(buff) - 3] = ':';
 }
 
+static int
+np_get_notif_store_filename(const char *module_name, char *filename_buff, size_t filename_buff_size)
+{
+    mode_t old_umask = 0;
+    int ret = 0;
+    time_t rawtime;
+
+    /* create the parent directory for notifications (if it does not exist already) */
+    strncat(filename_buff, SR_NOTIF_DATA_SEARCH_DIR, filename_buff_size - 1);
+    if (-1 == access(filename_buff, F_OK)) {
+        old_umask = umask(0);
+        ret = mkdir(filename_buff, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", filename_buff,
+                sr_strerror_safe(errno));
+    }
+
+    /* create directory for module notifications (if it does not exist already) */
+    strncat(filename_buff, module_name, filename_buff_size - strlen(filename_buff) - 1);
+    strncat(filename_buff, "/", filename_buff_size - strlen(filename_buff) - 1);
+    if (-1 == access(filename_buff, F_OK)) {
+        old_umask = umask(0);
+        ret = mkdir(filename_buff, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", filename_buff,
+                sr_strerror_safe(errno));
+    }
+
+    time(&rawtime);
+    strftime(filename_buff + strlen(filename_buff), filename_buff_size - strlen(filename_buff) - 1,
+            "%Y-%m-%d_%H:%M.xml", localtime(&rawtime));
+
+    // TODO: create file if not exists & apply access permissions
+
+    return SR_ERR_OK;
+}
+
 int
 np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t time,
         struct lyd_node **notif_data_tree)
 {
+    char *module_name = NULL;
+    char data_filename[PATH_MAX] = { 0, };
     struct lyd_node *data_tree = NULL, *new_node = NULL;
     int fd = -1;
     int rc = SR_ERR_OK;
 
-    const char *module_name = "module-name"; // TODO from xpath
+    /* extract module name from xpath */
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
 
-    //    rc = sr_get_persist_data_file_name(np_ctx->data_search_dir, module_name, &data_filename);
-    //    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
+    /* get curret notification data filename */
+    rc = np_get_notif_store_filename(module_name, data_filename, PATH_MAX);
+    CHECK_RC_LOG_RETURN(rc, "Unable to compose notif. data file name for '%s'.", module_name);
 
+    /* load notif. data */
     rc = np_load_data_tree(np_ctx, user_cred, "/home/rasto/sysrepo/build/notif.data", false, &data_tree, &fd);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load notification store data for module '%s'.", module_name);
 
@@ -1321,5 +1364,6 @@ np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char 
 
 cleanup:
     np_cleanup_data_tree(np_ctx, data_tree, fd);
+    free(module_name);
     return rc;
 }

@@ -59,6 +59,9 @@
 /** Path to the directory with internal data files. */
 #define SR_INTERNAL_DATA_SEARCH_DIR "@INTERNAL_DATA_SEARCH_DIR@"
 
+/** Path to the directory with notification store data files. */
+#define SR_NOTIF_DATA_SEARCH_DIR "@NOTIF_DATA_SEARCH_DIR@"
+
 /** Path to the directory with sysrepo plugins. */
 #define SR_PLUGINS_DIR "@PLUGINS_DIR@"
 
