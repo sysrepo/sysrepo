@@ -70,8 +70,6 @@ public:
         PyObject *arglist;
 
         Session *sess = (Session *)new Session(session);
-        if (sess == NULL)
-            throw std::runtime_error("No memory for class Session in callback module_change_subscribe.\n");
         S_Session *shared_sess = sess ? new S_Session(sess) : 0;
         PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_Session_t, SWIG_POINTER_DISOWN);
 
@@ -93,8 +91,6 @@ public:
         PyObject *arglist;
 
         Session *sess = (Session *)new Session(session);
-        if (sess == NULL)
-            throw std::runtime_error("No memory for class Session in callback subtree_change.\n");
         S_Session *shared_sess = sess ? new S_Session(sess) : 0;
         PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_Session_t, SWIG_POINTER_DISOWN);
 
@@ -142,8 +138,6 @@ public:
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
 
-        if (in_vals == NULL && out_vals == NULL)
-            throw std::runtime_error("No memory for class Vals in callback rpc_cb.\n");
         shared_ptr<Vals> *shared_in_vals = in_vals ? new shared_ptr<Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Vals_t, SWIG_POINTER_DISOWN);
 
@@ -172,8 +166,6 @@ public:
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
 
-        if (in_vals == NULL && out_vals == NULL)
-            throw std::runtime_error("No memory for class Vals in callback action_cb.\n");
         shared_ptr<Vals> *shared_in_vals = in_vals ? new shared_ptr<Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Vals_t, SWIG_POINTER_DISOWN);
 
@@ -201,8 +193,6 @@ public:
 
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
         Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
-        if (in_vals == NULL && out_vals == NULL)
-            throw std::runtime_error("No memory for class Trees in callback rpc_cb.\n");
         shared_ptr<Trees> *shared_in_vals = in_vals ? new shared_ptr<Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Trees_t, SWIG_POINTER_DISOWN);
 
@@ -230,8 +220,6 @@ public:
 
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
         Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
-        if (in_vals == NULL && out_vals == NULL)
-            throw std::runtime_error("No memory for class Trees in callback action_tree_cb.\n");
         shared_ptr<Trees> *shared_in_vals = in_vals ? new shared_ptr<Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Trees_t, SWIG_POINTER_DISOWN);
 
@@ -258,8 +246,6 @@ public:
         PyObject *arglist;
 
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
-        if (in_vals == NULL)
-            throw std::runtime_error("No memory for class Vals in callback rpc_cb.\n");
         shared_ptr<Vals> *shared_in_vals = in_vals ? new shared_ptr<Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Vals_t, SWIG_POINTER_DISOWN);
 
@@ -280,8 +266,6 @@ public:
         PyObject *arglist;
 
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
-        if (in_vals == NULL)
-            throw std::runtime_error("No memory for class Vals in callback rpc_cb.\n");
         shared_ptr<Vals> *shared_in_vals = in_vals ? new shared_ptr<Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Vals_t, SWIG_POINTER_DISOWN);
 
@@ -302,8 +286,6 @@ public:
         PyObject *arglist;
 
         Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, NULL);
-        if (in_vals == NULL)
-            throw std::runtime_error("No memory for class Trees in callback rpc_cb.\n");
         shared_ptr<Trees> *shared_in_vals = in_vals ? new shared_ptr<Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Trees_t, SWIG_POINTER_DISOWN);
 
