@@ -421,6 +421,10 @@ srcfg_convert_lydiff_changed(const char *xpath, struct lyd_node *node)
         case LYS_ANYXML:
         case LYS_ANYDATA:
             sch_any = (struct lyd_node_anydata *) node;
+            if (NULL == sch_any->value.str) {
+                rc = SR_ERR_OK;
+                goto cleanup;
+            }
             value.type = (LYS_ANYXML == node->schema->nodetype) ? SR_ANYXML_T : SR_ANYDATA_T;
             rc = sr_libyang_anydata_copy_value(sch_any, &value);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Error returned from sr_libyang_anydata_copy_value: %s.", sr_strerror(rc));

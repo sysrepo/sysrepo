@@ -1148,7 +1148,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     case SR_BINARY_T:
         if (value->_sr_mem) {
             gpb_value->binary_val = value->data.binary_val;
-        } else {
+        } else if (NULL != value->data.binary_val) {
             gpb_value->binary_val = strdup(value->data.binary_val);
             CHECK_NULL_NOMEM_RETURN(gpb_value->binary_val);
         }
@@ -1156,7 +1156,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     case SR_BITS_T:
         if (value->_sr_mem) {
             gpb_value->bits_val = value->data.bits_val;
-        } else {
+        } else if (NULL != value->data.bits_val) {
             gpb_value->bits_val = strdup(value->data.bits_val);
             CHECK_NULL_NOMEM_RETURN(gpb_value->bits_val);
         }
@@ -1172,7 +1172,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     case SR_ENUM_T:
         if (value->_sr_mem) {
             gpb_value->enum_val = value->data.enum_val;
-        } else {
+        } else if (NULL != value->data.enum_val) {
             gpb_value->enum_val = strdup(value->data.enum_val);
             CHECK_NULL_NOMEM_RETURN(gpb_value->enum_val);
         }
@@ -1180,7 +1180,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     case SR_IDENTITYREF_T:
         if (value->_sr_mem) {
             gpb_value->identityref_val = value->data.identityref_val;
-        } else {
+        } else if (NULL != value->data.identityref_val) {
             gpb_value->identityref_val = strdup(value->data.identityref_val);
             CHECK_NULL_NOMEM_RETURN(gpb_value->identityref_val);
         }
@@ -1188,7 +1188,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     case SR_INSTANCEID_T:
         if (value->_sr_mem) {
             gpb_value->instanceid_val = value->data.instanceid_val;
-        } else {
+        } else if (NULL != value->data.instanceid_val) {
             gpb_value->instanceid_val = strdup(value->data.instanceid_val);
             CHECK_NULL_NOMEM_RETURN(gpb_value->instanceid_val);
         }
@@ -1212,7 +1212,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     case SR_STRING_T:
         if (value->_sr_mem) {
             gpb_value->string_val = value->data.string_val;
-        } else {
+        } else if (NULL != value->data.string_val) {
             gpb_value->string_val = strdup(value->data.string_val);
             CHECK_NULL_NOMEM_RETURN(gpb_value->string_val);
         }
@@ -1236,7 +1236,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     case SR_ANYXML_T:
         if (value->_sr_mem) {
             gpb_value->anyxml_val = value->data.anyxml_val;
-        } else {
+        } else if (NULL != value->data.anyxml_val) {
             gpb_value->anyxml_val = strdup(value->data.anyxml_val);
             CHECK_NULL_NOMEM_RETURN(gpb_value->anyxml_val);
         }
@@ -1244,7 +1244,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     case SR_ANYDATA_T:
         if (value->_sr_mem) {
             gpb_value->anydata_val = value->data.anydata_val;
-        } else {
+        } else if (NULL != value->data.anydata_val) {
             gpb_value->anydata_val = strdup(value->data.anydata_val);
             CHECK_NULL_NOMEM_RETURN(gpb_value->anydata_val);
         }

@@ -68,7 +68,7 @@ srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, 
     int fd = -1;
     struct lyd_node *file_data = NULL, *exp_data = NULL;
     struct lyd_difflist *diff = NULL;
-    size_t count = 0;
+    size_t count = 0, skip_differences = 0;
 
     fd = open(file_path, O_RDONLY);
     assert_true(fd >= 0);
@@ -90,11 +90,16 @@ srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, 
     assert_non_null(diff);
 
     while (diff->type && LYD_DIFF_END != diff->type[count]) {
-        printf("first: %s; second: %s\n", lyd_path(diff->first[count]), lyd_path(diff->second[count]));
+        if (NULL != diff->first[count] && LYS_ANYDATA == diff->first[count]->schema->nodetype) {
+            /* LYS_ANYDATA not supported by libyang JSON printer */
+            ++skip_differences;
+        } else {
+            printf("first: %s; second: %s\n", lyd_path(diff->first[count]), lyd_path(diff->second[count]));
+        }
         ++count;
     }
 
-    if (count > 0) {
+    if ((count - skip_differences) > 0) {
         fprintf(stderr, "file data:\n");
         lyd_print_fd(STDERR_FILENO, file_data, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
         fprintf(stderr, "exp data:\n");
@@ -110,7 +115,7 @@ srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, 
     }
 
     close(fd);
-    return count;
+    return (count - skip_differences);
 }
 
 /**
