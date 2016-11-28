@@ -800,7 +800,13 @@ cl_get_items_iter_test(void **state)
         else if (0 == strcmp(XP_TEST_MODULE_STRING, value->xpath)){
             assert_int_equal(SR_STRING_T, value->type);
         }
-        else{
+        else if (0 == strcmp(XP_TEST_MODULE_ANYXML, value->xpath)){
+            assert_int_equal(SR_ANYXML_T, value->type);
+        }
+        else if (0 == strcmp(XP_TEST_MODULE_ANYDATA, value->xpath)){
+            assert_int_equal(SR_ANYDATA_T, value->type);
+        }
+        else {
             /* unknown node*/
             assert_true(false);
         }

@@ -223,7 +223,8 @@ rp_dt_create_xpath_for_node(sr_mem_ctx_t *sr_mem, const struct lyd_node *node, c
         }
         bool namespace = NULL == n->parent || 0 != strcmp(parent_node_module, current_node_module);
 
-        if (n->schema->nodetype & (LYS_LEAF | LYS_CONTAINER | LYS_LEAFLIST | LYS_RPC | LYS_NOTIF | LYS_ACTION)) {
+        if (n->schema->nodetype &
+                (LYS_LEAF | LYS_CONTAINER | LYS_LEAFLIST | LYS_RPC | LYS_NOTIF | LYS_ACTION | LYS_ANYXML | LYS_ANYDATA)) {
             rc = rp_dt_create_xpath_for_cont_leaf_node(n, &parts[i], namespace, slash);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Creating xpath failed.");

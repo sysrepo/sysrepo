@@ -2159,7 +2159,7 @@ cl_subtree_enabled_notifications(void **state)
     assert_false(changes.events_received & APPLY_CALLED);
     assert_false(changes.events_received & ABORT_CALLED);
 
-    assert_int_equal(changes.cnt, 20);
+    assert_int_equal(changes.cnt, 22);
 
     for (size_t i = 0; i < changes.cnt; i++) {
         sr_free_val(changes.new_values[i]);
@@ -2218,7 +2218,7 @@ cl_multiple_enabled_notifications(void **state)
     assert_false(changesA.events_received & APPLY_CALLED);
     assert_false(changesA.events_received & ABORT_CALLED);
 
-    assert_int_equal(changesA.cnt, 20);
+    assert_int_equal(changesA.cnt, 22);
 
     for (size_t i = 0; i < changesA.cnt; i++) {
         sr_free_val(changesA.new_values[i]);
