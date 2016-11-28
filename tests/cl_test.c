@@ -176,20 +176,20 @@ cl_connection_test(void **state)
 static void
 cl_disconnect_test(void **state)
 {
-    sr_conn_ctx_t *conn1 = NULL, *conn2 = NULL;
-    sr_session_ctx_t *sess1 = NULL, *sess2 = NULL, *sess_other1 = NULL, *sess_other2 = NULL;
+    sr_conn_ctx_t *conn = NULL;
+    sr_session_ctx_t *sess = NULL;
     int pipefd[2] = { -1, -1 };
     int rc = 0;
 
-    /* connect to sysrepo - conn 1 */
-    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn1);
+    /* connect to sysrepo */
+    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(conn1);
+    assert_non_null(conn);
 
-    /* start a new session in conn 1 */
-    rc = sr_session_start(conn1, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess1);
+    /* start a new session in the connection */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(sess1);
+    assert_non_null(sess);
 
     /* close the highest used file descriptor */
     signal(SIGPIPE, SIG_IGN);
@@ -200,26 +200,26 @@ cl_disconnect_test(void **state)
     close(pipefd[1]);
 
     /* try session_data_refresh - should fail with SR_ERR_DISCONNECT */
-    rc = sr_session_refresh(sess1);
+    rc = sr_session_refresh(sess);
     assert_int_equal(rc, SR_ERR_DISCONNECT);
 
     /* reconnect */
-    sr_disconnect(conn1);
-    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn1);
+    sr_disconnect(conn);
+    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(conn1);
+    assert_non_null(conn);
 
     /* start a new session in the new connection */
-    rc = sr_session_start(conn1, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess1);
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(sess1);
+    assert_non_null(sess);
 
     /* try session_data_refresh */
-    rc = sr_session_refresh(sess1);
+    rc = sr_session_refresh(sess);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* disconnect from sysrepo - conn 1 */
-    sr_disconnect(conn1);
+    /* disconnect from sysrepo */
+    sr_disconnect(conn);
 }
 
 static void
