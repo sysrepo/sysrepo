@@ -20,7 +20,6 @@
  */
 
 #include <iostream>
-#include <stdexcept>
 #include <stdlib.h>
 
 #include "Struct.h"
@@ -32,42 +31,57 @@ extern "C" {
 
 using namespace std;
 
+sysrepo_exception::sysrepo_exception(const sr_error_t error_code)
+    : std::runtime_error(sr_strerror(error_code))
+    , m_error_code(error_code)
+{
+}
+
+sysrepo_exception::~sysrepo_exception()
+{
+}
+
+sr_error_t sysrepo_exception::error_code() const
+{
+    return m_error_code;
+}
+
 void throw_exception(int error) {
     switch(error) {
     case(SR_ERR_INVAL_ARG):
-        throw runtime_error(sr_strerror(SR_ERR_INVAL_ARG));
+        throw sysrepo_exception(SR_ERR_INVAL_ARG);
     case(SR_ERR_NOMEM):
-        throw runtime_error(sr_strerror(SR_ERR_NOMEM));
+        throw sysrepo_exception(SR_ERR_NOMEM);
     case(SR_ERR_NOT_FOUND):
-        throw runtime_error(sr_strerror(SR_ERR_NOT_FOUND));
+        throw sysrepo_exception(SR_ERR_NOT_FOUND);
     case(SR_ERR_INTERNAL):
-        throw runtime_error(sr_strerror(SR_ERR_INTERNAL));
+        throw sysrepo_exception(SR_ERR_INTERNAL);
     case(SR_ERR_INIT_FAILED):
-        throw runtime_error(sr_strerror(SR_ERR_INIT_FAILED));
+        throw sysrepo_exception(SR_ERR_INIT_FAILED);
     case(SR_ERR_IO):
-        throw runtime_error(sr_strerror(SR_ERR_IO));
+        throw sysrepo_exception(SR_ERR_IO);
     case(SR_ERR_DISCONNECT):
-        throw runtime_error(sr_strerror(SR_ERR_DISCONNECT));
+        throw sysrepo_exception(SR_ERR_DISCONNECT);
     case(SR_ERR_MALFORMED_MSG):
-        throw runtime_error(sr_strerror(SR_ERR_MALFORMED_MSG));
+        throw sysrepo_exception(SR_ERR_MALFORMED_MSG);
     case(SR_ERR_UNSUPPORTED):
-        throw runtime_error(sr_strerror(SR_ERR_UNSUPPORTED));
+        throw sysrepo_exception(SR_ERR_UNSUPPORTED);
     case(SR_ERR_UNKNOWN_MODEL):
-        throw runtime_error(sr_strerror(SR_ERR_UNKNOWN_MODEL));
+        throw sysrepo_exception(SR_ERR_UNKNOWN_MODEL);
     case(SR_ERR_BAD_ELEMENT):
-        throw runtime_error(sr_strerror(SR_ERR_BAD_ELEMENT));
+        throw sysrepo_exception(SR_ERR_BAD_ELEMENT);
     case(SR_ERR_VALIDATION_FAILED):
-        throw runtime_error(sr_strerror(SR_ERR_VALIDATION_FAILED));
+        throw sysrepo_exception(SR_ERR_VALIDATION_FAILED);
     case(SR_ERR_DATA_EXISTS):
-        throw runtime_error(sr_strerror(SR_ERR_DATA_EXISTS));
+        throw sysrepo_exception(SR_ERR_DATA_EXISTS);
     case(SR_ERR_DATA_MISSING):
-        throw runtime_error(sr_strerror(SR_ERR_DATA_MISSING));
+        throw sysrepo_exception(SR_ERR_DATA_MISSING);
     case(SR_ERR_UNAUTHORIZED):
-        throw runtime_error(sr_strerror(SR_ERR_UNAUTHORIZED));
+        throw sysrepo_exception(SR_ERR_UNAUTHORIZED);
     case(SR_ERR_LOCKED):
-        throw runtime_error(sr_strerror(SR_ERR_LOCKED));
+        throw sysrepo_exception(SR_ERR_LOCKED);
     case(SR_ERR_TIME_OUT):
-        throw runtime_error(sr_strerror(SR_ERR_TIME_OUT));
+        throw sysrepo_exception(SR_ERR_TIME_OUT);
     }
 }
 
