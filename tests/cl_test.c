@@ -3099,16 +3099,28 @@ cl_action_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 3);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[0].xpath);
-    assert_int_equal(SR_STRING_T, output[0].type);
-    assert_string_equal("ttm", output[0].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[1].xpath);
-    assert_int_equal(SR_STRING_T, output[1].type);
-    assert_string_equal("drm_kms_helper", output[1].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[2].xpath);
-    assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("drm", output[2].data.string_val);
+    char *expected_values [] = {"ttm", "drm_kms_helper", "drm"};
+    size_t expected_cnt = sizeof(expected_values) / sizeof(*expected_values);
+    assert_int_equal(output_cnt, expected_cnt);
+
+    for (size_t i = 0; i < expected_cnt; i++) {
+        assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[i].xpath);
+        assert_int_equal(SR_STRING_T, output[i].type);
+    }
+
+    for (size_t j = 0; j < expected_cnt; j++) {
+        bool found = false;
+
+        for (size_t i = 0; i < expected_cnt; i++) {
+            if (0 == strcmp(expected_values[j], output[i].data.string_val)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            assert_string_equal(expected_values[j], "");
+        }
+    }
 
     sr_free_values(output, output_cnt);
     output_cnt = 0;
@@ -3196,25 +3208,30 @@ cl_action_tree_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 3);
-    /*  -> dependency #1 */
-    assert_string_equal("dependency", output[0].name);
-    assert_string_equal("test-module", output[0].module_name);
-    assert_false(output[0].dflt);
-    assert_int_equal(SR_STRING_T, output[0].type);
-    assert_string_equal("ttm", output[0].data.string_val);
-    /*  -> dependency #2 */
-    assert_string_equal("dependency", output[1].name);
-    assert_string_equal("test-module", output[1].module_name);
-    assert_false(output[1].dflt);
-    assert_int_equal(SR_STRING_T, output[1].type);
-    assert_string_equal("drm_kms_helper", output[1].data.string_val);
-    /*  -> dependency #3 */
-    assert_string_equal("dependency", output[2].name);
-    assert_string_equal("test-module", output[2].module_name);
-    assert_false(output[2].dflt);
-    assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("drm", output[2].data.string_val);
+    char *expected_values [] = {"ttm", "drm_kms_helper", "drm"};
+    size_t expected_cnt = sizeof(expected_values) / sizeof(*expected_values);
+    assert_int_equal(output_cnt, expected_cnt);
+
+    for (size_t i = 0; i < expected_cnt; i++) {
+        assert_string_equal("dependency", output[i].name);
+        assert_string_equal("test-module", output[i].module_name);
+        assert_false(output[i].dflt);
+        assert_int_equal(SR_STRING_T, output[i].type);
+    }
+
+    for (size_t j = 0; j < expected_cnt; j++) {
+        bool found = false;
+
+        for (size_t i = 0; i < expected_cnt; i++) {
+            if (0 == strcmp(expected_values[j], output[i].data.string_val)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            assert_string_equal(expected_values[j], "");
+        }
+    }
 
     sr_free_trees(output, output_cnt);
     output_cnt = 0;
@@ -3294,16 +3311,28 @@ cl_action_combo_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 3);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[0].xpath);
-    assert_int_equal(SR_STRING_T, output[0].type);
-    assert_string_equal("ttm", output[0].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[1].xpath);
-    assert_int_equal(SR_STRING_T, output[1].type);
-    assert_string_equal("drm_kms_helper", output[1].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[2].xpath);
-    assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("drm", output[2].data.string_val);
+    char *expected_values [] = {"ttm", "drm_kms_helper", "drm"};
+    size_t expected_cnt = sizeof(expected_values) / sizeof(*expected_values);
+    assert_int_equal(output_cnt, expected_cnt);
+
+    for (size_t i = 0; i < expected_cnt; i++) {
+        assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[i].xpath);
+        assert_int_equal(SR_STRING_T, output[i].type);
+    }
+
+    for (size_t j = 0; j < expected_cnt; j++) {
+        bool found = false;
+
+        for (size_t i = 0; i < expected_cnt; i++) {
+            if (0 == strcmp(expected_values[j], output[i].data.string_val)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            assert_string_equal(expected_values[j], "");
+        }
+    }
 
     sr_free_values(output, output_cnt);
     output_cnt = 0;
@@ -3365,25 +3394,28 @@ cl_action_combo_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 3);
-    /*  -> dependency #1 */
-    assert_string_equal("dependency", output_tree[0].name);
-    assert_string_equal("test-module", output_tree[0].module_name);
-    assert_false(output_tree[0].dflt);
-    assert_int_equal(SR_STRING_T, output_tree[0].type);
-    assert_string_equal("ttm", output_tree[0].data.string_val);
-    /*  -> dependency #2 */
-    assert_string_equal("dependency", output_tree[1].name);
-    assert_string_equal("test-module", output_tree[1].module_name);
-    assert_false(output_tree[1].dflt);
-    assert_int_equal(SR_STRING_T, output_tree[1].type);
-    assert_string_equal("drm_kms_helper", output_tree[1].data.string_val);
-    /*  -> dependency #3 */
-    assert_string_equal("dependency", output_tree[2].name);
-    assert_string_equal("test-module", output_tree[2].module_name);
-    assert_false(output_tree[2].dflt);
-    assert_int_equal(SR_STRING_T, output_tree[2].type);
-    assert_string_equal("drm", output_tree[2].data.string_val);
+    assert_int_equal(output_cnt, expected_cnt);
+
+    for (size_t i = 0; i < expected_cnt; i++) {
+        assert_string_equal("dependency", output_tree[i].name);
+        assert_string_equal("test-module", output_tree[i].module_name);
+        assert_false(output_tree[i].dflt);
+        assert_int_equal(SR_STRING_T, output_tree[i].type);
+    }
+
+    for (size_t j = 0; j < expected_cnt; j++) {
+        bool found = false;
+
+        for (size_t i = 0; i < expected_cnt; i++) {
+            if (0 == strcmp(expected_values[j], output_tree[i].data.string_val)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            assert_string_equal(expected_values[j], "");
+        }
+    }
 
     sr_free_trees(output_tree, output_cnt);
     output_cnt = 0;
