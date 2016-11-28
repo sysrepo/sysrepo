@@ -319,6 +319,23 @@ cm_session_neg_test(void **state) {
     close(fd1);
 
     fd1 = cm_connect_to_server();
+
+    /* try to stop session via another connection */
+    /* session_start request with nonexisting username */
+    cm_session_start_generate("nonexisting-username", &msg_buf, &msg_size);
+    cm_message_send(fd1, msg_buf, msg_size);
+    free(msg_buf);
+    /* receive the response */
+    msg = cm_message_recv(fd1);
+    assert_non_null(msg);
+    assert_non_null(msg->response);
+    assert_non_null(msg->response->session_start_resp);
+    /* expect invalid user error */
+    assert_int_equal(msg->response->result, SR_ERR_INVAL_USER);
+    sr__msg__free_unpacked(msg, NULL);
+    close(fd1);
+
+    fd1 = cm_connect_to_server();
     fd2 = cm_connect_to_server();
 
     /* try to stop session via another connection */
