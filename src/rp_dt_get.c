@@ -50,8 +50,8 @@ rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data)
         sr_list_cleanup(state_data->subtrees);
         state_data->subtrees = NULL;
 
-        free(state_data->subscr_index);
-        state_data->subscr_index = NULL;
+        sr_list_cleanup(state_data->subtree_nodes);
+        state_data->subtree_nodes = NULL;
 
         sr_list_cleanup(state_data->subscription_nodes);
         state_data->subscription_nodes = NULL;
@@ -416,7 +416,7 @@ cleanup:
     return rc;
 }
 
-bool
+static bool
 rp_dt_is_under_subtree(struct lys_node *subtree, size_t depth_limit, struct lys_node *node)
 {
     struct lys_node *n = node;
@@ -424,6 +424,26 @@ rp_dt_is_under_subtree(struct lys_node *subtree, size_t depth_limit, struct lys_
 
     while (depth_limit > depth && NULL != n) {
         if (subtree == n) {
+            return true;
+        }
+        n = lys_parent(n);
+        ++depth;
+    }
+
+    return false;
+}
+
+bool
+rp_dt_depth_under_subtree(struct lys_node *subtree, struct lys_node *node, size_t *dep)
+{
+    struct lys_node *n = node;
+    size_t depth = 0;
+
+    while (NULL != n) {
+        if (subtree == n) {
+            if (NULL != dep) {
+                *dep = depth;
+            }
             return true;
         }
         n = lys_parent(n);
@@ -447,7 +467,7 @@ rp_dt_atoms_require_subtree(struct ly_set *atoms, struct lys_node *subtree, bool
     *result = false;
 
     for (unsigned int i = 0; i < atoms->number; i++) {
-        if (rp_dt_is_under_subtree(subtree, SIZE_MAX, atoms->set.s[i])) {
+        if (rp_dt_depth_under_subtree(subtree, atoms->set.s[i], NULL)) {
             *result = true;
             break;
         }
@@ -479,44 +499,6 @@ rp_dt_tree_chunks_contain_subtree(struct ly_set *tree_roots, size_t depth_limit,
     }
 
     return SR_ERR_OK;
-}
-
-/**
- * @brief Identifies the subscription which provides data for subtrees. Sets appropriate
- * indexes in the state data ctx structure.
- * @param [in] dm_ctx
- * @param [in] subtree_nodes - list of schema nodes corresponding to the xpath located in state_data_ctx->subtrees list
- * @param [in] subscr_nodes - list of schema nodes corresponding to the subscriptions
- * @param [in] state_data_ctx
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-rp_dt_find_subscription_for_subtree(dm_ctx_t *dm_ctx, sr_list_t *subtree_nodes, const sr_list_t *subscr_nodes, rp_state_data_ctx_t *state_data_ctx)
-{
-    CHECK_NULL_ARG3(dm_ctx, subtree_nodes, state_data_ctx);
-    int rc = SR_ERR_OK;
-
-    state_data_ctx->subscr_index = calloc(state_data_ctx->subtrees->count, sizeof(*state_data_ctx->subscr_index));
-    CHECK_NULL_NOMEM_GOTO(state_data_ctx->subscr_index, rc, cleanup);
-
-    for (size_t i = 0; i < subtree_nodes->count; i++) {
-        struct lys_node *n = subtree_nodes->data[i];
-        bool match = false;
-        for (size_t s = 0; s < subscr_nodes->count; s++) {
-            struct lys_node *subs = subscr_nodes->data[s];
-            if (rp_dt_is_under_subtree(subs, SIZE_MAX, n)) {
-                state_data_ctx->subscr_index[i] = s;
-                match = true;
-                break;
-            }
-        }
-        if (!match) {
-            SR_LOG_WRN("No subscriber for subtree %s", (char *) state_data_ctx->subtrees->data[i]);
-        }
-    }
-
-cleanup:
-    return rc;
 }
 
 static int
@@ -611,23 +593,45 @@ cleanup:
     return rc;
 }
 
-static int
-rp_dt_has_data_provider_for_subtree(sr_list_t *subscriptions, struct lys_node *subtree, bool *data_provider_found)
+static bool
+rp_dt_no_parent_list_until(struct lys_node *until, struct lys_node *node)
 {
-    CHECK_NULL_ARG3(subscriptions, subtree, data_provider_found);
+    if (NULL == node) {
+        return false;
+    }
 
-    *data_provider_found = false;
-    for (size_t s = 0; s < subscriptions->count; s++) {
-        struct lys_node *subs = subscriptions->data[s];
-        if (rp_dt_is_under_subtree(subs, SIZE_MAX, subtree)) {
-            *data_provider_found = true;
+    struct lys_node *n = node->parent;
+
+    while (NULL != n) {
+        if (until == n) {
             break;
+        }
+        if (LYS_LIST & n->nodetype) {
+            return false;
+        }
+        n = lys_parent(n);
+    }
+
+    return true;
+}
+
+static bool
+rp_dt_not_coverd_by_other_subs(sr_list_t *other, struct lys_node *node) {
+    if (NULL == other || NULL == node) {
+        return true;
+    }
+    for (size_t i = 0; i < other->count; i++) {
+        struct lys_node *sub = (struct lys_node *) other->data[i];
+        if (sub == node) {
+            continue;
+        }
+        if (rp_dt_depth_under_subtree(sub, node, NULL)) {
+            return false;
         }
     }
 
-    return SR_ERR_OK;
+    return true;
 }
-
 /**
  * @brief Determines if (and what) state data subtrees are needed to be loaded.
  */
@@ -667,6 +671,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
         SR_LOG_ERR("Failed to atomize xpath '%s'", xpath);
         SR_LOG_WRN_MSG("Request will continue without retrieving state data");
         rp_dt_free_state_data_ctx_content(state_data_ctx);
+        session->dp_req_waiting = 0;
         rc = SR_ERR_OK;
         goto cleanup;
     }
@@ -687,22 +692,12 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     while (NULL != node) {
         md_subtree_ref_t *sub = node->data;
         bool subtree_needed = false;
-        bool provider_found = false;
         node = node->next;
         struct lys_node *state_data_node = NULL;
 
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL,
                     sub->xpath, NULL, &state_data_node);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to find schema node for %s", sub->xpath);
-
-        rc = rp_dt_has_data_provider_for_subtree(session->state_data_ctx.subscription_nodes, state_data_node, &provider_found);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Has data provider for subtree failed");
-
-        /* check if there is a data provider for this subtree */
-        if (!provider_found) {
-            SR_LOG_DBG("No data provider found for subtree %s", sub->xpath);
-            continue;
-        }
 
         rc = rp_dt_atoms_require_subtree(atoms, state_data_node, &subtree_needed);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Rp dt atoms require subtree failed");
@@ -728,9 +723,10 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
         }
     }
 
-    rc = rp_dt_find_subscription_for_subtree(rp_ctx->dm_ctx, subtree_nodes, session->state_data_ctx.subscription_nodes, state_data_ctx);
+    session->state_data_ctx.subtree_nodes = subtree_nodes;
+    subtree_nodes = NULL;
 
-    SR_LOG_DBG("%zu subtrees of state data will be loaded in order to resolve %s", state_data_ctx->subtrees->count, xpath);
+    SR_LOG_DBG("%zu subtrees of state data will be attempted to load in order to resolve %s", state_data_ctx->subtrees->count, xpath);
 
 cleanup:
     free(xp);
@@ -740,7 +736,186 @@ cleanup:
     sr_list_cleanup(subtree_nodes);
     if (SR_ERR_OK != rc) {
         rp_dt_free_state_data_ctx_content(state_data_ctx);
+        session->dp_req_waiting = 0;
     }
+    return rc;
+}
+
+bool
+rp_dt_find_subscription_covering_subtree(rp_session_t *rp_session, struct lys_node *subtree_node, size_t *found_index)
+{
+    if (NULL == rp_session || NULL == subtree_node || NULL == found_index) {
+        SR_LOG_ERR_MSG("Null argument provided to the function");
+        return false;
+    }
+
+    bool match = false;
+    size_t match_index = 0;
+    int match_difference = -1;
+
+    for (size_t j = 0; j < rp_session->state_data_ctx.subscription_cnt; j++) {
+        struct lys_node *subs = (struct lys_node *) rp_session->state_data_ctx.subscription_nodes->data[j];
+        size_t depth = 0;
+        if (rp_dt_depth_under_subtree(subs, subtree_node, &depth)) {
+            if (!match_index || depth < match_difference) {
+                match_index = j;
+                match_difference = depth;
+                match = true;
+                SR_LOG_DBG("Found match for %s with depth %zu index %zu", subtree_node->name, depth, match_index);
+            }
+            if (depth == 0) {
+                /* exact match */
+                break;
+            }
+        }
+    }
+
+    if (match) {
+        *found_index = match_index;
+    }
+
+    return match;
+}
+
+bool
+rp_dt_find_exact_match_subscription_for_node(rp_session_t *rp_session, struct lys_node *node, size_t *found_index)
+{
+    if (NULL == rp_session || NULL == node || NULL == found_index) {
+        SR_LOG_ERR_MSG("Null argument provided to the function");
+        return false;
+    }
+
+    bool match = false;
+    size_t match_index = 0;
+
+    for (size_t j = 0; j < rp_session->state_data_ctx.subscription_cnt; j++) {
+        struct lys_node *sub = (struct lys_node *) rp_session->state_data_ctx.subscription_nodes->data[j];
+        if (sub->nodetype != node->nodetype) {
+            continue;
+        }
+        size_t depth = 0;
+        if (rp_dt_depth_under_subtree(sub, node, &depth)) {
+            if (0 == depth) {
+                match_index = j;
+                match = true;
+                break;
+            }
+        }
+    }
+
+    if (match) {
+        *found_index = match_index;
+    }
+
+    return match;
+}
+
+/**
+ *
+ * @param [in] rp_ctx
+ * @param [in] rp_session
+ * @param [in] subscription_index - index of subscription where the request will be addressed
+ * @param [in] xp - must be allocated, must not be used after return from the function. It will be freed
+ * even in case of error;
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+rp_dt_send_request_to_dp_subscription(rp_ctx_t *rp_ctx, rp_session_t *rp_session, size_t subscription_index, char *xp)
+{
+    CHECK_NULL_ARG3(rp_ctx, rp_session, xp);
+    int rc = SR_ERR_OK;
+
+    rc = np_data_provider_request(rp_ctx->np_ctx, rp_session->state_data_ctx.subscriptions[subscription_index], rp_session, xp);
+    SR_LOG_DBG("Sending request for state data: %s", xp);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", xp, rp_session->state_data_ctx.subscriptions[subscription_index]->xpath);
+        free(xp);
+    } else {
+        rp_session->dp_req_waiting += 1;
+        rc = sr_list_add(rp_session->state_data_ctx.requested_xpaths, xp);
+    }
+
+    return rc;
+}
+
+/**
+ * @brief The function send the first set of requests to data providers for the selected subtrees
+ * For each subtree it looks up a subscriber(data provider) using the following criteria:
+ *      1. exact match - subscriber's node is the same as the requested subtree
+ *      2. more generic - there is not exact match however there is a subscription to one of the parent nodes
+ *      3. partial subscription - no subscription is found using the two ways above Try retrieve at least some
+ *          parts of the requested subtree. Data provide request will be send to all subscribers that are under requested
+ *          subtree and all list in the path are covered by a data provider
+ * @param [in] rp_ctx
+ * @param [in] rp_session
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+rp_dt_send_first_set_of_dp_requests(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
+{
+    CHECK_NULL_ARG(rp_session);
+    int rc = SR_ERR_OK;
+    char *xp = NULL;
+
+    for (size_t i = 0; i < rp_session->state_data_ctx.subtrees->count; i++) {
+        const char *subtree = (char *) rp_session->state_data_ctx.subtrees->data[i];
+
+        struct lys_node *subtree_node = (struct lys_node *) rp_session->state_data_ctx.subtree_nodes->data[i];
+        size_t match_index = 0;
+        bool match = rp_dt_find_subscription_covering_subtree(rp_session, subtree_node, &match_index);
+
+        if (match) {
+            /* exact or more generic (data provider subscribed for ancestor node) */
+            xp = strdup((char *) rp_session->state_data_ctx.subtrees->data[i]);
+            CHECK_NULL_NOMEM_RETURN(xp);
+
+            rc = rp_dt_send_request_to_dp_subscription(rp_ctx, rp_session, match_index, xp);
+            CHECK_RC_MSG_RETURN(rc, "Sending of data provide request failed");
+
+        } else if (LYS_CONTAINER & subtree_node->nodetype) {
+            SR_LOG_DBG("Subscription covering subtree not found, looking for a subscription covering at least part of subtree %s", subtree);
+            for (size_t j = 0; j < rp_session->state_data_ctx.subscription_cnt; j++) {
+                struct lys_node *subs = (struct lys_node *) rp_session->state_data_ctx.subscription_nodes->data[j];
+                size_t depth = 0;
+                if (rp_dt_depth_under_subtree(subtree_node, subs, &depth)) {
+                    if (1 == depth || (rp_dt_no_parent_list_until(subtree_node, subs))) {
+                        if (rp_dt_not_coverd_by_other_subs(rp_session->state_data_ctx.subscription_nodes, subs)) {
+                            match = true;
+
+                            xp = lys_path(subs);
+                            CHECK_NULL_NOMEM_RETURN(xp);
+
+                            rc = rp_dt_send_request_to_dp_subscription(rp_ctx, rp_session, j, xp);
+                            CHECK_RC_MSG_RETURN(rc, "Sending of data provide request failed");
+                        } else {
+                            /* if the subscription node is also covered by another subscription at higher level
+                             * do not request data at the first iteration. Data will be request in request_nested call
+                             * in request processor
+                             */
+                            if ((LYS_LEAF | LYS_LEAFLIST) & subs->nodetype) {
+                                rp_session->state_data_ctx.overlapping_leaf_subscription = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (match) {
+            /* mark the subtree to be cleaned up before next call */
+            xp = strdup((char *) rp_session->state_data_ctx.subtrees->data[i]);
+            CHECK_NULL_NOMEM_RETURN(xp);
+
+            rc = sr_list_add(rp_session->loaded_state_data[rp_session->datastore], xp);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+            xp = NULL;
+        } else {
+            SR_LOG_DBG("No data provider for xpath %s", subtree);
+        }
+    }
+
+cleanup:
+    free(xp);
     return rc;
 }
 
@@ -814,6 +989,7 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
             (SR_ERR_OK == dm_has_state_data(rp_ctx->dm_ctx, rp_session->module_name, &has_state_data) && has_state_data)) {
 
             rp_dt_free_state_data_ctx_content(&rp_session->state_data_ctx);
+            rp_session->dp_req_waiting = 0;
 
             rc = sr_list_init(&rp_session->state_data_ctx.requested_xpaths);
             CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
@@ -827,28 +1003,8 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
                 goto cleanup;
             }
 
-            for (size_t i = 0; i < rp_session->state_data_ctx.subtrees->count; i++) {
-                char *xp = strdup((char *) rp_session->state_data_ctx.subtrees->data[i]);
-                CHECK_NULL_NOMEM_GOTO(xp, rc, cleanup);
-
-                size_t subs_index = rp_session->state_data_ctx.subscr_index[i];
-                rc = np_data_provider_request(rp_ctx->np_ctx, rp_session->state_data_ctx.subscriptions[subs_index], rp_session, xp);
-                SR_LOG_DBG("Sending request for state data: %s", xp);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", xp, rp_session->state_data_ctx.subscriptions[i]->xpath);
-                } else {
-                    rp_session->dp_req_waiting += 1;
-                }
-
-                rc = sr_list_add(rp_session->loaded_state_data[rp_session->datastore], xp);
-                CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
-
-                xp = strdup((char *) rp_session->state_data_ctx.subtrees->data[i]);
-                CHECK_NULL_NOMEM_GOTO(xp, rc, cleanup);
-
-                rc = sr_list_add(rp_session->state_data_ctx.requested_xpaths, xp);
-                CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
-            }
+            rc = rp_dt_send_first_set_of_dp_requests(rp_ctx, rp_session);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to send requests for xpath %s", xpath);
 
             if (rp_session->dp_req_waiting > 0) {
                 rp_session->state = RP_REQ_WAITING_FOR_DATA;
@@ -870,6 +1026,7 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
 cleanup:
     if (SR_ERR_OK != rc) {
         rp_dt_free_state_data_ctx_content(&rp_session->state_data_ctx);
+        rp_session->dp_req_waiting = 0;
     }
     return rc;
 }

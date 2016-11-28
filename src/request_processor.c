@@ -2128,7 +2128,7 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
             goto unlock;
 
         }
-        if (false == rp_dt_is_under_subtree(*sch_node, SIZE_MAX, value_sch_node)) {
+        if (false == rp_dt_depth_under_subtree(*sch_node, value_sch_node, NULL)) {
             SR_LOG_ERR("Unexpected value with xpath %s received from provider", values[i].xpath);
             rc = SR_ERR_INVAL_ARG;
             goto unlock;
@@ -2154,19 +2154,6 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
     size_t xp_count = 0;
     char *request_xp = NULL;
 
-    /* find subscription where subsequent request will be addressed */
-    for (subs_index = 0; subs_index < session->state_data_ctx.subscription_nodes->count; subs_index++) {
-        struct lys_node *subs = session->state_data_ctx.subscription_nodes->data[subs_index];
-        if (rp_dt_is_under_subtree(subs, SIZE_MAX, sch_node)) {
-            break;
-        }
-    }
-
-    if (subs_index >= session->state_data_ctx.subscription_nodes->count) {
-        SR_LOG_ERR ("Subscription not found for xpath %s", xpath);
-        return SR_ERR_INTERNAL;
-    }
-
     /* prepare xpaths where nested data will be requested */
     if (LYS_LIST == sch_node->nodetype) {
         rc = dm_get_nodes_by_schema(session->dm_session, session->module_name, sch_node, &list_instances);
@@ -2190,7 +2177,20 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
 
     /* loop through the node children */
     LY_TREE_FOR(sch_node->child, iter) {
+        subs_index = session->state_data_ctx.subscription_nodes->count;
         if ((LYS_LIST | LYS_CONTAINER) & iter->nodetype) {
+            /* find subscription where subsequent request will be addressed
+             * this must exists since the a parent node has been already requested
+             */
+            if (!rp_dt_find_subscription_covering_subtree(session, iter, &subs_index)) {
+                SR_LOG_ERR("Failed to find subscription for nested requests %s", xpath);
+                return SR_ERR_INTERNAL;
+            }
+        } else if (session->state_data_ctx.overlapping_leaf_subscription && ((LYS_LEAF | LYS_LEAFLIST) & iter->nodetype)) {
+            /* check if we have exact match for leaf or leaf-list node */
+            rp_dt_find_exact_match_subscription_for_node(session, iter, &subs_index);
+        }
+        if (subs_index < session->state_data_ctx.subscription_nodes->count) {
             for (size_t i = 0; i < xp_count; i++) {
                 size_t len = strlen(xpaths[i]) + strlen(iter->name) + 2 /* slash + zero byte */;
                 request_xp = calloc(len, sizeof(*request_xp));
@@ -2199,7 +2199,7 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
                 snprintf(request_xp, len, "%s/%s", xpaths[i], iter->name);
 
                 rc = np_data_provider_request(rp_ctx->np_ctx, session->state_data_ctx.subscriptions[subs_index], session, request_xp);
-                SR_LOG_DBG("Sending request for nested state data: %s", request_xp);
+                SR_LOG_DBG("Sending request for nested state data: %s using subs index %zu", request_xp, subs_index);
 
                 session->dp_req_waiting += 1;
 
