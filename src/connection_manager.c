@@ -673,7 +673,6 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     } else {
         /* set the error code to response */
         msg->response->result = rc;
-        SR_LOG_ERR("setting result to %d", rc);
     }
 
     /* send the response */
