@@ -664,6 +664,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
         SR_LOG_ERR("Failed to atomize xpath '%s'", xpath);
         SR_LOG_WRN_MSG("Request will continue without retrieving state data");
         rp_dt_free_state_data_ctx_content(state_data_ctx);
+        session->dp_req_waiting = 0;
         rc = SR_ERR_OK;
         goto cleanup;
     }
@@ -728,6 +729,7 @@ cleanup:
     sr_list_cleanup(subtree_nodes);
     if (SR_ERR_OK != rc) {
         rp_dt_free_state_data_ctx_content(state_data_ctx);
+        session->dp_req_waiting = 0;
     }
     return rc;
 }
@@ -980,6 +982,7 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
             (SR_ERR_OK == dm_has_state_data(rp_ctx->dm_ctx, rp_session->module_name, &has_state_data) && has_state_data)) {
 
             rp_dt_free_state_data_ctx_content(&rp_session->state_data_ctx);
+            rp_session->dp_req_waiting = 0;
 
             rc = sr_list_init(&rp_session->state_data_ctx.requested_xpaths);
             CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
@@ -1016,6 +1019,7 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
 cleanup:
     if (SR_ERR_OK != rc) {
         rp_dt_free_state_data_ctx_content(&rp_session->state_data_ctx);
+        rp_session->dp_req_waiting = 0;
     }
     return rc;
 }
