@@ -19,19 +19,19 @@ end
 -- Helper function for printing changes given operation, old and new value.
 function print_change(op, old_val, new_val)
     if (op == sr.SR_OP_CREATED) then
-           print ("CREATED: ")
-           print(new_val:to_string())
+           io.write ("CREATED: ")
+           io.write(new_val:to_string())
     elseif (op == sr.SR_OP_DELETED) then
-           print ("DELETED: ")
-           print(old_val:to_string());
+           io.write ("DELETED: ")
+           io.write(old_val:to_string());
     elseif (op == sr.SR_OP_MODIFIED) then
-           print ("MODIFIED: ")
-           print ("old value")
-           print(old_val:to_string())
-           print ("new value")
-           print(new_val:to_string())
+           io.write ("MODIFIED: ")
+           io.write ("old value ")
+           io.write(old_val:to_string())
+           io.write ("new value ")
+           io.write(new_val:to_string())
     elseif (op == sr.SR_OP_MOVED) then
-        print ("MOVED: " .. new_val.get_xpath() .. " after " .. old_val.get_xpath())
+        io.write ("MOVED: " .. new_val:xpath() .. " after " .. old_val:xpath() .. "\n")
     end
 end
 
@@ -46,27 +46,27 @@ function print_current_config(sess, module_name)
 	if (values == nil) then return end
 
 	for i=0, values:val_cnt() - 1, 1 do
-            print(values:val(i):to_string())
+            io.write(values:val(i):to_string())
 	end
     end
 
     ok,res=pcall(run)
     if not ok then
-        print("\nerror: ",res, "\n")
+        io.write("\nerror: ",res, "\n")
     end
 
 end
 
 -- Function to be called for subscribed client of given session whenever configuration changes.
 function module_change_cb(sess, module_name, event, private_ctx)
-    print("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n")
+    io.write("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n")
 
     function run()
         print_current_config(sess, module_name)
 
-        print("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n")
+        io.write("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n")
 
-        print("\n\n ========== CHANGES: =============================================\n\n")
+        io.write("\n\n ========== CHANGES: =============================================\n\n")
 
         change_path = "/" .. module_name .. ":*"
 
@@ -79,14 +79,14 @@ function module_change_cb(sess, module_name, event, private_ctx)
             print_change(change:oper(), change:old_val(), change:new_val())
 	end
 
-	print("\n\n ========== END OF CHANGES =======================================\n\n")
+	io.write("\n\n ========== END OF CHANGES =======================================\n\n")
 
         collectgarbage()
     end
 
     ok,res=pcall(run)
     if not ok then
-        print("\nerror: ",res, "\n")
+        io.write("\nerror: ",res, "\n")
     end
 
 end
@@ -101,17 +101,17 @@ function run()
     wrap = sr.Callback_lua(module_change_cb)
     subscribe:module_change_subscribe("ietf-interfaces", wrap);
 
-    print("\n\n ========== READING STARTUP CONFIG: ==========\n");
+    io.write("\n\n ========== READING STARTUP CONFIG: ==========\n\n");
     print_current_config(sess, "ietf-interfaces");
 
-    print("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n");
+    io.write("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n");
 
     sr.global_loop()
 
-    print("Application exit requested, exiting.\n");
+    io.write("Application exit requested, exiting.\n\n");
 end
 
 ok,res=pcall(run)
 if not ok then
-    print("\nerror: ",res, "\n")
+    io.write("\nerror: ",res, "\n")
 end
