@@ -119,10 +119,9 @@ class My_Callback:public Callback {
 
 	    snprintf(change_path, MAX_LEN, "/%s:*", module_name);
 
-            S_Subscribe subscribe(new Subscribe(sess));
-            auto it = subscribe->get_changes_iter(&change_path[0]);
+            auto it = sess->get_changes_iter(&change_path[0]);
 
-            while (auto change = subscribe->get_change_next(it)) {
+            while (auto change = sess->get_change_next(it)) {
                 print_change(change);
             }
 

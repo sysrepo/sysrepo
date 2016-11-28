@@ -87,11 +87,10 @@ class My_Callback extends Callback {
 
 			String change_path = "/" + module_name + ":*";
 
-			Subscribe subscribe = new Subscribe(sess);
-			Iter_Change it = subscribe.get_changes_iter(change_path);
+			Iter_Change it = sess.get_changes_iter(change_path);
 
 			while (true) {
-				Change change = subscribe.get_change_next(it);
+				Change change = sess.get_change_next(it);
 				if (change == null)
 					break;
 				print.change(change.oper(), change.old_val(), change.new_val());

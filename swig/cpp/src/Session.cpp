@@ -374,6 +374,36 @@ void Session::discard_changes()
     }
 }
 
+S_Iter_Change Session::get_changes_iter(const char *xpath)
+{
+    S_Iter_Change iter(new Iter_Change());
+
+    int ret = sr_get_changes_iter(_sess, xpath, iter->p_get());
+    if (SR_ERR_OK == ret) {
+        return iter;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
+        throw_exception(ret);
+        return NULL;
+    }
+}
+
+S_Change Session::get_change_next(S_Iter_Change iter)
+{
+    S_Change change(new Change());
+
+    int ret = sr_get_change_next(_sess, iter->get(), change->p_oper(), change->p_old(), change->p_new());
+    if (SR_ERR_OK == ret) {
+        return change;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
+        throw_exception(ret);
+        return NULL;
+    }
+}
+
 Session::~Session()
 {
     if (_sess) {
@@ -625,36 +655,6 @@ void Subscribe::unsubscribe()
     }
 
     _sub = NULL;
-}
-
-S_Iter_Change Subscribe::get_changes_iter(const char *xpath)
-{
-    S_Iter_Change iter(new Iter_Change());
-
-    int ret = sr_get_changes_iter(_sess->get(), xpath, iter->p_get());
-    if (SR_ERR_OK == ret) {
-        return iter;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
-    } else {
-        throw_exception(ret);
-        return NULL;
-    }
-}
-
-S_Change Subscribe::get_change_next(S_Iter_Change iter)
-{
-    S_Change change(new Change());
-
-    int ret = sr_get_change_next(_sess->get(), iter->get(), change->p_oper(), change->p_old(), change->p_new());
-    if (SR_ERR_OK == ret) {
-        return change;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
-    } else {
-        throw_exception(ret);
-        return NULL;
-    }
 }
 
 S_Vals Subscribe::rpc_send(const char *xpath, S_Vals input)

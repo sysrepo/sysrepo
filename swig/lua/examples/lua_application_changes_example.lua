@@ -70,11 +70,10 @@ function module_change_cb(sess, module_name, event, private_ctx)
 
         change_path = "/" .. module_name .. ":*"
 
-        subscribe = sr.Subscribe(sess);
-        it = subscribe:get_changes_iter(change_path);
+        it = sess:get_changes_iter(change_path);
 
         while true do
-            change = subscribe:get_change_next(it)
+            change = sess:get_change_next(it)
             if (change == nil) then break end
             print_change(change:oper(), change:old_val(), change:new_val())
 	end
