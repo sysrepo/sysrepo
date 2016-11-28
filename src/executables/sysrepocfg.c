@@ -422,6 +422,7 @@ srcfg_convert_lydiff_changed(const char *xpath, struct lyd_node *node)
         case LYS_ANYDATA:
             sch_any = (struct lyd_node_anydata *) node;
             if (NULL == sch_any->value.str) {
+                /* skip empty anydata / anyxml */
                 rc = SR_ERR_OK;
                 goto cleanup;
             }
