@@ -78,6 +78,8 @@ public:
     void discard_changes();
     void copy_config(const char *module_name, sr_datastore_t src_datastore, sr_datastore_t dst_datastore);
     void set_options(const sr_sess_options_t opts);
+    S_Iter_Change get_changes_iter(const char *xpath);
+    S_Change get_change_next(S_Iter_Change iter);
     ~Session();
     sr_session_ctx_t *get() {return _sess;};
 
@@ -130,8 +132,6 @@ public:
     std::vector<S_Callback > cb_list;
 
     void unsubscribe();
-    S_Iter_Change get_changes_iter(const char *xpath);
-    S_Change get_change_next(S_Iter_Change iter);
     S_Vals rpc_send(const char *xpath, S_Vals input);
     S_Vals action_send(const char *xpath, S_Vals input);
     S_Trees rpc_send_tree(const char *xpath, S_Trees input);

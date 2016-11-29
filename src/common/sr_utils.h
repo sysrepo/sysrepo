@@ -343,6 +343,14 @@ int sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t
 int sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value);
 
 /**
+ * @brief Copies value from lyd_node_anydata to the sr_val_t.
+ * @param [in] input which is copied
+ * @param [in] value where the content is copied to
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *value);
+
+/**
  * @brief Converts sr_val_t to string representation, used in set item.
  * @param [in] value
  * @param [in] schema_node

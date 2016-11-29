@@ -153,7 +153,9 @@ rp_dt_contains_non_default_node(struct ly_set *nodes)
         if ((LYS_LEAFLIST | LYS_LIST) & nodes->set.d[i]->schema->nodetype ||
             (LYS_CONTAINER == nodes->set.d[i]->schema->nodetype &&
                  NULL != ((struct lys_node_container *) nodes->set.d[i]->schema)->presence) ||
-            (LYS_LEAF == nodes->set.d[i]->schema->nodetype && !nodes->set.d[i]->dflt)) {
+            (LYS_LEAF == nodes->set.d[i]->schema->nodetype && !nodes->set.d[i]->dflt) ||
+            (LYS_ANYXML == nodes->set.d[i]->schema->nodetype && !nodes->set.d[i]->dflt) ||
+            (LYS_ANYDATA == nodes->set.d[i]->schema->nodetype && !nodes->set.d[i]->dflt)) {
             return true;
         } else if (LYS_CONTAINER == nodes->set.d[i]->schema->nodetype) {
             struct lyd_node *next = NULL, *iter = NULL;

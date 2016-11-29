@@ -403,6 +403,7 @@ srcfg_convert_lydiff_changed(const char *xpath, struct lyd_node *node)
     int rc = SR_ERR_INTERNAL;
     sr_val_t value = { 0, 0, SR_UNKNOWN_T };
     struct lyd_node_leaf_list *data_leaf = NULL;
+    struct lyd_node_anydata *sch_any = NULL;
 
     CHECK_NULL_ARG2(xpath, node);
 
@@ -418,8 +419,17 @@ srcfg_convert_lydiff_changed(const char *xpath, struct lyd_node *node)
             }
             break;
         case LYS_ANYXML:
-            SR_LOG_ERR_MSG("The anyxml statement is not yet supported by Sysrepo.");
-            goto cleanup;
+        case LYS_ANYDATA:
+            sch_any = (struct lyd_node_anydata *) node;
+            if (NULL == sch_any->value.str) {
+                /* skip empty anydata / anyxml */
+                rc = SR_ERR_OK;
+                goto cleanup;
+            }
+            value.type = (LYS_ANYXML == node->schema->nodetype) ? SR_ANYXML_T : SR_ANYDATA_T;
+            rc = sr_libyang_anydata_copy_value(sch_any, &value);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Error returned from sr_libyang_anydata_copy_value: %s.", sr_strerror(rc));
+            break;
         default:
             SR_LOG_ERR_MSG("Unexpected node type for LYD_DIFF_CHANGED.");
             goto cleanup;
@@ -460,6 +470,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
     sr_val_t value = { 0, 0, SR_UNKNOWN_T };
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_list *slist = NULL;
+    struct lyd_node_anydata *sch_any = NULL;
     char *xpath = NULL, *delim = NULL;
 
     CHECK_NULL_ARG(node);
@@ -549,8 +560,18 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
                 break;
 
             case LYS_ANYXML:
-                SR_LOG_ERR_MSG("The anyxml statement is not yet supported by Sysrepo.");
-                goto cleanup;
+            case LYS_ANYDATA:
+                sch_any = (struct lyd_node_anydata *) elem;
+                value.type = (LYS_ANYXML == node->schema->nodetype) ? SR_ANYXML_T : SR_ANYDATA_T;
+                rc = sr_libyang_anydata_copy_value(sch_any, &value);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Error returned from sr_libyang_anydata_copy_value: %s.", sr_strerror(rc));
+                /* get xpath */
+                xpath = lyd_path(elem);
+                if (NULL == xpath) {
+                    SR_LOG_ERR("Error returned from lyd_path: %s.", ly_errmsg());
+                    goto cleanup;
+                }
+                break;
 
             case LYS_CONTAINER:
                 /* explicitly create only presence containers */

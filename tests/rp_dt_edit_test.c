@@ -1093,6 +1093,30 @@ void edit_test_module_test(void **state){
     assert_int_equal(value->data.uint8_val, new_set->data.uint8_val);
     FREE_VARS(value, new_set);
 
+    /* anyxml ref*/
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_ANYXML, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_ANYXML_T, value->type);
+    assert_non_null(strstr(value->data.anyxml_val, XP_TEST_MODULE_ANYXML_VALUE));
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_ANYXML, value, &new_set);
+    assert_string_equal(value->data.anyxml_val, new_set->data.anyxml_val);
+    FREE_VARS(value, new_set);
+
+    /* anydata ref*/
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_ANYDATA, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_ANYDATA_T, value->type);
+    assert_non_null(strstr(value->data.anydata_val, XP_TEST_MODULE_ANYDATA_VALUE));
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_ANYDATA, value, &new_set);
+    assert_string_equal(value->data.anydata_val, new_set->data.anydata_val);
+    FREE_VARS(value, new_set);
+
     test_rp_session_cleanup(ctx, session);
 }
 

@@ -53,6 +53,8 @@
 %newobject Session::get_item_next;
 %newobject Session::get_subtree;
 %newobject Session::get_subtrees;
+%newobject Session::get_changes_iter;
+%newobject Session::get_change_next;
 
 #ifndef SWIGLUA
 %shared_ptr(Callback);
@@ -67,8 +69,6 @@
 %ignore Subscribe::swig_sess;
 %ignore Subscribe::wrap_cb_l;
 %ignore Subscribe::additional_cleanup(void *);
-%newobject Subscribe::get_changes_iter;
-%newobject Subscribe::get_change_next;
 %newobject Subscribe::rpc_send;
 %newobject Subscribe::rpc_send_tree;
 
@@ -184,6 +184,8 @@
 %shared_ptr(Iter_Change);
 #endif
 %ignore Iter_Change::Iter_Change(sr_change_iter_t *);
+%ignore Iter_Change::get();
+%ignore Iter_Change::p_get();
 
 #ifndef SWIGLUA
 %shared_ptr(Change);

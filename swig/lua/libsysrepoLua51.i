@@ -44,8 +44,6 @@ public:
     void module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, \
                                  void *private_ctx) {
         Session *sess = (Session *)new Session(session);
-        if (sess == NULL)
-            throw std::runtime_error("No memory for class Session in callback module_change_subscribe.\n");
         swiglua_ref_get(&fn);
         SWIG_NewPointerObj(fn.L, sess, SWIGTYPE_p_Session, 0);
         lua_pushstring(fn.L, module_name);
@@ -58,9 +56,6 @@ public:
     void subtree_change(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
                        void *private_ctx) {
         Session *sess = (Session *)new Session(session);
-        if (sess == NULL)
-            throw std::runtime_error("No memory for class Session in callback subtree_change.\n");
-
         swiglua_ref_get(&fn);
         SWIG_NewPointerObj(fn.L, sess, SWIGTYPE_p_Session, 0);
         lua_pushstring(fn.L, xpath);
@@ -93,9 +88,6 @@ public:
 
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
-        if (in_vals == NULL && out_vals == NULL)
-            throw std::runtime_error("No memory for class Vals in callback rpc_cb.\n");
-
         swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
@@ -111,9 +103,6 @@ public:
 
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
-        if (in_vals == NULL && out_vals == NULL)
-            throw std::runtime_error("No memory for class Vals in callback action_cb.\n");
-
         swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
@@ -129,9 +118,6 @@ public:
 
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
         Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
-        if (in_vals == NULL && out_vals == NULL)
-            throw std::runtime_error("No memory for class Trees in callback rpc_tree_cb.\n");
-
         swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
@@ -147,9 +133,6 @@ public:
 
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
         Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
-        if (in_vals == NULL && out_vals == NULL)
-            throw std::runtime_error("No memory for class Trees in callback action_tree_cb.\n");
-
         swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
@@ -163,9 +146,6 @@ public:
     void dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
 
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
-        if (in_vals == NULL)
-            throw std::runtime_error("No memory for class Vals in callback dp_get_items.\n");
-
         swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
@@ -177,9 +157,6 @@ public:
     void event_notif(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
 
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
-        if (in_vals == NULL)
-            throw std::runtime_error("No memory for class Vals in callback event_notif.\n");
-
         swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
@@ -192,9 +169,6 @@ public:
     void event_notif_tree(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
 
         Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, NULL);
-        if (in_vals == NULL)
-            throw std::runtime_error("No memory for class Trees in callback rpc_cb.\n");
-
         swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);

@@ -96,7 +96,6 @@ void Session::session_switch_ds(sr_datastore_t ds)
 S_Error Session::get_last_error()
 {
     S_Error error(new Error());
-    if (error == NULL) throw_exception(SR_ERR_NOMEM);
 
     int ret = sr_get_last_error(_sess, error->p_error());
     if (SR_ERR_OK == ret) {
@@ -112,7 +111,6 @@ S_Error Session::get_last_error()
 S_Errors Session::get_last_errors()
 {
     S_Errors errors(new Errors());
-    if (errors == NULL) throw_exception(SR_ERR_NOMEM);
 
     int ret = sr_get_last_errors(_sess, errors->p_error(), errors->p_error_cnt());
     if (SR_ERR_OK == ret) {
@@ -128,7 +126,6 @@ S_Errors Session::get_last_errors()
 S_Yang_Schemas Session::list_schemas()
 {
     S_Yang_Schemas schema(new Yang_Schemas());
-    if (schema == NULL) throw_exception(SR_ERR_NOMEM);
 
     int ret = sr_list_schemas(_sess, schema->p_schema(), schema->p_schema_cnt());
     if (SR_ERR_OK == ret) {
@@ -163,10 +160,10 @@ S_String Session::get_schema(const char *module_name, const char *revision,\
 
 S_Val Session::get_item(const char *xpath)
 {
-    sr_val_t *val;
-    int ret = sr_get_item(_sess, xpath, &val);
+    S_Val value(new Val());
+
+    int ret = sr_get_item(_sess, xpath, value->p_get());
     if (SR_ERR_OK == ret) {
-        S_Val value(new Val(val, std::make_shared<Deleter>(val)));
         return value;
     } else if (SR_ERR_NOT_FOUND == ret) {
         return NULL;
@@ -178,7 +175,6 @@ S_Val Session::get_item(const char *xpath)
 S_Vals Session::get_items(const char *xpath)
 {
     S_Vals values(new Vals());
-    if (values == NULL) throw_exception(SR_ERR_NOMEM);
 
     int ret = sr_get_items(_sess, xpath, values->p_val(), values->p_val_cnt());
     if (SR_ERR_OK == ret) {
@@ -194,7 +190,6 @@ S_Vals Session::get_items(const char *xpath)
 S_Iter_Value Session::get_items_iter(const char *xpath)
 {
     S_Iter_Value iter(new Iter_Value());
-    if (iter == NULL) throw_exception(SR_ERR_NOMEM);
 
     int ret = sr_get_items_iter(_sess, xpath, iter->p_get());
     if (SR_ERR_OK == ret) {
@@ -210,7 +205,6 @@ S_Iter_Value Session::get_items_iter(const char *xpath)
 S_Val Session::get_item_next(S_Iter_Value iter)
 {
     S_Val value(new Val());
-    if (value == NULL) throw_exception(SR_ERR_NOMEM);
 
     int ret = sr_get_item_next(_sess, iter->get(), value->p_get());
     if (SR_ERR_OK == ret) {
@@ -226,7 +220,6 @@ S_Val Session::get_item_next(S_Iter_Value iter)
 S_Tree Session::get_subtree(const char *xpath, sr_get_subtree_options_t opts)
 {
     S_Tree tree(new Tree());
-    if (tree == NULL) throw_exception(SR_ERR_NOMEM);
 
     int ret = sr_get_subtree(_sess, xpath, opts, tree->get());
     if (SR_ERR_OK == ret) {
@@ -244,7 +237,6 @@ S_Tree Session::get_subtree(const char *xpath, sr_get_subtree_options_t opts)
 S_Trees Session::get_subtrees(const char *xpath, sr_get_subtree_options_t opts)
 {
     S_Trees trees(new Trees());
-    if (trees == NULL) throw_exception(SR_ERR_NOMEM);
 
     int ret = sr_get_subtrees(_sess, xpath, opts, trees->p_trees(), trees->p_trees_cnt());
     if (SR_ERR_OK == ret) {
@@ -267,7 +259,6 @@ S_Tree Session::get_child(S_Tree in_tree)
     }
 
     S_Tree out_tree(new Tree(node, NULL));
-    if (out_tree == NULL) throw_exception(SR_ERR_NOMEM);
     return out_tree;
 }
 
@@ -279,7 +270,6 @@ S_Tree Session::get_next_sibling(S_Tree in_tree)
     }
 
     S_Tree out_tree(new Tree(node, NULL));
-    if (out_tree == NULL) throw_exception(SR_ERR_NOMEM);
     return out_tree;
 }
 
@@ -291,7 +281,6 @@ S_Tree Session::get_parent(S_Tree in_tree)
     }
 
     S_Tree out_tree(new Tree(node, NULL));
-    if (out_tree == NULL) throw_exception(SR_ERR_NOMEM);
     return out_tree;
 }
 
@@ -382,6 +371,36 @@ void Session::discard_changes()
     int ret = sr_discard_changes(_sess);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
+    }
+}
+
+S_Iter_Change Session::get_changes_iter(const char *xpath)
+{
+    S_Iter_Change iter(new Iter_Change());
+
+    int ret = sr_get_changes_iter(_sess, xpath, iter->p_get());
+    if (SR_ERR_OK == ret) {
+        return iter;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
+        throw_exception(ret);
+        return NULL;
+    }
+}
+
+S_Change Session::get_change_next(S_Iter_Change iter)
+{
+    S_Change change(new Change());
+
+    int ret = sr_get_change_next(_sess, iter->get(), change->p_oper(), change->p_old(), change->p_new());
+    if (SR_ERR_OK == ret) {
+        return change;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
+        throw_exception(ret);
+        return NULL;
     }
 }
 
@@ -636,37 +655,6 @@ void Subscribe::unsubscribe()
     }
 
     _sub = NULL;
-}
-
-S_Iter_Change Subscribe::get_changes_iter(const char *xpath)
-{
-    sr_change_iter_t *tmp_iter = NULL;
-
-    int ret = sr_get_changes_iter(_sess->get(), xpath, &tmp_iter);
-    if (SR_ERR_OK == ret) {
-        S_Iter_Change iter(new Iter_Change(tmp_iter));
-        return iter;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
-    } else {
-        throw_exception(ret);
-        return NULL;
-    }
-}
-
-S_Change Subscribe::get_change_next(S_Iter_Change iter)
-{
-    S_Change change(new Change());
-
-    int ret = sr_get_change_next(_sess->get(), iter->get(), change->p_oper(), change->p_old(), change->p_new());
-    if (SR_ERR_OK == ret) {
-        return change;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
-    } else {
-        throw_exception(ret);
-        return NULL;
-    }
 }
 
 S_Vals Subscribe::rpc_send(const char *xpath, S_Vals input)
