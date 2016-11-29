@@ -128,7 +128,7 @@ nacm_alloc_user(const char *name, size_t group_cnt, nacm_user_t **user_p)
 {
     int rc = SR_ERR_OK;
     nacm_user_t *user = NULL;
-    CHECK_NULL_ARG2(user, user_p);
+    CHECK_NULL_ARG2(name, user_p);
 
     user = calloc(1, sizeof *user);
     CHECK_NULL_NOMEM_RETURN(user);
@@ -175,7 +175,7 @@ nacm_alloc_rule(const char *name, const char *module, nacm_rule_type_t type, con
 {
     int rc = SR_ERR_OK;
     nacm_rule_t *rule = NULL;
-    CHECK_NULL_ARG5(name, module, data, comment, rule_p);
+    CHECK_NULL_ARG3(name, module, rule_p);
 
     rule = calloc(1, sizeof *rule);
     CHECK_NULL_NOMEM_GOTO(rule, rc, cleanup);
@@ -186,11 +186,15 @@ nacm_alloc_rule(const char *name, const char *module, nacm_rule_type_t type, con
     rule->module = strdup(module);
     CHECK_NULL_NOMEM_GOTO(rule->module, rc, cleanup);
 
-    rule->data.path = strdup(data);
-    CHECK_NULL_NOMEM_GOTO(rule->data.path, rc, cleanup);
+    if (NULL != data) {
+        rule->data.path = strdup(data);
+        CHECK_NULL_NOMEM_GOTO(rule->data.path, rc, cleanup);
+    }
 
-    rule->comment = strdup(comment);
-    CHECK_NULL_NOMEM_GOTO(rule->comment, rc, cleanup);
+    if (NULL != comment) {
+        rule->comment = strdup(comment);
+        CHECK_NULL_NOMEM_GOTO(rule->comment, rc, cleanup);
+    }
 
     rule->type = type;
     rule->access = access;
@@ -221,6 +225,7 @@ nacm_free_rule_list(nacm_rule_list_t *rule_list)
     for (size_t i = 0; NULL != rule_list->rules && i < rule_list->rules->count; ++i) {
         nacm_free_rule((nacm_rule_t *)rule_list->rules->data[i]);
     }
+    sr_list_cleanup(rule_list->rules);
     free(rule_list);
 }
 
@@ -339,6 +344,17 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
     close(fd);
     fd = -1;
 
+#if 0
+    /* XXX: debugging */
+    if (data_tree) {
+        printf("*** NACM CONFIG BEGIN ***\n");
+    }
+    lyd_print_fd(STDOUT_FILENO, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+    if (data_tree) {
+        printf("*** NACM CONFIG END ***\n");
+    }
+#endif
+
     /**
      * Phase II
      *
@@ -405,7 +421,8 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
                             nacm_group2 = sr_btree_search(nacm_ctx->groups, nacm_group);
                             assert(NULL != nacm_group2);
                             assert(group_users->count > nacm_group2->id);
-                            assert(NULL == group_users->data[nacm_group2->id]);
+                            assert(0 == ((sr_list_t *)group_users->data[nacm_group2->id])->count);
+                            sr_list_cleanup((sr_list_t *)group_users->data[nacm_group2->id]);
                             group_users->data[nacm_group2->id] = users;
                             users = NULL;
                             nacm_free_group(nacm_group);
@@ -442,15 +459,21 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
                     } else if (0 == strcmp("group", leaf->schema->name)) {
                         if (0 == strcmp("*", leaf->value.string)) {
                             match_all = true;
-                            continue; /**< next leaf */
+                            /* next leaf */
+                            leaf = (struct lyd_node_leaf_list *)leaf->next;
+                            continue;
                         }
                         assert(NULL == nacm_group);
                         rc = nacm_alloc_group(leaf->value.string, group_users->count, &nacm_group);
                         nacm_group2 = sr_btree_search(nacm_ctx->groups, nacm_group);
                         if (NULL == nacm_group2) {
                             /* a new group */
-                            rc = sr_list_add(group_users, NULL);
+                            assert(NULL == users);
+                            rc = sr_list_init(&users);
+                            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize list");
+                            rc = sr_list_add(group_users, users);
                             CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into a list.");
+                            users = NULL;
                             rc = sr_list_add(groups, (void *)nacm_group);
                             CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into a list.");
                             rc = sr_btree_insert(nacm_ctx->groups, nacm_group);
@@ -470,7 +493,9 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
             if (NULL == rl_name) {
                 sr_list_cleanup(groups);
                 groups = NULL;
-                continue; /* next top-level node */
+                /* next top-level node */
+                node = node->next;
+                continue;
             }
 
             /* process rule list */
@@ -591,9 +616,6 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
         /* construct a binary tree of users */
         for (size_t i = 0; i < group_users->count; ++i) {
             users = (sr_list_t *)group_users->data[i];
-            if (NULL == users) {
-                continue;
-            }
             for (size_t j = 0; j < users->count; ++j) {
                 assert(NULL == nacm_user);
                 rc = nacm_alloc_user((const char *)users->data[j], group_users->count, &nacm_user);
@@ -613,9 +635,6 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
                     /* check if this user is also in some other groups */
                     for (size_t k = i+1; k < group_users->count; ++k) {
                         users2 = (sr_list_t *)group_users->data[k];
-                        if (NULL == users2) {
-                            continue;
-                        }
                         for (size_t l = 0; l < users2->count; ++l) {
                             if (0 == strcmp((const char *)users->data[j], (const char *)users2->data[l])) {
                                 rc = sr_bitset_set(bitset, k, true);
@@ -627,9 +646,6 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
             }
         }
     }
-
-    /* XXX: debugging */
-    lyd_print_fd(STDOUT_FILENO, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
 
 cleanup:
     nacm_free_user(nacm_user);

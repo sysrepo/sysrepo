@@ -139,9 +139,15 @@ add_nacm_user(test_nacm_cfg_t *nacm_config, const char *user, const char *group)
     struct lyd_node *node = NULL;
     char xpath[PATH_MAX] = { 0, };
 
-    snprintf(xpath, PATH_MAX, "/ietf-netconf-acm:nacm/groups/group[name='%s']/user-name", group);
-    node = lyd_new_path(nacm_config->root, nacm_config->ly_ctx, xpath, (void *)user, 0, 0);
-    assert_non_null(node);
+    if (NULL == user) {
+        snprintf(xpath, PATH_MAX, "/ietf-netconf-acm:nacm/groups/group[name='%s']/name", group);
+        node = lyd_new_path(nacm_config->root, nacm_config->ly_ctx, xpath, (void *)group, 0, 0);
+        assert_non_null(node);
+    } else {
+        snprintf(xpath, PATH_MAX, "/ietf-netconf-acm:nacm/groups/group[name='%s']/user-name", group);
+        node = lyd_new_path(nacm_config->root, nacm_config->ly_ctx, xpath, (void *)user, 0, 0);
+        assert_non_null(node);
+    }
 
     if (NULL == nacm_config->root) {
         nacm_config->root = node;
@@ -156,8 +162,8 @@ add_nacm_rule_list(test_nacm_cfg_t *nacm_config, const char *name, ... )
     va_list va;
     const char *group = NULL;
 
-    node = lyd_new_path(nacm_config->root, nacm_config->ly_ctx, "/ietf-netconf-acm:nacm/rule-list/name",
-            (void *)name, 0, 0);
+    snprintf(xpath, PATH_MAX, "/ietf-netconf-acm:nacm/rule-list[name='%s']/name", name);
+    node = lyd_new_path(nacm_config->root, nacm_config->ly_ctx, xpath, (void *)name, 0, 0);
     assert_non_null(node);
     if (NULL == nacm_config->root) {
         nacm_config->root = node;
@@ -182,7 +188,7 @@ add_nacm_rule(test_nacm_cfg_t *nacm_config, const char *rule_list, const char *n
     struct lyd_node *node = NULL;
     char xpath[PATH_MAX] = { 0, };
 
-    snprintf(xpath, PATH_MAX, "/ietf-netconf-acm:nacm/rule-list[name='%s']/rule/name", rule_list);
+    snprintf(xpath, PATH_MAX, "/ietf-netconf-acm:nacm/rule-list[name='%s']/rule[name='%s']/name", rule_list, name);
     node = lyd_new_path(nacm_config->root, nacm_config->ly_ctx, xpath, (void *)name, 0, 0);
     assert_non_null(node);
     if (NULL == nacm_config->root) {

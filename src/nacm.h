@@ -52,7 +52,7 @@ typedef enum nacm_access_flag_e {
     NACM_ACCESS_UPDATE = 0x04, /**< Any protocol operation that alters an existing data node. */
     NACM_ACCESS_DELETE = 0x08, /**< Any protocol operation that removes a data node. */
     NACM_ACCESS_EXEC   = 0x10, /**< Execution access to the specified protocol operation. */
-    NACM_ACCESS_ALL    = 0xff  /**< Any protocol operation. */
+    NACM_ACCESS_ALL    = 0x1f  /**< Any protocol operation. */
 } nacm_access_flag_t;
 
 /**
