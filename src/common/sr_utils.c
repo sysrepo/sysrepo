@@ -1115,7 +1115,7 @@ sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *val
     if (LYD_ANYDATA_DATATREE == node->value_type || LYD_ANYDATA_XML == node->value_type) {
         SR_LOG_ERR("Unsupported (non-string) anydata value type for node '%s'", node_name);
     }
-    if (NULL != node->value.str) {
+    if ((NULL != node->schema) && (NULL != node->value.str)) {
         switch (node->schema->nodetype) {
             case LYS_ANYXML:
                 sr_mem_edit_string(value->_sr_mem, &value->data.anyxml_val, node->value.str);
