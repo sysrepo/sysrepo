@@ -25,7 +25,8 @@ find_program(valgrind_FOUND valgrind)
 
 add_library(HELPERS OBJECT ${TEST_HELPERS_DIR}rp_dt_context_helper.c
             ${TEST_HELPERS_DIR}test_module_helper.c
-            ${TEST_HELPERS_DIR}system_helper.c)
+            ${TEST_HELPERS_DIR}system_helper.c
+            ${TEST_HELPERS_DIR}nacm_module_helper.c)
 
 # create test target with specified options
 macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
