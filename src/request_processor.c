@@ -2149,23 +2149,14 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
     int rc = SR_ERR_OK;
     struct lys_node *iter = NULL;
     size_t subs_index = 0;
-    struct ly_set *list_instances = NULL;
     char **xpaths = NULL;
     size_t xp_count = 0;
     char *request_xp = NULL;
 
     /* prepare xpaths where nested data will be requested */
     if (LYS_LIST == sch_node->nodetype) {
-        rc = dm_get_nodes_by_schema(session->dm_session, session->module_name, sch_node, &list_instances);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Dm_get_nodes_by_schema failed");
-
-        xpaths = calloc(list_instances->number, sizeof(*xpaths));
-        CHECK_NULL_NOMEM_GOTO(xpaths, rc, cleanup);
-
-        for (xp_count = 0; xp_count < list_instances->number; xp_count++) {
-            xpaths[xp_count] = lyd_path(list_instances->set.d[xp_count]);
-            CHECK_NULL_NOMEM_GOTO(xpaths[xp_count], rc, cleanup);
-        }
+        rc = rp_dt_create_instance_xps(session, sch_node, &xpaths, &xp_count);
+        CHECK_RC_MSG_RETURN(rc, "Failed to create xpaths for instances of sch node");
     } else {
         xpaths = calloc(1, sizeof(*xpaths));
         CHECK_NULL_NOMEM_GOTO(xpaths, rc, cleanup);
@@ -2214,7 +2205,6 @@ cleanup:
         free(xpaths[i]);
     }
     free(xpaths);
-    ly_set_free(list_instances);
     free(request_xp);
 
     return rc;

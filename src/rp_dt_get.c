@@ -804,6 +804,69 @@ rp_dt_find_exact_match_subscription_for_node(rp_session_t *rp_session, struct ly
 }
 
 /**
+ * @brief Tests whether one of parent nodes is list.
+ */
+static bool
+rp_dt_has_parent_list(struct lys_node *node, struct lys_node **found_list, size_t *depth)
+{
+    if (NULL != node) {
+        struct lys_node *n = node->parent;
+        size_t dep = 1;
+
+        while (NULL != n) {
+            if (LYS_LIST & n->nodetype) {
+                if (NULL != depth) {
+                    *depth = dep;
+                }
+                if (NULL != found_list) {
+                    *found_list = n;
+                }
+                return true;
+            }
+            n = lys_parent(n);
+            dep++;
+        }
+    }
+    return false;
+}
+
+int
+rp_dt_create_instance_xps(rp_session_t *session, struct lys_node *sch_node, char ***xps, size_t *xp_count)
+{
+    CHECK_NULL_ARG4(session, sch_node, xps, xp_count);
+    int rc = SR_ERR_OK;
+    struct ly_set *list_instances = NULL;
+    char **xpaths = NULL;
+
+    rc = dm_get_nodes_by_schema(session->dm_session, session->module_name, sch_node, &list_instances);
+    CHECK_RC_MSG_RETURN(rc, "Dm_get_nodes_by_schema failed");
+
+    xpaths = calloc(list_instances->number, sizeof(*xpaths));
+    CHECK_NULL_NOMEM_GOTO(xpaths, rc, cleanup);
+
+    for (size_t i = 0; i < list_instances->number; i++) {
+        xpaths[i] = lyd_path(list_instances->set.d[i]);
+        CHECK_NULL_NOMEM_GOTO(xpaths[i], rc, cleanup);
+    }
+
+cleanup:
+    if (SR_ERR_OK == rc) {
+        *xps = xpaths;
+        *xp_count = list_instances->number;
+    } else {
+        if (NULL != xpaths) {
+            for (size_t i = 0; i < list_instances->number; i++) {
+                free(xpaths[i]);
+            }
+            free(xpaths);
+        }
+    }
+
+    ly_set_free(list_instances);
+    return rc;
+}
+
+/**
  *
  * @param [in] rp_ctx
  * @param [in] rp_session
@@ -813,21 +876,82 @@ rp_dt_find_exact_match_subscription_for_node(rp_session_t *rp_session, struct ly
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_send_request_to_dp_subscription(rp_ctx_t *rp_ctx, rp_session_t *rp_session, size_t subscription_index, char *xp)
+rp_dt_send_request_to_dp_subscription(rp_ctx_t *rp_ctx, rp_session_t *rp_session, size_t subscription_index, struct lys_node *sch_node, char *xp)
 {
-    CHECK_NULL_ARG3(rp_ctx, rp_session, xp);
+    CHECK_NULL_ARG4(rp_ctx, rp_session, sch_node, xp);
     int rc = SR_ERR_OK;
+    char **xpaths = NULL;
+    char *request_xp = NULL;
+    struct lys_node *parent_list = NULL;
+    size_t list_depth = 0;
+    size_t xp_cnt = 0;
 
-    rc = np_data_provider_request(rp_ctx->np_ctx, rp_session->state_data_ctx.subscriptions[subscription_index], rp_session, xp);
-    SR_LOG_DBG("Sending request for state data: %s", xp);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", xp, rp_session->state_data_ctx.subscriptions[subscription_index]->xpath);
+
+    if (rp_dt_has_parent_list(sch_node, &parent_list, &list_depth)) {
+        SR_LOG_DBG("State data is nested in configuration list %s", xp);
+
+        rc = rp_dt_create_instance_xps(rp_session, parent_list, &xpaths, &xp_cnt);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create instance xpaths for list instances");
+
+        /* find the suffix in xpath after the list */
+        char *ptr = xp + strlen(xp);
+        while (ptr != xp && list_depth > 0) {
+            if ('/' == *ptr) {
+                list_depth--;
+            }
+            if (0 == list_depth) {
+                *ptr = 0; /* split xpath into path with list without keys and suffix */
+                ptr++;
+                break;
+            }
+            ptr--;
+        }
+
+        SR_LOG_DBG("Found %zu instances of %s , will request %s", xp_cnt, xp, ptr);
+
+        size_t suffix_len = strlen(ptr);
+
+        for (size_t i = 0; i < xp_cnt; i++) {
+            size_t len = strlen(xpaths[i]) + suffix_len + 2 /* slash + zero byte */;
+            request_xp = calloc(len, sizeof(*request_xp));
+            CHECK_NULL_NOMEM_GOTO(request_xp, rc, cleanup);
+
+            snprintf(request_xp, len, "%s/%s", xpaths[i], ptr);
+
+            rc = np_data_provider_request(rp_ctx->np_ctx, rp_session->state_data_ctx.subscriptions[subscription_index], rp_session, request_xp);
+            SR_LOG_DBG("Sending request for state data: %s", request_xp);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", request_xp, rp_session->state_data_ctx.subscriptions[subscription_index]->xpath);
+                free(request_xp);
+            } else {
+                rp_session->dp_req_waiting += 1;
+                rc = sr_list_add(rp_session->state_data_ctx.requested_xpaths, request_xp);
+            }
+        }
         free(xp);
+        xp = NULL;
+
     } else {
-        rp_session->dp_req_waiting += 1;
-        rc = sr_list_add(rp_session->state_data_ctx.requested_xpaths, xp);
+        rc = np_data_provider_request(rp_ctx->np_ctx, rp_session->state_data_ctx.subscriptions[subscription_index], rp_session, xp);
+        SR_LOG_DBG("Sending request for state data: %s", xp);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", xp, rp_session->state_data_ctx.subscriptions[subscription_index]->xpath);
+        } else {
+            rp_session->dp_req_waiting += 1;
+            rc = sr_list_add(rp_session->state_data_ctx.requested_xpaths, xp);
+        }
     }
 
+cleanup:
+    if (SR_ERR_OK != rc) {
+        free(xp);
+    }
+    if (NULL != xpaths) {
+        for (size_t i = 0; i < xp_cnt; i++) {
+            free(xpaths[i]);
+        }
+        free(xpaths);
+    }
     return rc;
 }
 
@@ -862,7 +986,7 @@ rp_dt_send_first_set_of_dp_requests(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
             xp = strdup((char *) rp_session->state_data_ctx.subtrees->data[i]);
             CHECK_NULL_NOMEM_RETURN(xp);
 
-            rc = rp_dt_send_request_to_dp_subscription(rp_ctx, rp_session, match_index, xp);
+            rc = rp_dt_send_request_to_dp_subscription(rp_ctx, rp_session, match_index, subtree_node, xp);
             CHECK_RC_MSG_RETURN(rc, "Sending of data provide request failed");
 
         } else if (LYS_CONTAINER & subtree_node->nodetype) {
@@ -878,7 +1002,7 @@ rp_dt_send_first_set_of_dp_requests(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
                             xp = lys_path(subs);
                             CHECK_NULL_NOMEM_RETURN(xp);
 
-                            rc = rp_dt_send_request_to_dp_subscription(rp_ctx, rp_session, j, xp);
+                            rc = rp_dt_send_request_to_dp_subscription(rp_ctx, rp_session, j, subs, xp);
                             CHECK_RC_MSG_RETURN(rc, "Sending of data provide request failed");
                         } else {
                             /* if the subscription node is also covered by another subscription at higher level
