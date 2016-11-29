@@ -303,6 +303,13 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
      */
     phase = 1;
 
+    /* start with default values */
+    nacm_ctx->enabled = true;
+    nacm_ctx->dflt.read = NACM_ACTION_PERMIT;
+    nacm_ctx->dflt.write = NACM_ACTION_DENY;
+    nacm_ctx->dflt.exec = NACM_ACTION_PERMIT;
+    nacm_ctx->external_groups = true;
+
     rc = sr_list_init(&group_users);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize list");
 
