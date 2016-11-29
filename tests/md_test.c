@@ -1878,6 +1878,10 @@ md_test_has_data(void **state)
     rc = md_get_module_info(md_ctx, "top-level-mandatory", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
+    /*If top-level node is an USES node, it's data-carrying*/
+    rc = md_get_module_info(md_ctx, "servers", NULL, &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(module->has_data);
 
     /* destroy context */
     md_destroy(md_ctx);
