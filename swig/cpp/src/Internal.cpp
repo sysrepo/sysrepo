@@ -29,74 +29,68 @@ extern "C" {
 
 using namespace std;
 
-void Deleter::init_all() {
-    _val = NULL;
-    _cnt = 0;
-    p_vals = NULL;
-    p_cnt = NULL;
-
-    _tree = NULL;
-    p_trees = NULL;
-}
 Deleter::Deleter(sr_val_t *val) {
-    Deleter::init_all();
-    _val = val;
+    v._val = val;
     _t = VAL;
 }
 Deleter::Deleter(sr_val_t *vals, size_t cnt) {
-    Deleter::init_all();
-    _val = vals;
-    _cnt = cnt;
+    v._val = vals;
+    c._cnt = cnt;
     _t = VALS;
 }
 Deleter::Deleter(sr_val_t **vals, size_t *cnt) {
-    Deleter::init_all();
-    p_vals = vals;
-    p_cnt = cnt;
+    v.p_vals = vals;
+    c.p_cnt = cnt;
     _t = VALS_POINTER;
 }
 Deleter::Deleter(sr_node_t *tree) {
-    Deleter::init_all();
-    _tree = tree;
+    v._tree = tree;
     _t = TREE;
 }
 Deleter::Deleter(sr_node_t *trees, size_t cnt) {
-    Deleter::init_all();
-    _tree = trees;
-    _cnt = cnt;
+    v._tree = trees;
+    c._cnt = cnt;
     _t = TREES;
 }
 Deleter::Deleter(sr_node_t **trees, size_t *cnt) {
-    Deleter::init_all();
-    p_trees = trees;
-    p_cnt = cnt;
+    v.p_trees = trees;
+    c.p_cnt = cnt;
     _t = TREES_POINTER;
+}
+Deleter::Deleter(sr_schema_t *sch, size_t cnt) {
+    v._sch = sch;
+    c._cnt = cnt;
+    _t = SCHEMAS;
 }
 Deleter::~Deleter() {
     switch(_t) {
     case VAL:
-        if (_val) sr_free_val(_val);
-	_val = NULL;
+        if (v._val) sr_free_val(v._val);
+	v._val = NULL;
     break;
     case VALS:
-        if (_val) sr_free_values(_val, _cnt);
-	_val = NULL;
+        if (v._val) sr_free_values(v._val, c._cnt);
+	v._val = NULL;
     break;
     case VALS_POINTER:
-        if (*p_vals) sr_free_values(*p_vals, *p_cnt);
-	*p_vals = NULL;
+        if (*v.p_vals) sr_free_values(*v.p_vals, *c.p_cnt);
+	*v.p_vals = NULL;
     break;
     case TREE:
-        if (_tree) sr_free_tree(_tree);
-	_tree = NULL;
+        if (v._tree) sr_free_tree(v._tree);
+	v._tree = NULL;
     break;
     case TREES:
-        if (_tree) sr_free_trees(_tree, _cnt);
-	_tree = NULL;
+        if (v._tree) sr_free_trees(v._tree, c._cnt);
+	v._tree = NULL;
     break;
     case TREES_POINTER:
-        if (*p_trees) sr_free_trees(*p_trees, *p_cnt);
-	*p_trees = NULL;
+        if (*v.p_trees) sr_free_trees(*v.p_trees, *c.p_cnt);
+	*v.p_trees = NULL;
+    break;
+    case SCHEMAS:
+        if (v._sch) sr_free_schemas(v._sch, c._cnt);
+	v._sch = NULL;
     break;
     }
     return;

@@ -34,7 +34,10 @@ class Xpath_Ctx
 {
 public:
     Xpath_Ctx();
-    Xpath_Ctx(sr_xpath_ctx_t *state);
+    char *begining() {if (_state != NULL) return _state->begining; return NULL;};
+    char *current_node() {if (_state != NULL) return _state->current_node; return NULL;};
+    char *replaced_position() {if (_state != NULL) return _state->replaced_position; return NULL;};
+    char replaced_char() {if (_state != NULL) return _state->replaced_char; return (char) 0;};
     ~Xpath_Ctx();
     char *next_node(char *xpath) {return sr_xpath_next_node(xpath, _state);};
     char *next_node_with_ns(char *xpath) {return sr_xpath_next_node_with_ns(xpath, _state);};
@@ -57,7 +60,6 @@ public:
 
 private:
     sr_xpath_ctx_t *_state;
-    bool _free;
 };
 
 #endif

@@ -800,7 +800,13 @@ cl_get_items_iter_test(void **state)
         else if (0 == strcmp(XP_TEST_MODULE_STRING, value->xpath)){
             assert_int_equal(SR_STRING_T, value->type);
         }
-        else{
+        else if (0 == strcmp(XP_TEST_MODULE_ANYXML, value->xpath)){
+            assert_int_equal(SR_ANYXML_T, value->type);
+        }
+        else if (0 == strcmp(XP_TEST_MODULE_ANYDATA, value->xpath)){
+            assert_int_equal(SR_ANYDATA_T, value->type);
+        }
+        else {
             /* unknown node*/
             assert_true(false);
         }
@@ -3099,16 +3105,28 @@ cl_action_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 3);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[0].xpath);
-    assert_int_equal(SR_STRING_T, output[0].type);
-    assert_string_equal("ttm", output[0].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[1].xpath);
-    assert_int_equal(SR_STRING_T, output[1].type);
-    assert_string_equal("drm_kms_helper", output[1].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[2].xpath);
-    assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("drm", output[2].data.string_val);
+    char *expected_values [] = {"ttm", "drm_kms_helper", "drm"};
+    size_t expected_cnt = sizeof(expected_values) / sizeof(*expected_values);
+    assert_int_equal(output_cnt, expected_cnt);
+
+    for (size_t i = 0; i < expected_cnt; i++) {
+        assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[i].xpath);
+        assert_int_equal(SR_STRING_T, output[i].type);
+    }
+
+    for (size_t j = 0; j < expected_cnt; j++) {
+        bool found = false;
+
+        for (size_t i = 0; i < expected_cnt; i++) {
+            if (0 == strcmp(expected_values[j], output[i].data.string_val)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            assert_string_equal(expected_values[j], "");
+        }
+    }
 
     sr_free_values(output, output_cnt);
     output_cnt = 0;
@@ -3196,25 +3214,30 @@ cl_action_tree_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 3);
-    /*  -> dependency #1 */
-    assert_string_equal("dependency", output[0].name);
-    assert_string_equal("test-module", output[0].module_name);
-    assert_false(output[0].dflt);
-    assert_int_equal(SR_STRING_T, output[0].type);
-    assert_string_equal("ttm", output[0].data.string_val);
-    /*  -> dependency #2 */
-    assert_string_equal("dependency", output[1].name);
-    assert_string_equal("test-module", output[1].module_name);
-    assert_false(output[1].dflt);
-    assert_int_equal(SR_STRING_T, output[1].type);
-    assert_string_equal("drm_kms_helper", output[1].data.string_val);
-    /*  -> dependency #3 */
-    assert_string_equal("dependency", output[2].name);
-    assert_string_equal("test-module", output[2].module_name);
-    assert_false(output[2].dflt);
-    assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("drm", output[2].data.string_val);
+    char *expected_values [] = {"ttm", "drm_kms_helper", "drm"};
+    size_t expected_cnt = sizeof(expected_values) / sizeof(*expected_values);
+    assert_int_equal(output_cnt, expected_cnt);
+
+    for (size_t i = 0; i < expected_cnt; i++) {
+        assert_string_equal("dependency", output[i].name);
+        assert_string_equal("test-module", output[i].module_name);
+        assert_false(output[i].dflt);
+        assert_int_equal(SR_STRING_T, output[i].type);
+    }
+
+    for (size_t j = 0; j < expected_cnt; j++) {
+        bool found = false;
+
+        for (size_t i = 0; i < expected_cnt; i++) {
+            if (0 == strcmp(expected_values[j], output[i].data.string_val)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            assert_string_equal(expected_values[j], "");
+        }
+    }
 
     sr_free_trees(output, output_cnt);
     output_cnt = 0;
@@ -3294,16 +3317,28 @@ cl_action_combo_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 3);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[0].xpath);
-    assert_int_equal(SR_STRING_T, output[0].type);
-    assert_string_equal("ttm", output[0].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[1].xpath);
-    assert_int_equal(SR_STRING_T, output[1].type);
-    assert_string_equal("drm_kms_helper", output[1].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[2].xpath);
-    assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("drm", output[2].data.string_val);
+    char *expected_values [] = {"ttm", "drm_kms_helper", "drm"};
+    size_t expected_cnt = sizeof(expected_values) / sizeof(*expected_values);
+    assert_int_equal(output_cnt, expected_cnt);
+
+    for (size_t i = 0; i < expected_cnt; i++) {
+        assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[i].xpath);
+        assert_int_equal(SR_STRING_T, output[i].type);
+    }
+
+    for (size_t j = 0; j < expected_cnt; j++) {
+        bool found = false;
+
+        for (size_t i = 0; i < expected_cnt; i++) {
+            if (0 == strcmp(expected_values[j], output[i].data.string_val)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            assert_string_equal(expected_values[j], "");
+        }
+    }
 
     sr_free_values(output, output_cnt);
     output_cnt = 0;
@@ -3365,25 +3400,28 @@ cl_action_combo_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 3);
-    /*  -> dependency #1 */
-    assert_string_equal("dependency", output_tree[0].name);
-    assert_string_equal("test-module", output_tree[0].module_name);
-    assert_false(output_tree[0].dflt);
-    assert_int_equal(SR_STRING_T, output_tree[0].type);
-    assert_string_equal("ttm", output_tree[0].data.string_val);
-    /*  -> dependency #2 */
-    assert_string_equal("dependency", output_tree[1].name);
-    assert_string_equal("test-module", output_tree[1].module_name);
-    assert_false(output_tree[1].dflt);
-    assert_int_equal(SR_STRING_T, output_tree[1].type);
-    assert_string_equal("drm_kms_helper", output_tree[1].data.string_val);
-    /*  -> dependency #3 */
-    assert_string_equal("dependency", output_tree[2].name);
-    assert_string_equal("test-module", output_tree[2].module_name);
-    assert_false(output_tree[2].dflt);
-    assert_int_equal(SR_STRING_T, output_tree[2].type);
-    assert_string_equal("drm", output_tree[2].data.string_val);
+    assert_int_equal(output_cnt, expected_cnt);
+
+    for (size_t i = 0; i < expected_cnt; i++) {
+        assert_string_equal("dependency", output_tree[i].name);
+        assert_string_equal("test-module", output_tree[i].module_name);
+        assert_false(output_tree[i].dflt);
+        assert_int_equal(SR_STRING_T, output_tree[i].type);
+    }
+
+    for (size_t j = 0; j < expected_cnt; j++) {
+        bool found = false;
+
+        for (size_t i = 0; i < expected_cnt; i++) {
+            if (0 == strcmp(expected_values[j], output_tree[i].data.string_val)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            assert_string_equal(expected_values[j], "");
+        }
+    }
 
     sr_free_trees(output_tree, output_cnt);
     output_cnt = 0;
@@ -4859,6 +4897,78 @@ cl_cross_module_dependency(void **state)
     sr_session_stop(session);
 }
 
+static void
+cl_data_in_submodule(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subs = NULL;
+
+    int rc = SR_ERR_OK;
+    sr_val_t *value = NULL;
+    sr_val_t val = {0};
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* clean prev data */
+    val.type = SR_STRING_T;
+    val.data.string_val = "abc";
+
+    rc = sr_set_item(session, "/module-a:sub-two-leaf", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_session_switch_ds(session, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_module_change_subscribe(session, "module-a", empty_module_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(session, "/module-a:sub-two-leaf", &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_non_null(value);
+    assert_int_equal(SR_STRING_T, value->type);
+    assert_string_equal("/module-a:sub-two-leaf", value->xpath);
+    sr_free_val(value);
+
+    sr_unsubscribe(session, subs);
+    sr_session_stop(session);
+}
+
+static void
+cl_get_schema_with_subscription(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subs = NULL;
+
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_subtree_change_subscribe(session, "/ietf-interfaces:interfaces/interface", empty_module_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    char *content = NULL;
+    rc = sr_get_schema(session, "ietf-ip", NULL, NULL, SR_SCHEMA_YANG, &content);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    assert_non_null(content);
+    free(content);
+
+    sr_unsubscribe(session, subs);
+    sr_session_stop(session);
+}
+
 int
 main()
 {
@@ -4906,6 +5016,8 @@ main()
             cmocka_unit_test_setup_teardown(cl_event_notif_tree_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_event_notif_combo_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_cross_module_dependency, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_data_in_submodule, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_schema_with_subscription, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

@@ -101,6 +101,8 @@ module test-module {
     leaf-list numbers {
       type uint8;
     }
+    anyxml xml-data;
+    anydata any-data;
   }
 
   identity base_id;

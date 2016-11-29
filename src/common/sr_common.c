@@ -44,12 +44,13 @@ const char *const sr_errlist[] = {
         "Requested schema model is not known",  /* SR_ERR_UNKNOWN_MODEL */
         "Request contains unknown element",     /* SR_ERR_BAD_ELEMENT */
         "Validation of the changes failed",     /* SR_ERR_VALIDATION_FAILED */
-        "An operation failed",                  /* SR_ERR_OPERATION_FAILED */
+        "The operation failed",                 /* SR_ERR_OPERATION_FAILED */
         "The item already exists",              /* SR_ERR_DATA_EXISTS */
         "The item expected to exist is missing",/* SR_ERR_DATA_MISSING */
         "Operation not authorized",             /* SR_ERR_UNAUTHORIZED */
+        "Invalid username",                     /* SR_ERR_INVAL_USER */
         "Requested resource is already locked", /* SR_ERR_LOCKED */
-        "Time out has expired",                 /* SR_ERR_TIME_OUT */
+        "Timeout has expired",                  /* SR_ERR_TIME_OUT */
         "Sysrepo Engine restart is needed",     /* SR_ERR_RESTART_NEEDED */
 };
 

@@ -273,11 +273,31 @@ void rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data);
 /**
  * @brief Function tests whether node is located under(in schema hierarchy) subtree node.
  * @param [in] subtree
- * @param [in] depth_limit Maximum number of subtree levels to consider.
  * @param [in] node
+ * @param [out] depth - number of nodes between subtree and node if they are the same depth is 0
  * @return bool result of the test
  */
-bool rp_dt_is_under_subtree(struct lys_node *subtree, size_t depth_limit, struct lys_node *node);
+bool rp_dt_depth_under_subtree(struct lys_node *subtree, struct lys_node *node, size_t *depth);
+
+/**
+ * @brief Tries to find a subscription that covers the subtree either exact match or a subscription
+ * to a parent node.
+ * @param [in] rp_session
+ * @param [in] subtree_node
+ * @param [out] found_index
+ * @return bool result whether a subscription was found
+ */
+bool rp_dt_find_subscription_covering_subtree(rp_session_t *rp_session, struct lys_node *subtree_node, size_t *found_index);
+
+/**
+ * @brief Similar to the ::bool rp_dt_find_subscription_covering_subtree however looks up
+ * only exact match
+ * @param [in] rp_session
+ * @param [in] node
+ * @param [out] found_index
+ * @return result
+ */
+bool rp_dt_find_exact_match_subscription_for_node(rp_session_t *rp_session, struct lys_node *node, size_t *found_index);
 
 #endif /* RP_DT_GET_H */
 

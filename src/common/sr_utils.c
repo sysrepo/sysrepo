@@ -681,8 +681,7 @@ sr_libyang_leaf_get_type_sch(const struct lys_node_leaf *leaf)
 sr_type_t
 sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
 {
-
-    switch(leaf->value_type){
+    switch(leaf->value_type) {
         case LY_TYPE_BINARY:
             return SR_BINARY_T;
         case LY_TYPE_BITS:
@@ -835,6 +834,10 @@ sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *va
             type = SR_UNKNOWN_T;
             //LY_DERIVED
         }
+    } else if (LYS_ANYXML == node->nodetype) {  /* cannot use bitwise or, since LYS_ANYXML is sub-type of LYS_ANYDATA */
+        type = SR_ANYXML_T;
+    } else if (LYS_ANYDATA & node->nodetype) {
+        type = SR_ANYDATA_T;
     }
 matching_done:
     if (type != value->type) {
@@ -902,6 +905,8 @@ sr_libyang_val_str_to_sr_val(const char *val_str, sr_type_t type, sr_val_t *valu
     case SR_IDENTITYREF_T:
     case SR_INSTANCEID_T:
     case SR_STRING_T:
+    case SR_ANYXML_T:
+    case SR_ANYDATA_T:
         sr_mem_edit_string(value->_sr_mem, &value->data.string_val, val_str);
         CHECK_NULL_NOMEM_RETURN(value->data.string_val);
         return SR_ERR_OK;
@@ -1098,6 +1103,42 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
     }
 }
 
+int
+sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *value)
+{
+    CHECK_NULL_ARG2(node, value);
+    const char *node_name = "(unknown)";
+    if (NULL != node->schema && NULL != node->schema->name) {
+        node_name = node->schema->name;
+    }
+
+    if (LYD_ANYDATA_DATATREE == node->value_type || LYD_ANYDATA_XML == node->value_type) {
+        SR_LOG_ERR("Unsupported (non-string) anydata value type for node '%s'", node_name);
+    }
+    if (NULL != node->value.str) {
+        switch (node->schema->nodetype) {
+            case LYS_ANYXML:
+                sr_mem_edit_string(value->_sr_mem, &value->data.anyxml_val, node->value.str);
+                if (NULL == value->data.anyxml_val) {
+                    SR_LOG_ERR_MSG("String duplication failed");
+                    return SR_ERR_NOMEM;
+                }
+                break;
+            case LYS_ANYDATA:
+                sr_mem_edit_string(value->_sr_mem, &value->data.anydata_val, node->value.str);
+                if (NULL == value->data.anydata_val) {
+                    SR_LOG_ERR_MSG("String duplication failed");
+                    return SR_ERR_NOMEM;
+                }
+                break;
+            default:
+                SR_LOG_ERR("Copy value failed for anydata node '%s'", node_name);
+                return SR_ERR_INTERNAL;
+        }
+    }
+
+    return SR_ERR_OK;
+}
 
 static int
 sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
@@ -1238,6 +1279,24 @@ sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **
         CHECK_NULL_NOMEM_RETURN(*out);
         snprintf(*out, len + 1, "%"PRIu64, value->data.uint64_val);
         break;
+    case SR_ANYXML_T:
+        if (NULL != value->data.anyxml_val){
+            *out = strdup(value->data.anyxml_val);
+            CHECK_NULL_NOMEM_RETURN(*out);
+        } else {
+            *out = NULL;
+            return SR_ERR_OK;
+        }
+        break;
+    case SR_ANYDATA_T:
+        if (NULL != value->data.anydata_val){
+            *out = strdup(value->data.anydata_val);
+            CHECK_NULL_NOMEM_RETURN(*out);
+        } else {
+            *out = NULL;
+            return SR_ERR_OK;
+        }
+        break;
     default:
         SR_LOG_ERR_MSG("Conversion of value_t to string failed");
         *out = NULL;
@@ -1303,6 +1362,7 @@ sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_no
     int rc = SR_ERR_OK;
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_container *cont = NULL;
+    struct lyd_node_anydata *sch_any = NULL;
     const struct lyd_node *child = NULL;
     size_t idx = 0;
     sr_node_t *sr_subtree = NULL;
@@ -1320,10 +1380,7 @@ sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_no
             data_leaf = (struct lyd_node_leaf_list *)node;
             sr_tree->type = sr_libyang_leaf_get_type(data_leaf);
             rc = sr_libyang_leaf_copy_value(data_leaf, (sr_val_t *)sr_tree);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
-                goto cleanup;
-            }
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
             break;
         case LYS_CONTAINER:
             cont = (struct lys_node_container *)node->schema;
@@ -1331,6 +1388,13 @@ sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_no
             break;
         case LYS_LIST:
             sr_tree->type = SR_LIST_T;
+            break;
+        case LYS_ANYXML:
+        case LYS_ANYDATA:
+            sch_any = (struct lyd_node_anydata *) node;
+            sr_tree->type = (LYS_ANYXML == node->schema->nodetype) ? SR_ANYXML_T : SR_ANYDATA_T;
+            rc = sr_libyang_anydata_copy_value(sch_any, (sr_val_t *)sr_tree);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Error returned from sr_libyang_anydata_copy_value: %s.", sr_strerror(rc));
             break;
         default:
             SR_LOG_ERR("Detected unsupported node data type (schema name: %s).", sr_tree->name);
@@ -1689,6 +1753,12 @@ sr_free_val_content(sr_val_t *value)
     }
     else if (SR_INSTANCEID_T == value->type){
         free(value->data.instanceid_val);
+    }
+    else if (SR_ANYXML_T == value->type){
+        free(value->data.anyxml_val);
+    }
+    else if (SR_ANYDATA_T == value->type){
+        free(value->data.anydata_val);
     }
     value->xpath = NULL;
     value->data.int64_val = 0;
@@ -2229,5 +2299,66 @@ sr_print(sr_print_ctx_t *print_ctx, const char *format, ...)
 cleanup:
     free(str);
     va_end(va);
+    return rc;
+}
+
+int
+sr_create_uri_for_module(const struct lys_module *module, char **uri)
+{
+    CHECK_NULL_ARG4(module, uri, module->name, module->ns);
+
+    int rc = SR_ERR_OK;
+    char *buffer = NULL;
+    sr_list_t *features = NULL;
+
+    rc = sr_list_init(&features);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
+
+    size_t len = strlen(module->ns)+strlen("?module=")+strlen(module->name)+1;
+
+    if (0 < module->rev_size) {
+        len += strlen("&amp;revision=")+strlen(module->rev[0].date);
+    }
+
+    if (0 < module->features_size) {
+        for (uint8_t i = 0; i < module->features_size; i++) {
+            if (module->features[i].flags & LYS_FENABLED) {
+                len += strlen(module->features[i].name);
+                rc = sr_list_add(features, (void *) module->features[i].name);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add feature into list");
+            }
+        }
+        if (features->count > 0) {
+            len += strlen("&amp;features=");
+            len += features->count -1; /*commas among feature names*/
+        }
+    }
+    buffer = calloc(len, sizeof(*buffer));
+    CHECK_NULL_NOMEM_GOTO(buffer, rc, cleanup);
+
+    snprintf(buffer, len, "%s?module=%s", module->ns, module->name);
+    size_t ptr = strlen(buffer);
+    snprintf(buffer + ptr, len-ptr, "&amp;revision=%s", module->rev[0].date);
+
+    if (features->count > 0) {
+        ptr = strlen(buffer);
+        snprintf(buffer + ptr, len-ptr, "&amp;features=");
+        ptr += strlen("&amp;features=");
+
+        for (size_t i = 0; i < features->count; i++) {
+            snprintf(buffer+ptr, len-ptr, "%s,", (char *)features->data[i]);
+            ptr += strlen((char *)features->data[i])+1;
+        }
+        /* overwrite last comma by terminating NULL byte*/
+        buffer[len-1] = 0;
+    }
+
+cleanup:
+    sr_list_cleanup(features);
+    if (SR_ERR_OK == rc ) {
+        *uri = buffer;
+    } else {
+        free(buffer);
+    }
     return rc;
 }

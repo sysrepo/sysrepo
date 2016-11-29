@@ -29,64 +29,20 @@ __license__ = "Apache 2.0"
 import libsysrepoPython2 as sr
 import sys
 
-# Function for printing out values depending on their type.
-def print_value(value):
-    print value.xpath() + " ",
-
-    if (value.type() == sr.SR_CONTAINER_T):
-        print "(container)"
-    elif (value.type() == sr.SR_CONTAINER_PRESENCE_T):
-        print "(container)"
-    elif (value.type() == sr.SR_LIST_T):
-        print "(list instance)"
-    elif (value.type() == sr.SR_STRING_T):
-        print "= " + value.data().get_string()
-    elif (value.type() == sr.SR_BOOL_T):
-        if (value.data().get_bool()):
-            print "= true"
-        else:
-            print "= false"
-    elif (value.type() == sr.SR_ENUM_T):
-        print "= " + value.data().get_enum()
-    elif (value.type() == sr.SR_UINT8_T):
-        print "= " + repr(value.data().get_uint8())
-    elif (value.type() == sr.SR_UINT16_T):
-        print "= " + repr(value.data().get_uint16())
-    elif (value.type() == sr.SR_UINT32_T):
-        print "= " + repr(value.data().get_uint32())
-    elif (value.type() == sr.SR_UINT64_T):
-        print "= " + repr(value.data().get_uint64())
-    elif (value.type() == sr.SR_INT8_T):
-        print "= " + repr(value.data().get_int8())
-    elif (value.type() == sr.SR_INT16_T):
-        print "= " + repr(value.data().get_int16())
-    elif (value.type() == sr.SR_INT32_T):
-        print "= " + repr(value.data().get_int32())
-    elif (value.type() == sr.SR_INT64_T):
-        print "= " + repr(value.data().get_int64())
-    elif (value.type() == sr.SR_IDENTITYREF_T):
-        print "= " + repr(value.data().get_identityref())
-    elif (value.type() == sr.SR_BITS_T):
-        print "= " + repr(value.data().get_bits())
-    elif (value.type() == sr.SR_BINARY_T):
-        print "= " + repr(value.data().get_binary())
-    else:
-        print "(unprintable)"
-
 # Helper function for printing changes given operation, old and new value.
 def print_change(op, old_val, new_val):
     if (op == sr.SR_OP_CREATED):
            print "CREATED: ",
-           print_value(new_val)
+           print new_val.to_string(),
     elif (op == sr.SR_OP_DELETED):
            print "DELETED: ",
-           print_value(old_val);
+           print old_val.to_string(),
     elif (op == sr.SR_OP_MODIFIED):
            print "MODIFIED: ",
            print "old value",
-           print_value(old_val)
+           print old_val.to_string(),
            print "new value",
-           print_value(new_val)
+           print new_val.to_string(),
     elif (op == sr.SR_OP_MOVED):
         print "MOVED: " + new_val.xpath() + " after " + old_val.xpath()
 
@@ -109,7 +65,7 @@ def print_current_config(session, module_name):
     values = session.get_items(select_xpath)
 
     for i in range(values.val_cnt()):
-        print_value(values.val(i))
+        print values.val(i).to_string(),
 
 # Function to be called for subscribed client of given session whenever configuration changes.
 def module_change_cb(sess, module_name, event, private_ctx):
@@ -125,11 +81,10 @@ def module_change_cb(sess, module_name, event, private_ctx):
 
         change_path = "/" + module_name + ":*"
 
-        subscribe = sr.Subscribe(sess);
-        it = subscribe.get_changes_iter(change_path);
+        it = sess.get_changes_iter(change_path);
 
         while True:
-            change = subscribe.get_change_next(it)
+            change = sess.get_change_next(it)
             if change == None:
                 break
             print_change(change.oper(), change.old_val(), change.new_val())

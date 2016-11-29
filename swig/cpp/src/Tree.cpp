@@ -104,6 +104,23 @@ S_Tree Tree::last_child() {
     S_Tree node(new Tree(_node->last_child, _deleter));
     return node;
 }
+S_String Tree::to_string(int depth_limit) {
+    char *mem = NULL;
+
+    int ret = sr_print_tree_mem(&mem, _node, depth_limit);
+    if (SR_ERR_OK == ret) {
+        if (mem == NULL)
+            return NULL;
+        S_String string_val = mem;
+        free(mem);
+        return string_val;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
+        throw_exception(ret);
+        return NULL;
+    }
+}
 void Tree::set_name(const char *name) {
     if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
     int ret = sr_node_set_name(_node, name);
@@ -305,3 +322,4 @@ S_Trees Trees_Holder::allocate(size_t n) {
     return trees;
 }
 Trees_Holder::~Trees_Holder() {return;}
+

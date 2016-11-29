@@ -236,6 +236,14 @@ sysrepoctl_test_feature(void **state)
     snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\| if-mib[[:space:]]*\n", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
+    /* already enabled, shouldn't throw an error */
+    exec_shell_command("../src/sysrepoctl --feature-enable=if-mib --module=ietf-interfaces",
+                       "Enabling feature 'if-mib' in the module 'ietf-interfaces'.\n"
+                       "Operation completed successfully.", true, 0);
+    test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
+                      "<enabled-features>.*<feature-name>if-mib</feature-name>.*</enabled-features>", true);
+    exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
+
     /* disable */
     exec_shell_command("../src/sysrepoctl --feature-disable=if-mib --module=ietf-interfaces",
                        "Disabling feature 'if-mib' in the module 'ietf-interfaces'.\n"
@@ -243,6 +251,14 @@ sysrepoctl_test_feature(void **state)
     test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
                       "!<enabled-features>.*<feature-name>if-mib</feature-name>.*</enabled-features>", true);
     snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n", user);
+    exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
+
+    /* already disabled, shouldn't throw an error */
+    exec_shell_command("../src/sysrepoctl --feature-disable=if-mib --module=ietf-interfaces",
+                       "Disabling feature 'if-mib' in the module 'ietf-interfaces'.\n"
+                       "Operation completed successfully.", true, 0);
+    test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
+                      "!<enabled-features>.*<feature-name>if-mib</feature-name>.*</enabled-features>", true);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 }
 

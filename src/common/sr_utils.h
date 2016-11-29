@@ -343,6 +343,14 @@ int sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t
 int sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value);
 
 /**
+ * @brief Copies value from lyd_node_anydata to the sr_val_t.
+ * @param [in] input which is copied
+ * @param [in] value where the content is copied to
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *value);
+
+/**
  * @brief Converts sr_val_t to string representation, used in set item.
  * @param [in] value
  * @param [in] schema_node
@@ -589,6 +597,15 @@ bool sr_lys_module_has_data(const struct lys_module *module);
  * @param [in] format Format string followed by corresponding set of extra arguments.
  */
 int sr_print(sr_print_ctx_t *print_ctx, const char *format, ...);
+
+/**
+ * @brief Creates the uri for module with the following pattern:
+ * NAMESPACE?module=MODULE_NAME&amp;revision=REVISION&amp;features=FEATURE1,FEATURE2
+ * @param [in] module - module to generate uri from
+ * @param [out] uri
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_create_uri_for_module(const struct lys_module *module, char **uri);
 
 /**@} utils */
 
