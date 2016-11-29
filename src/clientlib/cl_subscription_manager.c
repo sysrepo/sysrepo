@@ -1298,7 +1298,6 @@ cl_sm_accept_server_connections(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_
             } else {
                 /* error by accept - only log the error and skip it */
                 SR_LOG_ERR("Unexpected error by accepting new connection: %s", sr_strerror_safe(errno));
-                continue;
             }
         }
     } while (-1 != clnt_fd); /* accept returns -1 when there are no more connections to accept */
