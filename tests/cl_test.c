@@ -5076,7 +5076,7 @@ main()
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(cl_connection_test, logging_setup, NULL),
             cmocka_unit_test_setup_teardown(cl_multiconnect_test, logging_setup, NULL),
-            mocka_unit_test_setup_teardown(cl_disconnect_test, logging_setup, NULL),
+            cmocka_unit_test_setup_teardown(cl_disconnect_test, logging_setup, NULL),
             cmocka_unit_test_setup_teardown(cl_list_schemas_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_schema_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
