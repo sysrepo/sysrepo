@@ -53,7 +53,6 @@ typedef struct sr_conn_ctx_s {
     struct sr_session_list_s *session_list;  /**< Linked-list of associated sessions. */
     bool library_mode;                       /**< Determine if we are connected to sysrepo daemon
                                                   or our own sysrepo engine (library mode). */
-    cm_ctx_t *local_cm;                      /**< Local Connection Manager in case of library mode. */
 } sr_conn_ctx_t;
 
 /**

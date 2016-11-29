@@ -375,6 +375,11 @@ typedef enum sr_datastore_e {
 /**
  * @brief Connects to the sysrepo datastore (Sysrepo Engine).
  *
+ * @note If the client library loses connection to the Sysrepo Engine during
+ * the lifetime of the application, all Sysrepo API calls will start returning
+ * ::SR_ERR_DISCONNECT error. In this case, the application is supposed to reconnect
+ * with another ::sr_connect call and restart all lost sessions.
+ *
  * @param[in] app_name Name of the application connecting to the datastore
  * (can be a static string). Used only for accounting purposes.
  * @param[in] opts Options overriding default connection handling by this call.
