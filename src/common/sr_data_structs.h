@@ -192,14 +192,14 @@ void sr_btree_cleanup(sr_btree_t* tree);
  * @brief Inserts a new item into the tree.
  *
  * A matching item to the inserted one (according to the compare function) must
- * not already exist in the tree, otherwise SR_ERR_EXISTS error is returned.
+ * not already exist in the tree, otherwise SR_ERR_DATA_EXISTS error is returned.
  *
  * @note O(log n).
  *
  * @param[in] tree Binary tree context acquired with ::sr_btree_init.
  * @param[in] item Item to be inserted.
  *
- * @return Error code (SR_ERR_OK on success, SR_ERR_EXISTS if the item already
+ * @return Error code (SR_ERR_OK on success, SR_ERR_DATA_EXISTS if the item already
  * exists in the tree, SR_ERR_NOMEM by memory allocation error).
  */
 int sr_btree_insert(sr_btree_t *tree, void *item);

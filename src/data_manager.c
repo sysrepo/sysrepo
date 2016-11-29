@@ -1490,8 +1490,12 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize Module Dependencies context.");
 
 #ifdef ENABLE_NACM
-    rc = nacm_init(ctx, ctx->data_search_dir, &ctx->nacm_ctx);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize NACM context.");
+    if (CM_MODE_DAEMON == conn_mode) {
+        rc = nacm_init(ctx, ctx->data_search_dir, &ctx->nacm_ctx);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize NACM context.");
+    } else {
+        SR_LOG_INF_MSG("Sysrepo is running in the local mode => NACM will be disabled.");
+    }
 #endif
 
     *dm_ctx = ctx;
@@ -4978,4 +4982,11 @@ dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const str
     }
 
     return rc;
+}
+
+int
+dm_get_nacm_ctx(dm_ctx_t *dm_ctx, nacm_ctx_t **nacm_ctx){
+    CHECK_NULL_ARG2(dm_ctx, nacm_ctx);
+    *nacm_ctx = dm_ctx->nacm_ctx;
+    return SR_ERR_OK;
 }
