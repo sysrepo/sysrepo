@@ -28,6 +28,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <signal.h>
+#include <fcntl.h>
 
 #include "sr_constants.h"
 #include "sysrepo.h"
@@ -178,7 +179,7 @@ cl_disconnect_test(void **state)
 {
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
-    int pipefd[2] = { -1, -1 }, closed = -1;
+    int fd_to_close = -1, fd_to_close_id = -1;
     int rc = 0;
 
     /* connect to sysrepo */
@@ -191,21 +192,43 @@ cl_disconnect_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess);
 
+
     /* close the highest used file descriptor & create a new one on that place */
     signal(SIGPIPE, SIG_IGN);
-    rc = pipe(pipefd);
-    assert_int_not_equal(rc, -1);
-    closed = pipefd[0] - 1;
-    close(closed);
+    int pipefd[2];
+    pipe(pipefd);
+    for (size_t i = 0; i <= pipefd[1]; i++) {
+        char target_path[256];
+        char link_path[256];
+        snprintf(link_path, 256, "/proc/self/fd/%zu", i);
+        /* Attempt to read the target of the symbolic link. */
+        int len = readlink (link_path, target_path, sizeof(target_path));
+        target_path[len] = '\0';
+      /* Print it. */
+      printf ("%zu %s\n", i, target_path);
+      int id, ret;
+      ret = sscanf(target_path, "socket:[%d]", &id);
+      if (1 == ret) {
+          if (id > fd_to_close_id) {
+              fd_to_close = i;
+              fd_to_close_id = id;
+          }
+      }
+    }
+    printf("\n\n%d will be closed\n\n", fd_to_close );
+
+    close(fd_to_close);
     close(pipefd[0]);
     close(pipefd[1]);
     rc = pipe(pipefd);
-    if (closed == pipefd[0]) {
+    if (fd_to_close == pipefd[0]) {
         close(pipefd[1]);
     } else {
-        assert_int_equal(closed, pipefd[0]);
+        assert_int_equal(fd_to_close, pipefd[0]);
         close(pipefd[0]);
     }
+
+
 
     /* try session_data_refresh - should fail with SR_ERR_DISCONNECT */
     rc = sr_session_refresh(sess);
@@ -5025,52 +5048,52 @@ int
 main()
 {
     const struct CMUnitTest tests[] = {
-//            cmocka_unit_test_setup_teardown(cl_connection_test, logging_setup, NULL),
+            cmocka_unit_test_setup_teardown(cl_connection_test, logging_setup, NULL),
             cmocka_unit_test_setup_teardown(cl_disconnect_test, logging_setup, NULL),
-//            cmocka_unit_test_setup_teardown(cl_list_schemas_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_get_schema_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_get_subtree_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_get_subtrees_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_iterative_tree_traversal, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_iterative_trees_traversal, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_set_item_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_delete_item_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_move_item_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_validate_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_commit_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_discard_changes_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_locking_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_ds_locking_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_refresh_session, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_refresh_session2, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_notification_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_copy_config_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_copy_config_test2, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_rpc_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_rpc_tree_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_rpc_combo_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_failed_rpc_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_invalid_rpc_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_action_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_action_tree_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_action_combo_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_candidate_refresh, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_get_changes_iter_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_enable_empty_startup, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_dp_get_items_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_session_set_opts, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_event_notif_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_event_notif_tree_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_event_notif_combo_test, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_cross_module_dependency, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_data_in_submodule, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(cl_get_schema_with_subscription, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_list_schemas_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_schema_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_subtree_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_subtrees_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_iterative_tree_traversal, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_iterative_trees_traversal, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_set_item_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_delete_item_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_move_item_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_validate_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_commit_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_discard_changes_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_locking_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_ds_locking_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_refresh_session, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_refresh_session2, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_notification_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_copy_config_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_copy_config_test2, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_rpc_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_rpc_tree_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_rpc_combo_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_failed_rpc_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_invalid_rpc_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_action_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_action_tree_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_action_combo_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_candidate_refresh, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_changes_iter_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_enable_empty_startup, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_dp_get_items_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_session_set_opts, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_event_notif_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_event_notif_tree_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_event_notif_combo_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_cross_module_dependency, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_data_in_submodule, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_schema_with_subscription, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
