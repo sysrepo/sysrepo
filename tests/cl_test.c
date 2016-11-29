@@ -177,13 +177,15 @@ cl_connection_test(void **state)
 static void
 cl_disconnect_test(void **state)
 {
-#ifdef __linux__ /* /proc/self/fd is Linux-only */
+    /* used to retrieve fd from conn_ctx */
+    typedef struct test_sr_conn_ctx_s {
+        int fd;
+    } test_sr_conn_ctx_t;
+
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
-    char target_path[PATH_MAX] = { 0, };
-    char link_path[PATH_MAX] = { 0, };
     int pipefd[2] = { -1, -1 };
-    int fd_to_close = -1, fd_to_close_id = -1;
+    int fd_to_close = -1;
     int rc = 0;
 
     signal(SIGPIPE, SIG_IGN); /* ignore sigpipe */
@@ -198,28 +200,11 @@ cl_disconnect_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess);
 
-    /* close the highest used socket file descriptor & create a new one on that place */
-    pipe(pipefd);
-    for (size_t fd = 0; fd < pipefd[1]; fd++) {
-        snprintf(link_path, PATH_MAX - 1, "/proc/self/fd/%zu", fd);
-        int len = readlink (link_path, target_path, sizeof(target_path));
-        if (len > 0) {
-            target_path[len] = '\0';
-            int id, ret;
-            ret = sscanf(target_path, "socket:[%d]", &id);
-            if (1 == ret) {
-                if (id > fd_to_close_id) {
-                    fd_to_close = fd;
-                    fd_to_close_id = id;
-                }
-            }
-        }
-    }
+    /* close the socket to the server and replace it with pipe */
+    fd_to_close = ((test_sr_conn_ctx_t*)conn)->fd;
     printf("fd %d will be closed\n", fd_to_close);
     close(fd_to_close);
-    close(pipefd[0]);
-    close(pipefd[1]);
-    rc = pipe(pipefd);
+    pipe(pipefd);
     if (fd_to_close == pipefd[0]) {
         close(pipefd[1]);
     } else {
@@ -248,7 +233,6 @@ cl_disconnect_test(void **state)
 
     /* disconnect from sysrepo */
     sr_disconnect(conn);
-#endif
 }
 
 static void
