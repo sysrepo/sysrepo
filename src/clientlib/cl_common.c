@@ -201,11 +201,11 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg, sr_mem_ctx_t *sr_mem_res
                 continue;
             }
             if (EAGAIN == errno || EWOULDBLOCK == errno) {
-                SR_LOG_ERR_MSG("While waiting for a response, time out has expired.");
+                SR_LOG_ERR_MSG("While waiting for a response, timeout has expired.");
                 return SR_ERR_TIME_OUT;
             }
             SR_LOG_ERR("Error by receiving of the message: %s.", sr_strerror_safe(errno));
-            return SR_ERR_MALFORMED_MSG;
+            return SR_ERR_DISCONNECT;
         }
         if (0 == len) {
             SR_LOG_ERR_MSG("Sysrepo server disconnected.");
@@ -235,8 +235,12 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg, sr_mem_ctx_t *sr_mem_res
             if (errno == EINTR) {
                 continue;
             }
+            if (EAGAIN == errno || EWOULDBLOCK == errno) {
+                SR_LOG_ERR_MSG("While waiting for a response, timeout has expired.");
+                return SR_ERR_TIME_OUT;
+            }
             SR_LOG_ERR("Error by receiving of the message: %s.", sr_strerror_safe(errno));
-            return SR_ERR_MALFORMED_MSG;
+            return SR_ERR_DISCONNECT;
         }
         if (0 == len) {
             SR_LOG_ERR_MSG("Sysrepo server disconnected.");
