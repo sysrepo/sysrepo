@@ -175,6 +175,50 @@ cl_connection_test(void **state)
 }
 
 static void
+cl_multiconnect_test(void **state)
+{
+    sr_conn_ctx_t *conn1 = NULL, *conn2 = NULL;
+    sr_session_ctx_t *sess1 = NULL, *sess2 = NULL;
+    int rc = 0;
+
+    /* connect to sysrepo - conn 1 */
+    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn1);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(conn1);
+
+    /* connect to sysrepo - conn 2 */
+    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn2);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(conn2);
+
+    /* start a new session in conn 1 */
+    rc = sr_session_start(conn1, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess1);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(sess1);
+
+    /* start a new session in conn 2 */
+    rc = sr_session_start(conn2, SR_DS_STARTUP, SR_SESS_DEFAULT, &sess2);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(sess2);
+
+    /* try session_data_refresh in both sessions */
+    rc = sr_session_refresh(sess1);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_refresh(sess2);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* disconnect from sysrepo - conn 1 */
+    sr_disconnect(conn1);
+
+    /* try session_data_refresh via conn2 - should still work */
+    rc = sr_session_refresh(sess2);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* disconnect from sysrepo - conn 2 */
+    sr_disconnect(conn2);
+}
+
+static void
 cl_disconnect_test(void **state)
 {
     /* used to retrieve fd from conn_ctx */
@@ -5031,7 +5075,8 @@ main()
 {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(cl_connection_test, logging_setup, NULL),
-            cmocka_unit_test_setup_teardown(cl_disconnect_test, logging_setup, NULL),
+            cmocka_unit_test_setup_teardown(cl_multiconnect_test, logging_setup, NULL),
+            mocka_unit_test_setup_teardown(cl_disconnect_test, logging_setup, NULL),
             cmocka_unit_test_setup_teardown(cl_list_schemas_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_schema_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
