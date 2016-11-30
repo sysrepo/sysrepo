@@ -342,6 +342,159 @@ circular_buffer_test3(void **state)
 }
 
 /*
+ * Tests sysrepo bitset DS.
+ */
+static void
+sr_bitset_test(void **state)
+{
+    sr_bitset_t *bitset1 = NULL, *bitset2 = NULL;
+    const size_t bit_count1 = 33, bit_count2 = 80;
+    bool value = false, disjoint = false;
+    size_t i = 0;
+    int rc = SR_ERR_OK;
+
+    assert_true(sr_bitset_empty(bitset1));
+    assert_true(sr_bitset_empty(bitset2));
+
+    /* test initialization */
+    rc = sr_bitset_init(bit_count1, NULL);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
+    rc = sr_bitset_init(0, &bitset1);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
+    rc = sr_bitset_init(bit_count1, &bitset1);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_bitset_init(bit_count2, &bitset2);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* initially all zero */
+    assert_true(sr_bitset_empty(bitset1));
+    assert_true(sr_bitset_empty(bitset2));
+    for (i = 0; i < bit_count1; i++) {
+        rc = sr_bitset_get(bitset1, i, &value);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_false(value);
+    }
+    for (i = 0; i < bit_count2; i++) {
+        rc = sr_bitset_get(bitset2, i, &value);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_false(value);
+    }
+
+    /* out of the range */
+    rc = sr_bitset_get(bitset1, bit_count1, &value);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    rc = sr_bitset_get(bitset2, bit_count2, &value);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* set some bits */
+    rc = sr_bitset_set(bitset1, 0, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset1, 12, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset1, 32, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset1, 33, true); /* out of the range */
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    rc = sr_bitset_set(bitset2, 6, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset2, 13, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset2, 41, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset2, 70, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset2, 80, true); /* out of the range */
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    assert_false(sr_bitset_empty(bitset1));
+    assert_false(sr_bitset_empty(bitset2));
+
+    /* test that the bits were set */
+    for (i = 0; i < bit_count1; i++) {
+        rc = sr_bitset_get(bitset1, i, &value);
+        assert_int_equal(SR_ERR_OK, rc);
+        switch (i) {
+            case 0:
+            case 12:
+            case 32:
+                assert_true(value);
+                break;
+            default:
+                assert_false(value);
+        }
+    }
+    for (i = 0; i < bit_count2; i++) {
+        rc = sr_bitset_get(bitset2, i, &value);
+        assert_int_equal(SR_ERR_OK, rc);
+        switch (i) {
+            case 6:
+            case 13:
+            case 41:
+            case 70:
+                assert_true(value);
+                break;
+            default:
+                assert_false(value);
+        }
+    }
+
+    /* sets are disjoint */
+    rc = sr_bitset_disjoint(bitset1, bitset2, &disjoint);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(disjoint);
+
+    /* make the intersection of sets non-empty */
+    rc = sr_bitset_set(bitset2, 0, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset2, 32, true);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_bitset_disjoint(bitset1, bitset2, &disjoint);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(disjoint);
+
+    /* still not empty intersection */
+    rc = sr_bitset_set(bitset2, 0, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_bitset_disjoint(bitset1, bitset2, &disjoint);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(disjoint);
+
+    /* disjoint again */
+    rc = sr_bitset_set(bitset2, 32, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_bitset_disjoint(bitset1, bitset2, &disjoint);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(disjoint);
+
+    /* reset all bits to zero */
+    sr_bitset_reset(bitset1);
+    sr_bitset_reset(bitset2);
+    assert_true(sr_bitset_empty(bitset1));
+    assert_true(sr_bitset_empty(bitset2));
+    for (i = 0; i < bit_count1; i++) {
+        rc = sr_bitset_get(bitset1, i, &value);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_false(value);
+    }
+    for (i = 0; i < bit_count2; i++) {
+        rc = sr_bitset_get(bitset2, i, &value);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_false(value);
+    }
+
+    /* cleanup */
+    sr_bitset_cleanup(bitset1);
+    sr_bitset_cleanup(bitset2);
+}
+
+/*
  * Callback to be called for each entry to be logged in logger_callback_test.
  */
 void
@@ -1199,6 +1352,7 @@ main() {
             cmocka_unit_test_setup_teardown(circular_buffer_test1, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test2, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test3, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_bitset_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(logger_callback_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_locking_set_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_node_t_test, logging_setup, logging_cleanup),

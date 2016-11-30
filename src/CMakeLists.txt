@@ -71,6 +71,7 @@ set(SYSREPO_ENGINE_SOURCES
     notification_processor.c
     persistence_manager.c
     module_dependencies.c
+    nacm.c
 )
 
 add_library(COMMON OBJECT ${COMMON_SOURCES})
