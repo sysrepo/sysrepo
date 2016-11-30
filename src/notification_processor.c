@@ -505,11 +505,11 @@ np_get_notif_store_filename(const char *module_name, time_t received_time, char 
         close(fd);
         rc = sr_set_data_file_permissions(filename_buff, false, SR_DATA_SEARCH_DIR, module_name, false);
         if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Error by applying correct data file permissions on file '%s'.", filename_buff);
+            SR_LOG_WRN("Error by applying correct data file permissions on file '%s'.", filename_buff);
         }
     }
 
-    return rc;
+    return SR_ERR_OK;
 }
 
 /**
@@ -1324,7 +1324,7 @@ np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt
 
 #define TIME_BUF_SIZE 64
 int
-np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t time,
+np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t generated_time,
         struct lyd_node **notif_data_tree)
 {
     char *module_name = NULL;
@@ -1333,12 +1333,14 @@ np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char 
     int fd = -1;
     int rc = SR_ERR_OK;
 
+    CHECK_NULL_ARG3(np_ctx, xpath, notif_data_tree);
+
     /* extract module name from xpath */
     rc = sr_copy_first_ns(xpath, &module_name);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
 
     /* get curret notification data filename */
-    rc = np_get_notif_store_filename(module_name, time, data_filename, PATH_MAX);
+    rc = np_get_notif_store_filename(module_name, generated_time, data_filename, PATH_MAX);
     CHECK_RC_LOG_RETURN(rc, "Unable to compose notif. data file name for '%s'.", module_name);
 
     /* load notif. data */
@@ -1347,7 +1349,7 @@ np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char 
 
     char data_path[PATH_MAX] = { 0, };
     char time_buf[TIME_BUF_SIZE];
-    sr_time_to_string(time, time_buf, TIME_BUF_SIZE);
+    sr_time_to_string(generated_time, time_buf, TIME_BUF_SIZE);
     struct timespec spec;
     sr_clock_get_time(CLOCK_REALTIME, &spec);
 

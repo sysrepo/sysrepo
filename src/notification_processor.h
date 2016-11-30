@@ -289,9 +289,18 @@ void np_free_subscription_content(np_subscription_t *subscription);
 void np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt);
 
 /**
- * @brief TODO
+ * @brief Stores a notification in the notification datastore.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] ac_ucred_t Credentials of the user requesting storing of the notification.
+ * @param[in] xpath XPath of the notification to be stored.
+ * @param[in] time Time when notification has been generated.
+ * @param[in] data_tree Pointer to the data tree of the notification. Will be freed and pointer
+ * set to NULL upon successful execution.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
-int np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t time,
+int np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t generated_time,
         struct lyd_node **data_tree);
 
 /**@} np */
