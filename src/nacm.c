@@ -149,6 +149,20 @@ cleanup:
 }
 
 /**
+ * @brief Compare two NACM users.
+ */
+static int
+nacm_compare_users(const void *user1_ptr, const void *user2_ptr)
+{
+    if (NULL == user1_ptr || NULL == user2_ptr) {
+        return 0;
+    }
+
+    nacm_user_t *user1 = (nacm_user_t *)user1_ptr, *user2 = (nacm_user_t *)user2_ptr;
+    return strcmp(user1->name, user2->name);
+}
+
+/**
  * @brief Deallocate all memory associated with nacm_rule_t.
  */
 static void
@@ -256,20 +270,6 @@ cleanup:
         *rule_list_p = rule_list;
     }
     return rc;
-}
-
-/**
- * @brief Compare two NACM users.
- */
-static int
-nacm_compare_users(const void *user1_ptr, const void *user2_ptr)
-{
-    if (NULL == user1_ptr || NULL == user2_ptr) {
-        return 0;
-    }
-
-    nacm_user_t *user1 = (nacm_user_t *)user1_ptr, *user2 = (nacm_user_t *)user2_ptr;
-    return strcmp(user1->name, user2->name);
 }
 
 /**

@@ -1,5 +1,5 @@
 /**
- * @file module_dependencies.h
+ * @file nacm.h
  * @author Milan Lenco <milan.lenco@pantheon.tech>
  * @brief NETCONF Access Control Model API (RFC 6536).
  *
