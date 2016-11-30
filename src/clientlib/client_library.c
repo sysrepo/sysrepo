@@ -413,6 +413,7 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
                     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepod: %s.", sr_strerror(rc));
                 } else {
                     SR_LOG_WRN("Unable to start sysrepo daemon, error code=%d.", ret);
+                    goto cleanup;
                 }
             } else {
                 SR_LOG_ERR_MSG("Sysrepo daemon not detected while library mode disallowed.");
