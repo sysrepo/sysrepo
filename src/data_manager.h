@@ -38,6 +38,7 @@
 #include "persistence_manager.h"
 #include "connection_manager.h"
 #include "module_dependencies.h"
+#include "nacm.h"
 
 /**
  * @brief number of supported data stores - length of arrays used in session
@@ -1040,6 +1041,16 @@ int dm_lock_schema_info_write(dm_schema_info_t *schema_info);
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const struct lys_node *node, struct ly_set **res);
+
+/**
+ * @brief Returns and instance of NACM context
+ * @param [in] dm_ctx
+ * @param [out] nacm_ctx
+ *
+ * @return Error code (SR_ERR_OK on success)
+ *
+ */
+int dm_get_nacm_ctx(dm_ctx_t *dm_ctx, nacm_ctx_t **nacm_ctx);
 
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

@@ -40,6 +40,7 @@
 #include "persistence_manager.h"
 #include "rp_dt_edit.h"
 #include "module_dependencies.h"
+#include "nacm.h"
 
 /**
  * @brief Data manager context holding loaded schemas, data trees
@@ -50,6 +51,7 @@ typedef struct dm_ctx_s {
     np_ctx_t *np_ctx;             /**< Notification Processor context */
     pm_ctx_t *pm_ctx;             /**< Persistence Manager context */
     md_ctx_t *md_ctx;             /**< Module Dependencies context */
+    nacm_ctx_t *nacm_ctx;         /**< NACM context */
     cm_connection_mode_t conn_mode;  /**< Mode in which Connection Manager operates */
     char *schema_search_dir;      /**< location where schema files are located */
     char *data_search_dir;        /**< location where data files are located */
@@ -1488,6 +1490,15 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
                  internal_data_search_dir, false, &ctx->md_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize Module Dependencies context.");
 
+#ifdef ENABLE_NACM
+    if (CM_MODE_DAEMON == conn_mode) {
+        rc = nacm_init(ctx, ctx->data_search_dir, &ctx->nacm_ctx);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize NACM context.");
+    } else {
+        SR_LOG_INF_MSG("Sysrepo is running in the local mode => NACM will be disabled.");
+    }
+#endif
+
     *dm_ctx = ctx;
 
 cleanup:
@@ -1505,8 +1516,8 @@ void
 dm_cleanup(dm_ctx_t *dm_ctx)
 {
     if (NULL != dm_ctx) {
+        nacm_cleanup(dm_ctx->nacm_ctx);
         sr_btree_cleanup(dm_ctx->commit_ctxs.tree);
-
         free(dm_ctx->schema_search_dir);
         free(dm_ctx->data_search_dir);
         free(dm_ctx->ds_lock);
@@ -1515,7 +1526,6 @@ dm_cleanup(dm_ctx_t *dm_ctx)
         pthread_rwlock_destroy(&dm_ctx->schema_tree_lock);
         sr_locking_set_cleanup(dm_ctx->locking_ctx);
         pthread_mutex_destroy(&dm_ctx->ds_lock_mutex);
-
         pthread_rwlock_destroy(&dm_ctx->commit_ctxs.lock);
         free(dm_ctx);
     }
@@ -4980,4 +4990,11 @@ dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const str
     }
 
     return rc;
+}
+
+int
+dm_get_nacm_ctx(dm_ctx_t *dm_ctx, nacm_ctx_t **nacm_ctx){
+    CHECK_NULL_ARG2(dm_ctx, nacm_ctx);
+    *nacm_ctx = dm_ctx->nacm_ctx;
+    return SR_ERR_OK;
 }
