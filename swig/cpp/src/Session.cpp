@@ -46,6 +46,7 @@ Session::Session(S_Connection conn, sr_datastore_t datastore, const sr_sess_opti
     _datastore = datastore;
     _conn = NULL;
     _sess = NULL;
+    S_Deleter deleter(new Deleter(_sess));
 
     if (user_name == NULL) {
         /* start session */
@@ -61,6 +62,7 @@ Session::Session(S_Connection conn, sr_datastore_t datastore, const sr_sess_opti
         }
     }
 
+    _deleter = deleter;
     _conn = conn;
     return;
 
@@ -69,12 +71,13 @@ cleanup:
     return;
 }
 
-Session::Session(sr_session_ctx_t *sess, sr_sess_options_t opts)
+Session::Session(sr_session_ctx_t *sess, sr_sess_options_t opts, S_Deleter deleter)
 {
     _sess = sess;
     _opts = opts;
     _conn = NULL;
     _datastore = SR_DS_RUNNING;
+    _deleter = deleter;
 }
 
 void Session::session_stop()
