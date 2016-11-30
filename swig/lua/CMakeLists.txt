@@ -28,6 +28,7 @@ set_source_files_properties(${LUA_SWIG_BINDING}.i PROPERTIES CPLUSPLUS ON)
 file(COPY "examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
 swig_add_module(${LUA_SWIG_BINDING} lua ${LUA_SWIG_BINDING}.i)
+set_target_properties(${SWIG_MODULE_${LUA_SWIG_BINDING}_REAL_NAME} PROPERTIES PREFIX "")
 swig_link_libraries(${LUA_SWIG_BINDING} ${LUA_LIBRARIES} Sysrepo_Lua)
 
 # install binary
