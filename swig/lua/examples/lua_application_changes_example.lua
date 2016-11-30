@@ -86,8 +86,10 @@ function module_change_cb(sess, module_name, event, private_ctx)
     ok,res=pcall(run)
     if not ok then
         io.write("\nerror: ",res, "\n")
+        return tonumber(sr.SR_ERR_OPERATION_FAILED)
     end
 
+    return tonumber(sr.SR_ERR_OK)
 end
 
 -- Main client function.

@@ -45,6 +45,8 @@ function module_change_cb(session, module_name, event, private_ctx)
     io.write("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
 
     print_current_config(session, module_name)
+
+    return tonumber(sr.SR_ERR_OK)
 end
 
 -- Notable difference between c implementation is using exception mechanism for open handling unexpected events.
