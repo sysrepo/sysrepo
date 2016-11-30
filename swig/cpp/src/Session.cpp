@@ -463,8 +463,7 @@ Callback::~Callback() {return;}
 static int module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx) {
     S_Session sess(new Session(session));
     Callback *wrap = (Callback*) private_ctx;
-    wrap->module_change(sess, module_name, event, wrap->private_ctx["module_change"]);
-    return SR_ERR_OK;
+    return wrap->module_change(sess, module_name, event, wrap->private_ctx["module_change"]);
 }
 static void module_install_cb(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx) {
     Callback *wrap = (Callback*) private_ctx;
@@ -477,36 +476,31 @@ static void feature_enable_cb(const char *module_name, const char *feature_name,
 static int subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event, void *private_ctx) {
     S_Session sess(new Session(session));
     Callback *wrap = (Callback*) private_ctx;
-    wrap->subtree_change(sess, xpath, event, wrap->private_ctx["subtree_change"]);
-    return SR_ERR_OK;
+    return wrap->subtree_change(sess, xpath, event, wrap->private_ctx["subtree_change"]);
 }
 static int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx) {
     S_Vals in_vals(new Vals(input, input_cnt, NULL));
     S_Vals_Holder out_vals(new Vals_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
-    wrap->rpc(xpath, in_vals, out_vals, wrap->private_ctx["rpc_cb"]);
-    return SR_ERR_OK;
+    return wrap->rpc(xpath, in_vals, out_vals, wrap->private_ctx["rpc_cb"]);
 }
 static int action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx) {
     S_Vals in_vals(new Vals(input, input_cnt, NULL));
     S_Vals_Holder out_vals(new Vals_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
-    wrap->action(xpath, in_vals, out_vals, wrap->private_ctx["action_cb"]);
-    return SR_ERR_OK;
+    return wrap->action(xpath, in_vals, out_vals, wrap->private_ctx["action_cb"]);
 }
 static int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx) {
     S_Trees in_tree(new Trees(input, input_cnt, NULL));
     S_Trees_Holder out_tree(new Trees_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
-    wrap->rpc_tree(xpath, in_tree, out_tree, wrap->private_ctx["rpc_tree"]);
-    return SR_ERR_OK;
+    return wrap->rpc_tree(xpath, in_tree, out_tree, wrap->private_ctx["rpc_tree"]);
 }
 static int action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx) {
     S_Trees in_tree(new Trees(input, input_cnt, NULL));
     S_Trees_Holder out_tree(new Trees_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
-    wrap->action_tree(xpath, in_tree, out_tree, wrap->private_ctx["action_tree"]);
-    return SR_ERR_OK;
+    return wrap->action_tree(xpath, in_tree, out_tree, wrap->private_ctx["action_tree"]);
 }
 static void event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
     S_Vals vals(new Vals(values, values_cnt, NULL));
@@ -521,8 +515,7 @@ static void event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const
 static int dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
     S_Vals_Holder vals(new Vals_Holder(values, values_cnt));
     Callback *wrap = (Callback*) private_ctx;
-    wrap->dp_get_items(xpath, vals, wrap->private_ctx["dp_get_items"]);
-    return SR_ERR_OK;
+    return wrap->dp_get_items(xpath, vals, wrap->private_ctx["dp_get_items"]);
 }
 
 void Subscribe::module_change_subscribe(const char *module_name, S_Callback callback, \
