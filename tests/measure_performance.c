@@ -188,7 +188,7 @@ data_provide_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *
     sr_val_t *v = NULL;
 
     if (sr_xpath_node_name_eq(xpath, "interface")) {
-        rc = sr_new_values(if_count *2, &v);
+        rc = sr_new_values(if_count *5, &v);
         if (SR_ERR_OK != rc) {
             return rc;
         }
@@ -197,11 +197,22 @@ data_provide_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *
             v[i].type = SR_LIST_T;
 
             sr_val_build_xpath(&v[if_count+i], "/ietf-interfaces:interfaces-state/interface[name='eth%zu']/oper-status", i);
-            sr_val_set_str_data(&v[if_count+i], SR_ENUM_T, "down");
+            sr_val_set_str_data(&v[if_count+i], SR_ENUM_T, "up");
 
+            sr_val_build_xpath(&v[2*if_count+i], "/ietf-interfaces:interfaces-state/interface[name='eth%zu']/statistics/in-octets", i);
+            v[2*if_count+i].type = SR_UINT64_T;
+            v[2*if_count+i].data.uint64_val = 456213;
+
+            sr_val_build_xpath(&v[3*if_count+i], "/ietf-interfaces:interfaces-state/interface[name='eth%zu']/statistics/in-unicast-pkts", i);
+            v[3*if_count+i].type = SR_UINT64_T;
+            v[3*if_count+i].data.uint64_val = 45213;
+
+            sr_val_build_xpath(&v[3*if_count+i], "/ietf-interfaces:interfaces-state/interface[name='eth%zu']/statistics/in-broadcast-pkts", i);
+            v[3*if_count+i].type = SR_UINT64_T;
+            v[3*if_count+i].data.uint64_val = 4213;
         }
         *values = v;
-        *values_cnt = if_count * 2;
+        *values_cnt = if_count * 4;
 
     } else {
         *values = NULL;
