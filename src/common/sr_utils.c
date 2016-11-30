@@ -2362,3 +2362,14 @@ cleanup:
     }
     return rc;
 }
+
+void
+sr_free_list_of_strings (sr_list_t *list)
+{
+    if (NULL != list) {
+        for (size_t i = 0; i < list->count; i++) {
+            free((char *) list->data[i]);
+        }
+        sr_list_cleanup(list);
+    }
+}
