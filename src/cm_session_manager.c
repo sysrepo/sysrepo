@@ -419,8 +419,8 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
         errno = 0;
         pws = getpwnam(effective_user);
         if (NULL == pws) {
-            SR_LOG_ERR("Cannot retrieve credentials of the effective user (%s): Invalid username?", effective_user);
-            rc = SR_ERR_INVAL_ARG;
+            SR_LOG_ERR("Cannot retrieve credentials of the effective user ('%s'): Invalid username?", effective_user);
+            rc = SR_ERR_INVAL_USER;
             goto cleanup;
         }
         session->credentials.e_username = strdup(effective_user);

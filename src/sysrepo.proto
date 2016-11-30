@@ -51,6 +51,8 @@ message Value {
     UINT16 = 23;
     UINT32 = 24;
     UINT64 = 25;
+    ANYXML = 26;
+    ANYDATA = 27;
   }
 
   required string xpath = 1;
@@ -73,6 +75,8 @@ message Value {
   optional uint32 uint16_val = 23;
   optional uint32 uint32_val = 24;
   optional uint64 uint64_val = 25;
+  optional string anyxml_val = 26;
+  optional string anydata_val = 27;
 }
 
 /**

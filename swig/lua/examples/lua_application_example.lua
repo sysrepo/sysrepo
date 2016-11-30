@@ -27,7 +27,7 @@ function print_current_config(sess, module_name)
 	if (values == nil) then return end
 
 	for i=0, values:val_cnt() - 1, 1 do
-            print(values:val(i):to_string())
+            io.write(values:val(i):to_string())
 	end
 
         collectgarbage()
@@ -35,14 +35,14 @@ function print_current_config(sess, module_name)
 
     ok,res=pcall(run)
     if not ok then
-        print("\nerror: ",res, "\n")
+        io.write("\nerror: ",res, "\n")
     end
 
 end
 
 -- Function to be called for subscribed client of given session whenever configuration changes.
 function module_change_cb(session, module_name, event, private_ctx)
-    print("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n");
+    io.write("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
 
     print_current_config(session, module_name)
 end
@@ -58,17 +58,17 @@ function run()
     wrap = sr.Callback_lua(module_change_cb)
     subscribe:module_change_subscribe("ietf-interfaces", wrap);
 
-    print("\n\n ========== READING STARTUP CONFIG: ==========\n");
+    io.write("\n\n ========== READING STARTUP CONFIG: ==========\n\n");
     print_current_config(sess, "ietf-interfaces");
 
-    print("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n");
+    io.write("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n");
 
     sr.global_loop()
 
-    print("Application exit requested, exiting.\n");
+    io.write("Application exit requested, exiting.\n\n");
 end
 
 ok,res=pcall(run)
 if not ok then
-    print("\nerror: ",res, "\n")
+    io.write("\nerror: ",res, "\n")
 end

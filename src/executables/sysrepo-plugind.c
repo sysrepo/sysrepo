@@ -224,7 +224,8 @@ sr_pd_load_plugins(sr_pd_ctx_t *ctx)
             SR_LOG_ERR("Error by reading plugin directory: %s.", sr_strerror_safe(errno));
             break;
         }
-        if ((NULL != result) && (DT_DIR != entry.d_type)) {
+        if ((NULL != result) && (DT_DIR != entry.d_type)
+                && (0 != strcmp(entry.d_name, ".")) && (0 != strcmp(entry.d_name, ".."))) {
             SR_LOG_DBG("Loading plugin from file '%s'.", entry.d_name);
             snprintf(plugin_filename, PATH_MAX, "%s/%s", plugins_dir, entry.d_name);
 

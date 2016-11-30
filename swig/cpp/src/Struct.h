@@ -311,6 +311,7 @@ public:
     Iter_Change(sr_change_iter_t *iter = NULL);
     ~Iter_Change();
     sr_change_iter_t *get() {return _iter;};
+    sr_change_iter_t **p_get() {return &_iter;};
 
 private:
     sr_change_iter_t *_iter;

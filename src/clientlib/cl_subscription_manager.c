@@ -1096,13 +1096,12 @@ cl_sm_conn_in_buff_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
         }
     }
 
-    if ((0 != buff_pos) && (buff_size - buff_pos) > 0) {
-        /* move unprocessed data to the front of the buffer */
-        memmove(buff->data, (buff->data + buff_pos), (buff_size - buff_pos));
+    if (0 != buff_pos) {
+        if (buff_size - buff_pos > 0) {
+            /* move unprocessed data to the front of the buffer */
+            memmove(buff->data, (buff->data + buff_pos), (buff_size - buff_pos));
+        }
         buff->pos = buff_size - buff_pos;
-    } else {
-        /* no more unprocessed data left in the buffer */
-        buff->pos = 0;
     }
 
     return rc;
@@ -1298,7 +1297,6 @@ cl_sm_accept_server_connections(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_
             } else {
                 /* error by accept - only log the error and skip it */
                 SR_LOG_ERR("Unexpected error by accepting new connection: %s", sr_strerror_safe(errno));
-                continue;
             }
         }
     } while (-1 != clnt_fd); /* accept returns -1 when there are no more connections to accept */
