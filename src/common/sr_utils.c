@@ -2364,3 +2364,16 @@ cleanup:
     }
     return rc;
 }
+
+int
+sr_time_to_string(time_t time, char *buff, size_t buff_size)
+{
+    CHECK_NULL_ARG(buff);
+
+    strftime(buff, buff_size - 1, "%Y-%m-%dT%H:%M:%S%z", localtime(&time));
+    /* time buff ends in '+hhmm' but should be '+hh:mm' */
+    memmove(buff + strlen(buff) - 1, buff + strlen(buff) - 2, 3);
+    buff[strlen(buff) - 3] = ':';
+
+    return SR_ERR_OK;
+}

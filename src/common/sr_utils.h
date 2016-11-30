@@ -609,6 +609,17 @@ int sr_print(sr_print_ctx_t *print_ctx, const char *format, ...);
  */
 int sr_create_uri_for_module(const struct lys_module *module, char **uri);
 
+/**
+ * @brief Converts time_t into string formatted as date-and-time type defined in RFC 6991.
+ *
+ * @param [in] time Time to be coverted into string.
+ * @param [in] buff String buffer where time will be written.
+ * @param [in] buff_size Size of the string buffer.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_time_to_string(time_t time, char *buff, size_t buff_size);
+
 /**@} utils */
 
 #endif /* SR_UTILS_H_ */

@@ -459,6 +459,60 @@ np_cleanup_data_tree(np_ctx_t *np_ctx, struct lyd_node *data_tree, int fd)
 }
 
 /**
+ * @brief Returns the name of a file that can be used to store a notification received in given time.
+ */
+static int
+np_get_notif_store_filename(const char *module_name, time_t received_time, char *filename_buff, size_t filename_buff_size)
+{
+    mode_t old_umask = 0;
+    time_t raw_time = 0;
+    struct tm *tm_time = { 0, };
+    int fd = -1;
+    int ret = 0, rc = SR_ERR_OK;
+
+    /* create the parent directory for notifications (if it does not exist already) */
+    strncat(filename_buff, SR_NOTIF_DATA_SEARCH_DIR, filename_buff_size - 1);
+    if (-1 == access(filename_buff, F_OK)) {
+        old_umask = umask(0);
+        ret = mkdir(filename_buff, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", filename_buff,
+                sr_strerror_safe(errno));
+    }
+
+    /* create directory for module notifications (if it does not exist already) */
+    strncat(filename_buff, module_name, filename_buff_size - strlen(filename_buff) - 1);
+    strncat(filename_buff, "/", filename_buff_size - strlen(filename_buff) - 1);
+    if (-1 == access(filename_buff, F_OK)) {
+        old_umask = umask(0);
+        ret = mkdir(filename_buff, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", filename_buff,
+                sr_strerror_safe(errno));
+    }
+
+    /* generate data filename according to the current time */
+    raw_time = received_time;
+    tm_time = localtime(&raw_time);
+    /* move raw_time back to the beginning of the current NP_NOTIF_FILE_WINDOW */
+    raw_time -= (((tm_time->tm_hour * 60) + tm_time->tm_min) % NP_NOTIF_FILE_WINDOW) * 60;
+    strftime(filename_buff + strlen(filename_buff), filename_buff_size - strlen(filename_buff) - 1,
+            "%Y-%m-%d_%H-%M.xml", localtime(&raw_time));
+
+    /* create file if not exists & apply access permissions */
+    if (-1 == access(filename_buff, F_OK)) {
+        fd = open(filename_buff, O_CREAT);
+        close(fd);
+        rc = sr_set_data_file_permissions(filename_buff, false, SR_DATA_SEARCH_DIR, module_name, false);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Error by applying correct data file permissions on file '%s'.", filename_buff);
+        }
+    }
+
+    return rc;
+}
+
+/**
  * @brief Logging callback called from libyang for each log entry.
  */
 static void
@@ -1269,66 +1323,6 @@ np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt
 }
 
 #define TIME_BUF_SIZE 64
-static void
-get_time_as_string(time_t time, char *buff, size_t buff_size)
-{
-    strftime(buff, buff_size - 1, "%Y-%m-%dT%H:%M:%S%z", localtime(&time));
-    /* time buff ends in '+hhmm' but should be '+hh:mm' */
-    memmove(buff + strlen(buff) - 1, buff + strlen(buff) - 2, 3);
-    buff[strlen(buff) - 3] = ':';
-}
-
-static int
-np_get_notif_store_filename(const char *module_name, char *filename_buff, size_t filename_buff_size)
-{
-    mode_t old_umask = 0;
-    time_t raw_time = 0;
-    struct tm *tm_time = { 0, };
-    int fd = -1;
-    int ret = 0, rc = SR_ERR_OK;
-
-    /* create the parent directory for notifications (if it does not exist already) */
-    strncat(filename_buff, SR_NOTIF_DATA_SEARCH_DIR, filename_buff_size - 1);
-    if (-1 == access(filename_buff, F_OK)) {
-        old_umask = umask(0);
-        ret = mkdir(filename_buff, S_IRWXU | S_IRWXG | S_IRWXO);
-        umask(old_umask);
-        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", filename_buff,
-                sr_strerror_safe(errno));
-    }
-
-    /* create directory for module notifications (if it does not exist already) */
-    strncat(filename_buff, module_name, filename_buff_size - strlen(filename_buff) - 1);
-    strncat(filename_buff, "/", filename_buff_size - strlen(filename_buff) - 1);
-    if (-1 == access(filename_buff, F_OK)) {
-        old_umask = umask(0);
-        ret = mkdir(filename_buff, S_IRWXU | S_IRWXG | S_IRWXO);
-        umask(old_umask);
-        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", filename_buff,
-                sr_strerror_safe(errno));
-    }
-
-    /* generate data filename according to the current time */
-    raw_time = time(NULL);
-    tm_time = localtime(&raw_time);
-    /* move raw_time back to the beginning of the current NP_NOTIF_FILE_WINDOW */
-    raw_time -= (((tm_time->tm_hour * 60) + tm_time->tm_min) % NP_NOTIF_FILE_WINDOW) * 60;
-    strftime(filename_buff + strlen(filename_buff), filename_buff_size - strlen(filename_buff) - 1,
-            "%Y-%m-%d_%H-%M.xml", localtime(&raw_time));
-
-    /* create file if not exists & apply access permissions */
-    if (-1 == access(filename_buff, F_OK)) {
-        fd = open(filename_buff, O_CREAT);
-        close(fd);
-        rc = sr_set_data_file_permissions(filename_buff, false, SR_DATA_SEARCH_DIR, module_name, false);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Error by applying correct data file permissions on file '%s'.", filename_buff);
-        }
-    }
-
-    return rc;
-}
-
 int
 np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t time,
         struct lyd_node **notif_data_tree)
@@ -1344,7 +1338,7 @@ np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char 
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
 
     /* get curret notification data filename */
-    rc = np_get_notif_store_filename(module_name, data_filename, PATH_MAX);
+    rc = np_get_notif_store_filename(module_name, time, data_filename, PATH_MAX);
     CHECK_RC_LOG_RETURN(rc, "Unable to compose notif. data file name for '%s'.", module_name);
 
     /* load notif. data */
@@ -1353,9 +1347,9 @@ np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char 
 
     char data_path[PATH_MAX] = { 0, };
     char time_buf[TIME_BUF_SIZE];
-    get_time_as_string(time, time_buf, TIME_BUF_SIZE);
+    sr_time_to_string(time, time_buf, TIME_BUF_SIZE);
     struct timespec spec;
-    clock_gettime(CLOCK_REALTIME, &spec);
+    sr_clock_get_time(CLOCK_REALTIME, &spec);
 
     snprintf(data_path, PATH_MAX - 1, "/sysrepo-notification-store:notifications/notification[xpath='%s'][generated-time='%s'][logged-time='%u']",
             xpath, time_buf, (uint32_t) (((spec.tv_sec * 100) + (uint32_t)(spec.tv_nsec / 1.0e7)) % UINT32_MAX));
