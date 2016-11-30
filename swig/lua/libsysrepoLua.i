@@ -1,4 +1,4 @@
-%module libsysrepoLua51
+%module libsysrepoLua
 
 %include <stdint.i>
 
