@@ -36,6 +36,7 @@
 #include "request_processor.h"
 
 #define NP_NS_SCHEMA_FILE "sysrepo-notification-store.yang"  /**< Schema of notification store. */
+#define NP_NOTIF_FILE_WINDOW 10 /* in minutes */
 
 /**
  * @brief Information about a notification destination.
@@ -1281,8 +1282,10 @@ static int
 np_get_notif_store_filename(const char *module_name, char *filename_buff, size_t filename_buff_size)
 {
     mode_t old_umask = 0;
-    int ret = 0;
-    time_t rawtime;
+    time_t raw_time = 0;
+    struct tm *tm_time = { 0, };
+    int fd = -1;
+    int ret = 0, rc = SR_ERR_OK;
 
     /* create the parent directory for notifications (if it does not exist already) */
     strncat(filename_buff, SR_NOTIF_DATA_SEARCH_DIR, filename_buff_size - 1);
@@ -1305,13 +1308,25 @@ np_get_notif_store_filename(const char *module_name, char *filename_buff, size_t
                 sr_strerror_safe(errno));
     }
 
-    time(&rawtime);
+    /* generate data filename according to the current time */
+    raw_time = time(NULL);
+    tm_time = localtime(&raw_time);
+    /* move raw_time back to the beginning of the current NP_NOTIF_FILE_WINDOW */
+    raw_time -= (((tm_time->tm_hour * 60) + tm_time->tm_min) % NP_NOTIF_FILE_WINDOW) * 60;
     strftime(filename_buff + strlen(filename_buff), filename_buff_size - strlen(filename_buff) - 1,
-            "%Y-%m-%d_%H-%M.xml", localtime(&rawtime));
+            "%Y-%m-%d_%H-%M.xml", localtime(&raw_time));
 
-    // TODO: create file if not exists & apply access permissions
+    /* create file if not exists & apply access permissions */
+    if (-1 == access(filename_buff, F_OK)) {
+        fd = open(filename_buff, O_CREAT);
+        close(fd);
+        rc = sr_set_data_file_permissions(filename_buff, false, SR_DATA_SEARCH_DIR, module_name, false);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Error by applying correct data file permissions on file '%s'.", filename_buff);
+        }
+    }
 
-    return SR_ERR_OK;
+    return rc;
 }
 
 int

@@ -550,19 +550,21 @@ void sr_daemonize_signal_success(pid_t parent_pid);
 int sr_clock_get_time(clockid_t clock_id, struct timespec *ts);
 
 /**
- * @brief Sets correct permissions on provided socket directory according to the
- * data access permission of the YANG module.
+ * @brief Sets data file permissions on provided data file / directory derived from the
+ * data access permission of the main data file of the module.
  *
- * @param[in] socket_dir Socket directory.
+ * @param[in] target_file Target file / directory whose access permissions need to be modified.
+ * @param[in] target_is_dir True if target is a directory, false if it is a file.
  * @param[in] data_serach_dir Location of the directory with data files.
  * @param[in] module_name Name of the module whose access permissions are used
- * to derive the permissions for the socket directory.
+ * to derive the permissions for the target file / directory.
  * @param[in] strict TRUE in no errors are allowed during the process of setting permissions,
  * FALSE otherwise.
  *
  * @return Error code.
  */
-int sr_set_socket_dir_permissions(const char *socket_dir, const char *data_serach_dir, const char *module_name, bool strict);
+int sr_set_data_file_permissions(const char *target_file, bool target_is_dir, const char *data_serach_dir,
+        const char *module_name, bool strict);
 
 /**
  * @brief Function encapsulates the lys_find_xpath for the use cases where the expected

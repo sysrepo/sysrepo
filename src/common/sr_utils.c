@@ -2100,14 +2100,15 @@ sr_daemonize_signal_success(pid_t parent_pid)
 }
 
 int
-sr_set_socket_dir_permissions(const char *socket_dir, const char *data_serach_dir, const char *module_name, bool strict)
+sr_set_data_file_permissions(const char *target_file, bool target_is_dir, const char *data_serach_dir,
+        const char *module_name, bool strict)
 {
     char *data_file_name = NULL;
     struct stat data_file_stat = { 0, };
     mode_t mode = 0;
     int ret = 0, rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(socket_dir, module_name);
+    CHECK_NULL_ARG3(target_file, data_serach_dir, module_name);
 
     /* skip privilege setting for internal 'module name' */
     if (0 == strcmp(module_name, SR_GLOBAL_SUBSCRIPTIONS_SUBDIR)) {
@@ -2125,32 +2126,34 @@ sr_set_socket_dir_permissions(const char *socket_dir, const char *data_serach_di
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to stat data file for '%s': %s.", module_name, sr_strerror_safe(errno));
 
     mode = data_file_stat.st_mode;
-    /* set the execute permissions to be the same as write permissions */
-    if (mode & S_IWUSR) {
-        mode |= S_IXUSR;
-    }
-    if (mode & S_IWGRP) {
-        mode |= S_IXGRP;
-    }
-    if (mode & S_IWOTH) {
-        mode |= S_IXOTH;
+    /* for directory, set the execute permissions to be the same as write permissions */
+    if (target_is_dir) {
+        if (mode & S_IWUSR) {
+            mode |= S_IXUSR;
+        }
+        if (mode & S_IWGRP) {
+            mode |= S_IXGRP;
+        }
+        if (mode & S_IWOTH) {
+            mode |= S_IXOTH;
+        }
     }
 
     /* change the permissions */
-    ret = chmod(socket_dir, mode);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_UNAUTHORIZED, "Unable to execute chmod on '%s': %s.", socket_dir, sr_strerror_safe(errno));
+    ret = chmod(target_file, mode);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_UNAUTHORIZED, "Unable to execute chmod on '%s': %s.", target_file, sr_strerror_safe(errno));
 
     /* change the owner (if possible) */
-    ret = chown(socket_dir, data_file_stat.st_uid, data_file_stat.st_gid);
+    ret = chown(target_file, data_file_stat.st_uid, data_file_stat.st_gid);
     if (0 != ret) {
         if (strict) {
-            SR_LOG_ERR("Unable to execute chown on '%s': %s.", socket_dir, sr_strerror_safe(errno));
+            SR_LOG_ERR("Unable to execute chown on '%s': %s.", target_file, sr_strerror_safe(errno));
             return SR_ERR_INTERNAL;
         } else {
             /* non-privileged process may not be able to set chown - print warning, since
              * this may prevent some users otherwise allowed to access the data to connect to our socket.
              * Correct permissions can be set up at any time using sysrepoctl. */
-            SR_LOG_WRN("Unable to execute chown on '%s': %s.", socket_dir, sr_strerror_safe(errno));
+            SR_LOG_WRN("Unable to execute chown on '%s': %s.", target_file, sr_strerror_safe(errno));
         }
     }
 

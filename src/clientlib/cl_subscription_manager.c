@@ -1406,10 +1406,10 @@ cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, c
         ret = mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
         umask(old_umask);
         CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", path, sr_strerror_safe(errno));
-        rc = sr_set_socket_dir_permissions(path, SR_DATA_SEARCH_DIR, module_name, false);
+        rc = sr_set_data_file_permissions(path, true, SR_DATA_SEARCH_DIR, module_name, false);
         if (SR_ERR_OK != rc) {
             rmdir(path);
-            SR_LOG_WRN("Attempt to subscribe to unknown '%s' module probably", module_name);
+            SR_LOG_WRN("Attempt to subscribe to unknown '%s' module.", module_name);
         }
         CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
     }
