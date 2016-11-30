@@ -101,7 +101,9 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     ADD_UNIT_TEST_WITH_OPTS(plugin_daemon_test 0 0 "")
     ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 1 0 "")
     ADD_UNIT_TEST_WITH_OPTS(sysrepocfg_test 1 0 "")
-    ADD_UNIT_TEST(nacm_test 1)
+    if(ENABLE_NACM)
+        ADD_UNIT_TEST(nacm_test 1)
+    endif(ENABLE_NACM)
 
     ADD_CUSTOM_COMMAND(
         TARGET sysrepocfg_test
@@ -161,6 +163,7 @@ INSTALL_YANG_FOR_TESTS("referenced-data")
 INSTALL_YANG_FOR_TESTS("cross-module")
 INSTALL_YANG_FOR_TESTS("turing-machine")
 INSTALL_YANG_FOR_TESTS("ietf-netconf-notifications")
+INSTALL_YANG_FOR_TESTS("servers")
 
 # dummy testing plugins
 add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)
