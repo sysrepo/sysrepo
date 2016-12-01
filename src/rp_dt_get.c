@@ -63,6 +63,8 @@ rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data)
             sr_list_cleanup(state_data->requested_xpaths);
             state_data->requested_xpaths = NULL;
         }
+        state_data->overlapping_leaf_subscription = false;
+        state_data->internal_state_data = false;
     }
 }
 
@@ -566,7 +568,11 @@ rp_dt_get_tree_roots(dm_schema_info_t *schema_info, const char *xpath, struct ly
 static int
 rp_dt_subscriptions_to_schema_nodes(dm_ctx_t *dm_ctx, np_subscription_t **subscriptions, size_t subscription_cnt, sr_list_t **subscr_nodes)
 {
-    CHECK_NULL_ARG3(dm_ctx, subscriptions, subscr_nodes);
+    CHECK_NULL_ARG2(dm_ctx, subscr_nodes);
+    if (subscription_cnt > 0) {
+        /* if there are only internally handled state data subscriptions might be NULL */
+        CHECK_NULL_ARG(subscriptions);
+    }
     int rc = SR_ERR_OK;
     struct lys_node *sub_node = NULL;
     sr_list_t *nodes = NULL;
@@ -656,8 +662,18 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     rc = np_get_data_provider_subscriptions(rp_ctx->np_ctx, schema_info->module_name, &state_data_ctx->subscriptions, &state_data_ctx->subscription_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get data provider subscriptions failed");
 
+    /* Check if the state data from this module is not handled internally */
+    for (size_t i = 0; i < rp_ctx->modules_incl_intern_op_data->count; i++) {
+        if (0 == strcmp(schema_info->module_name, (char *) rp_ctx->modules_incl_intern_op_data->data[i])) {
+            session->state_data_ctx.internal_state_data = true;
+            session->state_data_ctx.internal_state_data_index = i;
+        }
+    }
+
     if (0 == state_data_ctx->subscription_cnt) {
-        goto cleanup;
+        if (!session->state_data_ctx.internal_state_data) {
+            goto cleanup;
+        }
     }
 
     rc = rp_dt_subscriptions_to_schema_nodes(rp_ctx->dm_ctx, state_data_ctx->subscriptions, state_data_ctx->subscription_cnt, &session->state_data_ctx.subscription_nodes);
@@ -979,6 +995,7 @@ rp_dt_send_first_set_of_dp_requests(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
 {
     CHECK_NULL_ARG(rp_session);
     int rc = SR_ERR_OK;
+    Sr__Msg *req = NULL;
     char *xp = NULL;
 
     for (size_t i = 0; i < rp_session->state_data_ctx.subtrees->count; i++) {
@@ -1034,11 +1051,45 @@ rp_dt_send_first_set_of_dp_requests(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
             CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
             xp = NULL;
         } else {
+            /* Internal state data */
+            if (rp_session->state_data_ctx.internal_state_data) {
+                sr_list_t *module_xp = rp_ctx->inter_op_data_xpath->data[rp_session->state_data_ctx.internal_state_data_index];
+                for (size_t x = 0; x < module_xp->count; x++) {
+                    struct lys_node *intern_node = NULL;
+                    rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL, (char *) module_xp->data[x], NULL, &intern_node);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Node validation failed for xpath %s", (char *) module_xp->data[x]);
+                    /* check only exact match for internal requests*/
+                    if (subtree_node == intern_node) {
+                        SR_LOG_DBG("Subtree %s will be handled by internal request", (char *) module_xp->data[x]);
+                        match = true;
+                        break;
+                    }
+                }
+                if (match) {
+                    /* generate internal message */
+                    rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__INTERNAL_STATE_DATA, &req);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to allocate internal message");
+
+                    req->internal_request->internal_state_data_req->request_id = (intptr_t) rp_session->req;
+
+                    rc = sr_mem_edit_string((sr_mem_ctx_t *)req->_sysrepo_mem_ctx, &req->internal_request->internal_state_data_req->xpath, subtree);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set string");
+
+                    rc = rp_msg_process(rp_ctx, rp_session, req);
+                    req = NULL;
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to enqueue message");
+
+                    /* increment counter for waiting dp request */
+                    rp_session->dp_req_waiting++;
+                    continue;
+                }
+            }
             SR_LOG_DBG("No data provider for xpath %s", subtree);
         }
     }
 
 cleanup:
+    sr_msg_free(req);
     free(xp);
     return rc;
 }
