@@ -140,7 +140,7 @@ macro(INSTALL_YANG_FOR_TESTS MODULE_NAME)
     ADD_CUSTOM_COMMAND(
         TARGET common_test
         POST_BUILD
-        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yang -0 ${TEST_REPOSITORY_LOC} > /dev/null
+        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yang -0 ${TEST_REPOSITORY_LOC} -l 4
         VERBATIM
     )
 endmacro(INSTALL_YANG_FOR_TESTS)

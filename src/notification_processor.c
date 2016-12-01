@@ -1352,18 +1352,24 @@ np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char 
     char data_path[PATH_MAX] = { 0, };
     char generated_time_buf[TIME_BUF_SIZE];
     sr_time_to_string(generated_time, generated_time_buf, TIME_BUF_SIZE);
-    struct timespec spec;
-    sr_clock_get_time(CLOCK_REALTIME, &spec);
+    struct timespec logged_time_spec;
+    sr_clock_get_time(CLOCK_REALTIME, &logged_time_spec);
 
+    /* create data subtree to be stored in the notif. data file */
     snprintf(data_path, PATH_MAX - 1, NP_NS_XPATH_NOTIFICATION, xpath, generated_time_buf,
             /* logged-time in hundreds of seconds */
-            (uint32_t) (((spec.tv_sec * 100) + (uint32_t)(spec.tv_nsec / 1.0e7)) % UINT32_MAX));
+            (uint32_t) (((logged_time_spec.tv_sec * 100) + (uint32_t)(logged_time_spec.tv_nsec / 1.0e7)) % UINT32_MAX));
     new_node = lyd_new_path(data_tree, np_ctx->ly_ctx, data_path, NULL, 0, 0);
+    if (NULL == new_node) {
+        // TODO: error
+    }
     if (NULL == data_tree) {
         /* if the new data tree has been just created */
         data_tree = new_node;
         new_node = new_node->child; /* new_node is 'notifications' container */
     }
+
+    /* store notification data as anydata */
     new_node = lyd_new_anydata(new_node, NULL, "data", (void*)*notif_data_tree, LYD_ANYDATA_DATATREE);
     if (NULL == new_node) {
         // TODO: error
