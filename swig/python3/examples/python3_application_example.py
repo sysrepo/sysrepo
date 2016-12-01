@@ -35,6 +35,8 @@ def module_change_cb(sess, module_name, event, private_ctx):
 
     print_current_config(sess, module_name)
 
+    return sr.SR_ERR_OK
+
 # Notable difference between c implementation is using exception mechanism for open handling unexpected events.
 # Here it is useful because `Conenction`, `Session` and `Subscribe` could throw an exception.
 try:

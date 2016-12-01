@@ -161,7 +161,7 @@ print_value(S_Val value)
 }
 
 class My_Callback:public Callback {
-    void rpc(const char *xpath, const S_Vals in_vals, S_Vals_Holder holder, void *private_ctx) {
+    int rpc(const char *xpath, const S_Vals in_vals, S_Vals_Holder holder, void *private_ctx) {
         cout << "\n ========== RPC CALLED ==========\n" << endl;
 
         auto out_vals = holder->allocate(3);
@@ -178,9 +178,11 @@ class My_Callback:public Callback {
         out_vals->val(2)->set("/test-module:activate-software-image/location",\
                             "/root/",\
                             SR_STRING_T);
+
+	return SR_ERR_OK;
     }
 
-    void rpc_tree(const char *xpath, S_Trees in_trees, S_Trees_Holder holder, void *private_ctx) {
+    int rpc_tree(const char *xpath, S_Trees in_trees, S_Trees_Holder holder, void *private_ctx) {
         cout << "\n ========== RPC TREE CALLED ==========\n" << endl;
 
         auto out_trees = holder->allocate(3);
@@ -194,6 +196,8 @@ class My_Callback:public Callback {
         out_trees->tree(1)->set("2.3", SR_STRING_T);
         out_trees->tree(2)->set_name("location");
         out_trees->tree(2)->set("/root/", SR_STRING_T);
+
+	return SR_ERR_OK;
     }
 };
 

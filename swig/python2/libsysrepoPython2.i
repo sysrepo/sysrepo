@@ -65,7 +65,7 @@ public:
             Py_XDECREF(_callback);
     }
 
-    void module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, \
+    int module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, \
                                  void *private_ctx) {
         PyObject *arglist;
 
@@ -81,12 +81,17 @@ public:
             sess->~Session();
             throw std::runtime_error("Python callback module_change_subscribe failed.\n");
         } else {
-            Py_DECREF(result);
             sess->~Session();
+            int ret = SR_ERR_OK;
+            if (result && PyInt_Check(result)) {
+                ret = PyInt_AsLong(result);
+            }
+            Py_DECREF(result);
+            return ret;
         }
     }
 
-    void subtree_change(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
+    int subtree_change(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
                        void *private_ctx) {
         PyObject *arglist;
 
@@ -102,8 +107,13 @@ public:
             sess->~Session();
             throw std::runtime_error("Python callback subtree_change failed.\n");
         } else {
-            Py_DECREF(result);
             sess->~Session();
+            int ret = SR_ERR_OK;
+            if (result && PyInt_Check(result)) {
+                ret = PyInt_AsLong(result);
+            }
+            Py_DECREF(result);
+            return ret;
         }
     }
 
@@ -131,7 +141,7 @@ public:
             Py_DECREF(result);
     }
 
-    void rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
+    int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                size_t *output_cnt, void *private_ctx) {
         PyObject *arglist;
 
@@ -155,11 +165,16 @@ public:
         } else {
             in_vals->~Vals();
             out_vals->~Vals_Holder();
+            int ret = SR_ERR_OK;
+            if (result && PyInt_Check(result)) {
+                ret = PyInt_AsLong(result);
+            }
             Py_DECREF(result);
+            return ret;
         }
      }
 
-    void action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
+    int action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                size_t *output_cnt, void *private_ctx) {
         PyObject *arglist;
 
@@ -183,11 +198,16 @@ public:
         } else {
             in_vals->~Vals();
             out_vals->~Vals_Holder();
+            int ret = SR_ERR_OK;
+            if (result && PyInt_Check(result)) {
+                ret = PyInt_AsLong(result);
+            }
             Py_DECREF(result);
+            return ret;
         }
      }
 
-    void rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
+    int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx) {
         PyObject *arglist;
 
@@ -210,11 +230,16 @@ public:
         } else {
             in_vals->~Trees();
             out_vals->~Trees_Holder();
+            int ret = SR_ERR_OK;
+            if (result && PyInt_Check(result)) {
+                ret = PyInt_AsLong(result);
+            }
             Py_DECREF(result);
+            return ret;
         }
     }
 
-    void action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
+    int action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx) {
         PyObject *arglist;
 
@@ -237,12 +262,17 @@ public:
         } else {
             in_vals->~Trees();
             out_vals->~Trees_Holder();
+            int ret = SR_ERR_OK;
+            if (result && PyInt_Check(result)) {
+                ret = PyInt_AsLong(result);
+            }
             Py_DECREF(result);
+            return ret;
         }
     }
 
 
-    void dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
+    int dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
         PyObject *arglist;
 
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
@@ -258,7 +288,12 @@ public:
             throw std::runtime_error("Python callback dp_get_items failed.\n");
         } else {
             in_vals->~Vals();
+            int ret = SR_ERR_OK;
+            if (result && PyInt_Check(result)) {
+                ret = PyInt_AsLong(result);
+            }
             Py_DECREF(result);
+            return ret;
         }
     }
 
@@ -312,18 +347,14 @@ static int g_module_change_subscribe_cb(sr_session_ctx_t *session, const char *m
                                         sr_notif_event_t event, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->module_change_subscribe(session, module_name, event, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->module_change_subscribe(session, module_name, event, ctx->private_ctx);
 }
 
 static int g_subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
                                void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->subtree_change(session, xpath, event, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->subtree_change(session, xpath, event, ctx->private_ctx);
 }
 
 static void g_module_install_cb(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx)
@@ -342,44 +373,34 @@ static int g_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input
                      size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->rpc_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->rpc_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
 static int g_action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                      size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->action_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->action_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
 static int g_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->rpc_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->rpc_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
 static int g_action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->action_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->action_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
 static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->dp_get_items(xpath, values, values_cnt, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->dp_get_items(xpath, values, values_cnt, ctx->private_ctx);
 }
 
 static void g_event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
