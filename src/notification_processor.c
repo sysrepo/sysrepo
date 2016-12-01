@@ -529,9 +529,9 @@ np_get_notification_files(np_ctx_t *np_ctx, const char *module_name, time_t time
 {
     char dirname[PATH_MAX] = { 0, };
     char filename[PATH_MAX] = { 0, };
-    DIR *dir;
-    struct stat sb;
-    struct dirent entry, *result;
+    DIR *dir = { 0, };
+    struct stat sb = { 0, };
+    struct dirent entry = { 0, }, *result = NULL;
     int ret = 0, rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(np_ctx, module_name, file_list);
@@ -540,7 +540,7 @@ np_get_notification_files(np_ctx_t *np_ctx, const char *module_name, time_t time
         strftime(dirname, PATH_MAX - 1, "%Y-%m-%d %H:%M", localtime(&time_from));
         strftime(filename, PATH_MAX - 1, "%Y-%m-%d %H:%M", localtime(&time_to));
     }
-    SR_LOG_DBG("Loading notification data files for '%s' from '%s' to '%s'.", module_name, dirname, filename);
+    SR_LOG_DBG("Listing notification data files for '%s' modified from '%s' to '%s'.", module_name, dirname, filename);
 
     /* open the directory with the data files */
     snprintf(dirname, PATH_MAX - 1, "%s/%s", SR_NOTIF_DATA_SEARCH_DIR, module_name);
@@ -568,6 +568,48 @@ np_get_notification_files(np_ctx_t *np_ctx, const char *module_name, time_t time
                 if (SR_ERR_OK != rc) {
                     SR_LOG_WRN("Error by adding file '%s' to the list: %s.", filename, sr_strerror(rc));
                 }
+            }
+        }
+    } while (NULL != result);
+    closedir(dir);
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Get notification files of all modules with last modification time from provided time interval.
+ */
+static int
+np_get_all_notification_files(np_ctx_t *np_ctx, time_t time_from, time_t time_to, sr_list_t *file_list)
+{
+    DIR *dir = { 0, };
+    struct dirent entry = { 0, }, *result = NULL;
+    int ret = 0, rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(np_ctx, file_list);
+
+    SR_LOG_DBG("Listing notification directories in '%s'.", SR_NOTIF_DATA_SEARCH_DIR);
+
+    /* open the directory with notifications */
+    dir = opendir(SR_NOTIF_DATA_SEARCH_DIR);
+    if (NULL == dir) {
+        SR_LOG_ERR("Error by opening directory '%s': %s.", SR_NOTIF_DATA_SEARCH_DIR, sr_strerror_safe(errno));
+        return SR_ERR_INTERNAL;
+    }
+    /* read files in the directory */
+    do {
+        ret = readdir_r(dir, &entry, &result);
+        if (0 != ret) {
+            SR_LOG_ERR("Error by reading directory: %s.", sr_strerror_safe(errno));
+            break;
+        }
+        if ((NULL != result) && (0 != strcmp(entry.d_name, ".")) && (0 != strcmp(entry.d_name, ".."))) {
+            /* for each directory */
+            SR_LOG_DBG("Listing notification directory '%s'.", entry.d_name);
+            rc = np_get_notification_files(np_ctx, entry.d_name, time_from, time_to, file_list);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN("Error by retrieving notification files from '%s' directory: %s.",
+                        entry.d_name, sr_strerror(rc));
             }
         }
     } while (NULL != result);
@@ -1462,17 +1504,22 @@ int
 np_cleanup_notif_store(np_ctx_t *np_ctx)
 {
     sr_list_t *file_list = NULL;
-    int rc = SR_ERR_OK;
+    int ret = 0, rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(np_ctx);
 
     rc = sr_list_init(&file_list);
-    // TODO rc
+    CHECK_RC_MSG_RETURN(rc, "Unable to initialize file list.");
 
-    rc = np_get_notification_files(np_ctx, "test-module", 0, (time(NULL) - (NP_NOTIF_AGE_TIMEOUT * 60)), file_list);
+    rc = np_get_all_notification_files(np_ctx, 0, (time(NULL) - (NP_NOTIF_AGE_TIMEOUT * 60)), file_list);
 
     for (size_t i = 0; i < file_list->count; i++) {
-        printf("%s\n", (char*)file_list->data[i]);
+        SR_LOG_DBG("Deleting old notification data file '%s'.", (char*)file_list->data[i]);
+        ret = unlink((char*)file_list->data[i]);
+        if (-1 == ret) {
+            SR_LOG_WRN("Unable to delete notification data file '%s': %s.",
+                    (char*)file_list->data[i], sr_strerror_safe(ret));
+        }
         free(file_list->data[i]);
     }
 
