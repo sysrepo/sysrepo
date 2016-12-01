@@ -35,7 +35,9 @@
 #include "notification_processor.h"
 #include "request_processor.h"
 
-#define NP_NS_SCHEMA_FILE "sysrepo-notification-store.yang"  /**< Schema of notification store. */
+#define NP_NS_SCHEMA_FILE         "sysrepo-notification-store.yang"  /**< Schema of notification store. */
+#define NP_NS_XPATH_NOTIFICATION  "/sysrepo-notification-store:notifications/notification[xpath='%s'][generated-time='%s'][logged-time='%u']"
+
 #define NP_NOTIF_FILE_WINDOW 10 /* in minutes */
 
 /**
@@ -1348,13 +1350,14 @@ np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char 
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load notification store data for module '%s'.", module_name);
 
     char data_path[PATH_MAX] = { 0, };
-    char time_buf[TIME_BUF_SIZE];
-    sr_time_to_string(generated_time, time_buf, TIME_BUF_SIZE);
+    char generated_time_buf[TIME_BUF_SIZE];
+    sr_time_to_string(generated_time, generated_time_buf, TIME_BUF_SIZE);
     struct timespec spec;
     sr_clock_get_time(CLOCK_REALTIME, &spec);
 
-    snprintf(data_path, PATH_MAX - 1, "/sysrepo-notification-store:notifications/notification[xpath='%s'][generated-time='%s'][logged-time='%u']",
-            xpath, time_buf, (uint32_t) (((spec.tv_sec * 100) + (uint32_t)(spec.tv_nsec / 1.0e7)) % UINT32_MAX));
+    snprintf(data_path, PATH_MAX - 1, NP_NS_XPATH_NOTIFICATION, xpath, generated_time_buf,
+            /* logged-time in hundreds of seconds */
+            (uint32_t) (((spec.tv_sec * 100) + (uint32_t)(spec.tv_nsec / 1.0e7)) % UINT32_MAX));
     new_node = lyd_new_path(data_tree, np_ctx->ly_ctx, data_path, NULL, 0, 0);
     if (NULL == data_tree) {
         /* if the new data tree has been just created */
@@ -1368,6 +1371,7 @@ np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char 
         *notif_data_tree = NULL; /* data tree freed in lyd_new_anydata */
     }
 
+    /* save notif. data */
     rc = np_save_data_tree(data_tree, fd);
     if (SR_ERR_OK == rc) {
         SR_LOG_DBG("Notification successfully logged into '%s' notification store.", module_name);
