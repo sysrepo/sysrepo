@@ -6,7 +6,7 @@ include(GNUInstallDirs)
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 5)
-set(SYSREPO_MICRO_VERSION 7)
+set(SYSREPO_MICRO_VERSION 8)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # setup bindings
@@ -137,6 +137,8 @@ CHECK_FUNCTION_EXISTS(setfsuid HAVE_SETFSUID)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
 # user options
+SET(ENABLE_NACM 1 CACHE BOOL "Enable NETCONF Access Control Model (RFC 6536).")
+
 option (USE_SR_MEM_MGMT
         "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs)."
         ON)
@@ -149,6 +151,20 @@ option (LOG_THREAD_ID
 
 # add subdirectories
 add_subdirectory(src)
+
+# execute command at the install time
+macro(EXEC_AT_INSTALL_TIME CMD)
+    install(CODE "message(STATUS \"Exec: ${CMD}\")
+        execute_process(COMMAND ${CMD} OUTPUT_QUIET RESULT_VARIABLE ret)
+        if (NOT \${ret} EQUAL 0)
+          message(FATAL_ERROR \"Error: \${ret}\")
+        endif()"
+        )
+endmacro(EXEC_AT_INSTALL_TIME)
+
+macro(INSTALL_YANG MODULE_NAME REVISION PERMISSIONS)
+    EXEC_AT_INSTALL_TIME("${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=${PERMISSIONS}")
+endmacro(INSTALL_YANG)
 
 # Examples
 SET(BUILD_EXAMPLES 1 CACHE BOOL "Build examples and install example YANG models.")
@@ -215,6 +231,11 @@ install(DIRECTORY DESTINATION ${PLUGINS_DIR})
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 
+# install NACM YANG module
+if(ENABLE_NACM)
+    INSTALL_YANG("ietf-netconf-acm" "@2012-02-22" "600")
+endif(ENABLE_NACM)
+
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
     # generate and install pkg-config file
@@ -236,20 +257,7 @@ if(WITH_SYSTEMD)
         FILES_MATCHING PATTERN "*.service")
 endif()
 
-macro(EXEC_AT_INSTALL_TIME CMD)
-    install(CODE "message(STATUS \"Exec: ${CMD}\")
-        execute_process(COMMAND ${CMD} OUTPUT_QUIET RESULT_VARIABLE ret)
-        if (NOT \${ret} EQUAL 0)
-          message(FATAL_ERROR \"Error: \${ret}\")
-        endif()"
-        )
-endmacro()
-
-macro(INSTALL_YANG MODULE_NAME REVISION)
-    EXEC_AT_INSTALL_TIME("${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=666")
-endmacro(INSTALL_YANG)
-
-INSTALL_YANG("ietf-netconf-notifications" "")
+INSTALL_YANG("ietf-netconf-notifications" "" "666")
 
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(swig)

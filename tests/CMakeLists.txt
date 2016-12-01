@@ -25,7 +25,8 @@ find_program(valgrind_FOUND valgrind)
 
 add_library(HELPERS OBJECT ${TEST_HELPERS_DIR}rp_dt_context_helper.c
             ${TEST_HELPERS_DIR}test_module_helper.c
-            ${TEST_HELPERS_DIR}system_helper.c)
+            ${TEST_HELPERS_DIR}system_helper.c
+            ${TEST_HELPERS_DIR}nacm_module_helper.c)
 
 # create test target with specified options
 macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
@@ -100,6 +101,9 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     ADD_UNIT_TEST_WITH_OPTS(plugin_daemon_test 0 0 "")
     ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 1 0 "")
     ADD_UNIT_TEST_WITH_OPTS(sysrepocfg_test 1 0 "")
+    if(ENABLE_NACM)
+        ADD_UNIT_TEST(nacm_test 1)
+    endif(ENABLE_NACM)
 
     ADD_CUSTOM_COMMAND(
         TARGET sysrepocfg_test
@@ -131,31 +135,35 @@ add_custom_target(create_internals
 add_dependencies(common_test create_internals sysrepoctl)
 
 # install testing YANG modules
-macro(INSTALL_YANG_MODULE MODULE_NAME)
+macro(INSTALL_YANG_FOR_TESTS MODULE_NAME)
     ADD_CUSTOM_COMMAND(
         TARGET common_test
         POST_BUILD
         COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yang -0 ${TEST_REPOSITORY_LOC} > /dev/null
         VERBATIM
     )
-endmacro(INSTALL_YANG_MODULE)
+endmacro(INSTALL_YANG_FOR_TESTS)
 
-INSTALL_YANG_MODULE("example-module")
-INSTALL_YANG_MODULE("test-module")
-INSTALL_YANG_MODULE("small-module")
-INSTALL_YANG_MODULE("info-module")
-INSTALL_YANG_MODULE("module-a@2016-02-02")
-INSTALL_YANG_MODULE("module-a@2016-02-10")
-INSTALL_YANG_MODULE("module-b@2016-02-05")
-INSTALL_YANG_MODULE("ietf-interfaces@2014-05-08")
-INSTALL_YANG_MODULE("iana-if-type")
-INSTALL_YANG_MODULE("ietf-ip@2014-06-16")
-INSTALL_YANG_MODULE("state-module@2016-07-01")
-INSTALL_YANG_MODULE("top-level-mandatory")
-INSTALL_YANG_MODULE("referenced-data")
-INSTALL_YANG_MODULE("cross-module")
-INSTALL_YANG_MODULE("turing-machine")
-INSTALL_YANG_MODULE("ietf-netconf-notifications")
+if(ENABLE_NACM)
+    INSTALL_YANG_FOR_TESTS("ietf-netconf-acm@2012-02-22")
+endif(ENABLE_NACM)
+INSTALL_YANG_FOR_TESTS("example-module")
+INSTALL_YANG_FOR_TESTS("test-module")
+INSTALL_YANG_FOR_TESTS("small-module")
+INSTALL_YANG_FOR_TESTS("info-module")
+INSTALL_YANG_FOR_TESTS("module-a@2016-02-02")
+INSTALL_YANG_FOR_TESTS("module-a@2016-02-10")
+INSTALL_YANG_FOR_TESTS("module-b@2016-02-05")
+INSTALL_YANG_FOR_TESTS("ietf-interfaces@2014-05-08")
+INSTALL_YANG_FOR_TESTS("iana-if-type")
+INSTALL_YANG_FOR_TESTS("ietf-ip@2014-06-16")
+INSTALL_YANG_FOR_TESTS("state-module@2016-07-01")
+INSTALL_YANG_FOR_TESTS("top-level-mandatory")
+INSTALL_YANG_FOR_TESTS("referenced-data")
+INSTALL_YANG_FOR_TESTS("cross-module")
+INSTALL_YANG_FOR_TESTS("turing-machine")
+INSTALL_YANG_FOR_TESTS("ietf-netconf-notifications")
+INSTALL_YANG_FOR_TESTS("servers")
 
 # dummy testing plugins
 add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)

@@ -1,0 +1,14 @@
+module servers {
+    namespace "http://example.com/ns/servers";
+    prefix servers;
+
+    grouping servers{
+        container server {
+            leaf name {
+                type string;
+            }
+        }
+    }
+
+    uses servers;
+}

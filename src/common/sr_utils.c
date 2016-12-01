@@ -1999,7 +1999,6 @@ sr_daemon_ignore_signals()
 {
     signal(SIGUSR1, SIG_IGN);
     signal(SIGALRM, SIG_IGN);
-    signal(SIGCHLD, SIG_IGN);
     signal(SIGTSTP, SIG_IGN);  /* keyboard stop */
     signal(SIGTTIN, SIG_IGN);  /* background read from tty */
     signal(SIGTTOU, SIG_IGN);  /* background write to tty */
@@ -2245,7 +2244,7 @@ sr_lys_module_has_data(const struct lys_module *module)
     /* iterate through top-level nodes */
     LY_TREE_FOR(module->data, iter) {
         if (((LYS_CONFIG_R & iter->flags) /* operational data */ ||
-             ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_CHOICE | LYS_RPC | LYS_NOTIF | LYS_ACTION) & iter->nodetype))) {
+             ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_CHOICE | LYS_RPC | LYS_NOTIF | LYS_ACTION | LYS_USES) & iter->nodetype))) {
             /* data-carrying */
             return true;
         }
