@@ -428,6 +428,9 @@ np_notif_store_test(void **state)
             time(NULL), &node);
     assert_int_equal(rc, SR_ERR_OK);
     assert_null(node);
+
+    rc = np_cleanup_notif_store(np_ctx);
+    assert_int_equal(rc, SR_ERR_OK);
 #endif
 }
 

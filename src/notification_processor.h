@@ -303,6 +303,15 @@ void np_free_subscriptions(np_subscription_t *subscriptions, size_t subscription
 int np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t generated_time,
         struct lyd_node **data_tree);
 
+/**
+ * @brief Cleans up notification store - old notification data files.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_cleanup_notif_store(np_ctx_t *np_ctx);
+
 /**@} np */
 
 #endif /* NOTIFICATION_PROCESSOR_H_ */
