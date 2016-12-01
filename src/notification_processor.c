@@ -503,8 +503,10 @@ np_get_notif_store_filename(const char *module_name, time_t received_time, char 
 
     /* create file if not exists & apply access permissions */
     if (-1 == access(filename_buff, F_OK)) {
-        fd = open(filename_buff, O_CREAT);
+        old_umask = umask(0);
+        fd = open(filename_buff, O_CREAT, S_IRUSR | S_IWUSR);
         close(fd);
+        umask(old_umask);
         rc = sr_set_data_file_permissions(filename_buff, false, SR_DATA_SEARCH_DIR, module_name, false);
         if (SR_ERR_OK != rc) {
             SR_LOG_WRN("Error by applying correct data file permissions on file '%s'.", filename_buff);
@@ -1324,13 +1326,17 @@ np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt
     free(subscriptions);
 }
 
-#define TIME_BUF_SIZE 64
 int
 np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t generated_time,
         struct lyd_node **notif_data_tree)
 {
+#define TIME_BUF_SIZE 64
+
     char *module_name = NULL;
     char data_filename[PATH_MAX] = { 0, };
+    char data_xpath[PATH_MAX] = { 0, };
+    char generated_time_buf[TIME_BUF_SIZE] = { 0, };
+    struct timespec logged_time_spec = { 0, };
     struct lyd_node *data_tree = NULL, *new_node = NULL;
     int fd = -1;
     int rc = SR_ERR_OK;
@@ -1349,19 +1355,17 @@ np_store_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char 
     rc = np_load_data_tree(np_ctx, user_cred, data_filename, false, &data_tree, &fd);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load notification store data for module '%s'.", module_name);
 
-    char data_path[PATH_MAX] = { 0, };
-    char generated_time_buf[TIME_BUF_SIZE];
+    /* format the time & retrieve current time */
     sr_time_to_string(generated_time, generated_time_buf, TIME_BUF_SIZE);
-    struct timespec logged_time_spec;
     sr_clock_get_time(CLOCK_REALTIME, &logged_time_spec);
 
     /* create data subtree to be stored in the notif. data file */
-    snprintf(data_path, PATH_MAX - 1, NP_NS_XPATH_NOTIFICATION, xpath, generated_time_buf,
+    snprintf(data_xpath, PATH_MAX - 1, NP_NS_XPATH_NOTIFICATION, xpath, generated_time_buf,
             /* logged-time in hundreds of seconds */
             (uint32_t) (((logged_time_spec.tv_sec * 100) + (uint32_t)(logged_time_spec.tv_nsec / 1.0e7)) % UINT32_MAX));
-    new_node = lyd_new_path(data_tree, np_ctx->ly_ctx, data_path, NULL, 0, 0);
+    new_node = lyd_new_path(data_tree, np_ctx->ly_ctx, data_xpath, NULL, 0, 0);
     if (NULL == new_node) {
-        // TODO: error
+        // TODO: warning
     }
     if (NULL == data_tree) {
         /* if the new data tree has been just created */
