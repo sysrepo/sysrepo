@@ -9,5 +9,4 @@ do
     sudo chmod +r "${CORE}"
     EXE=$(file $CORE | sed -n "s/^.*, from '\(.\+\)'$/\1/p")
     gdb -ex "core ${CORE}" -ex "thread apply all bt" -batch --args ${EXE}
-    gdb -ex "core ${CORE}" -ex "thread apply all bt" -batch --args sysrepoctl
 done
