@@ -41,6 +41,7 @@ typedef int clockid_t;
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 typedef struct dm_data_info_s dm_data_info_t;  /**< forward declaration */
+typedef struct sr_list_s sr_list_t;  /**< forward declaration */
 
 /**
  * @brief Internal structure holding information about changes used for notifications
@@ -606,6 +607,12 @@ int sr_print(sr_print_ctx_t *print_ctx, const char *format, ...);
  * @return Error code (SR_ERR_OK on success)
  */
 int sr_create_uri_for_module(const struct lys_module *module, char **uri);
+
+/**
+ * @brief Frees the list and that contains allocated strings (they are freed as well).
+ * @param [in] list
+ */
+void sr_free_list_of_strings (sr_list_t *list);
 
 /**@} utils */
 

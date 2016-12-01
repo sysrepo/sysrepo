@@ -50,6 +50,10 @@ typedef struct rp_ctx_s {
     pthread_mutex_t request_queue_mutex;     /**< Request queue mutex. */
     pthread_cond_t request_queue_cv;         /**< Request queue condition variable. */
 
+    sr_list_t *modules_incl_intern_op_data;  /**< List of modules that contains state data that is handled internally in sysrepo
+                                              *   and requests are not send to a subscriber */
+    sr_list_t *inter_op_data_xpath;          /**< List of list containing subtree of the module that are handled by sysrepo */
+
     pthread_rwlock_t commit_lock;            /**< Lock to synchronize commit in this instance */
 } rp_ctx_t;
 
@@ -92,6 +96,8 @@ typedef struct rp_state_data_ctx_s {
     sr_list_t *subscription_nodes;     /**< Schema node corresponding to the subscriptions */
     sr_list_t *requested_xpaths;       /**< List of xpath that has been requested and response has not been processed yet */
     bool overlapping_leaf_subscription;/**< Flags signalizing that ther is a subscription for leaf or leaf-list under a container or a list */
+    size_t internal_state_data_index;   /**< Index to the module of internal state data structures in rp_ctx */
+    bool internal_state_data;          /**< Request contains internally handled state data */
 }rp_state_data_ctx_t;
 
 /**

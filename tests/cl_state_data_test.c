@@ -236,28 +236,33 @@ provide_gps_located(sr_val_t **values, size_t *values_cnt, void *private_ctx) {
 }
 
 static int
-provide_seats_reserved(sr_val_t **values, size_t *values_cnt, void *private_ctx) {
+provide_seats_reserved(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
     sr_list_t *l = (sr_list_t *) private_ctx;
-    const char *xpath = "/state-module:bus/seats/reserved";
-    char buf[64] = { 0, };
 
-    if (0 != sr_list_add(l, strdup(xpath))) {
+    char *xp = strdup(xpath);
+
+    if (0 != sr_list_add(l, xp)) {
         SR_LOG_ERR_MSG("Error while adding into list");
     }
 
-    if (0 != sr_new_values(10, values)) {
+    if (0 != sr_new_val(xpath, values)) {
         SR_LOG_ERR_MSG("Allocation failed");
         return -2;
     }
 
-    for (int i = 0; i < 10; ++i) {
-        snprintf(buf, 64, "/state-module:bus/seats[number='%d']/reserved", i);
-        assert_int_equal(0, sr_val_set_xpath((*values)+i, buf));
-        (*values)[i].type = SR_BOOL_T;
-        (*values)[i].data.bool_val = (0 == i % 2);
-    }
+    sr_xpath_ctx_t xp_ctx = {0};
 
-    *values_cnt = 10;
+    char *number = sr_xpath_key_value(xp, "seats", "number", &xp_ctx);
+    int num_val = 0;
+
+    sscanf(number, "%d", &num_val);
+
+    sr_xpath_recover(&xp_ctx);
+
+    (*values)[0].type = SR_BOOL_T;
+    (*values)[0].data.bool_val = (0 == num_val % 2);
+
+    *values_cnt = 1;
 
     return 0;
 }
@@ -294,8 +299,8 @@ int cl_dp_bus (const char *xpath, sr_val_t **values, size_t *values_cnt, void *p
         return provide_distance_travalled(values, values_cnt, private_ctx);
     } else if (0 == strcmp(xpath, "/state-module:bus/gps_located")) {
         return provide_gps_located(values, values_cnt, private_ctx);
-    } else if (0 == strcmp(xpath, "/state-module:bus/seats/reserved")) {
-        return provide_seats_reserved(values, values_cnt, private_ctx);
+    } else if (sr_xpath_node_name_eq(xpath, "reserved")) {
+        return provide_seats_reserved(xpath, values, values_cnt, private_ctx);
     }
     SR_LOG_ERR("Data provider received unexpected xpath %s", xpath);
     return -1;
@@ -324,8 +329,8 @@ int cl_dp_gps_located (const char *xpath, sr_val_t **values, size_t *values_cnt,
 int cl_dp_seats_reserved (const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
 {
     const char *expected_xpath = "/state-module:bus/seats/reserved";
-    if (0 == strcmp(xpath, "/state-module:bus/seats/reserved")) {
-        return provide_seats_reserved(values, values_cnt, private_ctx);
+    if (sr_xpath_node_name_eq(xpath, "reserved")) {
+        return provide_seats_reserved(xpath, values, values_cnt, private_ctx);
     }
     SR_LOG_ERR("Data provider received unexpected xpath %s expected %s", xpath, expected_xpath);
     return -1;
@@ -748,7 +753,16 @@ cl_parent_subscription(void **state)
     const char *xpath_expected_to_be_loaded [] = {
         "/state-module:bus/gps_located",
         "/state-module:bus/distance_travelled",
-        "/state-module:bus/seats/reserved"
+        "/state-module:bus/seats[number='0']/reserved",
+        "/state-module:bus/seats[number='1']/reserved",
+        "/state-module:bus/seats[number='2']/reserved",
+        "/state-module:bus/seats[number='3']/reserved",
+        "/state-module:bus/seats[number='4']/reserved",
+        "/state-module:bus/seats[number='5']/reserved",
+        "/state-module:bus/seats[number='6']/reserved",
+        "/state-module:bus/seats[number='7']/reserved",
+        "/state-module:bus/seats[number='8']/reserved",
+        "/state-module:bus/seats[number='9']/reserved",
     };
     CHECK_LIST_OF_STRINGS(xpath_retrieved, xpath_expected_to_be_loaded);
 
@@ -871,7 +885,16 @@ cl_parent_subscription_tree(void **state)
             const char *xpath_expected_to_be_loaded [] = {
                 "/state-module:bus/gps_located",
                 "/state-module:bus/distance_travelled",
-                "/state-module:bus/seats/reserved"
+                "/state-module:bus/seats[number='0']/reserved",
+                "/state-module:bus/seats[number='1']/reserved",
+                "/state-module:bus/seats[number='2']/reserved",
+                "/state-module:bus/seats[number='3']/reserved",
+                "/state-module:bus/seats[number='4']/reserved",
+                "/state-module:bus/seats[number='5']/reserved",
+                "/state-module:bus/seats[number='6']/reserved",
+                "/state-module:bus/seats[number='7']/reserved",
+                "/state-module:bus/seats[number='8']/reserved",
+                "/state-module:bus/seats[number='9']/reserved",
             };
             CHECK_LIST_OF_STRINGS(xpath_retrieved, xpath_expected_to_be_loaded);
         } else {
@@ -880,7 +903,16 @@ cl_parent_subscription_tree(void **state)
                 "/state-module:bus/distance_travelled",
                 "/state-module:bus/gps_located",
                 "/state-module:bus/distance_travelled",
-                "/state-module:bus/seats/reserved"
+                "/state-module:bus/seats[number='0']/reserved",
+                "/state-module:bus/seats[number='1']/reserved",
+                "/state-module:bus/seats[number='2']/reserved",
+                "/state-module:bus/seats[number='3']/reserved",
+                "/state-module:bus/seats[number='4']/reserved",
+                "/state-module:bus/seats[number='5']/reserved",
+                "/state-module:bus/seats[number='6']/reserved",
+                "/state-module:bus/seats[number='7']/reserved",
+                "/state-module:bus/seats[number='8']/reserved",
+                "/state-module:bus/seats[number='9']/reserved",
             };
             CHECK_LIST_OF_STRINGS(xpath_retrieved, xpath_expected_to_be_loaded);
         }
@@ -985,7 +1017,16 @@ cl_exact_match_subscription(void **state)
     const char *xpath_expected_to_be_loaded [] = {
         "/state-module:bus/gps_located",
         "/state-module:bus/distance_travelled",
-        "/state-module:bus/seats/reserved"
+        "/state-module:bus/seats[number='0']/reserved",
+        "/state-module:bus/seats[number='1']/reserved",
+        "/state-module:bus/seats[number='2']/reserved",
+        "/state-module:bus/seats[number='3']/reserved",
+        "/state-module:bus/seats[number='4']/reserved",
+        "/state-module:bus/seats[number='5']/reserved",
+        "/state-module:bus/seats[number='6']/reserved",
+        "/state-module:bus/seats[number='7']/reserved",
+        "/state-module:bus/seats[number='8']/reserved",
+        "/state-module:bus/seats[number='9']/reserved",
     };
     CHECK_LIST_OF_STRINGS(xpath_retrieved, xpath_expected_to_be_loaded);
 
@@ -1117,7 +1158,16 @@ cl_exact_match_subscription_tree(void **state)
             const char *xpath_expected_to_be_loaded [] = {
                 "/state-module:bus/gps_located",
                 "/state-module:bus/distance_travelled",
-                "/state-module:bus/seats/reserved"
+                "/state-module:bus/seats[number='0']/reserved",
+                "/state-module:bus/seats[number='1']/reserved",
+                "/state-module:bus/seats[number='2']/reserved",
+                "/state-module:bus/seats[number='3']/reserved",
+                "/state-module:bus/seats[number='4']/reserved",
+                "/state-module:bus/seats[number='5']/reserved",
+                "/state-module:bus/seats[number='6']/reserved",
+                "/state-module:bus/seats[number='7']/reserved",
+                "/state-module:bus/seats[number='8']/reserved",
+                "/state-module:bus/seats[number='9']/reserved",
             };
             CHECK_LIST_OF_STRINGS(xpath_retrieved, xpath_expected_to_be_loaded);
         } else {
@@ -1126,7 +1176,16 @@ cl_exact_match_subscription_tree(void **state)
                 "/state-module:bus/distance_travelled",
                 "/state-module:bus/gps_located",
                 "/state-module:bus/distance_travelled",
-                "/state-module:bus/seats/reserved"
+                "/state-module:bus/seats[number='0']/reserved",
+                "/state-module:bus/seats[number='1']/reserved",
+                "/state-module:bus/seats[number='2']/reserved",
+                "/state-module:bus/seats[number='3']/reserved",
+                "/state-module:bus/seats[number='4']/reserved",
+                "/state-module:bus/seats[number='5']/reserved",
+                "/state-module:bus/seats[number='6']/reserved",
+                "/state-module:bus/seats[number='7']/reserved",
+                "/state-module:bus/seats[number='8']/reserved",
+                "/state-module:bus/seats[number='9']/reserved",
             };
             CHECK_LIST_OF_STRINGS(xpath_retrieved, xpath_expected_to_be_loaded);
         }
@@ -2288,7 +2347,16 @@ cl_all_state_data(void **state)
     const char *xpath_expected_to_be_loaded [] = {
         "/state-module:bus/gps_located",
         "/state-module:bus/distance_travelled",
-        "/state-module:bus/seats/reserved",
+        "/state-module:bus/seats[number='0']/reserved",
+        "/state-module:bus/seats[number='1']/reserved",
+        "/state-module:bus/seats[number='2']/reserved",
+        "/state-module:bus/seats[number='3']/reserved",
+        "/state-module:bus/seats[number='4']/reserved",
+        "/state-module:bus/seats[number='5']/reserved",
+        "/state-module:bus/seats[number='6']/reserved",
+        "/state-module:bus/seats[number='7']/reserved",
+        "/state-module:bus/seats[number='8']/reserved",
+        "/state-module:bus/seats[number='9']/reserved",
         "/state-module:traffic_stats",
         "/state-module:traffic_stats/cross_road",
         "/state-module:traffic_stats/cross_road[id='0']/traffic_light",

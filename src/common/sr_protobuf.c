@@ -95,6 +95,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "event-notification";
     case SR__OPERATION__OPER_DATA_TIMEOUT:
         return "oper-data-timeout";
+    case SR__OPERATION__INTERNAL_STATE_DATA:
+        return "internal-state-data";
     case _SR__OPERATION_IS_INT_SIZE:
         return "unknown";
     }
@@ -763,6 +765,12 @@ sr_gpb_internal_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, S
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__oper_data_timeout_req__init((Sr__OperDataTimeoutReq*)sub_msg);
             req->oper_data_timeout_req = (Sr__OperDataTimeoutReq*)sub_msg;
+            break;
+        case SR__OPERATION__INTERNAL_STATE_DATA:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__InternalStateDataReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__internal_state_data_req__init((Sr__InternalStateDataReq*)sub_msg);
+            req->internal_state_data_req = (Sr__InternalStateDataReq*) sub_msg;
             break;
         default:
             break;
