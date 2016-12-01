@@ -259,6 +259,8 @@ rp_prepare_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *sessio
     rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
 
+    req->request->event_notif_req->timestamp = time(NULL);
+
 cleanup:
     sr_free_values(values, val_cnt);
     if (SR_ERR_OK != rc) {
