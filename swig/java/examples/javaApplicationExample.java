@@ -38,11 +38,12 @@ class Print {
 
 class My_Callback extends Callback {
 	/* Function to be called for subscribed client of given session whenever configuration changes. */
-	public void module_change(Session sess, String module_name, sr_notif_event_t event, SWIGTYPE_p_void private_ctx) {
+	public int module_change(Session sess, String module_name, sr_notif_event_t event, SWIGTYPE_p_void private_ctx) {
 		System.out.println("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n");
 
 		Print print = new Print();
 		print.current_config(sess, module_name);
+                return sr_error_t.SR_ERR_OK.swigValue();
 	}
 }
 

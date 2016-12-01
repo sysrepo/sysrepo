@@ -2377,3 +2377,14 @@ sr_time_to_string(time_t time, char *buff, size_t buff_size)
 
     return SR_ERR_OK;
 }
+
+void
+sr_free_list_of_strings(sr_list_t *list)
+{
+    if (NULL != list) {
+        for (size_t i = 0; i < list->count; i++) {
+            free((char *) list->data[i]);
+        }
+        sr_list_cleanup(list);
+    }
+}
