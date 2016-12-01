@@ -230,6 +230,23 @@ enable_running_for_submodule(void **state)
    rc = dm_enable_module_running(ctx->dm_ctx, session->dm_session, "module-a", NULL);
    assert_int_equal(SR_ERR_OK, rc);
 
+   /* testing the results */
+   sr_val_t val_a = {0,};
+   val_a.type = SR_STRING_T;
+   val_a.data.string_val = strdup("abc");
+   rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/module-a:cont_a/something/a-string", SR_EDIT_DEFAULT, &val_a);
+   
+   /* enable a moudle has grouping/uses, per rfc6020 7.12.1 */
+   rc = dm_enable_module_running(ctx->dm_ctx, session->dm_session, "servers", NULL);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   /* testing the results */
+   sr_val_t val_b = {0,};
+   val_b.type = SR_STRING_T;
+   val_b.data.string_val = strdup("abc");
+   rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/servers:server/name", SR_EDIT_DEFAULT, &val_b);
+   assert_int_equal(SR_ERR_OK, rc);
+
    test_rp_session_cleanup(ctx, session);
 }
 
