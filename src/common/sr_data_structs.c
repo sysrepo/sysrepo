@@ -817,3 +817,119 @@ cleanup:
     pthread_mutex_unlock(&lock_ctx->mutex);
     return rc;
 }
+
+#define UINT32_STORAGE_SIZE(bits) (((bits - 1) >> 5) + 1)
+
+int
+sr_bitset_init(size_t bit_count, sr_bitset_t **bitset_p)
+{
+    int rc = SR_ERR_OK;
+    sr_bitset_t *bitset = NULL;
+    CHECK_NULL_ARG(bitset_p);
+
+    if (0 == bit_count) {
+        return SR_ERR_INVAL_ARG;
+    }
+
+    bitset = calloc(1, sizeof(sr_bitset_t));
+    CHECK_NULL_NOMEM_GOTO(bitset, rc, cleanup);
+
+    bitset->bit_count = bit_count;
+    bitset->bits = calloc(UINT32_STORAGE_SIZE(bit_count), sizeof(uint32_t));
+    CHECK_NULL_NOMEM_GOTO(bitset->bits, rc, cleanup);
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        sr_bitset_cleanup(bitset);
+    } else {
+        *bitset_p = bitset;
+    }
+    return rc;
+}
+
+void
+sr_bitset_cleanup(sr_bitset_t *bitset)
+{
+    if (NULL == bitset) {
+        return;
+    }
+
+    free(bitset->bits);
+    free(bitset);
+}
+
+int
+sr_bitset_set(sr_bitset_t *bitset, size_t pos, bool value)
+{
+    CHECK_NULL_ARG(bitset);
+
+    if (pos >= bitset->bit_count) {
+        return SR_ERR_INVAL_ARG;
+    }
+
+    if (value) {
+        bitset->bits[pos >> 5] |= (1 << (pos & 0x1f));
+    } else {
+        bitset->bits[pos >> 5] &= ~(1 << (pos & 0x1f));
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+sr_bitset_get(sr_bitset_t *bitset, size_t pos, bool *value)
+{
+    CHECK_NULL_ARG2(bitset, value);
+
+    if (pos >= bitset->bit_count) {
+        return SR_ERR_INVAL_ARG;
+    }
+
+    *value = (bitset->bits[pos >> 5] & (1 << (pos & 0x1f)));
+
+    return SR_ERR_OK;
+}
+
+int
+sr_bitset_reset(sr_bitset_t *bitset)
+{
+    CHECK_NULL_ARG(bitset);
+
+    if (bitset->bit_count) {
+        memset(bitset->bits, 0, UINT32_STORAGE_SIZE(bitset->bit_count) * sizeof(uint32_t));
+    }
+
+    return SR_ERR_OK;
+}
+
+bool
+sr_bitset_empty(sr_bitset_t *bitset)
+{
+    if (NULL == bitset) {
+        return true;
+    }
+
+    for (size_t i = 0; i < UINT32_STORAGE_SIZE(bitset->bit_count); ++i) {
+        if (bitset->bits[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int
+sr_bitset_disjoint(sr_bitset_t *bitset1, sr_bitset_t *bitset2, bool *disjoint)
+{
+    CHECK_NULL_ARG3(bitset1, bitset2, disjoint);
+
+    *disjoint = true;
+    for (size_t i = 0; i < UINT32_STORAGE_SIZE(MIN(bitset1->bit_count, bitset2->bit_count)); ++i) {
+        if (bitset1->bits[i] & bitset2->bits[i]) {
+            *disjoint = false;
+            break;
+        }
+    }
+
+    return SR_ERR_OK;
+}
+

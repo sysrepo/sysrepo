@@ -1999,7 +1999,6 @@ sr_daemon_ignore_signals()
 {
     signal(SIGUSR1, SIG_IGN);
     signal(SIGALRM, SIG_IGN);
-    signal(SIGCHLD, SIG_IGN);
     signal(SIGTSTP, SIG_IGN);  /* keyboard stop */
     signal(SIGTTIN, SIG_IGN);  /* background read from tty */
     signal(SIGTTOU, SIG_IGN);  /* background write to tty */
@@ -2361,4 +2360,15 @@ cleanup:
         free(buffer);
     }
     return rc;
+}
+
+void
+sr_free_list_of_strings (sr_list_t *list)
+{
+    if (NULL != list) {
+        for (size_t i = 0; i < list->count; i++) {
+            free((char *) list->data[i]);
+        }
+        sr_list_cleanup(list);
+    }
 }

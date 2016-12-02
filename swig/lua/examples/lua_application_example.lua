@@ -8,13 +8,7 @@
 -- The original c implementation is also available in the source, so one can refer to it to evaluate trade-offs.
 --
 
-if (_VERSION == "Lua 5.1") then
-    sr = require("libsysrepoLua51")
-elseif (_VERSION == "Lua 5.2") then
-    sr = require("libsysrepoLua52")
-elseif (_VERSION == "Lua 5.3") then
-    sr = require("libsysrepoLua53")
-end
+sr = require("libsysrepoLua")
 
 -- Function to print current configuration state.
 -- It does so by loading all the items of a session and printing them out.
@@ -45,6 +39,8 @@ function module_change_cb(session, module_name, event, private_ctx)
     io.write("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
 
     print_current_config(session, module_name)
+
+    return tonumber(sr.SR_ERR_OK)
 end
 
 -- Notable difference between c implementation is using exception mechanism for open handling unexpected events.
