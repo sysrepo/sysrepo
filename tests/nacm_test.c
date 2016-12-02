@@ -717,6 +717,7 @@ nacm_test_rule_lists(void **state)
 static void
 nacm_test_rules(void **state)
 {
+    uint32_t hash = 0;
     nacm_ctx_t *nacm_ctx = NULL;
     nacm_rule_list_t *rule_list = NULL;
     nacm_rule_t *rule = NULL;
@@ -747,10 +748,12 @@ nacm_test_rules(void **state)
     verify_sr_list_size(rule_list->rules, 1);
     /*  -> rule: deny-ncm */
     rule = nacm_get_rule(rule_list, 0);
+    assert_int_equal(0, rule->id);
     assert_string_equal("deny-ncm", rule->name);
     assert_string_equal("ietf-netconf-monitoring", rule->module);
     assert_int_equal(NACM_RULE_NOTSET, rule->type);
     assert_null(rule->data.path);
+    assert_int_equal(0, rule->data_hash);
     assert_int_equal(NACM_ACCESS_ALL, rule->access);
     assert_int_equal(NACM_ACTION_DENY, rule->action);
     assert_string_equal(RULE1_COMMENT, rule->comment);
@@ -772,25 +775,29 @@ nacm_test_rules(void **state)
     verify_sr_list_size(rule_list->rules, 2);
     /*  -> rule: deny-ncm */
     rule = nacm_get_rule(rule_list, 0);
+    assert_int_equal(0, rule->id);
     assert_string_equal("deny-ncm", rule->name);
     assert_string_equal("ietf-netconf-monitoring", rule->module);
     assert_int_equal(NACM_RULE_NOTSET, rule->type);
     assert_null(rule->data.path);
+    assert_int_equal(0, rule->data_hash);
     assert_int_equal(NACM_ACCESS_ALL, rule->access);
     assert_int_equal(NACM_ACTION_DENY, rule->action);
     assert_string_equal(RULE1_COMMENT, rule->comment);
     /*  -> rule: default-rule */
     rule = nacm_get_rule(rule_list, 1);
+    assert_int_equal(1, rule->id);
     assert_string_equal("default-rule", rule->name);
     assert_string_equal("*", rule->module);
     assert_int_equal(NACM_RULE_NOTSET, rule->type);
     assert_null(rule->data.path);
+    assert_int_equal(0, rule->data_hash);
     assert_int_equal(NACM_ACCESS_ALL, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_null(rule->comment);
     nacm_test_clean_ctx();
 
-    /* add rule-list with five different rules */
+    /* add rule-list with six different rules */
     add_nacm_rule_list(nacm_config, "admin-acl", "group3", "group4", "group5", "group6", NULL);
     add_nacm_rule(nacm_config, "admin-acl", "rule1", "ietf-interfaces", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface[name='eth0']", "update delete", "deny", "This is rule1.");
@@ -802,6 +809,9 @@ nacm_test_rules(void **state)
             NULL, "read create delete", "permit", "This is rule4.");
     add_nacm_rule(nacm_config, "admin-acl", "rule5", "example-module", NACM_RULE_DATA,
             "/example-module:container", "read", "permit", "This is rule5.");
+    add_nacm_rule(nacm_config, "admin-acl", "rule6", "fake-module", NACM_RULE_DATA,
+            "/module1:container/module2:list[key='key-value']/container/module3:leaf", "read", "permit",
+            "This is rule6.");
     save_nacm_config(nacm_config);
 
     /* test NACM context */
@@ -815,71 +825,100 @@ nacm_test_rules(void **state)
     verify_sr_list_size(rule_list->rules, 2);
     /*  -> rule: deny-ncm */
     rule = nacm_get_rule(rule_list, 0);
+    assert_int_equal(0, rule->id);
     assert_string_equal("deny-ncm", rule->name);
     assert_string_equal("ietf-netconf-monitoring", rule->module);
     assert_int_equal(NACM_RULE_NOTSET, rule->type);
     assert_null(rule->data.path);
+    assert_int_equal(0, rule->data_hash);
     assert_int_equal(NACM_ACCESS_ALL, rule->access);
     assert_int_equal(NACM_ACTION_DENY, rule->action);
     assert_string_equal(RULE1_COMMENT, rule->comment);
     /*  -> rule: default-rule */
     rule = nacm_get_rule(rule_list, 1);
+    assert_int_equal(1, rule->id);
     assert_string_equal("default-rule", rule->name);
     assert_string_equal("*", rule->module);
     assert_int_equal(NACM_RULE_NOTSET, rule->type);
     assert_null(rule->data.path);
+    assert_int_equal(0, rule->data_hash);
     assert_int_equal(NACM_ACCESS_ALL, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_null(rule->comment);
     /*  -> rule list: admin-acl */
     rule_list = nacm_get_rule_list(nacm_ctx, 1);
     assert_string_equal("admin-acl", rule_list->name);
-    verify_sr_list_size(rule_list->rules, 5);
+    verify_sr_list_size(rule_list->rules, 6);
     /*  -> rule: rule1 */
     rule = nacm_get_rule(rule_list, 0);
+    assert_int_equal(2, rule->id);
     assert_string_equal("rule1", rule->name);
     assert_string_equal("ietf-interfaces", rule->module);
     assert_int_equal(NACM_RULE_DATA, rule->type);
     assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']", rule->data.path);
+    hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface");
+    assert_int_equal(hash, rule->data_hash);
     assert_int_equal(NACM_ACCESS_UPDATE | NACM_ACCESS_DELETE, rule->access);
     assert_int_equal(NACM_ACTION_DENY, rule->action);
     assert_string_equal("This is rule1.", rule->comment);
     /*  -> rule: rule2 */
     rule = nacm_get_rule(rule_list, 1);
+    assert_int_equal(3, rule->id);
     assert_string_equal("rule2", rule->name);
     assert_string_equal("test-module", rule->module);
     assert_int_equal(NACM_RULE_RPC, rule->type);
-    assert_string_equal("/test-module:activate-software-image", rule->data.path);
+    assert_string_equal("/test-module:activate-software-image", rule->data.rpc_name);
+    assert_int_equal(0, rule->data_hash);
     assert_int_equal(NACM_ACCESS_EXEC, rule->access);
     assert_int_equal(NACM_ACTION_DENY, rule->action);
     assert_string_equal("This is rule2.", rule->comment);
     /*  -> rule: rule3 */
     rule = nacm_get_rule(rule_list, 2);
+    assert_int_equal(4, rule->id);
     assert_string_equal("rule3", rule->name);
     assert_string_equal("test-module", rule->module);
     assert_int_equal(NACM_RULE_NOTIF, rule->type);
-    assert_string_equal("/test-module:link-discovered", rule->data.path);
+    assert_string_equal("/test-module:link-discovered", rule->data.event_notif_name);
+    assert_int_equal(0, rule->data_hash);
     assert_int_equal(NACM_ACCESS_EXEC, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_string_equal("This is rule3.", rule->comment);
     /*  -> rule: rule4 */
     rule = nacm_get_rule(rule_list, 3);
+    assert_int_equal(5, rule->id);
     assert_string_equal("rule4", rule->name);
     assert_string_equal("*", rule->module);
     assert_int_equal(NACM_RULE_NOTSET, rule->type);
     assert_null(rule->data.path);
+    assert_int_equal(0, rule->data_hash);
     assert_int_equal(NACM_ACCESS_READ | NACM_ACCESS_CREATE | NACM_ACCESS_DELETE, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_string_equal("This is rule4.", rule->comment);
     /*  -> rule: rule5 */
     rule = nacm_get_rule(rule_list, 4);
+    assert_int_equal(6, rule->id);
     assert_string_equal("rule5", rule->name);
     assert_string_equal("example-module", rule->module);
     assert_int_equal(NACM_RULE_DATA, rule->type);
     assert_string_equal("/example-module:container", rule->data.path);
+    hash = sr_str_hash("example-module:container");
+    assert_int_equal(hash, rule->data_hash);
     assert_int_equal(NACM_ACCESS_READ, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_string_equal("This is rule5.", rule->comment);
+    /*  -> rule: rule6 */
+    rule = nacm_get_rule(rule_list, 5);
+    assert_int_equal(7, rule->id);
+    assert_string_equal("rule6", rule->name);
+    assert_string_equal("fake-module", rule->module);
+    assert_int_equal(NACM_RULE_DATA, rule->type);
+    assert_string_equal("/module1:container/module2:list[key='key-value']/container/module3:leaf", rule->data.path);
+    hash = sr_str_hash("module1:container") + sr_str_hash("module2:list") + sr_str_hash("module2:container")
+           + sr_str_hash("module3:leaf");
+    assert_int_equal(hash, rule->data_hash);
+    assert_int_equal(NACM_ACCESS_READ, rule->access);
+    assert_int_equal(NACM_ACTION_PERMIT, rule->action);
+    assert_string_equal("This is rule6.", rule->comment);
     nacm_test_clean_ctx();
 
     /* deallocate NACM config */

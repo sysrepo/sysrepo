@@ -25,6 +25,7 @@
 
 #include <time.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #ifdef __APPLE__
 /* OS X get_time */
@@ -39,6 +40,11 @@ typedef int clockid_t;
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
+
+/* Return main module of a libyang's scheme element. */
+#define LYS_MAIN_MODULE(lys_elem)  \
+            (lys_elem->module->type ? ((struct lys_submodule *)lys_elem->module)->belongsto : lys_elem->module)
+
 
 typedef struct dm_data_info_s dm_data_info_t;  /**< forward declaration */
 
@@ -141,6 +147,14 @@ int sr_path_join(const char *path1, const char *path2, char **result);
  * @param [in] str
  */
 void sr_str_trim(char *str);
+
+/**
+ * @brief Calculates 32-bit hash from a C-string. Uses *djb2* algorithm from *Dan Bernstein*.
+ *
+ * @param [in] str String to calculate hash from.
+ * @return Hash value.
+ */
+uint32_t sr_str_hash(const char *str);
 
 /**
  * @brief Copies the first string from the beginning of the xpath up to the first colon,
@@ -282,6 +296,22 @@ int sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid);
  * @return err_code
  */
 int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree);
+
+/**
+ * @brief Returns *true* if the given schema node could be referenced from a data tree,
+ * *false* otherwise.
+ *
+ * @param [in] node
+ */
+bool sr_lys_data_node(struct lys_node *node);
+
+/**
+ * @brief Get the closest predecessor that may be referenced from a data tree.
+ *
+ * @param [in] node
+ * @param [in] augment True if this node may be from an augment definition.
+ */
+struct lys_node *sr_lys_node_get_data_parent(struct lys_node *node, bool augment);
 
 /**
  * @brief Copies the datatree pointed by root including its siblings.

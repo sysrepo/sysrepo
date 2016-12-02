@@ -27,6 +27,7 @@
 
 #include "nacm.h"
 #include "data_manager.h"
+#include "sysrepo/xpath.h"
 
 #define NACM_MODULE_NAME    "ietf-netconf-acm"
 #define ACCESS_BIT_COUNT    5
@@ -184,15 +185,19 @@ nacm_free_rule(nacm_rule_t *rule)
  * Should be then released using ::nacm_free_rule.
  */
 static int
-nacm_alloc_rule(const char *name, const char *module, nacm_rule_type_t type, const char *data, uint8_t access,
-        nacm_action_t action, const char *comment, nacm_rule_t **rule_p)
+nacm_alloc_rule(uint16_t id, const char *name, const char *module, nacm_rule_type_t type, const char *data,
+        uint8_t access, nacm_action_t action, const char *comment, nacm_rule_t **rule_p)
 {
     int rc = SR_ERR_OK;
+    char *node = NULL, *colon = NULL;
+    char full_node_id[PATH_MAX] = { 0, }, *node_name = full_node_id;
     nacm_rule_t *rule = NULL;
+    sr_xpath_ctx_t state = {0};
     CHECK_NULL_ARG3(name, module, rule_p);
 
     rule = calloc(1, sizeof *rule);
     CHECK_NULL_NOMEM_GOTO(rule, rc, cleanup);
+    rule->id = id;
 
     rule->name = strdup(name);
     CHECK_NULL_NOMEM_GOTO(rule->name, rc, cleanup);
@@ -203,6 +208,24 @@ nacm_alloc_rule(const char *name, const char *module, nacm_rule_type_t type, con
     if (NULL != data) {
         rule->data.path = strdup(data);
         CHECK_NULL_NOMEM_GOTO(rule->data.path, rc, cleanup);
+        if (NACM_RULE_DATA == type) {
+            /* calculate hash from a "normalized" data node instance id */
+            node = sr_xpath_next_node_with_ns(rule->data.path, &state);
+            while (node) {
+                colon = strchr(node, ':');
+                if (NULL != colon) {
+                    char c = colon[1];
+                    colon[1] = '\0';
+                    strncpy(full_node_id, node, PATH_MAX);
+                    colon[1] = c; /* restore */
+                    node_name = full_node_id + strlen(full_node_id);
+                }
+                strncpy(node_name, colon ? colon+1 : node, PATH_MAX - (node_name - full_node_id));
+                rule->data_hash += sr_str_hash(full_node_id);
+                node = sr_xpath_next_node_with_ns(NULL, &state);
+            }
+            sr_xpath_recover(&state);
+        }
     }
 
     if (NULL != comment) {
@@ -281,6 +304,7 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
     int rc = SR_ERR_OK;
     int fd = -1, phase = 0;
     bool match_all = false;
+    uint16_t rule_id = 0;
     const char *group_name = NULL, *rl_name = NULL;
     const char *rule_name = NULL, *rule_module = NULL, *rule_data = NULL, *rule_comment = NULL;
     uint8_t rule_access = 0;
@@ -566,7 +590,7 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
 
                     /* process rule data */
                     assert(NULL == nacm_rule);
-                    rc = nacm_alloc_rule(rule_name, rule_module, rule_type, rule_data, rule_access,
+                    rc = nacm_alloc_rule(rule_id++, rule_name, rule_module, rule_type, rule_data, rule_access,
                                          rule_action, rule_comment, &nacm_rule);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to allocate NACM rule.");
                     rc = sr_list_add(nacm_rule_list->rules, nacm_rule);
@@ -832,4 +856,36 @@ nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials,
     /* TODO */
 
     return SR_ERR_OK;
+}
+
+int
+nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials,
+        nacm_data_val_ctx_t **nacm_data_val_ctx)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG3(nacm_ctx, user_credentials, nacm_data_val_ctx);
+    return rc;
+}
+
+int
+nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG(nacm_data_val_ctx);
+
+    /* TODO */
+
+    return rc;
+}
+
+int
+nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t access_type, struct lyd_node *node,
+        nacm_action_t *action, char **rule_name, char **rule_info)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG3(nacm_data_val_ctx, node, action);
+
+    /* TODO */
+
+    return rc;
 }

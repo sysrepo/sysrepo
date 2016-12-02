@@ -38,6 +38,7 @@ int setup(void **state)
     createDataTreeTestModule();
     createDataTreeExampleModule();
     createDataTreeReferencedModule(123);
+    createDataTreeIETFinterfacesModule();
     return 0;
 }
 
@@ -896,7 +897,109 @@ dm_action_test(void **state)
     dm_cleanup(ctx);
 }
 
-int main(){
+static struct lyd_node *
+get_single_node(struct lyd_node *data_tree, const char *xpath)
+{
+    struct ly_set *res = NULL;
+    struct lyd_node *node = NULL;
+
+    assert_non_null(data_tree);
+    assert_non_null(xpath);
+
+    res = lyd_find_xpath(data_tree, xpath);
+    assert_non_null(res);
+    assert_int_equal(1, res->number);
+    node = res->set.d[0];
+    assert_non_null(node);
+    ly_set_free(res);
+
+    return node;
+}
+
+static void
+verify_xpath_hash(struct lyd_node *node, uint32_t expected)
+{
+    assert_non_null(node);
+    assert_non_null(node->schema->priv);
+    assert_int_equal(expected, dm_get_node_xpath_hash(node->schema));
+}
+
+void
+dm_schema_node_xpath_hash(void **state)
+{
+    int rc;
+    dm_ctx_t *ctx;
+    dm_session_t *ses_ctx;
+    uint32_t hash = 0;
+    struct lyd_node *node = NULL;
+    struct lyd_node *data_tree;
+
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
+    assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx, "ietf-interfaces", &data_tree));
+
+    node = get_single_node(data_tree, "/ietf-interfaces:interfaces");
+    hash = sr_str_hash("ietf-interfaces:interfaces");
+    verify_xpath_hash(node, hash);
+
+    node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']");
+    hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface");
+    verify_xpath_hash(node, hash);
+
+    node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4");
+    hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface")
+           + sr_str_hash("ietf-ip:ipv4");
+    verify_xpath_hash(node, hash);
+
+    node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled");
+    hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface")
+           + sr_str_hash("ietf-ip:ipv4") + sr_str_hash("ietf-ip:enabled");
+    verify_xpath_hash(node, hash);
+
+    node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/ip");
+    hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface")
+           + sr_str_hash("ietf-ip:ipv4") + sr_str_hash("ietf-ip:address") + sr_str_hash("ietf-ip:ip");
+    verify_xpath_hash(node, hash);
+
+    assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx, "test-module", &data_tree));
+
+    node = get_single_node(data_tree, "/test-module:main/i32");
+    hash = sr_str_hash("test-module:main") + sr_str_hash("test-module:i32");
+    verify_xpath_hash(node, hash);
+
+    node = get_single_node(data_tree, "/test-module:list[key='k1']/wireless");
+    hash = sr_str_hash("test-module:list") + sr_str_hash("test-module:wireless");
+    verify_xpath_hash(node, hash);
+
+    node = get_single_node(data_tree, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age");
+    hash = sr_str_hash("test-module:university") + sr_str_hash("test-module:classes")
+           + sr_str_hash("test-module:class") + sr_str_hash("test-module:student") + sr_str_hash("test-module:age");
+    verify_xpath_hash(node, hash);
+
+    assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree));
+
+    node = get_single_node(data_tree, "/example-module:container");
+    hash = sr_str_hash("example-module:container");
+    verify_xpath_hash(node, hash);
+
+    node = get_single_node(data_tree, "/example-module:container/list[key1='key1'][key2='key2']");
+    hash = sr_str_hash("example-module:container") + sr_str_hash("example-module:list");
+    verify_xpath_hash(node, hash);
+
+    node = get_single_node(data_tree, "/example-module:container/list[key1='key1'][key2='key2']/leaf");
+    hash = sr_str_hash("example-module:container") + sr_str_hash("example-module:list")
+           + sr_str_hash("example-module:leaf");
+    verify_xpath_hash(node, hash);
+
+    dm_session_stop(ctx, ses_ctx);
+    dm_cleanup(ctx);
+}
+
+int
+main()
+{
     sr_log_stderr(SR_LL_DBG);
 
     const struct CMUnitTest tests[] = {
@@ -914,6 +1017,7 @@ int main(){
             cmocka_unit_test(dm_state_data_test),
             cmocka_unit_test(dm_event_notif_test),
             cmocka_unit_test(dm_action_test),
+            cmocka_unit_test(dm_schema_node_xpath_hash),
     };
     return cmocka_run_group_tests(tests, setup, NULL);
 }

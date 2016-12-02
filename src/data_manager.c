@@ -82,11 +82,13 @@ typedef struct dm_session_s {
 } dm_session_t;
 
 /**
- * @brief Info structure for the node holds the state of the running data store.
+ * @brief Info structure for the node which holds its state in the running data store
+ * and a hash of its xpath in the schema tree.
  * (It will hold information about notification subscriptions.)
  */
 typedef struct dm_node_info_s {
     dm_node_state_t state;
+    uint32_t xpath_hash;
 } dm_node_info_t;
 
 /** @brief Invalid value for the commit context id, used for signaling e.g.: duplicate id */
@@ -187,6 +189,33 @@ dm_c_ctx_id_cmp(const void *a, const void *b)
     } else {
         return 1;
     }
+}
+
+int
+dm_set_node_state(struct lys_node *node, dm_node_state_t state)
+{
+    CHECK_NULL_ARG(node);
+    if (NULL == node->priv) {
+        node->priv = calloc(1, sizeof(dm_node_info_t));
+        CHECK_NULL_NOMEM_RETURN(node->priv);
+    }
+    ((dm_node_info_t *) node->priv)->state = state;
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Sets the hash value associated with the xpath of the given schema node.
+ */
+static int
+dm_set_node_xpath_hash(struct lys_node *node, uint32_t hash)
+{
+    CHECK_NULL_ARG(node);
+    if (NULL == node->priv) {
+        node->priv = calloc(1, sizeof(dm_node_info_t));
+        CHECK_NULL_NOMEM_RETURN(node->priv);
+    }
+    ((dm_node_info_t *) node->priv)->xpath_hash = hash;
+    return SR_ERR_OK;
 }
 
 static void
@@ -348,6 +377,66 @@ dm_feature_enable_internal(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info, cons
 
     if (1 == rc) {
         SR_LOG_ERR("Unknown feature %s in model %s", feature_name, module_name);
+    }
+
+    return rc;
+}
+
+/**
+ *
+ * @brief Initializes module private data for newly added schema nodes.
+ * Most importantly computes hashes from their xpaths.
+ * Function assumes that the schema info is locked for writing or that it cannot be
+ * accessed by multiple threads at the same time.
+ *
+ * @param [in] schema_info
+ */
+static int
+dm_init_missing_node_priv_data(dm_schema_info_t *schema_info)
+{
+    int rc = SR_ERR_OK;
+    struct lys_node *node = NULL;
+    char *node_full_name = NULL;
+    bool backtracking = false;
+    uint32_t hash = 0;
+    CHECK_NULL_ARG(schema_info);
+
+    node = schema_info->module->data;
+
+    while (node) {
+        if (backtracking) {
+            if (node->next) {
+                node = node->next;
+                backtracking = false;
+            } else {
+                node = node->parent;
+                if (NULL != node && LYS_AUGMENT == node->nodetype) {
+                    node = ((struct lys_node_augment *)node)->target;
+                }
+            }
+        } else {
+            if (NULL == node->priv && sr_lys_data_node(node)) {
+                hash = dm_get_node_xpath_hash(sr_lys_node_get_data_parent(node, false));
+                node_full_name = calloc(strlen(LYS_MAIN_MODULE(node)->name) + strlen(node->name) + 2,
+                                        sizeof *node_full_name);
+                CHECK_NULL_NOMEM_RETURN(node_full_name);
+                strcat(node_full_name, LYS_MAIN_MODULE(node)->name);
+                strcat(node_full_name, ":");
+                strcat(node_full_name, node->name);
+                hash += sr_str_hash(node_full_name);
+                free(node_full_name);
+                node_full_name = NULL;
+                rc = dm_set_node_xpath_hash(node, hash);
+            }
+            if (SR_ERR_OK != rc) {
+                return rc;
+            }
+            if (!(node->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) && node->child) {
+                node = node->child;
+            } else {
+                backtracking = true;
+            }
+        }
     }
 
     return rc;
@@ -607,6 +696,10 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         ll_node = ll_node->next;
     }
 
+    /* compute xpath hashes for all schema nodes (referenced from data tree) */
+    rc = dm_init_missing_node_priv_data(si);
+    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", module->name);
+
     /* apply persist data enable features, running datastore */
     if (module->has_persist) {
         rc = dm_apply_persist_data_for_model(dm_ctx, module_name, si);
@@ -622,7 +715,6 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         }
         ll_node = ll_node->next;
     }
-
 
     /* distinguish between modules that can and cannot be locked */
     si->can_not_be_locked = !module->has_data;
@@ -1104,6 +1196,16 @@ dm_get_node_state(struct lys_node *node)
     return n_info->state;
 }
 
+uint32_t
+dm_get_node_xpath_hash(struct lys_node *node)
+{
+    if (NULL == node || NULL == node->priv) {
+        return 0;
+    }
+    dm_node_info_t *n_info = (dm_node_info_t *) node->priv;
+    return n_info->xpath_hash;
+}
+
 int
 dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr_val_t *val, sr_edit_options_t opts, sr_move_position_t pos, const char *rel_item)
 {
@@ -1281,18 +1383,6 @@ dm_is_enabled_check_recursively(struct lys_node *node)
         node = node->parent;
     }
     return false;
-}
-
-int
-dm_set_node_state(struct lys_node *node, dm_node_state_t state)
-{
-    CHECK_NULL_ARG(node);
-    if (NULL == node->priv) {
-        node->priv = calloc(1, sizeof(dm_node_info_t));
-        CHECK_NULL_NOMEM_RETURN(node->priv);
-    }
-    ((dm_node_info_t *) node->priv)->state = state;
-    return SR_ERR_OK;
 }
 
 bool
@@ -3289,7 +3379,7 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, &module);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s info failed", module_name);
 
-    /* load this module also into contexts of newly augmented modules */
+    /* enable feature in all modules augmented by this module */
     ll_node = module->inv_deps->first;
     while (ll_node) {
         dep = (md_dep_t *) ll_node->data;
@@ -3368,8 +3458,16 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
                 rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, true, &si);
                 CHECK_RC_LOG_GOTO(rc, unlock, "Loading of %s was not successfull", dep->dest->name);
             }
+            if (dep->type == MD_DEP_DATA) {
+                /* mark this module as dependent on data from other modules */
+                si->cross_module_data_dependency = true;
+            }
             ll_node = ll_node->next;
         }
+
+        /* compute xpath hashes for all schema nodes (referenced from data tree) */
+        rc = dm_init_missing_node_priv_data(si);
+        CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", module->name);
 
         if (module->has_persist) {
             rc = dm_apply_persist_data_for_model(dm_ctx, module->name, si);
@@ -3386,6 +3484,9 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
             ll_node = ll_node->next;
         }
 
+        /* distinguish between modules that can and cannot be locked */
+        si->can_not_be_locked = !module->has_data;
+
         /* load this module also into contexts of newly augmented modules */
         ll_node = module->inv_deps->first;
         while (ll_node) {
@@ -3396,6 +3497,10 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
                 if (NULL != si_ext && NULL != si_ext->ly_ctx) {
                     rc = dm_load_schema_file(dm_ctx, module->filepath, true, &si_ext);
                     CHECK_RC_LOG_GOTO(rc, unlock, "Failed to load schema %s", module->filepath);
+
+                    /* compute xpath hashes for all newly added schema nodes (through augment) */
+                    rc = dm_init_missing_node_priv_data(si_ext);
+                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", dep->dest->name);
 
                     if (module->has_persist) {
                         rc = dm_apply_persist_data_for_model(dm_ctx, module->name, si_ext);

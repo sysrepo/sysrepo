@@ -127,6 +127,23 @@ sr_str_trim(char *str) {
     memmove(str, ptr, len + 1);
 }
 
+uint32_t
+sr_str_hash(const char *str)
+{
+    uint32_t hash = 5381;
+    char c;
+
+    if (NULL == str) {
+        return 0;
+    }
+
+    while ('\0' != (c = *str++)) {
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    }
+
+    return hash;
+}
+
 int
 sr_copy_first_ns(const char *xpath, char **namespace)
 {
@@ -502,6 +519,34 @@ sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
 cleanup:
     fclose(f);
     return rc;
+}
+
+bool
+sr_lys_data_node(struct lys_node *node)
+{
+    if (NULL == node) {
+        return false;
+    }
+
+    return node->nodetype & (LYS_CONTAINER | LYS_LEAF | LYS_LEAFLIST | LYS_LIST |
+                             LYS_ANYXML | LYS_NOTIF | LYS_RPC | LYS_ACTION | LYS_ANYDATA);
+}
+
+struct lys_node *
+sr_lys_node_get_data_parent(struct lys_node *node, bool augment)
+{
+    node = node ? node->parent : NULL;
+
+    while (node && !sr_lys_data_node(node) &&
+            (!augment || LYS_AUGMENT != node->nodetype)) {
+        if (LYS_AUGMENT == node->nodetype) {
+            node = ((struct lys_node_augment *)node)->target;
+        } else {
+            node = node->parent;
+        }
+    }
+
+    return node;
 }
 
 struct lyd_node*
