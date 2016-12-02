@@ -561,7 +561,7 @@ np_get_notification_files(np_ctx_t *np_ctx, const char *module_name, time_t time
             /* for each file */
             snprintf(filename, PATH_MAX - 1, "%s/%s", dirname, entry.d_name);
             ret = stat(filename, &sb);
-            if ((-1 != ret) && (sb.st_mtim.tv_sec >= time_from) && (sb.st_mtim.tv_sec <= time_to)) {
+            if ((-1 != ret) && (sb.st_mtime >= time_from) && (sb.st_mtime <= time_to)) {
                 /* file modification time matches with provided time interval */
                 SR_LOG_DBG("Adding file '%s', mtim=%ld", filename, sb.st_mtim.tv_sec);
                 rc = sr_list_add(file_list, strdup(filename));
