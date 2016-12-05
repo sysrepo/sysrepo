@@ -1170,7 +1170,7 @@ sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
 }
 
 int
-sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out)
+sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_node, char **out)
 {
     CHECK_NULL_ARG3(value, schema_node, out);
     size_t len = 0;
@@ -1649,7 +1649,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
                 return SR_ERR_INTERNAL;
             }
             /* copy argument value to string */
-            ret = sr_val_to_str((sr_val_t *)sr_tree, sch_node, &string_val);
+            ret = sr_val_to_str_with_schema((sr_val_t *)sr_tree, sch_node, &string_val);
             if (SR_ERR_OK != ret) {
                 SR_LOG_ERR("Unable to convert value to string for sysrepo node: %s.", sr_tree->name);
                 return ret;

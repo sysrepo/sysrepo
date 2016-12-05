@@ -370,26 +370,28 @@ dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schem
     CHECK_NULL_ARG3(ctx, schema_info, module_name); /* session can be NULL */
     char xpath[PATH_MAX] = {0,};
     int rc = SR_ERR_OK;
-    struct lys_node *node = NULL;
+    const struct lys_node *node = NULL;
 
     /* enable each subtree within the module */
     const struct lys_module *module = ly_ctx_get_module(schema_info->ly_ctx, module_name, NULL);
     if (NULL != module) {
-        node = module->data;
+        /* Use lys_getnext to get real nodes, for rfc6020 7.12.1 support */
+        while (NULL != (node = lys_getnext(node, NULL, module, 0)))
+        {
+            if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
+                snprintf(xpath, PATH_MAX, "/%s:%s", module->name, node->name);
+                rc = rp_dt_enable_xpath(ctx, session, schema_info, xpath);
+                if (SR_ERR_OK != rc) {
+                    break;
+                }
+            }
+ 
+        }
     } else {
         SR_LOG_ERR("Module %s not found in provided context", module_name);
         rc = SR_ERR_UNKNOWN_MODEL;
     }
-    while (NULL != node) {
-        if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
-            snprintf(xpath, PATH_MAX, "/%s:%s", module->name, node->name);
-            rc = rp_dt_enable_xpath(ctx, session, schema_info, xpath);
-            if (SR_ERR_OK != rc) {
-                break;
-            }
-        }
-        node = node->next;
-    }
+
 
     return rc;
 }
@@ -4367,7 +4369,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             /* copy argument value to string */
             string_value = NULL;
             if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
-                rc = sr_val_to_str(&args[i], arg_node, &string_value);
+                rc = sr_val_to_str_with_schema(&args[i], arg_node, &string_value);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR("Unable to convert %s argument value to string.", procedure_name);
                     rc = dm_report_error(session, "Unable to convert argument value to string", args[i].xpath,

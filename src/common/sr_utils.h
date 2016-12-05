@@ -358,7 +358,7 @@ int sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t 
  * @param [out] out
  * @return
  */
-int sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out);
+int sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_node, char **out);
 
 /**
  * @brief Test whether provided schema node is a list key node
