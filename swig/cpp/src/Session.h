@@ -90,13 +90,13 @@ public:
     Callback();
     virtual ~Callback();
 
-    virtual void module_change(S_Session session, const char *module_name, sr_notif_event_t event, void *private_ctx) {return;};
-    virtual void subtree_change(S_Session session, const char *xpath, sr_notif_event_t event, void *private_ctx) {return;};
+    virtual int module_change(S_Session session, const char *module_name, sr_notif_event_t event, void *private_ctx) {return SR_ERR_OK;};
+    virtual int subtree_change(S_Session session, const char *xpath, sr_notif_event_t event, void *private_ctx) {return SR_ERR_OK;};
     virtual void module_install(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx) {return;};
     virtual void feature_enable(const char *module_name, const char *feature_name, bool enabled, void *private_ctx) {return;};
-    virtual void rpc(const char *xpath, S_Vals input, S_Vals_Holder output, void *private_ctx) {return;};
-    virtual void rpc_tree(const char *xpath, S_Trees input, S_Trees_Holder output, void *private_ctx) {return;};
-    virtual void dp_get_items(const char *xpath, S_Vals_Holder vals, void *private_ctx) {return;};
+    virtual int rpc(const char *xpath, S_Vals input, S_Vals_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int rpc_tree(const char *xpath, S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int dp_get_items(const char *xpath, S_Vals_Holder vals, void *private_ctx) {return SR_ERR_OK;};
     virtual void event_notif(const char *xpath, S_Vals vals, void *private_ctx) {return;};
     virtual void event_notif_tree(const char *xpath, S_Trees trees, void *private_ctx) {return;};
     Callback *get() {return this;};

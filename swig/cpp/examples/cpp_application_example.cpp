@@ -122,11 +122,12 @@ print_current_config(S_Session session, const char *module_name)
 class My_Callback:public Callback {
     public:
     /* Function to be called for subscribed client of given session whenever configuration changes. */
-    void module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
+    int module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
     {
         cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
 
         print_current_config(sess, module_name);
+        return SR_ERR_OK;
     }
 };
 
