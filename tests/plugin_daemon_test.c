@@ -31,14 +31,17 @@
 #include "sysrepo.h"
 #include "sr_common.h"
 
+bool sysrepod_run_before_test = false; /**< Indices if the sysrepo daemon was running before executing the test. */
+bool plugind_run_before_test = false;  /**< Indices if the plugin daemon was running before executing the test. */
+
 static void
-daemon_kill()
+daemon_kill(const char *pid_filename)
 {
     FILE *pidfile = NULL;
     int pid = 0, ret = 0;
 
     /* read PID of the daemon from sysrepo PID file */
-    pidfile = fopen(SR_PLUGIN_DAEMON_PID_FILE, "r");
+    pidfile = fopen(pid_filename, "r");
     assert_non_null(pidfile);
     ret = fscanf(pidfile, "%d", &pid);
     assert_int_equal(ret, 1);
@@ -51,9 +54,23 @@ daemon_kill()
 static int
 test_setup(void **state)
 {
-    /* if the daemon is running, kill it */
+    int ret = -1;
+
+    /* if the plugin daemon is running, kill it */
     if (-1 != access(SR_PLUGIN_DAEMON_PID_FILE, F_OK)) {
-        daemon_kill();
+        daemon_kill(SR_PLUGIN_DAEMON_PID_FILE);
+        plugind_run_before_test = true;
+    } else {
+        plugind_run_before_test = false;
+    }
+
+    /* if the sysrepo daemon is NOT running, start it */
+    if (-1 == access(SR_DAEMON_PID_FILE, F_OK)) {
+        ret = system("../src/sysrepod");
+        assert_int_equal(ret, 0);
+        sysrepod_run_before_test = false;
+    } else {
+        sysrepod_run_before_test = true;
     }
 
     return 0;
@@ -62,8 +79,14 @@ test_setup(void **state)
 static int
 test_teardown(void **state)
 {
-    if (-1 != access(SR_PLUGIN_DAEMON_PID_FILE, F_OK)) {
-        daemon_kill();
+    /* if the plugin daemon is running, kill it */
+    if (!plugind_run_before_test && (-1 != access(SR_PLUGIN_DAEMON_PID_FILE, F_OK))) {
+        daemon_kill(SR_PLUGIN_DAEMON_PID_FILE);
+    }
+
+    /* if the sysrepo daemon is running, kill it */
+    if (!sysrepod_run_before_test && (-1 != access(SR_DAEMON_PID_FILE, F_OK))) {
+        daemon_kill(SR_DAEMON_PID_FILE);
     }
 
     return 0;

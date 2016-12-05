@@ -104,7 +104,7 @@ const char *ev_to_str(sr_notif_event_t ev) {
 class My_Callback:public Callback {
     public:
     /* Function to be called for subscribed client of given session whenever configuration changes. */
-    void module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
+    int module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
     {
         char change_path[MAX_LEN];
 
@@ -130,6 +130,7 @@ class My_Callback:public Callback {
         } catch( const std::exception& e ) {
             cout << e.what() << endl;
         }
+        return SR_ERR_OK;
     }
 };
 

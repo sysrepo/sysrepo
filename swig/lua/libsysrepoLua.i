@@ -1,4 +1,4 @@
-%module libsysrepoLua51
+%module libsysrepoLua
 
 %include <stdint.i>
 
@@ -37,36 +37,54 @@ public:
     SWIGLUA_REF fn;
 };
 
-
 class Wrap_cb {
 public:
     Wrap_cb(SWIGLUA_REF fn) : fn(fn) {};
-    void module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, \
+    int module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, \
                                  void *private_ctx) {
-        Session *sess = (Session *)new Session(session);
         swiglua_ref_get(&fn);
+        if (!lua_isfunction(fn.L,-1)) {
+            throw std::runtime_error("Lua error in function callback");
+        }
+        Session *sess = (Session *)new Session(session);
         SWIG_NewPointerObj(fn.L, sess, SWIGTYPE_p_Session, 0);
         lua_pushstring(fn.L, module_name);
         lua_pushnumber(fn.L, (lua_Number)(int)(event));
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 4, 0);
+        lua_call(fn.L, 4, 1);
         sess->~Session();
+        if (!lua_isnumber(fn.L, -1))
+            throw std::runtime_error("Lua function must return a sysrepo error code (number)");
+        int ret = lua_tonumber(fn.L, -1);
+        lua_pop(fn.L, 1);  /* pop returned value */
+        return ret;
     }
 
-    void subtree_change(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
+    int subtree_change(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
                        void *private_ctx) {
-        Session *sess = (Session *)new Session(session);
         swiglua_ref_get(&fn);
+        if (!lua_isfunction(fn.L,-1)) {
+            throw std::runtime_error("Lua error in function callback");
+        }
+        Session *sess = (Session *)new Session(session);
         SWIG_NewPointerObj(fn.L, sess, SWIGTYPE_p_Session, 0);
         lua_pushstring(fn.L, xpath);
         lua_pushnumber(fn.L, (lua_Number)(int)(event));
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 4, 0);
+        lua_call(fn.L, 4, 1);
         sess->~Session();
+        if (!lua_isnumber(fn.L, -1))
+            throw std::runtime_error("Lua function must return a sysrepo error code (number)");
+        int ret = lua_tonumber(fn.L, -1);
+        lua_pop(fn.L, 1);  /* pop returned value */
+        return ret;
     }
 
     void module_install(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx) {
         swiglua_ref_get(&fn);
+        if (!lua_isfunction(fn.L,-1)) {
+            throw std::runtime_error("Lua error in function callback");
+        }
         lua_pushstring(fn.L, module_name);
         lua_pushstring(fn.L, revision);
         lua_pushnumber(fn.L, (lua_Number)(int)(state));
@@ -76,6 +94,9 @@ public:
 
     void feature_enable(const char *module_name, const char *feature_name, bool enabled, void *private_ctx) {
         swiglua_ref_get(&fn);
+        if (!lua_isfunction(fn.L,-1)) {
+            throw std::runtime_error("Lua error in function callback");
+        }
         lua_pushstring(fn.L, module_name);
         lua_pushstring(fn.L, feature_name);
         lua_pushboolean(fn.L, enabled);
@@ -83,81 +104,118 @@ public:
         lua_call(fn.L, 4, 0);
     }
 
-    void rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
+    int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                size_t *output_cnt, void *private_ctx) {
-
+        swiglua_ref_get(&fn);
+        if (!lua_isfunction(fn.L,-1)) {
+            throw std::runtime_error("Lua error in function callback");
+        }
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
-        swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
         SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 4, 0);
+        lua_call(fn.L, 4, 1);
         in_vals->~Vals();
         out_vals->~Vals_Holder();
+        if (!lua_isnumber(fn.L, -1))
+            throw std::runtime_error("Lua function must return a sysrepo error code (number)");
+        int ret = lua_tonumber(fn.L, -1);
+        lua_pop(fn.L, 1);  /* pop returned value */
+        return ret;
     }
 
-    void action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
+    int action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                size_t *output_cnt, void *private_ctx) {
-
+        swiglua_ref_get(&fn);
+        if (!lua_isfunction(fn.L,-1)) {
+            throw std::runtime_error("Lua error in function callback");
+        }
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
-        swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
         SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 4, 0);
+        lua_call(fn.L, 4, 1);
         in_vals->~Vals();
         out_vals->~Vals_Holder();
+        if (!lua_isnumber(fn.L, -1))
+            throw std::runtime_error("Lua function must return a sysrepo error code (number)");
+        int ret = lua_tonumber(fn.L, -1);
+        lua_pop(fn.L, 1);  /* pop returned value */
+        return ret;
     }
 
-    void rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
+    int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx) {
-
+        swiglua_ref_get(&fn);
+        if (!lua_isfunction(fn.L,-1)) {
+            throw std::runtime_error("Lua error in function callback");
+        }
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
         Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
-        swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
         SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Trees, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 4, 0);
+        lua_call(fn.L, 4, 1);
         in_vals->~Trees();
         out_vals->~Trees_Holder();
+        if (!lua_isnumber(fn.L, -1))
+            throw std::runtime_error("Lua function must return a sysrepo error code (number)");
+        int ret = lua_tonumber(fn.L, -1);
+        lua_pop(fn.L, 1);  /* pop returned value */
+        return ret;
     }
 
-    void action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
+    int action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx) {
-
+        swiglua_ref_get(&fn);
+        if (!lua_isfunction(fn.L,-1)) {
+            throw std::runtime_error("Lua error in function callback");
+        }
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
         Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
-        swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
         SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Trees, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 4, 0);
+        lua_call(fn.L, 4, 1);
         in_vals->~Trees();
         out_vals->~Trees_Holder();
+        if (!lua_isnumber(fn.L, -1))
+            throw std::runtime_error("Lua function must return a sysrepo error code (number)");
+        int ret = lua_tonumber(fn.L, -1);
+        lua_pop(fn.L, 1);  /* pop returned value */
+        return ret;
     }
 
-    void dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
-
+    int dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
+        swiglua_ref_get(&fn);
+        if (!lua_isfunction(fn.L,-1)) {
+            throw std::runtime_error("Lua error in function callback");
+        }
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
-        swiglua_ref_get(&fn);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 3, 0);
+        lua_call(fn.L, 3, 1);
         in_vals->~Vals();
+        if (!lua_isnumber(fn.L, -1))
+            throw std::runtime_error("Lua function must return a sysrepo error code (number)");
+        int ret = lua_tonumber(fn.L, -1);
+        lua_pop(fn.L, 1);  /* pop returned value */
+        return ret;
     }
 
     void event_notif(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
-
-        Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
         swiglua_ref_get(&fn);
+        if (!lua_isfunction(fn.L,-1)) {
+            throw std::runtime_error("Lua error in function callback");
+        }
+        Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
         lua_pushnumber(fn.L, timestamp);
@@ -168,8 +226,11 @@ public:
 
     void event_notif_tree(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
 
-        Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, NULL);
         swiglua_ref_get(&fn);
+        if (!lua_isfunction(fn.L,-1)) {
+            throw std::runtime_error("Lua error in function callback");
+        }
+        Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, NULL);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
         lua_pushnumber(fn.L, timestamp);
@@ -189,18 +250,14 @@ static int g_module_change_subscribe_cb(sr_session_ctx_t *session, const char *m
                                         sr_notif_event_t event, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->module_change_subscribe(session, module_name, event, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->module_change_subscribe(session, module_name, event, ctx->private_ctx);
 }
 
 static int g_subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
                                void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->subtree_change(session, xpath, event, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->subtree_change(session, xpath, event, ctx->private_ctx);
 }
 
 static void g_module_install_cb(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx)
@@ -219,44 +276,34 @@ static int g_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input
                      size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->rpc_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->rpc_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
 static int g_action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                      size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->action_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->action_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
 static int g_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->rpc_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->rpc_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
 static int g_action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->action_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->action_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
 static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->dp_get_items(xpath, values, values_cnt, ctx->private_ctx);
-
-    return SR_ERR_OK;
+    return ctx->dp_get_items(xpath, values, values_cnt, ctx->private_ctx);
 }
 
 static void g_event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)

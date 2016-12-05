@@ -20,6 +20,7 @@
  */
 
 #include "Internal.h"
+#include "Sysrepo.h"
 #include <iostream>
 
 extern "C" {
@@ -62,6 +63,10 @@ Deleter::Deleter(sr_schema_t *sch, size_t cnt) {
     c._cnt = cnt;
     _t = SCHEMAS;
 }
+Deleter::Deleter(sr_session_ctx_t *sess) {
+    v._sess = sess;
+    _t = SESSION;
+}
 Deleter::~Deleter() {
     switch(_t) {
     case VAL:
@@ -91,6 +96,14 @@ Deleter::~Deleter() {
     case SCHEMAS:
         if (v._sch) sr_free_schemas(v._sch, c._cnt);
 	v._sch = NULL;
+    break;
+    case SESSION:
+        if (!v._sess) break;
+        int ret = sr_session_stop(v._sess);
+        if (ret != SR_ERR_OK) {
+            throw_exception(ret);
+        }
+	v._sess = NULL;
     break;
     }
     return;
