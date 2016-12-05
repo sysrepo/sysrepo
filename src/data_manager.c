@@ -4367,7 +4367,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             /* copy argument value to string */
             string_value = NULL;
             if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
-                rc = sr_val_to_str(&args[i], arg_node, &string_value);
+                rc = sr_val_to_str_with_schema(&args[i], arg_node, &string_value);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR("Unable to convert %s argument value to string.", procedure_name);
                     rc = dm_report_error(session, "Unable to convert argument value to string", args[i].xpath,

@@ -569,6 +569,298 @@ sr_print_val_test(void **state)
     sr_free_val(value);
 }
 
+static void
+sr_val_to_str_test(void **state)
+{
+    sr_val_t v = {0};
+    char *val = NULL;
+
+    v.data.binary_val = "bindata";
+    v.type = SR_BINARY_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, v.data.binary_val);
+    free(val);
+
+    v.data.bits_val = "bitA";
+    v.type = SR_BITS_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, v.data.bits_val);
+    free(val);
+
+    v.data.bool_val = true;
+    v.type = SR_BOOL_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "true");
+    free(val);
+
+    v.data.bool_val = false;
+    v.type = SR_BOOL_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "false");
+    free(val);
+
+    v.data.decimal64_val = -6.92;
+    v.type = SR_DECIMAL64_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "-6.92");
+    free(val);
+
+    v.data.enum_val = "enumA";
+    v.type = SR_ENUM_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "enumA");
+    free(val);
+
+    v.type = SR_LIST_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "");
+    free(val);
+
+    v.data.identityref_val = "identityA";
+    v.type = SR_IDENTITYREF_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "identityA");
+    free(val);
+
+    v.data.instanceid_val = "/test-module:main/i8";
+    v.type = SR_INSTANCEID_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, v.data.instanceid_val);
+    free(val);
+
+    v.data.uint8_val = 8;
+    v.type = SR_UINT8_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "8");
+    free(val);
+
+    v.data.uint16_val = 16;
+    v.type = SR_UINT16_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "16");
+    free(val);
+
+    v.data.uint32_val = 32;
+    v.type = SR_UINT32_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "32");
+    free(val);
+
+    v.data.uint64_val = 64;
+    v.type = SR_UINT64_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "64");
+    free(val);
+
+    v.data.int8_val = -8;
+    v.type = SR_INT8_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "-8");
+    free(val);
+
+    v.data.int16_val = -16;
+    v.type = SR_INT16_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "-16");
+    free(val);
+
+    v.data.int32_val = -32;
+    v.type = SR_INT32_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "-32");
+    free(val);
+
+    v.data.int64_val = -42;
+    v.type = SR_INT64_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, "-42");
+    free(val);
+
+    v.data.string_val = "---";
+    v.type = SR_STRING_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, v.data.string_val);
+    free(val);
+
+    v.data.anyxml_val = "<abc></abc>";
+    v.type = SR_ANYXML_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, v.data.anyxml_val);
+    free(val);
+
+    v.data.anydata_val = "<data></data>";
+    v.type = SR_ANYDATA_T;
+    val = sr_val_to_str(&v);
+    assert_non_null(val);
+    assert_string_equal(val, v.data.anydata_val);
+    free(val);
+
+    //type not filled
+    v.type = SR_UNKNOWN_T;
+    val = sr_val_to_str(&v);
+    assert_null(val);
+
+}
+
+static void
+sr_val_to_buff_test(void **state)
+{
+#define BUFF_MAX_SIZE 200
+    sr_val_t v = {0};
+
+    char buffer[BUFF_MAX_SIZE] = {0};
+    int ret = 0;
+
+    ret = sr_val_to_buff(NULL, buffer, BUFF_MAX_SIZE);
+    assert_int_equal(0, ret);
+
+    v.type = SR_UNKNOWN_T;
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_int_equal(0, ret);
+    assert_string_equal("", buffer);
+
+    v.type = SR_BINARY_T;
+    v.data.binary_val = "abcd";
+    ret = sr_val_to_buff(&v, NULL, 0);
+    assert_int_equal(4, ret);
+
+    ret = sr_val_to_buff(&v, buffer, 4);
+    assert_int_equal(4, ret);
+    assert_string_equal("abc", buffer);
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    ret = sr_val_to_buff(&v, buffer, 5);
+    assert_int_equal(4, ret);
+    assert_string_equal("abcd", buffer);
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_BITS_T;
+    v.data.bits_val = "bit1 bit2";
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, v.data.bits_val);
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_BOOL_T;
+    v.data.bool_val = true;
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, "true");
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_DECIMAL64_T;
+    v.data.decimal64_val = -42.68;
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, "-42.68");
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_ENUM_T;
+    v.data.enum_val = "enumA";
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, v.data.enum_val);
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_LIST_T;
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, "");
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_IDENTITYREF_T;
+    v.data.identityref_val = "identityOne";
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, v.data.identityref_val);
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_INSTANCEID_T;
+    v.data.instanceid_val = "/example-module:container";
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, v.data.instanceid_val);
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_INT8_T;
+    v.data.int8_val = -8;
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, "-8");
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_INT16_T;
+    v.data.int16_val = -16;
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, "-16");
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_INT32_T;
+    v.data.int32_val = -32;
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, "-32");
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_INT64_T;
+    v.data.int64_val = -64;
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, "-64");
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_STRING_T;
+    v.data.string_val = "string";
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, v.data.string_val);
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_UINT8_T;
+    v.data.uint8_val = 8;
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, "8");
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_UINT16_T;
+    v.data.uint16_val = 16;
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, "16");
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_UINT32_T;
+    v.data.uint32_val = 32;
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, "32");
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_UINT64_T;
+    v.data.uint64_val = 64;
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, "64");
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_ANYXML_T;
+    v.data.anyxml_val = "<abc></abc>";
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, v.data.anyxml_val);
+    memset(buffer, 0, BUFF_MAX_SIZE);
+
+    v.type = SR_ANYDATA_T;
+    v.data.anydata_val = "<data></data>";
+    ret = sr_val_to_buff(&v, buffer, BUFF_MAX_SIZE);
+    assert_string_equal(buffer, v.data.anydata_val);
+    memset(buffer, 0, BUFF_MAX_SIZE);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -580,7 +872,9 @@ main() {
         cmocka_unit_test(sr_val_build_str_data_test),
         cmocka_unit_test(sr_dup_val_test),
         cmocka_unit_test(sr_dup_values_test),
-        cmocka_unit_test(sr_print_val_test)
+        cmocka_unit_test(sr_print_val_test),
+        cmocka_unit_test(sr_val_to_str_test),
+        cmocka_unit_test(sr_val_to_buff_test),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

@@ -273,7 +273,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_nod
         }
 
         /* convert value to string */
-        rc = sr_val_to_str(value, schema, &string_val);
+        rc = sr_val_to_str_with_schema(value, schema, &string_val);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Error by sr_val_to_str: %s", sr_strerror(rc));
             goto fail;
