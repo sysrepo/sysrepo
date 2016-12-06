@@ -888,6 +888,17 @@ typedef enum sr_move_position_e {
  */
 int sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value, const sr_edit_options_t opts);
 
+
+/**
+ * @brief Functions is similar to ::sr_set_item with the difference that the value to be set
+ * is provided as string.
+ * @param [in] session Session context acquired with ::sr_session_start call.
+ * @param [in] xpath @ref xp_page "XPath" identifier of the data element to be set.
+ * @param [in] value string representation of the value to be set
+ * @param [in] opts same as ::sr_set_item
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_set_item_str(sr_session_ctx_t *session, const char *xpath, const char *value, const sr_edit_options_t opts);
 /**
  * @brief Deletes the nodes under the specified xpath.
  *

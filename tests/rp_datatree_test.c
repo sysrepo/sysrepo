@@ -1521,7 +1521,7 @@ default_nodes_test(void **state)
     sr_free_tree(tree);
 
     /* list with default value */
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']", NULL, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']", NULL, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1540,7 +1540,7 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 99;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='createWithStrict']/num", v, SR_EDIT_STRICT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='createWithStrict']/num", v, NULL, SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1566,10 +1566,10 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 42;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']", NULL, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']", NULL, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", v, SR_EDIT_STRICT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", v, NULL, SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1595,7 +1595,7 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 9;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", v, SR_EDIT_STRICT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", v, NULL, SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     /* list with non-default value */
@@ -1605,7 +1605,7 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 9;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", v, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", v, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1631,7 +1631,7 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 0;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", v, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", v, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1649,7 +1649,7 @@ default_nodes_test(void **state)
     sr_free_tree(tree);
 
     /* list with default value later overwritten with a non-default one */
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']", NULL, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']", NULL, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     v = NULL;
@@ -1658,7 +1658,7 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 9;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']/num", v, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']/num", v, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1748,7 +1748,7 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 0;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", v, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", v, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;

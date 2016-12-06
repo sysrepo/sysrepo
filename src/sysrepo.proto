@@ -395,6 +395,24 @@ message SetItemResp {
 }
 
 /**
+ * @brief Sets the value of the leaf, leaf-list or presence container.
+ * The value is transferred as string.
+ * Sent by sr_set_item_str API call.
+ */
+message SetItemStrReq {
+  required string xpath = 1;
+  optional string value = 2;
+  required uint32 options = 3;  /**< Bitwise OR of EditFlags */
+}
+
+/**
+ * @brief Response to sr_set_item_str request.
+ */
+message SetItemStrResp {
+}
+
+
+/**
  * @brief Deletes the nodes under the specified xpath.
  * Sent by sr_delete_item API call.
  */
@@ -818,6 +836,7 @@ enum Operation {
   SET_ITEM = 40;
   DELETE_ITEM = 41;
   MOVE_ITEM = 42;
+  SET_ITEM_STR = 43;
 
   VALIDATE = 50;
   COMMIT = 51;
@@ -870,6 +889,7 @@ message Request {
   optional SetItemReq set_item_req = 40;
   optional DeleteItemReq delete_item_req = 41;
   optional MoveItemReq move_item_req = 42;
+  optional SetItemStrReq set_item_str_req = 43;
 
   optional ValidateReq validate_req = 50;
   optional CommitReq commit_req = 51;
@@ -918,6 +938,7 @@ message Response {
   optional SetItemResp set_item_resp = 40;
   optional DeleteItemResp delete_item_resp = 41;
   optional MoveItemResp move_item_resp = 42;
+  optional SetItemStrResp set_item_str_resp = 43;
 
   optional ValidateResp validate_resp = 50;
   optional CommitResp commit_resp = 51;

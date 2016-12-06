@@ -1076,18 +1076,74 @@ rp_set_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
         /* set the value in data manager */
         if (SR_ERR_OK == rc) {
-            rc = rp_dt_set_item_wrapper(rp_ctx, session, xpath, value, msg->request->set_item_req->options);
+            rc = rp_dt_set_item_wrapper(rp_ctx, session, xpath, value, NULL, msg->request->set_item_req->options);
         }
     }
     else{
         /* when creating list or presence container value can be NULL */
-        rc = rp_dt_set_item_wrapper(rp_ctx, session, xpath, NULL, msg->request->set_item_req->options);
+        rc = rp_dt_set_item_wrapper(rp_ctx, session, xpath, NULL, NULL, msg->request->set_item_req->options);
     }
 
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Set item failed for '%s', session id=%"PRIu32".", xpath, session->id);
     }
 
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
+ * @brief Processes a set_item_str request.
+ */
+static int
+rp_set_item_str_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    char *xpath = NULL;
+    char *value = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->set_item_str_req);
+
+    SR_LOG_DBG_MSG("Processing set_item_str request.");
+
+    xpath = msg->request->set_item_str_req->xpath;
+
+    /* allocate the response */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__SET_ITEM_STR, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Allocation of set_item_str response failed.");
+        sr_mem_free(sr_mem);
+        return SR_ERR_NOMEM;
+    }
+
+    if (NULL != msg->request->set_item_str_req->value) {
+        /* copy the value from gpb */
+        value = strdup(msg->request->set_item_str_req->value);
+        CHECK_NULL_NOMEM_GOTO(value, rc, cleanup);
+    }
+
+    /* set the value in data manager, when creating list or presence container value can be NULL */
+    rc = rp_dt_set_item_wrapper(rp_ctx, session, xpath, NULL, value, msg->request->set_item_str_req->options);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Set item failed for '%s', session id=%"PRIu32".", xpath, session->id);
+    }
+
+cleanup:
     /* set response code */
     resp->response->result = rc;
 
@@ -2244,7 +2300,7 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
 
     for (size_t i = 0; i < values_cnt; i++) {
         SR_LOG_DBG("Received value from data provider for xpath '%s'.", values[i].xpath);
-        rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, values[i].xpath, SR_EDIT_DEFAULT, &values[i]);
+        rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, values[i].xpath, SR_EDIT_DEFAULT, &values[i], NULL);
         if (SR_ERR_OK != rc) {
             //TODO: maybe validate if this path corresponds to the operational data
             SR_LOG_WRN("Failed to set operational data for xpath '%s'.", values[i].xpath);
@@ -2698,6 +2754,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
         case SR__OPERATION__GET_SUBTREES:
         case SR__OPERATION__GET_SUBTREE_CHUNK:
         case SR__OPERATION__SET_ITEM:
+        case SR__OPERATION__SET_ITEM_STR:
         case SR__OPERATION__DELETE_ITEM:
         case SR__OPERATION__MOVE_ITEM:
         case SR__OPERATION__SESSION_REFRESH:
@@ -2748,6 +2805,9 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             break;
         case SR__OPERATION__SET_ITEM:
             rc = rp_set_item_req_process(rp_ctx, session, msg);
+            break;
+        case SR__OPERATION__SET_ITEM_STR:
+            rc = rp_set_item_str_req_process(rp_ctx, session, msg);
             break;
         case SR__OPERATION__DELETE_ITEM:
             rc = rp_delete_item_req_process(rp_ctx, session, msg);
