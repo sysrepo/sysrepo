@@ -152,6 +152,7 @@ typedef struct nacm_nodeset_s {
  */
 typedef struct nacm_data_val_ctx_s {
     nacm_ctx_t *nacm_ctx;     /**< NACM context from which this request was issued. */
+    const ac_ucred_t *user_credentials;  /**< Credentials of the user. */
     sr_bitset_t *rule_lists;  /**< Set of rule-lists that apply to this data validation request.
                                    (stored as bitset of their IDs). */
     sr_btree_t *nodesets;     /**< A set of data-oriented NACM rules with already evaluated path.
@@ -227,7 +228,7 @@ int nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_cred
  *
  * @param [in] nacm_data_val_ctx NACM data validation context to deallocate.
  */
-int nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx);
+void nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx);
 
 /**
  * @brief Check if there is a permission to read/create/update/delete the given data node.

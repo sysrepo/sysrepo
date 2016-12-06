@@ -296,6 +296,56 @@ cleanup:
 }
 
 /**
+ * @brief Deallocate all memory associated with nacm_nodeset_t.
+ */
+static void
+nacm_free_nodeset(void *nodeset_ptr)
+{
+    if (NULL == nodeset_ptr) {
+        return;
+    }
+
+    nacm_nodeset_t *nodeset = (nacm_nodeset_t *)nodeset_ptr;
+    if (NULL != nodeset->set) {
+        ly_set_free(nodeset->set);
+    }
+    free(nodeset);
+}
+
+/*
+ * @brief Allocate and initialize instance of nacm_nodeset_t structure.
+ * Should be then released using ::nacm_free_nodeset.
+ */
+static int
+nacm_alloc_nodeset(uint16_t rule_id, nacm_nodeset_t **nodeset_p)
+{
+    nacm_nodeset_t *nodeset = NULL;
+    CHECK_NULL_ARG(nodeset_p);
+
+    nodeset = calloc(1, sizeof *nodeset);
+    CHECK_NULL_NOMEM_RETURN(nodeset);
+    nodeset->rule_id = rule_id;
+
+    *nodeset_p = nodeset;
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Compare two NACM nodesets.
+ */
+static int
+nacm_compare_nodesets(const void *nodeset1_ptr, const void *nodeset2_ptr)
+{
+    if (NULL == nodeset1_ptr || NULL == nodeset2_ptr) {
+        return 0;
+    }
+
+    nacm_nodeset_t *nodeset1 = (nacm_nodeset_t *)nodeset1_ptr;
+    nacm_nodeset_t *nodeset2 = (nacm_nodeset_t *)nodeset2_ptr;
+    return nodeset1->rule_id - nodeset2->rule_id;
+}
+
+/**
  * @brief Load NACM configuration from datastore.
  */
 static int
@@ -858,24 +908,81 @@ nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials,
     return SR_ERR_OK;
 }
 
-int
-nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials,
-        nacm_data_val_ctx_t **nacm_data_val_ctx)
+/**
+ * @brief Deallocate all memory associated with nacm_data_val_ctx_t.
+ *
+ */
+static void
+nacm_free_data_val_ctx(nacm_data_val_ctx_t *nacm_data_val_ctx)
 {
-    int rc = SR_ERR_OK;
-    CHECK_NULL_ARG3(nacm_ctx, user_credentials, nacm_data_val_ctx);
-    return rc;
+    if (NULL == nacm_data_val_ctx) {
+        free(nacm_data_val_ctx);
+    }
+
+    sr_bitset_cleanup(nacm_data_val_ctx->rule_lists);
+    if (NULL != nacm_data_val_ctx->nodesets) {
+        sr_btree_cleanup(nacm_data_val_ctx->nodesets);
+    }
+    free(nacm_data_val_ctx);
 }
 
 int
-nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx)
+nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials,
+        nacm_data_val_ctx_t **nacm_data_val_ctx_p)
 {
     int rc = SR_ERR_OK;
-    CHECK_NULL_ARG(nacm_data_val_ctx);
+    nacm_data_val_ctx_t *nacm_data_val_ctx = NULL;
+    CHECK_NULL_ARG3(nacm_ctx, user_credentials, nacm_data_val_ctx_p);
 
-    /* TODO */
+    nacm_data_val_ctx = calloc(1, sizeof *nacm_data_val_ctx);
+    CHECK_NULL_NOMEM_GOTO(nacm_data_val_ctx, rc, cleanup);
+
+    pthread_rwlock_rdlock(&nacm_ctx->lock);
+
+    nacm_data_val_ctx->nacm_ctx = nacm_ctx;
+    nacm_data_val_ctx->user_credentials = user_credentials;
+
+    if (false == nacm_ctx->enabled) {
+        /* skip the rest */
+        goto cleanup;
+    }
+    if (user_credentials->e_uid == SR_NACM_RECOVERY_UID) {
+        /* skip the rest */
+        goto cleanup;
+    }
+
+    rc = sr_btree_init(nacm_compare_nodesets, nacm_free_nodeset, &nacm_data_val_ctx->nodesets);
+    CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to initialize binary tree with NACM nodesets.");
+
+    rc = sr_bitset_init(nacm_ctx->rule_lists->count, &nacm_data_val_ctx->rule_lists);
+    CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to initialize bitset.");
+
+    /* TODO: Get the set of matching rule-lists for this request */
+
+unlock_if_fail:
+    if (SR_ERR_OK != rc) {
+        pthread_rwlock_unlock(&nacm_ctx->lock);
+    }
+
+cleanup:
+    if (SR_ERR_OK == rc) {
+        *nacm_data_val_ctx_p = nacm_data_val_ctx;
+    } else {
+        nacm_free_data_val_ctx(nacm_data_val_ctx);
+    }
 
     return rc;
+}
+
+void
+nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx)
+{
+    if (NULL == nacm_data_val_ctx || NULL == nacm_data_val_ctx->nacm_ctx) {
+        return;
+    }
+
+    pthread_rwlock_unlock(&nacm_data_val_ctx->nacm_ctx->lock);
+    nacm_free_data_val_ctx(nacm_data_val_ctx);
 }
 
 int
