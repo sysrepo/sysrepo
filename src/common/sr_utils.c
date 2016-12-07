@@ -523,6 +523,63 @@ cleanup:
     return rc;
 }
 
+int
+sr_ly_set_contains(const struct ly_set *set, void *node, bool sorted)
+{
+    if (NULL == set || NULL == node) {
+        return -1;
+    }
+
+    if (sorted) {
+        int lo = 0, hi = set->number-1, mid = 0;
+        while (lo <= hi) {
+            mid = lo + ((hi-lo) >> 1);
+            if (set->set.g[mid] == node) {
+                return mid;
+            } else if (set->set.g[mid] < node) {
+                lo = mid+1;
+            } else {
+                hi = mid-1;
+            }
+        }
+        return -1;
+    } else {
+        return ly_set_contains(set, node);
+    }
+}
+
+/**
+ * @brief Comparison function for ly_set.
+ */
+static int
+sr_ly_set_cmp(const void *item1, const void *item2)
+{
+    return (*(int **)item1) - (*(int **)item2);
+}
+
+int
+sr_ly_set_sort(struct ly_set *set)
+{
+    CHECK_NULL_ARG(set);
+
+    if (set->number <= 16) {
+        /* for smaller sets use insertion sort */
+        for (int i = 1; i < set->number; ++i) {
+            void *key = set->set.g[i];
+            int j = i-1;
+            while (j >= 0 && set->set.g[j] > key) {
+                set->set.g[j+1] = set->set.g[j];
+                --j;
+            }
+            set->set.g[j+1] = key;
+        }
+    } else {
+        qsort(set->set.g, set->number, sizeof(void *), sr_ly_set_cmp);
+    }
+
+    return SR_ERR_OK;
+}
+
 bool
 sr_lys_data_node(struct lys_node *node)
 {

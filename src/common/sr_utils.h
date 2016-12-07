@@ -298,6 +298,22 @@ int sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid);
 int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree);
 
 /**
+ * @brief Check if the set contains the specified object.
+ * @param[in] set Set to explore.
+ * @param[in] node Object to be found in the set.
+ * @param[in] sorted *true* if the items of the set are sorted in the ascending order.
+ * @return Index of the object in the set or -1 if the object is not present in the set.
+ */
+int sr_ly_set_contains(const struct ly_set *set, void *node, bool sorted);
+
+/**
+ * @brief Sort items of a libyang set in the ascending order.
+ *
+ * @param [in] set Libyang set to sort.
+ */
+int sr_ly_set_sort(struct ly_set *set);
+
+/**
  * @brief Returns *true* if the given schema node could be referenced from a data tree,
  * *false* otherwise.
  *

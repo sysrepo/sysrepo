@@ -153,6 +153,7 @@ typedef struct nacm_nodeset_s {
 typedef struct nacm_data_val_ctx_s {
     nacm_ctx_t *nacm_ctx;     /**< NACM context from which this request was issued. */
     const ac_ucred_t *user_credentials;  /**< Credentials of the user. */
+    bool cache;               /**< Use cache to remember sets of matching nodes for data-oriented rules. */
     sr_bitset_t *rule_lists;  /**< Set of rule-lists that apply to this data validation request.
                                    (stored as bitset of their IDs). */
     sr_btree_t *nodesets;     /**< A set of data-oriented NACM rules with already evaluated path.
@@ -217,9 +218,10 @@ int nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credenti
  *
  * @param [in] nacm_ctx NACM context.
  * @param [in] user_credentials User credentials.
+ * @param [in] cache Use cache to remember sets of matching nodes for data-oriented rules.
  * @param [out] nacm_data_val_ctx Returned context representing this request.
  */
-int nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials,
+int nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, bool cache,
         nacm_data_val_ctx_t **nacm_data_val_ctx);
 
 /**
@@ -239,9 +241,11 @@ void nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx);
  * @param [in] node Data node to be accessed in the given way.
  * @param [out] action Action to take based on the NACM rules.
  * @param [out] rule_name Name of the applied rule, if any.
+ *                        Returned string shouldn't be accessed after ::nacm_data_validation_stop is called!
  * @param [out] rule_info A textual description of the applied rule, if any.
+ *                        Returned string shouldn't be accessed after ::nacm_data_validation_stop is called!
  */
 int nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t access_type, struct lyd_node *node,
-        nacm_action_t *action, char **rule_name, char **rule_info);
+        nacm_action_t *action, const char **rule_name, const char **rule_info);
 
 #endif /* NACM_H_ */
