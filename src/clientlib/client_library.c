@@ -2598,7 +2598,6 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
             CHECK_NULL_NOMEM_GOTO(oper_tmp, rc, cleanup);
             memset(oper_tmp, 0, received_cnt * sizeof(*iter->operations));
             iter->operations = oper_tmp;
-
         }
         iter->index = 0;
         iter->count = received_cnt;
