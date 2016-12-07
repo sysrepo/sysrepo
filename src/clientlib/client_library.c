@@ -1765,7 +1765,7 @@ sr_set_item_str(sr_session_ctx_t *session, const char *xpath, const char *value,
 
     msg_req->request->set_item_str_req->options = opts;
 
-    /* duplicate the content of sr_val_t to gpb */
+    /* duplicate the value to gpb */
     if (NULL != value) {
         sr_mem_edit_string(sr_mem, &msg_req->request->set_item_str_req->value, value);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->set_item_str_req->value, rc, cleanup);

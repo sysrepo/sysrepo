@@ -573,6 +573,7 @@ rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpat
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
         sr_free_val(val);
+        free(str_val);
         return rc;
     }
 

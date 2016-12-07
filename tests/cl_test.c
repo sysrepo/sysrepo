@@ -1223,9 +1223,6 @@ cl_set_item_str_test(void **state)
     assert_int_equal(42, v->data.uint8_val);
     sr_free_val(v);
 
-
-    /* commit */
-
     rc = sr_set_item_str(session, "/test-module:main/dec64", "-42.56", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1235,6 +1232,7 @@ cl_set_item_str_test(void **state)
     rc = sr_set_item_str(session, "/test-module:user[name='unknown']/full-name", "Unknown user", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* commit */
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
