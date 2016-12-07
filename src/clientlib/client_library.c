@@ -2585,15 +2585,18 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
             sr_val_t **tmp = NULL;
             tmp = realloc(iter->new_values, received_cnt * sizeof(*iter->new_values));
             CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
+            memset(tmp, 0, received_cnt * sizeof(*iter->new_values));
             iter->new_values = tmp;
 
             tmp = realloc(iter->old_values, received_cnt * sizeof(*iter->old_values));
             CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
+            memset(tmp, 0, received_cnt * sizeof(*iter->old_values));
             iter->old_values = tmp;
 
             sr_change_oper_t *oper_tmp = NULL;
             oper_tmp = realloc(iter->operations, received_cnt * sizeof(*iter->operations));
             CHECK_NULL_NOMEM_GOTO(oper_tmp, rc, cleanup);
+            memset(oper_tmp, 0, received_cnt * sizeof(*iter->operations));
             iter->operations = oper_tmp;
 
         }
