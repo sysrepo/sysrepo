@@ -2046,6 +2046,7 @@ sr_subsciption_type_str_to_gpb(const char *type_name)
     if (0 == strcmp(type_name, "dp-get-items")) {
         return SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS;
     }
+    SR_LOG_ERR("Unknown type %s can not be converted", type_name);
     return _SR__SUBSCRIPTION_TYPE_IS_INT_SIZE;
 }
 
