@@ -47,6 +47,7 @@ typedef int clockid_t;
 
 
 typedef struct dm_data_info_s dm_data_info_t;  /**< forward declaration */
+typedef struct sr_list_s sr_list_t;  /**< forward declaration */
 
 /**
  * @brief Internal structure holding information about changes used for notifications
@@ -408,7 +409,7 @@ int sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t 
  * @param [out] out
  * @return
  */
-int sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out);
+int sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_node, char **out);
 
 /**
  * @brief Test whether provided schema node is a list key node
@@ -676,6 +677,12 @@ int sr_create_uri_for_module(const struct lys_module *module, char **uri);
  * @param [out] group_cnt Number of returned groups.
  */
 int sr_get_system_groups(const char *username, char ***groups, size_t *group_cnt);
+
+/**
+ * @brief Frees the list and that contains allocated strings (they are freed as well).
+ * @param [in] list
+ */
+void sr_free_list_of_strings (sr_list_t *list);
 
 /**@} utils */
 

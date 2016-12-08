@@ -37,6 +37,7 @@ typedef enum free_type_e {
     TREES,
     TREES_POINTER,
     SCHEMAS,
+    SESSION,
 } free_type_t;
 
 typedef union value_e {
@@ -45,6 +46,7 @@ typedef union value_e {
     sr_node_t *_tree;
     sr_node_t **p_trees;
     sr_schema_t *_sch;
+    sr_session_ctx_t *_sess;
 } value_t;
 
 typedef union count_e {
@@ -62,6 +64,7 @@ public:
     Deleter(sr_node_t *trees, size_t cnt);
     Deleter(sr_node_t **trees, size_t *cnt);
     Deleter(sr_schema_t *sch, size_t cnt);
+    Deleter(sr_session_ctx_t *sess);
     ~Deleter();
 
 private:

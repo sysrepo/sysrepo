@@ -6,7 +6,7 @@ include(GNUInstallDirs)
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 5)
-set(SYSREPO_MICRO_VERSION 7)
+set(SYSREPO_MICRO_VERSION 9)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # setup bindings
@@ -235,7 +235,7 @@ install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang DESTI
 
 # install NACM YANG module
 if(ENABLE_NACM)
-    INSTALL_YANG("ietf-netconf-acm" "@2012-02-22" "600")
+    INSTALL_YANG("ietf-netconf-acm" "@2012-02-22" "644")
 endif(ENABLE_NACM)
 
 find_package(PkgConfig QUIET)

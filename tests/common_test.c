@@ -1367,6 +1367,29 @@ sr_get_system_groups_test(void **state)
     }
 }
 
+static void
+sr_free_list_of_strings_test(void **state)
+{
+    int rc = SR_ERR_OK;
+    sr_list_t *list = NULL;
+    
+    sr_free_list_of_strings(list);
+    
+    rc = sr_list_init(&list);
+    assert_int_equal(SR_ERR_OK, rc);
+    
+    rc = sr_list_add(list, strdup("abc"));
+    assert_int_equal(SR_ERR_OK, rc);
+    
+    rc = sr_list_add(list, strdup("def"));
+    assert_int_equal(SR_ERR_OK, rc);
+    
+    rc = sr_list_add(list, strdup("ghi"));
+    assert_int_equal(SR_ERR_OK, rc);
+    
+    sr_free_list_of_strings(list);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -1387,6 +1410,7 @@ main() {
             cmocka_unit_test_setup_teardown(sr_error_info_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_create_uri_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_get_system_groups_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_free_list_of_strings_test, logging_setup, logging_cleanup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

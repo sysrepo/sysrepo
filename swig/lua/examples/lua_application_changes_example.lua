@@ -8,13 +8,7 @@
 -- The original c implementation is also available in the source, so one can refer to it to evaluate trade-offs.
 --
 
-if (_VERSION == "Lua 5.1") then
-    sr = require("libsysrepoLua51")
-elseif (_VERSION == "Lua 5.2") then
-    sr = require("libsysrepoLua52")
-elseif (_VERSION == "Lua 5.3") then
-    sr = require("libsysrepoLua53")
-end
+sr = require("libsysrepoLua")
 
 -- Helper function for printing changes given operation, old and new value.
 function print_change(op, old_val, new_val)
@@ -86,8 +80,10 @@ function module_change_cb(sess, module_name, event, private_ctx)
     ok,res=pcall(run)
     if not ok then
         io.write("\nerror: ",res, "\n")
+        return tonumber(sr.SR_ERR_OPERATION_FAILED)
     end
 
+    return tonumber(sr.SR_ERR_OK)
 end
 
 -- Main client function.

@@ -1219,7 +1219,7 @@ sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *val
     if (LYD_ANYDATA_DATATREE == node->value_type || LYD_ANYDATA_XML == node->value_type) {
         SR_LOG_ERR("Unsupported (non-string) anydata value type for node '%s'", node_name);
     }
-    if (NULL != node->value.str) {
+    if ((NULL != node->schema) && (NULL != node->value.str)) {
         switch (node->schema->nodetype) {
             case LYS_ANYXML:
                 sr_mem_edit_string(value->_sr_mem, &value->data.anyxml_val, node->value.str);
@@ -1274,7 +1274,7 @@ sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
 }
 
 int
-sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out)
+sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_node, char **out)
 {
     CHECK_NULL_ARG3(value, schema_node, out);
     size_t len = 0;
@@ -1764,7 +1764,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
                 return SR_ERR_INTERNAL;
             }
             /* copy argument value to string */
-            ret = sr_val_to_str((sr_val_t *)sr_tree, sch_node, &string_val);
+            ret = sr_val_to_str_with_schema((sr_val_t *)sr_tree, sch_node, &string_val);
             if (SR_ERR_OK != ret) {
                 SR_LOG_ERR("Unable to convert value to string for sysrepo node: %s.", sr_tree->name);
                 return ret;
@@ -2114,7 +2114,6 @@ sr_daemon_ignore_signals()
 {
     signal(SIGUSR1, SIG_IGN);
     signal(SIGALRM, SIG_IGN);
-    signal(SIGCHLD, SIG_IGN);
     signal(SIGTSTP, SIG_IGN);  /* keyboard stop */
     signal(SIGTTIN, SIG_IGN);  /* background read from tty */
     signal(SIGTTOU, SIG_IGN);  /* background write to tty */
@@ -2580,4 +2579,15 @@ cleanup:
         }
     }
     return rc;
+}
+
+void
+sr_free_list_of_strings (sr_list_t *list)
+{
+    if (NULL != list) {
+        for (size_t i = 0; i < list->count; i++) {
+            free((char *) list->data[i]);
+        }
+        sr_list_cleanup(list);
+    }
 }
