@@ -1050,8 +1050,8 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         }
         return SR_ERR_OK;
     case LY_TYPE_IDENT:
-        if (NULL == leaf->value.ident->name) {
-            SR_LOG_ERR("Identity ref in leaf '%s' is NULL", node_name);
+        if (NULL == leaf->schema || NULL == leaf->value.ident->name) {
+            SR_LOG_ERR("Identity ref or schema in leaf '%s' is NULL", node_name);
             return SR_ERR_INTERNAL;
         }
         if (leaf->schema->module == leaf->value.ident->module) {
