@@ -563,7 +563,7 @@ np_get_notification_files(np_ctx_t *np_ctx, const char *module_name, time_t time
             ret = stat(filename, &sb);
             if ((-1 != ret) && (sb.st_mtime >= time_from) && (sb.st_mtime <= time_to)) {
                 /* file modification time matches with provided time interval */
-                SR_LOG_DBG("Adding file '%s', mtim=%ld", filename, sb.st_mtim.tv_sec);
+                SR_LOG_DBG("Adding file '%s', mtim=%ld", filename, sb.st_mtime);
                 rc = sr_list_add(file_list, strdup(filename));
                 if (SR_ERR_OK != rc) {
                     SR_LOG_WRN("Error by adding file '%s' to the list: %s.", filename, sr_strerror(rc));
