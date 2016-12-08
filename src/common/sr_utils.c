@@ -65,17 +65,35 @@ sr_uint32_to_buff(uint32_t number, uint8_t *buff)
     }
 }
 
-int
+bool
 sr_str_ends_with(const char *str, const char *suffix)
 {
-    CHECK_NULL_ARG2(str, suffix);
+    if (NULL == str || NULL == suffix) {
+        return false;
+    }
 
     size_t str_len = strlen(str);
     size_t suffix_len = strlen(suffix);
-    if (suffix_len >  str_len){
-        return 0;
+    if (suffix_len > str_len){
+        return false;
     }
     return strncmp(str + str_len - suffix_len, suffix, suffix_len) == 0;
+}
+
+bool
+sr_str_begins_with(const char *str, const char *prefix)
+{
+    if (NULL == str || NULL == prefix) {
+        return false;
+    }
+
+    while (*prefix && *str) {
+        if (*prefix++ != *str++) {
+            return false;
+        }
+    }
+
+    return *prefix == '\0';
 }
 
 int
