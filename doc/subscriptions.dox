@@ -1,11 +1,53 @@
 /**
+
 @page subscr Subscriptions
+
+Sysrepo allows managed applications / plugins to subscribe for two types of asynchronous events:
+
+- change in the running datastore (@ref rds_subscriptions),
+- request for state data (@ref data_providers).
+
+Both types of subscriptions are explained below in more detail. 
+
+@section callbacks Callbacks and threading model
+Each of the subscriptions works on the base of asynchronous callbacks - pointers to functions that
+will be called upon desired event. For asynchornous event delivery, Sysrepo automatically 
+creates a new thread in the managed application (or in plugin daemon in case of a Sysrepo plugins)
+behind the scenes. It is always one thread, no matter how many subscriptions you have. This has
+the following implications:
+
+- All events will be delivered to a different thread than your application uses for its usual job. If
+your callbacks are manipulating any data structures used also in the main/other threads, you will 
+need to use some locking mechanism.
+- All events will be delivered synchronously into your application: a callback won't be executed
+until the previous callback have returned.
+
+@note Pay special attention by executing sysrepo API calls from callbacks. Sysrepo API calls are blocking.
+If the API call (e.g. ::sr_commit) results into a different callback to be called in the same application,
+the second one cannot be executed until the first one returns (in case of ::sr_commit, you will most
+likely get a commit timeout error). If you need this behavior, start a new thread to execute the
+API call and return from the callback immediately.
+
+@note The same threading model applies also to @ref plugins, but with one important note - all plugins share the
+same thread for the event delivery.
+
+In case that the application needs (or wants) to have callbacks called in its main thread, it can use
+the application-local file descriptor watcher API: ::sr_fd_watcher_init. In this case,
+the application will be responsible for monitoring events on a set of file descriptors used by Sysrepo
+and calling ::sr_fd_event_process whenever any event comes (can be combined with POSIX asynchronous I/O mechanisms
+like `select` or `poll`, or with some of the modern event loop libraries like `libevent`, `libev`, `libuv`, etc.).
 
 @section rds_subscriptions Running datastore subscriptions
 
-As explained in @ref rds section, by default the configuration of model in running
-datastore is not accessible. There are two API calls that enable the configuration
-in running datastore:
+These subscriptions can be used to notify managed applications / plugins about changes
+made in the running datastore. As explained in @ref rds section, by default the
+configuration of a model in the running datastore is not accessible. Subscribing
+for changes in the runnig datastore also enables the configuration in the
+running datastore for relevant data subtrees.
+
+There are two API calls that can be used to subscribe for changes in the running datastore and 
+to enable the configuration in the running datastore at the same time:
+
 - ::sr_module_change_subscribe - this API call enables the whole configuration described by a module.
 Internally the startup configuration of the module is copied to running datastore.
 All nodes of the module is marked as enabled thus the get & edit-like operations can
@@ -25,25 +67,28 @@ The subsequent table explains what nodes are enabled.
 i.e: Subscription for subtree defined by xpath `/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address`
 # | Enabled nodes  | Enabled nodes in the example
 --|------------- | -------------
-1.|the nodes mentioned in xpath | `/ietf:interfaces`, `/ietf:interfaces/interface`, `/ietf:interfaces/interface/ietf-ip:ipv4`, `/ietf:interfaces/interface/ietf-ip:ipv4/address`
-2.|the keys of the lists in path | `/ietf:interfaces/interface/name`
+1.|the nodes mentioned in the xpath | `/ietf:interfaces`, `/ietf:interfaces/interface`, `/ietf:interfaces/interface/ietf-ip:ipv4`, `/ietf:interfaces/interface/ietf-ip:ipv4/address`
+2.|the keys of the lists in the path | `/ietf:interfaces/interface/name`
 3.|mandatory nodes that are direct children of a node in the path | `/ietf:interfaces/interface/type`
-4.|if the last node in path is container or list its whole content| `/ietf:interfaces/interface/ietf-ip:ipv4/address/ip`, `/ietf:interfaces/interface/ietf-ip:ipv4/address/subnet`
+4.|whole content of a container or a list, if it is the last node the in the path| `/ietf:interfaces/interface/ietf-ip:ipv4/address/ip`, `/ietf:interfaces/interface/ietf-ip:ipv4/address/subnet`
 
-@note Beware when using ::sr_subtree_change_subscribe nodes that is needed to evaluate `when` or `must` statement
-might not be enabled if they don't match the list of enabled nodes above.
+@note Beware when using ::sr_subtree_change_subscribe nodes that are needed to evaluate `when` or `must` statements
+might not be enabled if they don't match the list of enabled nodes above, which may lead to validation errors.
 
-@subsection data_providers Data providers
-Another type of subscription used in running datastore is the one for providing state data ::sr_dp_get_items_subscribe.
+@section data_providers Data provider subscriptions
+Another type of subscription used with regards to running datastore is the one for providing state data: ::sr_dp_get_items_subscribe.
+This call allows the managed application to provide current state data (`config false` in YANG model)
+in case that someone have asked for them.
+
 The xpath used is in this API mustn't contains any predicate, it should identify the subtree that subscriber is
 providing state data for. Subsequently, when the sysrepo is asked for the state data it calls the callback that is supposed
 to return expected state data. The callback is given an xpath that identifies the data that sysrepo expects. In general
 callback might be called multiple times with different xpath to handle one user request. The aim of this paragraph is to explain what xpath
-the user will be asked by sysrepo for the particular subscription and model.
+the application will be asked by sysrepo for the particular subscription and model.
 
 @subsection stateDataLeaf Top-level leaf/leaf-list
 
-~~~~~~~~~~~~~~~{.yang}
+~~~~~~~~~~~~~~~{.c}
 module demo {
    /*..*/
    leaf state_data {
@@ -75,7 +120,7 @@ request particular node.
 
 @subsection stateDataStructure State data structure container/list
 
-~~~~~~~~~~~~~~~{.yang}
+~~~~~~~~~~~~~~~{.c}
 module demo {
    /*..*/
    container sensors {
@@ -115,14 +160,14 @@ implementation the sysrepo does not ask for particular node such as `/demo:senso
 
 # | Xpath requested by sysrepo  | Example of xpath returned by data provider
 --|------------- | -------------
-.|`/demo:sensors`| `/demo:sensors/temperature` and `/demo:sensors/humidity`
-.|`/demo:seats`| ```/demo:seats[number='0']```, ```/demo:seats[number='0']/name```, ```/demo:seats[number='1']```, ```/demo:seats[number='1']/name```, ...
+1.|`/demo:sensors`| `/demo:sensors/temperature` and `/demo:sensors/humidity`
+2.|`/demo:seats`| ```/demo:seats[number='0']```, ```/demo:seats[number='0']/name```, ```/demo:seats[number='1']```, ```/demo:seats[number='1']/name```, ...
 
-@note List doesn't have to be created explicitely ```/demo:seats[number='0']``` can be omitted. ```/demo:seats[number='0']/name``` will create list instance with key `name` equal to `0` if it does not exist.
+@note List doesn't have to be created explicitely: ```/demo:seats[number='0']``` can be omitted. ```/demo:seats[number='0']/name``` will create list instance with key `name` equal to `0` if it does not exist.
 
 
 @subsection stateDataNested State data container/list with nested structure
-~~~~~~~~~~~~~~~{.yang}
+~~~~~~~~~~~~~~~{.c}
 module demo {
    /*..*/
    container traffic_stats {
@@ -196,7 +241,7 @@ Following table summarize the sequence of the requests from sysrepo and expected
 
 
 @subsection stateDataInConfig State data nodes in configuration container/list
-~~~~~~~~~~~~~~~{.yang}
+~~~~~~~~~~~~~~~{.c}
 module demo {
    /*..*/
 
@@ -227,6 +272,6 @@ rc = sr_dp_get_items_subscribe(session, "/demo:abc/value", dp_value, private_ctx
 
 Data provider will be asked for xpaths with keys filled (corresponding to currently configured lists `/demo:abc`) he is supposed to return leaf for the particular instance.
 # | Xpath requested by sysrepo  | Example of xpath returned by data provider
---|------------- | -------------
 1.|```/demo:abc[cfg='X']/value``` callback will be called for each configured list instance. (X will be replaced by the actual value of the key). User is supposed to return value of the leaf. |  For the xpath ```/demo:abc[cfg='0']/value``` provider is supposed to return value of the leaf.
- */
+
+*/

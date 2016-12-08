@@ -151,7 +151,7 @@ def create_ietf_interfaces():
     session = sr.Session(connection, sr.SR_DS_STARTUP)
     session.delete_item("/ietf-interfaces:*")
 
-    v = sr.Val("ethernetCsmacd", sr.SR_IDENTITYREF_T)
+    v = sr.Val("iana-if-type:ethernetCsmacd", sr.SR_IDENTITYREF_T)
     session.set_item("/ietf-interfaces:interfaces/interface[name='eth0']/type", v)
 
     v = sr.Val("Ethernet 0", sr.SR_STRING_T);
@@ -169,7 +169,7 @@ def create_ietf_interfaces():
     v = sr.Val(1500, sr.SR_UINT16_T)
     session.set_item("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", v)
 
-    v = sr.Val("ethernetCsmacd", sr.SR_IDENTITYREF_T)
+    v = sr.Val("iana-if-type:ethernetCsmacd", sr.SR_IDENTITYREF_T)
     session.set_item("/ietf-interfaces:interfaces/interface[name='eth1']/type", v)
 
     v = sr.Val("Ethernet 1", sr.SR_STRING_T);
@@ -181,7 +181,7 @@ def create_ietf_interfaces():
     v = sr.Val(1500, sr.SR_UINT16_T)
     session.set_item("/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/mtu", v)
 
-    v = sr.Val("ethernetCsmacd", sr.SR_IDENTITYREF_T)
+    v = sr.Val("iana-if-type:ethernetCsmacd", sr.SR_IDENTITYREF_T)
     session.set_item("/ietf-interfaces:interfaces/interface[name='gigaeth0']/type", v)
 
     v = sr.Val("GigabitEthernet 0", sr.SR_STRING_T);

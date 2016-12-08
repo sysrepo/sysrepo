@@ -979,6 +979,19 @@ sr_libyang_get_actual_leaf_type(struct lys_type *base_info, LY_DATA_TYPE type)
     return NULL;
 }
 
+static int
+sr_mem_edit_string_va_wrapper(sr_mem_ctx_t *sr_mem, char **string_p, const char *format, ...)
+{
+    va_list arg_list;
+    int rc = SR_ERR_OK;
+
+    va_start(arg_list, format);
+    rc = sr_mem_edit_string_va(sr_mem, string_p, format, arg_list);
+    va_end(arg_list);
+
+    return rc;
+}
+
 int
 sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value)
 {
@@ -1046,7 +1059,12 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Identity ref in leaf '%s' is NULL", node_name);
             return SR_ERR_INTERNAL;
         }
-        sr_mem_edit_string(value->_sr_mem, &value->data.identityref_val, leaf->value.ident->name);
+        if (leaf->schema->module == leaf->value.ident->module) {
+            sr_mem_edit_string(value->_sr_mem, &value->data.identityref_val, leaf->value.ident->name);
+        } else {
+            sr_mem_edit_string_va_wrapper(value->_sr_mem, &value->data.identityref_val, "%s:%s", leaf->value.ident->module->name, leaf->value.ident->name);
+        }
+
         if (NULL == value->data.identityref_val) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'identityref'", node_name);
             return SR_ERR_INTERNAL;

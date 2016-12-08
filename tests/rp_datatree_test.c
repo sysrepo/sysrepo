@@ -320,7 +320,7 @@ void check_ietf_interfaces_int_tree(sr_node_t *tree, size_t index)
     node = get_child_by_index(tree, 2);
     assert_string_equal("type", node->name);
     assert_int_equal(SR_IDENTITYREF_T, node->type);
-    assert_string_equal("ethernetCsmacd", node->data.identityref_val);
+    assert_string_equal("iana-if-type:ethernetCsmacd", node->data.identityref_val);
     assert_null(node->module_name);
     assert_false(node->dflt);
     assert_int_equal(0, get_child_cnt(node));
@@ -616,7 +616,7 @@ void ietf_interfaces_tree_with_opts_test(void **state)
     node = node->next;
     assert_string_equal("type", node->name);
     assert_int_equal(SR_IDENTITYREF_T, node->type);
-    assert_string_equal("ethernetCsmacd", node->data.identityref_val);
+    assert_string_equal("iana-if-type:ethernetCsmacd", node->data.identityref_val);
     assert_null(node->module_name);
     assert_false(node->dflt);
     assert_int_equal(0, get_child_cnt(node));
@@ -663,7 +663,7 @@ void ietf_interfaces_tree_with_opts_test(void **state)
     node = node->next;
     assert_string_equal("type", node->name);
     assert_int_equal(SR_IDENTITYREF_T, node->type);
-    assert_string_equal("ethernetCsmacd", node->data.identityref_val);
+    assert_string_equal("iana-if-type:ethernetCsmacd", node->data.identityref_val);
     assert_null(node->module_name);
     assert_false(node->dflt);
     assert_int_equal(0, get_child_cnt(node));

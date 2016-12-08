@@ -352,7 +352,7 @@ createDataTreeLargeIETFinterfacesModule(size_t if_count)
             root = node;
         }
         snprintf(xpath, MAX_IF_LEN, template_type, i);
-        lyd_new_path(root, ctx, xpath, "ethernetCsmacd", 0, 0);
+        lyd_new_path(root, ctx, xpath, "iana-if-type:ethernetCsmacd", 0, 0);
 
         snprintf(xpath, MAX_IF_LEN, template_desc, i);
         lyd_new_path(root, ctx, xpath, "ethernet interface", 0, 0);
@@ -394,7 +394,7 @@ createDataTreeIETFinterfacesModule(){
     node = lyd_new(root, module_interfaces, "interface");
     lyd_new_leaf(node, module_interfaces, "name", "eth0");
     lyd_new_leaf(node, module_interfaces, "description", "Ethernet 0");
-    lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
+    lyd_new_leaf(node, module_interfaces, "type", "iana-if-type:ethernetCsmacd");
     lyd_new_leaf(node, module_interfaces, "enabled", "true");
     node = lyd_new(node, module_ip, "ipv4");
     lyd_new_leaf(node, module_ip, "enabled", "true");
@@ -406,7 +406,7 @@ createDataTreeIETFinterfacesModule(){
     node = lyd_new(root, module_interfaces, "interface");
     lyd_new_leaf(node, module_interfaces, "name", "eth1");
     lyd_new_leaf(node, module_interfaces, "description", "Ethernet 1");
-    lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
+    lyd_new_leaf(node, module_interfaces, "type", "iana-if-type:ethernetCsmacd");
     lyd_new_leaf(node, module_interfaces, "enabled", "true");
     node = lyd_new(node, module_ip, "ipv4");
     lyd_new_leaf(node, module_ip, "enabled", "true");
@@ -418,7 +418,7 @@ createDataTreeIETFinterfacesModule(){
     node = lyd_new(root, module_interfaces, "interface");
     lyd_new_leaf(node, module_interfaces, "name", "gigaeth0");
     lyd_new_leaf(node, module_interfaces, "description", "GigabitEthernet 0");
-    lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
+    lyd_new_leaf(node, module_interfaces, "type", "iana-if-type:ethernetCsmacd");
     lyd_new_leaf(node, module_interfaces, "enabled", "false");
 
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
