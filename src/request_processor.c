@@ -2231,7 +2231,8 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
              */
             if (!rp_dt_find_subscription_covering_subtree(session, iter, &subs_index)) {
                 SR_LOG_ERR("Failed to find subscription for nested requests %s", xpath);
-                return SR_ERR_INTERNAL;
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
             }
         } else if (session->state_data_ctx.overlapping_leaf_subscription && ((LYS_LEAF | LYS_LEAFLIST) & iter->nodetype)) {
             /* check if we have exact match for leaf or leaf-list node */
