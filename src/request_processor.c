@@ -2103,7 +2103,7 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
         char *xp = (char *) session->state_data_ctx.requested_xpaths->data[i];
         if (0 == strcmp(xp, xpath)) {
             found = true;
-            *sch_node = (struct lys_node *) ly_ctx_get_node(si->ly_ctx, NULL, xp);
+            *sch_node = sr_find_schema_node(si->module->data, xp, 0);
             if (NULL == *sch_node) {
                 SR_LOG_ERR("Schema node not found for %s", xp);
                 rc = SR_ERR_INVAL_ARG;
@@ -2122,7 +2122,7 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
 
     /* test that all values are under requested xpath */
     for (size_t i = 0; i < values_cnt; i++) {
-        value_sch_node = (struct lys_node *) ly_ctx_get_node(si->ly_ctx, NULL, values[i].xpath);
+        value_sch_node = sr_find_schema_node(si->module->data, values[i].xpath, 0);
         if (NULL == value_sch_node) {
             SR_LOG_ERR("Value with xpath %s received from provider doesn't correspond to any schema node",
                     values[i].xpath);

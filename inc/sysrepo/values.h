@@ -150,6 +150,28 @@ int sr_print_val_stream(FILE *stream, const sr_val_t *value);
  */
 int sr_print_val_mem(char **mem_p, const sr_val_t *value);
 
+/**
+ * @brief Converts value to string representation
+ * @param [in] value
+ * @return allocated string representation of value (must be freed by caller), NULL in case of error
+ * @note In case of SR_DECIMAL64_T type, number of fraction digits doesn't have to
+ * correspond to schema.
+ */
+char *sr_val_to_str(const sr_val_t *value);
+
+/**
+ * @brief Converts value to string and prints it to the provided buffer including
+ * terminating NULL byte
+ * @param [in] value
+ * @param [in] buffer - buffer provided by caller where the data will be printed
+ * @param [in] size - the size of the buffer
+ * @return number of characters that was written in case of success, otherwise number of characters which would have been
+ * written if enough space had been available (excluding terminating NULL byte)
+ * @note In case of SR_DECIMAL64_T type, number of fraction digits doesn't have to
+ * correspond to schema.
+ */
+int sr_val_to_buff(const sr_val_t *value, char buffer[], size_t size);
+
 /**@} values */
 
 #endif /* SYSREPO_VALUES_H_ */

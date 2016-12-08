@@ -371,7 +371,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
 
     /* transform new value from sr_val_t to string */
     if (NULL != value) {
-        rc = sr_val_to_str(value, sch_node, &new_value);
+        rc = sr_val_to_str_with_schema(value, sch_node, &new_value);
         CHECK_RC_MSG_RETURN(rc, "Copy new value to string failed");
     } else if (!((LYS_CONTAINER | LYS_LIST) & sch_node->nodetype) &&
             !(LYS_LEAFLIST == sch_node->nodetype && NULL != strstr(xpath, "[.='") && ']' == xpath[strlen(xpath)-1])) {

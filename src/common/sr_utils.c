@@ -979,6 +979,19 @@ sr_libyang_get_actual_leaf_type(struct lys_type *base_info, LY_DATA_TYPE type)
     return NULL;
 }
 
+static int
+sr_mem_edit_string_va_wrapper(sr_mem_ctx_t *sr_mem, char **string_p, const char *format, ...)
+{
+    va_list arg_list;
+    int rc = SR_ERR_OK;
+
+    va_start(arg_list, format);
+    rc = sr_mem_edit_string_va(sr_mem, string_p, format, arg_list);
+    va_end(arg_list);
+
+    return rc;
+}
+
 int
 sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value)
 {
@@ -1046,7 +1059,12 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Identity ref in leaf '%s' is NULL", node_name);
             return SR_ERR_INTERNAL;
         }
-        sr_mem_edit_string(value->_sr_mem, &value->data.identityref_val, leaf->value.ident->name);
+        if (leaf->schema->module == leaf->value.ident->module) {
+            sr_mem_edit_string(value->_sr_mem, &value->data.identityref_val, leaf->value.ident->name);
+        } else {
+            sr_mem_edit_string_va_wrapper(value->_sr_mem, &value->data.identityref_val, "%s:%s", leaf->value.ident->module->name, leaf->value.ident->name);
+        }
+
         if (NULL == value->data.identityref_val) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'identityref'", node_name);
             return SR_ERR_INTERNAL;
@@ -1115,7 +1133,7 @@ sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *val
     if (LYD_ANYDATA_DATATREE == node->value_type || LYD_ANYDATA_XML == node->value_type) {
         SR_LOG_ERR("Unsupported (non-string) anydata value type for node '%s'", node_name);
     }
-    if (NULL != node->value.str) {
+    if ((NULL != node->schema) && (NULL != node->value.str)) {
         switch (node->schema->nodetype) {
             case LYS_ANYXML:
                 sr_mem_edit_string(value->_sr_mem, &value->data.anyxml_val, node->value.str);
@@ -1170,7 +1188,7 @@ sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
 }
 
 int
-sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out)
+sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_node, char **out)
 {
     CHECK_NULL_ARG3(value, schema_node, out);
     size_t len = 0;
@@ -1649,7 +1667,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
                 return SR_ERR_INTERNAL;
             }
             /* copy argument value to string */
-            ret = sr_val_to_str((sr_val_t *)sr_tree, sch_node, &string_val);
+            ret = sr_val_to_str_with_schema((sr_val_t *)sr_tree, sch_node, &string_val);
             if (SR_ERR_OK != ret) {
                 SR_LOG_ERR("Unable to convert value to string for sysrepo node: %s.", sr_tree->name);
                 return ret;

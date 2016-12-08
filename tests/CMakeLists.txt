@@ -56,7 +56,12 @@ endmacro(ADD_UNIT_TEST_WITH_OPTS)
 
 # create default test target with valgrind is on
 macro(ADD_UNIT_TEST TEST_NAME USE_HELPERS)
-    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} ${USE_HELPERS} 1 "")
+    if (${CMAKE_C_FLAGS} MATCHES "-fsanitize=")
+        set(tests_with_valgrind 0)
+    else()
+        set(tests_with_valgrind 1)
+    endif()
+    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} ${USE_HELPERS} ${tests_with_valgrind} "")
 endmacro(ADD_UNIT_TEST)
 
 
