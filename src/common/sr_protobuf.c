@@ -57,6 +57,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "get-subtree-chunk";
     case SR__OPERATION__SET_ITEM:
         return "set-item";
+    case SR__OPERATION__SET_ITEM_STR:
+        return "set-item-str";
     case SR__OPERATION__DELETE_ITEM:
         return "delete-item";
     case SR__OPERATION__MOVE_ITEM:
@@ -223,6 +225,12 @@ sr_gpb_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uint
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__set_item_req__init((Sr__SetItemReq*)sub_msg);
             req->set_item_req = (Sr__SetItemReq*)sub_msg;
+            break;
+        case SR__OPERATION__SET_ITEM_STR:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__SetItemStrReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__set_item_str_req__init((Sr__SetItemStrReq*)sub_msg);
+            req->set_item_str_req = (Sr__SetItemStrReq*)sub_msg;
             break;
         case SR__OPERATION__DELETE_ITEM:
             sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__DeleteItemReq));
@@ -461,6 +469,12 @@ sr_gpb_resp_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uin
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__set_item_resp__init((Sr__SetItemResp*)sub_msg);
             resp->set_item_resp = (Sr__SetItemResp*)sub_msg;
+            break;
+        case SR__OPERATION__SET_ITEM_STR:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__SetItemStrResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__set_item_str_resp__init((Sr__SetItemStrResp*)sub_msg);
+            resp->set_item_str_resp = (Sr__SetItemStrResp*)sub_msg;
             break;
         case SR__OPERATION__DELETE_ITEM:
             sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__DeleteItemResp));
@@ -853,6 +867,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__SET_ITEM:
                 CHECK_NULL_RETURN(msg->request->set_item_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__SET_ITEM_STR:
+                CHECK_NULL_RETURN(msg->request->set_item_str_req, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__DELETE_ITEM:
                 CHECK_NULL_RETURN(msg->request->delete_item_req, SR_ERR_MALFORMED_MSG);
                 break;
@@ -953,6 +970,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__SET_ITEM:
                 CHECK_NULL_RETURN(msg->response->set_item_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__SET_ITEM_STR:
+                CHECK_NULL_RETURN(msg->response->set_item_str_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__DELETE_ITEM:
                 CHECK_NULL_RETURN(msg->response->delete_item_resp, SR_ERR_MALFORMED_MSG);

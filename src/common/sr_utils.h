@@ -112,12 +112,18 @@ uint32_t sr_buff_to_uint32(uint8_t *buff);
 void sr_uint32_to_buff(uint32_t number, uint8_t *buff);
 
 /**
- * @brief Compares the suffix of the string, if it matches 0 is returned
+ * @brief Compares the suffix of the string.
  * @param [in] str
  * @param [in] suffix
- * @return
  */
-int sr_str_ends_with(const char *str, const char *suffix);
+bool sr_str_ends_with(const char *str, const char *suffix);
+
+/**
+ * @brief Compares the prefix of the string.
+ * @param [in] str
+ * @param [in] prefix
+ */
+bool sr_str_begins_with(const char *str, const char *prefix);
 
 /**
  * @brief concatenates two string into newly allocated one.
