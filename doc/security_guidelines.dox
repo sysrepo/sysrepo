@@ -1,0 +1,189 @@
+/**
+
+@page security Security Guidelines
+
+Although Sysrepo and NETCONF/YANG itself can be very secure if implemented and
+configured properly, your implementation can be still vulnerable to attacks if
+you don't use the security mechanisms that Sysrepo provides or write your
+application / plugin code in an insecure way. To help the developers with addressing
+the most important security issues we provide these security guidelines.
+
+@section input_validation Input Validation
+In order to prevent malformed data from entering the system, it is always needed to
+validate the values entered by the user. In terms of NETCONF and Sysrepo, it can be 
+any data that comes to notification callbacks in your application. This data can be validated
+on multiple levels:
+
+- automatically by Sysrepo, against constraints defined in the YANG model,
+- explicitly in your application/plugin.
+
+@subsection yang_validation Validation using the YANG model
+This validation is automatically applied by Sysrepo. No data that would be invalid from
+YANG model point of view should come through this automatic validation process. But in order
+to leverage this validation, your YANG model needs to be designed in a proper way:
+
+- if possible, avoid using generic data types like `string`, `anyxml` or `anydata`, without
+applying any constraints, e.g. use `enum` or `identity` instead of string for enumerated values,
+numeric types for numbers etc.,
+- use `pattern`s for strings to restrict accepted values to those that match the pattern,
+especially to deny dangerous characters,
+- be aware of the fact that if you use the `string` data type without any pattern, there is NO validation
+on this level and all data will pass into your application without any sanitization.
+
+Examples of an **insecure** YANG modeling:
+~~~~~~~~~~~~~~~{.c}
+...
+
+  leaf interface-name {
+    type string;
+  }
+  leaf protocol {
+    type string;
+  }
+  leaf port-number {
+    type string;
+  }
+
+...
+~~~~~~~~~~~~~~~
+
+An example of a more secure way for doing something similar follows:
+~~~~~~~~~~~~~~~{.c}
+...
+
+  leaf interface-name {
+    type string;
+    pattern "[0-9a-fA-F]*";
+  }
+  leaf protocol {
+    type enumeration {
+      enum tcp;
+      enum udp;
+     }
+  }
+  leaf port-number {
+    type uint32;
+    range "0..100";
+  }
+
+...
+~~~~~~~~~~~~~~~
+
+@subsection app_validation Validation in the application
+Also with proper YANG model and YANG validation in place, the application code still needs to handle
+all input values carefully. All the generic security guidelines for writing secure applications and
+for performing input validation (e.g. white-listing, validation using regular expressions) still apply.
+Please make sure that you NEVER pass an input value to some system call without any sanitization.
+
+@subsection validation_examples Integration example
+
+An example of a **very insecure** YANG model and the code handling it is shown below:
+
+YANG model:
+~~~~~~~~~~~~~~~{.c}
+...
+
+  rpc run-command {
+    description "Execute the command.";
+    
+    input {
+      leaf command {
+        type string;
+        description "Command to be executed.";
+      }
+    }
+  }
+
+...
+~~~~~~~~~~~~~~~
+
+Application code:
+~~~~~~~~~~~~~~~{.c}
+...
+
+int run_command_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx)
+{
+    system(input->data.str_val);
+    return SR_ERR_OK;
+}
+
+...
+~~~~~~~~~~~~~~~
+
+None of the two levels of input validation is utilized in the example above, which is **VERY dangerous**:
+
+- any string will pass through the YANG validation,
+- the input string is directly passed to `system()` call without any sanitization, which means that users
+can remotely execute **ANY** command/code using this application.
+
+An example of a more secure way for doing something similar follows:
+
+YANG model:
+~~~~~~~~~~~~~~~{.c}
+...
+
+  identity command-type {
+    description "Command to be executed using run-command RPC.";
+  }
+  identity shutdown {
+    base command-type;
+    description "Shutdowns the system.";
+  }
+  identity restart {
+    base command-type;
+    description "Reboots the system.";
+  }
+
+  rpc run-command {
+    description "Execute the command.";
+    
+    input {
+      leaf command {
+        type identityref {
+          base command-type;
+        }
+        description "Command to be executed.";
+      }
+    }
+  }
+
+...
+~~~~~~~~~~~~~~~
+
+Application code:
+~~~~~~~~~~~~~~~{.c}
+...
+
+int run_command_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx)
+{
+    if (0 == strcmp(input->data.identityref_val, "shutdown")) {
+        system("shutdown -h now");
+        return SR_ERR_OK;
+    }
+    if (0 == strcmp(input->data.identityref_val, "restart")) {
+        system("shutdown -r now");
+        return SR_ERR_OK;
+    }
+    return SR_ERR_INVAL_ARG;
+}
+
+...
+~~~~~~~~~~~~~~~
+
+The example above utilizes both levels of validation:
+
+- YANG model allows only white-listed commands to be executed, anything not allowed by the `command-type` identity
+won't pass trough the YANG validation,
+- The application code also white-lists only two possible commands and does not pass any user-defined value
+to the `system()` call.
+
+@section authorization Authorization & Access Control
+Sysrepo provides access control based on data files permissions on YANG module level (see @ref ac_page). Please make
+sure you are leveraging it and follow these guidelines:
+
+- configure least required privileges for each module installed in Sysrepo,
+- if not required, do not use `root` user for remote control over NETCONF,
+- do not use password authentication for NETCONF clients. Disable password authentication at all for SSH, use
+public key authentication instead.
+
+*/
