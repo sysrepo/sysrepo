@@ -2,7 +2,7 @@
   <interface>
     <name>eth0</name>
     <description>Ethernet 0</description>
-    <type>ethernetCsmacd</type>
+    <type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:ethernetCsmacd</type>
     <enabled>true</enabled>
     <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
       <enabled>true</enabled>
@@ -16,7 +16,7 @@
   <interface>
     <name>eth1</name>
     <description>Ethernet 1</description>
-    <type>ethernetCsmacd</type>
+    <type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:ethernetCsmacd</type>
     <enabled>true</enabled>
     <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
       <enabled>true</enabled>
