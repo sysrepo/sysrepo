@@ -88,12 +88,13 @@ void rp_cleanup(rp_ctx_t *rp_ctx);
  * @param[in] user_credentials Credentials of the user who this session belongs to.
  * @param[in] datastore Datastore selected for this configuration session.
  * @param[in] session_options Session options used to override default session behavior.
+ * @param[in] commit_id ID of the commit in case hat this is a notification session (0 otherwise).
  * @param[out] session Session context used for subsequent RP calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucred_t *user_credentials,
-        const sr_datastore_t datastore, const uint32_t session_options, rp_session_t **session);
+        const sr_datastore_t datastore, const uint32_t session_options, const uint32_t commit_id, rp_session_t **session);
 
 /**
  * Stops a Request Processor session.
@@ -112,12 +113,25 @@ int rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session);
  *
  * @param[in] rp_ctx Request Processor context.
  * @param[in] session Request Processor session context related to the message.
- * @param[in] msg GPB Message to be passed. @note Message will be freed
+ * @param[in] msg GPB Message to be passed. @note Message will be freed.
  * automatically after calling, also in case of error.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg);
+
+/**
+ * @brief Called to signal that all notification has been received and commit processing
+ * can continue (::SR_EV_VERIFY) or the commit context can be freed (::SR_EV_APPLY, ::SR_EV_ABORT, ::SR_EV_ENABLED).
+ *
+ * @param [in] rp_ctx
+ * @param [in] commit_id
+ * @param [in] result
+ * @param [in] err_subs_xpaths - freed by function
+ * @param [in] errors - freed by function
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, int result, sr_list_t *err_subs_xpaths, sr_list_t *errors);
 
 /**@} rp */
 

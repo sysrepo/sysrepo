@@ -74,15 +74,21 @@ test_execute_in_session(sr_session_ctx_t *session)
 {
     int rc = 0;
     sr_val_t *value = NULL;
+    sr_node_t *tree = NULL;
 
     /* perform get-item requests */
-    for (size_t i = 0; i<1000; i++) {
+    for (size_t i = 0; i<500; i++) {
         /* existing leaf */
         rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(value);
         assert_int_equal(SR_STRING_T, value->type);
         sr_free_val(value);
+        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
+        assert_int_equal(rc, SR_ERR_OK);
+        assert_non_null(tree);
+        assert_int_equal(SR_STRING_T, tree->type);
+        sr_free_tree(tree);
     }
 }
 

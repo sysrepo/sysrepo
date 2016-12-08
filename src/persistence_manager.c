@@ -43,7 +43,10 @@
 
 #define PM_XPATH_SUBSCRIPTION                 PM_XPATH_SUBSCRIPTION_LIST "[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']"
 #define PM_XPATH_SUBSCRIPTION_XPATH           PM_XPATH_SUBSCRIPTION      "/xpath"
+#define PM_XPATH_SUBSCRIPTION_EVENT           PM_XPATH_SUBSCRIPTION      "/event"
+#define PM_XPATH_SUBSCRIPTION_PRIORITY        PM_XPATH_SUBSCRIPTION      "/priority"
 #define PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING  PM_XPATH_SUBSCRIPTION      "/enable-running"
+#define PM_XPATH_SUBSCRIPTION_API_VARIANT     PM_XPATH_SUBSCRIPTION      "/api-variant"
 
 #define PM_XPATH_SUBSCRIPTIONS_BY_TYPE        PM_XPATH_SUBSCRIPTION_LIST "[type='%s']"
 #define PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH  PM_XPATH_SUBSCRIPTION_LIST "[type='%s'][xpath='%s']"
@@ -59,6 +62,7 @@ typedef struct pm_ctx_s {
     struct ly_ctx *ly_ctx;            /**< libyang context used locally in PM. */
     const struct lys_module *schema;  /**< Schema tree of sysrepo-persistent-data YANG. */
     const char *data_search_dir;      /**< Directory containing the data files. */
+    sr_locking_set_t *lock_ctx;        /**< Context for locking persist data files. */
 } pm_ctx_t;
 
 /**
@@ -73,7 +77,7 @@ pm_save_data_tree(struct lyd_node *data_tree, int fd)
 
     /* empty file content */
     ret = ftruncate(fd, 0);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File truncate failed: %s", strerror(errno));
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File truncate failed: %s", sr_strerror_safe(errno));
 
     /* print data tree to file */
     ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
@@ -81,7 +85,7 @@ pm_save_data_tree(struct lyd_node *data_tree, int fd)
 
     /* flush in-core data to the disc */
     ret = fsync(fd);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", strerror(errno));
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", sr_strerror_safe(errno));
 
     SR_LOG_DBG_MSG("Persist data tree successfully saved.");
 
@@ -92,14 +96,13 @@ pm_save_data_tree(struct lyd_node *data_tree, int fd)
  * @brief Cleans up specified data tree and closes specified file descriptor.
  */
 static void
-pm_cleanup_data_tree(struct lyd_node *data_tree, int fd)
+pm_cleanup_data_tree(pm_ctx_t *pm_ctx, struct lyd_node *data_tree, int fd)
 {
     if (NULL != data_tree) {
         lyd_free_withsiblings(data_tree);
     }
-    if (-1 != fd) {
-        sr_unlock_fd(fd);
-        close(fd);
+    if (-1 != fd && NULL != pm_ctx) {
+        sr_locking_set_unlock_close_fd(pm_ctx->lock_ctx, fd);
     }
 }
 
@@ -135,6 +138,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
         if (ENOENT == errno) {
             SR_LOG_DBG("Persist data file '%s' does not exist.", data_filename);
             if (read_only) {
+                SR_LOG_DBG("No persistent data for module '%s' will be loaded.", module_name);
                 rc = SR_ERR_DATA_MISSING;
             } else {
                 /* create new persist file */
@@ -142,7 +146,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
                 fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
                 ac_unset_user_identity(pm_ctx->rp_ctx->ac_ctx);
                 if (-1 == fd) {
-                    SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, strerror(errno));
+                    SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, sr_strerror_safe(errno));
                     rc = SR_ERR_INTERNAL;
                 }
             }
@@ -150,16 +154,19 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
             SR_LOG_ERR("Insufficient permissions to access persist data file '%s'.", data_filename);
             rc = SR_ERR_UNAUTHORIZED;
         } else {
-            SR_LOG_ERR("Unable to open persist data file '%s': %s.", data_filename, strerror(errno));
+            SR_LOG_ERR("Unable to open persist data file '%s': %s.", data_filename, sr_strerror_safe(errno));
             rc = SR_ERR_INTERNAL;
         }
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Persist data tree load for '%s' has failed.", module_name);
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
     }
 
     /* lock & load the data tree */
-    sr_lock_fd(fd, (read_only ? false : true), true);
+    rc = sr_locking_set_lock_fd(pm_ctx->lock_ctx, fd, data_filename, (read_only ? false : true), true);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to lock persist data file for '%s'.", module_name);
 
-    *data_tree = lyd_parse_fd(pm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+    *data_tree = lyd_parse_fd(pm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_OPT_NOAUTODEL);
     if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Parsing persist data from file '%s' failed: %s", data_filename, ly_errmsg());
         rc = SR_ERR_INTERNAL;
@@ -169,8 +176,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
 
     if ((SR_ERR_OK != rc) || (true == read_only) || (NULL == fd_p)) {
         /* unlock and close fd in case of read_only has been requested */
-        sr_unlock_fd(fd);
-        close(fd);
+        sr_locking_set_unlock_close_fd(pm_ctx->lock_ctx, fd);
     } else {
         /* return open fd to locked file otherwise */
         *fd_p = fd;
@@ -211,7 +217,7 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const
 
     if (add) {
         /* add persistent data */
-        new_node = lyd_new_path(*data_tree, pm_ctx->ly_ctx, xpath, value, 0);
+        new_node = lyd_new_path(*data_tree, pm_ctx->ly_ctx, xpath, (void*)value, 0, 0);
         if (NULL == *data_tree) {
             /* if the new data tree has been just created */
             *data_tree = new_node;
@@ -222,7 +228,7 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const
         }
     } else {
         /* delete persistent data */
-        node_set = lyd_get_node(*data_tree, xpath);
+        node_set = lyd_find_xpath(*data_tree, xpath);
         if (NULL == node_set || LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Unable to find requested persistent data (xpath=%s): %s.", xpath, ly_errmsg());
             rc = SR_ERR_INTERNAL;
@@ -306,7 +312,7 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
     }
 
 cleanup:
-    pm_cleanup_data_tree(data_tree, fd);
+    pm_cleanup_data_tree(pm_ctx, data_tree, fd);
     return rc;
 }
 
@@ -314,32 +320,54 @@ cleanup:
  * @brief Fills subscription details from libyang's list instance to subscription structure.
  */
 static int
-pm_subscription_entry_fill(struct lyd_node *node, np_subscription_t *subscription)
+pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscription, struct lyd_node *node)
 {
     struct lyd_node_leaf_list *node_ll = NULL;
+    int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG(subscription);
+    CHECK_NULL_ARG4(module_name, subscription, node, node->schema);
+
+    subscription->module_name = strdup(module_name);
+    CHECK_NULL_NOMEM_GOTO(subscription->module_name, rc, cleanup);
 
     while (NULL != node) {
-        if (NULL != node->schema->name) {
+        if (NULL != node->schema && NULL != node->schema->name) {
             node_ll = (struct lyd_node_leaf_list*)node;
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "type")) {
-                subscription->event_type = sr_event_str_to_gpb(node_ll->value_str);
+                subscription->type = sr_subsciption_type_str_to_gpb(node_ll->value_str);
             }
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-address")) {
                 subscription->dst_address = strdup(node_ll->value_str);
-                CHECK_NULL_NOMEM_RETURN(subscription->dst_address);
+                CHECK_NULL_NOMEM_GOTO(subscription->dst_address, rc, cleanup);
             }
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-id")) {
                 subscription->dst_id = atoi(node_ll->value_str);
             }
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "xpath")) {
+                subscription->xpath = strdup(node_ll->value_str);
+                CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
+            }
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "event")) {
+                subscription->notif_event = sr_notification_event_str_to_gpb(node_ll->value_str);
+            }
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "priority")) {
+                subscription->priority = atoi(node_ll->value_str);
+            }
             if (0 == strcmp(node->schema->name, "enable-running")) {
                 subscription->enable_running = true;
+            }
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "api-variant")) {
+                subscription->api_variant = sr_api_variant_from_str(node_ll->value_str);
             }
         }
         node = node->next;
     }
+
     return SR_ERR_OK;
+
+cleanup:
+    np_free_subscription_content(subscription);
+    return rc;
 }
 
 /**
@@ -355,7 +383,7 @@ pm_dt_has_running_enable_susbscriptions(struct lyd_node *data_tree, const char *
     CHECK_NULL_ARG3(data_tree, module_name, result);
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING, module_name);
-    node_set = lyd_get_node(data_tree, xpath);
+    node_set = lyd_find_xpath(data_tree, xpath);
     if (NULL == node_set || 0 == node_set->number) {
         *result = false;
     } else {
@@ -386,6 +414,9 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     ctx->data_search_dir = strdup(data_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
 
+    rc = sr_locking_set_init(&ctx->lock_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize locking set.");
+
     /* initialize libyang */
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
     if (NULL == ctx->ly_ctx) {
@@ -405,7 +436,7 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     ctx->schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YANG);
     free(schema_filename);
     if (NULL == ctx->schema) {
-        SR_LOG_WRN("Unable to parse the schema file '%s': %s", PM_SCHEMA_FILE, ly_errmsg());
+        SR_LOG_ERR("Unable to parse the schema file '%s': %s", PM_SCHEMA_FILE, ly_errmsg());
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
@@ -425,6 +456,7 @@ pm_cleanup(pm_ctx_t *pm_ctx)
         if (NULL != pm_ctx->ly_ctx) {
             ly_ctx_destroy(pm_ctx->ly_ctx, NULL);
         }
+        sr_locking_set_cleanup(pm_ctx->lock_ctx);
         free((void*)pm_ctx->data_search_dir);
         free(pm_ctx);
     }
@@ -463,23 +495,31 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
 }
 
 int
-pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
-        bool *running_enabled, char ***features_p, size_t *feature_cnt_p)
+pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, sr_mem_ctx_t *sr_mem_features, bool *module_enabled,
+        char ***subtrees_enabled_p, size_t *subtrees_enabled_cnt_p, char ***features_p, size_t *features_cnt_p)
 {
     char xpath[PATH_MAX] = { 0, };
     struct lyd_node *data_tree = NULL;
     struct ly_set *node_set = NULL;
-    char **features = NULL;
+    char **subtrees_enabled = NULL, **features = NULL, **tmp = NULL;
     const char *feature_name = NULL;
-    size_t feature_cnt = 0;
+    size_t subtrees_enabled_cnt = 0, feature_cnt = 0;
     np_subscription_t subscription = { 0, };
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(pm_ctx, module_name, features_p, feature_cnt_p);
+    CHECK_NULL_ARG3(pm_ctx, module_name, module_enabled);
+    CHECK_NULL_ARG4(subtrees_enabled_p, subtrees_enabled_cnt_p, features_p, features_cnt_p);
 
+    *module_enabled = false;
+    *subtrees_enabled_p = NULL;
+    *subtrees_enabled_cnt_p = 0;
     *features_p = NULL;
-    *feature_cnt_p = 0;
-    *running_enabled = false;
+    *features_cnt_p = 0;
+
+    if (sr_mem_features) {
+        sr_mem_snapshot(sr_mem_features, &snapshot);
+    }
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
@@ -493,17 +533,18 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
         goto cleanup;
     }
 
+    /* get all enabled features */
     snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES, module_name);
-    node_set = lyd_get_node(data_tree, xpath);
+    node_set = lyd_find_xpath(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
-        features = calloc(node_set->number, sizeof(*features));
+        features = sr_calloc(sr_mem_features, node_set->number, sizeof(*features));
         CHECK_NULL_NOMEM_GOTO(features, rc, cleanup);
 
         for (size_t i = 0; i < node_set->number; i++) {
             feature_name = ((struct lyd_node_leaf_list *)node_set->set.d[i])->value_str;
             if (NULL != feature_name) {
-                features[feature_cnt] = strdup(feature_name);
+                sr_mem_edit_string(sr_mem_features, &features[feature_cnt], feature_name);
                 CHECK_NULL_NOMEM_GOTO(features[feature_cnt], rc, cleanup);
                 feature_cnt++;
             }
@@ -513,26 +554,43 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
         ly_set_free(node_set);
     }
 
+    /* get all subscriptions that enable running */
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING, module_name);
-    node_set = lyd_get_node(data_tree, xpath);
-    if (NULL != node_set && node_set->number > 0) {
-        *running_enabled = true;
+    node_set = lyd_find_xpath(data_tree, xpath);
 
-        /* send HELLO notifications to verify that these subscriptions are still alive */
+    if (NULL != node_set && node_set->number > 0) {
         for (size_t i = 0; i < node_set->number; i++) {
-            rc = pm_subscription_entry_fill(node_set->set.d[i]->child, &subscription);
+            memset(&subscription, 0, sizeof(subscription));
+            rc = pm_subscription_entry_fill(module_name, &subscription, node_set->set.d[i]->child);
             if (SR_ERR_OK == rc) {
+                if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription.type) {
+                    *module_enabled = true;
+                }
+                if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription.type ||
+                        SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == subscription.type) {
+                    tmp = realloc(subtrees_enabled, (subtrees_enabled_cnt + 1) * sizeof(*subtrees_enabled));
+                    CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
+                    subtrees_enabled = tmp;
+                    subtrees_enabled[subtrees_enabled_cnt] = strdup(subscription.xpath);
+                    CHECK_NULL_NOMEM_GOTO(subtrees_enabled[subtrees_enabled_cnt], rc, cleanup);
+                    subtrees_enabled_cnt++;
+                }
+            }
+            if (SR_ERR_OK == rc) {
+                /* send HELLO notifications to verify that these subscriptions are still alive */
                 rc = np_hello_notify(pm_ctx->rp_ctx->np_ctx, module_name, subscription.dst_address, subscription.dst_id);
             }
-            free((void*)subscription.dst_address);
+            np_free_subscription_content(&subscription);
         }
     }
 
-    SR_LOG_DBG("Returning info from '%s' persist file: running ds %s, %zu features enabled.",
-            module_name, (*running_enabled ? "enabled" : "disabled"), feature_cnt);
+    SR_LOG_DBG("Returning info from '%s' persist file: module %s, %zu subtrees enabled in running, %zu features enabled.",
+            module_name, (*module_enabled ? "enabled" : "disabled"), subtrees_enabled_cnt, feature_cnt);
 
+    *subtrees_enabled_p = subtrees_enabled;
+    *subtrees_enabled_cnt_p = subtrees_enabled_cnt;
     *features_p = features;
-    *feature_cnt_p = feature_cnt;
+    *features_cnt_p = feature_cnt;
 
 cleanup:
     if (NULL != node_set) {
@@ -543,10 +601,18 @@ cleanup:
     }
 
     if (SR_ERR_OK != rc) {
-        for (size_t i = 0; i < feature_cnt; i++) {
-            free((void*)features[i]);
+        for (size_t i = 0; i < subtrees_enabled_cnt; i++) {
+            free((void*)subtrees_enabled[i]);
         }
-        free(features);
+        free(subtrees_enabled);
+        if (sr_mem_features) {
+            sr_mem_restore(&snapshot);
+        } else {
+            for (size_t i = 0; i < feature_cnt; i++) {
+                free((void*)features[i]);
+            }
+            free(features);
+        }
     }
     return rc;
 }
@@ -555,7 +621,7 @@ int
 pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         const np_subscription_t *subscription, const bool exclusive)
 {
-    char xpath[PATH_MAX] = { 0, };
+    char xpath[PATH_MAX] = { 0, }, buff[15] = { 0, };
     const char *value = NULL;
     struct lyd_node *data_tree = NULL;
     int fd = -1;
@@ -567,28 +633,62 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
     if (exclusive) {
         /* first, delete existing subscriptions of given type */
         SR_LOG_DBG("Removing all existing %s subscriptions from '%s' persist data tree.",
-                sr_event_gpb_to_str(subscription->event_type), module_name);
+                sr_subscription_type_gpb_to_str(subscription->type), module_name);
 
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH, module_name,
-                sr_event_gpb_to_str(subscription->event_type), subscription->xpath);
-        pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, false, NULL);
-        /* error check not needed here */
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->xpath);
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, false, NULL);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN("Unable to delete existing %s subscriptions.", sr_subscription_type_gpb_to_str(subscription->type));
+        }
     }
 
+    /* create the subscription */
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
+            sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+    rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new subscription into the data tree.");
+
+    /* set subscription details */
     if (subscription->enable_running) {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING, module_name,
-                sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
-    } else if (NULL != subscription->xpath) {
-        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_XPATH, module_name,
-                sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
-        value = subscription->xpath;
-    } else {
-        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
-                sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
     }
-
-    rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new subscription to data tree.");
+    if (NULL != subscription->xpath) {
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_XPATH, module_name,
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+        value = subscription->xpath;
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
+    }
+    if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type ||
+            SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription->type) {
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_EVENT, module_name,
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+        value = sr_notification_event_gpb_to_str(subscription->notif_event);
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
+    }
+    if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type ||
+            SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription->type) {
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_PRIORITY, module_name,
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+        snprintf(buff, sizeof(buff), "%"PRIu32, subscription->priority);
+        value = buff;
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
+    }
+    if (SR__SUBSCRIPTION_TYPE__RPC_SUBS == subscription->type ||
+            SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == subscription->type ||
+            SR__SUBSCRIPTION_TYPE__ACTION_SUBS == subscription->type) {
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_API_VARIANT, module_name,
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+        value = sr_api_variant_to_str(subscription->api_variant);
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
+    }
 
     rc = pm_save_data_tree(data_tree, fd);
 
@@ -597,7 +697,7 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
     }
 
 cleanup:
-    pm_cleanup_data_tree(data_tree, fd);
+    pm_cleanup_data_tree(pm_ctx, data_tree, fd);
     return rc;
 }
 
@@ -615,7 +715,7 @@ pm_remove_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char
     *disable_running = false;
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
-            sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
+            sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
 
     rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, &data_tree, &running_affected);
     if (NULL != data_tree) {
@@ -674,7 +774,7 @@ pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_nam
 }
 
 int
-pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__NotificationEvent event_type,
+pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType type,
         np_subscription_t **subscriptions_p, size_t *subscription_cnt_p)
 {
     char xpath[PATH_MAX] = { 0, };
@@ -688,24 +788,27 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Notification
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
+    if (SR_ERR_DATA_MISSING != rc) {
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s' %s.", module_name, sr_strerror(rc));
+    }
 
     if (NULL == data_tree) {
         /* empty data file */
         *subscriptions_p = NULL;
         *subscription_cnt_p = 0;
+        rc = SR_ERR_OK;
         goto cleanup;
     }
 
-    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_event_gpb_to_str(event_type));
-    node_set = lyd_get_node(data_tree, xpath);
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_subscription_type_gpb_to_str(type));
+    node_set = lyd_find_xpath(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
         subscriptions = calloc(node_set->number, sizeof(*subscriptions));
         CHECK_NULL_NOMEM_GOTO(subscriptions, rc, cleanup);
 
         for (size_t i = 0; i < node_set->number; i++) {
-            rc = pm_subscription_entry_fill(node_set->set.d[i]->child, &subscriptions[subscription_cnt]);
+            rc = pm_subscription_entry_fill(module_name, &subscriptions[subscription_cnt], node_set->set.d[i]->child);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to fill subscription details.");
             subscription_cnt++;
         }
@@ -725,10 +828,7 @@ cleanup:
     }
 
     if (SR_ERR_OK != rc) {
-        for (size_t i = 0; i < subscription_cnt; i++) {
-            free((void*)subscriptions[i].dst_address);
-        }
-        free(subscriptions);
+        np_free_subscriptions(subscriptions, subscription_cnt);
     }
 
     return rc;

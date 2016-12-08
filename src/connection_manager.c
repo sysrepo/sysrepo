@@ -155,7 +155,7 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
 
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd){
-        SR_LOG_ERR("Socket create error: %s", strerror(errno));
+        SR_LOG_ERR("Socket create error: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -184,14 +184,14 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
     umask(old_umask);
 
     if (-1 == rc) {
-        SR_LOG_ERR("Socket bind error: %s", strerror(errno));
+        SR_LOG_ERR("Socket bind error: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
 
     rc = listen(fd, SOMAXCONN);
     if (-1 == rc) {
-        SR_LOG_ERR("Socket listen error: %s", strerror(errno));
+        SR_LOG_ERR("Socket listen error: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -235,7 +235,7 @@ cm_session_data_cleanup(void *session)
     sm_session_t *sm_session = (sm_session_t*)session;
     if ((NULL != sm_session) && (NULL != sm_session->cm_data)) {
         while (sr_cbuff_dequeue(sm_session->cm_data->rp_request_queue, &msg)) {
-            sr__msg__free_unpacked(msg, NULL);
+            sr_msg_free(msg);
         }
         sr_cbuff_cleanup(sm_session->cm_data->rp_request_queue);
         free(sm_session->cm_data);
@@ -265,6 +265,8 @@ static void
 cm_delayed_request_cb(struct ev_loop *loop, ev_timer *w, int revents)
 {
     cm_delayed_request_ctx_t *req = NULL, *prev = NULL;
+    sm_session_t *sm_session = NULL;
+    bool ignore = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG_VOID2(w, w->data);
@@ -272,11 +274,24 @@ cm_delayed_request_cb(struct ev_loop *loop, ev_timer *w, int revents)
 
     CHECK_NULL_ARG_VOID3(req, req->cm_ctx, req->msg);
 
-    rc = rp_msg_process(req->cm_ctx->rp_ctx, (NULL != req->session ? req->session->rp_session : NULL), req->msg);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN_MSG("Unable to send the delayed request to the Request Processor.");
-    } else {
-        SR_LOG_DBG_MSG("Delayed request sent to the Request Processor.");
+    if (NULL != req->session) {
+        /* check if the session is still active */
+        rc = sm_session_find_id(req->cm_ctx->sm_ctx, req->msg->session_id, &sm_session);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_DBG("Unable to find session context for delayed request with session id=%"PRIu32", "
+                    "ignoring the request.", req->msg->session_id);
+            ignore = true;
+        }
+    }
+
+    if (!ignore) {
+        /* send the request to Request processor */
+        rc = rp_msg_process(req->cm_ctx->rp_ctx, (NULL != req->session ? req->session->rp_session : NULL), req->msg);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN_MSG("Unable to send the delayed request to the Request Processor.");
+        } else {
+            SR_LOG_DBG_MSG("Delayed request sent to the Request Processor.");
+        }
     }
 
     /* remove the request from linked list */
@@ -292,11 +307,14 @@ cm_delayed_request_cb(struct ev_loop *loop, ev_timer *w, int revents)
         }
     }
 
+    if (ignore) {
+        sr_msg_free(req->msg);
+    }
     free(req);
 }
 
 /**
- * @brief Sends a request to to the Request Processor after some timeout.
+ * @brief Sends a message to the Request Processor after specified timeout.
  */
 static int
 cm_delayed_msg_process(cm_ctx_t *cm_ctx, cm_session_ctx_t *session, Sr__Msg *msg, double timeout)
@@ -341,16 +359,20 @@ static int
 cm_subscr_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_address, double delay)
 {
     Sr__Msg *msg_req = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(cm_ctx, destination_address);
 
     SR_LOG_DBG("Requesting removal of subscriptions for the destination '%s'.", destination_address);
 
-    rc = sr_gpb_internal_req_alloc(SR__OPERATION__UNSUBSCRIBE_DESTINATION, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot create Sysrepo memory context.");
+
+    rc = sr_gpb_internal_req_alloc(sr_mem, SR__OPERATION__UNSUBSCRIBE_DESTINATION, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
-    msg_req->internal_request->unsubscribe_dst_req->destination = strdup(destination_address);
+    sr_mem_edit_string(sr_mem, &msg_req->internal_request->unsubscribe_dst_req->destination, destination_address);
     CHECK_NULL_NOMEM_GOTO(msg_req->internal_request->unsubscribe_dst_req->destination, rc, cleanup);
 
     if (delay > 0) {
@@ -367,8 +389,10 @@ cm_subscr_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_addr
     return rc;
 
 cleanup:
-    if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+    if (msg_req) {
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     return rc;
 }
@@ -497,7 +521,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
                 break;
             } else {
                 /* error by writing - close the connection due to an error */
-                SR_LOG_ERR("Error by writing data to fd %d: %s.", connection->fd, strerror(errno));
+                SR_LOG_ERR("Error by writing data to fd %d: %s.", connection->fd, sr_strerror_safe(errno));
                 connection->close_requested = true;
                 break;
             }
@@ -561,7 +585,7 @@ cm_msg_send_connection(cm_ctx_t *cm_ctx, sm_connection_t *connection, Sr__Msg *m
  */
 static int
 cm_session_start_internal(cm_ctx_t *cm_ctx, sm_connection_t *conn, const char *effective_user,
-        sr_datastore_t datastore, uint32_t session_options, sm_session_t **session_p)
+        sr_datastore_t datastore, uint32_t session_options, uint32_t commit_id, sm_session_t **session_p)
 {
     sm_session_t *session = NULL;
     int rc = SR_ERR_OK;
@@ -596,7 +620,7 @@ cm_session_start_internal(cm_ctx_t *cm_ctx, sm_connection_t *conn, const char *e
     /* start session in Request Processor */
     if (SR_ERR_OK == rc) {
         rc = rp_session_start(cm_ctx->rp_ctx,  session->id, &session->credentials,  datastore,
-                session_options, &session->cm_data->rp_session);
+                session_options, commit_id, &session->cm_data->rp_session);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Cannot start Request Processor session (conn=%p).", (void*)conn);
         }
@@ -619,6 +643,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
 {
     sm_session_t *session = NULL;
     Sr__Msg *msg = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(cm_ctx, conn, msg_in, msg_in->request, msg_in->request->session_start_req);
@@ -626,7 +651,9 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     SR_LOG_DBG("Processing session_start request (conn=%p).", (void*)conn);
 
     /* prepare the response */
-    rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_START, 0, &msg);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__SESSION_START, 0, &msg);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot allocate the response for session_start request (conn=%p).", (void*)conn);
         return SR_ERR_NOMEM;
@@ -635,7 +662,9 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     /* start the session */
     rc = cm_session_start_internal(cm_ctx, conn, msg_in->request->session_start_req->user_name,
             sr_datastore_gpb_to_sr(msg_in->request->session_start_req->datastore),
-            msg_in->request->session_start_req->options, &session);
+            msg_in->request->session_start_req->options,
+            (msg_in->request->session_start_req->has_commit_id ? msg_in->request->session_start_req->commit_id : 0),
+            &session);
 
     if (SR_ERR_OK == rc) {
         /* set the id to response */
@@ -647,13 +676,13 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     }
 
     /* send the response */
-    rc = cm_msg_send_connection(cm_ctx, session->connection, msg);
+    rc = cm_msg_send_connection(cm_ctx, conn, msg);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to send session_start response (conn=%p).", (void*)conn);
     }
 
     /* release the message */
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
 
     return rc;
 }
@@ -665,6 +694,7 @@ static int
 cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg_in)
 {
     Sr__Msg *msg_out = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
     bool drop_session = false;
 
@@ -673,7 +703,9 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     SR_LOG_DBG("Processing session_stop request (session id=%"PRIu32").", session->id);
 
     /* prepare the response */
-    rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_STOP, msg_in->session_id, &msg_out);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__SESSION_STOP, msg_in->session_id, &msg_out);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot allocate the response for session_stop request (session id=%"PRIu32").", session->id);
         return SR_ERR_NOMEM;
@@ -684,7 +716,7 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
         if (session->id != msg_in->request->session_stop_req->session_id) {
             SR_LOG_ERR("Stopping of other sessions is not allowed (sess id=%"PRIu32", requested id=%"PRIu32").",
                     session->id, msg_in->request->session_stop_req->session_id);
-            sr_gpb_fill_error("Stopping of other sessions is not allowed", NULL, &msg_out->response->error);
+            sr_gpb_fill_error("Stopping of other sessions is not allowed", NULL, sr_mem, &msg_out->response->error);
             rc = SR_ERR_UNSUPPORTED;
         }
     }
@@ -720,7 +752,7 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     }
 
     /* release the message */
-    sr__msg__free_unpacked(msg_out, NULL);
+    sr_msg_free(msg_out);
 
     /* drop session in SM - must be called AFTER sending */
     if (drop_session && (SR_ERR_OK == rc)) {
@@ -745,6 +777,7 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
     /* session can be NULL by session_start */
     if ((SR__OPERATION__SESSION_START != msg->request->operation) &&
             ((NULL == session || NULL == session->cm_data))) {
+        sr_msg_free(msg);
         return SR_ERR_INVAL_ARG;
     }
 
@@ -764,11 +797,11 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
     switch (msg->request->operation) {
         case SR__OPERATION__SESSION_START:
             rc = cm_session_start_req_process(cm_ctx, conn, msg);
-            sr__msg__free_unpacked(msg, NULL);
+            sr_msg_free(msg);
             break;
         case SR__OPERATION__SESSION_STOP:
             rc = cm_session_stop_req_process(cm_ctx, session, msg);
-            sr__msg__free_unpacked(msg, NULL);
+            sr_msg_free(msg);
             break;
         default:
             if (session->cm_data->rp_req_cnt > 0) {
@@ -793,7 +826,7 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
     return rc;
 
 cleanup:
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
     return rc;
 }
 
@@ -835,7 +868,33 @@ cm_resp_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, 
     return rc;
 
 cleanup:
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
+    return rc;
+}
+
+/**
+ * @brief Processes a notification ACK message from client.
+ */
+static int
+cm_notif_ack_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(cm_ctx, conn, msg, msg->notification_ack, msg->notification_ack->notif);
+
+    if (CM_AF_UNIX_SERVER != conn->type) {
+        SR_LOG_ERR("Notification ACK received from non-server connection (conn=%p).", (void*)conn);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    /* forward the message to Request Processor */
+    rc = rp_msg_process(cm_ctx->rp_ctx, NULL, msg);
+
+    return rc;
+
+cleanup:
+    sr_msg_free(msg);
     return rc;
 }
 
@@ -847,15 +906,26 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
 {
     Sr__Msg *msg = NULL;
     sm_session_t *session = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(cm_ctx, conn, msg_data);
 
     /* unpack the message */
-    msg = sr__msg__unpack(NULL, msg_size, msg_data);
+    rc = sr_mem_new(msg_size, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to instantiate a Sysrepo memory context.");
+    ProtobufCAllocator allocator = sr_get_protobuf_allocator(sr_mem);
+    msg = sr__msg__unpack(&allocator, msg_size, msg_data);
     if (NULL == msg) {
         SR_LOG_ERR("Unable to unpack the message (conn=%p).", (void*)conn);
-        return SR_ERR_INTERNAL;
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+    if (NULL != sr_mem) {
+        msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
+        ++sr_mem->obj_count;
+    } else {
+        msg->_sysrepo_mem_ctx = (uint64_t) NULL;
     }
 
     /* NULL check according to message type */
@@ -866,8 +936,9 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
         goto cleanup;
     }
 
-    /* find matching session (except for session_start request) */
-    if ((SR__MSG__MSG_TYPE__REQUEST != msg->type) || (SR__OPERATION__SESSION_START != msg->request->operation)) {
+    /* find matching session (except for some exceptions) */
+    if (SR__MSG__MSG_TYPE__NOTIFICATION_ACK != msg->type &&
+            ((SR__MSG__MSG_TYPE__REQUEST != msg->type) || (SR__OPERATION__SESSION_START != msg->request->operation))) {
         rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Unable to find session context for session id=%"PRIu32" (conn=%p).",
@@ -890,6 +961,9 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
         case SR__MSG__MSG_TYPE__RESPONSE:
             rc = cm_resp_process(cm_ctx, conn, session, msg);
             break;
+        case SR__MSG__MSG_TYPE__NOTIFICATION_ACK:
+            rc = cm_notif_ack_process(cm_ctx, conn, msg);
+            break;
         default:
             SR_LOG_ERR("Unexpected message type received (session id=%"PRIu32").", session->id);
             rc = SR_ERR_INVAL_ARG;
@@ -899,7 +973,11 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
     return rc;
 
 cleanup:
-    sr__msg__free_unpacked(msg, NULL);
+    if (msg) {
+        sr_msg_free(msg);
+    } else {
+        sr_mem_free(sr_mem);
+    }
     return rc;
 }
 
@@ -938,7 +1016,7 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
             buff_pos += SR_MSG_PREAM_SIZE + msg_size;
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Error by processing of the message.");
-                break;
+                return rc;
             }
         } else {
             /* the message is not completely retrieved, end processing */
@@ -948,13 +1026,12 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
         }
     }
 
-    if ((0 != buff_pos) && (buff_size - buff_pos) > 0) {
-        /* move unprocessed data to the front of the buffer */
-        memmove(buff->data, (buff->data + buff_pos), (buff_size - buff_pos));
+    if (0 != buff_pos) {
+        if (buff_size - buff_pos > 0) {
+            /* move unprocessed data to the front of the buffer */
+            memmove(buff->data, (buff->data + buff_pos), (buff_size - buff_pos));
+        }
         buff->pos = buff_size - buff_pos;
-    } else {
-        /* no more unprocessed data left in the buffer */
-        buff->pos = 0;
     }
 
     return rc;
@@ -1007,7 +1084,7 @@ cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
                 break;
             } else {
                 /* error by reading - close the connection due to an error */
-                SR_LOG_ERR("Error by reading data on fd %d: %s.", conn->fd, strerror(errno));
+                SR_LOG_ERR("Error by reading data on fd %d: %s.", conn->fd, sr_strerror_safe(errno));
                 conn->close_requested = true;
                 break;
             }
@@ -1145,8 +1222,7 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
                 break;
             } else {
                 /* error by accept - only log the error and skip it */
-                SR_LOG_ERR("Unexpected error by accepting new connection: %s", strerror(errno));
-                continue;
+                SR_LOG_ERR("Unexpected error by accepting new connection: %s", sr_strerror_safe(errno));
             }
         }
     } while (-1 != clnt_fd); /* accept returns -1 when there are no more connections to accept */
@@ -1166,7 +1242,7 @@ cm_subscr_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t
     /* prepare a socket */
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd) {
-        SR_LOG_ERR("Unable to create a new socket: %s", strerror(errno));
+        SR_LOG_ERR("Unable to create a new socket: %s", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
 
@@ -1214,7 +1290,7 @@ cm_subscr_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t
             rc = SR_ERR_DISCONNECT;
             goto cleanup;
         } else {
-            SR_LOG_ERR("Unable to connect to subscriber socket=%s: %s", socket_path, strerror(errno));
+            SR_LOG_WRN("Unable to connect to subscriber socket=%s: %s", socket_path, sr_strerror_safe(errno));
             rc = SR_ERR_DISCONNECT;
             goto cleanup;
         }
@@ -1254,7 +1330,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     SR_LOG_DBG("Sending a notification to '%s'.", msg->notification->destination_address);
 
     /* fill-in source address */
-    msg->notification->source_address = strdup(cm_ctx->server_socket_path);
+    sr_mem_edit_string((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, &msg->notification->source_address, cm_ctx->server_socket_path);
     CHECK_NULL_NOMEM_RETURN(msg->notification->source_address);
     msg->notification->source_pid = (uint32_t)getpid();
 
@@ -1275,56 +1351,59 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         rc = cm_msg_send_connection(cm_ctx, connection, msg);
     }
 
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_OK != rc && SR_ERR_DISCONNECT != rc) {
         /* by error, remove subscriptions on this destination */
         cm_subscr_unsubscribe_destination(cm_ctx, msg->notification->destination_address, 0);
     }
 
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
 
     return rc;
 }
 
 /**
- * @brief Processes an outgoing RPC (RPC to be sent to the client library).
+ * @brief Processes an outgoing data-provide request (to be sent to the client library).
  */
 static int
-cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+cm_out_dp_request_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 {
     sm_session_t *session = NULL;
     sm_connection_t *connection = NULL;
+    char *destination_address = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(cm_ctx, msg, msg->request, msg->request->rpc_req);
+    CHECK_NULL_ARG4(cm_ctx, msg, msg->request, msg->request->data_provide_req);
 
-    SR_LOG_DBG("Sending a RPC request to '%s'.", msg->request->rpc_req->subscriber_address);
+    destination_address = msg->request->data_provide_req->subscriber_address;
+
+    SR_LOG_DBG("Sending a data-provide request to '%s'.", destination_address);
 
     /* find the session */
     rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to find the session matching with id specified in the message "
                 "(id=%"PRIu32").", msg->session_id);
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
         return SR_ERR_INTERNAL;
     }
     if ((NULL == session) || (NULL == session->cm_data)) {
         SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
         return SR_ERR_INTERNAL;
     }
     /* track that we expect a response for this session */
     session->cm_data->rp_resp_expected += 1;
 
-    /* get a connection to the RPC destination */
-    rc = sm_connection_find_dst(cm_ctx->sm_ctx, msg->request->rpc_req->subscriber_address, &connection);
+    /* get a connection for the request destination */
+    rc = sm_connection_find_dst(cm_ctx->sm_ctx, destination_address, &connection);
     if (SR_ERR_OK == rc) {
         /* a connection to the destination already exists - reuse */
-        SR_LOG_DBG("Reusing existing connection on fd=%d for the RPC destination '%s'",
-                connection->fd, msg->request->rpc_req->subscriber_address);
+        SR_LOG_DBG("Reusing existing connection on fd=%d for the data-provide request destination '%s'",
+                connection->fd, destination_address);
     } else {
         /* connection to that destination does not exist - connect */
-        SR_LOG_DBG("Creating a new connection for the RPC destination '%s'", msg->request->rpc_req->subscriber_address);
-        rc = cm_subscr_conn_create(cm_ctx, msg->request->rpc_req->subscriber_address, &connection);
+        SR_LOG_DBG("Creating a new connection for the data-provide request destination '%s'", destination_address);
+        rc = cm_subscr_conn_create(cm_ctx, destination_address, &connection);
     }
 
     /* send the message */
@@ -1332,12 +1411,171 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         rc = cm_msg_send_connection(cm_ctx, connection, msg);
     }
 
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_OK != rc && SR_ERR_DISCONNECT != rc) {
         /* by error, remove subscriptions on this destination */
-        cm_subscr_unsubscribe_destination(cm_ctx, msg->request->rpc_req->subscriber_address, 0);
+        cm_subscr_unsubscribe_destination(cm_ctx, msg->request->data_provide_req->subscriber_address, 0);
     }
 
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
+
+    return rc;
+}
+
+/**
+ * @brief Processes an outgoing RPC/Action (RPC/Action to be sent to the client library).
+ */
+static int
+cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    sm_session_t *session = NULL;
+    sm_connection_t *connection = NULL;
+    char *destination_address = NULL;
+    const char *op_name = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(cm_ctx, msg, msg->request, msg->request->rpc_req);
+
+    op_name = (msg->request->rpc_req->action ? "Action" : "RPC");
+    destination_address = msg->request->rpc_req->subscriber_address;
+
+    SR_LOG_DBG("Sending a %s request to '%s'.", op_name, destination_address);
+
+    /* find the session */
+    rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to find the session matching with id specified in the message "
+                "(id=%"PRIu32").", msg->session_id);
+        sr_msg_free(msg);
+        return SR_ERR_INTERNAL;
+    }
+    if ((NULL == session) || (NULL == session->cm_data)) {
+        SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
+        sr_msg_free(msg);
+        return SR_ERR_INTERNAL;
+    }
+    /* track that we expect a response for this session */
+    session->cm_data->rp_resp_expected += 1;
+
+    /* get a connection to the RPC/Action destination */
+    rc = sm_connection_find_dst(cm_ctx->sm_ctx, destination_address, &connection);
+    if (SR_ERR_OK == rc) {
+        /* a connection to the destination already exists - reuse */
+        SR_LOG_DBG("Reusing existing connection on fd=%d for the %s destination '%s'",
+                connection->fd, op_name, destination_address);
+    } else {
+        /* connection to that destination does not exist - connect */
+        SR_LOG_DBG("Creating a new connection for the %s destination '%s'", op_name, destination_address);
+        rc = cm_subscr_conn_create(cm_ctx, destination_address, &connection);
+    }
+
+    /* send the message */
+    if (SR_ERR_OK == rc) {
+        rc = cm_msg_send_connection(cm_ctx, connection, msg);
+    }
+
+    if (SR_ERR_OK != rc && SR_ERR_DISCONNECT != rc) {
+        /* by error, remove subscriptions on this destination */
+        cm_subscr_unsubscribe_destination(cm_ctx, destination_address, 0);
+    }
+
+    sr_msg_free(msg);
+
+    return rc;
+}
+
+/**
+ * @brief Processes an outgoing event notification (notification to be sent to the client library).
+ */
+static int
+cm_out_event_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    sm_session_t *session = NULL;
+    sm_connection_t *connection = NULL;
+    char *destination_address = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(cm_ctx, msg, msg->request, msg->request->event_notif_req);
+
+    destination_address = msg->request->event_notif_req->subscriber_address;
+
+    SR_LOG_DBG("Sending an event notification to '%s'.", destination_address);
+
+    /* find the session */
+    rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to find the session matching with id specified in the message "
+                "(id=%"PRIu32").", msg->session_id);
+        sr_msg_free(msg);
+        return SR_ERR_INTERNAL;
+    }
+    if ((NULL == session) || (NULL == session->cm_data)) {
+        SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
+        sr_msg_free(msg);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* get a connection to the notification destination */
+    rc = sm_connection_find_dst(cm_ctx->sm_ctx, destination_address, &connection);
+    if (SR_ERR_OK == rc) {
+        /* a connection to the destination already exists - reuse */
+        SR_LOG_DBG("Reusing existing connection on fd=%d for the event notification destination '%s'",
+                connection->fd, destination_address);
+    } else {
+        /* connection to that destination does not exist - connect */
+        SR_LOG_DBG("Creating a new connection for the event notification destination '%s'", destination_address);
+        rc = cm_subscr_conn_create(cm_ctx, destination_address, &connection);
+    }
+
+    /* send the message */
+    if (SR_ERR_OK == rc) {
+        rc = cm_msg_send_connection(cm_ctx, connection, msg);
+    }
+
+    if (SR_ERR_OK != rc && SR_ERR_DISCONNECT != rc) {
+        /* by error, remove subscriptions on this destination */
+        cm_subscr_unsubscribe_destination(cm_ctx, destination_address, 0);
+    }
+
+    sr_msg_free(msg);
+
+    return rc;
+}
+
+/**
+ * @brief Processes an internal request received from Request Processor.
+ */
+static int
+cm_internal_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    sm_session_t *session = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(cm_ctx, msg, msg->internal_request);
+
+    if (SR__OPERATION__OPER_DATA_TIMEOUT == msg->internal_request->operation) {
+        /* find the session */
+        rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Unable to find the session matching with id specified in the message "
+                    "(id=%"PRIu32").", msg->session_id);
+            sr_msg_free(msg);
+            return SR_ERR_INTERNAL;
+        }
+    }
+
+    if (msg->internal_request->has_postpone_timeout) {
+        /* schedule delivery of message with postpone timeout */
+        rc = cm_delayed_msg_process(cm_ctx, (NULL != session ? session->cm_data : NULL),
+                msg, msg->internal_request->postpone_timeout);
+    } else {
+        /* deliver the message immediately */
+        rc = rp_msg_process(cm_ctx->rp_ctx, (NULL != session ? session->cm_data->rp_session : NULL), msg);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN_MSG("Unable to send internal request to the Request Processor.");
+        } else {
+            SR_LOG_DBG_MSG("Internal request sent to the Request Processor.");
+        }
+    }
 
     return rc;
 }
@@ -1353,18 +1591,23 @@ cm_out_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     CHECK_NULL_ARG2(cm_ctx, msg);
 
+    if (SR__MSG__MSG_TYPE__INTERNAL_REQUEST == msg->type) {
+        /* handle as an internal request from RP */
+        return cm_internal_msg_process(cm_ctx, msg);
+    }
+
     /* find the session */
     rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to find the session matching with id specified in the message "
                 "(id=%"PRIu32").", msg->session_id);
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
         return SR_ERR_INTERNAL;
     }
 
     if ((NULL == session) || (NULL == session->cm_data)) {
         SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
         return SR_ERR_INTERNAL;
     }
 
@@ -1387,7 +1630,7 @@ cm_out_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     }
 
     /* release the message */
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
 
     /* if there are no more outstanding session-related requests in RP */
     if (0 == session->cm_data->rp_req_cnt) {
@@ -1436,10 +1679,19 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
                 /* send the notification via subscriber connection */
                 cm_out_notif_process(cm_ctx, msg);
             } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&
-                    (SR__OPERATION__RPC == msg->request->operation)) {
-                /* send the RPC request via subscriber connection */
-                cm_out_rpc_process(cm_ctx, msg);
-            } else {
+                    (SR__OPERATION__DATA_PROVIDE == msg->request->operation)) {
+                /* send the data-provide request via subscriber connection */
+                cm_out_dp_request_process(cm_ctx, msg);
+            } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&
+                            (SR__OPERATION__RPC == msg->request->operation ||
+                             SR__OPERATION__ACTION == msg->request->operation)) {
+               /* send the RPC request via subscriber connection */
+               cm_out_rpc_process(cm_ctx, msg);
+            } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&
+                   (SR__OPERATION__EVENT_NOTIF == msg->request->operation)) {
+               /* send the event notification via subscriber connection */
+               cm_out_event_notif_process(cm_ctx, msg);
+           } else {
                 /* process as a normal message */
                 cm_out_msg_process(cm_ctx, msg);
             }
@@ -1620,7 +1872,7 @@ cm_cleanup(cm_ctx_t *cm_ctx)
         cm_server_cleanup(cm_ctx);
 
         while (sr_cbuff_dequeue(cm_ctx->msg_queue, &msg)) {
-            sr__msg__free_unpacked(msg, NULL);
+            sr_msg_free(msg);
         }
         sr_cbuff_cleanup(cm_ctx->msg_queue);
         pthread_mutex_destroy(&cm_ctx->msg_queue_mutex);
@@ -1629,7 +1881,7 @@ cm_cleanup(cm_ctx_t *cm_ctx)
         while (NULL != tmp) {
             req = tmp;
             tmp = tmp->next;
-            sr__msg__free_unpacked(req->msg, NULL);
+            sr_msg_free(req->msg);
             free(req);
         }
 
@@ -1653,7 +1905,7 @@ cm_start(cm_ctx_t *cm_ctx)
         rc = pthread_create(&cm_ctx->event_loop_thread, NULL,
                 cm_event_loop_threaded, cm_ctx);
         if (0 != rc) {
-            SR_LOG_ERR("Error by creating a new thread: %s", strerror(errno));
+            SR_LOG_ERR("Error by creating a new thread: %s", sr_strerror_safe(errno));
             rc = SR_ERR_INTERNAL;
         }
     }
@@ -1688,7 +1940,7 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     if (SR_ERR_OK != rc) {
         if (NULL != msg) {
-            sr__msg__free_unpacked(msg, NULL);
+            sr_msg_free(msg);
         }
         return rc;
     }
@@ -1703,7 +1955,7 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     } else {
         /* release the message by error */
         SR_LOG_ERR_MSG("Unable to send the message, skipping.");
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
     }
 
     return rc;
@@ -1726,3 +1978,10 @@ cm_watch_signal(cm_ctx_t *cm_ctx, int signum, cm_signal_cb callback)
     }
     return SR_ERR_INTERNAL; /* no space for more watchers */
 }
+
+cm_connection_mode_t
+cm_get_connection_mode(cm_ctx_t *cm_ctx)
+{
+    return cm_ctx->mode;
+}
+

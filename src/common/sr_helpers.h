@@ -23,6 +23,11 @@
 #ifndef SR_HELPERS_H_
 #define SR_HELPERS_H_
 
+/**
+ * Time out for mutex and rwlock
+ */
+#define MUTEX_WAIT_TIME 10
+
 #define CHECK_NULL_ARG__INTERNAL(ARG) \
     if (NULL == ARG) { \
         SR_LOG_ERR("NULL value detected for %s argument of %s", #ARG, __func__); \
@@ -312,5 +317,113 @@
         SR_LOG_ERR("NULL value detected for %s in %s", #ARG, __func__); \
         return RC; \
     } \
+
+/**
+ * mutex and rwlock timed locking
+ */
+#if defined(HAVE_TIMED_LOCK)
+    #define MUTEX_LOCK_TIMED_CHECK_RETURN(MUTEX) \
+    do {                                     \
+        struct timespec ts = {0};            \
+        int ret = 0;                         \
+        sr_clock_get_time(CLOCK_REALTIME, &ts);  \
+        ts.tv_sec += MUTEX_WAIT_TIME;        \
+        ret = pthread_mutex_timedlock(MUTEX, &ts); \
+        if (0 != ret) {                            \
+            SR_LOG_ERR("Mutex can not be locked %s", sr_strerror_safe(ret));\
+            return SR_ERR_TIME_OUT;          \
+        }                                    \
+    } while(0)
+#else
+    #define MUTEX_LOCK_TIMED_CHECK_RETURN(MUTEX) pthread_mutex_lock(MUTEX)
+#endif
+
+#if defined(HAVE_TIMED_LOCK)
+    #define MUTEX_LOCK_TIMED_CHECK_GOTO(MUTEX, RC, LABEL) \
+    do {                                     \
+        struct timespec ts = {0};            \
+        int ret = 0;                         \
+        sr_clock_get_time(CLOCK_REALTIME, &ts);  \
+        ts.tv_sec += MUTEX_WAIT_TIME;        \
+        ret = pthread_mutex_timedlock(MUTEX, &ts); \
+        if (0 != ret) {                            \
+            SR_LOG_ERR("Mutex can not be locked %s", sr_strerror_safe(ret));\
+            rc = SR_ERR_TIME_OUT;            \
+            goto LABEL;                      \
+        }                                    \
+    } while(0)
+#else
+    #define MUTEX_LOCK_TIMED_CHECK_GOTO(MUTEX, RC, LABEL) pthread_mutex_lock(MUTEX)
+#endif
+
+#if defined(HAVE_TIMED_LOCK)
+    #define RWLOCK_WRLOCK_TIMED_CHECK_RETURN(RWLOCK) \
+    do {                                     \
+        struct timespec ts = {0};            \
+        int ret = 0;                         \
+        sr_clock_get_time(CLOCK_REALTIME, &ts);  \
+        ts.tv_sec += MUTEX_WAIT_TIME;        \
+        ret = pthread_rwlock_timedwrlock(RWLOCK, &ts); \
+        if (0 != ret) {                            \
+            SR_LOG_ERR("rwlock can not be locked %s", sr_strerror_safe(ret));   \
+            return SR_ERR_TIME_OUT;          \
+        }                                    \
+    } while(0)
+#else
+    #define RWLOCK_WRLOCK_TIMED_CHECK_RETURN(RWLOCK) pthread_rwlock_wrlock(RWLOCK)
+#endif
+
+#if defined(HAVE_TIMED_LOCK)
+    #define RWLOCK_RDLOCK_TIMED_CHECK_RETURN(RWLOCK) \
+    do {                                     \
+        struct timespec ts = {0};            \
+        int ret = 0;                         \
+        sr_clock_get_time(CLOCK_REALTIME, &ts);  \
+        ts.tv_sec += MUTEX_WAIT_TIME;        \
+        ret = pthread_rwlock_timedrdlock(RWLOCK, &ts); \
+        if (0 != ret) {                            \
+            SR_LOG_ERR("rwlock can not be locked %s", sr_strerror_safe(ret));   \
+            return SR_ERR_TIME_OUT;          \
+        }                                    \
+    } while(0)
+#else
+    #define RWLOCK_RDLOCK_TIMED_CHECK_RETURN(RWLOCK) pthread_rwlock_rdlock(RWLOCK)
+#endif
+
+#if defined(HAVE_TIMED_LOCK)
+    #define RWLOCK_WRLOCK_TIMED_CHECK_GOTO(RWLOCK, RC, LABEL) \
+    do {                                     \
+        struct timespec ts = {0};            \
+        int ret = 0;                         \
+        sr_clock_get_time(CLOCK_REALTIME, &ts);  \
+        ts.tv_sec += MUTEX_WAIT_TIME;        \
+        ret = pthread_rwlock_timedwrlock(RWLOCK, &ts); \
+        if (0 != ret) {                            \
+            SR_LOG_ERR("rwlock can not be locked %s", sr_strerror_safe(ret));   \
+            rc = SR_ERR_TIME_OUT;            \
+            goto LABEL;                      \
+        }                                    \
+    } while(0)
+#else
+    #define RWLOCK_WRLOCK_TIMED_CHECK_GOTO(RWLOCK, RC, LABEL) pthread_rwlock_wrlock(RWLOCK)
+#endif
+
+#if defined(HAVE_TIMED_LOCK)
+    #define RWLOCK_RDLOCK_TIMED_CHECK_GOTO(RWLOCK, RC, LABEL) \
+    do {                                     \
+        struct timespec ts = {0};            \
+        int ret = 0;                         \
+        sr_clock_get_time(CLOCK_REALTIME, &ts);  \
+        ts.tv_sec += MUTEX_WAIT_TIME;        \
+        ret = pthread_rwlock_timedrdlock(RWLOCK, &ts); \
+        if (0 != ret) {                            \
+            SR_LOG_ERR("rwlock can not be locked %s", sr_strerror_safe(ret));   \
+            rc = SR_ERR_TIME_OUT;            \
+            goto LABEL;                      \
+        }                                    \
+    } while(0)
+#else
+    #define RWLOCK_RDLOCK_TIMED_CHECK_GOTO(RWLOCK, RC, LABEL) pthread_rwlock_rdlock(RWLOCK)
+#endif
 
 #endif /* SR_HELPERS_H_ */

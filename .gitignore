@@ -3,9 +3,7 @@
 *.pyc
 build/
 doc/
-src/common/sr_constants.h
-src/common/*.pb-c.*
-tests/helpers/test_data.h
 .idea/
 nbproject/
 CMakeCache.txt
+tags

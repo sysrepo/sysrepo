@@ -33,9 +33,16 @@
 #cmakedefine HAVE_UCRED_H
 #cmakedefine HAVE_SETFSUID
 #cmakedefine HAVE_STAT_ST_MTIM
+#cmakedefine HAVE_TIMED_LOCK
 
 /** Use libavl (if defined) or libredblack (if not defined) for binary tree manipulations. */
 #cmakedefine USE_AVL_LIB
+
+/** Use Sysrepo's own memory management. */
+#cmakedefine USE_SR_MEM_MGMT
+
+/** Controls whether thread IDs should be printed. */
+#cmakedefine LOG_THREAD_ID
 
 /** Path to the directory with schemas. */
 #define SR_SCHEMA_SEARCH_DIR "@SCHEMA_SEARCH_DIR@"
@@ -45,6 +52,9 @@
 
 /** Path to the directory with internal schemas. */
 #define SR_INTERNAL_SCHEMA_SEARCH_DIR "@INTERNAL_SCHEMA_SEARCH_DIR@"
+
+/** Path to the directory with internal data files. */
+#define SR_INTERNAL_DATA_SEARCH_DIR "@INTERNAL_DATA_SEARCH_DIR@"
 
 /** Path to the directory with sysrepo plugins. */
 #define SR_PLUGINS_DIR "@PLUGINS_DIR@"
@@ -70,9 +80,6 @@
 /** File extension of YIN schema files. */
 #define SR_SCHEMA_YIN_FILE_EXT ".yin"
 
-/** File extension of sysrepo plugins. */
-#define SR_PLUGIN_FILE_EXT ".so"
-
 /** Sysrepo daemon PID file. */
 #define SR_DAEMON_PID_FILE "@DAEMON_PID_FILE@"
 
@@ -86,15 +93,36 @@
 #define SR_DEAMON_WORK_DIR "/"
 
 /** Sysrepo daemon log level <0 - 4>. */
-#define SR_DAEMON_LOG_LEVEL 3
+#define SR_DAEMON_LOG_LEVEL 2
 
 /** Sysrepo daemon initialization timeout (in seconds). */
 #define SR_DAEMON_INIT_TIMEOUT 10
+
+/** Sysrepo subscriptions socket directory. */
+#define SR_SUBSCRIPTIONS_SOCKET_DIR "@SUBSCRIPTIONS_SOCKET_DIR@"
+
+/** Directory local to SR_SUBSCRIPTIONS_SOCKET_DIR containing sysrepo-global subscription sockets. */
+#define SR_GLOBAL_SUBSCRIPTIONS_SUBDIR "_global-subscriptions"
 
 /** Maximum size of a GPB message. */
 #define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
 
 /** Size of the preamble sent before each sysrepo GPB message. */
 #define SR_MSG_PREAM_SIZE sizeof(uint32_t)
+
+/** Strerror buffer length */
+#define SR_MAX_STRERROR_LEN 200
+
+/** Plugin initialization retry timeout (in seconds). */
+#define SR_PLUGIN_INIT_RETRY_TIMEOUT 10
+
+/** Plugin health check timeout (in seconds). */
+#define SR_PLUGIN_HEALTH_CHECK_TIMEOUT 10
+
+/**
+ * Timeout (in seconds) after which the commit will be aborted / released
+ * in case that not all notification ACKs have been received.
+ */
+#define SR_COMMIT_TIMEOUT @COMMIT_TIMEOUT@
 
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

@@ -44,12 +44,14 @@ const char *const sr_errlist[] = {
         "Requested schema model is not known",  /* SR_ERR_UNKNOWN_MODEL */
         "Request contains unknown element",     /* SR_ERR_BAD_ELEMENT */
         "Validation of the changes failed",     /* SR_ERR_VALIDATION_FAILED */
-        "An operation failed",                  /* SR_ERR_OPERATION_FAILED */
+        "The operation failed",                 /* SR_ERR_OPERATION_FAILED */
         "The item already exists",              /* SR_ERR_DATA_EXISTS */
         "The item expected to exist is missing",/* SR_ERR_DATA_MISSING */
         "Operation not authorized",             /* SR_ERR_UNAUTHORIZED */
+        "Invalid username",                     /* SR_ERR_INVAL_USER */
         "Requested resource is already locked", /* SR_ERR_LOCKED */
-        "Time out has expired"                  /* SR_ERR_TIME_OUT */
+        "Timeout has expired",                  /* SR_ERR_TIME_OUT */
+        "Sysrepo Engine restart is needed",     /* SR_ERR_RESTART_NEEDED */
 };
 
 const char *
@@ -66,8 +68,14 @@ void
 sr_free_val(sr_val_t *value)
 {
     if (NULL != value) {
-        sr_free_val_content(value);
-        free(value);
+        if (NULL != value->_sr_mem) {
+            if (0 == --value->_sr_mem->obj_count) {
+                sr_mem_free(value->_sr_mem);
+            }
+        } else {
+            sr_free_val_content(value);
+            free(value);
+        }
     }
 }
 
@@ -75,10 +83,16 @@ void
 sr_free_values(sr_val_t *values, size_t count)
 {
     if (NULL != values) {
-        for (size_t i = 0; i < count; i++) {
-            sr_free_val_content(&values[i]);
+        if (values[0]._sr_mem) {
+            if (0 == --values[0]._sr_mem->obj_count) {
+                sr_mem_free(values[0]._sr_mem);
+            }
+        } else {
+            for (size_t i = 0; i < count; i++) {
+                sr_free_val_content(&values[i]);
+            }
+            free(values);
         }
-        free(values);
     }
 }
 
@@ -86,9 +100,55 @@ void
 sr_free_schemas(sr_schema_t *schemas, size_t count)
 {
     if (NULL != schemas) {
-        for (size_t i = 0; i < count; i++) {
-            sr_free_schema(&schemas[i]);
+        if (schemas[0]._sr_mem) {
+            if (0 == --schemas[0]._sr_mem->obj_count) {
+                sr_mem_free(schemas[0]._sr_mem);
+            }
+            return;
+        } else {
+            for (size_t i = 0; i < count; i++) {
+                sr_free_schema(&schemas[i]);
+            }
+            free(schemas);
         }
-        free(schemas);
+    }
+}
+
+void
+sr_free_tree(sr_node_t *tree)
+{
+    if (NULL != tree) {
+        if (NULL != tree->_sr_mem) {
+            if (0 == --tree->_sr_mem->obj_count) {
+                sr_mem_free(tree->_sr_mem);
+            }
+        } else {
+            if (SR_TREE_ITERATOR_T == tree->type) {
+                --tree->data.int32_val;
+                if (0 < tree->data.int32_val) {
+                    /* still used */
+                    return;
+                }
+            }
+            sr_free_tree_content(tree);
+            free(tree);
+        }
+    }
+}
+
+void
+sr_free_trees(sr_node_t *trees, size_t count)
+{
+    if (NULL != trees) {
+        if (NULL != trees[0]._sr_mem) {
+            if (0 == --trees[0]._sr_mem->obj_count) {
+                sr_mem_free(trees[0]._sr_mem);
+            }
+        } else {
+            for (size_t i = 0; i < count; i++) {
+                sr_free_tree_content(trees + i);
+            }
+            free(trees);
+        }
     }
 }

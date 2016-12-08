@@ -170,7 +170,7 @@ cm_session_start_generate(const char *user_name, uint8_t **msg_buf, size_t *msg_
     assert_non_null(msg_size);
 
     Sr__Msg *msg = NULL;
-    sr_gpb_req_alloc(SR__OPERATION__SESSION_START, 0, &msg);
+    sr_gpb_req_alloc(NULL, SR__OPERATION__SESSION_START, 0, &msg);
     assert_non_null(msg);
     assert_non_null(msg->request);
     assert_non_null(msg->request->session_start_req);
@@ -190,7 +190,7 @@ cm_session_stop_generate(uint32_t session_id, uint8_t **msg_buf, size_t *msg_siz
     assert_non_null(msg_size);
 
     Sr__Msg *msg = NULL;
-    sr_gpb_req_alloc(SR__OPERATION__SESSION_STOP, session_id, &msg);
+    sr_gpb_req_alloc(NULL, SR__OPERATION__SESSION_STOP, session_id, &msg);
     assert_non_null(msg);
     assert_non_null(msg->request);
     assert_non_null(msg->request->session_stop_req);
@@ -207,7 +207,7 @@ cm_get_item_generate(uint32_t session_id, const char *xpath, uint8_t **msg_buf, 
     assert_non_null(msg_size);
 
     Sr__Msg *msg = NULL;
-    sr_gpb_req_alloc(SR__OPERATION__GET_ITEM, 0, &msg);
+    sr_gpb_req_alloc(NULL, SR__OPERATION__GET_ITEM, 0, &msg);
     assert_non_null(msg);
     assert_non_null(msg->request);
     assert_non_null(msg->request->get_item_req);
@@ -319,6 +319,22 @@ cm_session_neg_test(void **state) {
     close(fd1);
 
     fd1 = cm_connect_to_server();
+
+    /* try a session_start request with non-existing username */
+    cm_session_start_generate("non-existing-username", &msg_buf, &msg_size);
+    cm_message_send(fd1, msg_buf, msg_size);
+    free(msg_buf);
+    /* receive the response */
+    msg = cm_message_recv(fd1);
+    assert_non_null(msg);
+    assert_non_null(msg->response);
+    assert_non_null(msg->response->session_start_resp);
+    /* expect invalid user error */
+    assert_int_equal(msg->response->result, SR_ERR_INVAL_USER);
+    sr__msg__free_unpacked(msg, NULL);
+    close(fd1);
+
+    fd1 = cm_connect_to_server();
     fd2 = cm_connect_to_server();
 
     /* try to stop session via another connection */
@@ -358,7 +374,7 @@ cm_session_neg_test(void **state) {
     session_id2 = msg->response->session_start_resp->session_id;
     sr__msg__free_unpacked(msg, NULL);
     /* send BAD response */
-    sr_gpb_resp_alloc(SR__OPERATION__SESSION_STOP, session_id2, &msg);
+    sr_gpb_resp_alloc(NULL, SR__OPERATION__SESSION_STOP, session_id2, &msg);
     cm_msg_pack_to_buff(msg, &msg_buf, &msg_size);
     cm_message_send(fd2, msg_buf, msg_size);
     free(msg_buf);
@@ -369,7 +385,7 @@ cm_session_neg_test(void **state) {
     close(fd2);
 
     /* try to stop another session id */
-    sr_gpb_req_alloc(SR__OPERATION__SESSION_STOP, session_id1, &msg);
+    sr_gpb_req_alloc(NULL, SR__OPERATION__SESSION_STOP, session_id1, &msg);
     assert_non_null(msg);
     assert_non_null(msg->request);
     assert_non_null(msg->request->session_stop_req);
@@ -388,7 +404,7 @@ cm_session_neg_test(void **state) {
     sr__msg__free_unpacked(msg, NULL);
 
     /* try sending a message with invalid type */
-    sr_gpb_resp_alloc(SR__OPERATION__SESSION_STOP, session_id1, &msg);
+    sr_gpb_resp_alloc(NULL, SR__OPERATION__SESSION_STOP, session_id1, &msg);
     msg->type = 53;
     cm_msg_pack_to_buff(msg, &msg_buf, &msg_size);
     cm_message_send(fd1, msg_buf, msg_size);

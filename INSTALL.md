@@ -22,8 +22,8 @@
 
 #### Installation of required libraries:
 On Debian-like Linux distributions:
-- `apt-get install cmake libev-dev libavl-dev`
-- libyang, Google Protocol Buffers and protobuf-c need to be installed from sources
+- `apt-get install cmake libev-dev libavl-dev protobuf-c-compiler`
+- libyang needs to be installed from sources
 
 On FreBSD:
 - `pkg install cmake protobuf protobuf-c libev libredblack`
@@ -135,7 +135,7 @@ Sysrepo stores all YANG models and corresponding data files in so-named *reposit
 
 #### Changing plugins directory location:
 All sysrepo plugins should be placed into *plugins directory*. This defaults
-to `${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/sysrepo/plugins/` (e.g. `/usr/local/lib/sysrepo/plugins/`) and can be changed by `PLUGINS_DIR` variable as follows: `cmake -DPLUGINS_DIR:PATH=/opt/sysrepo/plugins ..`
+to `${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/` (e.g. `/usr/local/lib/sysrepo/plugins/`) and can be changed by `PLUGINS_DIR` variable as follows: `cmake -DPLUGINS_DIR:PATH=/opt/sysrepo/plugins ..`
 
 #### Building with / without examples:
 By default, some [example programs](examples/) are built with sysrepo and several [example YANG modules](examples/yang/) are installed into sysrepo repository, along with some meaningless data. If you wish to not build and install them, use `BUILD_EXAMPLES` varibale as follows: `cmake -DBUILD_EXAMPLES:BOOL=FALSE ..`
@@ -143,9 +143,12 @@ By default, some [example programs](examples/) are built with sysrepo and severa
 ## Using sysrepo
 By installation, three main parts of sysrepo are installed on the system: **sysrepoctl tool**, **sysrepo library** and **sysrepo daemon**.
 
-#### Using sysrepoctl tool
-sysrepoctl is a tool for the management of YANG modules installed in sysrepo. It can be used for installing of new YANG modules to sysrepo, uninstalling existing ones, listing current state of installed modules, enabling / disabling of YANG features within the module, changing access permissions, or dumping and importing data from / to sysrepo.
-Detailed usage of the tool can be displayed by executing `sysrepoctl -h`. Here are some examples of the usage:
+#### Using sysrepoctl & sysrepocfg tools
+`sysrepoctl` is a tool for the management of YANG modules installed in sysrepo. It can be used for installing of new YANG modules to sysrepo, uninstalling existing ones, listing current state of installed modules, enabling / disabling of YANG features within the module or changing access permissions.
+
+`sysrepocfg` can be used for importing data from / to sysrepo, as well as for editing startup or running configuration of specified module in preferred text editor.
+
+Detailed usage of the tools can be displayed by executing `sysrepoctl -h` or `sysrepocfg -h`. Here are some examples of the usage:
 
 Install a new module by specifying YANG file, ownership and access permissions:
 
@@ -159,13 +162,13 @@ Enable a feature within a YANG module:
 
 `sysrepoctl --feature-enable=if-mib --module=ietf-interfaces`
 
-Dump startup datastore data of a YANG module into a file in XML format:
+Export (dump) startup datastore data of a YANG module into a file in XML format:
 
-`sysrepoctl --dump=xml --module=ietf-interfaces > dump_file.txt`
+`sysrepocfg --export=dump_file.xml --format=xml --datastore=startup ietf-interfaces`
 
 Import startup datastore data of a YANG module from a file in XML format:
 
-`sysrepoctl --import=xml --module=ietf-interfaces < dump_file.txt`
+`sysrepocfg --import=dump_file.xml --format=xml ietf-interfaces`
 
 
 #### Using sysrepo library in your application
@@ -201,8 +204,8 @@ Options:
   -v <level>    Sets verbosity level of logging:
                     0 = all logging turned off
                     1 = log only error messages
-                    2 = log error and warning messages
-                    3 = (default) log error, warning and informational messages
+                    2 = (default) log error and warning messages
+                    3 = log error, warning and informational messages
                     4 = log everything, including development debug messages
 ```
 
@@ -210,4 +213,12 @@ Options:
 Sysrepo plugin daemon loads all plugins (shared libraries) located in the *plugins directory*. It works similarly to the main sysrepo damon described above (and also accepts the same arguments) and can be started by executing of the following command:
 ```
 sysrepo-plugind
+```
+
+#### Subscribing to running datastore
+As described in the documentation section named Datastores & Sessions, to enable a configuration subtree in the running datastore, some application needs to subscribe for the changes in the subtree in sysrepo datastore. If no application has subscribed for specified subtree, it would have no data in the running datastore and all attempts to modify the subtree in the running datastore will result into an error.
+
+For testing purposes, you can use [application_example](examples/application_example.c) or [application_changes_example](examples/application_changes_example.c) from the [examples](examples/) subdirectory. These applications subscribe for chnges in the module specified as the argument and print the new configuration after it has changed:
+```
+examples/application_example ietf-interfaces
 ```

@@ -39,6 +39,7 @@
 
 /* Must be updated with data_manager.c*/
 typedef struct dm_session_s {
+    dm_ctx_t *dm_ctx;                   /**< dm_ctx where the session belongs to */
     sr_datastore_t datastore;           /**< datastore to which the session is tied */
     const ac_ucred_t *user_credentials; /**< credentials of the user who this session belongs to */
     sr_btree_t **session_modules;       /**< array of binary trees holding session copies of data models for each datastore */
@@ -47,13 +48,21 @@ typedef struct dm_session_s {
     size_t *oper_size;                  /**< array of number of allocated operations */
     char *error_msg;                    /**< description of the last error */
     char *error_xpath;                  /**< xpath of the last error if applicable */
-    struct ly_set *locked_files;        /**< set of filename that are locked by this session */
+    sr_list_t *locked_files;            /**< set of filename that are locked by this session */
     bool holds_ds_lock;                 /**< flags if the session holds ds lock*/
 } dm_session_t;
 
-int setup(void **state){
+int
+createData(void **state)
+{
     createDataTreeExampleModule();
     createDataTreeTestModule();
+    createDataTreeIETFinterfacesModule();
+    return 0;
+}
+
+int setup(void **state){
+    createData(state);
     test_rp_ctx_create((rp_ctx_t**)state);
     return 0;
 }
@@ -73,7 +82,7 @@ void delete_item_leaf_test(void **state){
     /* delete leaf*/
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
-    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
@@ -81,14 +90,16 @@ void delete_item_leaf_test(void **state){
     rc = rp_dt_delete_item_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     test_rp_session_cleanup(ctx, session);
 
     /* delete non existing leaf*/
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
-    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='abc'][key2='abc']/leaf", &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container/list[key1='abc'][key2='abc']/leaf", &val);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     rc = rp_dt_delete_item_wrapper(ctx, session, "/example-module:container/list[key1='abc'][key2='abc']/leaf", SR_EDIT_DEFAULT);
@@ -114,7 +125,7 @@ void delete_item_container_test(void **state){
     /* delete container*/
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
-    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container", &val);
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
@@ -122,11 +133,13 @@ void delete_item_container_test(void **state){
     rc = rp_dt_delete_item_wrapper(ctx, session, "/example-module:container", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container", &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container", &val);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
 #define CONTAINER_XP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"
-    rc = rp_dt_get_value_wrapper(ctx, session, CONTAINER_XP, &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, CONTAINER_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
@@ -134,7 +147,8 @@ void delete_item_container_test(void **state){
     rc = rp_dt_delete_item_wrapper(ctx, session, CONTAINER_XP, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_value_wrapper(ctx, session, CONTAINER_XP, &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, CONTAINER_XP, &val);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* delete non existing container*/
@@ -147,7 +161,8 @@ void delete_item_container_test(void **state){
     test_rp_session_cleanup(ctx, session);
 
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
-    rc = rp_dt_get_value_wrapper(ctx, session, CONTAINER_XP, &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, CONTAINER_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
@@ -173,35 +188,41 @@ void delete_item_list_test(void **state){
 #define LIST_INST3_XP "/ietf-interfaces:interfaces/interface[name='gigaeth0']"
 
     /* there three list instances*/
-    rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST1_XP, &val);
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, LIST_INST1_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
 
-    rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST2_XP, &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, LIST_INST2_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
 
-    rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST3_XP, &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, LIST_INST3_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
 
     /* delete on list instance*/
+    session->state = RP_REQ_NEW;
     rc = rp_dt_delete_item_wrapper(ctx, session, LIST_INST1_XP, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST1_XP, &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, LIST_INST1_XP, &val);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* two remaining stays in place */
-    rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST2_XP, &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, LIST_INST2_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
 
-    rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST3_XP, &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, LIST_INST3_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
@@ -217,7 +238,7 @@ void delete_item_list_test(void **state){
 
 
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
-    rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST1_XP, &val);
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, LIST_INST1_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
@@ -225,7 +246,8 @@ void delete_item_list_test(void **state){
 
     sr_val_t *values = NULL;
     size_t cnt = 0;
-    rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:container", &values, &cnt);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/example-module:container", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(1, cnt);
     sr_free_values(values, cnt);
@@ -246,7 +268,8 @@ void delete_item_list_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
 
     /* delete the only list instance in the container the container should be also deleted */
-    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container", &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container", &val);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     test_rp_session_cleanup(ctx, session);
@@ -274,7 +297,7 @@ void delete_whole_module_test(void **state)
 
     sr_val_t *values = NULL;
     size_t cnt = 0;
-    rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:*", &values, &cnt);
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/example-module:*", &values, &cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_int_equal(0, cnt);
 
@@ -297,7 +320,7 @@ void delete_item_alllist_test(void **state){
     size_t count = 0;
 
     /* there are three list instances*/
-    rc = rp_dt_get_values_wrapper(ctx, session, LIST_XP, &values, &count);
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_values(values, count);
 
@@ -306,7 +329,8 @@ void delete_item_alllist_test(void **state){
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     /* items should remain in place*/
-    rc = rp_dt_get_values_wrapper(ctx, session, LIST_XP, &values, &count);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_values(values, count);
 
@@ -315,7 +339,8 @@ void delete_item_alllist_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
 
     /* items should be deleted*/
-    rc = rp_dt_get_values_wrapper(ctx, session, LIST_XP, &values, &count);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* delete non existing */
@@ -342,18 +367,77 @@ void delete_item_leaflist_test(void **state){
     sr_val_t *values = NULL;
     size_t count = 0;
     /* three leaf list items*/
-    rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, LEAF_LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);
     sr_free_values(values, count);
 
-    /* delete all list instances*/
+    /* delete one leaf-list instance */
+    rc = rp_dt_delete_item_wrapper(ctx, session, LEAF_LIST_XP "[.=42]", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    session->state = RP_REQ_NEW;
+
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, LEAF_LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);
+    sr_free_values(values, count);
+
+    /* delete all remaining leaf-list instances*/
     rc = rp_dt_delete_item_wrapper(ctx, session, LEAF_LIST_XP, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, LEAF_LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     test_rp_session_cleanup(ctx, session);
+}
+
+void delete_item_leafref_test(void **state) {
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+    sr_val_t *values = NULL;
+    size_t count = 0;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+
+    /* delete list item with leafrefs */
+#define ITEM_WITH_LEAFREFS_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameC']"
+#define REFERENCED_ITEM_XP "/test-module:university/students/student[name='nameC']"
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, ITEM_WITH_LEAFREFS_XP, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, ITEM_WITH_LEAFREFS_XP, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    /* do not delete referenced item though */
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, REFERENCED_ITEM_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_values(values, count);
+    values = NULL;
+
+    /* delete one leafref only */
+#define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age"
+#define REFERENCED_LEAFREF_XP "/test-module:university/students/student[name='nameB']/age"
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, LEAFREF_XP, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, LEAFREF_XP, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    /* do not delete referenced item though */
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, REFERENCED_LEAFREF_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_values(values, count);
+    values = NULL;
+
+    test_rp_session_cleanup(ctx, session);
+
 }
 
 void set_item_leaf_test(void **state){
@@ -365,7 +449,7 @@ void set_item_leaf_test(void **state){
 
     /* replace existing leaf*/
     sr_val_t *val = NULL;
-    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
 
@@ -383,7 +467,8 @@ void set_item_leaf_test(void **state){
     sr_free_val(val);
     val = NULL;
 
-    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_string_equal("abcdef", val->data.string_val);
@@ -410,7 +495,8 @@ void set_item_leaf_test(void **state){
     sr_free_val(val);
     val = NULL;
 
-    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='new_key1'][key2='new_key2']/leaf", &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container/list[key1='new_key1'][key2='new_key2']/leaf", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_string_equal("abcdef", val->data.string_val);
@@ -423,7 +509,8 @@ void set_item_leaf_test(void **state){
 
 
     /* create item from root */
-    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
 
@@ -436,7 +523,8 @@ void set_item_leaf_test(void **state){
 
     sr_val_t *del = NULL;
 
-    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &del);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &del);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(del);
 
@@ -444,14 +532,15 @@ void set_item_leaf_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(val);
 
-
-    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
 
     /* create augment node */
     sr_val_t v;
+    v._sr_mem = NULL;
     v.xpath = NULL;
     v.type = SR_STRING_T;
     v.data.string_val = strdup("abc");
@@ -460,7 +549,8 @@ void set_item_leaf_test(void **state){
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/small-module:item/info-module:info", SR_EDIT_DEFAULT, &v);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_value_wrapper(ctx, session, "/small-module:item/info-module:info", &val);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/small-module:item/info-module:info", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
 
@@ -469,6 +559,14 @@ void set_item_leaf_test(void **state){
 
     sr_free_val(val);
     sr_free_val_content(&v);
+
+    /* try to create leaf with incorrect type (uint32 instead of expected string) */
+    v.xpath = NULL;
+    v.type = SR_UINT32_T;
+    v.data.uint32_val = 42;
+
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/string", SR_EDIT_DEFAULT, &v);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     test_rp_session_cleanup(ctx, session);
 }
@@ -483,7 +581,7 @@ void set_item_leaflist_test(void **state){
     sr_val_t *values = NULL;
     size_t count = 0;
     /* three leaf list items*/
-    rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, LEAF_LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     sr_free_values(values, count);
@@ -502,13 +600,53 @@ void set_item_leaflist_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(val);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, LEAF_LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(4, count);
 
     assert_int_equal(SR_UINT8_T, values[3].type);
     assert_int_equal(99, values[3].data.uint8_val);
     sr_free_values(values, count);
+
+    /* create leaf-list with predicate value can be NULL*/
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers[.='33']", SR_EDIT_STRICT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, LEAF_LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(5, count);
+
+    assert_int_equal(SR_UINT8_T, values[4].type);
+    assert_int_equal(33, values[4].data.uint8_val);
+    sr_free_values(values, count);
+
+    val = calloc(1, sizeof(*val));
+    assert_non_null(val);
+
+    val->xpath = strdup("/test-module:main/numbers");
+    assert_non_null(val->xpath);
+    val->type = SR_UINT8_T;
+    val->data.uint8_val = 66;
+
+    /* if there is a leaf-list predicate, value is ignored */
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers[.='55']", SR_EDIT_STRICT, val);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val(val);
+
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, LEAF_LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(6, count);
+
+    assert_int_equal(SR_UINT8_T, values[5].type);
+    assert_int_equal(55, values[5].data.uint8_val);
+    sr_free_values(values, count);
+
+    /* either predicate or value must be specified */
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_STRICT, NULL);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     test_rp_session_cleanup(ctx, session);
 }
@@ -524,7 +662,7 @@ void set_item_list_test(void **state){
     size_t count = 0;
 
     /* one existing list instance */
-    rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:container/list", &values, &count);
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/example-module:container/list", &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(1, count);
     sr_free_values(values, count);
@@ -532,7 +670,8 @@ void set_item_list_test(void **state){
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:container/list", &values, &count);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/example-module:container/list", &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
     sr_free_values(values, count);
@@ -555,13 +694,14 @@ void set_item_container_test(void **state){
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t *value = NULL;
-    rc = rp_dt_get_value_wrapper(ctx, session, "/test-module:list[key='key']/wireless", &value);
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/test-module:list[key='key']/wireless", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:list[key='key']/wireless", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_value_wrapper(ctx, session, "/test-module:list[key='key']/wireless", &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/test-module:list[key='key']/wireless", &value);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(value);
     assert_int_equal(SR_CONTAINER_PRESENCE_T, value->type);
@@ -575,6 +715,70 @@ void set_item_container_test(void **state){
     /* set existing fails with strict opt*/
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:list[key='key']/wireless", SR_EDIT_STRICT, NULL);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
+
+    test_rp_session_cleanup(ctx, session);
+}
+
+void set_item_leafref_test(void **state) {
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+
+    /* set list item with leafref as the key */
+#undef ITEM_WITH_LEAFREFS_XP
+#define ITEM_WITH_LEAFREFS_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameA']"
+    sr_val_t *value = NULL;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, ITEM_WITH_LEAFREFS_XP, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, ITEM_WITH_LEAFREFS_XP, SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, ITEM_WITH_LEAFREFS_XP "/name", &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_STRING_T, value->type);
+    assert_string_equal("nameA", value->data.string_val);
+
+    sr_free_val(value);
+
+    /* set existing does nothing*/
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, ITEM_WITH_LEAFREFS_XP, SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* set existing fails with strict opt*/
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, ITEM_WITH_LEAFREFS_XP, SR_EDIT_STRICT, NULL);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
+
+    /* set leafref */
+    value = calloc(1, sizeof(*value));
+    assert_non_null(value);
+    value->type = SR_UINT8_T;
+    value->data.uint8_val = 18;
+
+#undef LEAFREF_XP
+#define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameC']/age"
+
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, LEAFREF_XP, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, LEAFREF_XP, SR_EDIT_DEFAULT, value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_free_val(value);
+    value = NULL;
+
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, LEAFREF_XP, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_UINT8_T, value->type);
+    assert_int_equal(18, value->data.uint8_val);
+    sr_free_val(value);
 
     test_rp_session_cleanup(ctx, session);
 }
@@ -636,7 +840,8 @@ void delete_get_set_get(rp_ctx_t *ctx, rp_session_t *session, const char* xpath,
     assert_int_equal(SR_ERR_OK, rc);
 
     /* verify that item has been deleted*/
-    rc = rp_dt_get_value_wrapper(ctx, session, xpath, new_set);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, xpath, new_set);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(*new_set);
 
@@ -644,7 +849,8 @@ void delete_get_set_get(rp_ctx_t *ctx, rp_session_t *session, const char* xpath,
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, value);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_value_wrapper(ctx, session, xpath, new_set);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, xpath, new_set);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(*new_set);
     assert_int_equal(value->type, (*new_set)->type);
@@ -663,7 +869,8 @@ void edit_test_module_test(void **state){
 #define FREE_VARS(A, B) do{sr_free_val(A); sr_free_val(B); A = NULL; B = NULL;}while(0)
 
     /* binary leaf*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_RAW, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_RAW, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_BINARY_T, value->type);
@@ -676,7 +883,8 @@ void edit_test_module_test(void **state){
 
     /*bits leaf*/
 
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_BITS, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_BITS, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_BITS_T, value->type);
@@ -687,7 +895,8 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* bool leaf */
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_BOOL, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_BOOL, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_BOOL_T, value->type);
@@ -698,11 +907,13 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* decimal 64 leaf*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_DEC64, &value);
+#define ABS(x) ((x) < 0 ? (-(x)) : (x))
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_DEC64, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_DECIMAL64_T, value->type);
-    assert_int_equal(XP_TEST_MODULE_DEC64_VALUE_T, value->data.decimal64_val);
+    assert_true(ABS(XP_TEST_MODULE_DEC64_VALUE_T - value->data.decimal64_val) < 0.001);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_DEC64, value, &new_set);
 
@@ -710,8 +921,23 @@ void edit_test_module_test(void **state){
 
     FREE_VARS(value, new_set);
 
+    /* decimal 64 defined inside union */
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_DEC64_IN_UNION, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_DECIMAL64_T, value->type);
+    assert_true(ABS(value->data.decimal64_val - XP_TEST_MODULE_DEC64_IN_UNION_VALUE_T) < 0.001);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_DEC64_IN_UNION, value, &new_set);
+
+    assert_int_equal(value->data.decimal64_val, new_set->data.decimal64_val);
+
+    FREE_VARS(value, new_set);
+
     /* enum leaf*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_ENUM, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_ENUM, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_ENUM_T, value->type);
@@ -724,7 +950,8 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* empty */
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_EMPTY, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_EMPTY, &value);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(SR_LEAF_EMPTY_T, value->type);
 
@@ -733,7 +960,8 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* identity ref*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_IDREF, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_IDREF, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_IDENTITYREF_T, value->type);
@@ -744,7 +972,8 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* int8*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_INT8, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_INT8, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_INT8_T, value->type);
@@ -755,7 +984,8 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* int16*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_INT16, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_INT16, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_INT16_T, value->type);
@@ -766,7 +996,8 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* int32*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_INT32, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_INT32, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_INT32_T, value->type);
@@ -777,7 +1008,8 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* int64*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_INT64, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_INT64, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_INT64_T, value->type);
@@ -788,7 +1020,8 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* string ref*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_STRING, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_STRING, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_STRING_T, value->type);
@@ -799,7 +1032,8 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* uint8*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_UINT8, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_UINT8, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_UINT8_T, value->type);
@@ -810,7 +1044,8 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* uint16*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_UINT16, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_UINT16, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_UINT16_T, value->type);
@@ -821,7 +1056,8 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* uint32*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_UINT32, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_UINT32, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_UINT32_T, value->type);
@@ -832,7 +1068,8 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* uint64*/
-    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_UINT64, &value);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_UINT64, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_UINT64_T, value->type);
@@ -840,6 +1077,20 @@ void edit_test_module_test(void **state){
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_UINT64, value, &new_set);
     assert_int_equal(value->data.uint64_val, new_set->data.uint64_val);
+    FREE_VARS(value, new_set);
+
+    /* leafref */
+#undef LEAFREF_XP
+#define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age"
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, LEAFREF_XP, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_UINT8_T, value->type);
+    assert_int_equal(17, value->data.uint8_val);
+
+    delete_get_set_get(ctx, session, LEAFREF_XP, value, &new_set);
+    assert_int_equal(value->data.uint8_val, new_set->data.uint8_val);
     FREE_VARS(value, new_set);
 
     test_rp_session_cleanup(ctx, session);
@@ -857,7 +1108,8 @@ void delete_negative_test(void **state){
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     rc = rp_dt_delete_item_wrapper(ctx, session, "/example-module:unknown", SR_EDIT_DEFAULT);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    /* validation of the xpath produces only warning */
+    assert_int_equal(SR_ERR_OK, rc);
 
     test_rp_session_cleanup(ctx, session);
 }
@@ -876,6 +1128,7 @@ edit_validate_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t iftype;
+    iftype._sr_mem = NULL;
     iftype.xpath = NULL;
     iftype.type = SR_ENUM_T;
     iftype.data.enum_val = strdup ("ethernet");
@@ -924,6 +1177,7 @@ edit_validate_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t hexnumber;
+    hexnumber._sr_mem = NULL;
     hexnumber.xpath = NULL;
     hexnumber.type = SR_STRING_T;
     hexnumber.data.string_val = strdup("92FF");
@@ -954,6 +1208,7 @@ edit_validate_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t name;
+    name._sr_mem = NULL;
     name.xpath = NULL;
     name.type = SR_STRING_T;
     name.data.string_val = strdup("Name");
@@ -970,6 +1225,7 @@ edit_validate_test(void **state)
     sr_free_errors(errors, e_cnt);
 
     sr_val_t lonigitude;
+    lonigitude._sr_mem = NULL;
     lonigitude.xpath = NULL;
     lonigitude.type = SR_STRING_T;
     lonigitude.data.string_val = strdup("Longitude 49.45");
@@ -989,6 +1245,7 @@ edit_validate_test(void **state)
     sr_free_errors(errors, e_cnt);
 
     sr_val_t latitude;
+    latitude._sr_mem = NULL;
     latitude.xpath = NULL;
     latitude.type = SR_STRING_T;
     latitude.data.string_val = strdup("Latitude 56.46");
@@ -1047,6 +1304,7 @@ edit_validate_test(void **state)
     /* leaf-list unique values */
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
     sr_val_t val;
+    val._sr_mem = NULL;
     val.xpath = NULL;
     val.type = SR_UINT8_T;
     val.data.uint8_val = 9;
@@ -1064,6 +1322,74 @@ edit_validate_test(void **state)
     e_cnt = 0;
 
     /* validation pass because lyd_new path doesn't add duplicate leaf-list */
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    test_rp_session_cleanup(ctx, session);
+
+    /* leafref */
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+
+#undef LEAFREF_XP
+#define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameC']/age"
+
+    sr_val_t age;
+    age.type = SR_UINT8_T;
+    age.data.uint8_val = 17; /* invalid reference */
+
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, LEAFREF_XP, SR_EDIT_DEFAULT, &age);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    errors = NULL;
+    e_cnt = 0;
+
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    assert_int_equal(1, e_cnt);
+    assert_string_equal("Leafref \"../../../../students/student[name = current()/../name]/age\" of value \"17\" "
+                        "points to a non-existing leaf.", errors[0].message);
+    assert_string_equal(LEAFREF_XP, errors[0].xpath);
+    sr_free_errors(errors, e_cnt);
+
+    age.data.uint8_val = 18; /* valid reference */
+
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, LEAFREF_XP, SR_EDIT_DEFAULT, &age);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    test_rp_session_cleanup(ctx, session);
+
+    /* leafref chain */
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+
+    sr_val_t link;
+    link.type = SR_STRING_T;
+    link.data.string_val = "final-leaf";
+
+#define LEAFREF_CHAIN         "/test-module:leafref-chain/"
+#define LEAFREF_CHAIN_LINK_A  LEAFREF_CHAIN "A"
+#define LEAFREF_CHAIN_LINK_B  LEAFREF_CHAIN "B"
+
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, LEAFREF_CHAIN_LINK_A, SR_EDIT_DEFAULT, &link);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    errors = NULL;
+    e_cnt = 0;
+
+    /* missing link "B" */
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    assert_int_equal(1, e_cnt);
+    assert_string_equal("Leafref \"../B\" of value \"final-leaf\" points to a non-existing leaf.", errors[0].message);
+    assert_string_equal(LEAFREF_CHAIN_LINK_A, errors[0].xpath);
+    sr_free_errors(errors, e_cnt);
+
+    /* add missing link */
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, LEAFREF_CHAIN_LINK_B, SR_EDIT_DEFAULT, &link);
+    assert_int_equal(SR_ERR_OK, rc);
+
     rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -1091,7 +1417,7 @@ edit_validate_test(void **state)
     errors = NULL;
     e_cnt = 0;
 
-    rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     assert_int_equal(2, e_cnt);
     assert_string_equal("Instances of \"number\" list are not unique.", errors[0].message);
@@ -1117,13 +1443,13 @@ edit_discard_changes_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionB);
 
     /* read value in session A*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueA->data.int64_val);
 
     /* read value in session B*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, NULL, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
@@ -1136,14 +1462,16 @@ edit_discard_changes_test(void **state)
     sr_free_val(valueA);
 
     /* check update in session A*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 42, valueA->data.int64_val);
     sr_free_val(valueA);
 
     /* update in sessionA should not affect value in session B*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
+    sessionB->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, NULL, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
@@ -1152,7 +1480,8 @@ edit_discard_changes_test(void **state)
     rc = dm_discard_changes(ctx->dm_ctx, sessionA->dm_session);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueA->data.int64_val);
@@ -1175,7 +1504,7 @@ empty_commit_test(void **state)
     /* no session copy made*/
     sr_error_info_t *errors = NULL;
     size_t err_cnt = 0;
-    rc = rp_dt_commit(ctx, session, &errors, &err_cnt);
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &err_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, err_cnt);
 
@@ -1183,7 +1512,7 @@ empty_commit_test(void **state)
     rc = dm_get_data_info(ctx->dm_ctx, session->dm_session, "test-module", &info);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_commit(ctx, session, &errors, &err_cnt);
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &err_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, err_cnt);
 
@@ -1191,7 +1520,7 @@ empty_commit_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
     info->modified = true;
 
-    rc = rp_dt_commit(ctx, session, &errors, &err_cnt);
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &err_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, err_cnt);
 
@@ -1211,13 +1540,13 @@ edit_commit_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionB);
 
     /* read value in session A*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueA->data.int64_val);
 
     /* read value in session B*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, NULL, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
@@ -1229,14 +1558,16 @@ edit_commit_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* check update in session A*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 99, valueA->data.int64_val);
     sr_free_val(valueA);
 
     /* update in sessionA should not affect value in session B*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
+    sessionB->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, NULL, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
@@ -1246,11 +1577,12 @@ edit_commit_test(void **state)
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
-    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, e_cnt);
 
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 99, valueA->data.int64_val);
@@ -1260,7 +1592,8 @@ edit_commit_test(void **state)
     rc = rp_dt_refresh_session(ctx, sessionB, &errors, &e_cnt);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
+    sessionB->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, NULL, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 99, valueB->data.int64_val);
@@ -1271,7 +1604,7 @@ edit_commit_test(void **state)
 
      /* check that update is permanent in new session*/
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionA);
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 99, valueA->data.int64_val);
@@ -1281,7 +1614,7 @@ edit_commit_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, valueA, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1307,11 +1640,11 @@ edit_commit2_test(void **state)
 
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
-    rc = rp_dt_commit(ctx, session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /*this commit should failed because main container is already deleted */
-    rc = rp_dt_commit(ctx, sessionB, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionB, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1352,11 +1685,11 @@ edit_commit3_test(void **state)
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
-    rc = rp_dt_commit(ctx, session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* the leaf-list value was committed during the first commit */
-    rc = rp_dt_commit(ctx, sessionB, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionB, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1388,7 +1721,7 @@ edit_commit4_test(void **state)
 
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
-    rc = rp_dt_commit(ctx, session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     test_rp_session_cleanup(ctx, session);
@@ -1424,7 +1757,7 @@ edit_move_test(void **state)
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /* only the one instance of list */
-    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameA']", SR_EDIT_DEFAULT, NULL);
@@ -1445,7 +1778,8 @@ edit_move_test(void **state)
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
 
@@ -1461,7 +1795,8 @@ edit_move_test(void **state)
     rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_BEFORE, "/test-module:user[name='nameA']");
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
 
@@ -1492,7 +1827,10 @@ edit_move2_test(void **state)
     rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:list", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:kernel-modules", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* only one list instance in data tree */
@@ -1514,7 +1852,8 @@ edit_move2_test(void **state)
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
 
@@ -1534,7 +1873,8 @@ edit_move2_test(void **state)
     rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_BEFORE, "/test-module:user[name='nameA']");
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
 
@@ -1553,7 +1893,8 @@ edit_move2_test(void **state)
     rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_FIRST, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
 
@@ -1584,10 +1925,14 @@ edit_move3_test(void **state)
     rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:list", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:kernel-modules", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:ordered-numbers", &values, &cnt);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:ordered-numbers", &values, &cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* add some ordered leaf-list entries */
@@ -1617,7 +1962,8 @@ edit_move3_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, session, v->xpath, v, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:ordered-numbers", &values, &cnt);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:ordered-numbers", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
 
@@ -1630,7 +1976,8 @@ edit_move3_test(void **state)
     rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:ordered-numbers[.='9']", SR_MOVE_FIRST, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:ordered-numbers", &values, &cnt);
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:ordered-numbers", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
 
@@ -1694,7 +2041,7 @@ operation_logging_test(void **state)
    assert_int_equal(DM_MOVE_OP, session->dm_session->operations[session->datastore][session->dm_session->oper_count[session->datastore]-1].op);
 
    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:!^", SR_MOVE_BEFORE, "/test-module:user[name='nameC']");
-   assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+   assert_int_equal(SR_ERR_INVAL_ARG, rc);
    assert_int_equal(3, session->dm_session->oper_count[session->datastore]);
 
    /* delete */
@@ -1739,7 +2086,7 @@ lock_commit_test(void **state)
    /* commit A should fail */
    size_t e_cnt = 0;
    sr_error_info_t *errors = NULL;
-   rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+   rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
    assert_int_equal(SR_ERR_LOCKED, rc);
 
    /* unlock B */
@@ -1747,7 +2094,7 @@ lock_commit_test(void **state)
    assert_int_equal(SR_ERR_OK, rc);
 
    /* commit A should succeed */
-   rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+   rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* should be still locked even after commit */
@@ -1779,11 +2126,11 @@ empty_string_leaf_test(void **state)
 
    size_t e_cnt = 0;
    sr_error_info_t *errors = NULL;
-   rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+   rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
    assert_int_equal(SR_ERR_OK, rc);
 
    sr_val_t *retrieved = NULL;
-   rc = rp_dt_get_value_wrapper(ctx, sessionB, "/test-module:main/string", &retrieved);
+   rc = rp_dt_get_value_wrapper(ctx, sessionB, NULL, "/test-module:main/string", &retrieved);
    assert_int_equal(SR_ERR_OK, rc);
 
    sr_free_val(retrieved);
@@ -1814,7 +2161,7 @@ candidate_edit_test(void **state)
     sr_free_val_content(&iftype);
 
     /* modified module in cadidate is validated before copy */
-    rc = dm_copy_module(ctx->dm_ctx, sessionA->dm_session, "test-module", SR_DS_CANDIDATE, SR_DS_STARTUP);
+    rc = dm_copy_module(ctx->dm_ctx, sessionA->dm_session, "test-module", SR_DS_CANDIDATE, SR_DS_STARTUP, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     rc = dm_discard_changes(ctx->dm_ctx, sessionA->dm_session);
@@ -1829,7 +2176,7 @@ candidate_edit_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 42;
 
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i8", &value);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:main/i8", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     rc = rp_dt_set_item_wrapper(ctx, sessionA, v->xpath, v, SR_EDIT_DEFAULT);
@@ -1841,7 +2188,8 @@ candidate_edit_test(void **state)
     rc = rp_dt_refresh_session(ctx, sessionA, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i8", &value);
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:main/i8", &value);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(SR_INT8_T, value->type);
     assert_int_equal(v->data.int8_val, value->data.int8_val);
@@ -1929,7 +2277,7 @@ candidate_commit_lock_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* commit failed running locked */
-    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_LOCKED, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1937,7 +2285,7 @@ candidate_commit_lock_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* commit failed running & candidate locked */
-    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_LOCKED, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1945,17 +2293,17 @@ candidate_commit_lock_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* commit failed candidate locked */
-    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_LOCKED, rc);
     sr_free_errors(errors, e_cnt);
 
     rc = dm_unlock_module(ctx->dm_ctx, sessionC->dm_session, "test-module");
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i8", &value);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:main/i8", &value);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(SR_INT8_T, value->type);
     assert_int_equal(42, value->data.int8_val);
@@ -1967,6 +2315,110 @@ candidate_commit_lock_test(void **state)
     test_rp_session_cleanup(ctx, sessionC);
 }
 
+
+static void
+edit_union_type(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *sessionA = NULL;
+    sr_val_t *val = NULL;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionA);
+
+    /* union - uint8 */
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:list[key='k1']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_UINT8_T, val->type);
+    assert_int_equal(42, val->data.uint8_val);
+    assert_false(val->dflt);
+
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/test-module:list[key='k1']/union", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, val->xpath, val, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* value is freed inside set operation*/
+    val = NULL;
+
+    /* union string*/
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:list[key='k2']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_ENUM_T, val->type);
+    assert_string_equal("infinity", val->data.string_val);
+    assert_false(val->dflt);
+
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/test-module:list[key='k2']/union", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, val->xpath, val, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* value is freed inside set operation*/
+    val = NULL;
+
+    /* check that correctly set */
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:list[key='k2']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_ENUM_T, val->type);
+    assert_string_equal("infinity", val->data.string_val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:list[key='k1']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_UINT8_T, val->type);
+    assert_int_equal(42, val->data.uint8_val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+    test_rp_session_cleanup(ctx, sessionA);
+
+}
+
+static void
+validaton_of_multiple_models(void **state)
+{
+    /* multiple models are validate the validation of the first fails and succeed for others
+     * test verifies that an error is returned and it is not hidden by success of following models*/
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *sessionA = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionA);
+
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/ietf-interfaces:interfaces/interface[name='withoutType']", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* missing mandatory leaf*/
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, "/ietf-interfaces:interfaces/interface[name='withoutType']", NULL, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* validation succeed for test-module*/
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/test-module:main/i8", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, sessionA->dm_session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    sr_free_errors(errors, e_cnt);
+
+    test_rp_session_cleanup(ctx, sessionA);
+
+}
+
+
 int main(){
 
     sr_log_stderr(SR_LL_DBG);
@@ -1977,12 +2429,14 @@ int main(){
             cmocka_unit_test(delete_item_list_test),
             cmocka_unit_test(delete_item_alllist_test),
             cmocka_unit_test(delete_item_leaflist_test),
+            cmocka_unit_test(delete_item_leafref_test),
             cmocka_unit_test(delete_whole_module_test),
             cmocka_unit_test(delete_negative_test),
             cmocka_unit_test(set_item_leaf_test),
             cmocka_unit_test(set_item_leaflist_test),
             cmocka_unit_test(set_item_list_test),
             cmocka_unit_test(set_item_container_test),
+            cmocka_unit_test(set_item_leafref_test),
             cmocka_unit_test(set_item_negative_test),
             cmocka_unit_test(edit_test_module_test),
             cmocka_unit_test(edit_validate_test),
@@ -2001,6 +2455,8 @@ int main(){
             cmocka_unit_test(candidate_edit_test),
             cmocka_unit_test(copy_to_running_test),
             cmocka_unit_test(candidate_commit_lock_test),
+            cmocka_unit_test_setup(edit_union_type, createData),
+            cmocka_unit_test_setup(validaton_of_multiple_models, createData),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

@@ -33,8 +33,12 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "sysrepo.h"
+#include "sysrepo/values.h"
+#include "sysrepo/trees.h"
+
 #include "sr_constants.h"
 #include "sr_helpers.h"
 
@@ -42,6 +46,7 @@
 #include "sr_data_structs.h"
 #include "sr_logger.h"
 #include "sr_protobuf.h"
+#include "sr_mem_mgmt.h"
 
 /**@} common */
 

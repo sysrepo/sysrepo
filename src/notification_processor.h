@@ -22,6 +22,8 @@
 #ifndef NOTIFICATION_PROCESSOR_H_
 #define NOTIFICATION_PROCESSOR_H_
 
+#include "sysrepo.h"
+
 typedef struct rp_ctx_s rp_ctx_t;          /**< Forward-declaration of Request Processor context. */
 typedef struct rp_session_s rp_session_t;  /**< Forward-declaration of Request Processor session context. */
 typedef struct ac_ucred_s ac_ucred_t;      /**< Forward-declaration of user credentials context. */
@@ -43,11 +45,15 @@ typedef struct np_ctx_s np_ctx_t;
  * @brief Notification subscription information.
  */
 typedef struct np_subscription_s {
-    Sr__NotificationEvent event_type;  /**< Type of the event that this subscription subscribes to.  */
+    Sr__SubscriptionType type;         /**< Type of the subscription that this subscription subscribes to. */
+    Sr__NotificationEvent notif_event; /**< Notification event which the notification subscriber is interested in. */
     const char *dst_address;           /**< Destination address where the notification should be delivered. */
     uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
+    const char *module_name;           /**< Name of the module where the subscription is active. */
     const char *xpath;                 /**< XPath to the subtree where the subscription is active (if applicable). */
+    uint32_t priority;                 /**< Priority of the subscription by delivering notifications (0 is the lowest priority). */
     bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
+    sr_api_variant_t api_variant;      /**< API variant -- values vs. trees (relevant for the callback type only). */
 } np_subscription_t;
 
 /**
@@ -74,11 +80,12 @@ typedef enum np_subscr_flag_e {
     NP_SUBSCR_DEFAULT = 0,
     NP_SUBSCR_ENABLE_RUNNING = 1,
     NP_SUBSCR_EXCLUSIVE = 2,
+    NP_SUBSCR_EV_EVENT = 4,
 } np_subscr_flag_t;
 
 /**
  * @brief Options overriding default handling by ::np_notification_subscribe call,
- * can be bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * can be bitwise OR-ed value of any ::np_subscr_flag_t flags.
  */
 typedef uint32_t np_subscr_options_t;
 
@@ -87,31 +94,35 @@ typedef uint32_t np_subscr_options_t;
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] rp_session Request Processor session.
- * @param[in] event_type Type of the event to subscribe.
+ * @param[in] type Type of the subscription to subscribe.
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
  * @param[in] module_name Name of the module which the subscription is active in (if applicable).
  * @param[in] xpath XPath to the subtree where the subscription is active (if applicable).
- * @param[in] opts Options overriding default handling. Bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in] notif_event Notification event which the notification subscriber is interested in.
+ * @param[in] priority Priority of the subscribtion by delivering notifications (0 is the lowest priority).
+ * @param[in] api_variant Variant of the subscription API which was used to create the subscription.
+ * @param[in] opts Options overriding default handling. Bitwise OR-ed value of any ::np_subscr_flag_t flags.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationEvent event_type,
-        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const np_subscr_options_t opts);
+int np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__SubscriptionType type,
+        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath,
+        Sr__NotificationEvent notif_event, uint32_t priority, sr_api_variant_t api_variant, const np_subscr_options_t opts);
 
 /**
  * @brief Unsubscribe the client from notifications on specified event.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] rp_session Request Processor session.
- * @param[in] event_type  Type of the event of the subscription.
+ * @param[in] type Type of the subscription.
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
  * @param[in] module_name Name of the module which the subscription is active in (if applicable).
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_unsubscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationEvent event_type,
+int np_notification_unsubscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__SubscriptionType type,
         const char *dst_address, uint32_t dst_id, const char *module_name);
 
 /**
@@ -131,11 +142,12 @@ int np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address);
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] module_name Name of the module that has been (un)installed.
  * @param[in] revision Revision of the module that has been (un)installed.
- * @param[in] installed TRUE if the module has been installed, FALSE if uninstalled.
+ * @param[in] state The new state of the module (uninstalled/imported/implemented).
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *revision, bool installed);
+int np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *revision,
+        sr_module_state_t state);
 
 /**
  * @brief Notify all subscribers about the feature enable/disable event.
@@ -150,16 +162,6 @@ int np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const ch
 int np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *feature_name, bool enabled);
 
 /**
- * @brief Notify all subscribers about the change of data within a module.
- *
- * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
- * @param[in] module_name Name of the module where the change has occurred.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int np_module_change_notify(np_ctx_t *np_ctx, const char *module_name);
-
-/**
  * @brief Tests the subscription by sending of a hello notification.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
@@ -170,6 +172,119 @@ int np_module_change_notify(np_ctx_t *np_ctx, const char *module_name);
  * @return Error code (SR_ERR_OK on success).
  */
 int np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_address, uint32_t dst_id);
+
+/**
+ * @brief Gets all subscriptions that subscibe for changes in specified module
+ * or in a subtree within the specified module.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] module_name ame of the module where the subscription is active.
+ * @param[out] subscriptions_arr Array of pointers to subscriptions matching the criteria.
+ * @param[out] subscriptions_cnt Count of the matching subscriptions.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name,
+        np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
+
+/**
+ * @brief Gets all operational data provider subscriptions in specified module
+ * or in a subtree within the specified module.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] module_name Name of the module where the subscription is active.
+ * @param[out] subscriptions_arr Array of pointers to subscriptions matching the criteria.
+ * @param[out] subscriptions_cnt Count of the matching subscriptions.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name,
+        np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
+
+/**
+ * @brief Notify the subscriber about the change they are subscribed to.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] subscription Subscription context acquired by ::np_get_module_change_subscriptions call.
+ * @param[in] type of event to be sent to subscription
+ * @param[in] commit_id ID of the commit to be used for starting a new notification session from client library.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, sr_notif_event_t event, uint32_t commit_id);
+
+/**
+ * @brief Request operational data from a data provider subscription.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] subscription Subscription context acquired by ::np_get_data_provider_subscriptions call.
+ * @param[in] session Request Processor session that is requesting the data.
+ * @param[in] xpath XPath identifying requested operational data subtree.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_session_t *session, const char *xpath);
+
+/**
+ * @brief Notify NP that all notifications has been sent to the given subscribers.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] commit_id Commit identifier.
+ * @param[in] commit_finished TRUE if commit has finished and can be released, FALSE if it will continue with another phase.
+ * @param[in] subscriptions List of subscriptions to be notified about commit end. Can be NULL if commit_finished != true.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_commit_notifications_sent(np_ctx_t *np_ctx, uint32_t commit_id,  bool commit_finished, sr_list_t *subscriptions);
+
+/**
+ * @brief Release the commit context related to specified commit ID.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] commit_id Commit identifier.
+ * @param[in] timout TRUE is commit timeout has expired.
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool timeout_expired);
+
+/**
+ * @brief Track a response to a notification (notification acknowledgment).
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] commit_id Commit identifier.
+ * @param[in] subs_xpath XPath where the subscription is subscribed to.
+ * @param[in] event Event that is currently being processed.
+ * @param[in] result Result of the processing by the subscriber.
+ * @param[in] do_not_send_abort if true the xpath will be added to the list of subscriptions that do no want abort
+ * @param[in] err_msg Error message (in case that result != SR_ERR_OK and it was provided).
+ * @param[in] xpath XPath to the node where the error occured (in case that result != SR_ERR_OK and it was provided).
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, char *subs_xpath, sr_notif_event_t event,
+        int result, bool do_not_send_abort, const char *err_msg, const char *err_xpath);
+
+/**
+ * @brief Cleans up a subscription context (including all its content).
+ *
+ * @param[in] subscription Subscription context to be freed.
+ */
+void np_free_subscription(np_subscription_t *subscription);
+
+/**
+ * @brief Cleans up the content of a subscription context, does not free the context itself.
+ *
+ * @param[in] subscription Subscription context to be freed.
+ */
+void np_free_subscription_content(np_subscription_t *subscription);
+
+/**
+ * @brief Cleans up an array of subscription contexts (including all its content).
+ *
+ * @param[in] subscriptions Array of subscription contexts to be freed.
+ * @param[in] subscriptions_cnt Count of the subscriptions in the array.
+ */
+void np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt);
 
 /**@} np */
 

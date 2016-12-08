@@ -401,7 +401,7 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
     /* save real user credentials */
     pws = getpwuid(connection->uid);
     if (NULL == pws) {
-        SR_LOG_ERR("Cannot retrieve credentials of the real user: %s", strerror(errno));
+        SR_LOG_ERR("Cannot retrieve credentials of the real user: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
@@ -419,8 +419,8 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
         errno = 0;
         pws = getpwnam(effective_user);
         if (NULL == pws) {
-            SR_LOG_ERR("Cannot retrieve credentials of the effective user (%s): Invalid username?", effective_user);
-            rc = SR_ERR_INVAL_ARG;
+            SR_LOG_ERR("Cannot retrieve credentials of the effective user ('%s'): Invalid username?", effective_user);
+            rc = SR_ERR_INVAL_USER;
             goto cleanup;
         }
         session->credentials.e_username = strdup(effective_user);
@@ -509,7 +509,7 @@ sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t **s
     *session = sr_btree_search(sm_ctx->session_id_btree, &tmp);
 
     if (NULL == *session) {
-        SR_LOG_WRN("Cannot find the session with id=%"PRIu32".", session_id);
+        SR_LOG_DBG("Cannot find the session with id=%"PRIu32".", session_id);
         return SR_ERR_NOT_FOUND;
     }
     return SR_ERR_OK;

@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <pwd.h>
 #include <setjmp.h>
@@ -76,60 +77,78 @@ test_file_permissions(const char *path, mode_t permissions)
 static char *
 read_file_content(FILE *fp)
 {
-	size_t size = EXPECTED_MAX_FILE_SIZE;
-	char *buffer = malloc(size);
-	assert_non_null(buffer);
-	unsigned cur = 0;
+    size_t size = EXPECTED_MAX_FILE_SIZE;
+    char *buffer = malloc(size);
+    assert_non_null(buffer);
+    unsigned cur = 0;
 
-	for (;;) {
-	    size_t n = fread(buffer + cur, 1, size - cur - 1, fp);
-	    cur += n;
-	    if (size > cur + 1) { break; }
-		size <<= 1;
-		buffer = realloc(buffer, size);
-		assert_non_null(buffer);
-	}
+    for (;;) {
+        size_t n = fread(buffer + cur, 1, size - cur - 1, fp);
+        cur += n;
+        if (size > cur + 1) { break; }
+        size <<= 1;
+        buffer = realloc(buffer, size);
+        assert_non_null(buffer);
+    }
 
-	buffer[cur] = '\0';
-	return buffer;
+    buffer[cur] = '\0';
+    return buffer;
 }
 
 static void
-test_fp_content(FILE *fp, const char *regex)
+test_fp_content(FILE *fp, const char *exp_content, bool regex)
 {
-#ifdef HAVE_REGEX_H
     char *buffer = read_file_content(fp);
     bool nomatch = false;
-    regex_t re;
     int rc = 0;
 
-    if (strlen(regex) && regex[0] == '!') {
+    if (strlen(exp_content) && exp_content[0] == '!') {
         nomatch = true;
-        regex += 1;
+        exp_content += 1;
     }
 
-    /* Compile regular expression */
-    rc = regcomp(&re, regex, 0);
-    assert_int_equal(0, rc);
+    if (regex) {
+#ifdef HAVE_REGEX_H
+        regex_t re;
 
-    /* Execute regular expression */
-    rc = regexec(&re, buffer, 0, NULL, 0);
-    assert_int_equal(nomatch ? REG_NOMATCH : 0, rc);
+        /* Compile regular expression */
+        rc = regcomp(&re, exp_content, REG_NOSUB | REG_EXTENDED);
+        assert_int_equal(0, rc);
+
+        /* Execute regular expression */
+        rc = regexec(&re, buffer, 0, NULL, 0);
+        if ((nomatch ? REG_NOMATCH : 0) != rc) {
+            printf("REGEX: '%s'\n", exp_content);
+            printf("FILE: '%s'\n", buffer);
+        }
+        assert_int_equal(nomatch ? REG_NOMATCH : 0, rc);
+
+        /* Cleanup */
+        regfree(&re);
+#endif
+    } else {
+        /* Plain string comparison */
+        rc = strcmp(exp_content, buffer);
+        if (!(nomatch ? rc != 0 : rc == 0)) {
+            printf("EXPECTED: '%s'\n", exp_content);
+            printf("FILE: '%s'\n", buffer);
+        }
+
+        assert_true(nomatch ? rc != 0 : rc == 0);
+    }
 
     /* Cleanup */
-    regfree(&re);
     free(buffer);
-#endif
 }
 
 void
-test_file_content(const char *path, const char *regex)
+test_file_content(const char *path, const char *exp_content, bool regex)
 {
     FILE *fp = NULL;
 
     fp = fopen(path, "r");
     assert_non_null(fp);
-    test_fp_content(fp, regex);
+    test_fp_content(fp, exp_content, regex);
     fclose(fp);
 }
 
@@ -161,14 +180,14 @@ int compare_files(const char *path1, const char *path2)
 }
 
 void
-exec_shell_command(const char *cmd, const char *re_exp_output, int exp_ret)
+exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp_ret)
 {
     int ret = 0;
     FILE *fp = NULL;
 
     fp = popen(cmd, "r");
     assert_non_null(fp);
-    test_fp_content(fp, re_exp_output);
-	ret = WEXITSTATUS(pclose(fp));
-	assert_int_equal(exp_ret, ret);
+    test_fp_content(fp, exp_content, regex);
+    ret = pclose(fp);
+    assert_int_equal(exp_ret, WEXITSTATUS(ret));
 }

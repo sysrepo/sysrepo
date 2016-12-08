@@ -1,12 +1,24 @@
 cmake_minimum_required(VERSION 2.8)
 project(sysrepo)
 set(SYSREPO_DESC "YANG-based system repository")
+include(GNUInstallDirs)
 
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
-set(SYSREPO_MINOR_VERSION 2)
-set(SYSREPO_MICRO_VERSION 5)
+set(SYSREPO_MINOR_VERSION 5)
+set(SYSREPO_MICRO_VERSION 8)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
+
+# setup bindings
+set(GEN_LANGUAGE_BINDINGS 1 CACHE BOOL "Enable language bindings generation.")
+set(GEN_PYTHON_BINDINGS 1 CACHE BOOL "Enable python bindings.")
+set(GEN_LUA_BINDINGS 1 CACHE BOOL "Enable Lua bindings.")
+set(GEN_CPP_BINDINGS 1 CACHE BOOL "Enable C++ bindings.")
+set(BUILD_CPP_EXAMPLES 1 CACHE BOOL "Build C++ examples.")
+set(GEN_JAVA_BINDINGS 0 CACHE BOOL "Enable Java bindings.")
+set(GEN_PYTHON_VERSION "2" CACHE STRING "Python version")
+set(GEN_LUA_VERSION "5.1" CACHE STRING "Lua version")
+set(GEN_PYTHON2_TESTS 1 CACHE BOOL "Enable Python2 tests.")
 
 # set default build type if not specified by user
 if(NOT CMAKE_BUILD_TYPE)
@@ -28,16 +40,7 @@ if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
 
-if(NOT LIB_INSTALL_DIR)
-    set(LIB_INSTALL_DIR "lib")
-endif()
-if(NOT BIN_INSTALL_DIR)
-    set(BIN_INSTALL_DIR "bin")
-endif()
-if(NOT INCLUDE_INSTALL_DIR)
-    set(INCLUDE_INSTALL_DIR "include")
-endif()
-set(PLUGINS_DIR "${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
+set(PLUGINS_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
 
 # set build-type specific settings
 if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
@@ -45,11 +48,13 @@ if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
     set(DAEMON_PID_FILE "/tmp/sysrepod.pid" CACHE PATH "Sysrepo daemon PID file.")
     set(DAEMON_SOCKET "/tmp/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
     set(PLUGIN_DAEMON_PID_FILE "/tmp/sysrepo-plugind.pid" CACHE PATH "Sysrepo plugin daemon PID file.")
+    set(SUBSCRIPTIONS_SOCKET_DIR "/tmp/sysrepo-subscriptions" CACHE PATH "Sysrepo subscriptions socket directory.")
 else()
     MESSAGE(STATUS "Preparing release build of sysrepo v. ${SYSREPO_VERSION}")
     set(DAEMON_PID_FILE "/var/run/sysrepod.pid" CACHE PATH "Sysrepo daemon PID file.")
     set(DAEMON_SOCKET "/var/run/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
     set(PLUGIN_DAEMON_PID_FILE "/var/run/sysrepo-plugind.pid" CACHE PATH "Sysrepo plugin daemon PID file.")
+    set(SUBSCRIPTIONS_SOCKET_DIR "/var/run/sysrepo-subscriptions" CACHE PATH "Sysrepo subscriptions socket directory.")
 endif()
 
 # location of system repository
@@ -61,11 +66,13 @@ endif()
 set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/internal/")
+set(INTERNAL_DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/internal/")
 MESSAGE(STATUS "sysrepo repository location: ${REPOSITORY_LOC}")
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/inc")
 
 # find required libraries
 find_package(EV REQUIRED)
@@ -118,13 +125,24 @@ include(CheckStructHasMember)
 CHECK_FUNCTION_EXISTS(pthread_rwlockattr_setkind_np HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
 CHECK_FUNCTION_EXISTS(getpeereid HAVE_GETPEEREID)
 CHECK_FUNCTION_EXISTS(getpeerucred HAVE_GETPEERUCRED)
+CHECK_FUNCTION_EXISTS(pthread_mutex_timedlock HAVE_TIMED_LOCK)
 CHECK_INCLUDE_FILES(ucred.h HAVE_UCRED_H)
 CHECK_FUNCTION_EXISTS(setfsuid HAVE_SETFSUID)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
+# user options
+option (USE_SR_MEM_MGMT
+        "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs)."
+        ON)
+
+set(COMMIT_TIMEOUT 10 CACHE INTEGER "Commit operation timeout (in seconds).")
+
+option (LOG_THREAD_ID
+        "If enabled, sysrepo logger will append thread ID (as well as function name) to each printed message."
+        OFF)
+
 # add subdirectories
 add_subdirectory(src)
-add_subdirectory(inc)
 
 # Examples
 SET(BUILD_EXAMPLES 1 CACHE BOOL "Build examples and install example YANG models.")
@@ -156,43 +174,9 @@ if(DOXYGEN_FOUND)
         COMMENT "Generating API documentation with Doxygen" VERBATIM
     )
 endif(DOXYGEN_FOUND)
-
-set(PYTHON_SWIG_BINDING sysrepoPy)
-set(LUA_SWIG_BINDING sysrepoLua)
-
-FIND_PACKAGE(SWIG)
-if (SWIG_FOUND)
-    INCLUDE(${SWIG_USE_FILE})
-    FIND_PACKAGE(PythonLibs 2)
-    FIND_PACKAGE(PythonInterp)
-    FIND_PACKAGE(Lua51)
-    if (PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
-        INCLUDE_DIRECTORIES(${PYTHON_INCLUDE_DIRS})
-        INCLUDE_DIRECTORIES("${PROJECT_SOURCE_DIR}/inc")
-        SET(CMAKE_SWIG_FLAGS "-I${PROJECT_SOURCE_DIR}/inc")
-        SET(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR}/swig/python)
-
-        SWIG_ADD_MODULE(${PYTHON_SWIG_BINDING} python swig/python/${PYTHON_SWIG_BINDING}.i)
-        SWIG_LINK_LIBRARIES(${PYTHON_SWIG_BINDING} ${PYTHON_LIBRARIES} sysrepo)
-
-        #move .so file to proper location
-        add_custom_command(
-          TARGET ${SWIG_MODULE_${PYTHON_SWIG_BINDING}_REAL_NAME}
-          POST_BUILD
-          COMMAND cp "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING}.so" "${CMAKE_CURRENT_BINARY_DIR}/swig/python"
-        )
-    else ()
-        MESSAGE(WARNING "Python libs not found, python bindings will not be generated.")
-    endif()
-
-    #FIND_PACKAGE(JNI REQUIRED)
-    #FIND_PACKAGE(Java REQUIRED)
-
-    #INCLUDE_DIRECTORIES(${JAVA_INCLUDE_PATH})
-    #INCLUDE_DIRECTORIES(${JAVA_INCLUDE_PATH2})
-    #SWIG_ADD_MODULE(sysrepo_java java sysrepo.i)
-endif(SWIG_FOUND)
-
+if(NOT MAN_INSTALL_DIR)
+    set(MAN_INSTALL_DIR share/man)
+endif()
 
 # install repository directories
 install (DIRECTORY DESTINATION ${REPOSITORY_LOC} DIRECTORY_PERMISSIONS
@@ -207,45 +191,45 @@ install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
     OWNER_READ OWNER_WRITE OWNER_EXECUTE
     GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
+install (DIRECTORY DESTINATION ${INTERNAL_DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE)
+
+# install subscriptions socket directory
+install (DIRECTORY DESTINATION ${SUBSCRIPTIONS_SOCKET_DIR} DIRECTORY_PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_WRITE GROUP_EXECUTE
+    WORLD_READ WORLD_WRITE WORLD_EXECUTE)
 
 # install plugins directory
 install(DIRECTORY DESTINATION ${PLUGINS_DIR})
 
 # install internal YANGs
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
-
-# install swig bindings
-if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
-    #install python bindings
-    execute_process ( COMMAND ${PYTHON_EXECUTABLE} -c
-                "from distutils import sysconfig; print( sysconfig.get_python_lib( plat_specific=True, prefix='${CMAKE_INSTALL_PREFIX}' ) )"
-                OUTPUT_VARIABLE _ABS_PYTHON_MODULE_PATH
-                OUTPUT_STRIP_TRAILING_WHITESPACE )
-    get_filename_component ( _ABS_PYTHON_MODULE_PATH ${_ABS_PYTHON_MODULE_PATH} ABSOLUTE )
-    file ( RELATIVE_PATH _REL_PYTHON_MODULE_PATH ${CMAKE_INSTALL_PREFIX} ${_ABS_PYTHON_MODULE_PATH} )
-    set (PYTHON_MODULE_PATH ${_REL_PYTHON_MODULE_PATH})
-
-    INSTALL ( FILES ${CMAKE_CURRENT_BINARY_DIR}/swig/python/_${PYTHON_SWIG_BINDING}.so DESTINATION ${PYTHON_MODULE_PATH} )
-    INSTALL ( FILES ${CMAKE_CURRENT_BINARY_DIR}/swig/python/${PYTHON_SWIG_BINDING}.py DESTINATION ${PYTHON_MODULE_PATH} )
-    INSTALL ( DIRECTORY ${PROJECT_SOURCE_DIR}/swig/python/SysrepoWrappers DESTINATION ${PYTHON_MODULE_PATH} )
-endif()
-
-if (SWIG_FOUND AND LUA51_FOUND)
-    INCLUDE_DIRECTORIES(${LUA_INCLUDE_DIR})
-
-    SET(CMAKE_SWIG_FLAGS "-I${PROJECT_SOURCE_DIR}/inc")
-    SET(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR}/swig/lua)
-
-    SWIG_ADD_MODULE(${LUA_SWIG_BINDING} lua swig/lua/${LUA_SWIG_BINDING}.i)
-    SWIG_LINK_LIBRARIES(${LUA_SWIG_BINDING} ${LUA_LIBRARIES} sysrepo)
-
-    SET_SOURCE_FILES_PROPERTIES(swig/${LUA_SWIG_BINDING}.i PROPERTIES CPLUSPLUS ON)
-endif()
+install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
     # generate and install pkg-config file
     configure_file("libsysrepo.pc.in" "libsysrepo.pc" @ONLY)
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/pkgconfig")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 endif()
 
+# install doc (man)
+install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepoctl.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepocfg.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+
+if(WITH_SYSTEMD)
+    # systemd units
+    add_custom_target(systemd-units SOURCES
+        ${PROJECT_SOURCE_DIR}/deploy/systemd/sysrepod.service
+        ${PROJECT_SOURCE_DIR}/deploy/systemd/sysrepo-plugind.service
+    )
+    install(DIRECTORY ${PROJECT_SOURCE_DIR}/deploy/systemd/ DESTINATION "/lib/systemd/system"
+        FILES_MATCHING PATTERN "*.service")
+endif()
+
+if(GEN_LANGUAGE_BINDINGS)
+    add_subdirectory(swig)
+endif()

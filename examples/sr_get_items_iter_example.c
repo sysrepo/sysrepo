@@ -21,43 +21,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+
 #include "sysrepo.h"
-
-void
-print_value(sr_val_t *value)
-{
-    printf("%s ", value->xpath);
-
-    switch (value->type) {
-    case SR_CONTAINER_T:
-    case SR_CONTAINER_PRESENCE_T:
-        printf("(container)\n");
-        break;
-    case SR_LIST_T:
-        printf("(list instance)\n");
-        break;
-    case SR_STRING_T:
-        printf("= %s\n", value->data.string_val);
-        break;
-    case SR_BOOL_T:
-        printf("= %s\n", value->data.bool_val ? "true" : "false");
-        break;
-    case SR_UINT8_T:
-        printf("= %u\n", value->data.uint8_val);
-        break;
-    case SR_UINT16_T:
-        printf("= %u\n", value->data.uint16_val);
-        break;
-    case SR_UINT32_T:
-        printf("= %u\n", value->data.uint32_val);
-        break;
-    case SR_IDENTITYREF_T:
-        printf("= %s\n", value->data.identityref_val);
-        break;
-    default:
-        printf("(unprintable)\n");
-    }
-}
+#include "sysrepo/values.h"
 
 int
 main(int argc, char **argv)
@@ -75,19 +41,19 @@ main(int argc, char **argv)
     }
 
     /* start session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sess);
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
     /* get all list instances with their content (recursive) */
-    rc = sr_get_items_iter(sess, "/ietf-interfaces:interfaces/interface//*", &iter);
+    rc = sr_get_items_iter(sess, "/ietf-interfaces:interfaces-state/interface//*", &iter);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
     while (SR_ERR_OK == sr_get_item_next(sess, iter, &value)){
-        print_value(value);
+        sr_print_val(value);
         sr_free_val(value);
     }
     sr_free_val_iter(iter);

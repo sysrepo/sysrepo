@@ -36,11 +36,13 @@ rp_dt_create_xpath_for_cont_leaf_node(const struct lyd_node *data_tree, char **x
     size_t len = 1; /* terminating null byte*/
     size_t ns_len = 0;
     size_t node_len = 0;
+    const char *ns = NULL;
 
     /* calculate length */
     if (namespace) {
         CHECK_NULL_ARG3(data_tree->schema, data_tree->schema->module, data_tree->schema->module->name);
-        ns_len = strlen(data_tree->schema->module->name) + 1; /*namespace + colon*/
+        ns = data_tree->schema->module->type ? ((struct lys_submodule *) data_tree->schema->module)->belongsto->name : data_tree->schema->module->name;
+        ns_len = strlen(ns) + 1; /*namespace + colon*/
         len += ns_len;
     }
     CHECK_NULL_ARG(data_tree->schema->name);
@@ -57,7 +59,7 @@ rp_dt_create_xpath_for_cont_leaf_node(const struct lyd_node *data_tree, char **x
 
     /* copy string */
     if (namespace) {
-        strcpy(s, data_tree->schema->module->name);
+        strcpy(s, ns);
         s[ns_len - 1] = ':';
     }
     strcpy(s + ns_len, data_tree->schema->name);
@@ -82,11 +84,13 @@ rp_dt_create_xpath_for_list_node(const struct lyd_node *data_tree, char **xpath,
     size_t len = 1; /* terminating null byte*/
     size_t ns_len = 0;
     size_t offset = 0;
+    const char *ns = NULL;
 
-    /* calculate length*/
+    /* calculate length */
     if (namespace) {
         CHECK_NULL_ARG3(data_tree->schema, data_tree->schema->module, data_tree->schema->module->name);
-        ns_len = strlen(data_tree->schema->module->name);
+        ns = data_tree->schema->module->type ? ((struct lys_submodule *) data_tree->schema->module)->belongsto->name : data_tree->schema->module->name;
+        ns_len = strlen(ns);
         len += ns_len + 1; /*namespace + colon*/
     }
     CHECK_NULL_ARG(data_tree->schema->name);
@@ -140,7 +144,7 @@ rp_dt_create_xpath_for_list_node(const struct lyd_node *data_tree, char **xpath,
 
     /* copy string */
     if (namespace) {
-        strcpy(s, data_tree->schema->module->name);
+        strcpy(s, ns);
         s[ns_len] = ':';
         offset += ns_len + 1;
     }
@@ -171,7 +175,7 @@ rp_dt_create_xpath_for_list_node(const struct lyd_node *data_tree, char **xpath,
  * @brief Creates xpath for the selected node.
  */
 int
-rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
+rp_dt_create_xpath_for_node(sr_mem_ctx_t *sr_mem, const struct lyd_node *node, char **xpath)
 {
     CHECK_NULL_ARG2(node, xpath);
     int rc = 0;
@@ -211,9 +215,15 @@ rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
             return SR_ERR_INTERNAL;
         }
         /*print namespace for the root node and when there is an augment*/
-        bool namespace = NULL == n->parent || 0 != strcmp(n->parent->schema->module->name, n->schema->module->name);
+        const char *parent_node_module = NULL;
+        const char *current_node_module = NULL;
+        if (NULL != n->parent) {
+            parent_node_module = (n->parent->schema->module->type) ? ((struct lys_submodule *) n->parent->schema->module)->belongsto->name : n->parent->schema->module->name;
+            current_node_module = (n->schema->module->type) ? ((struct lys_submodule *) n->schema->module)->belongsto->name : n->schema->module->name;
+        }
+        bool namespace = NULL == n->parent || 0 != strcmp(parent_node_module, current_node_module);
 
-        if (n->schema->nodetype & (LYS_LEAF | LYS_CONTAINER | LYS_LEAFLIST | LYS_RPC)) {
+        if (n->schema->nodetype & (LYS_LEAF | LYS_CONTAINER | LYS_LEAFLIST | LYS_RPC | LYS_NOTIF | LYS_ACTION)) {
             rc = rp_dt_create_xpath_for_cont_leaf_node(n, &parts[i], namespace, slash);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Creating xpath failed.");
@@ -252,7 +262,7 @@ rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
     }
     length++; /*terminating null byte*/
 
-    result = calloc(length, sizeof(*result));
+    result = sr_calloc(sr_mem, length, sizeof(*result));
     if (NULL == result) {
         SR_LOG_ERR_MSG("Memory allocation failed.");
         for (int j = 0; j < level; j++) {
@@ -280,123 +290,6 @@ rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
 }
 
 /**
- * @brief Tries to match lys_node including choice nodes
- * @param [in] dm_ctx
- * @param [in] session
- * @param [in] xpath
- * @param [in] trimmed_xpath
- * @param [in] module
- * @param [out] match
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-rp_dt_find_in_choice(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const char *trimmed_xpath, const struct lys_module *module, struct lys_node **match)
-{
-    CHECK_NULL_ARG5(dm_ctx, xpath, trimmed_xpath, module, match);
-    /* libyang err_msg is used to parse the match and unmatch part */
-    int rc = SR_ERR_BAD_ELEMENT;
-    #define MAX_NODE_NAME_LEN 100
-    char *unmatch_part = NULL;
-    char *err_msg = NULL;
-    char *search = NULL;
-    size_t search_size = 0;
-    char *xp_copy = strdup(ly_errpath());
-    CHECK_NULL_NOMEM_RETURN(xp_copy);
-    char *last_slash = rindex(xp_copy, '/');
-    if (NULL == last_slash) {
-        goto done;
-    }
-    *last_slash = 0;
-
-    err_msg = strdup(ly_errmsg());
-    CHECK_NULL_NOMEM_GOTO(err_msg, rc, done);
-
-    /* split xpath into unmatched part and the part that may contain a choice */
-    unmatch_part = strdup(trimmed_xpath + strlen(xp_copy) + 1);
-    CHECK_NULL_NOMEM_GOTO(unmatch_part, rc, done);
-
-    search_size = MAX_NODE_NAME_LEN + strlen(unmatch_part);
-    search = calloc(search_size, sizeof(*search));
-    CHECK_NULL_NOMEM_GOTO(search, rc, done);
-
-    const struct lys_node *node = dm_ly_ctx_get_node(dm_ctx, module->ctx, NULL, xp_copy);
-    if (NULL == node) {
-        goto done;
-    }
-    struct lys_node *iter = NULL;
-    struct lys_node *child = NULL;
-
-    LY_TREE_FOR(node->child, iter)
-    {
-        if (LYS_CHOICE == iter->nodetype) {
-            /* TODO choice in choice */
-            LY_TREE_FOR(iter->child, child) {
-                if (LYS_CASE == child->nodetype || 0 == strcmp(unmatch_part, child->name)){
-                    snprintf(search, search_size, "%s/%s", child->name, unmatch_part);
-                } else {
-                    continue;
-                }
-                *match = (struct lys_node *) ly_ctx_get_node(module->ctx, iter, search);
-                if (NULL != *match) {
-                    rc = SR_ERR_OK;
-                    goto done;
-                }
-            }
-        }
-    }
-
-
-done:
-    free(search);
-    free(xp_copy);
-    free(unmatch_part);
-    if (SR_ERR_OK != rc && NULL != session) {
-        rc = dm_report_error(session, err_msg, xpath, SR_ERR_BAD_ELEMENT);
-    }
-    free(err_msg);
-    return rc;
-}
-
-/**
- * @brief If the xpath identifies leaf-list instance it is not matched by rp_dt_validate_node_xpath.
- * The function tries to remove last characters identifying the leaf-list instance
- * and match a node.
- */
-static int
-rp_dt_find_leaflist(dm_session_t *session, const char *xpath, char *xp_copy, const struct lys_module *module, struct lys_node **match)
-{
-    CHECK_NULL_ARG4(xpath, xp_copy, module, match);
-    int rc = SR_ERR_BAD_ELEMENT;
-    char *err_msg = NULL;
-
-    err_msg = strdup(ly_errmsg());
-    CHECK_NULL_NOMEM_GOTO(err_msg, rc, not_matched);
-
-    char *last_slash = rindex(xp_copy, '/');
-    if (NULL == last_slash) {
-        goto not_matched;
-    }
-
-    char *leaf_list = strstr(last_slash, "[.='");
-    if (NULL == leaf_list) {
-        goto not_matched;
-    }
-    *leaf_list = 0;
-
-    *match = (struct lys_node *) ly_ctx_get_node(module->ctx, NULL, xp_copy);
-    if (NULL != match) {
-        rc = SR_ERR_OK;
-    }
-
-not_matched:
-    if (SR_ERR_OK != rc && NULL != session) {
-        rc = dm_report_error(session, err_msg, xpath, SR_ERR_BAD_ELEMENT);
-    }
-    free(err_msg);
-    return rc;
-}
-
-/**
  * @brief Removes trailing characters from xpath to make it validateable by ly_ctx_get_node
  * @param [in] dm_ctx
  * @param [in] xpath
@@ -415,16 +308,20 @@ rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, char **trimmed)
     xp_copy = strdup(xpath);
     CHECK_NULL_NOMEM_RETURN(xp_copy);
 
-    /* remove trailing '*:/' */
+    /* remove trailing '*:/.' */
     bool change = false;
     while (0 < (xp_len = strlen(xp_copy))) {
         change = false;
+        if ('.' == xp_copy[xp_len - 1]) {
+            xp_copy[xp_len - 1] = 0;
+            xp_len--;
+            change = true;
+        }
         if ('*' == xp_copy[xp_len - 1]) {
             xp_copy[xp_len - 1] = 0;
             xp_len--;
             change = true;
         }
-
         if ('/' == xp_copy[xp_len - 1]) {
             xp_copy[xp_len - 1] = 0;
             xp_len--;
@@ -440,8 +337,8 @@ rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, char **trimmed)
             }
 
             namespace = strdup(last_slash + 1); /* do not copy leading slash */
-            const struct lys_module *tmp_module = NULL;
-            rc = dm_get_module(dm_ctx, namespace, NULL, &tmp_module);
+            dm_schema_info_t *tmp_sch_info = NULL;
+            rc = dm_get_module_without_lock(dm_ctx, namespace, &tmp_sch_info);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Get module %s failed", namespace);
                 free(namespace);
@@ -460,33 +357,46 @@ rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, char **trimmed)
     return rc;
 }
 
-int
-rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const struct lys_module **matched_module, struct lys_node **match)
+/**
+ *
+ * @brief Function tries to validate the xpath and to find the corresponding
+ * node in schema if possible.
+ *
+ * @note Function expects that a schema info is locked for reading.
+ *
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] schema_info
+ * @param [in] xpath
+ * @param [out] match
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *schema_info, const char *xpath, struct lys_node **match)
 {
-    CHECK_NULL_ARG2(dm_ctx, xpath);
+    CHECK_NULL_ARG3(dm_ctx, xpath, schema_info); /* match can be NULL */
     int rc = SR_ERR_OK;
 
     char *namespace = NULL;
     char *xp_copy = NULL;
     size_t xp_len = 0;
+    const struct lys_module *module = NULL;
     rc = sr_copy_first_ns(xpath, &namespace);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Namespace copy failed");
-        return rc;
+    CHECK_RC_MSG_RETURN(rc, "Namespace copy failed");
+
+    if (NULL != match) {
+        *match = NULL;
     }
 
-    const struct lys_module *module = NULL;
-    rc = dm_get_module(dm_ctx, namespace, NULL, &module);
-    if (SR_ERR_UNKNOWN_MODEL == rc && NULL != session) {
-        rc = dm_report_error(session, NULL, xpath, rc);
-    }
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get module %s failed", namespace);
+    module = ly_ctx_get_module(schema_info->ly_ctx, namespace, NULL);
+
+    if (NULL == module) {
+        if (NULL != session) {
+            dm_report_error(session, NULL, xpath, SR_ERR_UNKNOWN_MODEL);
+        }
+        SR_LOG_ERR("Module %s not found in provided schema info", namespace);
         free(namespace);
-        return rc;
-    }
-    if (NULL != matched_module) {
-        *matched_module = module;
+        return SR_ERR_UNKNOWN_MODEL;
     }
     free(namespace);
 
@@ -502,26 +412,28 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         return SR_ERR_OK;
     }
 
-    const struct lys_node *sch_node = dm_ly_ctx_get_node(dm_ctx, module->ctx, NULL, xp_copy);
+
+    const struct lys_node *start_node = NULL;
+    if (NULL != schema_info->module && NULL != schema_info->module->data) {
+        start_node = schema_info->module->data;
+    } else {
+        const struct lys_module *m = NULL;
+        uint32_t index = 0;
+        while(NULL != (m = ly_ctx_get_module_iter(schema_info->ly_ctx, &index))) {
+            if (NULL != m->data) {
+                start_node = m->data;
+                break;
+            }
+        }
+    }
+
+    const struct lys_node *sch_node = sr_find_schema_node(start_node, xp_copy, 0);
     if (NULL != sch_node) {
         if (NULL != match) {
             *match = (struct lys_node *) sch_node;
         }
     } else {
         switch (ly_vecode) {
-        case LYVE_PATH_INNODE:
-            /* ly_ctx_get_node is not able to locate nodes inside the choice */
-            rc = rp_dt_find_in_choice(dm_ctx, session, xpath, xp_copy, module, (struct lys_node **) &sch_node);
-            if (NULL != match) {
-                *match = (struct lys_node *) sch_node;
-            }
-            break;
-        case LYVE_PATH_INCHAR:
-            rc = rp_dt_find_leaflist(session, xpath, xp_copy, module, (struct lys_node **) &sch_node);
-            if (NULL != match) {
-                *match = (struct lys_node *) sch_node;
-            }
-            break;
         case LYVE_PATH_INKEY:
             if (NULL != session) {
                 rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_BAD_ELEMENT);
@@ -536,6 +448,13 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
                 rc = SR_ERR_UNKNOWN_MODEL;
             }
             break;
+        case LYVE_XPATH_INSNODE:
+            if (NULL != session) {
+                rc = dm_report_error(session, ly_errmsg(), xp_copy, SR_ERR_BAD_ELEMENT);
+            } else {
+                rc = SR_ERR_BAD_ELEMENT;
+            }
+            break;
         default:
             if (NULL != session) {
                 rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_INVAL_ARG);
@@ -545,6 +464,52 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         }
     }
     free(xp_copy);
+    return rc;
+}
+
+int
+rp_dt_validate_node_xpath_lock(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, dm_schema_info_t **schema_info, struct lys_node **match)
+{
+    CHECK_NULL_ARG3(dm_ctx, xpath, schema_info);
+    int rc = SR_ERR_OK;
+
+    char *namespace = NULL;
+    dm_schema_info_t *si = NULL;
+
+    rc = sr_copy_first_ns(xpath, &namespace);
+    CHECK_RC_MSG_RETURN(rc, "Namespace copy failed");
+
+    rc = dm_get_module_and_lock(dm_ctx, namespace, &si);
+    if (SR_ERR_UNKNOWN_MODEL == rc && NULL != session) {
+        rc = dm_report_error(session, NULL, xpath, rc);
+    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s failed", namespace);
+
+    rc = rp_dt_validate_node_xpath_intrenal(dm_ctx, session, si, xpath, match);
+
+cleanup:
+    *schema_info = si;
+    if (NULL != si && SR_ERR_OK != rc) {
+        pthread_rwlock_unlock(&si->model_lock);
+        *schema_info = NULL;
+    }
+    free(namespace);
+    return rc;
+}
+
+int
+rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, dm_schema_info_t **schema_info, struct lys_node **match)
+{
+    CHECK_NULL_ARG2(dm_ctx, xpath);
+    dm_schema_info_t *si = NULL;
+    int rc = SR_ERR_OK;
+    rc = rp_dt_validate_node_xpath_lock(dm_ctx, session, xpath, &si, match);
+    if (SR_ERR_OK == rc) {
+        pthread_rwlock_unlock(&si->model_lock);
+        if (NULL != schema_info) {
+            *schema_info = si;
+        }
+    }
     return rc;
 }
 
@@ -569,23 +534,49 @@ rp_dt_enable_key_nodes(struct lys_node *node)
     return SR_ERR_OK;
 }
 
+static int
+rp_dt_enable_mandatory_children(struct lys_node *node)
+{
+    CHECK_NULL_ARG(node);
+    int rc = SR_ERR_OK;
+    struct lys_node *n = NULL;
+    if ((LYS_LIST | LYS_CONTAINER) & node->nodetype) {
+        /* enable mandatory leaves */
+        n = node->child;
+        while (NULL != n) {
+            if ((LYS_LEAF | LYS_LEAFLIST) & n->nodetype &&
+                    !dm_is_node_enabled(n) &&
+                    LYS_MAND_MASK & n->flags
+                    ) {
+                rc = dm_set_node_state(n, DM_NODE_ENABLED);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR_MSG("Set node state failed");
+                    return rc;
+                }
+            }
+            n = n->next;
+        }
+    }
+    return SR_ERR_OK;
+}
+
 int
-rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath)
+rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *schema_info, const char *xpath)
 {
     CHECK_NULL_ARG2(dm_ctx, xpath);
     int rc = SR_ERR_OK;
     struct lys_node *match = NULL, *node = NULL;
-    rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, NULL, &match);
+    rc = rp_dt_validate_node_xpath_intrenal(dm_ctx, session, schema_info, xpath, &match);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Xpath validation failed %s", xpath);
         return rc;
     }
+    if (NULL == match) {
+        // TODO: XPath such as '/example-module://*' seems to return match == NULL
+        SR_LOG_ERR("Unsupported xpath '%s'", xpath);
+        return SR_ERR_UNSUPPORTED;
+    }
 
-    dm_schema_info_t *si = NULL;
-    rc = dm_get_schema_info(dm_ctx, match->module->name, &si);
-    CHECK_RC_LOG_RETURN(rc, "Get schema info failed %s", match->module->name);
-
-    pthread_rwlock_wrlock(&si->model_lock);
     if ((LYS_CONTAINER | LYS_LIST) & match->nodetype) {
         rc = dm_set_node_state(match, DM_NODE_ENABLED_WITH_CHILDREN);
     } else {
@@ -606,12 +597,14 @@ rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath)
 
             rc = rp_dt_enable_key_nodes(node);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Enable key nodes failed %s", xpath);
+
+            rc = rp_dt_enable_mandatory_children(node);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Enable of manadatory children failed %s node %s", xpath, node->name);
         }
         node = node->parent;
 
     }
 
 cleanup:
-    pthread_rwlock_unlock(&si->model_lock);
     return rc;
 }

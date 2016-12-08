@@ -77,7 +77,7 @@ rp_session_test(void **state)
 
     for (i = 0; i < 100; i++) {
         /* create a session */
-        rc = rp_session_start(rp_ctx, 123456, &credentials, SR_DS_STARTUP, false, &session);
+        rc = rp_session_start(rp_ctx, 123456, &credentials, SR_DS_STARTUP, SR_SESS_DEFAULT, 0, &session);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(session);
 
@@ -105,7 +105,7 @@ rp_msg_neg_test(void **state)
     credentials.e_gid = getgid();
 
     /* generate some request */
-    rc = sr_gpb_req_alloc(SR__OPERATION__GET_ITEM, 123456, &msg);
+    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__GET_ITEM, 123456, &msg);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(msg);
 
@@ -114,12 +114,12 @@ rp_msg_neg_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* create a session */
-    rc = rp_session_start(rp_ctx, 123456, &credentials, SR_DS_STARTUP, false, &session);
+    rc = rp_session_start(rp_ctx, 123456, &credentials, SR_DS_STARTUP, SR_SESS_DEFAULT, 0, &session);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(session);
 
     /* RP does not implement session start request */
-    rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_START, 123456, &msg);
+    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__SESSION_START, 123456, &msg);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(msg);
 
@@ -128,7 +128,7 @@ rp_msg_neg_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* RP does not implement session start response */
-    rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_START, 123456, &msg);
+    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__SESSION_START, 123456, &msg);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(msg);
 

@@ -91,12 +91,41 @@ perf_get_item_test(void **state) {
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+perf_get_subtree_test(void **state) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
 
+    sr_session_ctx_t *session = NULL;
+    sr_node_t *tree = NULL;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a get-subtree request */
+
+    for (size_t i = 0; i<100000; i++){
+
+        /* existing leaf */
+        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
+        assert_int_equal(rc, SR_ERR_OK);
+        assert_non_null(tree);
+        assert_int_equal(SR_STRING_T, tree->type);
+        sr_free_tree(tree);
+    }
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
 
 int
 main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(perf_get_item_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(perf_get_subtree_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

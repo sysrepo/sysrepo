@@ -1,6 +1,7 @@
 /**
  * @file sysreo.proto
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief Definition of sysrepo GPB messages used as the API for the
  * communication between sysrepo engine and sysrepo client library.
  *
@@ -45,12 +46,11 @@ message Value {
     INT16 = 18;
     INT32 = 19;
     INT64 = 20;
-    LEAFREF = 21;
-    STRING = 22;
-    UINT8 = 23;
-    UINT16 = 24;
-    UINT32 = 25;
-    UINT64 = 26;
+    STRING = 21;
+    UINT8 = 22;
+    UINT16 = 23;
+    UINT32 = 24;
+    UINT64 = 25;
   }
 
   required string xpath = 1;
@@ -68,18 +68,39 @@ message Value {
   optional int32 int16_val = 18;
   optional int32 int32_val = 19;
   optional int64 int64_val = 20;
-  optional string leafref_val = 21;
-  optional string string_val = 22;
-  optional uint32 uint8_val = 23;
-  optional uint32 uint16_val = 24;
-  optional uint32 uint32_val = 25;
-  optional uint64 uint64_val = 26;
+  optional string string_val = 21;
+  optional uint32 uint8_val = 22;
+  optional uint32 uint16_val = 23;
+  optional uint32 uint32_val = 24;
+  optional uint64 uint64_val = 25;
 }
 
+/**
+ * @brief Item stored (or to be stored) in the datastore represented as a tree node
+ * reflecting module schema. Can be mapped to sr_node_t data structure from sysrepo library API.
+ */
+message Node {
+  required Value value = 1;        /**< Value of the node; member *xpath* is used to store node's name. */
+  required string module_name = 2; /**< Name of the module that defines scheme of this node. */
+  repeated Node children = 3;      /**< Direct descendands of this node. */
+}
+
+/**
+ * @brief Error message retuned from the Sysrepo Engine.
+ */
 message Error {
   optional string message = 1;
   optional string xpath = 2;
 }
+
+/**
+ * @brief Variant of the API. Currently only values (sr_val_t) vs. trees (sr_node_t).
+ */
+enum ApiVariant {
+  VALUES = 1;
+  TREES = 2;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Connection / Session Management
@@ -111,6 +132,7 @@ message SessionStartReq {
   required DataStore datastore = 1;
   optional string user_name = 2;
   required uint32 options = 3;
+  optional uint32 commit_id = 4; /**< Applicable if SESS_NOTIFICATION was specified. */
 }
 
 /**
@@ -162,19 +184,39 @@ message SessionSwitchDsResp {
 
 }
 
+/**
+ * @brief Request for modification of session options.
+ */
+message SessionSetOptsReq {
+  required uint32 options = 1;
+}
+
+/**
+ * @brief Response to sr_session_set_options.
+ */
+message SessionSetOptsResp {
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // Data Retrieval API (get / get-config functionality)
 ////////////////////////////////////////////////////////////////////////////////
 
-message Schema_rev {
+/**
+ * @brief Schema revision details.
+ */
+message SchemaRevision {
   optional string revision = 1;         /**< Latest revision date of the module. */
   optional string file_path_yang = 2;   /**< Absolute path to file where the schema is stored (YANG format). */
   optional string file_path_yin  = 3;   /**< Absolute path to file where the schema is stored (.yin format). */
 }
 
-message Schema_submodule {
-  required string submodule_name = 1;   /**< Submodule name */
-  required Schema_rev revision = 2;     /**< Revision of the submodule */
+/**
+ * @brief Schema submodule information.
+ */
+message SchemaSubmodule {
+  required string submodule_name = 1;       /**< Submodule name */
+  required SchemaRevision revision = 2;     /**< Revision of the submodule */
 }
 /**
  * @brief Information about a schema installed in sysrepo datastore.
@@ -184,10 +226,10 @@ message Schema {
   required string ns = 2;                    /**< Namespace of the module. */
   required string prefix = 3;                /**< Prefix of he module. */
 
-  required Schema_rev revision = 4;          /**< Revision of the module*/
-  repeated Schema_submodule submodules = 5;  /**< Submodules */
+  required SchemaRevision revision = 4;      /**< Revision of the module*/
+  repeated SchemaSubmodule submodules = 5;   /**< Submodules */
 
-  repeated string enabled_features = 6;       /**< Features enabled for the module */
+  repeated string enabled_features = 6;      /**< Features enabled for the module */
 }
 
 /**
@@ -257,6 +299,62 @@ message GetItemsReq {
  */
 message GetItemsResp {
   repeated Value values = 1;
+}
+
+/**
+ * @brief Retrieves a single subtree whose root is stored under provided path.
+ * Sent by sr_get_subtree API call.
+ */
+message GetSubtreeReq {
+  required string xpath = 1;
+}
+
+/**
+ * @brief Response to sr_get_subtree request.
+ */
+message GetSubtreeResp {
+  optional Node tree = 1;
+}
+
+/**
+ * @brief Retrieves an array of subtrees whose root nodes match provided path.
+ * Sent by sr_get_subtrees API call.
+ */
+message GetSubtreesReq {
+  required string xpath = 1;
+}
+
+/**
+ * @brief Response to sr_get_subtrees request.
+ */
+message GetSubtreesResp {
+  repeated Node trees = 1;
+}
+
+/**
+ * @brief Retrieves a chunk of a single or multiple subtrees.
+ * A subtree chunk is also a tree, where the root node is the node referenced by XPath,
+ * the next level consists of its children skipping the first "slice_offset" nodes and including
+ * at most "slice_limit" nodes, while the remaining (depth_limit-2) levels always start with
+ * the first child (slice_offset is ignored) and include at most "child_limit" nodes.
+ * The chunk consists of at most "depth_limit" levels.
+ * @note Order of child nodes depends on the libyang implementation.
+ */
+message GetSubtreeChunkReq {
+  required string xpath = 1;
+  required bool single = 2;
+  required uint32 slice_offset = 3;
+  required uint32 slice_width = 4;
+  required uint32 child_limit = 5;
+  required uint32 depth_limit = 6;
+}
+
+/**
+ * @brief Response to sr_get_subtree_chunk request.
+ */
+message GetSubtreeChunkResp {
+  repeated string xpath = 1; /**< JSON node-id of the root node for each subtree chunk */
+  repeated Node chunk = 2;   /**< first chunk may carry mutliple trees */
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -387,6 +485,7 @@ message CopyConfigReq {
 message CopyConfigResp {
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
 // Locking API
 ////////////////////////////////////////////////////////////////////////////////
@@ -421,6 +520,208 @@ message UnlockResp {
 
 
 ////////////////////////////////////////////////////////////////////////////////
+// Change Notifications API
+////////////////////////////////////////////////////////////////////////////////
+
+enum SubscriptionType {
+  MODULE_INSTALL_SUBS = 1;
+  FEATURE_ENABLE_SUBS = 2;
+
+  MODULE_CHANGE_SUBS = 10;
+  SUBTREE_CHANGE_SUBS = 11;
+
+  DP_GET_ITEMS_SUBS = 20;
+
+  RPC_SUBS = 30;
+  ACTION_SUBS = 31;
+
+  EVENT_NOTIF_SUBS = 40;
+
+  HELLO_SUBS = 50;           /**< Used only internally to test for inactive notification subscriptions. */
+  COMMIT_END_SUBS = 51;      /**< Used only internally to notify about the end of the commit process. */
+}
+
+enum NotificationEvent {
+  VERIFY_EV = 1;
+  APPLY_EV = 2;
+  ABORT_EV = 3;
+  ENABLED_EV = 4;
+}
+
+message SubscribeReq {
+  required SubscriptionType type = 1;
+
+  required string destination = 2;
+  required uint32 subscription_id = 3;
+
+  optional string module_name = 4;
+  optional string xpath = 5;
+
+  optional NotificationEvent notif_event = 10;
+  optional uint32 priority = 11;
+  optional bool enable_running = 12;
+  optional bool enable_event = 13;
+
+  required ApiVariant api_variant = 20;
+}
+
+message SubscribeResp {
+}
+
+message UnsubscribeReq {
+  required SubscriptionType type = 1;
+
+  required string destination = 2;
+  required uint32 subscription_id = 3;
+
+  optional string module_name = 4;
+}
+
+message UnsubscribeResp {
+}
+
+/**
+ * @brief Checks whether the module has any enabled subtree.
+ * Sent by sr_check_enabled_running.
+ */
+message CheckEnabledRunningReq {
+  required string module_name = 1;
+}
+
+message CheckEnabledRunningResp {
+  required bool enabled = 1;
+}
+
+enum ModuleState {
+    UNINSTALLED = 1;
+    IMPORTED = 2;
+    IMPLEMENTED = 3;
+}
+
+message ModuleInstallNotification {
+  optional string module_name = 1;
+  optional string revision = 2;
+  required ModuleState state = 3;
+}
+
+message FeatureEnableNotification {
+  required string module_name = 1;
+  required string feature_name = 2;
+  required bool enabled = 3;
+}
+
+message ModuleChangeNotification {
+  required NotificationEvent event = 1;
+  required string module_name = 2;
+}
+
+message SubtreeChangeNotification {
+  required NotificationEvent event = 1;
+  required string xpath = 2;
+}
+
+enum ChangeOperation {
+   CREATED = 1;
+   MODIFIED = 2;
+   DELETED = 3;
+   MOVED = 4;
+}
+
+message Change {
+    required ChangeOperation changeOperation = 1;
+    optional Value new_value = 2;
+    optional Value old_value = 3;
+}
+
+/**
+ * @brief Retrieves an array of changes made under provided path.
+ * Sent by sr_get_changes_iter or sr_get_change_next API calls.
+ */
+message GetChangesReq {
+  required string xpath = 1;
+  required uint32 limit = 2;
+  required uint32 offset = 3;
+}
+
+/**
+ * @brief Response to get_changes request.
+ */
+message GetChangesResp {
+  repeated Change changes = 1;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// RPC (Remote Procedure Calls) / Action API
+////////////////////////////////////////////////////////////////////////////////
+
+message RPCReq {
+  required bool action = 1;
+  required string xpath = 2;
+  required ApiVariant orig_api_variant = 3; /**< which API variant was used to send RPC req. */
+  repeated Value input = 4;
+  repeated Node input_tree = 5;
+
+  optional string subscriber_address = 10;
+  optional uint32 subscription_id = 11;
+}
+
+message RPCResp {
+  required bool action = 1;
+  required string xpath = 2;
+  required ApiVariant orig_api_variant = 3; /**< which API variant was used to send RPC req. */
+  repeated Value output = 4;
+  repeated Node output_tree = 5;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Event Notifications API
+////////////////////////////////////////////////////////////////////////////////
+
+message EventNotifReq {
+  required string xpath = 1;
+  repeated Value values = 2;
+  repeated Node trees = 3;
+
+  optional string subscriber_address = 10;
+  optional uint32 subscription_id = 11;
+}
+
+message EventNotifResp {
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Operational Data API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Requests operational data under given path form an operational data
+ * provider.
+ */
+message DataProvideReq {
+  required string xpath = 1;
+
+  required string subscriber_address = 10;
+  required uint32 subscription_id = 11;
+
+  required uint64 request_id = 20;
+}
+
+/**
+ * @brief Response to a request of operational data under given path form an
+ * operational data provider.
+ */
+message DataProvideResp {
+  required string xpath = 1;
+  repeated Value values = 2;
+
+  required uint64 request_id = 10;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 // Data modules handling API - internal, not exposed to the public API
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -429,9 +730,10 @@ message UnlockResp {
  * Sent by sr_module_install internal API calls.
  */
 message ModuleInstallReq {
-  optional string module_name = 1;
+  required string module_name = 1;
   optional string revision = 2;
-  required bool installed = 3;
+  optional string file_name = 3;
+  required bool installed = 4;
 }
 
 /**
@@ -458,88 +760,20 @@ message FeatureEnableResp {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Notification API - !!! EXPERIMENTAL !!!
-////////////////////////////////////////////////////////////////////////////////
-
-enum NotificationEvent {
-  MODULE_INSTALL_EV = 1;
-  FEATURE_ENABLE_EV = 2;
-  MODULE_CHANGE_EV = 3;
-
-  RPC_EV = 10;
-  HELLO_EV = 20;           /**< Used only internally to test for inactive notification subscriptions. */
-}
-
-message SubscribeReq {
-  required NotificationEvent event = 1;
-
-  required string destination = 2;
-  required uint32 subscription_id = 3;
-
-  optional string module_name = 4;
-  optional string xpath = 5;
-  optional bool enable_running = 6;
-}
-
-message SubscribeResp {
-}
-
-message UnsubscribeReq {
-  required NotificationEvent event = 1;
-
-  required string destination = 2;
-  required uint32 subscription_id = 3;
-
-  optional string module_name = 4;
-}
-
-message UnsubscribeResp {
-}
-
-message ModuleInstallNotification {
-  optional string module_name = 1;
-  optional string revision = 2;
-  required bool installed = 3;
-}
-
-message FeatureEnableNotification {
-  required string module_name = 1;
-  required string feature_name = 2;
-  required bool enabled = 3;
-}
-
-message ModuleChangeNotification {
-  required string module_name = 1;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-// RPC API - !!! EXPERIMENTAL !!!
-////////////////////////////////////////////////////////////////////////////////
-
-message RPCReq {
-  required string xpath = 1;
-  repeated Value input = 2;
-
-  optional string subscriber_address = 10;
-  optional uint32 subscription_id = 11;
-  optional uint32 session_id = 12;
-}
-
-message RPCResp {
-  required string xpath = 1;
-  repeated Value output = 2;
-
-  optional uint32 session_id = 10;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine internal messages
 ////////////////////////////////////////////////////////////////////////////////
 
 message UnsubscribeDestinationReq {
   required string destination = 1;
+}
+
+message CommitTimeoutReq {
+  required uint32 commit_id = 1;
+  required bool expired = 2;
+}
+
+message OperDataTimeoutReq {
+  required uint64 request_id = 1;
 }
 
 
@@ -555,6 +789,7 @@ enum Operation {
   SESSION_STOP = 11;
   SESSION_REFRESH = 12;
   SESSION_SWITCH_DS = 13;
+  SESSION_SET_OPTS = 14;
 
   LIST_SCHEMAS = 20;
   GET_SCHEMA = 21;
@@ -563,6 +798,10 @@ enum Operation {
 
   GET_ITEM = 30;
   GET_ITEMS = 31;
+
+  GET_SUBTREE = 32;
+  GET_SUBTREES = 33;
+  GET_SUBTREE_CHUNK = 34;
 
   SET_ITEM = 40;
   DELETE_ITEM = 41;
@@ -578,10 +817,17 @@ enum Operation {
 
   SUBSCRIBE = 70;
   UNSUBSCRIBE = 71;
+  CHECK_ENABLED_RUNNING = 72;
+  GET_CHANGES = 73;
 
-  RPC = 80;
+  DATA_PROVIDE = 80;
+  RPC = 81;
+  ACTION = 82;
+  EVENT_NOTIF = 83;
 
   UNSUBSCRIBE_DESTINATION = 101;
+  COMMIT_TIMEOUT = 102;
+  OPER_DATA_TIMEOUT = 103;
 }
 
 /**
@@ -594,6 +840,7 @@ message Request {
   optional SessionStopReq session_stop_req = 11;
   optional SessionRefreshReq session_refresh_req = 12;
   optional SessionSwitchDsReq session_switch_ds_req =13;
+  optional SessionSetOptsReq session_set_opts_req = 14;
 
   optional ListSchemasReq list_schemas_req = 20;
   optional GetSchemaReq get_schema_req = 21;
@@ -602,6 +849,10 @@ message Request {
 
   optional GetItemReq get_item_req = 30;
   optional GetItemsReq get_items_req = 31;
+
+  optional GetSubtreeReq get_subtree_req = 32;
+  optional GetSubtreesReq get_subtrees_req = 33;
+  optional GetSubtreeChunkReq get_subtree_chunk_req = 34;
 
   optional SetItemReq set_item_req = 40;
   optional DeleteItemReq delete_item_req = 41;
@@ -617,8 +868,12 @@ message Request {
 
   optional SubscribeReq subscribe_req = 70;
   optional UnsubscribeReq unsubscribe_req = 71;
+  optional CheckEnabledRunningReq check_enabled_running_req = 72;
+  optional GetChangesReq get_changes_req = 73;
 
-  optional RPCReq rpc_req = 80;
+  optional DataProvideReq data_provide_req = 80;
+  optional RPCReq rpc_req = 81;
+  optional EventNotifReq event_notif_req = 82;
 }
 
 /**
@@ -633,6 +888,7 @@ message Response {
   optional SessionStopResp session_stop_resp = 11;
   optional SessionRefreshResp session_refresh_resp = 12;
   optional SessionSwitchDsResp session_switch_ds_resp = 13;
+  optional SessionSetOptsResp session_set_opts_resp = 14;
 
   optional ListSchemasResp list_schemas_resp = 20;
   optional GetSchemaResp get_schema_resp = 21;
@@ -641,6 +897,10 @@ message Response {
 
   optional GetItemResp get_item_resp = 30;
   optional GetItemsResp get_items_resp = 31;
+
+  optional GetSubtreeResp get_subtree_resp = 32;
+  optional GetSubtreesResp get_subtrees_resp = 33;
+  optional GetSubtreeChunkResp get_subtree_chunk_resp = 34;
 
   optional SetItemResp set_item_resp = 40;
   optional DeleteItemResp delete_item_resp = 41;
@@ -656,23 +916,41 @@ message Response {
 
   optional SubscribeResp subscribe_resp = 70;
   optional UnsubscribeResp unsubscribe_resp = 71;
+  optional CheckEnabledRunningResp check_enabled_running_resp = 72;
+  optional GetChangesResp get_changes_resp = 73;
 
-  optional RPCResp rpc_resp = 80;
+  optional DataProvideResp data_provide_resp = 80;
+  optional RPCResp rpc_resp = 81;
+  optional EventNotifResp event_notif_resp = 82;
 }
 
 /**
  * @brief Notification about an event that occurred in the datastore.
  */
 message Notification {
-  required NotificationEvent event = 1;
+  required SubscriptionType type = 1;
   required string destination_address = 2;
   required string source_address = 3;
   required uint32 source_pid = 4;
   required uint32 subscription_id = 5;
+  optional uint32 commit_id = 6;
 
   optional ModuleInstallNotification module_install_notif = 10;
   optional FeatureEnableNotification feature_enable_notif = 11;
   optional ModuleChangeNotification module_change_notif = 12;
+  optional SubtreeChangeNotification subtree_change_notif = 13;
+}
+
+/**
+ * @brief Notification Acknowledgment.
+ */
+message NotificationAck {
+  required Notification notif = 1;  /**< Original notification. */
+  required uint32 result = 2;       /**< Result of the notification (success / error code). */
+  optional Error error = 3;         /**< Additional error information. */
+  required bool do_not_send_abort = 4; /**< If the result is error and this flag is set to true abort notification
+                                       * will not be delivered to this subscriber
+                                       * (Subscriber doesn't want notification about changes that he refused). */
 }
 
 /**
@@ -680,8 +958,11 @@ message Notification {
  */
 message InternalRequest {
   required Operation operation = 1;
+  optional uint32 postpone_timeout = 2;
 
   optional UnsubscribeDestinationReq unsubscribe_dst_req = 10;
+  optional CommitTimeoutReq commit_timeout_req = 11;
+  optional OperDataTimeoutReq oper_data_timeout_req = 12;
 }
 
 /**
@@ -696,7 +977,8 @@ message Msg {
     REQUEST = 1;           /**< The message is a request. */
     RESPONSE = 2;          /**< The message is a response to the request. */
     NOTIFICATION = 3;      /**< The message is a notification. */
-    INTERNAL_REQUEST = 4;  /**< The message is an internal request, should not be used from the public API. */
+    NOTIFICATION_ACK = 4;  /**< The message is a notification acknowledgment. */
+    INTERNAL_REQUEST = 5;  /**< The message is an internal request, should not be used from the public API. */
   }
 
   required MsgType type = 1;                      /**< Indicates type of the message. */
@@ -705,5 +987,8 @@ message Msg {
   optional Request request = 3;                   /**< Filled in in case of type == REQUEST. */
   optional Response response = 4;                 /**< Filled in in case of type == RESPONSE. */
   optional Notification notification = 5;         /**< Filled in in case of type == NOTIFICATION. */
-  optional InternalRequest internal_request = 6;  /**< Filled in in case of type == INTERNAL. */
+  optional NotificationAck notification_ack = 6;  /**< Filled in in case of type == NOTIFICATION_ACK */
+  optional InternalRequest internal_request = 7;  /**< Filled in in case of type == INTERNAL. */
+
+  required uint64 _sysrepo_mem_ctx = 20;          /**< Not part of the protocol. Used internally by Sysrepo to store a pointer to memory context. */
 }

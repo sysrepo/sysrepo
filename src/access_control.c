@@ -131,7 +131,7 @@ ac_check_file_access(const char *file_name, const ac_operation_t operation)
             SR_LOG_WRN("File '%s' cannot be found.", file_name);
             return SR_ERR_NOT_FOUND;
         } else {
-            SR_LOG_ERR("Opening file '%s' failed: %s", file_name, strerror(errno));
+            SR_LOG_ERR("Opening file '%s' failed: %s", file_name, sr_strerror_safe(errno));
             return SR_ERR_UNAUTHORIZED;
         }
     }
@@ -155,7 +155,7 @@ ac_set_identity(const uid_t euid, const gid_t egid)
     ret = setegid(egid);
 #endif
     if (-1 == ret) {
-        SR_LOG_ERR("Unable to switch effective gid: %s", strerror(errno));
+        SR_LOG_ERR("Unable to switch effective gid: %s", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
 
@@ -166,7 +166,7 @@ ac_set_identity(const uid_t euid, const gid_t egid)
     ret = seteuid(euid);
 #endif
     if (-1 == ret) {
-        SR_LOG_ERR("Unable to switch effective uid: %s", strerror(errno));
+        SR_LOG_ERR("Unable to switch effective uid: %s", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
 
