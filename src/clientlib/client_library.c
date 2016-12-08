@@ -97,6 +97,7 @@ typedef struct sr_change_iter_s {
 
 static int connections_cnt = 0;               /**< Number of active connections to the Sysrepo Engine. */
 static int subscriptions_cnt = 0;             /**< Number of active subscriptions. */
+static cm_ctx_t *local_cm_ctx = NULL;         /**< Local Connection Manager context in case of library mode. */
 static cl_sm_ctx_t *cl_sm_ctx = NULL;         /**< Subscription Manager context. */
 static int local_watcher_fd[2] = { -1, -1 };  /**< File descriptor pair of an application-local file descriptor watcher. */
 static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking shared global variables. */
@@ -105,18 +106,18 @@ static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for 
  * @brief Initializes our own sysrepo engine (fallback option if sysrepo daemon is not running)
  */
 static int
-cl_engine_init_local(sr_conn_ctx_t *conn_ctx, const char *socket_path)
+cl_engine_init_local(sr_conn_ctx_t *conn_ctx, const char *socket_path, cm_ctx_t **cm_ctx)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(conn_ctx, socket_path);
+    CHECK_NULL_ARG3(conn_ctx, socket_path, cm_ctx);
 
     /* initialize local Connection Manager */
-    rc = cm_init(CM_MODE_LOCAL, socket_path, &conn_ctx->local_cm);
+    rc = cm_init(CM_MODE_LOCAL, socket_path, cm_ctx);
     CHECK_RC_MSG_RETURN(rc, "Unable to initialize local Connection Manager.");
 
     /* start the server */
-    rc = cm_start(conn_ctx->local_cm);
+    rc = cm_start(*cm_ctx);
     CHECK_RC_MSG_RETURN(rc, "Unable to start local Connection Manager.");
 
     return rc;
@@ -379,8 +380,9 @@ int
 sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx_p)
 {
     sr_conn_ctx_t *connection = NULL;
-    int rc = SR_ERR_OK;
+    cm_ctx_t *cm_ctx = NULL;
     char socket_path[PATH_MAX] = { 0, };
+    int ret = 0, rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(app_name, conn_ctx_p);
 
@@ -390,30 +392,33 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
     rc = cl_connection_create(&connection);
     CHECK_RC_MSG_RETURN(rc, "Unable to create new connection.");
 
-    /* check if this is the first connection */
     pthread_mutex_lock(&global_lock);
+
     if (0 == connections_cnt) {
         /* this is the first connection - initialize logging */
         sr_logger_init(app_name);
     }
-    connections_cnt++;
-    pthread_mutex_unlock(&global_lock);
 
     /* attempt to connect to sysrepo daemon socket */
     rc = cl_socket_connect(connection, SR_DAEMON_SOCKET);
     if (SR_ERR_OK != rc) {
         if (opts & SR_CONN_DAEMON_REQUIRED) {
-            SR_LOG_ERR_MSG("Sysrepo daemon not detected while library mode disallowed.");
             if ((opts & SR_CONN_DAEMON_START) && (0 == getuid())) {
                 /* sysrepo daemon start requested and process is running under root privileges */
-                int ret = system("sysrepod");
+                SR_LOG_DBG_MSG("Sysrepo daemon not detected, starting it.");
+                ret = system("sysrepod");
                 if (0 == ret) {
                     SR_LOG_INF_MSG("Sysrepo daemon has been started.");
+                    rc = cl_socket_connect(connection, SR_DAEMON_SOCKET);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepod: %s.", sr_strerror(rc));
                 } else {
                     SR_LOG_WRN("Unable to start sysrepo daemon, error code=%d.", ret);
+                    goto cleanup;
                 }
+            } else {
+                SR_LOG_ERR_MSG("Sysrepo daemon not detected while library mode disallowed.");
+                goto cleanup;
             }
-            goto cleanup;
         } else {
             SR_LOG_WRN_MSG("Sysrepo daemon not detected. Connecting to local Sysrepo Engine.");
 
@@ -427,7 +432,7 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
                 /* initialize our own sysrepo engine and attempt to connect again */
                 SR_LOG_INF_MSG("Local Sysrepo Engine not running yet, initializing new one.");
 
-                rc = cl_engine_init_local(connection, socket_path);
+                rc = cl_engine_init_local(connection, socket_path, &cm_ctx);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to start local sysrepo engine.");
 
                 rc = cl_socket_connect(connection, socket_path);
@@ -439,14 +444,21 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
         SR_LOG_INF("Connected to daemon Sysrepo Engine at socket=%s", SR_DAEMON_SOCKET);
     }
 
+    if (NULL != cm_ctx) {
+        local_cm_ctx = cm_ctx;
+    }
+    connections_cnt++;
     *conn_ctx_p = connection;
+
+    pthread_mutex_unlock(&global_lock);
     return SR_ERR_OK;
 
 cleanup:
-    if ((NULL != connection) && (NULL != connection->local_cm)) {
-        cm_cleanup(connection->local_cm);
+    if (NULL != cm_ctx) {
+        cm_cleanup(cm_ctx);
     }
     cl_connection_cleanup(connection);
+    pthread_mutex_unlock(&global_lock);
     return rc;
 }
 
@@ -454,14 +466,14 @@ void
 sr_disconnect(sr_conn_ctx_t *conn_ctx)
 {
     if (NULL != conn_ctx) {
-        if (NULL != conn_ctx->local_cm) {
-            /* destroy our own sysrepo engine */
-            cm_stop(conn_ctx->local_cm);
-            cm_cleanup(conn_ctx->local_cm);
-        }
-
         pthread_mutex_lock(&global_lock);
         connections_cnt--;
+        if ((0 == connections_cnt) && (NULL != local_cm_ctx)) {
+            /* destroy local sysrepo engine */
+            cm_stop(local_cm_ctx);
+            cm_cleanup(local_cm_ctx);
+            local_cm_ctx = NULL;
+        }
         if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
             /* destroy library-global resources */
             sr_logger_cleanup();
@@ -2583,8 +2595,10 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
             oper_tmp = realloc(iter->operations, received_cnt * sizeof(*iter->operations));
             CHECK_NULL_NOMEM_GOTO(oper_tmp, rc, cleanup);
             iter->operations = oper_tmp;
-
         }
+        memset(iter->new_values, 0, received_cnt * sizeof(*iter->new_values));
+        memset(iter->old_values, 0, received_cnt * sizeof(*iter->old_values));
+
         iter->index = 0;
         iter->count = received_cnt;
 

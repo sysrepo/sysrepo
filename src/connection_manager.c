@@ -676,7 +676,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     }
 
     /* send the response */
-    rc = cm_msg_send_connection(cm_ctx, session->connection, msg);
+    rc = cm_msg_send_connection(cm_ctx, conn, msg);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to send session_start response (conn=%p).", (void*)conn);
     }
@@ -924,6 +924,8 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
     if (NULL != sr_mem) {
         msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
         ++sr_mem->obj_count;
+    } else {
+        msg->_sysrepo_mem_ctx = (uint64_t) NULL;
     }
 
     /* NULL check according to message type */
@@ -1024,13 +1026,12 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
         }
     }
 
-    if ((0 != buff_pos) && (buff_size - buff_pos) > 0) {
-        /* move unprocessed data to the front of the buffer */
-        memmove(buff->data, (buff->data + buff_pos), (buff_size - buff_pos));
+    if (0 != buff_pos) {
+        if (buff_size - buff_pos > 0) {
+            /* move unprocessed data to the front of the buffer */
+            memmove(buff->data, (buff->data + buff_pos), (buff_size - buff_pos));
+        }
         buff->pos = buff_size - buff_pos;
-    } else {
-        /* no more unprocessed data left in the buffer */
-        buff->pos = 0;
     }
 
     return rc;
@@ -1222,7 +1223,6 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
             } else {
                 /* error by accept - only log the error and skip it */
                 SR_LOG_ERR("Unexpected error by accepting new connection: %s", sr_strerror_safe(errno));
-                continue;
             }
         }
     } while (-1 != clnt_fd); /* accept returns -1 when there are no more connections to accept */

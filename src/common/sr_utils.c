@@ -992,6 +992,19 @@ sr_libyang_get_actual_leaf_type(struct lys_type *base_info, LY_DATA_TYPE type)
     return NULL;
 }
 
+static int
+sr_mem_edit_string_va_wrapper(sr_mem_ctx_t *sr_mem, char **string_p, const char *format, ...)
+{
+    va_list arg_list;
+    int rc = SR_ERR_OK;
+
+    va_start(arg_list, format);
+    rc = sr_mem_edit_string_va(sr_mem, string_p, format, arg_list);
+    va_end(arg_list);
+
+    return rc;
+}
+
 int
 sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value)
 {
@@ -1055,11 +1068,16 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         }
         return SR_ERR_OK;
     case LY_TYPE_IDENT:
-        if (NULL == leaf->value.ident->name) {
-            SR_LOG_ERR("Identity ref in leaf '%s' is NULL", node_name);
+        if (NULL == leaf->schema || NULL == leaf->value.ident->name) {
+            SR_LOG_ERR("Identity ref or schema in leaf '%s' is NULL", node_name);
             return SR_ERR_INTERNAL;
         }
-        sr_mem_edit_string(value->_sr_mem, &value->data.identityref_val, leaf->value.ident->name);
+        if (leaf->schema->module == leaf->value.ident->module) {
+            sr_mem_edit_string(value->_sr_mem, &value->data.identityref_val, leaf->value.ident->name);
+        } else {
+            sr_mem_edit_string_va_wrapper(value->_sr_mem, &value->data.identityref_val, "%s:%s", leaf->value.ident->module->name, leaf->value.ident->name);
+        }
+
         if (NULL == value->data.identityref_val) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'identityref'", node_name);
             return SR_ERR_INTERNAL;
@@ -1947,7 +1965,6 @@ sr_daemon_ignore_signals()
 {
     signal(SIGUSR1, SIG_IGN);
     signal(SIGALRM, SIG_IGN);
-    signal(SIGCHLD, SIG_IGN);
     signal(SIGTSTP, SIG_IGN);  /* keyboard stop */
     signal(SIGTTIN, SIG_IGN);  /* background read from tty */
     signal(SIGTTOU, SIG_IGN);  /* background write to tty */
@@ -2193,7 +2210,7 @@ sr_lys_module_has_data(const struct lys_module *module)
     /* iterate through top-level nodes */
     LY_TREE_FOR(module->data, iter) {
         if (((LYS_CONFIG_R & iter->flags) /* operational data */ ||
-             ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_CHOICE | LYS_RPC | LYS_NOTIF | LYS_ACTION) & iter->nodetype))) {
+             ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_CHOICE | LYS_RPC | LYS_NOTIF | LYS_ACTION | LYS_USES) & iter->nodetype))) {
             /* data-carrying */
             return true;
         }

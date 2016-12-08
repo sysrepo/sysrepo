@@ -27,6 +27,8 @@
 #include <cmocka.h>
 #include <string.h>
 #include <pthread.h>
+#include <signal.h>
+#include <fcntl.h>
 
 #include "sr_constants.h"
 #include "sysrepo.h"
@@ -170,6 +172,111 @@ cl_connection_test(void **state)
 
     /* disconnect from sysrepo - conn 1 */
     sr_disconnect(conn1);
+}
+
+static void
+cl_multiconnect_test(void **state)
+{
+    sr_conn_ctx_t *conn1 = NULL, *conn2 = NULL;
+    sr_session_ctx_t *sess1 = NULL, *sess2 = NULL;
+    int rc = 0;
+
+    /* connect to sysrepo - conn 1 */
+    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn1);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(conn1);
+
+    /* connect to sysrepo - conn 2 */
+    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn2);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(conn2);
+
+    /* start a new session in conn 1 */
+    rc = sr_session_start(conn1, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess1);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(sess1);
+
+    /* start a new session in conn 2 */
+    rc = sr_session_start(conn2, SR_DS_STARTUP, SR_SESS_DEFAULT, &sess2);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(sess2);
+
+    /* try session_data_refresh in both sessions */
+    rc = sr_session_refresh(sess1);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_refresh(sess2);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* disconnect from sysrepo - conn 1 */
+    sr_disconnect(conn1);
+
+    /* try session_data_refresh via conn2 - should still work */
+    rc = sr_session_refresh(sess2);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* disconnect from sysrepo - conn 2 */
+    sr_disconnect(conn2);
+}
+
+static void
+cl_disconnect_test(void **state)
+{
+    /* used to retrieve fd from conn_ctx */
+    typedef struct test_sr_conn_ctx_s {
+        int fd;
+    } test_sr_conn_ctx_t;
+
+    sr_conn_ctx_t *conn = NULL;
+    sr_session_ctx_t *sess = NULL;
+    int pipefd[2] = { -1, -1 };
+    int fd_to_close = -1;
+    int rc = 0;
+
+    signal(SIGPIPE, SIG_IGN); /* ignore sigpipe */
+
+    /* connect to sysrepo */
+    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(conn);
+
+    /* start a new session in the connection */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(sess);
+
+    /* close the socket to the server and replace it with pipe */
+    fd_to_close = ((test_sr_conn_ctx_t*)conn)->fd;
+    printf("fd %d will be closed\n", fd_to_close);
+    close(fd_to_close);
+    pipe(pipefd);
+    if (fd_to_close == pipefd[0]) {
+        close(pipefd[1]);
+    } else {
+        assert_int_equal(fd_to_close, pipefd[0]);
+        close(pipefd[0]);
+    }
+
+    /* try session_data_refresh - should fail with SR_ERR_DISCONNECT */
+    rc = sr_session_refresh(sess);
+    assert_int_equal(rc, SR_ERR_DISCONNECT);
+
+    /* reconnect */
+    sr_disconnect(conn);
+    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(conn);
+
+    /* start a new session in the new connection */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(sess);
+
+    /* try session_data_refresh */
+    rc = sr_session_refresh(sess);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* disconnect from sysrepo */
+    sr_disconnect(conn);
 }
 
 static void
@@ -1206,6 +1313,8 @@ cl_validate_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* leafref: non-existing leaf and then fix it */
+/* TEMPORARY WORKAROUND until https://github.com/CESNET/libyang/issues/218 is fixed */
+#if 0
     value.type = SR_UINT8_T;
     value.data.uint8_val = 18;
     rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
@@ -1220,6 +1329,7 @@ cl_validate_test(void **state)
             printf("Error[%zu]: %s: %s\n", i, errors[i].xpath, errors[i].message);
         }
     }
+#endif
 
     /* fix leafref */
     value.data.uint8_val = 17;
@@ -3099,16 +3209,28 @@ cl_action_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 3);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[0].xpath);
-    assert_int_equal(SR_STRING_T, output[0].type);
-    assert_string_equal("ttm", output[0].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[1].xpath);
-    assert_int_equal(SR_STRING_T, output[1].type);
-    assert_string_equal("drm_kms_helper", output[1].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[2].xpath);
-    assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("drm", output[2].data.string_val);
+    char *expected_values [] = {"ttm", "drm_kms_helper", "drm"};
+    size_t expected_cnt = sizeof(expected_values) / sizeof(*expected_values);
+    assert_int_equal(output_cnt, expected_cnt);
+
+    for (size_t i = 0; i < expected_cnt; i++) {
+        assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[i].xpath);
+        assert_int_equal(SR_STRING_T, output[i].type);
+    }
+
+    for (size_t j = 0; j < expected_cnt; j++) {
+        bool found = false;
+
+        for (size_t i = 0; i < expected_cnt; i++) {
+            if (0 == strcmp(expected_values[j], output[i].data.string_val)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            assert_string_equal(expected_values[j], "");
+        }
+    }
 
     sr_free_values(output, output_cnt);
     output_cnt = 0;
@@ -3196,25 +3318,30 @@ cl_action_tree_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 3);
-    /*  -> dependency #1 */
-    assert_string_equal("dependency", output[0].name);
-    assert_string_equal("test-module", output[0].module_name);
-    assert_false(output[0].dflt);
-    assert_int_equal(SR_STRING_T, output[0].type);
-    assert_string_equal("ttm", output[0].data.string_val);
-    /*  -> dependency #2 */
-    assert_string_equal("dependency", output[1].name);
-    assert_string_equal("test-module", output[1].module_name);
-    assert_false(output[1].dflt);
-    assert_int_equal(SR_STRING_T, output[1].type);
-    assert_string_equal("drm_kms_helper", output[1].data.string_val);
-    /*  -> dependency #3 */
-    assert_string_equal("dependency", output[2].name);
-    assert_string_equal("test-module", output[2].module_name);
-    assert_false(output[2].dflt);
-    assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("drm", output[2].data.string_val);
+    char *expected_values [] = {"ttm", "drm_kms_helper", "drm"};
+    size_t expected_cnt = sizeof(expected_values) / sizeof(*expected_values);
+    assert_int_equal(output_cnt, expected_cnt);
+
+    for (size_t i = 0; i < expected_cnt; i++) {
+        assert_string_equal("dependency", output[i].name);
+        assert_string_equal("test-module", output[i].module_name);
+        assert_false(output[i].dflt);
+        assert_int_equal(SR_STRING_T, output[i].type);
+    }
+
+    for (size_t j = 0; j < expected_cnt; j++) {
+        bool found = false;
+
+        for (size_t i = 0; i < expected_cnt; i++) {
+            if (0 == strcmp(expected_values[j], output[i].data.string_val)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            assert_string_equal(expected_values[j], "");
+        }
+    }
 
     sr_free_trees(output, output_cnt);
     output_cnt = 0;
@@ -3294,16 +3421,28 @@ cl_action_combo_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 3);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[0].xpath);
-    assert_int_equal(SR_STRING_T, output[0].type);
-    assert_string_equal("ttm", output[0].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[1].xpath);
-    assert_int_equal(SR_STRING_T, output[1].type);
-    assert_string_equal("drm_kms_helper", output[1].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[2].xpath);
-    assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("drm", output[2].data.string_val);
+    char *expected_values [] = {"ttm", "drm_kms_helper", "drm"};
+    size_t expected_cnt = sizeof(expected_values) / sizeof(*expected_values);
+    assert_int_equal(output_cnt, expected_cnt);
+
+    for (size_t i = 0; i < expected_cnt; i++) {
+        assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[i].xpath);
+        assert_int_equal(SR_STRING_T, output[i].type);
+    }
+
+    for (size_t j = 0; j < expected_cnt; j++) {
+        bool found = false;
+
+        for (size_t i = 0; i < expected_cnt; i++) {
+            if (0 == strcmp(expected_values[j], output[i].data.string_val)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            assert_string_equal(expected_values[j], "");
+        }
+    }
 
     sr_free_values(output, output_cnt);
     output_cnt = 0;
@@ -3365,25 +3504,28 @@ cl_action_combo_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 3);
-    /*  -> dependency #1 */
-    assert_string_equal("dependency", output_tree[0].name);
-    assert_string_equal("test-module", output_tree[0].module_name);
-    assert_false(output_tree[0].dflt);
-    assert_int_equal(SR_STRING_T, output_tree[0].type);
-    assert_string_equal("ttm", output_tree[0].data.string_val);
-    /*  -> dependency #2 */
-    assert_string_equal("dependency", output_tree[1].name);
-    assert_string_equal("test-module", output_tree[1].module_name);
-    assert_false(output_tree[1].dflt);
-    assert_int_equal(SR_STRING_T, output_tree[1].type);
-    assert_string_equal("drm_kms_helper", output_tree[1].data.string_val);
-    /*  -> dependency #3 */
-    assert_string_equal("dependency", output_tree[2].name);
-    assert_string_equal("test-module", output_tree[2].module_name);
-    assert_false(output_tree[2].dflt);
-    assert_int_equal(SR_STRING_T, output_tree[2].type);
-    assert_string_equal("drm", output_tree[2].data.string_val);
+    assert_int_equal(output_cnt, expected_cnt);
+
+    for (size_t i = 0; i < expected_cnt; i++) {
+        assert_string_equal("dependency", output_tree[i].name);
+        assert_string_equal("test-module", output_tree[i].module_name);
+        assert_false(output_tree[i].dflt);
+        assert_int_equal(SR_STRING_T, output_tree[i].type);
+    }
+
+    for (size_t j = 0; j < expected_cnt; j++) {
+        bool found = false;
+
+        for (size_t i = 0; i < expected_cnt; i++) {
+            if (0 == strcmp(expected_values[j], output_tree[i].data.string_val)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            assert_string_equal(expected_values[j], "");
+        }
+    }
 
     sr_free_trees(output_tree, output_cnt);
     output_cnt = 0;
@@ -3624,7 +3766,7 @@ cl_candidate_refresh(void **state)
 
 }
 
-#define MAX_CHANGE 10
+#define MAX_CHANGE 150
 typedef struct changes_s{
     size_t cnt;
     sr_val_t *new_values[MAX_CHANGE];
@@ -3680,10 +3822,11 @@ cl_get_changes_iter_test(void **state)
     rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* get changes can not be called only on notification session */
+    /* get changes can be called only on notification session */
     rc = sr_get_changes_iter(session, "/example-module:container", &iter);
     assert_int_equal(rc, SR_ERR_UNSUPPORTED);
 
+    /* subscribe for changes */
     rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
             0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -3704,10 +3847,105 @@ cl_get_changes_iter_test(void **state)
 
     assert_int_equal(changes.cnt, 1);
     for (size_t i = 0; i < changes.cnt; i++) {
+        assert_int_equal(changes.oper[i], SR_OP_DELETED);
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
 
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_get_changes_iter_multi_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = { 0, };
+    sr_val_t val = { 0, };
+    char xpath[PATH_MAX] = { 0, };
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for changes */
+    rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    val.type = SR_STRING_T;
+    val.data.string_val = "test-value";
+
+    /* genarate a lot of changes */
+    for (size_t i = 0; i < 30; i++) {
+        snprintf(xpath, PATH_MAX - 1, "/example-module:container/list[key1='test_%zu'][key2='test_%zu']/leaf", i, i);
+        rc = sr_set_item(session, xpath, &val, SR_EDIT_DEFAULT);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* save changes to running */
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    usleep(100000);
+
+    assert_int_equal(changes.cnt, 120);
+    for (size_t i = 0; i < changes.cnt; i++) {
+        assert_int_equal(changes.oper[i], SR_OP_CREATED);
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+
+    /* delete changes + create new ones */
+    for (size_t i = 0; i < 30; i++) {
+        snprintf(xpath, PATH_MAX - 1, "/example-module:container/list[key1='test_%zu'][key2='test_%zu']/leaf", i, i);
+        rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
+        assert_int_equal(rc, SR_ERR_OK);
+
+        snprintf(xpath, PATH_MAX - 1, "/example-module:container/list[key1='test2_%zu'][key2='test2_%zu']/leaf", i, i);
+        rc = sr_set_item(session, xpath, &val, SR_EDIT_DEFAULT);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* save changes to running */
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    usleep(100000);
+
+    assert_int_equal(changes.cnt, 150);
+    for (size_t i = 0; i < changes.cnt; i++) {
+        assert_true(SR_OP_DELETED == changes.oper[i] || SR_OP_CREATED == changes.oper[i]);
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+
+    /* delete all changes */
+    for (size_t i = 0; i < 30; i++) {
+        snprintf(xpath, PATH_MAX - 1, "/example-module:container/list[key1='test2_%zu'][key2='test2_%zu']/leaf", i, i);
+        rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* save changes to running */
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    usleep(100000);
+
+    assert_int_equal(changes.cnt, 30);
+    for (size_t i = 0; i < changes.cnt; i++) {
+        assert_int_equal(changes.oper[i], SR_OP_DELETED);
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -4936,6 +5174,8 @@ main()
 {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(cl_connection_test, logging_setup, NULL),
+            cmocka_unit_test_setup_teardown(cl_multiconnect_test, logging_setup, NULL),
+            cmocka_unit_test_setup_teardown(cl_disconnect_test, logging_setup, NULL),
             cmocka_unit_test_setup_teardown(cl_list_schemas_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_schema_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
@@ -4971,6 +5211,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_candidate_refresh, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_changes_iter_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_changes_iter_multi_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_enable_empty_startup, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_dp_get_items_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_session_set_opts, sysrepo_setup, sysrepo_teardown),

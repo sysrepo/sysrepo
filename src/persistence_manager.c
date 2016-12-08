@@ -333,8 +333,8 @@ pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscript
     while (NULL != node) {
         if (NULL != node->schema && NULL != node->schema->name) {
             node_ll = (struct lyd_node_leaf_list*)node;
-            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "type")) {
-                subscription->type = sr_subsciption_type_str_to_gpb(node_ll->value_str);
+            if (0 == strcmp(node->schema->name, "type") && NULL != node_ll->value.ident->name) {
+                subscription->type = sr_subsciption_type_str_to_gpb(node_ll->value.ident->name);
             }
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-address")) {
                 subscription->dst_address = strdup(node_ll->value_str);
@@ -347,8 +347,8 @@ pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscript
                 subscription->xpath = strdup(node_ll->value_str);
                 CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
             }
-            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "event")) {
-                subscription->notif_event = sr_notification_event_str_to_gpb(node_ll->value_str);
+            if (0 == strcmp(node->schema->name, "event") && NULL != node_ll->value.ident->name) {
+                subscription->notif_event = sr_notification_event_str_to_gpb(node_ll->value.ident->name);
             }
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "priority")) {
                 subscription->priority = atoi(node_ll->value_str);
