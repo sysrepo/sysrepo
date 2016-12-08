@@ -1461,7 +1461,8 @@ sr_api_variant_from_str(const char *api_variant_str)
  */
 static int
 sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_node *node, size_t depth,
-         size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, sr_node_t *sr_tree)
+         size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit,
+         sr_tree_pruning_cb pruning_cb, void *pruning_ctx, sr_node_t *sr_tree)
 {
     int rc = SR_ERR_OK;
     struct lyd_node_leaf_list *data_leaf = NULL;
@@ -1469,6 +1470,7 @@ sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_no
     struct lyd_node_anydata *sch_any = NULL;
     const struct lyd_node *child = NULL;
     size_t idx = 0;
+    bool prune = false;
     sr_node_t *sr_subtree = NULL;
 
     CHECK_NULL_ARG2(node, sr_tree);
@@ -1524,12 +1526,20 @@ sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_no
                 (0 < depth || slice_width > idx - slice_offset) /* slice width */ &&
                 (0 == depth || child_limit > idx) /* child_limit */ &&
                 (depth_limit > depth + 1) /* depth limit */) {
+                prune = false;
+                if (NULL != pruning_cb) {
+                    rc = pruning_cb(pruning_ctx, child, &prune);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Tree pruning has failed.");
+                }
+                if (true == prune) {
+                    continue;
+                }
                 rc = sr_node_add_child(sr_tree, NULL, NULL, &sr_subtree);
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
                 }
                 rc = sr_copy_node_to_tree_internal(node, child, depth + 1, slice_offset, slice_width,
-                        child_limit, depth_limit, sr_subtree);
+                        child_limit, depth_limit, pruning_cb, pruning_ctx, sr_subtree);
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
                 }
@@ -1547,70 +1557,39 @@ cleanup:
 }
 
 int
-sr_copy_node_to_tree(const struct lyd_node *node, sr_node_t *sr_tree)
+sr_copy_node_to_tree(const struct lyd_node *node, sr_tree_pruning_cb pruning_cb, void *pruning_ctx, sr_node_t *sr_tree)
 {
-    return sr_copy_node_to_tree_internal(NULL, node, 0, 0, SIZE_MAX, SIZE_MAX, SIZE_MAX, sr_tree);
+    return sr_copy_node_to_tree_internal(NULL, node, 0, 0, SIZE_MAX, SIZE_MAX, SIZE_MAX, pruning_cb, pruning_ctx, sr_tree);
 }
 
 int
 sr_copy_node_to_tree_chunk(const struct lyd_node *node, size_t slice_offset, size_t slice_width, size_t child_limit,
-        size_t depth_limit, sr_node_t *sr_tree)
+        size_t depth_limit, sr_tree_pruning_cb pruning_cb, void *pruning_ctx, sr_node_t *sr_tree)
 {
-    return sr_copy_node_to_tree_internal(NULL, node, 0, slice_offset, slice_width, child_limit, depth_limit, sr_tree);
+    return sr_copy_node_to_tree_internal(NULL, node, 0, slice_offset, slice_width, child_limit, depth_limit,
+            pruning_cb, pruning_ctx, sr_tree);
 }
 
 int
-sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count)
+sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_tree_pruning_cb pruning_cb, void *pruning_ctx,
+        sr_node_t **sr_trees, size_t *count)
 {
-    int rc = SR_ERR_OK;
-    sr_node_t *trees = NULL;
-    sr_mem_snapshot_t snapshot = { 0, };
-    size_t i = 0;
-
-    CHECK_NULL_ARG3(nodes, sr_trees, count);
-
-    if (0 == nodes->number) {
-        *sr_trees = NULL;
-        *count = 0;
-        return rc;
-    }
-
-    if (sr_mem) {
-        sr_mem_snapshot(sr_mem, &snapshot);
-    }
-
-    trees = sr_calloc(sr_mem, nodes->number, sizeof *trees);
-    CHECK_NULL_NOMEM_RETURN(trees);
-    if (sr_mem) {
-        ++sr_mem->obj_count;
-    }
-
-    for (i = 0; i < nodes->number && 0 == rc; ++i) {
-        trees[i]._sr_mem = sr_mem;
-        rc = sr_copy_node_to_tree_internal(NULL, nodes->set.d[i], 0, 0, SIZE_MAX, SIZE_MAX, SIZE_MAX, trees + i);
-    }
-
-    if (SR_ERR_OK == rc) {
-        *sr_trees = trees;
-        *count = nodes->number;
-    } else {
-        if (sr_mem) {
-            sr_mem_restore(&snapshot);
-        } else {
-            sr_free_trees(trees, i);
-        }
-    }
-    return rc;
+    return sr_nodes_to_tree_chunks(nodes, 0, SIZE_MAX, SIZE_MAX, SIZE_MAX, sr_mem, pruning_cb, pruning_ctx,
+            sr_trees, count);
 }
 
 int
 sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_width, size_t child_limit,
-        size_t depth_limit, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count)
+        size_t depth_limit, sr_mem_ctx_t *sr_mem, sr_tree_pruning_cb pruning_cb, void *pruning_ctx,
+        sr_node_t **sr_trees, size_t *count)
 {
     int rc = SR_ERR_OK;
     sr_node_t *trees = NULL;
+    size_t tree_cnt = 0;
     sr_mem_snapshot_t snapshot = { 0, };
-    size_t i = 0;
+    sr_bitset_t *pruned = NULL;
+    bool prune = false;
+    size_t i = 0, j = 0;
 
     CHECK_NULL_ARG3(nodes, sr_trees, count);
 
@@ -1624,26 +1603,58 @@ sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_
         sr_mem_snapshot(sr_mem, &snapshot);
     }
 
-    trees = sr_calloc(sr_mem, nodes->number, sizeof *trees);
-    CHECK_NULL_NOMEM_RETURN(trees);
+    /* find out which trees should be completely pruned away and which should not */
+    if (NULL != pruning_cb) {
+        rc = sr_bitset_init(nodes->number, &pruned);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize bitset.");
+        for (i = 0; i < nodes->number; ++i) {
+            rc = pruning_cb(pruning_ctx, nodes->set.d[i], &prune);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Tree pruning has failed.");
+            rc = sr_bitset_set(pruned, i, prune);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to enable bit in a bitset.");
+            tree_cnt += !prune;
+        }
+    } else {
+        tree_cnt = nodes->number;
+    }
+
+    if (0 == tree_cnt) {
+        *sr_trees = NULL;
+        *count = 0;
+        return rc;
+    }
+
+    trees = sr_calloc(sr_mem, tree_cnt, sizeof *trees);
+    CHECK_NULL_NOMEM_GOTO(trees, rc, cleanup);
     if (sr_mem) {
         ++sr_mem->obj_count;
     }
 
-    for (i = 0; i < nodes->number && 0 == rc; ++i) {
+    for (i = j = 0; i < nodes->number && 0 == rc; ++i) {
+        prune = false;
+        if (NULL != pruned) {
+            rc = sr_bitset_get(pruned, i, &prune);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get value of a bit in a bitset.");
+        }
+        if (prune) {
+            continue;
+        }
         trees[i]._sr_mem = sr_mem;
         rc = sr_copy_node_to_tree_internal(NULL, nodes->set.d[i], 0, slice_offset, slice_width, child_limit,
-                depth_limit, trees + i);
+                depth_limit, pruning_cb, pruning_ctx, trees + j);
+        ++j;
     }
 
+cleanup:
+    sr_bitset_cleanup(pruned);
     if (SR_ERR_OK == rc) {
         *sr_trees = trees;
-        *count = nodes->number;
+        *count = tree_cnt;
     } else {
         if (sr_mem) {
             sr_mem_restore(&snapshot);
         } else {
-            sr_free_trees(trees, i);
+            sr_free_trees(trees, tree_cnt);
         }
     }
     return rc;

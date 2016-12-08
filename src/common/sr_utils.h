@@ -92,6 +92,11 @@ typedef struct sr_print_ctx_s {
 } sr_print_ctx_t;
 
 /**
+ * Callback used to ask if a given subtree should be pruned away.
+ */
+typedef int (*sr_tree_pruning_cb)(void *pruning_ctx, const struct lyd_node *subtree, bool *prune);
+
+/**
  * @defgroup utils Utility Functions
  * @ingroup common
  * @{
@@ -431,9 +436,11 @@ sr_api_variant_t sr_api_variant_from_str(const char *api_variant_str);
  * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree.
  *
  * @param [in] node libyang node.
+ * @param [in] pruning_cb For each subtree this callback decides if it should be pruned away.
+ * @param [in] pruning_ctx Context to pruning callback, opaque to this function.
  * @param [out] sr_tree Returned sysrepo tree.
  */
-int sr_copy_node_to_tree(const struct lyd_node *node, sr_node_t *sr_tree);
+int sr_copy_node_to_tree(const struct lyd_node *node, sr_tree_pruning_cb pruning_cb, void *pruning_ctx, sr_node_t *sr_tree);
 
 /**
  * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree chunk.
@@ -443,10 +450,12 @@ int sr_copy_node_to_tree(const struct lyd_node *node, sr_node_t *sr_tree);
  * @param [in] slice_width Maximum number of child nodes of the chunk root to include.
  * @param [in] child_limit Limit on the number of copied children imposed on each node starting from the 3rd level.
  * @param [in] depth_limit Maximum number of tree levels to copy.
+ * @param [in] pruning_cb For each subtree this callback decides if it should be pruned away.
+ * @param [in] pruning_ctx Context to pruning callback, opaque to this function.
  * @param [out] sr_tree Returned sysrepo tree.
  */
 int sr_copy_node_to_tree_chunk(const struct lyd_node *node, size_t slice_offset, size_t slice_width, size_t child_limit,
-        size_t depth_limit, sr_node_t *sr_tree);
+        size_t depth_limit, sr_tree_pruning_cb pruning_cb, void *pruning_ctx, sr_node_t *sr_tree);
 
 /**
  * @brief Convert a set of libyang nodes into an array of sysrepo trees. For each node a corresponding
@@ -456,10 +465,13 @@ int sr_copy_node_to_tree_chunk(const struct lyd_node *node, size_t slice_offset,
  *
  * @param [in] nodes A set of libyang nodes.
  * @param [in] sr_mem Sysrepo memory context to use for memory allocation. Can be NULL.
+ * @param [in] pruning_cb For each subtree this callback decides if it should be pruned away.
+ * @param [in] pruning_ctx Context to pruning callback, opaque to this function.
  * @param [out] sr_trees Returned array of sysrepo trees.
  * @param [out] count Number of returned trees.
  */
-int sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count);
+int sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_tree_pruning_cb pruning_cb, void *pruning_ctx,
+        sr_node_t **sr_trees, size_t *count);
 
 /**
  * @brief Convert a set of libyang nodes into an array of sysrepo tree chunks. For each node a corresponding
@@ -473,11 +485,14 @@ int sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr
  * @param [in] child_limit Limit on the number of copied children imposed on each node starting from the 3rd level.
  * @param [in] depth_limit Maximum number of tree levels to copy.
  * @param [in] sr_mem Sysrepo memory context to use for memory allocation. Can be NULL.
+ * @param [in] pruning_cb For each subtree this callback decides if it should be pruned away.
+ * @param [in] pruning_ctx Context to pruning callback, opaque to this function.
  * @param [out] sr_trees Returned array of sysrepo trees.
  * @param [out] count Number of returned trees.
  */
 int sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_width, size_t child_limit,
-        size_t depth_limit, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count);
+        size_t depth_limit, sr_mem_ctx_t *sr_mem, sr_tree_pruning_cb pruning_cb, void *pruning_ctx,
+        sr_node_t **sr_trees, size_t *count);
 
 /**
  * @brief Convert a sysrepo tree into a libyang data tree.

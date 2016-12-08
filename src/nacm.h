@@ -115,6 +115,7 @@ typedef struct nacm_rule_list_s {
  * @brief Structure that holds the context of an instance of NACM module.
  */
 typedef struct nacm_ctx_s {
+    dm_ctx_t *dm_ctx;              /**< Data manager context. */
     pthread_rwlock_t lock;         /**< RW-lock used to protect NACM context. */
     dm_schema_info_t *schema_info; /**< Schema info associated with the NACM YANG module. */
     char *data_search_dir;         /**< Location where data files are stored. */
@@ -151,13 +152,14 @@ typedef struct nacm_nodeset_s {
  * @brief Structure that holds data of an ongoing data validation request.
  */
 typedef struct nacm_data_val_ctx_s {
-    nacm_ctx_t *nacm_ctx;     /**< NACM context from which this request was issued. */
-    const ac_ucred_t *user_credentials;  /**< Credentials of the user. */
-    bool cache;               /**< Use cache to remember sets of matching nodes for data-oriented rules. */
-    sr_bitset_t *rule_lists;  /**< Set of rule-lists that apply to this data validation request.
-                                   (stored as bitset of their IDs). */
-    sr_btree_t *nodesets;     /**< A set of data-oriented NACM rules with already evaluated path.
-                                   Items are of type nacm_nodeset_t. */
+    nacm_ctx_t *nacm_ctx;               /**< NACM context from which this request was issued. */
+    const ac_ucred_t *user_credentials; /**< Credentials of the user. */
+    dm_schema_info_t *schema_info;      /**< Schema info associated with the data tree whose nodes are being validated. */
+    bool cache;                         /**< Use cache to remember sets of matching nodes for data-oriented rules. */
+    sr_bitset_t *rule_lists;            /**< Set of rule-lists that apply to this data validation request.
+                                             (stored as bitset of their IDs). */
+    sr_btree_t *nodesets;               /**< A set of data-oriented NACM rules with already evaluated path.
+                                             Items are of type nacm_nodeset_t. */
 } nacm_data_val_ctx_t;
 
 /**
@@ -213,16 +215,17 @@ int nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credenti
 /**
  * @brief Start a data access validation request. The function returns a newly allocated instance
  * of nacm_data_val_ctx_t to be used with ::nacm_check_data. For the time of the request the NACM
- * context is read-locked and gets unlocked only after the data validation context is destroyed in
- * ::nacm_data_validation_stop.
+ * context as well as the schema info associated with the validated nodes are read-locked and get
+ * unlocked only after the data validation context is destroyed in ::nacm_data_validation_stop.
  *
  * @param [in] nacm_ctx NACM context.
  * @param [in] user_credentials User credentials.
+ * @param [in] data_tree Data tree whose nodes will be validated.
  * @param [in] cache Use cache to remember sets of matching nodes for data-oriented rules.
  * @param [out] nacm_data_val_ctx Returned context representing this request.
  */
-int nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, bool cache,
-        nacm_data_val_ctx_t **nacm_data_val_ctx);
+int nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, struct lyd_node *data_tree,
+        bool cache, nacm_data_val_ctx_t **nacm_data_val_ctx);
 
 /**
  * @brief Stop an on-going data validation request. The associated NACM context is unlocked and
@@ -234,7 +237,6 @@ void nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx);
 
 /**
  * @brief Check if there is a permission to read/create/update/delete the given data node.
- * Function assumes that the associated schema info is read-locked ??? (risk of deadlock with NACM lock)
  *
  * @param [in] nacm_data_val_ctx_t NACM data validation context.
  * @param [in] access_type Type of the requested access. All types except for NACM_ACCESS_EXEC are valid.
@@ -245,7 +247,7 @@ void nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx);
  * @param [out] rule_info A textual description of the applied rule, if any.
  *                        Returned string shouldn't be accessed after ::nacm_data_validation_stop is called!
  */
-int nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t access_type, struct lyd_node *node,
+int nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t access_type, const struct lyd_node *node,
         nacm_action_t *action, const char **rule_name, const char **rule_info);
 
 #endif /* NACM_H_ */

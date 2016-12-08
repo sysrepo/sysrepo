@@ -696,7 +696,7 @@ sr_node_t_test(void **state)
     assert_non_null(nodeset);
     assert_int_equal(4, nodeset->number);
 
-    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, &trees, &tree_cnt));
+    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, NULL, NULL, &trees, &tree_cnt));
     assert_non_null(trees);
     assert_int_equal(4, tree_cnt);
 
@@ -852,7 +852,7 @@ sr_node_t_with_augments_test(void **state)
     assert_non_null(nodeset);
     assert_int_equal(2, nodeset->number);
 
-    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, &trees, &tree_cnt));
+    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, NULL, NULL, &trees, &tree_cnt));
     assert_non_null(trees);
     assert_int_equal(2, tree_cnt);
 
@@ -952,7 +952,7 @@ sr_node_t_rpc_input_test(void **state)
     assert_non_null(nodeset);
     assert_int_equal(2, nodeset->number);
 
-    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, &trees, &tree_cnt));
+    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, NULL, NULL, &trees, &tree_cnt));
     assert_non_null(trees);
     assert_int_equal(2, tree_cnt);
 
@@ -1042,7 +1042,7 @@ sr_node_t_rpc_output_test(void **state)
     assert_non_null(nodeset);
     assert_int_equal(3, nodeset->number);
 
-    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, &trees, &tree_cnt));
+    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, NULL, NULL, &trees, &tree_cnt));
     assert_non_null(trees);
     assert_int_equal(3, tree_cnt);
 

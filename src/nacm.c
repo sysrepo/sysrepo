@@ -811,6 +811,7 @@ nacm_init(dm_ctx_t *dm_ctx, const char *data_search_dir, nacm_ctx_t **nacm_ctx)
     /* allocate context data structure */
     ctx = calloc(1, sizeof *ctx);
     CHECK_NULL_NOMEM_GOTO(ctx, rc, cleanup);
+    ctx->dm_ctx = dm_ctx;
 
     /* initialize RW lock */
     rc = pthread_rwlock_init(&ctx->lock, NULL);
@@ -977,25 +978,47 @@ nacm_free_data_val_ctx(nacm_data_val_ctx_t *nacm_data_val_ctx)
 }
 
 int
-nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, bool cache,
-        nacm_data_val_ctx_t **nacm_data_val_ctx_p)
+nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, struct lyd_node *data_tree,
+        bool cache, nacm_data_val_ctx_t **nacm_data_val_ctx_p)
 {
     int rc = SR_ERR_OK;
+    const char *username = NULL, *module_name = NULL;
     bool disjoint = false, bit_val = false;
     char **ext_groups = NULL;
     size_t ext_group_cnt = 0;
+    struct lys_submodule *sub = NULL;
+    dm_schema_info_t *schema_info = NULL;
     nacm_user_t *nacm_user = NULL;
     nacm_group_t **nacm_ext_groups = NULL;
     nacm_rule_list_t *nacm_rule_list = NULL;
     nacm_data_val_ctx_t *nacm_data_val_ctx = NULL;
-    CHECK_NULL_ARG4(nacm_ctx, user_credentials, user_credentials->e_username, nacm_data_val_ctx_p);
+
+    CHECK_NULL_ARG4(nacm_ctx, user_credentials, data_tree, nacm_data_val_ctx_p);
+    CHECK_NULL_ARG3(data_tree->schema, data_tree->schema->module, data_tree->schema->module->name);
+
+    if (data_tree->schema->module->type) {
+        /* submodule */
+        sub = (struct lys_submodule *) data_tree->schema->module;
+        CHECK_NULL_ARG3(sub, sub->belongsto, sub->belongsto->name);
+    }
+
+    username = user_credentials->e_username ? user_credentials->e_username : user_credentials->r_username;
+    if (NULL == username) {
+        SR_LOG_ERR_MSG("Unable to validate data access without knowing the username (NULL value detected).");
+        return SR_ERR_INVAL_ARG;
+    }
 
     nacm_data_val_ctx = calloc(1, sizeof *nacm_data_val_ctx);
     CHECK_NULL_NOMEM_GOTO(nacm_data_val_ctx, rc, cleanup);
 
+    /* Lock schema info and NACM -- in this order! */
+    module_name = sub == NULL ? data_tree->schema->module->name : sub->belongsto->name;
+    rc = dm_get_module_and_lock(nacm_ctx->dm_ctx, module_name, &schema_info);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Get schema info failed for %s", module_name);
     pthread_rwlock_rdlock(&nacm_ctx->lock);
 
     nacm_data_val_ctx->nacm_ctx = nacm_ctx;
+    nacm_data_val_ctx->schema_info = schema_info;
     nacm_data_val_ctx->user_credentials = user_credentials;
     nacm_data_val_ctx->cache = cache;
 
@@ -1079,6 +1102,7 @@ nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credenti
 unlock_if_fail:
     if (SR_ERR_OK != rc) {
         pthread_rwlock_unlock(&nacm_ctx->lock);
+        pthread_rwlock_unlock(&schema_info->model_lock);
     }
 
 cleanup:
@@ -1104,11 +1128,12 @@ nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx)
     }
 
     pthread_rwlock_unlock(&nacm_data_val_ctx->nacm_ctx->lock);
+    pthread_rwlock_unlock(&nacm_data_val_ctx->schema_info->model_lock);
     nacm_free_data_val_ctx(nacm_data_val_ctx);
 }
 
 int
-nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t access_type, struct lyd_node *node,
+nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t access_type, const struct lyd_node *node,
         nacm_action_t *action, const char **rule_name, const char **rule_info)
 {
     int rc = SR_ERR_OK;
@@ -1153,7 +1178,7 @@ nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t acces
                     /* this rule is for different access operation */
                     continue;
                 }
-                if (NACM_RULE_DATA != nacm_rule->type) {
+                if (NACM_RULE_DATA != nacm_rule->type && NACM_RULE_NOTSET != nacm_rule->type) {
                     /* this rule is not defined for data access validation */
                     continue;
                 }
@@ -1189,7 +1214,7 @@ nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t acces
                         }
                     }
                     /* check if node is in nodeset */
-                    matches = sr_ly_set_contains(nodeset, node, nacm_data_val_ctx->cache);
+                    matches = sr_ly_set_contains(nodeset, (void *)node, nacm_data_val_ctx->cache);
                     /* store the nodeset for reuse if cache is enabled */
                     if (nacm_data_val_ctx->cache && NULL == nacm_nodeset) {
                         rc = nacm_alloc_nodeset(nacm_rule->id, nodeset, &nacm_nodeset);
