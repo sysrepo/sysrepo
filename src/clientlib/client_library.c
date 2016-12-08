@@ -3472,6 +3472,13 @@ cleanup:
 }
 
 int
+sr_event_notif_replay(sr_subscription_ctx_t *subscription, time_t start_time, time_t stop_time)
+{
+    // TODO
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
 sr_fd_watcher_init(int *fd_p)
 {
     int pipefd[2] = { 0, };
