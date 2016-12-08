@@ -51,9 +51,10 @@ int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath
  * @param [in] xpath
  * @param [in] options If the node can not be created because of the option SR_ERR_DATA_EXISTS or SR_ERR_DATA_MISSING is returned
  * @param [in] value the value to be set (xpath inside the structure is ignored), in case of presence container or list instance is ignored can be NULL
+ * @param [in] str_val alternatinve way of passing the value, if value is NULL string representation is taken into account
  * @return Error code (SR_ERR_OK on success) SR_ERR_DATA_MISSING, SR_ERR_DATA_EXISTS, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
-int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value);
+int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value, const char *str_val);
 
 /**
  * @brief Move the list instance into selected direction. If the list instance doesn't exists or the list is not user-ordered SR_ERR_INVAL_ARG is returned.
@@ -83,10 +84,11 @@ int rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char 
  * @param [in] session
  * @param [in] xpath
  * @param [in] val
+ * @param [in] str_val
  * @param [in] opt
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_val_t *val, sr_edit_options_t opt);
+int rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_val_t *val, char *str_val, sr_edit_options_t opt);
 
 /**
  * @brief Wraps ::rp_dt_delete_item call. In in case of success logs the operation to the session's operation list.

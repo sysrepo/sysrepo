@@ -346,13 +346,14 @@ dm_add_operation_test(void **state)
     int rc;
     dm_ctx_t *ctx = NULL;
     dm_session_t *ses_ctx = NULL;
+    char *str_val = NULL;
 
     rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
 
-    rc = dm_add_operation(ses_ctx, DM_DELETE_OP, NULL, NULL, SR_EDIT_DEFAULT, 0, NULL);
+    rc = dm_add_del_operation(ses_ctx, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     sr_val_t *val = NULL;
@@ -362,10 +363,15 @@ dm_add_operation_test(void **state)
     val->type = SR_INT8_T;
     val->data.int8_val = 42;
 
-    rc = dm_add_operation(ses_ctx, DM_SET_OP, "/abc:def", val, SR_EDIT_DEFAULT, 0, NULL);
+    rc = dm_add_set_operation(ses_ctx, "/abc:def", val, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = dm_add_operation(ses_ctx, DM_DELETE_OP, "/abc:def", NULL, SR_EDIT_DEFAULT, 0, NULL);
+    str_val = strdup("def val");
+    assert_non_null(str_val);
+    rc = dm_add_set_operation(ses_ctx, "/abc:def", NULL, str_val, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_add_del_operation(ses_ctx, "/abc:def", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     sr_val_t *val1 = NULL;
@@ -375,7 +381,7 @@ dm_add_operation_test(void **state)
     val1->data.string_val = strdup("abc");
 
     /* NULL passed in loc_id argument, val1 should be freed */
-    rc = dm_add_operation(ses_ctx, DM_SET_OP, NULL, val1, SR_EDIT_DEFAULT, 0, NULL);
+    rc = dm_add_set_operation(ses_ctx, NULL, val1, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     dm_session_stop(ctx, ses_ctx);

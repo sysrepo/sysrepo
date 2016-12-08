@@ -81,7 +81,7 @@ no_subscription_test(void **state)
    sr_val_t value = {0,};
    value.type = SR_INT8_T;
    value.data.int8_val = 42;
-   rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/i8", SR_EDIT_DEFAULT, &value);
+   rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/i8", SR_EDIT_DEFAULT, &value, NULL);
    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
    test_rp_session_cleanup(ctx, session);
@@ -181,7 +181,7 @@ edit_enabled(void **state)
    val.type = SR_STRING_T;
    val.data.string_val = strdup("abc");
 
-   rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
+   rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val, NULL);
    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
    rc = dm_get_module_and_lockw(ctx->dm_ctx, "example-module", &si);
@@ -192,7 +192,7 @@ edit_enabled(void **state)
 
    pthread_rwlock_unlock(&si->model_lock);
 
-   rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
+   rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val, NULL);
    assert_int_equal(SR_ERR_OK, rc);
 
    sr_val_t *v = NULL;
@@ -234,7 +234,7 @@ enable_running_for_submodule(void **state)
    sr_val_t val = {0,};
    val.type = SR_STRING_T;
    val.data.string_val = strdup("abc");
-   rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/module-a:cont_a/something/a-string", SR_EDIT_DEFAULT, &val);
+   rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/module-a:cont_a/something/a-string", SR_EDIT_DEFAULT, &val, NULL);
    assert_int_equal(SR_ERR_OK, rc);
    
    /* enable a moudle has grouping/uses, per rfc6020 7.12.1 */
@@ -242,7 +242,7 @@ enable_running_for_submodule(void **state)
    assert_int_equal(SR_ERR_OK, rc);
 
    /* testing the results */
-   rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/servers:server/name", SR_EDIT_DEFAULT, &val);
+   rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/servers:server/name", SR_EDIT_DEFAULT, &val, NULL);
    assert_int_equal(SR_ERR_OK, rc);
 
    sr_free_val_content(&val);

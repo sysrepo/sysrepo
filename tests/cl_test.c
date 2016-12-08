@@ -1188,6 +1188,64 @@ cl_set_item_test(void **state)
 }
 
 static void
+cl_set_item_str_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_val_t *v = NULL;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a set-item request */
+    rc = sr_set_item_str(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", "abcdef", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &v);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(v);
+    assert_int_equal(SR_STRING_T, v->type);
+    assert_string_equal("abcdef", v->data.string_val);
+    sr_free_val(v);
+
+    /* with union first matched type is use */
+    rc = sr_set_item_str(session, "/test-module:tpdfs/unival", "42", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session, "/test-module:tpdfs/unival", &v);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(v);
+    assert_int_equal(SR_UINT8_T, v->type);
+    assert_int_equal(42, v->data.uint8_val);
+    sr_free_val(v);
+
+    rc = sr_set_item_str(session, "/test-module:main/dec64", "-42.56", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_set_item_str(session, "/test-module:user[name='abc']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_set_item_str(session, "/test-module:user[name='unknown']/full-name", "Unknown user", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* commit */
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* incorrect value */
+    rc = sr_set_item_str(session, "/test-module:main/i8", "abcd", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
 cl_delete_item_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -5227,6 +5285,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_cross_module_dependency, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_data_in_submodule, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_schema_with_subscription, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_set_item_str_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
