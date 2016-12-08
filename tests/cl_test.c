@@ -3763,7 +3763,7 @@ cl_candidate_refresh(void **state)
 
 }
 
-#define MAX_CHANGE 120
+#define MAX_CHANGE 150
 typedef struct changes_s{
     size_t cnt;
     sr_val_t *new_values[MAX_CHANGE];
@@ -3900,9 +3900,33 @@ cl_get_changes_iter_multi_test(void **state)
         sr_free_val(changes.old_values[i]);
     }
 
-    /* delete all changes */
+    /* delete changes + create new ones */
     for (size_t i = 0; i < 30; i++) {
         snprintf(xpath, PATH_MAX - 1, "/example-module:container/list[key1='test_%zu'][key2='test_%zu']/leaf", i, i);
+        rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
+        assert_int_equal(rc, SR_ERR_OK);
+
+        snprintf(xpath, PATH_MAX - 1, "/example-module:container/list[key1='test2_%zu'][key2='test2_%zu']/leaf", i, i);
+        rc = sr_set_item(session, xpath, &val, SR_EDIT_DEFAULT);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* save changes to running */
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    usleep(100000);
+
+    assert_int_equal(changes.cnt, 150);
+    for (size_t i = 0; i < changes.cnt; i++) {
+        assert_true(SR_OP_DELETED == changes.oper[i] || SR_OP_CREATED == changes.oper[i]);
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+
+    /* delete all changes */
+    for (size_t i = 0; i < 30; i++) {
+        snprintf(xpath, PATH_MAX - 1, "/example-module:container/list[key1='test2_%zu'][key2='test2_%zu']/leaf", i, i);
         rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
         assert_int_equal(rc, SR_ERR_OK);
     }
