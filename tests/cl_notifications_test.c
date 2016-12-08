@@ -2398,7 +2398,7 @@ typedef struct capability_change_s{
 }capability_change_t;
 
 static void
-capability_changed_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
+capability_changed_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     capability_change_t *change = (capability_change_t *) private_ctx;
     pthread_mutex_lock(&change->mutex);

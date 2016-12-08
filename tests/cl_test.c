@@ -4135,8 +4135,8 @@ typedef struct cl_test_en_session_s {
 } cl_test_en_session_t;
 
 static void
-test_event_notif_link_discovery_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_link_discovery_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
@@ -4171,8 +4171,8 @@ test_event_notif_link_discovery_cb(const char *xpath, const sr_val_t *values, co
 }
 
 static void
-test_event_notif_link_removed_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_link_removed_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values,
+        const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
@@ -4207,15 +4207,15 @@ test_event_notif_link_removed_cb(const char *xpath, const sr_val_t *values, cons
 }
 
 static void
-test_event_notif_link_overutilized_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_link_overutilized_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     assert_true(0 && "This callback should not get called");
 }
 
 static void
-test_event_notif_status_change_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_status_change_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
@@ -4395,8 +4395,8 @@ cl_event_notif_test(void **state)
 }
 
 static void
-test_event_notif_link_discovery_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_link_discovery_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     const sr_node_t *tree = NULL;
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
@@ -4467,8 +4467,8 @@ test_event_notif_link_discovery_tree_cb(const char *xpath, const sr_node_t *tree
 }
 
 static void
-test_event_notif_link_removed_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_link_removed_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     const sr_node_t *tree = NULL;
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
@@ -4539,15 +4539,15 @@ test_event_notif_link_removed_tree_cb(const char *xpath, const sr_node_t *trees,
 }
 
 static void
-test_event_notif_link_overutilized_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_link_overutilized_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     assert_true(0 && "This callback should not get called");
 }
 
 static void
-test_event_notif_status_change_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_status_change_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     const sr_node_t *tree = NULL;
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;

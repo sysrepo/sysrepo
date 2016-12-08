@@ -979,10 +979,12 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
     SR_LOG_DBG("Calling event notification callback for subscription id=%"PRIu32".", subscription->id);
 
     if (SR_API_VALUES == subscription->api_variant) {
-        subscription->callback.event_notif_cb(msg->request->event_notif_req->xpath, values, values_cnt,
+        subscription->callback.event_notif_cb(SR_EV_NOTIF_REALTIME, /* TODO: read from the message */
+                msg->request->event_notif_req->xpath, values, values_cnt,
                 msg->request->event_notif_req->timestamp, subscription->private_ctx);
     } else {
-        subscription->callback.event_notif_tree_cb(msg->request->event_notif_req->xpath, trees, tree_cnt,
+        subscription->callback.event_notif_tree_cb(SR_EV_NOTIF_REALTIME, /* TODO: read from the message */
+                msg->request->event_notif_req->xpath, trees, tree_cnt,
                 msg->request->event_notif_req->timestamp, subscription->private_ctx);
     }
 
