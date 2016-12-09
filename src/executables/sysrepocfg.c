@@ -332,14 +332,14 @@ cleanup:
  * @brief Merge (sub)tree *src* into the data tree pointed by *dst*.
  */
 static int
-srcfg_merge_data_trees(struct lyd_node **dst, struct lyd_node *src)
+srcfg_merge_data_trees(struct lyd_node **dst, struct lyd_node *src, struct ly_ctx *ly_ctx)
 {
     int ret = 0;
     CHECK_NULL_ARG(dst);
 
     if (NULL != src) {
         if (NULL == *dst) {
-            *dst = sr_dup_datatree(src);
+            *dst = sr_dup_datatree(src, ly_ctx);
         } else {
             ret = lyd_merge(*dst, src, LYD_OPT_EXPLICIT);
             CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL,
@@ -373,7 +373,7 @@ srcfg_get_data_deps(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_node*
             }
             if (NULL != dep_data_tree) {
                 /* merge this dependency with the rest */
-                rc = srcfg_merge_data_trees(&data_tree, dep_data_tree);
+                rc = srcfg_merge_data_trees(&data_tree, dep_data_tree, ly_ctx);
                 lyd_free_withsiblings(dep_data_tree);
                 dep_data_tree = NULL;
                 if (SR_ERR_OK != rc) {
@@ -673,7 +673,7 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, sr
     }
 
     /* validate input data */
-    rc = srcfg_merge_data_trees(&new_dt, deps_dt);
+    rc = srcfg_merge_data_trees(&new_dt, deps_dt, ly_ctx);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
