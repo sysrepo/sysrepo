@@ -38,7 +38,7 @@
 
 int setup(void **state)
 {
-   test_rp_ctx_create((rp_ctx_t**)state);
+   test_rp_ctx_create(CM_MODE_LOCAL, (rp_ctx_t**)state);
    return 0;
 }
 
@@ -56,7 +56,7 @@ no_subscription_test(void **state)
    rp_ctx_t *ctx = *state;
    rp_session_t *session = NULL;
     //no enable subtree has been called all request should return SR_ERR_NOT_FOUND
-   test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
+   test_rp_session_create(ctx, SR_DS_RUNNING, &session);
 
    sr_val_t *values = NULL;
    size_t count = 0;
@@ -98,7 +98,7 @@ enable_subtree_test(void **state)
    dm_schema_info_t *si = NULL;
    struct lys_node *match = NULL;
 
-   test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
+   test_rp_session_create(ctx, SR_DS_RUNNING, &session);
 
    rc = dm_get_module_and_lockw(ctx->dm_ctx, "ietf-interfaces", &si);
    assert_int_equal(SR_ERR_OK, rc);
@@ -137,7 +137,7 @@ enable_subtree_test(void **state)
    test_rp_session_cleanup(ctx, session);
 
    /* enable list keys implicitly */
-   test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
+   test_rp_session_create(ctx, SR_DS_RUNNING, &session);
 
    rc = dm_get_module_and_lockw(ctx->dm_ctx, "example-module", &si);
    assert_int_equal(SR_ERR_OK, rc);
@@ -175,7 +175,7 @@ edit_enabled(void **state)
    rp_session_t *session = NULL;
    dm_schema_info_t *si = NULL;
 
-   test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
+   test_rp_session_create(ctx, SR_DS_RUNNING, &session);
 
    sr_val_t val = {0,};
    val.type = SR_STRING_T;
@@ -225,7 +225,7 @@ enable_running_for_submodule(void **state)
    rp_ctx_t *ctx = *state;
    rp_session_t *session = NULL;
 
-   test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
+   test_rp_session_create(ctx, SR_DS_RUNNING, &session);
 
    rc = dm_enable_module_running(ctx->dm_ctx, session->dm_session, "module-a", NULL);
    assert_int_equal(SR_ERR_OK, rc);

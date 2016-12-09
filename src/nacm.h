@@ -149,17 +149,32 @@ typedef struct nacm_nodeset_s {
 } nacm_nodeset_t;
 
 /**
- * @brief Structure that holds data of an ongoing data validation request.
+ * @brief Structure that stores an outcome of a NACM data validation for re-use.
+ */
+typedef struct nacm_data_val_result_s {
+    nacm_access_flag_t access_type;  /**< Access type that the result applies to. */
+    const struct lyd_node *node;     /**< Data node that this result relates to. */
+    nacm_action_t action;            /**< Which action has been determined to be taken for this node. */
+    const char *rule_name;           /**< Name of the rule which have yielded this outcome, if any. */
+    const char *rule_info;           /**< Description of the rule which have yielded this outcome, if any. */
+} nacm_data_val_result_t;
+
+/**
+ * @brief Structure that holds data of an ongoing data access validation request.
  */
 typedef struct nacm_data_val_ctx_s {
     nacm_ctx_t *nacm_ctx;               /**< NACM context from which this request was issued. */
     const ac_ucred_t *user_credentials; /**< Credentials of the user. */
     dm_schema_info_t *schema_info;      /**< Schema info associated with the data tree whose nodes are being validated. */
-    bool cache;                         /**< Use cache to remember sets of matching nodes for data-oriented rules. */
     sr_bitset_t *rule_lists;            /**< Set of rule-lists that apply to this data validation request.
                                              (stored as bitset of their IDs). */
-    sr_btree_t *nodesets;               /**< A set of data-oriented NACM rules with already evaluated path.
+    struct {
+        bool enabled;                   /**< Use cache to speed-up consecutive data access validations. */
+        sr_btree_t *nodesets;           /**< A set of data-oriented NACM rules with already evaluated path.
                                              Items are of type nacm_nodeset_t. */
+        sr_btree_t *results;            /**< Outcomes of already executed data validations within this context.
+                                             Items are of type nacm_data_val_result_t. */
+    } cache;
 } nacm_data_val_ctx_t;
 
 /**

@@ -26,14 +26,19 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
+
 #include "nacm.h"
 #include "sr_common.h"
 #include "data_manager.h"
 #include "test_data.h"
+#include "rp_internal.h"
+#include "rp_dt_get.h"
+#include "rp_dt_context_helper.h"
+#include "test_module_helper.h"
 #include "nacm_module_helper.h"
 
 static bool daemon_run_before_test = false; /**< Indices if the daemon was running before executing the test. */
-static dm_ctx_t *dm_ctx = NULL; /**< Data Manager context. */
+static rp_ctx_t *rp_ctx = NULL; /**< Request processor global context. */
 
 static void
 daemon_kill()
@@ -107,6 +112,7 @@ nacm_tests_setup(void **state)
         daemon_run_before_test = false;
     }
 
+    test_rp_ctx_create(CM_MODE_DAEMON, &rp_ctx);
     return 0;
 }
 
@@ -120,45 +126,26 @@ nacm_tests_teardown(void **state)
         ret = system("sysrepod");
         assert_int_equal(0, ret);
     }
+
+    test_rp_ctx_cleanup(rp_ctx);
+    rp_ctx = NULL;
     return 0;
 }
 
 /**
- * @brief Initialize Data Manager context together with NACM context.
+ * @brief Get NACM context.
  */
-static void
-nacm_test_init_ctx(nacm_ctx_t **nacm_ctx_p)
+static nacm_ctx_t *
+get_nacm_ctx()
 {
-    int rc = SR_ERR_OK;
-    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_ctx_t *nacm_ctx;
 
-    /**
-     * Initialize Data Manager context in the daemon mode so that the NACM context gets initialized too.
-     */
-    rc = dm_init(NULL, NULL, NULL, CM_MODE_DAEMON, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &dm_ctx);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_non_null(dm_ctx);
-
-    /* test that the NACM context was also initialized */
-    rc = dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_non_null(nacm_ctx);
-
-    assert_non_null(nacm_ctx_p);
-    *nacm_ctx_p = nacm_ctx;
+    assert_non_null(rp_ctx);
+    assert_int_equal(SR_ERR_OK, dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx));
+    return nacm_ctx;
 }
 
-/**
- * @brief Deallocate Data Manager context together with NACM context.
- */
-static void
-nacm_test_clean_ctx()
-{
-    /* destroy Data Manager context (and NACM context with it) */
-    dm_cleanup(dm_ctx);
-}
-
-nacm_group_t *
+static nacm_group_t *
 nacm_get_group(nacm_ctx_t *nacm_ctx, const char *name)
 {
     nacm_group_t group_lookup = { (char *)name, 0 }, *group = NULL;
@@ -169,7 +156,7 @@ nacm_get_group(nacm_ctx_t *nacm_ctx, const char *name)
     return group;
 }
 
-nacm_user_t *
+static nacm_user_t *
 nacm_get_user(nacm_ctx_t *nacm_ctx, const char *name)
 {
     nacm_user_t user_lookup = { (char *)name, NULL }, *user = NULL;
@@ -180,7 +167,7 @@ nacm_get_user(nacm_ctx_t *nacm_ctx, const char *name)
     return user;
 }
 
-nacm_rule_list_t *
+static nacm_rule_list_t *
 nacm_get_rule_list(nacm_ctx_t *nacm_ctx, size_t index)
 {
     assert_non_null(nacm_ctx);
@@ -190,7 +177,7 @@ nacm_get_rule_list(nacm_ctx_t *nacm_ctx, size_t index)
     return (nacm_rule_list_t *)nacm_ctx->rule_lists->data[index];
 }
 
-nacm_rule_t *
+static nacm_rule_t *
 nacm_get_rule(nacm_rule_list_t *rule_list, size_t index)
 {
     assert_non_null(rule_list);
@@ -203,7 +190,7 @@ nacm_get_rule(nacm_rule_list_t *rule_list, size_t index)
 static void
 nacm_test_empty_config(void **state)
 {
-    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
     test_nacm_cfg_t *nacm_config = NULL;
 
     /* create empty NACM startup config */
@@ -212,7 +199,7 @@ nacm_test_empty_config(void **state)
     delete_nacm_config(nacm_config);
 
     /* Init NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     assert_non_null(nacm_ctx->schema_info);
     assert_string_equal("ietf-netconf-acm", nacm_ctx->schema_info->module_name);
     assert_string_equal(TEST_DATA_SEARCH_DIR, nacm_ctx->data_search_dir);
@@ -231,15 +218,12 @@ nacm_test_empty_config(void **state)
     assert_int_equal(0, nacm_ctx->stats.denied_event_notif);
     assert_int_equal(0, nacm_ctx->stats.denied_rpc);
     assert_int_equal(0, nacm_ctx->stats.denied_data_write);
-
-    /* Deallocate NACM config */
-    nacm_test_clean_ctx();
 }
 
 static void
 nacm_test_global_config_params(void **state)
 {
-    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
     test_nacm_cfg_t *nacm_config = NULL;
 
     /* disabled NACM config */
@@ -248,26 +232,24 @@ nacm_test_global_config_params(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     assert_false(nacm_ctx->enabled);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.read);
     assert_int_equal(NACM_ACTION_DENY, nacm_ctx->dflt.write);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.exec);
     assert_true(nacm_ctx->external_groups);
-    nacm_test_clean_ctx();
 
     /* enabled NACM config */
     enable_nacm_config(nacm_config, true);
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     assert_true(nacm_ctx->enabled);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.read);
     assert_int_equal(NACM_ACTION_DENY, nacm_ctx->dflt.write);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.exec);
     assert_true(nacm_ctx->external_groups);
-    nacm_test_clean_ctx();
 
     /* change default actions */
     set_nacm_read_dflt(nacm_config, "deny");
@@ -275,13 +257,12 @@ nacm_test_global_config_params(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     assert_true(nacm_ctx->enabled);
     assert_int_equal(NACM_ACTION_DENY, nacm_ctx->dflt.read);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.write);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.exec);
     assert_true(nacm_ctx->external_groups);
-    nacm_test_clean_ctx();
 
     /* change default actions again */
     set_nacm_read_dflt(nacm_config, "permit");
@@ -289,39 +270,36 @@ nacm_test_global_config_params(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     assert_true(nacm_ctx->enabled);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.read);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.write);
     assert_int_equal(NACM_ACTION_DENY, nacm_ctx->dflt.exec);
     assert_true(nacm_ctx->external_groups);
-    nacm_test_clean_ctx();
 
     /* disable external groups */
     enable_nacm_ext_groups(nacm_config, false);
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     assert_true(nacm_ctx->enabled);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.read);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.write);
     assert_int_equal(NACM_ACTION_DENY, nacm_ctx->dflt.exec);
     assert_false(nacm_ctx->external_groups);
-    nacm_test_clean_ctx();
 
     /* re-enable external groups */
     enable_nacm_ext_groups(nacm_config, true);
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     assert_true(nacm_ctx->enabled);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.read);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.write);
     assert_int_equal(NACM_ACTION_DENY, nacm_ctx->dflt.exec);
     assert_true(nacm_ctx->external_groups);
-    nacm_test_clean_ctx();
 
     /* deallocate NACM config */
     delete_nacm_config(nacm_config);
@@ -330,7 +308,7 @@ nacm_test_global_config_params(void **state)
 static void
 nacm_test_users(void **state)
 {
-    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
     nacm_group_t *group1 = NULL, *group2 = NULL, *group3 = NULL, *group4 = NULL;
     nacm_user_t *user = NULL;
     test_nacm_cfg_t *nacm_config = NULL;
@@ -341,7 +319,7 @@ nacm_test_users(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     verify_sr_btree_size(nacm_ctx->groups, 1);
     verify_sr_btree_size(nacm_ctx->users, 1);
     verify_sr_list_size(nacm_ctx->rule_lists, 0);
@@ -350,14 +328,13 @@ nacm_test_users(void **state)
     user = nacm_get_user(nacm_ctx, "user1");
     assert_int_equal(1, user->groups->bit_count);
     check_bit_value(user->groups, 0, true);
-    nacm_test_clean_ctx();
 
     /* add another user */
     add_nacm_user(nacm_config, "user2", "group2");
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     verify_sr_btree_size(nacm_ctx->groups, 2);
     verify_sr_btree_size(nacm_ctx->users, 2);
     verify_sr_list_size(nacm_ctx->rule_lists, 0);
@@ -373,14 +350,13 @@ nacm_test_users(void **state)
     assert_int_equal(2, user->groups->bit_count);
     check_bit_value(user->groups, group1->id, false);
     check_bit_value(user->groups, group2->id, true);
-    nacm_test_clean_ctx();
 
     /* add empty group */
     add_nacm_user(nacm_config, NULL, "group3");
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     verify_sr_btree_size(nacm_ctx->groups, 3);
     verify_sr_btree_size(nacm_ctx->users, 2);
     verify_sr_list_size(nacm_ctx->rule_lists, 0);
@@ -399,7 +375,6 @@ nacm_test_users(void **state)
     check_bit_value(user->groups, group1->id, false);
     check_bit_value(user->groups, group2->id, true);
     check_bit_value(user->groups, group3->id, false);
-    nacm_test_clean_ctx();
 
     /* add third user which is member of three groups */
     add_nacm_user(nacm_config, "user3", "group1");
@@ -408,7 +383,7 @@ nacm_test_users(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     verify_sr_btree_size(nacm_ctx->groups, 4);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 0);
@@ -437,7 +412,6 @@ nacm_test_users(void **state)
     check_bit_value(user->groups, group2->id, true);
     check_bit_value(user->groups, group3->id, false);
     check_bit_value(user->groups, group4->id, true);
-    nacm_test_clean_ctx();
 
     /* finally a user which is member of all mentioned groups */
     add_nacm_user(nacm_config, "user4", "group1");
@@ -447,7 +421,7 @@ nacm_test_users(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     verify_sr_btree_size(nacm_ctx->groups, 4);
     verify_sr_btree_size(nacm_ctx->users, 4);
     verify_sr_list_size(nacm_ctx->rule_lists, 0);
@@ -483,7 +457,6 @@ nacm_test_users(void **state)
     check_bit_value(user->groups, group2->id, true);
     check_bit_value(user->groups, group3->id, true);
     check_bit_value(user->groups, group4->id, true);
-    nacm_test_clean_ctx();
 
     /* deallocate NACM config */
     delete_nacm_config(nacm_config);
@@ -492,7 +465,7 @@ nacm_test_users(void **state)
 static void
 nacm_test_rule_lists(void **state)
 {
-    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
     nacm_group_t *group[7] = {NULL};
     nacm_user_t *user = NULL;
     nacm_rule_list_t *rule_list = NULL;
@@ -510,7 +483,7 @@ nacm_test_rule_lists(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     verify_sr_btree_size(nacm_ctx->groups, 5);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 1);
@@ -554,14 +527,13 @@ nacm_test_rule_lists(void **state)
     check_bit_value(rule_list->groups, group[6]->id, true);
     assert_false(rule_list->match_all);
     verify_sr_list_size(rule_list->rules, 0);
-    nacm_test_clean_ctx();
 
     /* another rule-list with no rules */
     add_nacm_rule_list(nacm_config, "admin-acl", "group3", "group4", "group5", "group6", NULL);
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     verify_sr_btree_size(nacm_ctx->groups, 7);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 2);
@@ -628,14 +600,13 @@ nacm_test_rule_lists(void **state)
     check_bit_value(rule_list->groups, group[6]->id, false);
     assert_false(rule_list->match_all);
     verify_sr_list_size(rule_list->rules, 0);
-    nacm_test_clean_ctx();
 
     /* thirs rule-list that matches all possible groups */
     add_nacm_rule_list(nacm_config, "default-acl", "group1" /* attempt to confuse it */, "*", NULL);
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     verify_sr_btree_size(nacm_ctx->groups, 7);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 3);
@@ -708,7 +679,6 @@ nacm_test_rule_lists(void **state)
     assert_null(rule_list->groups);
     assert_true(rule_list->match_all);
     verify_sr_list_size(rule_list->rules, 0);
-    nacm_test_clean_ctx();
 
     /* deallocate NACM config */
     delete_nacm_config(nacm_config);
@@ -718,7 +688,7 @@ static void
 nacm_test_rules(void **state)
 {
     uint32_t hash = 0;
-    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
     nacm_rule_list_t *rule_list = NULL;
     nacm_rule_t *rule = NULL;
     test_nacm_cfg_t *nacm_config = NULL;
@@ -738,7 +708,7 @@ nacm_test_rules(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     verify_sr_btree_size(nacm_ctx->groups, 5);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 1);
@@ -757,7 +727,6 @@ nacm_test_rules(void **state)
     assert_int_equal(NACM_ACCESS_ALL, rule->access);
     assert_int_equal(NACM_ACTION_DENY, rule->action);
     assert_string_equal(RULE1_COMMENT, rule->comment);
-    nacm_test_clean_ctx();
 
     /* add rule with default parameters */
     add_nacm_rule(nacm_config, "limited-acl", "default-rule", NULL, NACM_RULE_NOTSET,
@@ -765,7 +734,7 @@ nacm_test_rules(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     verify_sr_btree_size(nacm_ctx->groups, 5);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 1);
@@ -795,7 +764,6 @@ nacm_test_rules(void **state)
     assert_int_equal(NACM_ACCESS_ALL, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_null(rule->comment);
-    nacm_test_clean_ctx();
 
     /* add rule-list with six different rules */
     add_nacm_rule_list(nacm_config, "admin-acl", "group3", "group4", "group5", "group6", NULL);
@@ -815,7 +783,7 @@ nacm_test_rules(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_test_init_ctx(&nacm_ctx);
+    nacm_reload(nacm_ctx);
     verify_sr_btree_size(nacm_ctx->groups, 7);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 2);
@@ -919,11 +887,278 @@ nacm_test_rules(void **state)
     assert_int_equal(NACM_ACCESS_READ, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_string_equal("This is rule6.", rule->comment);
-    nacm_test_clean_ctx();
 
     /* deallocate NACM config */
     delete_nacm_config(nacm_config);
 }
+
+static void
+nacm_test_read_access_single_value(void **state)
+{
+    int rc = 0;
+    ac_ucred_t user_credentials[4] = {{"user1", 10, 10, NULL, 10, 10},
+                                      {"user1", 10, 10, "user2", 20, 20},
+                                      {"user3", 30, 30, NULL, 30, 30},
+                                      {"user2", 20, 20, "root"}};
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
+    test_nacm_cfg_t *nacm_config = NULL;
+    rp_session_t *rp_session[4] = {NULL,};
+    struct lyd_node *data_tree[4] = {NULL,};
+    sr_val_t *value = NULL;
+
+    /* datastore content */
+    createDataTreeTestModule();
+    createDataTreeIETFinterfacesModule();
+
+    /* RP sessions */
+    for (int i = 0; i < 4; ++i) {
+        test_rp_session_create_user(rp_ctx, SR_DS_STARTUP, user_credentials[i], &rp_session[i]);
+        rc = dm_get_datatree(dm_ctx, rp_session[i]->dm_session, "test-module", &data_tree[i]);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(data_tree[i]);
+    }
+
+    /* NACM config */
+    new_nacm_config(&nacm_config);
+    /* -> groups & users */
+    add_nacm_user(nacm_config, "user1", "group1");
+    add_nacm_user(nacm_config, "user2", "group2");
+    add_nacm_user(nacm_config, NULL, "group3");
+    add_nacm_user(nacm_config, "user3", "group1");
+    add_nacm_user(nacm_config, "user3", "group2");
+    add_nacm_user(nacm_config, "user3", "group4");
+    /* -> access lists */
+    add_nacm_rule_list(nacm_config, "acl1", "group1", "group4", "group5", NULL);
+    add_nacm_rule_list(nacm_config, "acl2", "group2", "group3", NULL);
+    add_nacm_rule_list(nacm_config, "acl3", "group4", NULL);
+    /* -> acl1: */
+#define ACL1_RULE1_COMMENT  "Do not allow any access to the 'boolean' leaf."
+    add_nacm_rule(nacm_config, "acl1", "deny-boolean", "test-module", NACM_RULE_DATA,
+            XP_TEST_MODULE_BOOL, "*", "deny", ACL1_RULE1_COMMENT);
+    add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers[.>10]", "*", "deny", ACL1_RULE1_COMMENT);
+    add_nacm_rule(nacm_config, "acl1", "deny-read-interface-status", "*", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/enabled", "read update", "deny", NULL);
+    /* -> acl2: */
+    add_nacm_rule(nacm_config, "acl2", "deny-k1-union-read", "test-module", NACM_RULE_DATA,
+            "/test-module:list[key='k1']/union", "read", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl2", "deny-k2-union-write", "test-module", NACM_RULE_DATA,
+            "/test-module:list[key='k2']/union", "create update delete", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl2", "deny-low-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers[.<10]", "*", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl2", "deny-interface-mtu", "ietf-ip", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/mtu", "*", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl2", "deny-change-interface-status", "ietf-interfaces", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/enabled", "update delete create", "deny", NULL);
+    /* -> acl3 */
+    add_nacm_rule(nacm_config, "acl3", "deny-test-module", "test-module", NACM_RULE_NOTSET,
+            NULL, "*", "deny", "Access to test-module is not allowed");
+    add_nacm_rule(nacm_config, "acl3", "deny-eth1", NULL, NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface[name='eth1']", "read", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl3", "deny-ietf-ip", "ietf-ip", NACM_RULE_NOTSET,
+            NULL, "*", "deny", "Access to ietf-ip is not allowed.");
+
+    /* -> apply NACM config */
+    save_nacm_config(nacm_config);
+    nacm_reload(nacm_ctx);
+
+    /* test read access for test-module */
+    /* -> /test-module:main/boolean */
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, XP_TEST_MODULE_BOOL, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, XP_TEST_MODULE_BOOL, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, XP_TEST_MODULE_BOOL, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, XP_TEST_MODULE_BOOL, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    /* -> /test-module:list[key='k1']/union */
+#define LIST_K1_UNION "/test-module:list[key='k1']/union"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, LIST_K1_UNION, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, LIST_K1_UNION, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_K1_UNION, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_K1_UNION, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    /* -> /test-module:list[key='k1']/key */
+#define LIST_K1_KEY "/test-module:list[key='k1']/key"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, LIST_K1_KEY, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, LIST_K1_KEY, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_K1_KEY, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied - acl3 */
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_K1_KEY, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    /* -> /test-module:list[key='k2']/union */
+#define LIST_K2_UNION "/test-module:list[key='k2']/union"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, LIST_K2_UNION, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, LIST_K2_UNION, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_K2_UNION, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied - acl3 */
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_K2_UNION, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    /* -> /test-module:main/numbers[.=2] */
+#define MAIN_NUMBER_2 "/test-module:main/numbers[.=2]"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, MAIN_NUMBER_2, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, MAIN_NUMBER_2, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, MAIN_NUMBER_2, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, MAIN_NUMBER_2, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    /* -> /test-module:main/numbers[.=42] */
+#define MAIN_NUMBER_42 "/test-module:main/numbers[.=42]"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, MAIN_NUMBER_42, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, MAIN_NUMBER_42, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, MAIN_NUMBER_42, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, MAIN_NUMBER_42, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+
+    /* test read access for ietf-interfaces */
+    for (int i = 0; i < 4; ++i) {
+        rc = dm_get_datatree(dm_ctx, rp_session[i]->dm_session, "ietf-interfaces", &data_tree[i]);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(data_tree[i]);
+    }
+    /* -> /ietf-interfaces:interfaces */
+#define IETF_INTERFACES "/ietf-interfaces:interfaces"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, IETF_INTERFACES, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, IETF_INTERFACES, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, IETF_INTERFACES, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, IETF_INTERFACES, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    /* -> /ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address/ip */
+#define ETH0_IP_ADDRESS "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address/ip"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, ETH0_IP_ADDRESS, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, ETH0_IP_ADDRESS, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, ETH0_IP_ADDRESS, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, ETH0_IP_ADDRESS, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    /* -> /ietf-interfaces:interfaces/interface[name='eth1']/description */
+#define ETH1_DESCRIPTION "/ietf-interfaces:interfaces/interface[name='eth1']/description"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, ETH1_DESCRIPTION, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, ETH1_DESCRIPTION, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, ETH1_DESCRIPTION, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, ETH1_DESCRIPTION, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    /* -> /ietf-interfaces:interfaces/interface[name='gigaeth0']/description */
+#define GIGAETH0_DESCRIPTION "/ietf-interfaces:interfaces/interface[name='gigaeth0']/description"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, GIGAETH0_DESCRIPTION, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, GIGAETH0_DESCRIPTION, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, GIGAETH0_DESCRIPTION, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, GIGAETH0_DESCRIPTION, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    /* -> /ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled */
+#define GIGAETH0_ENABLED    "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, GIGAETH0_ENABLED, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, GIGAETH0_ENABLED, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, GIGAETH0_ENABLED, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, GIGAETH0_ENABLED, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    /* -> /ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu */
+#define ETH0_MTU    "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, ETH0_MTU, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, ETH0_MTU, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, ETH0_MTU, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, ETH0_MTU, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+
+    /* test read access for ietf-netconf-acm */
+    for (int i = 0; i < 4; ++i) {
+        rc = dm_get_datatree(dm_ctx, rp_session[i]->dm_session, "ietf-netconf-acm", &data_tree[i]);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(data_tree[i]);
+    }
+    /* -> /ietf-netconf-acm:nacm */
+#define NACM    "/ietf-netconf-acm:nacm"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, NACM, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, NACM, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, NACM, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, NACM, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+    /* -> /ietf-netconf-acm:nacm/groups/group[name='group1']/user-name[.='user1'] */
+#define NACM_USER1   "/ietf-netconf-acm:nacm/groups/group[name='group1']/user-name[.='user1']"
+    rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, NACM_USER1, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, NACM_USER1, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, NACM_USER1, false, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, NACM_USER1, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
+
+    /* cleanup */
+    delete_nacm_config(nacm_config);
+    for (int i = 0; i < 4; ++i) {
+        test_rp_session_cleanup(rp_ctx, rp_session[i]);
+    }
+}
+
 
 int main() {
     const struct CMUnitTest tests[] = {
@@ -931,7 +1166,8 @@ int main() {
             cmocka_unit_test(nacm_test_global_config_params),
             cmocka_unit_test(nacm_test_users),
             cmocka_unit_test(nacm_test_rule_lists),
-            cmocka_unit_test(nacm_test_rules)
+            cmocka_unit_test(nacm_test_rules),
+            cmocka_unit_test(nacm_test_read_access_single_value)
     };
 
     return cmocka_run_group_tests(tests, nacm_tests_setup, nacm_tests_teardown);
