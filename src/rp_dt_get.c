@@ -902,6 +902,8 @@ cleanup:
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
         }
         rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_UNAUTHORIZED == rc) {
+        rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get value failed for xpath '%s'", xpath);
     }
@@ -945,6 +947,8 @@ cleanup:
             /* Print warning only, because we are not able to validate all xpath */
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
         }
+        rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     }
     rp_session->state = RP_REQ_FINISHED;
@@ -1000,6 +1004,8 @@ cleanup:
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
         }
         rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_UNAUTHORIZED == rc) {
+        rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
     }
@@ -1040,6 +1046,8 @@ cleanup:
             /* Print warning only, because we are not able to validate all xpath */
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
         }
+        rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get subtree failed for xpath '%s'", xpath);
@@ -1083,6 +1091,8 @@ cleanup:
             /* Print warning only, because we are not able to validate all xpath */
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
         }
+        rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get subtree failed for xpath '%s'", xpath);
@@ -1128,6 +1138,8 @@ cleanup:
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
         }
         rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_UNAUTHORIZED == rc) {
+        rc = SR_ERR_NOT_FOUND;
     }
     rp_session->state = RP_REQ_FINISHED;
     free(rp_session->module_name);
@@ -1171,6 +1183,8 @@ cleanup:
             /* Print warning only, because we are not able to validate all xpath */
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
         }
+        rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     }
     rp_session->state = RP_REQ_FINISHED;
