@@ -2595,8 +2595,10 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
             oper_tmp = realloc(iter->operations, received_cnt * sizeof(*iter->operations));
             CHECK_NULL_NOMEM_GOTO(oper_tmp, rc, cleanup);
             iter->operations = oper_tmp;
-
         }
+        memset(iter->new_values, 0, received_cnt * sizeof(*iter->new_values));
+        memset(iter->old_values, 0, received_cnt * sizeof(*iter->old_values));
+
         iter->index = 0;
         iter->count = received_cnt;
 

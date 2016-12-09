@@ -962,7 +962,7 @@ validate_context(md_ctx_t *md_ctx)
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
                                      "/" TEST_MODULE_PREFIX "D:D-ext-inst-id2", "D@2016-06-20");
         /* op_data_subtrees */
-        check_list_size(module->op_data_subtrees, inserted.B + inserted.D_rev1 + 2*inserted.D_rev2);
+        check_list_size(module->op_data_subtrees, inserted.B + inserted.D_rev1 + inserted.D_rev2);
         validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "B:B-ext-op-data", "B");
@@ -970,10 +970,12 @@ validate_context(md_ctx_t *md_ctx)
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
                                      "/" TEST_MODULE_PREFIX "D:D-ext-op-data", "D@2016-06-10");
+#if 0 /* FIXME: record all originators of a state data subtree */
         validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
                                      "/" TEST_MODULE_PREFIX "D:D-ext-op-data", "D@2016-06-20");
+#endif
         validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
@@ -1845,6 +1847,7 @@ md_test_has_data(void **state)
     rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
+    check_list_size(module->op_data_subtrees, 1); /* Bug #569 */
     rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module->has_data);
