@@ -505,7 +505,7 @@ cleanup:
 }
 
 struct lyd_node*
-sr_dup_datatree(struct lyd_node *root) {
+sr_dup_datatree(struct lyd_node *root, struct ly_ctx *ly_ctx) {
     struct lyd_node *dup = NULL, *s = NULL, *n = NULL;
 
     struct lyd_node *next = NULL;
@@ -532,6 +532,14 @@ sr_dup_datatree(struct lyd_node *root) {
 
         root = next;
     }
+
+    /* validate dup tree to rebuild pointer of leafref value */
+    if (0 != lyd_validate(&dup, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, ly_ctx)) {
+        SR_LOG_ERR_MSG("Validation failed for duplicated tree");
+        lyd_free_withsiblings(dup);
+        return NULL;
+    }
+
     return dup;
 }
 
