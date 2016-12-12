@@ -1089,11 +1089,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         }
         return SR_ERR_OK;
     case LY_TYPE_INST:
-        /* NOT IMPLEMENTED yet*/
-        if (NULL != leaf->schema && NULL != leaf->schema->name) {
-            SR_LOG_ERR("Copy value failed for leaf '%s'", node_name);
-        }
-        return SR_ERR_INTERNAL;
+        return sr_libyang_val_str_to_sr_val(leaf->value_str, value->type, value);
     case LY_TYPE_LEAFREF:
         return sr_libyang_val_str_to_sr_val(leaf->value_str, value->type, value);
     case LY_TYPE_STRING:

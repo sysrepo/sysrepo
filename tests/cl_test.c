@@ -913,6 +913,10 @@ cl_get_items_iter_test(void **state)
         else if (0 == strcmp(XP_TEST_MODULE_ANYDATA, value->xpath)){
             assert_int_equal(SR_ANYDATA_T, value->type);
         }
+        else if (0 == strcmp(XP_TEST_MODULE_INSTANCE_ID, value->xpath)){
+            assert_int_equal(SR_INSTANCEID_T, value->type);
+            assert_string_equal(XP_TEST_MODULE_INSTANCE_ID_VALUE, value->data.instanceid_val);
+        }
         else {
             /* unknown node*/
             assert_true(false);
@@ -1180,6 +1184,12 @@ cl_set_item_test(void **state)
     value.data.enum_val = "a";
 
     rc = sr_set_item(session, "/test-module:tpdfs/undecided", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    
+    value.type = SR_INSTANCEID_T;
+    value.data.instanceid_val = "/test-module:main";
+
+    rc = sr_set_item(session, "/test-module:main/instance_id", &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */
