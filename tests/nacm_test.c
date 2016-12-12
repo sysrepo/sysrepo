@@ -1159,6 +1159,257 @@ nacm_test_read_access_single_value(void **state)
     }
 }
 
+static void
+nacm_test_read_access_multiple_value(void **state)
+{
+    int rc = 0;
+    ac_ucred_t user_credentials[4] = {{"user1", 10, 10, NULL, 10, 10},
+                                      {"user1", 10, 10, "user2", 20, 20},
+                                      {"user3", 30, 30, NULL, 30, 30},
+                                      {"user2", 20, 20, "root"}};
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
+    test_nacm_cfg_t *nacm_config = NULL;
+    rp_session_t *rp_session[4] = {NULL,};
+    struct lyd_node *data_tree[4] = {NULL,};
+    sr_val_t *values = NULL;
+    size_t count = 0;
+
+    /* datastore content */
+    createDataTreeTestModule();
+    createDataTreeIETFinterfacesModule();
+
+    /* RP sessions */
+    for (int i = 0; i < 4; ++i) {
+        test_rp_session_create_user(rp_ctx, SR_DS_STARTUP, user_credentials[i], &rp_session[i]);
+        rc = dm_get_datatree(dm_ctx, rp_session[i]->dm_session, "test-module", &data_tree[i]);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(data_tree[i]);
+    }
+
+    /* NACM config */
+    new_nacm_config(&nacm_config);
+    /* -> groups & users */
+    add_nacm_user(nacm_config, "user1", "group1");
+    add_nacm_user(nacm_config, "user2", "group2");
+    add_nacm_user(nacm_config, NULL, "group3");
+    add_nacm_user(nacm_config, "user3", "group1");
+    add_nacm_user(nacm_config, "user3", "group2");
+    add_nacm_user(nacm_config, "user3", "group4");
+    /* -> access lists */
+    add_nacm_rule_list(nacm_config, "acl1", "group1", "group4", "group5", NULL);
+    add_nacm_rule_list(nacm_config, "acl2", "group2", "group3", NULL);
+    add_nacm_rule_list(nacm_config, "acl3", "group4", NULL);
+    /* -> acl1: */
+#define ACL1_RULE1_COMMENT  "Do not allow any access to the 'boolean' leaf."
+    add_nacm_rule(nacm_config, "acl1", "deny-boolean", "test-module", NACM_RULE_DATA,
+            XP_TEST_MODULE_BOOL, "*", "deny", ACL1_RULE1_COMMENT);
+    add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers[.>10]", "*", "deny", ACL1_RULE1_COMMENT);
+    add_nacm_rule(nacm_config, "acl1", "deny-read-interface-status", "*", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/enabled", "read update", "deny", NULL);
+    /* -> acl2: */
+    add_nacm_rule(nacm_config, "acl2", "deny-k1-union-read", "test-module", NACM_RULE_DATA,
+            "/test-module:list[key='k1']/union", "read", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl2", "deny-k2-union-write", "test-module", NACM_RULE_DATA,
+            "/test-module:list[key='k2']/union", "create update delete", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl2", "deny-low-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers[.<10]", "*", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl2", "deny-interface-mtu", "ietf-ip", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/mtu", "*", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl2", "deny-change-interface-status", "ietf-interfaces", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/enabled", "update delete create", "deny", NULL);
+    /* -> acl3 */
+    add_nacm_rule(nacm_config, "acl3", "deny-test-module", "test-module", NACM_RULE_NOTSET,
+            NULL, "*", "deny", "Access to test-module is not allowed");
+    add_nacm_rule(nacm_config, "acl3", "deny-eth1", NULL, NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface[name='eth1']", "read", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl3", "deny-ietf-ip", "ietf-ip", NACM_RULE_NOTSET,
+            NULL, "*", "deny", "Access to ietf-ip is not allowed.");
+
+    /* -> apply NACM config */
+    save_nacm_config(nacm_config);
+    nacm_reload(nacm_ctx);
+
+    /* test read access for test-module */
+    /* -> /test-module:main/boolean */
+    rc = rp_dt_get_values(dm_ctx, rp_session[0], data_tree[0], NULL, XP_TEST_MODULE_BOOL, false, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied */
+    rc = rp_dt_get_values(dm_ctx, rp_session[1], data_tree[1], NULL, XP_TEST_MODULE_BOOL, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);         /* access allowed */
+    assert_int_equal(1, count);
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, XP_TEST_MODULE_BOOL, false, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied */
+    rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, XP_TEST_MODULE_BOOL, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);         /* access allowed */
+    assert_int_equal(1, count);
+    sr_free_values(values, count);
+    /* -> /test-module:list[key='k1']/<asterisk> */
+#define LIST_K1 "/test-module:list[key='k1']/*"
+    rc = rp_dt_get_values(dm_ctx, rp_session[0], data_tree[0], NULL, LIST_K1, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(4, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[1], data_tree[1], NULL, LIST_K1, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* id_ref, key, wireless */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_K1, false, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_K1, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(4, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+    /* -> /test-module:list[key='k2']/<asterisk> */
+#define LIST_K2 "/test-module:list[key='k2']/*"
+    rc = rp_dt_get_values(dm_ctx, rp_session[0], data_tree[0], NULL, LIST_K2, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[1], data_tree[1], NULL, LIST_K2, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_K2, false, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_K2, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+    /* -> /test-module:main/numbers */
+#define MAIN_NUMBERS "/test-module:main/numbers"
+    rc = rp_dt_get_values(dm_ctx, rp_session[0], data_tree[0], NULL, MAIN_NUMBERS, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);             /* 1, 2 */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[1], data_tree[1], NULL, MAIN_NUMBERS, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, count);             /* 42 */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, MAIN_NUMBERS, false, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied to all instances */
+    rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, MAIN_NUMBERS, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+
+    /* test read access for ietf-interfaces */
+    for (int i = 0; i < 4; ++i) {
+        rc = dm_get_datatree(dm_ctx, rp_session[i]->dm_session, "ietf-interfaces", &data_tree[i]);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(data_tree[i]);
+    }
+    /* -> /ietf-interfaces:interfaces/<asterisk> */
+#undef IETF_INTERFACES
+#define IETF_INTERFACES "/ietf-interfaces:interfaces/*"
+    rc = rp_dt_get_values(dm_ctx, rp_session[0], data_tree[0], NULL, IETF_INTERFACES, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[1], data_tree[1], NULL, IETF_INTERFACES, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, IETF_INTERFACES, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);             /* eth0, gigaeth0 */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, IETF_INTERFACES, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+    /* -> /ietf-interfaces:interfaces/interface[name='eth0']//. */
+#define ETH0 "/ietf-interfaces:interfaces/interface[name='eth0']//."
+    rc = rp_dt_get_values(dm_ctx, rp_session[0], data_tree[0], NULL, ETH0, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(11, count);             /* all expect for 'enabled' */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[1], data_tree[1], NULL, ETH0, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(11, count);             /* all expect for 'mtu' */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, ETH0, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(4, count);             /* interface, type, description, name */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, ETH0, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(12, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+    /* -> /ietf-interfaces:interfaces/interface[name='eth1']//<asterisk> */
+#define ETH1 "/ietf-interfaces:interfaces/interface[name='eth1']//*"
+    rc = rp_dt_get_values(dm_ctx, rp_session[0], data_tree[0], NULL, ETH1, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(10, count);             /* all expect for 'enabled' */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[1], data_tree[1], NULL, ETH1, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(10, count);             /* all expect for 'mtu' */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, ETH1, false, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied to all instances */
+    rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, ETH1, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(11, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+    /* -> /ietf-interfaces:interfaces/interface[name='gigaeth0']//<asterisk> */
+#define GIGAETH0 "/ietf-interfaces:interfaces/interface[name='gigaeth0']//*"
+    rc = rp_dt_get_values(dm_ctx, rp_session[0], data_tree[0], NULL, GIGAETH0, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* type, description, name */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[1], data_tree[1], NULL, GIGAETH0, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(4, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, GIGAETH0, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* type, description, name */
+    sr_free_values(values, count);
+    rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, GIGAETH0, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(4, count);             /* access allowed to all instances */
+    sr_free_values(values, count);
+
+    /* test read access for ietf-netconf-acm */
+    for (int i = 0; i < 4; ++i) {
+        rc = dm_get_datatree(dm_ctx, rp_session[i]->dm_session, "ietf-netconf-acm", &data_tree[i]);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(data_tree[i]);
+    }
+    /* -> /ietf-netconf-acm:nacm/<asterisk> */
+#undef NACM
+#define NACM    "/ietf-netconf-acm:nacm/*"
+    rc = rp_dt_get_values(dm_ctx, rp_session[0], data_tree[0], NULL, NACM, false, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_values(dm_ctx, rp_session[1], data_tree[1], NULL, NACM, false, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, NACM, false, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, NACM, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(9, count);              /* access allowed to all instances */
+    sr_free_values(values, count);
+    /* -> /ietf-netconf-acm:nacm/groups/group[name='group1']/<asterisk> */
+#define NACM_GROUP1   "/ietf-netconf-acm:nacm/groups/group[name='group1']/*"
+    rc = rp_dt_get_values(dm_ctx, rp_session[0], data_tree[0], NULL, NACM_GROUP1, false, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_values(dm_ctx, rp_session[1], data_tree[1], NULL, NACM_GROUP1, false, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, NACM_GROUP1, false, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, NACM_GROUP1, false, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);              /* access allowed to all instances */
+    sr_free_values(values, count);
+
+    /* cleanup */
+    delete_nacm_config(nacm_config);
+    for (int i = 0; i < 4; ++i) {
+        test_rp_session_cleanup(rp_ctx, rp_session[i]);
+    }
+}
 
 int main() {
     const struct CMUnitTest tests[] = {
@@ -1167,7 +1418,8 @@ int main() {
             cmocka_unit_test(nacm_test_users),
             cmocka_unit_test(nacm_test_rule_lists),
             cmocka_unit_test(nacm_test_rules),
-            cmocka_unit_test(nacm_test_read_access_single_value)
+            cmocka_unit_test(nacm_test_read_access_single_value),
+            cmocka_unit_test(nacm_test_read_access_multiple_value)
     };
 
     return cmocka_run_group_tests(tests, nacm_tests_setup, nacm_tests_teardown);
