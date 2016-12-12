@@ -97,6 +97,9 @@ createDataTreeTestModule()
     node = lyd_new_anydata(r, module, "any-data", XP_TEST_MODULE_ANYDATA_VALUE, LYD_ANYDATA_CONSTSTRING);
     assert_non_null(node);
 
+    node = lyd_new_leaf(r, module, "instance_id", XP_TEST_MODULE_INSTANCE_ID_VALUE);
+    assert_non_null(node);
+
     /* leaf -list*/
     n = lyd_new_leaf(r, module, "numbers", "1");
     assert_non_null(n);
