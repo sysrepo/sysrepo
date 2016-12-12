@@ -107,7 +107,7 @@ data_provider(sr_session_ctx_t *session)
     int rc = SR_ERR_OK;
 
     /* subscribe for providing operational data */
-    rc = sr_dp_get_items_subscribe(session, "/ietf-interfaces:interfaces-state/interface", data_provider_cb, NULL,
+    rc = sr_dp_get_items_subscribe(session, "/ietf-interfaces:interfaces-state", data_provider_cb, NULL,
             SR_SUBSCR_DEFAULT, &subscription);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error by sr_dp_get_items_subscribe: %s\n", sr_strerror(rc));
