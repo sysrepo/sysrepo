@@ -848,6 +848,42 @@ md_remove_all_subtree_refs(md_ctx_t *md_ctx, md_module_t *orig_module, sr_llist_
 }
 
 /**
+ * @brief Check if the given state data subtree is already recorded.
+ * @return SR_ERR_DATA_EXISTS if it is already recorded, SR_ERR_NOT_FOUND if this state data subtree
+ * is not yet known, and different error code in case of an actual runtime error.
+ */
+static int
+md_check_op_data_subtree(md_module_t *module, const struct lys_node *root)
+{
+    int rc = SR_ERR_OK;
+    char *root_xpath = NULL;
+    md_subtree_ref_t *subtree_ref = NULL;
+    sr_llist_node_t *item = NULL;
+    CHECK_NULL_ARG2(module, root);
+
+    rc = md_construct_lys_xpath(root, &root_xpath);
+    CHECK_RC_MSG_RETURN(rc, "Failed to construct XPath to a subtree.");
+
+    item = module->op_data_subtrees->first;
+    while (item) {
+        subtree_ref = (md_subtree_ref_t *)item->data;
+        if (sr_str_begins_with(root_xpath, subtree_ref->xpath)) {
+            char term = root_xpath[strlen(subtree_ref->xpath)];
+            if ('\0' == term || '/' == term) {
+                rc = SR_ERR_DATA_EXISTS;
+                goto cleanup;
+            }
+        }
+        item = item->next;
+    }
+
+    rc = SR_ERR_NOT_FOUND;
+cleanup:
+    free(root_xpath);
+    return rc;
+}
+
+/**
  * @brief Load a list of dependencies from the (parsed) internal data file with module dependency info.
  */
 static int
@@ -1613,8 +1649,16 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
             } else if (LYS_CONFIG_R & node->flags) {
                 /*< this node has operational data (and all descendands as well) */
                 if (NULL == node->parent) {
-                    rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module, node,
-                                            MD_XPATH_MODULE_OP_DATA_SUBTREE);
+                    rc = SR_ERR_NOT_FOUND;
+                    if (augment) {
+                        rc = md_check_op_data_subtree(dest_module, node);
+                    }
+                    if (SR_ERR_DATA_EXISTS == rc) {
+                        rc = SR_ERR_OK;
+                    } else if (SR_ERR_NOT_FOUND == rc) {
+                        rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module, node,
+                                                MD_XPATH_MODULE_OP_DATA_SUBTREE);
+                    }
                 } /*< otherwise leave for the parent to decide */
             } else { /*< this node has configuration data or it is a special kind of node (e.g. augment) */
                 if ((intptr_t)node->priv & PRIV_OP_SUBTREE) {
@@ -1627,8 +1671,16 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                             assert(!backtracking || (LYS_USES == child->nodetype));
                             if ((LYS_USES != child->nodetype) && (LYS_CONFIG_R & child->flags)) {
                                 /* child with state data */
-                                rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module,
-                                        child, MD_XPATH_MODULE_OP_DATA_SUBTREE);
+                                rc = SR_ERR_NOT_FOUND;
+                                if (augment) {
+                                    rc = md_check_op_data_subtree(dest_module, child);
+                                }
+                                if (SR_ERR_DATA_EXISTS == rc) {
+                                    rc = SR_ERR_OK;
+                                } else if (SR_ERR_NOT_FOUND == rc) {
+                                    rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module,
+                                            child, MD_XPATH_MODULE_OP_DATA_SUBTREE);
+                                }
                                 if (SR_ERR_OK != rc) {
                                     break;
                                 }
@@ -1646,8 +1698,16 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                         }
                     } else {
                         /* all children carry operational data */
-                        rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module, node,
-                                                MD_XPATH_MODULE_OP_DATA_SUBTREE);
+                        rc = SR_ERR_NOT_FOUND;
+                        if (augment) {
+                            rc = md_check_op_data_subtree(dest_module, node);
+                        }
+                        if (SR_ERR_DATA_EXISTS == rc) {
+                            rc = SR_ERR_OK;
+                        } else if (SR_ERR_NOT_FOUND == rc) {
+                            rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module, node,
+                                                    MD_XPATH_MODULE_OP_DATA_SUBTREE);
+                        }
                     }
                 }
             }

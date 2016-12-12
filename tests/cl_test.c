@@ -1376,28 +1376,11 @@ cl_validate_test(void **state)
     rc = sr_validate(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* leafref: non-existing leaf and then fix it */
-/* TEMPORARY WORKAROUND until https://github.com/CESNET/libyang/issues/218 is fixed */
-#if 0
+    /* leafref: non-existing leaf an error is returned by set_item* call */
     value.type = SR_UINT8_T;
     value.data.uint8_val = 18;
     rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
-
-    rc = sr_validate(session);
-    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
-
-    /* print out all errors (if any) */
-    rc = sr_get_last_errors(session, &errors, &error_cnt);
-    if (error_cnt > 0) {
-        for (size_t i = 0; i < error_cnt; i++) {
-            printf("Error[%zu]: %s: %s\n", i, errors[i].xpath, errors[i].message);
-        }
-    }
-#endif
-
-    /* fix leafref */
-    value.data.uint8_val = 17;
-    rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     rc = sr_validate(session);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1494,21 +1477,7 @@ cl_commit_test(void **state)
     value.type = SR_UINT8_T;
     value.data.uint8_val = 18;
     rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
-
-    rc = sr_commit(session);
-    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
-
-    /* print out all errors (if any) */
-    rc = sr_get_last_errors(session, &errors, &error_cnt);
-    if (error_cnt > 0) {
-        for (size_t i = 0; i < error_cnt; i++) {
-            printf("Error[%zu]: %s: %s\n", i, errors[i].xpath, errors[i].message);
-        }
-    }
-
-    /* fix leafref */
-    value.data.uint8_val = 17;
-    rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
