@@ -716,14 +716,14 @@ message EventNotifReq {
   /**
    * @brief Type of the event notification.
    */
-  enum EventNotifType {
+  enum NotifType {
     REALTIME = 1;
     REPLAY = 2;
     REPLAY_COMPLETE = 3;
     REPLAY_STOP = 4;
   }
 
-  required EventNotifType type = 1;
+  required NotifType type = 1;
   required string xpath = 2;
   repeated Value values = 3;
   repeated Node trees = 4;

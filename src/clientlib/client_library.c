@@ -3429,6 +3429,7 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *xpath,
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
+    msg_req->request->event_notif_req->type = SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REALTIME;
     sr_mem_edit_string(sr_mem, &msg_req->request->event_notif_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_req->xpath, rc, cleanup);
 
@@ -3488,6 +3489,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
+    msg_req->request->event_notif_req->type = SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REALTIME;
     sr_mem_edit_string(sr_mem, &msg_req->request->event_notif_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_req->xpath, rc, cleanup);
 

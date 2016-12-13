@@ -2630,7 +2630,8 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
             rc = sr_gpb_req_alloc(NULL, SR__OPERATION__EVENT_NOTIF, session->id, &req);
             CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate event notification request (%s).",
                               msg->request->event_notif_req->xpath);
-            /*  - xpath */
+            /*  - type & xpath */
+            req->request->event_notif_req->type = msg->request->event_notif_req->type;
             req->request->event_notif_req->xpath = strdup(msg->request->event_notif_req->xpath);
             CHECK_NULL_NOMEM_ERROR(req->request->event_notif_req->xpath, rc);
             CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate event notification request xpath (%s).",
