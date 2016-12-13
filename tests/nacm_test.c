@@ -80,6 +80,75 @@ verify_sr_list_size(sr_list_t *list, size_t expected)
     assert_int_equal(expected, list->count);
 }
 
+static void
+verify_child_count(sr_node_t *parent, size_t expected)
+{
+    sr_node_t *child = NULL;
+    size_t child_cnt = 0;
+    assert_non_null(parent);
+
+    child = parent->first_child;
+    while (NULL != child) {
+        ++child_cnt;
+        child = child->next;
+    }
+
+    assert_int_equal(expected, child_cnt);
+}
+
+static sr_node_t *
+node_get_child(sr_node_t *parent, const char *child_name)
+{
+    sr_node_t *child = NULL;
+    assert_non_null(parent);
+
+    child = parent->first_child;
+    while (NULL != child) {
+        if (0 == strcmp(child_name, child->name)) {
+            return child;
+        }
+        child = child->next;
+    }
+
+    return NULL;
+}
+
+static void
+verify_tree_size(sr_node_t *root, size_t expected)
+{
+    sr_node_t *node = NULL, *child = NULL, *next = NULL;
+    size_t node_cnt = 0;
+    bool backtrack = false;
+
+    if (NULL == root) {
+        assert_int_equal(0, expected);
+    }
+
+    node = root;
+    do {
+        if (false == backtrack) {
+            ++node_cnt;
+            child = node->first_child;
+            if (NULL == child) {
+                backtrack = true;
+            } else {
+                node = child;
+            }
+        } else {
+            next = node->next;
+            if (next) {
+                node = next;
+                backtrack = false;
+            } else {
+                node = node->parent;
+                assert_non_null(node);
+            }
+        }
+    } while (node != root);
+
+    assert_int_equal(expected, node_cnt);
+}
+
 void
 check_bit_value(sr_bitset_t *bitset, size_t pos, bool expected)
 {
@@ -906,6 +975,59 @@ nacm_test_rules(void **state)
 }
 
 static void
+nacm_config_for_basic_read_access_tests()
+{
+    test_nacm_cfg_t *nacm_config = NULL;
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
+
+    new_nacm_config(&nacm_config);
+    /* groups & users */
+    add_nacm_user(nacm_config, "user1", "group1");
+    add_nacm_user(nacm_config, "user2", "group2");
+    add_nacm_user(nacm_config, NULL, "group3");
+    add_nacm_user(nacm_config, "user3", "group1");
+    add_nacm_user(nacm_config, "user3", "group2");
+    add_nacm_user(nacm_config, "user3", "group4");
+    /* access lists */
+    add_nacm_rule_list(nacm_config, "acl1", "group1", "group4", "group5", NULL);
+    add_nacm_rule_list(nacm_config, "acl2", "group2", "group3", NULL);
+    add_nacm_rule_list(nacm_config, "acl3", "group4", NULL);
+    /*  -> acl1: */
+#define ACL1_RULE1_COMMENT  "Do not allow any access to the 'boolean' leaf."
+    add_nacm_rule(nacm_config, "acl1", "deny-boolean", "test-module", NACM_RULE_DATA,
+            XP_TEST_MODULE_BOOL, "*", "deny", ACL1_RULE1_COMMENT);
+    add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers[.>10]", "*", "deny", ACL1_RULE1_COMMENT);
+    add_nacm_rule(nacm_config, "acl1", "deny-read-interface-status", "*", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/enabled", "read update", "deny", NULL);
+    /*  -> acl2: */
+    add_nacm_rule(nacm_config, "acl2", "deny-k1-union-read", "test-module", NACM_RULE_DATA,
+            "/test-module:list[key='k1']/union", "read", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl2", "deny-k2-union-write", "test-module", NACM_RULE_DATA,
+            "/test-module:list[key='k2']/union", "create update delete", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl2", "deny-low-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers[.<10]", "*", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl2", "deny-interface-mtu", "ietf-ip", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/mtu", "*", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl2", "deny-change-interface-status", "ietf-interfaces", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/enabled", "update delete create", "deny", NULL);
+    /*  -> acl3 */
+    add_nacm_rule(nacm_config, "acl3", "deny-test-module", "test-module", NACM_RULE_NOTSET,
+            NULL, "*", "deny", "Access to test-module is not allowed");
+    add_nacm_rule(nacm_config, "acl3", "deny-eth1", NULL, NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface[name='eth1']", "read", "deny", NULL);
+    add_nacm_rule(nacm_config, "acl3", "deny-ietf-ip", "ietf-ip", NACM_RULE_NOTSET,
+            NULL, "*", "deny", "Access to ietf-ip is not allowed.");
+
+    /* apply NACM config */
+    save_nacm_config(nacm_config);
+    nacm_reload(nacm_ctx);
+
+    /* cleanup */
+    delete_nacm_config(nacm_config);
+}
+
+static void
 nacm_test_read_access_single_value(void **state)
 {
     int rc = 0;
@@ -914,8 +1036,6 @@ nacm_test_read_access_single_value(void **state)
                                       {"user3", 30, 30, NULL, 30, 30},
                                       {"user2", 20, 20, "root"}};
     dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
-    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
-    test_nacm_cfg_t *nacm_config = NULL;
     rp_session_t *rp_session[4] = {NULL,};
     struct lyd_node *data_tree[4] = {NULL,};
     sr_val_t *value = NULL;
@@ -933,48 +1053,7 @@ nacm_test_read_access_single_value(void **state)
     }
 
     /* NACM config */
-    new_nacm_config(&nacm_config);
-    /* -> groups & users */
-    add_nacm_user(nacm_config, "user1", "group1");
-    add_nacm_user(nacm_config, "user2", "group2");
-    add_nacm_user(nacm_config, NULL, "group3");
-    add_nacm_user(nacm_config, "user3", "group1");
-    add_nacm_user(nacm_config, "user3", "group2");
-    add_nacm_user(nacm_config, "user3", "group4");
-    /* -> access lists */
-    add_nacm_rule_list(nacm_config, "acl1", "group1", "group4", "group5", NULL);
-    add_nacm_rule_list(nacm_config, "acl2", "group2", "group3", NULL);
-    add_nacm_rule_list(nacm_config, "acl3", "group4", NULL);
-    /* -> acl1: */
-#define ACL1_RULE1_COMMENT  "Do not allow any access to the 'boolean' leaf."
-    add_nacm_rule(nacm_config, "acl1", "deny-boolean", "test-module", NACM_RULE_DATA,
-            XP_TEST_MODULE_BOOL, "*", "deny", ACL1_RULE1_COMMENT);
-    add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
-            "/test-module:main/numbers[.>10]", "*", "deny", ACL1_RULE1_COMMENT);
-    add_nacm_rule(nacm_config, "acl1", "deny-read-interface-status", "*", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/enabled", "read update", "deny", NULL);
-    /* -> acl2: */
-    add_nacm_rule(nacm_config, "acl2", "deny-k1-union-read", "test-module", NACM_RULE_DATA,
-            "/test-module:list[key='k1']/union", "read", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl2", "deny-k2-union-write", "test-module", NACM_RULE_DATA,
-            "/test-module:list[key='k2']/union", "create update delete", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl2", "deny-low-numbers", "test-module", NACM_RULE_DATA,
-            "/test-module:main/numbers[.<10]", "*", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl2", "deny-interface-mtu", "ietf-ip", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/mtu", "*", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl2", "deny-change-interface-status", "ietf-interfaces", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/enabled", "update delete create", "deny", NULL);
-    /* -> acl3 */
-    add_nacm_rule(nacm_config, "acl3", "deny-test-module", "test-module", NACM_RULE_NOTSET,
-            NULL, "*", "deny", "Access to test-module is not allowed");
-    add_nacm_rule(nacm_config, "acl3", "deny-eth1", NULL, NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface[name='eth1']", "read", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl3", "deny-ietf-ip", "ietf-ip", NACM_RULE_NOTSET,
-            NULL, "*", "deny", "Access to ietf-ip is not allowed.");
-
-    /* -> apply NACM config */
-    save_nacm_config(nacm_config);
-    nacm_reload(nacm_ctx);
+    nacm_config_for_basic_read_access_tests();
 
     /* test read access for test-module */
     /* -> /test-module:main/boolean */
@@ -1166,7 +1245,6 @@ nacm_test_read_access_single_value(void **state)
     sr_free_val(value);
 
     /* cleanup */
-    delete_nacm_config(nacm_config);
     for (int i = 0; i < 4; ++i) {
         test_rp_session_cleanup(rp_ctx, rp_session[i]);
     }
@@ -1181,8 +1259,6 @@ nacm_test_read_access_multiple_values(void **state)
                                       {"user3", 30, 30, NULL, 30, 30},
                                       {"user2", 20, 20, "root"}};
     dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
-    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
-    test_nacm_cfg_t *nacm_config = NULL;
     rp_session_t *rp_session[4] = {NULL,};
     struct lyd_node *data_tree[4] = {NULL,};
     sr_val_t *values = NULL;
@@ -1201,48 +1277,7 @@ nacm_test_read_access_multiple_values(void **state)
     }
 
     /* NACM config */
-    new_nacm_config(&nacm_config);
-    /* -> groups & users */
-    add_nacm_user(nacm_config, "user1", "group1");
-    add_nacm_user(nacm_config, "user2", "group2");
-    add_nacm_user(nacm_config, NULL, "group3");
-    add_nacm_user(nacm_config, "user3", "group1");
-    add_nacm_user(nacm_config, "user3", "group2");
-    add_nacm_user(nacm_config, "user3", "group4");
-    /* -> access lists */
-    add_nacm_rule_list(nacm_config, "acl1", "group1", "group4", "group5", NULL);
-    add_nacm_rule_list(nacm_config, "acl2", "group2", "group3", NULL);
-    add_nacm_rule_list(nacm_config, "acl3", "group4", NULL);
-    /* -> acl1: */
-#define ACL1_RULE1_COMMENT  "Do not allow any access to the 'boolean' leaf."
-    add_nacm_rule(nacm_config, "acl1", "deny-boolean", "test-module", NACM_RULE_DATA,
-            XP_TEST_MODULE_BOOL, "*", "deny", ACL1_RULE1_COMMENT);
-    add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
-            "/test-module:main/numbers[.>10]", "*", "deny", ACL1_RULE1_COMMENT);
-    add_nacm_rule(nacm_config, "acl1", "deny-read-interface-status", "*", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/enabled", "read update", "deny", NULL);
-    /* -> acl2: */
-    add_nacm_rule(nacm_config, "acl2", "deny-k1-union-read", "test-module", NACM_RULE_DATA,
-            "/test-module:list[key='k1']/union", "read", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl2", "deny-k2-union-write", "test-module", NACM_RULE_DATA,
-            "/test-module:list[key='k2']/union", "create update delete", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl2", "deny-low-numbers", "test-module", NACM_RULE_DATA,
-            "/test-module:main/numbers[.<10]", "*", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl2", "deny-interface-mtu", "ietf-ip", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/mtu", "*", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl2", "deny-change-interface-status", "ietf-interfaces", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/enabled", "update delete create", "deny", NULL);
-    /* -> acl3 */
-    add_nacm_rule(nacm_config, "acl3", "deny-test-module", "test-module", NACM_RULE_NOTSET,
-            NULL, "*", "deny", "Access to test-module is not allowed");
-    add_nacm_rule(nacm_config, "acl3", "deny-eth1", NULL, NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface[name='eth1']", "read", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl3", "deny-ietf-ip", "ietf-ip", NACM_RULE_NOTSET,
-            NULL, "*", "deny", "Access to ietf-ip is not allowed.");
-
-    /* -> apply NACM config */
-    save_nacm_config(nacm_config);
-    nacm_reload(nacm_ctx);
+    nacm_config_for_basic_read_access_tests();
 
     /* test read access for test-module */
     /* -> /test-module:main/boolean */
@@ -1418,7 +1453,6 @@ nacm_test_read_access_multiple_values(void **state)
     sr_free_values(values, count);
 
     /* cleanup */
-    delete_nacm_config(nacm_config);
     for (int i = 0; i < 4; ++i) {
         test_rp_session_cleanup(rp_ctx, rp_session[i]);
     }
@@ -1432,8 +1466,6 @@ nacm_test_read_access_multiple_values_with_opts(void **state)
                                       {"user1", 10, 10, "user2", 20, 20},
                                       {"user3", 30, 30, NULL, 30, 30},
                                       {"user2", 20, 20, "root"}};
-    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
-    test_nacm_cfg_t *nacm_config = NULL;
     rp_session_t *rp_session[4] = {NULL,};
     struct ly_set *nodes = NULL;
     struct lyd_node *data_tree[4] = {NULL,};
@@ -1456,48 +1488,7 @@ nacm_test_read_access_multiple_values_with_opts(void **state)
     }
 
     /* NACM config */
-    new_nacm_config(&nacm_config);
-    /* -> groups & users */
-    add_nacm_user(nacm_config, "user1", "group1");
-    add_nacm_user(nacm_config, "user2", "group2");
-    add_nacm_user(nacm_config, NULL, "group3");
-    add_nacm_user(nacm_config, "user3", "group1");
-    add_nacm_user(nacm_config, "user3", "group2");
-    add_nacm_user(nacm_config, "user3", "group4");
-    /* -> access lists */
-    add_nacm_rule_list(nacm_config, "acl1", "group1", "group4", "group5", NULL);
-    add_nacm_rule_list(nacm_config, "acl2", "group2", "group3", NULL);
-    add_nacm_rule_list(nacm_config, "acl3", "group4", NULL);
-    /* -> acl1: */
-#define ACL1_RULE1_COMMENT  "Do not allow any access to the 'boolean' leaf."
-    add_nacm_rule(nacm_config, "acl1", "deny-boolean", "test-module", NACM_RULE_DATA,
-            XP_TEST_MODULE_BOOL, "*", "deny", ACL1_RULE1_COMMENT);
-    add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
-            "/test-module:main/numbers[.>10]", "*", "deny", ACL1_RULE1_COMMENT);
-    add_nacm_rule(nacm_config, "acl1", "deny-read-interface-status", "*", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/enabled", "read update", "deny", NULL);
-    /* -> acl2: */
-    add_nacm_rule(nacm_config, "acl2", "deny-k1-union-read", "test-module", NACM_RULE_DATA,
-            "/test-module:list[key='k1']/union", "read", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl2", "deny-k2-union-write", "test-module", NACM_RULE_DATA,
-            "/test-module:list[key='k2']/union", "create update delete", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl2", "deny-low-numbers", "test-module", NACM_RULE_DATA,
-            "/test-module:main/numbers[.<10]", "*", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl2", "deny-interface-mtu", "ietf-ip", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/mtu", "*", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl2", "deny-change-interface-status", "ietf-interfaces", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/enabled", "update delete create", "deny", NULL);
-    /* -> acl3 */
-    add_nacm_rule(nacm_config, "acl3", "deny-test-module", "test-module", NACM_RULE_NOTSET,
-            NULL, "*", "deny", "Access to test-module is not allowed");
-    add_nacm_rule(nacm_config, "acl3", "deny-eth1", NULL, NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface[name='eth1']", "read", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl3", "deny-ietf-ip", "ietf-ip", NACM_RULE_NOTSET,
-            NULL, "*", "deny", "Access to ietf-ip is not allowed.");
-
-    /* -> apply NACM config */
-    save_nacm_config(nacm_config);
-    nacm_reload(nacm_ctx);
+    nacm_config_for_basic_read_access_tests();
 
     /* test read access for test-module */
     /* -> /test-module:main/boolean */
@@ -1841,8 +1832,292 @@ nacm_test_read_access_multiple_values_with_opts(void **state)
     ly_set_free(nodes);
 
     /* cleanup */
-    delete_nacm_config(nacm_config);
     reset_get_items_ctx(&get_items_ctx);
+    for (int i = 0; i < 4; ++i) {
+        test_rp_session_cleanup(rp_ctx, rp_session[i]);
+    }
+}
+
+static void
+nacm_test_read_access_single_subtree(void **state)
+{
+    int rc = 0;
+    ac_ucred_t user_credentials[4] = {{"user1", 10, 10, NULL, 10, 10},
+                                      {"user1", 10, 10, "user2", 20, 20},
+                                      {"user3", 30, 30, NULL, 30, 30},
+                                      {"user2", 20, 20, "root"}};
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
+    rp_session_t *rp_session[4] = {NULL,};
+    struct lyd_node *data_tree[4] = {NULL,};
+    sr_node_t *subtree = NULL;
+    char *chunk_id = NULL;
+
+    /* datastore content */
+    createDataTreeTestModule();
+    createDataTreeIETFinterfacesModule();
+
+    /* RP sessions */
+    for (int i = 0; i < 4; ++i) {
+        test_rp_session_create_user(rp_ctx, SR_DS_STARTUP, user_credentials[i], &rp_session[i]);
+        rc = dm_get_datatree(dm_ctx, rp_session[i]->dm_session, "test-module", &data_tree[i]);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(data_tree[i]);
+    }
+
+    /* NACM config */
+    nacm_config_for_basic_read_access_tests();
+
+    /* test read access for test-module */
+    /* -> /test-module:main/boolean */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[0], data_tree[0], NULL, XP_TEST_MODULE_BOOL, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[1], data_tree[1], NULL, XP_TEST_MODULE_BOOL, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);         /* access allowed */
+    verify_tree_size(subtree, 1);
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, XP_TEST_MODULE_BOOL, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, XP_TEST_MODULE_BOOL, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);         /* access allowed */
+    verify_tree_size(subtree, 1);
+    sr_free_tree(subtree);
+    /* -> /test-module:list[key='k1'] */
+#undef LIST_K1
+#define LIST_K1 "/test-module:list[key='k1']"
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[0], data_tree[0], NULL, LIST_K1, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 5);            /* access allowed to all nodes */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[1], data_tree[1], NULL, LIST_K1, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 4);            /* all but union */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_K1, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all nodes */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_K1, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 5);            /* access allowed to all nodes */
+    sr_free_tree(subtree);
+    /* -> /test-module:list[key='k2'] */
+#undef LIST_K2
+#define LIST_K2 "/test-module:list[key='k2']"
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[0], data_tree[0], NULL, LIST_K2, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 4);            /* access allowed to all nodes */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[1], data_tree[1], NULL, LIST_K2, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 4);            /* access allowed to all nodes */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_K2, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all nodes */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_K2, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 4);            /* access allowed to all nodes */
+    sr_free_tree(subtree);
+    /* -> /test-module:main/numbers[.=2] */
+#define MAIN_NUMBER_2 "/test-module:main/numbers[.=2]"
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[0], data_tree[0], NULL, MAIN_NUMBER_2, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    verify_tree_size(subtree, 1);
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[1], data_tree[1], NULL, MAIN_NUMBER_2, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, MAIN_NUMBER_2, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, MAIN_NUMBER_2, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    verify_tree_size(subtree, 1);
+    sr_free_tree(subtree);
+    /* -> /test-module:main/numbers[.=42] */
+#define MAIN_NUMBER_42 "/test-module:main/numbers[.=42]"
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[0], data_tree[0], NULL, MAIN_NUMBER_42, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[1], data_tree[1], NULL, MAIN_NUMBER_42, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    verify_tree_size(subtree, 1);
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, MAIN_NUMBER_42, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, MAIN_NUMBER_42, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_tree(subtree);
+
+    /* test read access for ietf-interfaces */
+    for (int i = 0; i < 4; ++i) {
+        rc = dm_get_datatree(dm_ctx, rp_session[i]->dm_session, "ietf-interfaces", &data_tree[i]);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(data_tree[i]);
+    }
+    /* -> /ietf-interfaces:interfaces */
+#undef IETF_INTERFACES
+#define IETF_INTERFACES "/ietf-interfaces:interfaces"
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[0], data_tree[0], NULL, IETF_INTERFACES, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_child_count(subtree, 3);         /* access allowed to all child nodes */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[1], data_tree[1], NULL, IETF_INTERFACES, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_child_count(subtree, 3);         /* access allowed to all child nodes */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, IETF_INTERFACES, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_child_count(subtree, 2);         /* eth0, gigaeth0 */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, IETF_INTERFACES, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_child_count(subtree, 3);         /* access allowed to all child nodes */
+    sr_free_tree(subtree);
+    /* -> slice interfaces and leave only chunk of eth1 */
+    rc = rp_dt_get_subtree_chunk(dm_ctx, rp_session[0], data_tree[0], NULL, IETF_INTERFACES,
+            1, 1, 4, 3, false, &subtree, &chunk_id);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(IETF_INTERFACES, chunk_id);
+    verify_tree_size(subtree, 6);          /* all inside the chunk except for 'enabled' */
+    assert_null(node_get_child(subtree->first_child, "enabled"));
+    assert_non_null(node_get_child(subtree->first_child, "ipv4"));
+    sr_free_tree(subtree);
+    free(chunk_id);
+    rc = rp_dt_get_subtree_chunk(dm_ctx, rp_session[1], data_tree[1], NULL, IETF_INTERFACES,
+            1, 1, 4, 3, false, &subtree, &chunk_id);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(IETF_INTERFACES, chunk_id);
+    verify_tree_size(subtree, 6);          /* all inside the chunk */
+    assert_non_null(node_get_child(subtree->first_child, "enabled"));
+    assert_null(node_get_child(subtree->first_child, "ipv4"));
+    sr_free_tree(subtree);
+    free(chunk_id);
+    rc = rp_dt_get_subtree_chunk(dm_ctx, rp_session[2], data_tree[2], NULL, IETF_INTERFACES,
+            1, 1, 4, 3, false, &subtree, &chunk_id);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(IETF_INTERFACES, chunk_id);
+    verify_tree_size(subtree, 5);          /* this will actually take gigaeth0 */
+    assert_null(node_get_child(subtree->first_child, "enabled"));
+    assert_non_null(node_get_child(subtree->first_child, "name"));
+    assert_string_equal("gigaeth0", node_get_child(subtree->first_child, "name")->data.string_val);
+    sr_free_tree(subtree);
+    free(chunk_id);
+    rc = rp_dt_get_subtree_chunk(dm_ctx, rp_session[1], data_tree[1], NULL, IETF_INTERFACES,
+            1, 1, 4, 3, false, &subtree, &chunk_id);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(IETF_INTERFACES, chunk_id);
+    verify_tree_size(subtree, 6);          /* all inside the chunk */
+    sr_free_tree(subtree);
+    free(chunk_id);
+    /* -> /ietf-interfaces:interfaces/interface[name='eth0'] */
+#undef ETH0
+#define ETH0 "/ietf-interfaces:interfaces/interface[name='eth0']"
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[0], data_tree[0], NULL, ETH0, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 11);          /* all except for 'enabled' */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[1], data_tree[1], NULL, ETH0, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 11);          /* all except for 'mtu' */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, ETH0, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 4);           /* interface, type, description, name */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, ETH0, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 12);          /* access allowed to all nodes */
+    sr_free_tree(subtree);
+    /* -> /ietf-interfaces:interfaces/interface[name='eth1'] */
+#undef ETH1
+#define ETH1 "/ietf-interfaces:interfaces/interface[name='eth1']"
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[0], data_tree[0], NULL, ETH1, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 11);           /* all except for 'enabled' */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[1], data_tree[1], NULL, ETH1, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 11);           /* all except for 'mtu' */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, ETH1, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied to all nodes */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, ETH1, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 12);           /* access allowed to all nodes */
+    sr_free_tree(subtree);
+    /* -> /ietf-interfaces:interfaces/interface[name='gigaeth0'] */
+#undef GIGAETH0
+#define GIGAETH0 "/ietf-interfaces:interfaces/interface[name='gigaeth0']"
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[0], data_tree[0], NULL, GIGAETH0, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 4);           /* interface, type, description, name */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[1], data_tree[1], NULL, GIGAETH0, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 5);           /* access allowed to all nodes */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, GIGAETH0, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 4);           /* interface, type, description, name */
+    sr_free_tree(subtree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, GIGAETH0, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_tree_size(subtree, 5);           /* access allowed to all nodes */
+    sr_free_tree(subtree);
+
+    /* test read access for ietf-netconf-acm */
+    for (int i = 0; i < 4; ++i) {
+        rc = dm_get_datatree(dm_ctx, rp_session[i]->dm_session, "ietf-netconf-acm", &data_tree[i]);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(data_tree[i]);
+    }
+    /* -> /ietf-netconf-acm:nacm */
+#undef NACM
+#define NACM    "/ietf-netconf-acm:nacm"
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[0], data_tree[0], NULL, NACM, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all nodes */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[1], data_tree[1], NULL, NACM, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all nodes */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, NACM, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all nodes */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, NACM, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_child_count(subtree, 9);          /* access allowed to all child nodes */
+    sr_free_tree(subtree);
+    /* slice NACM - get names of rule-lists */
+    rc = rp_dt_get_subtree_chunk(dm_ctx, rp_session[0], data_tree[0], NULL, NACM, 1, 3, 1, 3, false,
+            &subtree, &chunk_id);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all nodes */
+    rc = rp_dt_get_subtree_chunk(dm_ctx, rp_session[1], data_tree[1], NULL, NACM, 1, 3, 1, 3, false,
+            &subtree, &chunk_id);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all nodes */
+    rc = rp_dt_get_subtree_chunk(dm_ctx, rp_session[2], data_tree[2], NULL, NACM, 1, 3, 1, 3, false,
+            &subtree, &chunk_id);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all nodes */
+    rc = rp_dt_get_subtree_chunk(dm_ctx, rp_session[3], data_tree[3], NULL, NACM, 1, 3, 1, 3, false,
+            &subtree, &chunk_id);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(NACM, chunk_id);
+    verify_tree_size(subtree, 7);           /* access allowed to all nodes in the chunk */
+    assert_non_null(node_get_child(subtree->first_child, "name"));
+    assert_string_equal("acl1", node_get_child(subtree->first_child, "name")->data.string_val);
+    assert_non_null(node_get_child(subtree->first_child->next, "name"));
+    assert_string_equal("acl2", node_get_child(subtree->first_child->next, "name")->data.string_val);
+    assert_non_null(node_get_child(subtree->first_child->next->next, "name"));
+    assert_string_equal("acl3", node_get_child(subtree->first_child->next->next, "name")->data.string_val);
+
+    sr_free_tree(subtree);
+    free(chunk_id);
+    /* -> /ietf-netconf-acm:nacm/groups/group[name='group1'] */
+#undef NACM_GROUP1
+#define NACM_GROUP1   "/ietf-netconf-acm:nacm/groups/group[name='group1']"
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[0], data_tree[0], NULL, NACM_GROUP1, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all nodes */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[1], data_tree[1], NULL, NACM_GROUP1, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all nodes */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, NACM_GROUP1, false, &subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all nodes */
+    rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, NACM_GROUP1, false, &subtree);
+    assert_int_equal(SR_ERR_OK, rc);
+    verify_child_count(subtree, 3);          /* access allowed to all child nodes */
+    sr_free_tree(subtree);
+
+    /* cleanup */
     for (int i = 0; i < 4; ++i) {
         test_rp_session_cleanup(rp_ctx, rp_session[i]);
     }
@@ -1857,8 +2132,13 @@ int main() {
             cmocka_unit_test(nacm_test_rules),
             cmocka_unit_test(nacm_test_read_access_single_value),
             cmocka_unit_test(nacm_test_read_access_multiple_values),
-            cmocka_unit_test(nacm_test_read_access_multiple_values_with_opts)
-
+            cmocka_unit_test(nacm_test_read_access_multiple_values_with_opts),
+            cmocka_unit_test(nacm_test_read_access_single_subtree),
+#if 0 /* TODO: */
+            cmocka_unit_test(nacm_test_read_access_multiple_subtrees), // + chunks
+            cmocka_unit_test(nacm_test_read_with_disabled_nacm),
+            cmocka_unit_test(nacm_test_read_default),
+#endif
     };
 
     sr_log_stderr(SR_LL_DBG);

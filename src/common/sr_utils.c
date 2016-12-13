@@ -1532,6 +1532,7 @@ sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_no
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Tree pruning has failed.");
                 }
                 if (true == prune) {
+                    child = child->next;
                     continue;
                 }
                 rc = sr_node_add_child(sr_tree, NULL, NULL, &sr_subtree);

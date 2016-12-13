@@ -1081,7 +1081,6 @@ nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credenti
     nacm_data_val_ctx->nacm_ctx = nacm_ctx;
     nacm_data_val_ctx->schema_info = schema_info;
     nacm_data_val_ctx->user_credentials = user_credentials;
-    nacm_data_val_ctx->cache.enabled = cache;
 
     /* data validation steps 1,2 */
     if (false == nacm_ctx->enabled) {
@@ -1094,6 +1093,7 @@ nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credenti
     }
 
     if (cache) {
+        nacm_data_val_ctx->cache.enabled = true;
         rc = sr_btree_init(nacm_compare_nodesets, nacm_free_nodeset, &nacm_data_val_ctx->cache.nodesets);
         CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to initialize binary tree with NACM nodesets.");
         rc = sr_btree_init(nacm_compare_data_val_result, free, &nacm_data_val_ctx->cache.results);
@@ -1217,12 +1217,26 @@ nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t acces
         return SR_ERR_INVAL_ARG;
     }
 
+    /* data validation steps 1,2 (perform quickly before doing anything else) */
+    if (false == nacm_data_val_ctx->nacm_ctx->enabled) {
+        action = NACM_ACTION_PERMIT;
+        goto cleanup;
+    }
+    if (nacm_data_val_ctx->user_credentials->e_uid == SR_NACM_RECOVERY_UID) {
+        action = NACM_ACTION_PERMIT;
+        goto cleanup;
+    }
+
     /* check if access to this node has already been evaluated */
     val_result = nacm_get_data_val_result(nacm_data_val_ctx, access_type, node);
     if (NULL != val_result) {
         *action_p = val_result->action;
-        *rule_name_p = val_result->rule_name;
-        *rule_info_p = val_result->rule_info;
+        if (NULL != rule_name_p) {
+            *rule_name_p = val_result->rule_name;
+        }
+        if (NULL != rule_info_p) {
+            *rule_info_p = val_result->rule_info;
+        }
         return rc;
     }
 
@@ -1239,16 +1253,6 @@ nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t acces
 
     nacm_ctx = nacm_data_val_ctx->nacm_ctx;
     node_xpath_hash = dm_get_node_xpath_hash(node->schema);
-
-    /* data validation steps 1,2 */
-    if (false == nacm_data_val_ctx->nacm_ctx->enabled) {
-        action = NACM_ACTION_PERMIT;
-        goto cleanup;
-    }
-    if (nacm_data_val_ctx->user_credentials->e_uid == SR_NACM_RECOVERY_UID) {
-        action = NACM_ACTION_PERMIT;
-        goto cleanup;
-    }
 
     /* steps 5,6,7: find matching rule */
     for (size_t i = 0; i < nacm_ctx->rule_lists->count; ++i) {

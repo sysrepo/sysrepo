@@ -267,7 +267,7 @@ rp_dt_get_subtree(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *d
     sr_node_t *tree = NULL;
     struct lyd_node *node = NULL;
     sr_tree_pruning_cb pruning_cb = NULL;
-    rp_tree_pruning_ctx_t *pruning_ctx;
+    rp_tree_pruning_ctx_t *pruning_ctx = NULL;
 
     rc = rp_dt_find_node(dm_ctx, data_tree, xpath, check_enabled, &node);
     if (SR_ERR_OK != rc) {
@@ -318,7 +318,7 @@ rp_dt_get_subtree_chunk(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
     char *id = NULL, *id_cpy = NULL;
     struct lyd_node *node = NULL;
     sr_tree_pruning_cb pruning_cb = NULL;
-    rp_tree_pruning_ctx_t *pruning_ctx;
+    rp_tree_pruning_ctx_t *pruning_ctx = NULL;
 
     rc = rp_dt_find_node(dm_ctx, data_tree, xpath, check_enabled, &node);
     if (SR_ERR_OK != rc) {
@@ -379,7 +379,7 @@ rp_dt_get_subtrees(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *
     int rc = SR_ERR_OK;
     struct ly_set *nodes = NULL;
     sr_tree_pruning_cb pruning_cb = NULL;
-    rp_tree_pruning_ctx_t *pruning_ctx;
+    rp_tree_pruning_ctx_t *pruning_ctx = NULL;
 
     rc = rp_dt_find_nodes(dm_ctx, data_tree, xpath, check_enable, &nodes);
     if (SR_ERR_OK != rc) {
@@ -424,7 +424,7 @@ rp_dt_get_subtrees_chunks(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd
     char *chunk_id = NULL;
     struct ly_set *nodes = NULL;
     sr_tree_pruning_cb pruning_cb = NULL;
-    rp_tree_pruning_ctx_t *pruning_ctx;
+    rp_tree_pruning_ctx_t *pruning_ctx = NULL;
 
     rc = rp_dt_find_nodes(dm_ctx, data_tree, xpath, check_enable, &nodes);
     if (SR_ERR_OK != rc) {
