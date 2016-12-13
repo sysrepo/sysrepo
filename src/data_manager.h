@@ -133,6 +133,7 @@ typedef struct dm_sess_op_s{
     union {
         struct set{
             sr_val_t *val;              /**< Value to perform operation with, can be NULL*/
+            char *str_val;              /**< Alternatively value in string form */
             sr_edit_options_t options;  /**< Operation edit options */
         } set;
         struct del{
@@ -474,7 +475,11 @@ int dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx);
  * @param [in] rel_item - option of move operation
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr_val_t *val, sr_edit_options_t opts, sr_move_position_t pos, const char *rel_item);
+int dm_add_set_operation(dm_session_t *session, const char *xpath, sr_val_t *val, char *str_val, sr_edit_options_t opts);
+
+int dm_add_del_operation(dm_session_t *session, const char *xpath, sr_edit_options_t opts);
+
+int dm_add_move_operation(dm_session_t *session, const char *xpath, sr_move_position_t pos, const char *rel_item);
 
 /**
  * @brief Removes last logged operation in session

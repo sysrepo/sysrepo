@@ -1742,6 +1742,59 @@ cleanup:
 }
 
 int
+sr_set_item_str(sr_session_ctx_t *session, const char *xpath, const char *value, const sr_edit_options_t opts)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
+
+    cl_session_clear_errors(session);
+
+    /* prepare set_item_str message */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__SET_ITEM_STR, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* fill in the path and options */
+    sr_mem_edit_string(sr_mem, &msg_req->request->set_item_str_req->xpath, xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->set_item_str_req->xpath, rc, cleanup);
+
+    msg_req->request->set_item_str_req->options = opts;
+
+    /* duplicate the value to gpb */
+    if (NULL != value) {
+        sr_mem_edit_string(sr_mem, &msg_req->request->set_item_str_req->value, value);
+        CHECK_NULL_NOMEM_GOTO(msg_req->request->set_item_str_req->value, rc, cleanup);
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SET_ITEM_STR);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != sr_mem) {
+        if (NULL != msg_req) {
+            sr_msg_free(msg_req);
+        } else {
+            sr_mem_free(sr_mem);
+        }
+    } else {
+        sr_msg_free(msg_req);
+    }
+    sr_msg_free(msg_resp);
+    return cl_session_return(session, rc);
+}
+
+int
 sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
@@ -2603,8 +2656,10 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
             oper_tmp = realloc(iter->operations, received_cnt * sizeof(*iter->operations));
             CHECK_NULL_NOMEM_GOTO(oper_tmp, rc, cleanup);
             iter->operations = oper_tmp;
-
         }
+        memset(iter->new_values, 0, received_cnt * sizeof(*iter->new_values));
+        memset(iter->old_values, 0, received_cnt * sizeof(*iter->old_values));
+
         iter->index = 0;
         iter->count = received_cnt;
 

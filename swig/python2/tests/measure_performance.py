@@ -66,7 +66,7 @@ def createDataTreeLargeIETFinterfacesModule(count, datastore):
         val = sr.Val("Ethernet 0", sr.SR_STRING_T)
         sess.set_item(x_desc, val)
 
-        val = sr.Val("ethernetCsmacd", sr.SR_IDENTITYREF_T)
+        val = sr.Val("iana-if-type:ethernetCsmacd", sr.SR_IDENTITYREF_T)
         sess.set_item(x_type, val)
 
         val = sr.Val(True, sr.SR_BOOL_T)

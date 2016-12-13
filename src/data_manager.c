@@ -474,7 +474,7 @@ dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schem
                     break;
                 }
             }
- 
+
         }
     } else {
         SR_LOG_ERR("Module %s not found in provided context", module_name);
@@ -890,6 +890,7 @@ dm_free_sess_op(dm_sess_op_t *op)
     free(op->xpath);
     if (DM_SET_OP == op->op) {
         sr_free_val(op->detail.set.val);
+        free(op->detail.set.str_val);
     } else if (DM_MOVE_OP == op->op) {
         free(op->detail.mov.relative_item);
         op->detail.mov.relative_item = NULL;
@@ -1208,49 +1209,92 @@ dm_get_node_xpath_hash(struct lys_node *node)
     return n_info->xpath_hash;
 }
 
-int
-dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr_val_t *val, sr_edit_options_t opts, sr_move_position_t pos, const char *rel_item)
+static int
+dm_alloc_operation(dm_session_t *session, dm_operation_t op, const char *xpath)
 {
     int rc = SR_ERR_OK;
-    CHECK_NULL_ARG_NORET2(rc, session, xpath); /* value can be NULL*/
-    if (SR_ERR_OK != rc) {
-        goto cleanup;
-    }
+    CHECK_NULL_ARG2(session, xpath);
 
     if (NULL == session->operations[session->datastore]) {
         session->oper_size[session->datastore] = 1;
         session->operations[session->datastore] = calloc(session->oper_size[session->datastore], sizeof(*session->operations[session->datastore]));
-        CHECK_NULL_NOMEM_GOTO(session->operations[session->datastore], rc, cleanup);
+        CHECK_NULL_NOMEM_RETURN(session->operations[session->datastore]);
     } else if (session->oper_count[session->datastore] == session->oper_size[session->datastore]) {
         session->oper_size[session->datastore] *= 2;
         dm_sess_op_t *tmp_op = realloc(session->operations[session->datastore], session->oper_size[session->datastore] * sizeof(*session->operations[session->datastore]));
-        CHECK_NULL_NOMEM_GOTO(tmp_op, rc, cleanup);
+        CHECK_NULL_NOMEM_RETURN(tmp_op);
         session->operations[session->datastore] = tmp_op;
     }
     int index = session->oper_count[session->datastore];
     session->operations[session->datastore][index].op = op;
     session->operations[session->datastore][index].has_error = false;
     session->operations[session->datastore][index].xpath = strdup(xpath);
-    CHECK_NULL_NOMEM_GOTO(session->operations[session->datastore][index].xpath, rc, cleanup);
-    if (DM_SET_OP == op) {
-        session->operations[session->datastore][index].detail.set.val = val;
-        session->operations[session->datastore][index].detail.set.options = opts;
-    } else if (DM_DELETE_OP == op) {
-        session->operations[session->datastore][index].detail.del.options = opts;
-    } else if (DM_MOVE_OP == op) {
-        session->operations[session->datastore][index].detail.mov.position = pos;
-        if (NULL != rel_item) {
-            session->operations[session->datastore][index].detail.mov.relative_item = strdup(rel_item);
-            CHECK_NULL_NOMEM_GOTO(session->operations[session->datastore][index].detail.mov.relative_item, rc, cleanup);
-        } else {
-            session->operations[session->datastore][index].detail.mov.relative_item = NULL;
-        }
+    CHECK_NULL_NOMEM_RETURN(session->operations[session->datastore][index].xpath);
+
+    return rc;
+}
+
+int
+dm_add_set_operation(dm_session_t *session, const char *xpath, sr_val_t *val, char *str_val, sr_edit_options_t opts)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_NORET2(rc, session, xpath); /* value, str_val can be NULL*/
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
     }
+
+    rc = dm_alloc_operation(session, DM_SET_OP, xpath);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to allocate operation");
+
+    int index = session->oper_count[session->datastore];
+
+    session->operations[session->datastore][index].detail.set.val = val;
+    session->operations[session->datastore][index].detail.set.options = opts;
+    session->operations[session->datastore][index].detail.set.str_val = str_val;
 
     session->oper_count[session->datastore]++;
     return rc;
 cleanup:
     sr_free_val(val);
+    free(str_val);
+    return rc;
+}
+
+int
+dm_add_del_operation(dm_session_t *session, const char *xpath, sr_edit_options_t opts)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG2(session, xpath);
+
+    rc = dm_alloc_operation(session, DM_DELETE_OP, xpath);
+    CHECK_RC_MSG_RETURN(rc, "Failed to allocate operation");
+
+    int index = session->oper_count[session->datastore];
+    session->operations[session->datastore][index].detail.del.options = opts;
+    session->oper_count[session->datastore]++;
+    return rc;
+}
+
+int
+dm_add_move_operation(dm_session_t *session, const char *xpath, sr_move_position_t pos, const char *rel_item)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG2(session, xpath);
+
+    rc = dm_alloc_operation(session, DM_MOVE_OP, xpath);
+    CHECK_RC_MSG_RETURN(rc, "Failed to allocate operation");
+
+    int index = session->oper_count[session->datastore];
+
+    session->operations[session->datastore][index].detail.mov.position = pos;
+    if (NULL != rel_item) {
+        session->operations[session->datastore][index].detail.mov.relative_item = strdup(rel_item);
+        CHECK_NULL_NOMEM_RETURN(session->operations[session->datastore][index].detail.mov.relative_item);
+    } else {
+        session->operations[session->datastore][index].detail.mov.relative_item = NULL;
+    }
+
+    session->oper_count[session->datastore]++;
     return rc;
 }
 
@@ -1264,6 +1308,7 @@ dm_remove_last_operation(dm_session_t *session)
         dm_free_sess_op(&session->operations[session->datastore][index]);
         session->operations[session->datastore][index].xpath = NULL;
         session->operations[session->datastore][index].detail.set.val = NULL;
+        session->operations[session->datastore][index].detail.set.str_val = NULL;
     }
 }
 
