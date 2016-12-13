@@ -251,7 +251,6 @@ rp_prepare_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *sessio
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to allocate message");
 
     req->session_id = session->id;
-    req->request->event_notif_req->do_not_send_reply = true;
 
     rc = sr_mem_edit_string(values->_sr_mem, &req->request->event_notif_req->xpath, "/ietf-netconf-notifications:netconf-capability-change");
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath in the message");
