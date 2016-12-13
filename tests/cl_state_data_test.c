@@ -2863,6 +2863,39 @@ cl_extraleaf_dp(void **state)
     sr_list_cleanup(xpath_retrieved2);
 }
 
+static void
+cl_no_dp_subscription(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t *values = NULL;
+    size_t cnt = 0;
+    int rc = SR_ERR_OK;
+
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* retrieve data */
+    rc = sr_get_items(session, "/state-module:bus/vendor_name", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* check data */
+    assert_null(values);
+    assert_int_equal(0, cnt);
+
+    /* cleanup */
+    sr_unsubscribe(session, subscription);
+    sr_session_stop(session);
+}
+
 int
 main()
 {
@@ -2891,6 +2924,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_divided_providers_dp, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_only_nested_container_dp, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_extraleaf_dp, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_no_dp_subscription, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
