@@ -1140,7 +1140,7 @@ void edit_instance_id_test(void **state) {
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
-    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
     /* leaf */
     value = calloc(1, sizeof(*value));
     assert_non_null(value);

@@ -2123,6 +2123,305 @@ nacm_test_read_access_single_subtree(void **state)
     }
 }
 
+static void
+nacm_test_read_access_multiple_subtrees(void **state)
+{
+    int rc = 0;
+    ac_ucred_t user_credentials[4] = {{"user1", 10, 10, NULL, 10, 10},
+                                      {"user1", 10, 10, "user2", 20, 20},
+                                      {"user3", 30, 30, NULL, 30, 30},
+                                      {"user2", 20, 20, "root"}};
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
+    rp_session_t *rp_session[4] = {NULL,};
+    struct lyd_node *data_tree[4] = {NULL,};
+    sr_node_t *subtrees = NULL;
+    size_t count = 0;
+    char **chunk_ids = NULL;
+
+    /* datastore content */
+    createDataTreeTestModule();
+    createDataTreeIETFinterfacesModule();
+
+    /* RP sessions */
+    for (int i = 0; i < 4; ++i) {
+        test_rp_session_create_user(rp_ctx, SR_DS_STARTUP, user_credentials[i], &rp_session[i]);
+        rc = dm_get_datatree(dm_ctx, rp_session[i]->dm_session, "test-module", &data_tree[i]);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(data_tree[i]);
+    }
+
+    /* NACM config */
+    nacm_config_for_basic_read_access_tests();
+
+    /* test read access for test-module */
+    /* -> /test-module:main/boolean */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[0], data_tree[0], NULL, XP_TEST_MODULE_BOOL, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[1], data_tree[1], NULL, XP_TEST_MODULE_BOOL, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);         /* access allowed */
+    assert_int_equal(1, count);
+    verify_tree_size(subtrees, 1);
+    sr_free_trees(subtrees, count);
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[2], data_tree[2], NULL, XP_TEST_MODULE_BOOL, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[3], data_tree[3], NULL, XP_TEST_MODULE_BOOL, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);         /* access allowed */
+    assert_int_equal(1, count);
+    verify_tree_size(subtrees, 1);
+    sr_free_trees(subtrees, count);
+    /* -> /test-module:list */
+#define TEST_MODULE_LIST "/test-module:list"
+    /*     -> session 0 */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[0], data_tree[0], NULL, TEST_MODULE_LIST, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed to all nodes */
+    assert_int_equal(2, count);
+    assert_non_null(node_get_child(subtrees, "key"));
+    if (0 == strcmp("k1", node_get_child(subtrees, "key")->data.string_val)) {
+        verify_tree_size(subtrees, 5);
+        verify_tree_size(subtrees+1, 4);
+    } else {
+        verify_tree_size(subtrees, 4);
+        verify_tree_size(subtrees+1, 5);
+    }
+    sr_free_trees(subtrees, count);
+    /*     -> session 1 */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[1], data_tree[1], NULL, TEST_MODULE_LIST, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);
+    assert_non_null(node_get_child(subtrees, "key"));
+    if (0 == strcmp("k1", node_get_child(subtrees, "key")->data.string_val)) {
+        verify_tree_size(subtrees, 4);      /* list, id_ref, key, wireless */
+        verify_tree_size(subtrees+1, 4);
+    } else {
+        verify_tree_size(subtrees, 4);
+        verify_tree_size(subtrees+1, 4);    /* list, id_ref, key, wireless */
+    }
+    sr_free_trees(subtrees, count);
+    /*     -> session 2 */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[2], data_tree[2], NULL, TEST_MODULE_LIST, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all nodes */
+    /*     -> session 3 */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[3], data_tree[3], NULL, TEST_MODULE_LIST, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed to all nodes */
+    assert_int_equal(2, count);
+    assert_non_null(node_get_child(subtrees, "key"));
+    if (0 == strcmp("k1", node_get_child(subtrees, "key")->data.string_val)) {
+        verify_tree_size(subtrees, 5);
+        verify_tree_size(subtrees+1, 4);
+    } else {
+        verify_tree_size(subtrees, 4);
+        verify_tree_size(subtrees+1, 5);
+    }
+    sr_free_trees(subtrees, count);
+    /* -> /test-module:main/numbers */
+#define MAIN_NUMBERS "/test-module:main/numbers"
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[0], data_tree[0], NULL, MAIN_NUMBERS, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);             /* 1, 2 */
+    verify_tree_size(subtrees, 1);
+    verify_tree_size(subtrees+1, 1);
+    sr_free_trees(subtrees, count);
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[1], data_tree[1], NULL, MAIN_NUMBERS, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, count);             /* 42 */
+    verify_tree_size(subtrees, 1);
+    sr_free_trees(subtrees, count);
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[2], data_tree[2], NULL, MAIN_NUMBERS, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied to all nodes */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[3], data_tree[3], NULL, MAIN_NUMBERS, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* access allowed to all nodes */
+    verify_tree_size(subtrees, 1);
+    verify_tree_size(subtrees+1, 1);
+    sr_free_trees(subtrees, count);
+
+    /* test read access for ietf-interfaces */
+    for (int i = 0; i < 4; ++i) {
+        rc = dm_get_datatree(dm_ctx, rp_session[i]->dm_session, "ietf-interfaces", &data_tree[i]);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(data_tree[i]);
+    }
+    /* -> /ietf-interfaces:interfaces/<asterisk> */
+#undef IETF_INTERFACES
+#define IETF_INTERFACES "/ietf-interfaces:interfaces/*"
+    /*     -> session 0 */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[0], data_tree[0], NULL, IETF_INTERFACES, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* access allowed to all interfaces */
+    verify_tree_size(subtrees, 11);
+    assert_null(node_get_child(subtrees, "enabled"));
+    assert_non_null(node_get_child(subtrees, "ipv4"));
+    assert_non_null(node_get_child(node_get_child(subtrees, "ipv4"), "mtu"));
+    verify_tree_size(subtrees+1, 11);
+    assert_null(node_get_child(subtrees+1, "enabled"));
+    assert_non_null(node_get_child(subtrees+1, "ipv4"));
+    assert_non_null(node_get_child(node_get_child(subtrees+1, "ipv4"), "mtu"));
+    verify_tree_size(subtrees+2, 4);       /* all children but 'enabled' */
+    sr_free_trees(subtrees, count);
+    /*     -> session 1 */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[1], data_tree[1], NULL, IETF_INTERFACES, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* access allowed to all interfaces */
+    verify_tree_size(subtrees, 11);
+    assert_non_null(node_get_child(subtrees, "enabled"));
+    assert_non_null(node_get_child(subtrees, "ipv4"));
+    assert_null(node_get_child(node_get_child(subtrees, "ipv4"), "mtu"));
+    verify_tree_size(subtrees+1, 11);
+    assert_non_null(node_get_child(subtrees+1, "enabled"));
+    assert_non_null(node_get_child(subtrees+1, "ipv4"));
+    assert_null(node_get_child(node_get_child(subtrees+1, "ipv4"), "mtu"));
+    verify_tree_size(subtrees+2, 5);
+    sr_free_trees(subtrees, count);
+    /*     -> session 2 */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[2], data_tree[2], NULL, IETF_INTERFACES, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);             /* eth0, gigaeth0 */
+    verify_tree_size(subtrees, 4);          /* interface, type, description, name */
+    verify_tree_size(subtrees+1, 4);        /* all children but 'enabled' */
+    sr_free_trees(subtrees, count);
+    /*     -> session 3 */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[3], data_tree[3], NULL, IETF_INTERFACES, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);             /* access allowed to all interfaces */
+    verify_tree_size(subtrees, 12);
+    verify_tree_size(subtrees+1, 12);
+    verify_tree_size(subtrees+2, 5);
+    sr_free_trees(subtrees, count);
+    /* -> slice interfaces */
+    /*     -> session 0 */
+    rc = rp_dt_get_subtrees_chunks(dm_ctx, rp_session[0], data_tree[0], NULL, IETF_INTERFACES,
+            1, 3, 2, 3, false, &subtrees, &count, &chunk_ids);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);               /* access allowed to all interfaces in the chunk */
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']", chunk_ids[0]);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth1']", chunk_ids[1]);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='gigaeth0']", chunk_ids[2]);
+    verify_tree_size(subtrees, 6);            /* interface, description, type, ipv4, enabled, mtu */
+    assert_null(node_get_child(subtrees, "name"));
+    assert_null(node_get_child(subtrees, "enabled"));
+    assert_non_null(node_get_child(subtrees, "ipv4"));
+    verify_tree_size(subtrees+1, 6);          /* interface, description, type, ipv4, enabled, mtu */
+    assert_null(node_get_child(subtrees+1, "name"));
+    assert_null(node_get_child(subtrees+1, "enabled"));
+    assert_non_null(node_get_child(subtrees+1, "ipv4"));
+    verify_tree_size(subtrees+2, 3);          /* interface, description, type */
+    assert_null(node_get_child(subtrees+2, "name"));
+    assert_null(node_get_child(subtrees+2, "enabled"));
+    sr_free_trees(subtrees, count);
+    for (size_t i = 0; i < count; ++i) {
+        free(chunk_ids[i]);
+    }
+    free(chunk_ids);
+    /*     -> session 1 */
+    rc = rp_dt_get_subtrees_chunks(dm_ctx, rp_session[1], data_tree[1], NULL, IETF_INTERFACES,
+            1, 3, 2, 3, false, &subtrees, &count, &chunk_ids);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);               /* access allowed to all interfaces in the chunk */
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']", chunk_ids[0]);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth1']", chunk_ids[1]);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='gigaeth0']", chunk_ids[2]);
+    verify_tree_size(subtrees, 4);            /* interface, description, type, enabled */
+    assert_null(node_get_child(subtrees, "name"));
+    assert_non_null(node_get_child(subtrees, "enabled"));
+    assert_null(node_get_child(subtrees, "ipv4"));
+    verify_tree_size(subtrees+1, 4);          /* interface, description, type, enabled */
+    assert_null(node_get_child(subtrees+1, "name"));
+    assert_non_null(node_get_child(subtrees+1, "enabled"));
+    assert_null(node_get_child(subtrees+1, "ipv4"));
+    verify_tree_size(subtrees+2, 4);          /* interface, description, type, enabled */
+    assert_null(node_get_child(subtrees+2, "name"));
+    assert_non_null(node_get_child(subtrees+2, "enabled"));
+    sr_free_trees(subtrees, count);
+    for (size_t i = 0; i < count; ++i) {
+        free(chunk_ids[i]);
+    }
+    free(chunk_ids);
+    /*     -> session 2 */
+    rc = rp_dt_get_subtrees_chunks(dm_ctx, rp_session[2], data_tree[2], NULL, IETF_INTERFACES,
+            1, 3, 2, 3, false, &subtrees, &count, &chunk_ids);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);               /* access allowed to eth0, gigaeth0 */
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']", chunk_ids[0]);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='gigaeth0']", chunk_ids[1]);
+    verify_tree_size(subtrees, 3);            /* interface, description, type */
+    assert_null(node_get_child(subtrees, "name"));
+    assert_null(node_get_child(subtrees, "enabled"));
+    assert_null(node_get_child(subtrees, "ipv4"));
+    verify_tree_size(subtrees+1, 3);          /* interface, description, type, */
+    assert_null(node_get_child(subtrees+1, "name"));
+    assert_null(node_get_child(subtrees+1, "enabled"));
+    sr_free_trees(subtrees, count);
+    for (size_t i = 0; i < count; ++i) {
+        free(chunk_ids[i]);
+    }
+    free(chunk_ids);
+    /*     -> session 3 */
+    rc = rp_dt_get_subtrees_chunks(dm_ctx, rp_session[3], data_tree[3], NULL, IETF_INTERFACES,
+            1, 3, 2, 3, false, &subtrees, &count, &chunk_ids);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);               /* access allowed to all interfaces in the chunk */
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']", chunk_ids[0]);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth1']", chunk_ids[1]);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='gigaeth0']", chunk_ids[2]);
+    verify_tree_size(subtrees, 4);            /* interface, description, type, enabled */
+    assert_null(node_get_child(subtrees, "name"));
+    assert_non_null(node_get_child(subtrees, "enabled"));
+    assert_null(node_get_child(subtrees, "ipv4"));
+    verify_tree_size(subtrees+1, 4);          /* interface, description, type, enabled */
+    assert_null(node_get_child(subtrees+1, "name"));
+    assert_non_null(node_get_child(subtrees+1, "enabled"));
+    assert_null(node_get_child(subtrees+1, "ipv4"));
+    verify_tree_size(subtrees+2, 4);          /* interface, description, type, enabled */
+    assert_null(node_get_child(subtrees+2, "name"));
+    assert_non_null(node_get_child(subtrees+2, "enabled"));
+    sr_free_trees(subtrees, count);
+    for (size_t i = 0; i < count; ++i) {
+        free(chunk_ids[i]);
+    }
+    free(chunk_ids);
+
+    /* test read access for ietf-netconf-acm */
+    for (int i = 0; i < 4; ++i) {
+        rc = dm_get_datatree(dm_ctx, rp_session[i]->dm_session, "ietf-netconf-acm", &data_tree[i]);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(data_tree[i]);
+    }
+    /* -> /ietf-netconf-acm:nacm/<asterisk> */
+#undef NACM
+#define NACM    "/ietf-netconf-acm:nacm/*"
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[0], data_tree[0], NULL, NACM, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[1], data_tree[1], NULL, NACM, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[2], data_tree[2], NULL, NACM, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[3], data_tree[3], NULL, NACM, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(9, count);              /* access allowed to all instances */
+    sr_free_trees(subtrees, count);
+    /* -> /ietf-netconf-acm:nacm/groups/group[name='group1']/<asterisk> */
+#undef NACM_GROUP1
+#define NACM_GROUP1   "/ietf-netconf-acm:nacm/groups/group[name='group1']/*"
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[0], data_tree[0], NULL, NACM_GROUP1, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[1], data_tree[1], NULL, NACM_GROUP1, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[2], data_tree[2], NULL, NACM_GROUP1, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session[3], data_tree[3], NULL, NACM_GROUP1, false, &subtrees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);              /* access allowed to all instances */
+    verify_tree_size(subtrees, 1);
+    verify_tree_size(subtrees+1, 1);
+    verify_tree_size(subtrees+2, 1);
+    sr_free_trees(subtrees, count);
+
+    /* cleanup */
+    for (int i = 0; i < 4; ++i) {
+        test_rp_session_cleanup(rp_ctx, rp_session[i]);
+    }
+}
+
 int main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(nacm_test_empty_config),
@@ -2134,8 +2433,8 @@ int main() {
             cmocka_unit_test(nacm_test_read_access_multiple_values),
             cmocka_unit_test(nacm_test_read_access_multiple_values_with_opts),
             cmocka_unit_test(nacm_test_read_access_single_subtree),
-#if 0 /* TODO: */
             cmocka_unit_test(nacm_test_read_access_multiple_subtrees), // + chunks
+#if 0 /* TODO: */
             cmocka_unit_test(nacm_test_read_with_disabled_nacm),
             cmocka_unit_test(nacm_test_read_default),
 #endif

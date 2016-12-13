@@ -1608,13 +1608,13 @@ sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_tree_pruning_cb
         sr_node_t **sr_trees, size_t *count)
 {
     return sr_nodes_to_tree_chunks(nodes, 0, SIZE_MAX, SIZE_MAX, SIZE_MAX, sr_mem, pruning_cb, pruning_ctx,
-            sr_trees, count);
+            sr_trees, count, NULL);
 }
 
 int
 sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_width, size_t child_limit,
         size_t depth_limit, sr_mem_ctx_t *sr_mem, sr_tree_pruning_cb pruning_cb, void *pruning_ctx,
-        sr_node_t **sr_trees, size_t *count)
+        sr_node_t **sr_trees, size_t *count, char ***chunk_ids_p)
 {
     int rc = SR_ERR_OK;
     sr_node_t *trees = NULL;
@@ -1623,6 +1623,8 @@ sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_
     sr_bitset_t *pruned = NULL;
     bool prune = false;
     size_t i = 0, j = 0;
+    char **chunk_ids = NULL;
+    char *chunk_id = NULL;
 
     CHECK_NULL_ARG3(nodes, sr_trees, count);
 
@@ -1652,9 +1654,36 @@ sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_
     }
 
     if (0 == tree_cnt) {
-        *sr_trees = NULL;
-        *count = 0;
-        return rc;
+        goto cleanup;
+    }
+
+    if (NULL != chunk_ids_p) {
+        chunk_ids = sr_calloc(sr_mem, tree_cnt, sizeof(char *));
+        CHECK_NULL_NOMEM_GOTO(chunk_ids, rc, cleanup);
+        for (i = j = 0; i < nodes->number; ++i) {
+            prune = false;
+            if (NULL != pruned) {
+                rc = sr_bitset_get(pruned, i, &prune);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get value of a bit in a bitset.");
+            }
+            if (prune) {
+                continue;
+            }
+            chunk_id = lyd_path(nodes->set.d[i]);
+            if (NULL == chunk_id) {
+                SR_LOG_ERR_MSG("Failed to get ID of a subtree chunk.");
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            rc = sr_mem_edit_string(sr_mem, chunk_ids+j, chunk_id);
+            free(chunk_id);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR_MSG("Failed to store ID of a subtree chunk.");
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            ++j;
+        }
     }
 
     trees = sr_calloc(sr_mem, tree_cnt, sizeof *trees);
@@ -1672,7 +1701,7 @@ sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_
         if (prune) {
             continue;
         }
-        trees[i]._sr_mem = sr_mem;
+        trees[j]._sr_mem = sr_mem;
         rc = sr_copy_node_to_tree_internal(NULL, nodes->set.d[i], 0, slice_offset, slice_width, child_limit,
                 depth_limit, pruning_cb, pruning_ctx, trees + j);
         ++j;
@@ -1683,10 +1712,17 @@ cleanup:
     if (SR_ERR_OK == rc) {
         *sr_trees = trees;
         *count = tree_cnt;
+        if (NULL != chunk_ids_p) {
+            *chunk_ids_p = chunk_ids;
+        }
     } else {
         if (sr_mem) {
             sr_mem_restore(&snapshot);
         } else {
+            for (size_t i = 0; NULL != chunk_ids && i < tree_cnt; ++i) {
+                free(chunk_ids[i]);
+            }
+            free(chunk_ids);
             sr_free_trees(trees, tree_cnt);
         }
     }

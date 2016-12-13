@@ -421,7 +421,6 @@ rp_dt_get_subtrees_chunks(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd
     sr_node_t *chunks = NULL;
     size_t count = 0;
     char **chunk_ids = NULL;
-    char *chunk_id = NULL;
     struct ly_set *nodes = NULL;
     sr_tree_pruning_cb pruning_cb = NULL;
     rp_tree_pruning_ctx_t *pruning_ctx = NULL;
@@ -439,32 +438,11 @@ rp_dt_get_subtrees_chunks(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize sysrepo tree pruning.");
 
     rc = sr_nodes_to_tree_chunks(nodes, slice_offset, slice_width, child_limit, depth_limit, sr_mem,
-            pruning_cb, (void *)pruning_ctx, &chunks, &count);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Conversion of nodes to trees failed for xpath '%s'", xpath);
-        goto cleanup;
-    }
+            pruning_cb, (void *)pruning_ctx, &chunks, &count, &chunk_ids);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Conversion of nodes to trees failed for xpath '%s'", xpath);
     if (0 == count) {
         rc = SR_ERR_NOT_FOUND;
         goto cleanup;
-    }
-
-    chunk_ids = sr_calloc(sr_mem, count, sizeof(char *));
-    CHECK_NULL_NOMEM_GOTO(chunk_ids, rc, cleanup);
-    for (size_t i = 0; i < count; ++i) {
-        chunk_id = lyd_path(nodes->set.d[i]);
-        if (NULL == chunk_id) {
-            SR_LOG_ERR("Failed to get ID of a subtree chunk for xpath %s", xpath);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-        rc = sr_mem_edit_string(sr_mem, chunk_ids+i, chunk_id);
-        free(chunk_id);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Failed to get ID of a subtree chunk for xpath %s", xpath);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
     }
 
     *chunks_p = chunks;
@@ -474,15 +452,6 @@ rp_dt_get_subtrees_chunks(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd
 cleanup:
     rp_dt_cleanup_tree_pruning(pruning_ctx);
     ly_set_free(nodes);
-    if (SR_ERR_OK != rc) {
-        if (NULL == sr_mem && NULL != chunk_ids) {
-            for (size_t i = 0; i < count; ++i) {
-                free(chunk_ids[i]);
-            }
-            free(chunk_ids);
-        }
-        sr_free_trees(chunks, count);
-    }
     return rc;
 }
 

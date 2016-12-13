@@ -496,10 +496,11 @@ int sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_tree_prunin
  * @param [in] pruning_ctx Context to pruning callback, opaque to this function.
  * @param [out] sr_trees Returned array of sysrepo trees.
  * @param [out] count Number of returned trees.
+ * @param [out] chunk_ids IDs of the returned chunks.
  */
 int sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_width, size_t child_limit,
         size_t depth_limit, sr_mem_ctx_t *sr_mem, sr_tree_pruning_cb pruning_cb, void *pruning_ctx,
-        sr_node_t **sr_trees, size_t *count);
+        sr_node_t **sr_trees, size_t *count, char ***chunk_ids);
 
 /**
  * @brief Convert a sysrepo tree into a libyang data tree.
