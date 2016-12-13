@@ -130,6 +130,9 @@ void createDataTreeStateModule();
 #define XP_TEST_MODULE_ANYDATA "/test-module:main/any-data"
 #define XP_TEST_MODULE_ANYDATA_VALUE "<container><leaf1>value1</leaf1><leaf2>value2</leaf2></container>"
 
+#define XP_TEST_MODULE_INSTANCE_ID "/test-module:main/instance_id"
+#define XP_TEST_MODULE_INSTANCE_ID_VALUE "/test-module:main/test-module:i64"
+
 #define XP_TEST_MODULE_DEC64_IN_UNION "/test-module:dec64-in-union"
 #define XP_TEST_MODULE_DEC64_IN_UNION_VALUE "-11.17"
 #define XP_TEST_MODULE_DEC64_IN_UNION_VALUE_T (-11.17)

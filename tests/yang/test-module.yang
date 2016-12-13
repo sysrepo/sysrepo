@@ -101,6 +101,9 @@ module test-module {
     leaf-list numbers {
       type uint8;
     }
+    leaf instance_id {
+      type instance-identifier;
+    }
     anyxml xml-data;
     anydata any-data;
   }

@@ -1117,6 +1117,124 @@ void edit_test_module_test(void **state){
     assert_string_equal(value->data.anydata_val, new_set->data.anydata_val);
     FREE_VARS(value, new_set);
 
+    /* instance identifier */
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_INSTANCE_ID, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_INSTANCEID_T, value->type);
+    assert_string_equal(XP_TEST_MODULE_INSTANCE_ID_VALUE, value->data.instanceid_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_INSTANCE_ID, value, &new_set);
+    assert_string_equal(value->data.instanceid_val, new_set->data.instanceid_val);
+    FREE_VARS(value, new_set);
+    test_rp_session_cleanup(ctx, session);
+}
+
+void edit_instance_id_test(void **state) {
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+    sr_val_t *value = NULL;
+    sr_val_t *new_val = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+    /* leaf */
+    value = calloc(1, sizeof(*value));
+    assert_non_null(value);
+    value->type = SR_INSTANCEID_T;
+    value->data.instanceid_val = strdup("/test-module:main/test-module:string");
+    assert_non_null(value->data.instanceid_val);
+
+    rc = rp_dt_set_item_wrapper(ctx, session, "/test-module:main/instance_id", value, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_refresh_session(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/test-module:main/instance_id", &new_val);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_string_equal("/test-module:main/test-module:string", new_val->data.instanceid_val);
+    sr_free_val(new_val);
+
+    /* container */
+    value = calloc(1, sizeof(*value));
+    assert_non_null(value);
+    value->type = SR_INSTANCEID_T;
+    value->data.instanceid_val = strdup("/test-module:main");
+    assert_non_null(value->data.instanceid_val);
+
+    rc = rp_dt_set_item_wrapper(ctx, session, "/test-module:main/instance_id", value, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_refresh_session(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/test-module:main/instance_id", &new_val);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_string_equal("/test-module:main", new_val->data.instanceid_val);
+    sr_free_val(new_val);
+
+    /* list */
+    value = calloc(1, sizeof(*value));
+    assert_non_null(value);
+    value->type = SR_INSTANCEID_T;
+    value->data.instanceid_val = strdup("/test-module:list[test-module:key='k1']");
+    assert_non_null(value->data.instanceid_val);
+
+    rc = rp_dt_set_item_wrapper(ctx, session, "/test-module:main/instance_id", value, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_refresh_session(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/test-module:main/instance_id", &new_val);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_string_equal("/test-module:list[test-module:key='k1']", new_val->data.instanceid_val);
+    sr_free_val(new_val);
+
+    /* leaf-list */
+    value = calloc(1, sizeof(*value));
+    assert_non_null(value);
+    value->type = SR_INSTANCEID_T;
+    value->data.instanceid_val = strdup("/test-module:main/test-module:numbers[.='42']");
+    assert_non_null(value->data.instanceid_val);
+
+    rc = rp_dt_set_item_wrapper(ctx, session, "/test-module:main/instance_id", value, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_refresh_session(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/test-module:main/instance_id", &new_val);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_string_equal("/test-module:main/test-module:numbers[.='42']", new_val->data.instanceid_val);
+    sr_free_val(new_val);
+
+    //TODO: node outside of the module
+
     test_rp_session_cleanup(ctx, session);
 }
 
@@ -2463,6 +2581,7 @@ int main(){
             cmocka_unit_test(set_item_leafref_test),
             cmocka_unit_test(set_item_negative_test),
             cmocka_unit_test(edit_test_module_test),
+            cmocka_unit_test(edit_instance_id_test),
             cmocka_unit_test(edit_validate_test),
             cmocka_unit_test(edit_discard_changes_test),
             cmocka_unit_test(empty_commit_test),
