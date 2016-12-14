@@ -1326,12 +1326,8 @@ nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t acces
                 }
                 /* the rule matches! */
                 action = nacm_rule->action;
-                if (NULL != rule_name) {
-                    rule_name = nacm_rule->name;
-                }
-                if (NULL != rule_info) {
-                    rule_info = nacm_rule->comment;
-                }
+                rule_name = nacm_rule->name;
+                rule_info = nacm_rule->comment;
                 goto cleanup;
             }
         }
