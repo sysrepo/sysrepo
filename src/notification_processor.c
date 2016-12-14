@@ -617,6 +617,50 @@ np_get_all_notification_files(np_ctx_t *np_ctx, time_t time_from, time_t time_to
 }
 
 /**
+ * @brief cleans up the content of an event notification structure.
+ */
+static void
+np_event_notification_content_cleanup(np_ev_notification_t *notification)
+{
+    if (NULL != notification) {
+        free((void*)notification->xpath);
+    }
+}
+
+/**
+ * @brief Fills event notification details from libyang's list instance of a notification.
+ */
+static int
+np_event_notification_entry_fill(np_ev_notification_t *notification, struct lyd_node *node)
+{
+    struct lyd_node_leaf_list *node_ll = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(notification, node, node->schema);
+
+    while (NULL != node) {
+        if (NULL != node->schema && NULL != node->schema->name) {
+            node_ll = (struct lyd_node_leaf_list*)node;
+            if (0 == strcmp(node->schema->name, "xpath") && NULL != node_ll->value_str) {
+                notification->xpath = strdup(node_ll->value_str);
+                CHECK_NULL_NOMEM_GOTO(notification->xpath, rc, cleanup);
+            }
+            if (0 == strcmp(node->schema->name, "generated-time") && NULL != node_ll->value_str) {
+                rc = sr_str_to_time((char*)node_ll->value_str, &notification->timestamp);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "String to time conversion failed.");
+            }
+        }
+        node = node->next;
+    }
+
+    return SR_ERR_OK;
+
+cleanup:
+    np_event_notification_content_cleanup(notification);
+    return rc;
+}
+
+/**
  * @brief Logging callback called from libyang for each log entry.
  */
 static void
@@ -1500,48 +1544,16 @@ cleanup:
     return rc;
 }
 
-/**
- * @brief Fills event notification details from libyang's list instance of a notification.
- */
-static int
-np_event_notification_entry_fill(np_ev_notification_t *notification, struct lyd_node *node)
-{
-    struct lyd_node_leaf_list *node_ll = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG3(notification, node, node->schema);
-
-    while (NULL != node) {
-        if (NULL != node->schema && NULL != node->schema->name) {
-            node_ll = (struct lyd_node_leaf_list*)node;
-            if (0 == strcmp(node->schema->name, "xpath") && NULL != node_ll->value.ident->name) {
-                notification->xpath = strdup(node_ll->value_str);
-                CHECK_NULL_NOMEM_GOTO(notification->xpath, rc, cleanup);
-            }
-            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "generated-time")) {
-                rc = sr_str_to_time((char*)node_ll->value_str, &notification->timestamp);
-                CHECK_RC_MSG_GOTO(rc, cleanup, "String to time conversion failed.");
-            }
-        }
-        node = node->next;
-    }
-
-    return SR_ERR_OK;
-
-cleanup:
-    free((void*)notification->xpath);
-    return rc;
-}
-
 int
 np_get_event_notifications(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath,
         const time_t start_time, const time_t stop_time, sr_api_variant_t api_variant, sr_list_t **notifications)
 {
     char *module_name = NULL;
     char req_xpath[PATH_MAX] = { 0, };
-    sr_list_t *file_list = NULL;
+    sr_list_t *file_list = NULL, *notif_list = NULL;
     struct lyd_node *data_tree = NULL, *main_tree = NULL;
     struct ly_set *node_set = NULL;
+    np_ev_notification_t *notification = NULL;
     int rc = SR_ERR_OK, ret = 0;
 
     CHECK_NULL_ARG3(np_ctx, xpath, notifications);
@@ -1576,20 +1588,51 @@ np_get_event_notifications(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const 
     node_set = lyd_find_xpath(main_tree, req_xpath);
 
     if (NULL != node_set && node_set->number > 0) {
+        /* init the notification list */
+        rc = sr_list_init(&notif_list);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize notification list.");
+
         for (size_t i = 0; i < node_set->number; i++) {
-            np_ev_notification_t notification = { 0, };
-            rc = np_event_notification_entry_fill(&notification, node_set->set.d[i]->child);
-            printf("%s %ld\n", notification.xpath, notification.timestamp);
-            free((void*)notification.xpath);
+            /* allocate a new notification entry */
+            notification = calloc(1, sizeof(*notification));
+            CHECK_NULL_NOMEM_GOTO(notification, rc, cleanup);
+            /* fill in the notification details */
+            rc = np_event_notification_entry_fill(notification, node_set->set.d[i]->child);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Error by filling a notification entry.");
+            SR_LOG_DBG("Adding a new notification: '%s' (time=%ld)", notification->xpath, notification->timestamp);
+            /* add the notification into notification list */
+            rc = sr_list_add(notif_list, notification);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Error by adding notification into list.");
+            notification = NULL;
         }
     }
 
+    *notifications = notif_list;
+    notif_list = NULL;
+
 cleanup:
+    np_event_notification_cleanup(notification);
+    if (NULL != notif_list) {
+        /* in case of error */
+        for (size_t i = 0; i < notif_list->count; i++) {
+            np_event_notification_cleanup(notif_list->data[i]);
+        }
+        sr_list_cleanup(notif_list);
+    }
     ly_set_free(node_set);
     lyd_free_withsiblings(main_tree);
     sr_free_list_of_strings(file_list);
     free(module_name);
     return rc;
+}
+
+void
+np_event_notification_cleanup(np_ev_notification_t *notification)
+{
+    if (NULL != notification) {
+        np_event_notification_content_cleanup(notification);
+        free(notification);
+    }
 }
 
 int

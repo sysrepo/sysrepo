@@ -333,6 +333,13 @@ int np_get_event_notifications(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, co
         const time_t start_time, const time_t stop_time, sr_api_variant_t api_variant, sr_list_t **notifications);
 
 /**
+ * @brief Cleans up an event notification structure.
+ *
+ * @param[in] notification Event notification context to be destroyed.
+ */
+void np_event_notification_cleanup(np_ev_notification_t *notification);
+
+/**
  * @brief Cleans up notification store - old notification data files.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
