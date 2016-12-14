@@ -105,7 +105,6 @@ cleanup:
     return rc;
 }
 
-#ifdef ENABLE_NACM
 /**
  * @brief Callback to prune away disabled and NACM-read-inaccessible subtrees from a sysrepo tree.
  */
@@ -139,7 +138,6 @@ rp_dt_tree_pruning(void *pruning_ctx_p, const struct lyd_node *subtree, bool *pr
     *prune = false;
     return rc;
 }
-#endif
 
 void
 rp_dt_cleanup_tree_pruning(rp_tree_pruning_ctx_t *pruning_ctx)
@@ -188,12 +186,12 @@ rp_dt_init_tree_pruning(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
     }
 
 cleanup:
+#endif
     if (SR_ERR_OK == rc) {
         *pruning_ctx_p = pruning_ctx;
         *pruning_cb = rp_dt_tree_pruning;
     } else {
         rp_dt_cleanup_tree_pruning(pruning_ctx);
     }
-#endif
     return rc;
 }
