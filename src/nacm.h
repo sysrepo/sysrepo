@@ -155,8 +155,8 @@ typedef struct nacm_data_val_result_s {
     nacm_access_flag_t access_type;  /**< Access type that the result applies to. */
     const struct lyd_node *node;     /**< Data node that this result relates to. */
     nacm_action_t action;            /**< Which action has been determined to be taken for this node. */
-    const char *rule_name;           /**< Name of the rule which have yielded this outcome, if any. */
-    const char *rule_info;           /**< Description of the rule which have yielded this outcome, if any. */
+    const char *rule_name;           /**< Name of the rule which has yielded this outcome, if any. */
+    const char *rule_info;           /**< Description of the rule which has yielded this outcome, if any. */
 } nacm_data_val_result_t;
 
 /**
@@ -236,7 +236,8 @@ int nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credenti
  * @param [in] nacm_ctx NACM context.
  * @param [in] user_credentials User credentials.
  * @param [in] data_tree Data tree whose nodes will be validated.
- * @param [in] cache Use cache to remember sets of matching nodes for data-oriented rules.
+ * @param [in] cache Use cache to remember sets of matching nodes for data-oriented rules and results
+ *                   of past validation runs.
  * @param [out] nacm_data_val_ctx Returned context representing this request.
  */
 int nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, struct lyd_node *data_tree,
