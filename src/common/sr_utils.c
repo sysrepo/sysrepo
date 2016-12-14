@@ -29,6 +29,9 @@
 #include <ctype.h>
 #include <signal.h>
 #include <stdarg.h>
+#define __USE_XOPEN
+#include <time.h>
+
 #include <libyang/libyang.h>
 
 #include "sr_common.h"
@@ -2398,7 +2401,7 @@ cleanup:
 }
 
 int
-sr_time_to_string(time_t time, char *buff, size_t buff_size)
+sr_time_to_str(time_t time, char *buff, size_t buff_size)
 {
     CHECK_NULL_ARG(buff);
 
@@ -2407,6 +2410,24 @@ sr_time_to_string(time_t time, char *buff, size_t buff_size)
     memmove(buff + strlen(buff) - 1, buff + strlen(buff) - 2, 3);
     buff[strlen(buff) - 3] = ':';
 
+    return SR_ERR_OK;
+}
+
+int
+sr_str_to_time(char *time_str, time_t *time)
+{
+    struct tm tm = { 0, };
+    char *colon = NULL;
+
+    CHECK_NULL_ARG2(time_str, time);
+
+    /* time str ends in '+hh:mm' but should be '+hhmm' */
+    colon = strrchr(time_str, ':');
+    memmove(colon, colon + 1, 2);
+    *(colon + 2) = '\0';
+    strptime(time_str, "%Y-%m-%dT%H:%M:%S%z", &tm);
+
+    *time = mktime(&tm);
     return SR_ERR_OK;
 }
 

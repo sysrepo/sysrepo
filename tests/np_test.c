@@ -414,6 +414,7 @@ np_notif_store_test(void **state)
     struct ly_ctx *ctx = NULL;
     const struct lys_module *module = NULL;
     struct lyd_node *node = NULL;
+    sr_list_t *notif_list = NULL;
 
     /* create notif. data tree */
     ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
@@ -424,10 +425,15 @@ np_notif_store_test(void **state)
     assert_non_null(node);
 
     /* store notification */
-    rc = np_store_notification(np_ctx, test_ctx->rp_session_ctx->user_credentials, "/test-module:main/link-discovered",
+    rc = np_store_event_notification(np_ctx, test_ctx->rp_session_ctx->user_credentials, "/test-module:main/link-discovered",
             time(NULL), &node);
     assert_int_equal(rc, SR_ERR_OK);
     assert_null(node);
+
+    /* retrieve notifications  */
+    rc = np_get_event_notifications(np_ctx, test_ctx->rp_session_ctx->user_credentials, "/test-module:main/link-discovered",
+            0, time(NULL), SR_API_VALUES, &notif_list);
+    assert_int_equal(rc, SR_ERR_OK);
 
     rc = np_cleanup_notif_store(np_ctx);
     assert_int_equal(rc, SR_ERR_OK);

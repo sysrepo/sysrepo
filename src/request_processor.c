@@ -251,6 +251,7 @@ rp_prepare_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *sessio
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to allocate message");
 
     req->session_id = session->id;
+    req->request->event_notif_req->do_not_send_reply = true;
 
     rc = sr_mem_edit_string(values->_sr_mem, &req->request->event_notif_req->xpath, "/ietf-netconf-notifications:netconf-capability-change");
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath in the message");
@@ -2610,7 +2611,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 
 #ifdef ENABLE_NOTIF_STORE
     /* store the notification in the datastore */
-    rc = np_store_notification(rp_ctx->np_ctx, session->user_credentials, msg->request->event_notif_req->xpath,
+    rc = np_store_event_notification(rp_ctx->np_ctx, session->user_credentials, msg->request->event_notif_req->xpath,
             msg->request->event_notif_req->timestamp, &notif_data_tree);
 #endif
 
@@ -2701,6 +2702,50 @@ finalize:
     if (NULL != notif_data_tree) {
         lyd_free_withsiblings(notif_data_tree);
     }
+
+    return rc;
+}
+
+/**
+ * @brief Processes an event notification replay request.
+ */
+static int
+rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->event_notif_replay_req);
+
+    SR_LOG_DBG_MSG("Processing event notification replay request.");
+
+    /* allocate the response */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__EVENT_NOTIF_REPLAY, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
+        SR_LOG_ERR_MSG("Allocation of the response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+#ifdef ENABLE_NOTIF_STORE
+
+    // TODO np_get_event_notifications & send
+
+#endif
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
     return rc;
 }
@@ -2871,6 +2916,9 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             rc = rp_event_notif_req_process(rp_ctx, session, msg);
             *skip_msg_cleanup = true;
             return rc; /* skip further processing */
+        case SR__OPERATION__EVENT_NOTIF_REPLAY:
+            rc = rp_event_notif_replay_req_process(rp_ctx, session, msg);
+            break;
         default:
             SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
                     session->id, msg->request->operation);

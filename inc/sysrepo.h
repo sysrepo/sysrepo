@@ -1708,6 +1708,7 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
  * was used). Notification callbacks of the given susbscriptions will be called with the type set to
  * ::SR_EV_NOTIF_REPLAY, ::SR_EV_NOTIF_REPLAY_COMPLETE or ::SR_EV_NOTIF_REPLAY_STOP.
  *
+ * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] subscription Session context acquired with ::sr_session_start call.
  * @param[in] start_time Starting time of the desired time window for notification replay.
  * @param[in] stop_time End time of the desired time window for notification replay. If set to 0,
@@ -1716,7 +1717,8 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_event_notif_replay(sr_subscription_ctx_t *subscription, time_t start_time, time_t stop_time);
+int sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription,
+        time_t start_time, time_t stop_time);
 
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1081,6 +1081,10 @@ sr_get_subtree(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_opti
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__GET_SUBTREE);
+    if (SR_ERR_NOT_FOUND == rc) {
+        /* not an error, so no logging, but we still need to clean up and we won't be copying values */
+        goto cleanup;
+    }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* duplicate the content of gpb to sr_node_t */
@@ -1133,6 +1137,10 @@ sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_opt
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__GET_SUBTREES);
+    if (SR_ERR_NOT_FOUND == rc) {
+        /* not an error, so no logging, but we still need to clean up and we won't be copying values */
+        goto cleanup;
+    }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* copy the content of gpb trees to sr_node_t */
@@ -3527,10 +3535,62 @@ cleanup:
 }
 
 int
-sr_event_notif_replay(sr_subscription_ctx_t *subscription, time_t start_time, time_t stop_time)
+sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription,
+        time_t start_time, time_t stop_time)
 {
-    // TODO
-    return SR_ERR_UNSUPPORTED;
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    cl_sm_subscription_ctx_t *sm_subscription = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, session->conn_ctx, subscription);
+
+    cl_session_clear_errors(session);
+
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+
+    for (size_t i = 0; i < subscription->sm_subscription_cnt; i++) {
+        sm_subscription = subscription->sm_subscriptions[i];
+
+        /* prepare event-notification message */
+        rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__EVENT_NOTIF_REPLAY, session->id, &msg_req);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+        /* set arguments */
+        sr_mem_edit_string(sr_mem, &msg_req->request->event_notif_replay_req->xpath, sm_subscription->module_name); // TODO: xpath
+        CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_replay_req->xpath, rc, cleanup);
+
+        msg_req->request->event_notif_replay_req->start_time = start_time;
+        msg_req->request->event_notif_replay_req->stop_time = stop_time;
+
+        /* set subscription details */
+        sr_mem_edit_string(sr_mem, &msg_req->request->event_notif_replay_req->subscriber_address,
+                sm_subscription->delivery_address);
+        CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_replay_req->subscriber_address, rc, cleanup);
+        msg_req->request->event_notif_replay_req->subscription_id = sm_subscription->id;
+        msg_req->request->event_notif_replay_req->api_variant = sr_api_variant_sr_to_gpb(sm_subscription->api_variant);
+
+        /* send the request and receive the response */
+        rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__EVENT_NOTIF_REPLAY);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+        sr_msg_free(msg_req);
+        sr_msg_free(msg_resp);
+    }
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
+    }
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
+    }
+    return cl_session_return(session, rc);
 }
 
 int

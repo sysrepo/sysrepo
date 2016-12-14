@@ -23,8 +23,10 @@
 #ifndef SR_UTILS_H_
 #define SR_UTILS_H_
 
-#include <time.h>
 #include <stdio.h>
+#define __USE_XOPEN
+#include <time.h>
+
 
 #ifdef __APPLE__
 /* OS X get_time */
@@ -620,12 +622,22 @@ int sr_create_uri_for_module(const struct lys_module *module, char **uri);
  * @brief Converts time_t into string formatted as date-and-time type defined in RFC 6991.
  *
  * @param [in] time Time to be coverted into string.
- * @param [in] buff String buffer where time will be written.
+ * @param [out] buff String buffer where time will be written.
  * @param [in] buff_size Size of the string buffer.
  *
  * @return Error code (SR_ERR_OK on success)
  */
-int sr_time_to_string(time_t time, char *buff, size_t buff_size);
+int sr_time_to_str(time_t time, char *buff, size_t buff_size);
+
+/**
+ * @brief Converts time string formatted as date-and-time type defined in RFC 6991 into time_t.
+ *
+ * @param [in] time_str String to be converted into time.
+ * @param [out] time Resulting time.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_str_to_time(char *time_str, time_t *time);
 
 /**
  * @brief Frees the list and that contains allocated strings (they are freed as well).

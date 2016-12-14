@@ -750,8 +750,9 @@ message EventNotifReplayReq {
   required uint64 start_time = 2;
   required uint64 stop_time = 3;
 
-  optional string subscriber_address = 10;
-  optional uint32 subscription_id = 11;
+  required string subscriber_address = 10;
+  required uint32 subscription_id = 11;
+  required ApiVariant api_variant = 12;
 }
 
 /**
@@ -899,6 +900,7 @@ enum Operation {
   RPC = 81;
   ACTION = 82;
   EVENT_NOTIF = 83;
+  EVENT_NOTIF_REPLAY = 84;
 
   UNSUBSCRIBE_DESTINATION = 101;
   COMMIT_TIMEOUT = 102;
