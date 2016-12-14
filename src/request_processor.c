@@ -66,6 +66,10 @@ typedef enum rp_capability_change_type_e {
 #define CAPABILITY_MODIFIED_XPATH "/ietf-netconf-notifications:netconf-capability-change/modified-capability"
 #define CAPABILITY_CHANGED_BY_SERVER "/ietf-netconf-notifications:netconf-capability-change/changed-by/server"
 
+#define CONFIG_CHANGED_USERNAME_XPATH "/ietf-netconf-notifications:netconf-config-change/changed-by/username"
+#define CONFIG_CHANGED_SESSION_ID_XPATH "/ietf-netconf-notifications:netconf-config-change/changed-by/session-id"
+#define CONFIG_CHANGED_DATASTORE_XPATH "/ietf-netconf-notifications:netconf-config-change/datastore"
+
 /**
  * @brief Copy errors saved in the Data Manager session into the GPB response.
  */
@@ -269,8 +273,8 @@ cleanup:
     return rc;
 }
 
-static int
-rp_send_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg) {
+int
+rp_send_netconf_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg) {
 
     CHECK_NULL_ARG3(rp_ctx, session, msg);
     int rc = SR_ERR_OK;
@@ -292,7 +296,61 @@ rp_generate_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *sessi
     rc = rp_prepare_capability_change_notification(rp_ctx, session, module_name, change_type, &msg);
     CHECK_RC_LOG_RETURN(rc, "Failed to prepare capability notification message for module %s", module_name);
 
-    rc = rp_send_capability_change_notification(rp_ctx, session, msg);
+    rc = rp_send_netconf_change_notification(rp_ctx, session, msg);
+    return rc;
+}
+
+int
+rp_create_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg **msg) {
+    CHECK_NULL_ARG3(rp_ctx, session, msg);
+    int rc = SR_ERR_OK;
+    Sr__Msg *req = NULL;
+    sr_val_t *values = NULL;
+    size_t val_cnt = 3;
+
+    rc = sr_new_values(val_cnt, &values);
+    CHECK_RC_MSG_RETURN(rc, "Failed to allocate values");
+
+    rc = sr_val_set_xpath(&values[0], CONFIG_CHANGED_SESSION_ID_XPATH);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath");
+
+    values[0].type = SR_UINT32_T;
+    values[0].data.uint32_val = session->id;
+
+    rc = sr_val_set_xpath(&values[1], CONFIG_CHANGED_USERNAME_XPATH);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath");
+
+    const char *user_name = NULL != session->user_credentials->e_username ? session->user_credentials->e_username : session->user_credentials->r_username;
+    rc = sr_val_set_str_data(&values[1], SR_STRING_T, user_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set username value in config-changed notification");
+
+    rc = sr_val_set_xpath(&values[2], CONFIG_CHANGED_DATASTORE_XPATH);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath");
+
+    rc = sr_val_set_str_data(&values[2], SR_ENUM_T, SR_DS_STARTUP == session->datastore ? "startup" : "running");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set datstore value in config-changed notification");
+
+    rc = sr_gpb_req_alloc(values->_sr_mem, SR__OPERATION__EVENT_NOTIF, session->id, &req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to allocate message");
+
+    req->session_id = session->id;
+    req->request->event_notif_req->do_not_send_reply = true;
+
+    rc = sr_mem_edit_string(values->_sr_mem, &req->request->event_notif_req->xpath, "/ietf-netconf-notifications:netconf-config-change");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath in the message");
+
+    rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
+
+    SR_LOG_DBG_MSG("Config changed notification generated");
+cleanup:
+    sr_free_values(values, val_cnt);
+    if (SR_ERR_OK != rc) {
+        sr_msg_free(req);
+    } else {
+        *msg = req;
+    }
+
     return rc;
 }
 
@@ -431,7 +489,7 @@ rp_module_install_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *
                         msg->request->module_install_req->revision,
                         &implicitly_removed);
             if (SR_ERR_OK == oper_rc) {
-                rp_send_capability_change_notification(rp_ctx, session, notif);
+                rp_send_netconf_change_notification(rp_ctx, session, notif);
             } else {
                 sr_msg_free(notif);
             }

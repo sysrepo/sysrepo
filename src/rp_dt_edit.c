@@ -763,6 +763,12 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             break;
         case DM_COMMIT_NOTIFY_APPLY:
             rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_APPLY, commit_ctx);
+            if (SR_ERR_OK == rc) {
+               Sr__Msg *notif = NULL;
+               rc = rp_create_config_change_notification(rp_ctx, session, &notif);
+               CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create config-change notification");
+               rp_send_netconf_change_notification(rp_ctx, session, notif);
+            }
             state = DM_COMMIT_FINISHED;
             SR_LOG_DBG_MSG("Commit (8/9): apply notifications sent");
             break;
