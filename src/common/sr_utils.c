@@ -2554,7 +2554,13 @@ sr_get_system_groups(const char *username, char ***groups_p, size_t *group_cnt_p
     size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
     size_t group_cnt = 0;
     int group_id_cnt = 16;
+#ifdef __APPLE__
+    int *group_ids = NULL, *tmp_group_ids = NULL;
+    int user_gid = 0;
+#else
     gid_t *group_ids = NULL, *tmp_group_ids = NULL;
+    gid_t user_gid = 0;
+#endif
     char **groups = NULL;
     struct passwd pw = {0}, *pw_p = NULL;
     struct group gr = {0}, *gr_p = NULL;
@@ -2588,14 +2594,19 @@ sr_get_system_groups(const char *username, char ***groups_p, size_t *group_cnt_p
     if (NULL == pw_p) {
         goto cleanup;
     }
+#ifdef __APPLE__
+    user_gid = (int)pw.pw_gid;
+#else
+    user_gid = pw.pw_gid;
+#endif
 
     /* get secondary groups */
-    group_ids = calloc(group_id_cnt, sizeof(gid_t));
+    group_ids = calloc(group_id_cnt, sizeof *group_ids);
     CHECK_NULL_NOMEM_GOTO(group_ids, rc, cleanup);
 
     max_attempts = MAX_BUF_REALLOC_ATEMPTS;
-    while (max_attempts && (ret = getgrouplist(username, pw.pw_gid, group_ids, &group_id_cnt)) < 0) {
-        tmp_group_ids = realloc(group_ids, group_id_cnt * sizeof (gid_t));
+    while (max_attempts && (ret = getgrouplist(username, user_gid, group_ids, &group_id_cnt)) < 0) {
+        tmp_group_ids = realloc(group_ids, group_id_cnt * (sizeof *tmp_group_ids));
         CHECK_NULL_NOMEM_GOTO(tmp_group_ids, rc, cleanup);
         group_ids = tmp_group_ids;
         --max_attempts;
@@ -2615,7 +2626,7 @@ sr_get_system_groups(const char *username, char ***groups_p, size_t *group_cnt_p
 
     for (size_t i = 0; i < group_id_cnt; ++i) {
         max_attempts = MAX_BUF_REALLOC_ATEMPTS;
-        while (max_attempts && ERANGE == (ret = getgrgid_r(group_ids[i], &gr, gr_buf, gr_bufsize, &gr_p))) {
+        while (max_attempts && ERANGE == (ret = getgrgid_r((gid_t)group_ids[i], &gr, gr_buf, gr_bufsize, &gr_p))) {
             tmp_buf = realloc(gr_buf, gr_bufsize << 1);
             CHECK_NULL_NOMEM_GOTO(gr_buf, rc, cleanup);
             gr_buf = tmp_buf;

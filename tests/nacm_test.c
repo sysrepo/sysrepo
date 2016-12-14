@@ -2433,7 +2433,7 @@ int main() {
             cmocka_unit_test(nacm_test_read_access_multiple_values),
             cmocka_unit_test(nacm_test_read_access_multiple_values_with_opts),
             cmocka_unit_test(nacm_test_read_access_single_subtree),
-            cmocka_unit_test(nacm_test_read_access_multiple_subtrees), // + chunks
+            cmocka_unit_test(nacm_test_read_access_multiple_subtrees)
 #if 0 /* TODO: */
             cmocka_unit_test(nacm_test_read_with_disabled_nacm),
             cmocka_unit_test(nacm_test_read_default),
