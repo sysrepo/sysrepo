@@ -696,26 +696,6 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
 
     md_ctx_lock(md_ctx, false);
 
-    rc = np_get_data_provider_subscriptions(rp_ctx->np_ctx, schema_info->module_name, &state_data_ctx->subscriptions, &state_data_ctx->subscription_cnt);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Get data provider subscriptions failed");
-
-    /* Check if the state data from this module is not handled internally */
-    for (size_t i = 0; i < rp_ctx->modules_incl_intern_op_data->count; i++) {
-        if (0 == strcmp(schema_info->module_name, (char *) rp_ctx->modules_incl_intern_op_data->data[i])) {
-            session->state_data_ctx.internal_state_data = true;
-            session->state_data_ctx.internal_state_data_index = i;
-        }
-    }
-
-    if (0 == state_data_ctx->subscription_cnt) {
-        if (!session->state_data_ctx.internal_state_data) {
-            goto cleanup;
-        }
-    }
-
-    rc = rp_dt_subscriptions_to_schema_nodes(rp_ctx->dm_ctx, state_data_ctx->subscriptions, state_data_ctx->subscription_cnt, &session->state_data_ctx.subscription_nodes);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Subscriptions to schema nodes failed");
-
     rc = sr_list_init(&subtree_nodes);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
@@ -780,6 +760,26 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     subtree_nodes = NULL;
 
     SR_LOG_DBG("%zu subtrees of state data will be attempted to load in order to resolve %s", state_data_ctx->subtrees->count, xpath);
+
+    if (state_data_ctx->subtrees->count > 0) {
+        /* Check if the state data from this module is not handled internally */
+        for (size_t i = 0; i < rp_ctx->modules_incl_intern_op_data->count; i++) {
+            if (0 == strcmp(schema_info->module_name, (char *) rp_ctx->modules_incl_intern_op_data->data[i])) {
+                session->state_data_ctx.internal_state_data = true;
+                session->state_data_ctx.internal_state_data_index = i;
+            }
+        }
+
+        rc = np_get_data_provider_subscriptions(rp_ctx->np_ctx, schema_info->module_name, &state_data_ctx->subscriptions, &state_data_ctx->subscription_cnt);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Get data provider subscriptions failed");
+
+        if (0 == state_data_ctx->subscription_cnt) {
+            goto cleanup;
+        }
+
+        rc = rp_dt_subscriptions_to_schema_nodes(rp_ctx->dm_ctx, state_data_ctx->subscriptions, state_data_ctx->subscription_cnt, &session->state_data_ctx.subscription_nodes);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Subscriptions to schema nodes failed");
+    }
 
 cleanup:
     free(xp);
