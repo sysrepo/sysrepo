@@ -56,7 +56,7 @@ test_setup(void **state)
     test_ctx->user_cred.r_uid = getuid();
     test_ctx->user_cred.r_gid = getgid();
 
-    test_rp_ctx_create(&test_ctx->rp_ctx);
+    test_rp_ctx_create(CM_MODE_LOCAL, &test_ctx->rp_ctx);
 
     *state = test_ctx;
     return 0;

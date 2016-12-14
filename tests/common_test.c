@@ -27,6 +27,7 @@
 #include <cmocka.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <pwd.h>
 #include <sys/stat.h>
 
 #include "sr_common.h"
@@ -695,7 +696,7 @@ sr_node_t_test(void **state)
     assert_non_null(nodeset);
     assert_int_equal(4, nodeset->number);
 
-    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, &trees, &tree_cnt));
+    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, NULL, NULL, &trees, &tree_cnt));
     assert_non_null(trees);
     assert_int_equal(4, tree_cnt);
 
@@ -851,7 +852,7 @@ sr_node_t_with_augments_test(void **state)
     assert_non_null(nodeset);
     assert_int_equal(2, nodeset->number);
 
-    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, &trees, &tree_cnt));
+    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, NULL, NULL, &trees, &tree_cnt));
     assert_non_null(trees);
     assert_int_equal(2, tree_cnt);
 
@@ -951,7 +952,7 @@ sr_node_t_rpc_input_test(void **state)
     assert_non_null(nodeset);
     assert_int_equal(2, nodeset->number);
 
-    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, &trees, &tree_cnt));
+    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, NULL, NULL, &trees, &tree_cnt));
     assert_non_null(trees);
     assert_int_equal(2, tree_cnt);
 
@@ -1041,7 +1042,7 @@ sr_node_t_rpc_output_test(void **state)
     assert_non_null(nodeset);
     assert_int_equal(3, nodeset->number);
 
-    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, &trees, &tree_cnt));
+    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, NULL, NULL, &trees, &tree_cnt));
     assert_non_null(trees);
     assert_int_equal(3, tree_cnt);
 
@@ -1345,6 +1346,28 @@ sr_create_uri_test(void **state)
 }
 
 static void
+sr_get_system_groups_test(void **state)
+{
+    char **groups = NULL;
+    size_t group_cnt = 0;
+    struct passwd *pw = NULL;
+    uid_t uid = 0;
+
+    uid = geteuid();
+    pw = getpwuid(uid);
+    if (pw) {
+         assert_int_equal(SR_ERR_OK, sr_get_system_groups(pw->pw_name, &groups, &group_cnt));
+         for (size_t i = 0; i < group_cnt; ++i) {
+             assert_non_null(groups[i]);
+             assert_true(0 < strlen(groups[i]));
+             SR_LOG_DBG("User '%s' is member of the group '%s'.", pw->pw_name, groups[i]);
+             free(groups[i]);
+         }
+         free(groups);
+    }
+}
+
+static void
 sr_free_list_of_strings_test(void **state)
 {
     int rc = SR_ERR_OK;
@@ -1386,6 +1409,7 @@ main() {
             cmocka_unit_test_setup_teardown(sr_copy_first_ns_from_expr_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_error_info_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_create_uri_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_get_system_groups_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_free_list_of_strings_test, logging_setup, logging_cleanup),
     };
 

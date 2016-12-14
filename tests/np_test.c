@@ -51,8 +51,8 @@ test_setup(void **state)
     test_ctx = calloc(1, sizeof(*test_ctx));
     assert_non_null(test_ctx);
 
-    test_rp_ctx_create(&test_ctx->rp_ctx);
-    test_rp_sesssion_create(test_ctx->rp_ctx, SR_DS_RUNNING, &test_ctx->rp_session_ctx);
+    test_rp_ctx_create(CM_MODE_LOCAL, &test_ctx->rp_ctx);
+    test_rp_session_create(test_ctx->rp_ctx, SR_DS_RUNNING, &test_ctx->rp_session_ctx);
 
     *state = test_ctx;
     return 0;
