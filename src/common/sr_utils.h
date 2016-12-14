@@ -680,7 +680,6 @@ int sr_print(sr_print_ctx_t *print_ctx, const char *format, ...);
 int sr_create_uri_for_module(const struct lys_module *module, char **uri);
 
 /**
-<<<<<<< HEAD
  * @brief Converts time_t into string formatted as date-and-time type defined in RFC 6991.
  *
  * @param [in] time Time to be coverted into string.
@@ -700,7 +699,8 @@ int sr_time_to_str(time_t time, char *buff, size_t buff_size);
  * @return Error code (SR_ERR_OK on success)
  */
 int sr_str_to_time(char *time_str, time_t *time);
-=======
+
+/*
  * @brief Returns an array of all system groups that the given user is member of.
  *
  * @param [in] username Name of the user to search for in the group database.
@@ -708,7 +708,6 @@ int sr_str_to_time(char *time_str, time_t *time);
  * @param [out] group_cnt Number of returned groups.
  */
 int sr_get_system_groups(const char *username, char ***groups, size_t *group_cnt);
->>>>>>> sysrepo/devel
 
 /**
  * @brief Frees the list and that contains allocated strings (they are freed as well).

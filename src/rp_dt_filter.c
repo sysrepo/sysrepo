@@ -105,6 +105,7 @@ cleanup:
     return rc;
 }
 
+#ifdef ENABLE_NACM
 /**
  * @brief Callback to prune away disabled and NACM-read-inaccessible subtrees from a sysrepo tree.
  */
@@ -138,6 +139,7 @@ rp_dt_tree_pruning(void *pruning_ctx_p, const struct lyd_node *subtree, bool *pr
     *prune = false;
     return rc;
 }
+#endif
 
 void
 rp_dt_cleanup_tree_pruning(rp_tree_pruning_ctx_t *pruning_ctx)
@@ -155,9 +157,6 @@ rp_dt_init_tree_pruning(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
         bool check_enabled, bool cache, sr_tree_pruning_cb *pruning_cb, rp_tree_pruning_ctx_t **pruning_ctx_p)
 {
     int rc = SR_ERR_OK;
-    nacm_ctx_t *nacm_ctx = NULL;
-    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
-    const char *rule_name = NULL, *rule_info;
     rp_tree_pruning_ctx_t *pruning_ctx = NULL;
     CHECK_NULL_ARG5(dm_ctx, rp_session, data_tree, pruning_cb, pruning_ctx_p);
 
@@ -166,6 +165,10 @@ rp_dt_init_tree_pruning(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
     pruning_ctx->check_enabled = check_enabled;
 
 #ifdef ENABLE_NACM
+    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
+    const char *rule_name = NULL, *rule_info;
+
     dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
     if (NULL != nacm_ctx) {
@@ -183,7 +186,6 @@ rp_dt_init_tree_pruning(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
             }
         }
     }
-#endif
 
 cleanup:
     if (SR_ERR_OK == rc) {
@@ -192,5 +194,6 @@ cleanup:
     } else {
         rp_dt_cleanup_tree_pruning(pruning_ctx);
     }
+#endif
     return rc;
 }

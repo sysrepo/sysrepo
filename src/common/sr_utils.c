@@ -2552,7 +2552,6 @@ cleanup:
 }
 
 int
-<<<<<<< HEAD
 sr_time_to_str(time_t time, char *buff, size_t buff_size)
 {
     CHECK_NULL_ARG(buff);
@@ -2581,7 +2580,9 @@ sr_str_to_time(char *time_str, time_t *time)
 
     *time = mktime(&tm);
     return SR_ERR_OK;
-=======
+}
+
+int
 sr_get_system_groups(const char *username, char ***groups_p, size_t *group_cnt_p)
 {
 #define MAX_BUF_REALLOC_ATEMPTS   10
@@ -2694,7 +2695,6 @@ cleanup:
         }
     }
     return rc;
->>>>>>> sysrepo/devel
 }
 
 void
