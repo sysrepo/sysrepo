@@ -3366,6 +3366,10 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     pthread_rwlockattr_destroy(&attr);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Commit rwlock initialization failed.");
 
+#if defined(DISABLE_CONFIG_CHANGE_NOTIF)
+    ctx->do_not_generate_config_change = true;
+#endif
+
     /* initialize Notification Processor */
     rc = np_init(ctx, &ctx->np_ctx);
     if (SR_ERR_OK != rc) {

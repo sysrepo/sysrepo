@@ -148,6 +148,7 @@ set(COMMIT_TIMEOUT 10 CACHE INTEGER "Commit operation timeout (in seconds).")
 option (LOG_THREAD_ID
         "If enabled, sysrepo logger will append thread ID (as well as function name) to each printed message."
         OFF)
+option(DISABLE_CONFIG_CHANGE_NOTIF "Skip generation of config change notifications" OFF)
 
 # add subdirectories
 add_subdirectory(src)

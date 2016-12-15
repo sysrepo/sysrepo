@@ -2519,6 +2519,9 @@ cl_capability_changed_notif_test(void **state)
 static void
 cl_config_change_notif_test(void **state)
 {
+#if defined(DISABLE_CONFIG_CHANGE_NOTIF)
+    skip();
+#endif
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
     sr_session_ctx_t *session = NULL;

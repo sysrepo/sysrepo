@@ -55,6 +55,7 @@ typedef struct rp_ctx_s {
     sr_list_t *inter_op_data_xpath;          /**< List of list containing subtree of the module that are handled by sysrepo */
 
     pthread_rwlock_t commit_lock;            /**< Lock to synchronize commit in this instance */
+    bool do_not_generate_config_change;      /**< Config-change notification will not be generated */
 } rp_ctx_t;
 
 /**
