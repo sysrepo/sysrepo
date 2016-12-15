@@ -634,6 +634,7 @@ static int
 np_event_notification_entry_fill(np_ev_notification_t *notification, struct lyd_node *node)
 {
     struct lyd_node_leaf_list *node_ll = NULL;
+    struct lyd_node_anydata *node_anydata = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(notification, node, node->schema);
@@ -648,6 +649,12 @@ np_event_notification_entry_fill(np_ev_notification_t *notification, struct lyd_
             if (0 == strcmp(node->schema->name, "generated-time") && NULL != node_ll->value_str) {
                 rc = sr_str_to_time((char*)node_ll->value_str, &notification->timestamp);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "String to time conversion failed.");
+            }
+            if (0 == strcmp(node->schema->name, "data") && LYS_ANYDATA == node->schema->nodetype) {
+                node_anydata = (struct lyd_node_anydata*)node;
+                if (LYD_ANYDATA_XML == node_anydata->value_type) {
+                    notification->data.xml = node_anydata->value.xml;
+                }
             }
         }
         node = node->next;
@@ -1554,11 +1561,14 @@ np_get_event_notifications(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const 
     struct lyd_node *data_tree = NULL, *main_tree = NULL;
     struct ly_set *node_set = NULL;
     np_ev_notification_t *notification = NULL;
+    time_t effective_stop_time = 0;
     int rc = SR_ERR_OK, ret = 0;
 
     CHECK_NULL_ARG3(np_ctx, xpath, notifications);
 
-    SR_LOG_DBG("Loading notifications '%s' generated between '%ld' and '%ld'.", xpath, start_time, stop_time);
+    effective_stop_time = (0 == stop_time) ? time(NULL) : stop_time;
+
+    SR_LOG_DBG("Loading notifications '%s' generated between '%ld' and '%ld'.", xpath, start_time, effective_stop_time);
 
     /* extract module name from xpath */
     rc = sr_copy_first_ns(xpath, &module_name);
@@ -1568,7 +1578,11 @@ np_get_event_notifications(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const 
     rc = sr_list_init(&file_list);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize file list.");
 
-    rc = np_get_notification_files(np_ctx, module_name, start_time, stop_time, file_list); // TODO time intervals
+    /* get all notification files matching module name and provided time interval */
+    rc = np_get_notification_files(np_ctx, module_name,
+            (0 == start_time) ? 0 : (start_time - (NP_NOTIF_FILE_WINDOW * 60)),
+            (effective_stop_time + (NP_NOTIF_FILE_WINDOW * 60)),
+            file_list);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve notification file list.");
 
     /* load all notification files */
@@ -1599,7 +1613,13 @@ np_get_event_notifications(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const 
             /* fill in the notification details */
             rc = np_event_notification_entry_fill(notification, node_set->set.d[i]->child);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Error by filling a notification entry.");
+
+            /* filter out notifications not exactly matching the time interval */
+            if (notification->timestamp < start_time || notification->timestamp > effective_stop_time) {
+                continue;
+            }
             SR_LOG_DBG("Adding a new notification: '%s' (time=%ld)", notification->xpath, notification->timestamp);
+
             /* add the notification into notification list */
             rc = sr_list_add(notif_list, notification);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Error by adding notification into list.");

@@ -60,13 +60,14 @@ typedef struct np_subscription_s {
  * @brief Event notification retrieved from the datastore.
  */
 typedef struct np_ev_notification_s {
-    const char *xpath;     /**< XPath of the notification. */
-    time_t timestamp;      /**< Notification generation time. */
+    const char *xpath;           /**< XPath of the notification. */
+    time_t timestamp;            /**< Notification generation time. */
     union {
-        sr_val_t *values;  /**< Values with the notification data. */
-        sr_node_t *trees;  /**< Trees with the notification data. */
+        struct lyxml_elem *xml;  /**< XML of the data as parsed by libyang. */
+        sr_val_t *values;        /**< Values with the notification data. */
+        sr_node_t *trees;        /**< Trees with the notification data. */
     } data;
-    size_t data_cnt;       /**< Values of the data. */
+    size_t data_cnt;             /**< Values of the data. */
 } np_ev_notification_t;
 
 /**
