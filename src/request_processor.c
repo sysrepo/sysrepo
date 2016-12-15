@@ -1960,6 +1960,9 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     sr_mem_ctx_t *sr_mem = NULL;
     const char *op_name = NULL;
     bool action = false;
+    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
+    char *nacm_rule = NULL, *nacm_rule_info = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->rpc_req);
@@ -1973,6 +1976,34 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
     /* reuse context from msg for req (or resp) */
     sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
+
+#ifdef ENABLE_NACM
+    rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
+    CHECK_RC_MSG_GOTO(rc, finalize, "Failed to get NACM context");
+    if (NULL != nacm_ctx) {
+        /* check if the user is authorized to execute the RPC */
+        rc = nacm_check_rpc(nacm_ctx, session->user_credentials, msg->request->rpc_req->xpath,
+                &nacm_action, &nacm_rule, &nacm_rule_info);
+        CHECK_RC_LOG_GOTO(rc, finalize, "Failed to verify if the user is allowed to execute RPC: %s",
+                msg->request->rpc_req->xpath);
+        if (NACM_ACTION_DENY == nacm_action) {
+            if (NULL != nacm_rule) {
+                if (NULL != nacm_rule_info) {
+                    SR_LOG_ERR("Execution of the RPC '%s' was blocked by the NACM rule '%s' (%s).",
+                            msg->request->rpc_req->xpath, nacm_rule, nacm_rule_info);
+                } else {
+                    SR_LOG_ERR("Execution of the RPC '%s' was blocked by the NACM rule '%s'.",
+                            msg->request->rpc_req->xpath, nacm_rule);
+                }
+            } else {
+                SR_LOG_ERR("Execution of the RPC '%s' was blocked by NACM.",
+                        msg->request->rpc_req->xpath);
+            }
+            rc = SR_ERR_UNAUTHORIZED;
+            goto finalize;
+        }
+    }
+#endif
 
     /* parse input arguments */
     msg_api_variant = sr_api_variant_gpb_to_sr(msg->request->rpc_req->orig_api_variant);
@@ -2096,6 +2127,8 @@ finalize:
     /* free all the allocated data */
     np_free_subscriptions(subscriptions, subscription_cnt);
     free(module_name);
+    free(nacm_rule);
+    free(nacm_rule_info);
     if (SR_API_VALUES == msg_api_variant) {
         sr_free_values(input, input_cnt);
     } else {
