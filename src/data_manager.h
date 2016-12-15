@@ -877,8 +877,8 @@ int dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const 
 /**
  * @brief TODO
  */
-int dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_mem, const char *xpath,
-        const sr_api_variant_t api_variant, np_ev_notification_t *notification);
+int dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_mem,
+        np_ev_notification_t *notification, const sr_api_variant_t api_variant);
 
 /**
  * @brief Call lyd_new path uses ly_ctx from data_info->schema.

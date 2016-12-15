@@ -717,6 +717,94 @@ dm_event_notif_test(void **state)
 }
 
 void
+dm_event_notif_parse_test(void **state)
+{
+    int rc = SR_ERR_OK;
+    dm_ctx_t *ctx = NULL;
+    dm_session_t *session = NULL;
+    dm_schema_info_t *schema_info = NULL;
+    np_ev_notification_t *notification = NULL;
+    struct lyxml_elem *xml = NULL;
+
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* load test-module */
+    rc = dm_get_module_and_lock(ctx, "test-module", &schema_info);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* prepare lyxml with the notification */
+    const char *xml_str = "\
+      <link-removed xmlns=\"urn:ietf:params:xml:ns:yang:test-module\"> \
+        <source> \
+          <address>10.10.2.4</address> \
+          <interface>eth0</interface> \
+        </source> \
+        <destination> \
+          <address>10.10.2.5</address> \
+          <interface>eth2</interface> \
+        </destination> \
+      </link-removed>";
+    xml = lyxml_parse_mem(schema_info->ly_ctx, xml_str, 0);
+    assert_non_null(xml);
+
+    /* prepare ev. notification ctx */
+    notification = calloc(1, sizeof(*notification));
+    assert_non_null(notification);
+    notification->xpath = strdup("/test-module:link-removed");
+    assert_non_null(notification->xpath);
+    notification->data.xml = xml;
+
+    /* parse to values */
+    rc = dm_parse_event_notif(ctx, session, NULL, notification, SR_API_VALUES);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(notification->data_cnt, 7); /* including the default node */
+    assert_string_equal(notification->data.values[1].xpath, "/test-module:link-removed/source/address");
+    assert_string_equal(notification->data.values[1].data.string_val, "10.10.2.4");
+    assert_string_equal(notification->data.values[6].xpath, "/test-module:link-removed/MTU");
+    assert_true(notification->data.values[6].dflt);
+
+    sr_free_values(notification->data.values, notification->data_cnt); // TODO: move to np_event_notification_cleanup
+    np_event_notification_cleanup(notification);
+
+    // TODO: bug in libyang?
+    lyxml_free(schema_info->ly_ctx, xml);
+    xml = lyxml_parse_mem(schema_info->ly_ctx, xml_str, 0);
+    assert_non_null(xml);
+
+    /* prepare ev. notification ctx */
+    notification = calloc(1, sizeof(*notification));
+    assert_non_null(notification);
+    notification->xpath = strdup("/test-module:link-removed");
+    assert_non_null(notification->xpath);
+    notification->data.xml = xml;
+
+    /* parse to values */
+    rc = dm_parse_event_notif(ctx, session, NULL, notification, SR_API_TREES);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(notification->data_cnt, 3); /* including the default node */
+    assert_string_equal(notification->data.trees[0].name, "source");
+    assert_non_null(notification->data.trees[0].first_child);
+    assert_string_equal(notification->data.trees[0].first_child->data.string_val, "10.10.2.4");
+    assert_string_equal(notification->data.trees[2].name, "MTU");
+    assert_true(notification->data.trees[2].dflt);
+
+    sr_free_trees(notification->data.trees, notification->data_cnt); // TODO: move to np_event_notification_cleanup
+    np_event_notification_cleanup(notification);
+
+    /* cleanup the lyxml */
+    lyxml_free(schema_info->ly_ctx, xml);
+
+    dm_session_stop(ctx, session);
+    dm_cleanup(ctx);
+}
+
+void
 dm_action_test(void **state)
 {
     int rc = SR_ERR_OK;
@@ -1022,6 +1110,7 @@ main()
             cmocka_unit_test(dm_rpc_test),
             cmocka_unit_test(dm_state_data_test),
             cmocka_unit_test(dm_event_notif_test),
+            cmocka_unit_test(dm_event_notif_parse_test),
             cmocka_unit_test(dm_action_test),
             cmocka_unit_test(dm_schema_node_xpath_hash),
     };
