@@ -145,10 +145,10 @@ int rp_send_netconf_change_notification(rp_ctx_t *rp_ctx, Sr__Msg *msg);
  * @brief Prepares notification config-chagnge message.
  * @param [in] rp_ctx
  * @param [in] session
- * @param [out] msg
+ * @param [in] diff_lists
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_create_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg **msg);
+int rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, sr_list_t *diff_lists);
 
 /**@} rp */
 

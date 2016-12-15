@@ -302,9 +302,29 @@ rp_generate_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *sessi
     return rc;
 }
 
+static size_t
+rp_count_changes_in_difflists(sr_list_t *diff_lists)
+{
+    size_t diff_cnt = 0;
+    if (NULL != diff_lists) {
+        for (size_t i = 0; i < diff_lists->count; i++) {
+            struct lyd_difflist *dl = (struct lyd_difflist *) diff_lists->data[i];
+            size_t diff_index = 0;
+
+            while (LYD_DIFF_END != dl->type[diff_index]) {
+                diff_index++;
+                diff_cnt++;
+            }
+        }
+    }
+
+    return diff_cnt;
+}
+
+
 int
-rp_create_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg **msg) {
-    CHECK_NULL_ARG3(rp_ctx, session, msg);
+rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, sr_list_t *diff_lists) {
+    CHECK_NULL_ARG3(rp_ctx, session, diff_lists);
     int rc = SR_ERR_OK;
     Sr__Msg *req = NULL;
     sr_val_t *values = NULL;
@@ -344,13 +364,46 @@ rp_create_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, Sr
     rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
 
+    size_t diff_count = rp_count_changes_in_difflists(diff_lists);
+    SR_LOG_DBG("%zu instance of /ietf-netconf-notifications/netconf-config-change/edit list will be created", diff_count);
+
+    for (size_t i = 0; i < diff_lists->count; i++) {
+        struct lyd_difflist *dl = (struct lyd_difflist *) diff_lists->data[i];
+        size_t diff_index = 0;
+
+        while (LYD_DIFF_END != dl->type[diff_index]) {
+            char *path = NULL;
+            switch (dl->type[diff_index]) {
+            case LYD_DIFF_CHANGED:
+            case LYD_DIFF_MOVEDAFTER1:
+                path = lyd_path(dl->first[diff_index]);
+                SR_LOG_DBG("CONFIG CHANGE: merge %s", path);
+                break;
+            case LYD_DIFF_DELETED:
+                path = lyd_path(dl->first[diff_index]);
+                SR_LOG_DBG("CONFIG CHANGE: delete %s", path);
+                break;
+            case LYD_DIFF_CREATED:
+                path = lyd_path(dl->second[diff_index]);
+                SR_LOG_DBG("CONFIG CHANGE: create %s", path);
+                break;
+            case LYD_DIFF_MOVEDAFTER2:
+            case LYD_DIFF_END:
+                /* do nothing*/
+                break;
+            }
+            free(path);
+            diff_index++;
+        }
+    }
+
+    rc = rp_send_netconf_change_notification(rp_ctx, req);
+    req = NULL;
     SR_LOG_DBG("Config changed notification generated session %"PRIu32, session->id);
 cleanup:
     sr_free_values(values, val_cnt);
     if (SR_ERR_OK != rc) {
         sr_msg_free(req);
-    } else {
-        *msg = req;
     }
 
     return rc;

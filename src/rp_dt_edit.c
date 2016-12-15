@@ -679,6 +679,87 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
     }
 }
 
+static int
+rp_dt_generate_config_change_notification (rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx)
+{
+    int rc = SR_ERR_OK;
+    sr_list_t *diff_lists = NULL;
+    dm_model_subscription_t *ms = NULL;
+    dm_data_info_t lookup_info = {0};
+    dm_data_info_t *prev_info = NULL, *commit_info = NULL;
+    struct lyd_difflist *diff = NULL;
+
+    rc = sr_list_init(&diff_lists);
+    CHECK_RC_MSG_RETURN(rc, "Failed to allocate list");
+
+    if (SR_DS_STARTUP == session->datastore) {
+
+        dm_data_info_t *info = NULL;
+        size_t i = 0;
+        sr_btree_t *session_models = NULL, *commit_session_models = NULL;
+
+        rc = dm_get_session_datatrees(rp_ctx->dm_ctx, session->dm_session, &session_models);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed get session datatrees");
+
+        rc = dm_get_session_datatrees(rp_ctx->dm_ctx, c_ctx->session, &commit_session_models);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed get session datatrees");
+
+        while (NULL != (info = sr_btree_get_at(session_models, i++))) {
+            if (!info->modified) {
+                continue;
+            }
+
+            lookup_info.schema = info->schema;
+            /* configuration before commit */
+            prev_info = sr_btree_search(c_ctx->prev_data_trees, &lookup_info);
+            if (NULL == prev_info) {
+                SR_LOG_ERR("Current data tree for module %s not found", info->schema->module->name);
+                continue;
+            }
+            /* configuration after commit */
+            commit_info = sr_btree_search(commit_session_models, &lookup_info);
+            if (NULL == commit_info) {
+                SR_LOG_ERR("Commit data tree for module %s not found", info->schema->module->name);
+                continue;
+            }
+
+            diff = lyd_diff(prev_info->node, commit_info->node, LYD_DIFFOPT_WITHDEFAULTS);
+            if (NULL == diff) {
+                continue;
+            }
+
+            rc = sr_list_add(diff_lists, diff);
+            if (SR_ERR_OK != rc) {
+                lyd_free_diff(diff);
+            }
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into the list");
+        }
+    } else {
+        size_t index = 0;
+        while (NULL != (ms = sr_btree_get_at(c_ctx->subscriptions, index))) {
+            SR_LOG_DBG("Config changes for module %s", ms->schema_info->module_name);
+            if (NULL != ms->difflist) {
+                rc = sr_list_add(diff_lists, ms->difflist);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+            }
+            index++;
+        }
+    }
+
+    rc = rp_generate_config_change_notification(rp_ctx, session, diff_lists);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create config-change notification");
+
+cleanup:
+    if (SR_DS_STARTUP == session->datastore) {
+        for (size_t i = 0; i < diff_lists->count; i++) {
+            lyd_free_diff(diff_lists->data[i]);
+        }
+    }
+    sr_list_cleanup(diff_lists);
+
+    return rc;
+}
+
 int
 rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, sr_error_info_t **errors, size_t *err_cnt)
 {
@@ -718,6 +799,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 return SR_ERR_OK;
             }
             pthread_mutex_lock(&commit_ctx->mutex);
+            commit_ctx->disabled_config_change = rp_ctx->do_not_generate_config_change;
             /* open all files */
             rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx,
                     errors, err_cnt);
@@ -764,10 +846,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
         case DM_COMMIT_NOTIFY_APPLY:
             rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_APPLY, commit_ctx);
             if (SR_ERR_OK == rc && !rp_ctx->do_not_generate_config_change) {
-               Sr__Msg *notif = NULL;
-               rc = rp_create_config_change_notification(rp_ctx, session, &notif);
-               CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create config-change notification");
-               rp_send_netconf_change_notification(rp_ctx, notif);
+                rc = rp_dt_generate_config_change_notification(rp_ctx, session, commit_ctx);
             }
             state = DM_COMMIT_FINISHED;
             SR_LOG_DBG_MSG("Commit (8/9): apply notifications sent");
