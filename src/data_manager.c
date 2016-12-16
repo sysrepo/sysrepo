@@ -707,11 +707,25 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
     }
 
     /* if there is no data dependency validate it with of LYD_OPT_STRICT, validate it (only non-empty data trees are validated)*/
-    if (!schema_info->cross_module_data_dependency && NULL != data_tree && 0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx)) {
-        SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
-        lyd_free_withsiblings(data_tree);
-        free(data);
-        return SR_ERR_INTERNAL;
+    if (!schema_info->cross_module_data_dependency) {
+        if (NULL != data_tree) {
+            rc = lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx);
+            if (rc) {
+                SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
+                lyd_free_withsiblings(data_tree);
+                free(data);
+                return SR_ERR_INTERNAL;
+            }
+        } else {
+            rc = lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx);
+            if (rc) {
+                SR_LOG_INF("lyd_validate failed, maybe empty data is illegal but no initial data? data_file: %s",
+                        data_filename);
+                rc = 0;
+                lyd_free_withsiblings(data_tree);
+                data_tree = NULL;
+            }
+        }
     }
 
     data->schema = schema_info;
