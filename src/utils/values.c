@@ -506,7 +506,6 @@ sr_print_val_mem(char **mem_p, const sr_val_t *value)
 char *
 sr_val_to_str(const sr_val_t *value)
 {
-    size_t len = 0;
     int rc = SR_ERR_OK;
     char *out = NULL;
 
@@ -529,10 +528,7 @@ sr_val_to_str(const sr_val_t *value)
             CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
             break;
         case SR_DECIMAL64_T:
-            len = snprintf(NULL, 0, "%g", value->data.decimal64_val);
-            out = calloc(len + 1, sizeof(*out));
-            CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
-            snprintf(out, len + 1, "%g", value->data.decimal64_val);
+            rc = sr_asprintf(&out, "%g", value->data.decimal64_val);
             break;
         case SR_ENUM_T:
             if (NULL != value->data.enum_val) {
@@ -560,28 +556,16 @@ sr_val_to_str(const sr_val_t *value)
             }
             break;
         case SR_INT8_T:
-            len = snprintf(NULL, 0, "%"PRId8, value->data.int8_val);
-            out = calloc(len + 1, sizeof(*out));
-            CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
-            snprintf(out, len + 1, "%"PRId8, value->data.int8_val);
+            rc = sr_asprintf(&out, "%"PRId8, value->data.int8_val);
             break;
         case SR_INT16_T:
-            len = snprintf(NULL, 0, "%"PRId16, value->data.int16_val);
-            out = calloc(len + 1, sizeof(*out));
-            CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
-            snprintf(out, len + 1, "%"PRId16, value->data.int16_val);
+            rc = sr_asprintf(&out, "%"PRId16, value->data.int16_val);
             break;
         case SR_INT32_T:
-            len = snprintf(NULL, 0, "%"PRId32, value->data.int32_val);
-            out = calloc(len + 1, sizeof(*out));
-            CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
-            snprintf(out, len + 1, "%"PRId32, value->data.int32_val);
+            rc = sr_asprintf(&out, "%"PRId32, value->data.int32_val);
             break;
         case SR_INT64_T:
-            len = snprintf(NULL, 0, "%"PRId64, value->data.int64_val);
-            out = calloc(len + 1, sizeof(*out));
-            CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
-            snprintf(out, len + 1, "%"PRId64, value->data.int64_val);
+            rc = sr_asprintf(&out, "%"PRId64, value->data.int64_val);
             break;
         case SR_STRING_T:
             if (NULL != value->data.string_val){
@@ -590,28 +574,16 @@ sr_val_to_str(const sr_val_t *value)
             }
             break;
         case SR_UINT8_T:
-            len = snprintf(NULL, 0, "%"PRIu8, value->data.uint8_val);
-            out = calloc(len + 1, sizeof(*out));
-            CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
-            snprintf(out, len + 1, "%"PRIu8, value->data.uint8_val);
+            rc = sr_asprintf(&out, "%"PRIu8, value->data.uint8_val);
             break;
         case SR_UINT16_T:
-            len = snprintf(NULL, 0, "%"PRIu16, value->data.uint16_val);
-            out = calloc(len + 1, sizeof(*out));
-            CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
-            snprintf(out, len + 1, "%"PRIu16, value->data.uint16_val);
+            rc = sr_asprintf(&out, "%"PRIu16, value->data.uint16_val);
             break;
         case SR_UINT32_T:
-            len = snprintf(NULL, 0, "%"PRIu32, value->data.uint32_val);
-            out = calloc(len + 1, sizeof(*out));
-            CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
-            snprintf(out, len + 1, "%"PRIu32, value->data.uint32_val);
+            rc = sr_asprintf(&out, "%"PRIu32, value->data.uint32_val);
             break;
         case SR_UINT64_T:
-            len = snprintf(NULL, 0, "%"PRIu64, value->data.uint64_val);
-            out = calloc(len + 1, sizeof(*out));
-            CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
-            snprintf(out, len + 1, "%"PRIu64, value->data.uint64_val);
+            rc = sr_asprintf(&out, "%"PRIu64, value->data.uint64_val);
             break;
         case SR_ANYXML_T:
             if (NULL != value->data.anyxml_val){

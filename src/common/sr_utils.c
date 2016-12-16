@@ -165,6 +165,47 @@ sr_str_hash(const char *str)
 }
 
 int
+sr_vasprintf(char **strp, const char *fmt, va_list ap)
+{
+    int ret = 0;
+    va_list ap1;
+    size_t size;
+    char *buffer;
+
+    /* get the size of the resulting string */
+    va_copy(ap1, ap);
+    size = vsnprintf(NULL, 0, fmt, ap1) + 1;
+    va_end(ap1);
+
+    /* allocate memory for the string */
+    buffer = calloc(size, sizeof *buffer);
+    CHECK_NULL_NOMEM_RETURN(buffer);
+
+    /* print */
+    ret = vsnprintf(buffer, size, fmt, ap);
+    if (ret >= 0) {
+        *strp = buffer;
+        return SR_ERR_OK;
+    } else {
+        free(buffer);
+        return SR_ERR_INTERNAL;
+    }
+}
+
+int
+sr_asprintf(char **strp, const char *fmt, ...)
+{
+    int rc = SR_ERR_OK;
+    va_list ap;
+
+    va_start(ap, fmt);
+    rc = sr_vasprintf(strp, fmt, ap);
+    va_end(ap);
+
+    return rc;
+}
+
+int
 sr_copy_first_ns(const char *xpath, char **namespace)
 {
     CHECK_NULL_ARG2(xpath, namespace);
@@ -1298,18 +1339,13 @@ sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
     char format_string [MAX_FMT_LEN] = {0,};
     snprintf(format_string, MAX_FMT_LEN, "%%.%zuf", fraction_digits);
 
-    size_t len = snprintf(NULL, 0, format_string, val);
-    *out = calloc(len + 1, sizeof(**out));
-    CHECK_NULL_NOMEM_RETURN(*out);
-    snprintf(*out, len + 1, format_string, val);
-    return SR_ERR_OK;
+    return sr_asprintf(out, format_string, val);
 }
 
 int
 sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_node, char **out)
 {
     CHECK_NULL_ARG3(value, schema_node, out);
-    size_t len = 0;
     int rc = SR_ERR_OK;
     rc = sr_check_value_conform_to_schema(schema_node, value);
     CHECK_RC_LOG_RETURN(rc, "Value doesn't conform to schema node %s", schema_node->name);
@@ -1359,28 +1395,16 @@ sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_n
         }
         break;
     case SR_INT8_T:
-        len = snprintf(NULL, 0, "%"PRId8, value->data.int8_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRId8, value->data.int8_val);
+        rc = sr_asprintf(out, "%"PRId8, value->data.int8_val);
         break;
     case SR_INT16_T:
-        len = snprintf(NULL, 0, "%"PRId16, value->data.int16_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRId16, value->data.int16_val);
+        rc = sr_asprintf(out, "%"PRId16, value->data.int16_val);
         break;
     case SR_INT32_T:
-        len = snprintf(NULL, 0, "%"PRId32, value->data.int32_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRId32, value->data.int32_val);
+        rc = sr_asprintf(out, "%"PRId32, value->data.int32_val);
         break;
     case SR_INT64_T:
-        len = snprintf(NULL, 0, "%"PRId64, value->data.int64_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRId64, value->data.int64_val);
+        rc = sr_asprintf(out, "%"PRId64, value->data.int64_val);
         break;
     case SR_STRING_T:
         if (NULL != value->data.string_val){
@@ -1392,28 +1416,16 @@ sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_n
         }
         break;
     case SR_UINT8_T:
-        len = snprintf(NULL, 0, "%"PRIu8, value->data.uint8_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRIu8, value->data.uint8_val);
+        rc = sr_asprintf(out, "%"PRIu8, value->data.uint8_val);
         break;
     case SR_UINT16_T:
-        len = snprintf(NULL, 0, "%"PRIu16, value->data.uint16_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRIu16, value->data.uint16_val);
+        rc = sr_asprintf(out, "%"PRIu16, value->data.uint16_val);
         break;
     case SR_UINT32_T:
-        len = snprintf(NULL, 0, "%"PRIu32, value->data.uint32_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRIu32, value->data.uint32_val);
+        rc = sr_asprintf(out, "%"PRIu32, value->data.uint32_val);
         break;
     case SR_UINT64_T:
-        len = snprintf(NULL, 0, "%"PRIu64, value->data.uint64_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRIu64, value->data.uint64_val);
+        rc = sr_asprintf(out, "%"PRIu64, value->data.uint64_val);
         break;
     case SR_ANYXML_T:
         if (NULL != value->data.anyxml_val){
@@ -1437,7 +1449,7 @@ sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_n
         SR_LOG_ERR_MSG("Conversion of value_t to string failed");
         *out = NULL;
     }
-    return SR_ERR_OK;
+    return rc;
 }
 
 bool
@@ -2019,7 +2031,6 @@ sr_add_error(sr_error_info_t **sr_errors, size_t *sr_error_cnt, const char *xpat
 {
     CHECK_NULL_ARG3(sr_errors, sr_error_cnt, msg_fmt);
     int rc = SR_ERR_OK;
-    int length = 0;
     char *message = NULL;
     char *xpath_dup = NULL;
     sr_error_info_t *tmp_errors = NULL;
@@ -2034,12 +2045,8 @@ sr_add_error(sr_error_info_t **sr_errors, size_t *sr_error_cnt, const char *xpat
     }
 
     /* construct error message */
-    length = vsnprintf(NULL, 0, msg_fmt, va);
-    message = calloc(length+1, sizeof *message);
-    CHECK_NULL_NOMEM_GOTO(message, rc, cleanup);
-    va_end(va); /**< restart va_list */
-    va_start(va, msg_fmt);
-    vsnprintf(message, length+1, msg_fmt, va);
+    rc = sr_vasprintf(&message, msg_fmt, va);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "::sr_vasprintf has failed.");
 
     /* add error into the array */
     tmp_errors = realloc(*sr_errors, (*sr_error_cnt+1) * sizeof(**sr_errors));

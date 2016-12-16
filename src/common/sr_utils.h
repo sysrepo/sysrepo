@@ -169,6 +169,30 @@ void sr_str_trim(char *str);
 uint32_t sr_str_hash(const char *str);
 
 /**
+ * @brief Print to allocated string. This is an implementation of vasprintf() which is only a GNU/BSD
+ * extension and not defined by POSIX, even though it is quite usefull in many cases.
+ *
+ * @param [out] strp A newly allocated string is returned via this pointer.
+ * @param [in] fmt Format string.
+ * @param [in] ap Sequence of additional arguments, each containing a value to be used to replace
+ *                a format specifier in the format string
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_vasprintf(char **strp, const char *fmt, va_list ap);
+
+/**
+ * @brief Print to allocated string. This is an implementation of asprintf() which is only a GNU/BSD
+ * extension and not defined by POSIX, even though it is quite usefull in many cases.
+ *
+ * @param [out] strp A newly allocated string is returned via this pointer.
+ * @param [in] fmt Format string.
+ * @param [in] ... Sequence of additional arguments, each containing a value to be used to replace
+ *                 a format specifier in the format string
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_asprintf(char **strp, const char *fmt, ...);
+
+/**
  * @brief Copies the first string from the beginning of the xpath up to the first colon,
  * that represents the name of the data file.
  * @param [in] xpath
