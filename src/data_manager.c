@@ -4604,6 +4604,21 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
 }
 
 /**
+ * @brief returns TRUE if the procedure content should not be validated, FALSE otherwise.
+ */
+static bool
+dm_skip_procedure_content_validation(const char *xpath)
+{
+    if (NULL == xpath) {
+        return true;
+    }
+    if (0 == strcmp(xpath, "/ietf-netconf-notifications:netconf-config-change")) {
+        return true;
+    }
+    return false;
+}
+
+/**
  * @brief Validates arguments of a procedure (RPC, Event notification, Action).
  * @param [in] dm_ctx DM context.
  * @param [in] session DM session.
@@ -4701,12 +4716,12 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
         }
     }
 
-    /* converse sysrepo values/trees to libyang data tree */
+    /* convert sysrepo values/trees to libyang data tree */
     rc = dm_sr_val_node_to_ly_datatree(session, di, xpath, args_p, arg_cnt, api_variant, input, &data_tree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by converting sysrepo values/trees to libyang data tree.");
 
     /* validate the content (and also add default nodes) */
-    if (arg_cnt > 0) {
+    if (arg_cnt > 0 && !dm_skip_procedure_content_validation(xpath)) {
         rc = dm_validate_procedure_content(dm_ctx, session, di, type, input, data_tree, proc_node);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Procedure validation failed.");
     }
