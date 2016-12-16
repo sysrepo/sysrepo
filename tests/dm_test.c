@@ -768,10 +768,9 @@ dm_event_notif_parse_test(void **state)
     assert_string_equal(notification->data.values[6].xpath, "/test-module:link-removed/MTU");
     assert_true(notification->data.values[6].dflt);
 
-    sr_free_values(notification->data.values, notification->data_cnt); // TODO: move to np_event_notification_cleanup
     np_event_notification_cleanup(notification);
 
-    // TODO: bug in libyang?
+    // TODO: if the next 3 lines are removed, error - bug in libyang: https://github.com/CESNET/libyang/issues/224
     lyxml_free(schema_info->ly_ctx, xml);
     xml = lyxml_parse_mem(schema_info->ly_ctx, xml_str, 0);
     assert_non_null(xml);
@@ -794,7 +793,6 @@ dm_event_notif_parse_test(void **state)
     assert_string_equal(notification->data.trees[2].name, "MTU");
     assert_true(notification->data.trees[2].dflt);
 
-    sr_free_trees(notification->data.trees, notification->data_cnt); // TODO: move to np_event_notification_cleanup
     np_event_notification_cleanup(notification);
 
     /* cleanup the lyxml */

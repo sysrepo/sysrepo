@@ -5078,12 +5078,14 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
     assert_int_equal(SR_UINT16_T, values[6].type);
     assert_int_equal(1500, values[6].data.uint16_val);
 
-    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
-    cb_status->link_discovered += 1;
-    if (cb_status->link_discovered == 1) {
-        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    if (SR_EV_NOTIF_REPLAY == notif_type) {
+        assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+        cb_status->link_discovered += 1;
+        if (cb_status->link_discovered == 1) {
+            assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+        }
+        assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
-    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
 }
 
 static void
@@ -5114,12 +5116,14 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
     assert_int_equal(SR_UINT16_T, values[6].type);
     assert_int_equal(1500, values[6].data.uint16_val);
 
-    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
-    cb_status->link_removed += 1;
-    if (cb_status->link_removed == 1) {
-        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    if (SR_EV_NOTIF_REPLAY == notif_type) {
+        assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+        cb_status->link_removed += 1;
+        if (cb_status->link_removed == 1) {
+            assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+        }
+        assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
-    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
 }
 
 static void
@@ -5202,8 +5206,8 @@ cl_event_notif_replay_test(void **state)
     ts.tv_sec += 5;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
             && (cb_status.link_removed < 1 || cb_status.link_discovered < 1));
-    assert_int_equal(1, cb_status.link_discovered);
-    assert_int_equal(1, cb_status.link_removed);
+    assert_true(cb_status.link_discovered >= 1);
+    assert_true(cb_status.link_removed >= 1);
     assert_int_equal(0, pthread_mutex_unlock(&cb_status.mutex));
 
     /* unsubscribe */

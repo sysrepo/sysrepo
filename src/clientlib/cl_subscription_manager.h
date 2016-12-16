@@ -67,6 +67,7 @@ typedef struct cl_sm_subscription_ctx_s {
     const char *delivery_address;                /**< Address where the notification messages should be delivered. */
     uint32_t id;                                 /**< Library-local subscription identifier. */
     const char *module_name;                     /**< Name of the YANG module witch the subscription is tied to.*/
+    const char *xpath;                           /**< XPath of the subscribed subtree, if applicable. */
     cl_sm_callback_t callback;                   /**< Callback to be called when the associated notification/action triggers. */
     sr_api_variant_t api_variant;                /**< API variant -- values vs. trees (relevant for the callback type only) */
     bool dont_send_abort_on_failure;             /**< if the subscriber refused the new configuration, decides whether SR_EV_ABORT should be sent or not(relevant only for VERIFY callback) */

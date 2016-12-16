@@ -35,6 +35,7 @@
 #include "persistence_manager.h"
 #include "notification_processor.h"
 #include "request_processor.h"
+#include "data_manager.h"
 
 #define NP_NS_SCHEMA_FILE                  "sysrepo-notification-store.yang"  /**< Schema of notification store. */
 #define NP_NS_XPATH_NOTIFICATION           "/sysrepo-notification-store:notifications/notification[xpath='%s'][generated-time='%s'][logged-time='%u']"
@@ -623,6 +624,16 @@ static void
 np_event_notification_content_cleanup(np_ev_notification_t *notification)
 {
     if (NULL != notification) {
+        switch (notification->data_type) {
+            case NP_EV_NOTIF_DATA_VALUES:
+                sr_free_values(notification->data.values, notification->data_cnt);
+                break;
+            case NP_EV_NOTIF_DATA_TREES:
+                sr_free_trees(notification->data.trees, notification->data_cnt);
+                break;
+            default:
+                break;
+        }
         free((void*)notification->xpath);
     }
 }
@@ -654,6 +665,7 @@ np_event_notification_entry_fill(np_ev_notification_t *notification, struct lyd_
                 node_anydata = (struct lyd_node_anydata*)node;
                 if (LYD_ANYDATA_XML == node_anydata->value_type) {
                     notification->data.xml = node_anydata->value.xml;
+                    notification->data_type = NP_EV_NOTIF_DATA_XML;
                 }
             }
         }
@@ -1552,8 +1564,8 @@ cleanup:
 }
 
 int
-np_get_event_notifications(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath,
-        const time_t start_time, const time_t stop_time, sr_api_variant_t api_variant, sr_list_t **notifications)
+np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath,
+        const time_t start_time, const time_t stop_time, const sr_api_variant_t api_variant, sr_list_t **notifications)
 {
     char *module_name = NULL;
     char req_xpath[PATH_MAX] = { 0, };
@@ -1587,7 +1599,7 @@ np_get_event_notifications(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const 
 
     /* load all notification files */
     for (size_t i = 0; i < file_list->count; i++) {
-        rc = np_load_data_tree(np_ctx, user_cred, file_list->data[i], true, &data_tree, NULL);
+        rc = np_load_data_tree(np_ctx, rp_session->user_credentials, file_list->data[i], true, &data_tree, NULL);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load notification store data for module '%s'.", module_name);
         if (NULL == main_tree) {
             main_tree = data_tree;
@@ -1616,8 +1628,14 @@ np_get_event_notifications(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const 
 
             /* filter out notifications not exactly matching the time interval */
             if (notification->timestamp < start_time || notification->timestamp > effective_stop_time) {
+                np_event_notification_cleanup(notification); // TODO: optimize this
                 continue;
             }
+
+            /* parse notification data */
+            rc = dm_parse_event_notif(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, sr_mem, notification, api_variant);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Error by parsing notification '%s'.", notification->xpath);
+
             SR_LOG_DBG("Adding a new notification: '%s' (time=%ld)", notification->xpath, notification->timestamp);
 
             /* add the notification into notification list */

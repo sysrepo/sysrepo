@@ -2568,15 +2568,20 @@ int
 sr_str_to_time(char *time_str, time_t *time)
 {
     struct tm tm = { 0, };
-    char *colon = NULL;
+    char *time_str_copy = NULL, *colon = NULL;
 
     CHECK_NULL_ARG2(time_str, time);
 
+    time_str_copy = strdup(time_str);
+    CHECK_NULL_NOMEM_RETURN(time_str_copy);
+
     /* time str ends in '+hh:mm' but should be '+hhmm' */
-    colon = strrchr(time_str, ':');
+    colon = strrchr(time_str_copy, ':');
     memmove(colon, colon + 1, 2);
     *(colon + 2) = '\0';
-    strptime(time_str, "%Y-%m-%dT%H:%M:%S%z", &tm);
+    strptime(time_str_copy, "%Y-%m-%dT%H:%M:%S%z", &tm);
+
+    free(time_str_copy);
 
     *time = mktime(&tm);
     return SR_ERR_OK;

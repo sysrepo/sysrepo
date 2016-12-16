@@ -203,6 +203,7 @@ cl_sm_subscription_cleanup_internal(void *subscription_p)
     if (NULL != subscription_p) {
         subscription = (cl_sm_subscription_ctx_t *)subscription_p;
         free((void*)subscription->module_name);
+        free((void*)subscription->xpath);
         free(subscription);
     }
 }

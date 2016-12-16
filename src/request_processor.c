@@ -2712,7 +2712,7 @@ finalize:
 static int
 rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
-    Sr__Msg *resp = NULL;
+    Sr__Msg *req = NULL, *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
@@ -2734,6 +2734,64 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
 
     // TODO np_get_event_notifications & send
 
+    sr_list_t *notif_list = NULL;
+
+    rc = np_get_event_notifications(rp_ctx->np_ctx, session, NULL, /* TODO: sr_mem ??? */
+            msg->request->event_notif_replay_req->xpath,
+            msg->request->event_notif_replay_req->start_time,
+            msg->request->event_notif_replay_req->stop_time,
+            sr_api_variant_gpb_to_sr(msg->request->event_notif_replay_req->api_variant),
+            &notif_list);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Error by loading event notifications for xpath '%s'.",
+            msg->request->event_notif_replay_req->xpath);
+
+    for (size_t i = 0; i < notif_list->count; i++) {
+        np_ev_notification_t *notification = notif_list->data[i];
+
+        /* send the notification */
+        // TODO
+
+        rc = sr_gpb_req_alloc(NULL, SR__OPERATION__EVENT_NOTIF, session->id, &req);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to duplicate event notification request (%s).",
+                notification->xpath);
+        /*  - type & xpath */
+        req->request->event_notif_req->type = SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY;
+        req->request->event_notif_req->xpath = strdup(notification->xpath);
+        CHECK_NULL_NOMEM_ERROR(req->request->event_notif_req->xpath, rc);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to duplicate event notification request xpath (%s).",
+                          msg->request->event_notif_req->xpath);
+        /*  - values / trees */
+        switch (sr_api_variant_gpb_to_sr(msg->request->event_notif_replay_req->api_variant)) {
+            case SR_API_VALUES:
+                rc = sr_values_sr_to_gpb(notification->data.values, notification->data_cnt,
+                        &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
+                break;
+            case SR_API_TREES:
+                rc = sr_trees_sr_to_gpb(notification->data.trees, notification->data_cnt,
+                        &req->request->event_notif_req->trees, &req->request->event_notif_req->n_trees);
+                break;
+        }
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to duplicate event notification (%s) input data.",
+                          msg->request->event_notif_req->xpath);
+        req->request->event_notif_req->timestamp = notification->timestamp;
+        /*  -- subscription info */
+        req->request->event_notif_req->subscriber_address = strdup(msg->request->event_notif_replay_req->subscriber_address);
+        CHECK_NULL_NOMEM_ERROR(req->request->event_notif_req->subscriber_address, rc);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to duplicate event notification (%s) subscription "
+                          "destination address.", msg->request->event_notif_req->xpath);
+        req->request->event_notif_req->subscription_id = msg->request->event_notif_replay_req->subscription_id;
+        req->request->event_notif_req->has_subscription_id = true;
+        /* forward the request to the subscriber */
+        rc = cm_msg_send(rp_ctx->cm_ctx, req);
+        req = NULL;
+    }
+
+cleanup:
+    for (size_t i = 0; i < notif_list->count; i++) {
+        np_event_notification_cleanup(notif_list->data[i]);
+    }
+    sr_list_cleanup(notif_list);
+    ; // TODO
 #endif
 
     /* set response code */

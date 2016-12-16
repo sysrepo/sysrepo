@@ -3357,6 +3357,9 @@ cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
+    sm_subscription->xpath = strdup(xpath);
+    CHECK_NULL_NOMEM_GOTO(sm_subscription->xpath, rc, cleanup);
+
     sm_subscription->callback = callback;
 
     /* Fill-in GPB subscription information */
@@ -3553,12 +3556,17 @@ sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subscrip
     for (size_t i = 0; i < subscription->sm_subscription_cnt; i++) {
         sm_subscription = subscription->sm_subscriptions[i];
 
+        if (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS != sm_subscription->type) {
+            /* only event notification subscriptions */
+            continue;
+        }
+
         /* prepare event-notification message */
         rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__EVENT_NOTIF_REPLAY, session->id, &msg_req);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
         /* set arguments */
-        sr_mem_edit_string(sr_mem, &msg_req->request->event_notif_replay_req->xpath, sm_subscription->module_name); // TODO: xpath
+        sr_mem_edit_string(sr_mem, &msg_req->request->event_notif_replay_req->xpath, sm_subscription->xpath);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_replay_req->xpath, rc, cleanup);
 
         msg_req->request->event_notif_replay_req->start_time = start_time;
