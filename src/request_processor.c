@@ -1949,7 +1949,8 @@ cleanup:
 static int
 rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
-    char *module_name = NULL;
+    const char *xpath = NULL;
+    char *module_name = NULL, *error_msg = NULL;
     sr_api_variant_t msg_api_variant = SR_API_VALUES;
     sr_val_t *input = NULL, *with_def = NULL;
     sr_node_t *input_tree = NULL, *with_def_tree = NULL;
@@ -1970,6 +1971,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
         goto finalize;
     }
 
+    xpath = msg->request->rpc_req->xpath;
     action = msg->request->rpc_req->action;
     op_name = (action ? "Action" : "RPC");
     SR_LOG_DBG("Processing %s request.", op_name);
@@ -1982,24 +1984,23 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     CHECK_RC_MSG_GOTO(rc, finalize, "Failed to get NACM context");
     if (NULL != nacm_ctx) {
         /* check if the user is authorized to execute the RPC */
-        rc = nacm_check_rpc(nacm_ctx, session->user_credentials, msg->request->rpc_req->xpath,
-                &nacm_action, &nacm_rule, &nacm_rule_info);
-        CHECK_RC_LOG_GOTO(rc, finalize, "Failed to verify if the user is allowed to execute RPC: %s",
-                msg->request->rpc_req->xpath);
+        rc = nacm_check_rpc(nacm_ctx, session->user_credentials, xpath, &nacm_action, &nacm_rule, &nacm_rule_info);
+        CHECK_RC_LOG_GOTO(rc, finalize, "Failed to verify if the user is allowed to execute RPC: %s", xpath);
         if (NACM_ACTION_DENY == nacm_action) {
             if (NULL != nacm_rule) {
                 if (NULL != nacm_rule_info) {
-                    SR_LOG_ERR("Execution of the RPC '%s' was blocked by the NACM rule '%s' (%s).",
-                            msg->request->rpc_req->xpath, nacm_rule, nacm_rule_info);
+                    rc = sr_asprintf(&error_msg, "Execution of the RPC '%s' was blocked by the NACM rule '%s' (%s).",
+                            xpath, nacm_rule, nacm_rule_info);
                 } else {
-                    SR_LOG_ERR("Execution of the RPC '%s' was blocked by the NACM rule '%s'.",
-                            msg->request->rpc_req->xpath, nacm_rule);
+                    rc = sr_asprintf(&error_msg, "Execution of the RPC '%s' was blocked by the NACM rule '%s'.",
+                            xpath, nacm_rule);
                 }
             } else {
-                SR_LOG_ERR("Execution of the RPC '%s' was blocked by NACM.",
-                        msg->request->rpc_req->xpath);
+                rc = sr_asprintf(&error_msg, "Execution of the RPC '%s' was blocked by NACM.", xpath);
             }
+            CHECK_RC_MSG_GOTO(rc, finalize, "::sr_asprintf has failed");
             rc = SR_ERR_UNAUTHORIZED;
+            dm_report_error(session->dm_session, error_msg, xpath, rc);
             goto finalize;
         }
     }
@@ -2127,6 +2128,7 @@ finalize:
     /* free all the allocated data */
     np_free_subscriptions(subscriptions, subscription_cnt);
     free(module_name);
+    free(error_msg);
     free(nacm_rule);
     free(nacm_rule_info);
     if (SR_API_VALUES == msg_api_variant) {
