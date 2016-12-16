@@ -405,7 +405,9 @@ np_dp_subscriptions_test(void **state)
 static void
 np_notif_store_test(void **state)
 {
-#ifdef ENABLE_NOTIF_STORE
+#ifndef ENABLE_NOTIF_STORE
+    skip();
+#else
     int rc = SR_ERR_OK;
     test_ctx_t *test_ctx = *state;
     assert_non_null(test_ctx);
@@ -445,6 +447,7 @@ np_notif_store_test(void **state)
 
     rc = np_cleanup_notif_store(np_ctx);
     assert_int_equal(rc, SR_ERR_OK);
+    ly_ctx_destroy(ctx, NULL);
 #endif
 }
 

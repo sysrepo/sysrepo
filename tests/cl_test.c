@@ -5050,6 +5050,7 @@ cl_event_notif_combo_test(void **state)
     assert_int_equal(0, pthread_cond_destroy(&cb_status.cond));
 }
 
+#ifdef ENABLE_NOTIF_STORE
 static void
 test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
@@ -5087,7 +5088,9 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
 }
+#endif
 
+#ifdef ENABLE_NOTIF_STORE
 static void
 test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values,
         const size_t values_cnt, time_t timestamp, void *private_ctx)
@@ -5125,10 +5128,14 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
 }
+#endif
 
 static void
 cl_event_notif_replay_test(void **state)
 {
+#ifndef ENABLE_NOTIF_STORE
+    skip();
+#else
     sr_conn_ctx_t *conn = *state;
     sr_subscription_ctx_t *subscription = NULL;
     assert_non_null(conn);
@@ -5221,6 +5228,7 @@ cl_event_notif_replay_test(void **state)
     /* cleanup */
     assert_int_equal(0, pthread_mutex_destroy(&cb_status.mutex));
     assert_int_equal(0, pthread_cond_destroy(&cb_status.cond));
+#endif
 }
 
 static void
