@@ -2854,6 +2854,50 @@ cleanup:
     return cl_session_return(session, rc);
 }
 
+int
+sr_check_exec_permission(sr_session_ctx_t *session, const char *xpath, bool *permitted)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, xpath, permitted);
+
+    cl_session_clear_errors(session);
+
+    /* prepare check-exec-perm message */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__CHECK_EXEC_PERMISSION, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* set arguments */
+    sr_mem_edit_string(sr_mem, &msg_req->request->check_exec_perm_req->xpath, xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->check_exec_perm_req->xpath, rc, cleanup);
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__CHECK_EXEC_PERMISSION);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    *permitted = msg_resp->response->check_exec_perm_resp->permitted;
+
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
+    }
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
+    }
+    return cl_session_return(session, rc);
+}
+
 /**
  * @brief Subscribes for delivery of RPC specified by xpath.
  *

@@ -85,6 +85,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "get changes";
     case SR__OPERATION__DATA_PROVIDE:
         return "data-provide";
+    case SR__OPERATION__CHECK_EXEC_PERMISSION:
+        return "check-exec-permission";
     case SR__OPERATION__RPC:
         return "rpc";
     case SR__OPERATION__ACTION:
@@ -309,6 +311,12 @@ sr_gpb_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uint
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__data_provide_req__init((Sr__DataProvideReq*)sub_msg);
             req->data_provide_req = (Sr__DataProvideReq*)sub_msg;
+            break;
+        case SR__OPERATION__CHECK_EXEC_PERMISSION:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__CheckExecPermReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__check_exec_perm_req__init((Sr__CheckExecPermReq*)sub_msg);
+            req->check_exec_perm_req = (Sr__CheckExecPermReq*)sub_msg;
             break;
         case SR__OPERATION__RPC:
         case SR__OPERATION__ACTION:
@@ -553,6 +561,12 @@ sr_gpb_resp_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uin
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__data_provide_resp__init((Sr__DataProvideResp*)sub_msg);
             resp->data_provide_resp = (Sr__DataProvideResp*)sub_msg;
+            break;
+        case SR__OPERATION__CHECK_EXEC_PERMISSION:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__CheckExecPermResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__check_exec_perm_resp__init((Sr__CheckExecPermResp*)sub_msg);
+            resp->check_exec_perm_resp = (Sr__CheckExecPermResp*)sub_msg;
             break;
         case SR__OPERATION__RPC:
         case SR__OPERATION__ACTION:
@@ -909,6 +923,8 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__DATA_PROVIDE:
                 CHECK_NULL_RETURN(msg->request->data_provide_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__CHECK_EXEC_PERMISSION:
+                CHECK_NULL_RETURN(msg->request->check_exec_perm_req, SR_ERR_MALFORMED_MSG);
             case SR__OPERATION__RPC:
             case SR__OPERATION__ACTION:
                 CHECK_NULL_RETURN(msg->request->rpc_req, SR_ERR_MALFORMED_MSG);
@@ -1012,6 +1028,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__DATA_PROVIDE:
                 CHECK_NULL_RETURN(msg->response->data_provide_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__CHECK_EXEC_PERMISSION:
+                CHECK_NULL_RETURN(msg->response->check_exec_perm_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__RPC:
             case SR__OPERATION__ACTION:

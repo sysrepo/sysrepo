@@ -1037,6 +1037,11 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
         rc = SR_ERR_INVAL_ARG;
         goto unlock_schema;
     }
+    if (LYS_RPC != sch_node->nodetype && LYS_ACTION != sch_node->nodetype) {
+        SR_LOG_ERR("XPath '%s' does not resolve to RPC or Action node.", xpath);
+        rc = SR_ERR_INVAL_ARG;
+        goto unlock_schema;
+    }
 
     /* lock NACM context for reading */
     pthread_rwlock_rdlock(&nacm_ctx->lock);
