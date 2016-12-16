@@ -704,6 +704,16 @@ cleanup:
 
 }
 
+uint32_t
+sr_session_get_id(sr_session_ctx_t *session)
+{
+    if (NULL != session) {
+        return session->id;
+    } else {
+        SR_LOG_ERR_MSG("NULL passed to session argument");
+        return 0;
+    }
+}
 int
 sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema_cnt)
 {

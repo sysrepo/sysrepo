@@ -1185,7 +1185,7 @@ cl_set_item_test(void **state)
 
     rc = sr_set_item(session, "/test-module:tpdfs/undecided", &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
-    
+
     value.type = SR_INSTANCEID_T;
     value.data.instanceid_val = "/test-module:main";
 
@@ -5212,6 +5212,23 @@ cl_get_schema_with_subscription(void **state)
     sr_session_stop(session);
 }
 
+static void
+cl_session_get_id_test (void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    int rc = SR_ERR_OK;
+
+    assert_int_equal(0, sr_session_get_id(session));
+
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_not_equal(0, sr_session_get_id(session));
+
+    sr_session_stop(session);
+}
+
 int
 main()
 {
@@ -5265,6 +5282,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_data_in_submodule, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_schema_with_subscription, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_set_item_str_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_session_get_id_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
