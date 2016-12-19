@@ -1676,6 +1676,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     sr_mem_ctx_t *sr_mem = NULL;
     Sr__SubscribeReq *subscribe_req = NULL;
     np_subscr_options_t options = NP_SUBSCR_DEFAULT;
+    const char *username = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->subscribe_req);
@@ -1692,6 +1693,13 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
         return SR_ERR_NOMEM;
     }
     subscribe_req = msg->request->subscribe_req;
+    if (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == subscribe_req->type) {
+        if (NULL != session->user_credentials->e_username) {
+            username = session->user_credentials->e_username;
+        } else {
+            username = session->user_credentials->r_username;
+        }
+    }
 
     /* set subscribe options */
     if (subscribe_req->has_enable_running && subscribe_req->enable_running) {
@@ -1708,7 +1716,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     /* subscribe to the notification */
     rc = np_notification_subscribe(rp_ctx->np_ctx, session, subscribe_req->type,
             subscribe_req->destination, subscribe_req->subscription_id,
-            subscribe_req->module_name, subscribe_req->xpath,
+            subscribe_req->module_name, subscribe_req->xpath, username,
             (subscribe_req->has_notif_event ? subscribe_req->notif_event : SR__NOTIFICATION_EVENT__APPLY_EV),
             (subscribe_req->has_priority ? subscribe_req->priority : 0),
             sr_api_variant_gpb_to_sr(subscribe_req->api_variant),

@@ -43,6 +43,7 @@
 
 #define PM_XPATH_SUBSCRIPTION                 PM_XPATH_SUBSCRIPTION_LIST "[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']"
 #define PM_XPATH_SUBSCRIPTION_XPATH           PM_XPATH_SUBSCRIPTION      "/xpath"
+#define PM_XPATH_SUBSCRIPTION_USERNAME        PM_XPATH_SUBSCRIPTION      "/username"
 #define PM_XPATH_SUBSCRIPTION_EVENT           PM_XPATH_SUBSCRIPTION      "/event"
 #define PM_XPATH_SUBSCRIPTION_PRIORITY        PM_XPATH_SUBSCRIPTION      "/priority"
 #define PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING  PM_XPATH_SUBSCRIPTION      "/enable-running"
@@ -361,6 +362,10 @@ pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscript
                 subscription->xpath = strdup(node_ll->value_str);
                 CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
             }
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "username")) {
+                subscription->username = strdup(node_ll->value_str);
+                CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
+            }
             if (0 == strcmp(node->schema->name, "event") && NULL != node_ll->value.ident->name) {
                 subscription->notif_event = sr_notification_event_str_to_gpb(node_ll->value.ident->name);
             }
@@ -674,6 +679,13 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_XPATH, module_name,
                 sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
         value = subscription->xpath;
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, true, NULL);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
+    }
+    if (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == subscription->type && NULL != subscription->username) {
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_USERNAME, module_name,
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+        value = subscription->username;
         rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, true, NULL);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
     }
