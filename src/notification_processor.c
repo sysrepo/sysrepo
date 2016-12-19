@@ -394,7 +394,7 @@ np_cleanup(np_ctx_t *np_ctx)
 
 int
 np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__SubscriptionType type,
-        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath,
+        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const char *username,
         Sr__NotificationEvent notif_event, uint32_t priority, sr_api_variant_t api_variant, const np_subscr_options_t opts)
 {
     np_subscription_t *subscription = NULL;
@@ -417,6 +417,10 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
     if (NULL != xpath) {
         subscription->xpath = strdup(xpath);
         CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
+    }
+    if (NULL != username) {
+        subscription->username = strdup(username);
+        CHECK_NULL_NOMEM_GOTO(subscription->username, rc, cleanup);
     }
 
     subscription->dst_id = dst_id;
@@ -1077,6 +1081,7 @@ np_free_subscription_content(np_subscription_t *subscription)
         free((void*)subscription->dst_address);
         free((void*)subscription->module_name);
         free((void*)subscription->xpath);
+        free((void*)subscription->username);
     }
 }
 

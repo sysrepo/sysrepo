@@ -999,7 +999,7 @@ nacm_cleanup(nacm_ctx_t *nacm_ctx)
 
 int
 nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const char *xpath,
-        nacm_action_t *action, char **rule_name, char **rule_info)
+        nacm_action_t *action, char **rule_name_p, char **rule_info_p)
 {
     CHECK_NULL_ARG4(nacm_ctx, user_credentials, xpath, action);
 
@@ -1010,7 +1010,7 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
 
 int
 nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const char *xpath,
-        nacm_action_t *action, char **rule_name, char **rule_info)
+        nacm_action_t *action, char **rule_name_p, char **rule_info_p)
 {
     CHECK_NULL_ARG4(nacm_ctx, user_credentials, xpath, action);
 
@@ -1100,8 +1100,10 @@ nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credenti
         CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to initialize binary tree with NACM data access validation results.");
     }
 
-    rc = sr_bitset_init(nacm_ctx->rule_lists->count, &nacm_data_val_ctx->rule_lists);
-    CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to initialize bitset.");
+    if (nacm_ctx->rule_lists->count > 0) {
+        rc = sr_bitset_init(nacm_ctx->rule_lists->count, &nacm_data_val_ctx->rule_lists);
+        CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to initialize bitset.");
+    }
 
     /* get the set of groups that this user is member of (step 3) */
 
