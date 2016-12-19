@@ -788,7 +788,7 @@ np_cleanup(np_ctx_t *np_ctx)
             ly_ctx_destroy(np_ctx->ly_ctx, NULL);
         }
 
-        np_cleanup_notif_store(np_ctx); // TODO: change this to a repeated asynchronous task
+        np_notification_store_cleanup(np_ctx); // TODO: change this to a repeated asynchronous task
 
         free(np_ctx);
     }
@@ -1674,7 +1674,7 @@ np_event_notification_cleanup(np_ev_notification_t *notification)
 }
 
 int
-np_cleanup_notif_store(np_ctx_t *np_ctx)
+np_notification_store_cleanup(np_ctx_t *np_ctx)
 {
     sr_list_t *file_list = NULL;
     int ret = 0, rc = SR_ERR_OK;

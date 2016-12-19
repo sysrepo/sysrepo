@@ -445,7 +445,7 @@ np_notif_store_test(void **state)
     }
     sr_list_cleanup(notif_list);
 
-    rc = np_cleanup_notif_store(np_ctx);
+    rc = np_notification_store_cleanup(np_ctx);
     assert_int_equal(rc, SR_ERR_OK);
     ly_ctx_destroy(ctx, NULL);
 #endif

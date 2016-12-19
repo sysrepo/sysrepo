@@ -4824,6 +4824,11 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
 
     CHECK_NULL_ARG5(dm_ctx, session, notification, notification->xpath, notification->data.xml);
 
+    if (NP_EV_NOTIF_DATA_XML != notification->data_type) {
+        SR_LOG_ERR_MSG("Invalid notification data type (should be XML).");
+        return SR_ERR_INVAL_ARG;
+    }
+
     rc = sr_copy_first_ns(notification->xpath, &module_name);
     CHECK_RC_MSG_RETURN(rc, "Error by extracting module name from xpath.");
 

@@ -757,10 +757,12 @@ dm_event_notif_parse_test(void **state)
     notification->xpath = strdup("/test-module:link-removed");
     assert_non_null(notification->xpath);
     notification->data.xml = xml;
+    notification->data_type = NP_EV_NOTIF_DATA_XML;
 
     /* parse to values */
     rc = dm_parse_event_notif(ctx, session, NULL, notification, SR_API_VALUES);
     assert_int_equal(SR_ERR_OK, rc);
+    assert_true(NP_EV_NOTIF_DATA_VALUES == notification->data_type);
 
     assert_int_equal(notification->data_cnt, 7); /* including the default node */
     assert_string_equal(notification->data.values[1].xpath, "/test-module:link-removed/source/address");
@@ -781,10 +783,12 @@ dm_event_notif_parse_test(void **state)
     notification->xpath = strdup("/test-module:link-removed");
     assert_non_null(notification->xpath);
     notification->data.xml = xml;
+    notification->data_type = NP_EV_NOTIF_DATA_XML;
 
     /* parse to values */
     rc = dm_parse_event_notif(ctx, session, NULL, notification, SR_API_TREES);
     assert_int_equal(SR_ERR_OK, rc);
+    assert_true(NP_EV_NOTIF_DATA_TREES == notification->data_type);
 
     assert_int_equal(notification->data_cnt, 3); /* including the default node */
     assert_string_equal(notification->data.trees[0].name, "source");

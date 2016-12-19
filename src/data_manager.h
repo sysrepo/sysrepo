@@ -875,7 +875,14 @@ int dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const 
         struct lyd_node **res_data_tree);
 
 /**
- * @brief TODO
+ * @brief Parses event notification with data in XML format (notification->type == NP_EV_NOTIF_DATA_XML) into desired
+ * sysrepo format (values or trees).
+ * @param [in] dm_ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] sr_mem Sysrepo memory context to use for output values (can be NULL).
+ * @param [in,out] notification Notification to be processed.
+ * @param [in] api_variant requested API variant (values/trees).
+ * @return Error code (SR_ERR_OK on success)
  */
 int dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_mem,
         np_ev_notification_t *notification, const sr_api_variant_t api_variant);

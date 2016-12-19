@@ -60,10 +60,10 @@ typedef struct np_subscription_s {
  * @brief Type of the event notification data stored within the ::np_ev_notification_t structure.
  */
 typedef enum np_ev_notif_data_type_s {
-    NP_EV_NOTIF_DATA_NONE,
-    NP_EV_NOTIF_DATA_XML,
-    NP_EV_NOTIF_DATA_VALUES,
-    NP_EV_NOTIF_DATA_TREES,
+    NP_EV_NOTIF_DATA_NONE,             /**< No data. */
+    NP_EV_NOTIF_DATA_XML,              /**< Data in XML format. */
+    NP_EV_NOTIF_DATA_VALUES,           /**< Data in st_val_t format. */
+    NP_EV_NOTIF_DATA_TREES,            /**< Data in sr_node_t format. */
 } np_ev_notif_data_type_t;
 
 /**
@@ -360,7 +360,7 @@ void np_event_notification_cleanup(np_ev_notification_t *notification);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_cleanup_notif_store(np_ctx_t *np_ctx);
+int np_notification_store_cleanup(np_ctx_t *np_ctx);
 
 /**@} np */
 
