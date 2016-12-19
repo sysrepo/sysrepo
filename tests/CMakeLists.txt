@@ -108,6 +108,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     ADD_UNIT_TEST_WITH_OPTS(sysrepocfg_test 1 0 "")
     if(ENABLE_NACM)
         ADD_UNIT_TEST(nacm_test 1)
+        ADD_UNIT_TEST(nacm_cl_test 1)
     endif(ENABLE_NACM)
 
     ADD_CUSTOM_COMMAND(
