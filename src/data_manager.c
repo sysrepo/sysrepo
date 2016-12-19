@@ -3195,6 +3195,13 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
                 ret = lyd_print_fd(c_ctx->fds[count], merged_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
             }
             if (0 == ret) {
+                /* TODO: this is a workaround for https://github.com/CESNET/libyang/issues/213, remove after it is fixed */
+                long pagesize = sysconf(_SC_PAGE_SIZE);
+                long filesize = lseek(c_ctx->fds[count], 0, SEEK_END);
+                if ((filesize >= pagesize) && (0 == filesize % pagesize)) {
+                    lseek(c_ctx->fds[count], 1, SEEK_END);
+                    write(c_ctx->fds[count], "\n", 1);
+                }
                 ret = fsync(c_ctx->fds[count]);
             }
             if (0 != ret) {
