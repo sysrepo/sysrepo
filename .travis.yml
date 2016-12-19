@@ -18,6 +18,8 @@ matrix:
             compiler: clang
         -   os: osx
             compiler: gcc
+    allow_failures:
+        - os: osx
 
 cache:
   pip: true
