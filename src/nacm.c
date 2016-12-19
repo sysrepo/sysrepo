@@ -27,6 +27,7 @@
 
 #include "nacm.h"
 #include "data_manager.h"
+#include "sysrepo/xpath.h"
 
 #define NACM_MODULE_NAME    "ietf-netconf-acm"
 #define ACCESS_BIT_COUNT    5
@@ -105,6 +106,23 @@ nacm_compare_groups(const void *group1_ptr, const void *group2_ptr)
 }
 
 /**
+ * @brief Search for the NACM group by name.
+ */
+static nacm_group_t *
+nacm_get_group(nacm_ctx_t *nacm_ctx, const char *name)
+{
+    nacm_group_t group_lookup = { (char *)name, 0 }, *group = NULL;
+
+    if (NULL == nacm_ctx || NULL == name) {
+        return NULL;
+    }
+
+    group = sr_btree_search(nacm_ctx->groups, &group_lookup);
+    return group;
+}
+
+
+/**
  * @brief Deallocate all memory associated with nacm_user_t.
  */
 static void
@@ -163,6 +181,22 @@ nacm_compare_users(const void *user1_ptr, const void *user2_ptr)
 }
 
 /**
+ * @brief Search for the NACM user by name.
+ */
+static nacm_user_t *
+nacm_get_user(nacm_ctx_t *nacm_ctx, const char *name)
+{
+    nacm_user_t user_lookup = { (char *)name, NULL }, *user = NULL;
+
+    if (NULL == nacm_ctx || NULL == name) {
+        return NULL;
+    }
+
+    user = sr_btree_search(nacm_ctx->users, &user_lookup);
+    return user;
+}
+
+/**
  * @brief Deallocate all memory associated with nacm_rule_t.
  */
 static void
@@ -184,15 +218,19 @@ nacm_free_rule(nacm_rule_t *rule)
  * Should be then released using ::nacm_free_rule.
  */
 static int
-nacm_alloc_rule(const char *name, const char *module, nacm_rule_type_t type, const char *data, uint8_t access,
-        nacm_action_t action, const char *comment, nacm_rule_t **rule_p)
+nacm_alloc_rule(uint16_t id, const char *name, const char *module, nacm_rule_type_t type, const char *data,
+        uint8_t access, nacm_action_t action, const char *comment, nacm_rule_t **rule_p)
 {
     int rc = SR_ERR_OK;
+    char *node = NULL, *colon = NULL;
+    char full_node_id[PATH_MAX] = { 0, }, *node_name = full_node_id;
     nacm_rule_t *rule = NULL;
+    sr_xpath_ctx_t state = {0};
     CHECK_NULL_ARG3(name, module, rule_p);
 
     rule = calloc(1, sizeof *rule);
     CHECK_NULL_NOMEM_GOTO(rule, rc, cleanup);
+    rule->id = id;
 
     rule->name = strdup(name);
     CHECK_NULL_NOMEM_GOTO(rule->name, rc, cleanup);
@@ -203,6 +241,24 @@ nacm_alloc_rule(const char *name, const char *module, nacm_rule_type_t type, con
     if (NULL != data) {
         rule->data.path = strdup(data);
         CHECK_NULL_NOMEM_GOTO(rule->data.path, rc, cleanup);
+        if (NACM_RULE_DATA == type) {
+            /* calculate hash from a "normalized" data node instance id */
+            node = sr_xpath_next_node_with_ns(rule->data.path, &state);
+            while (node) {
+                colon = strchr(node, ':');
+                if (NULL != colon) {
+                    char c = colon[1];
+                    colon[1] = '\0';
+                    strncpy(full_node_id, node, PATH_MAX);
+                    colon[1] = c; /* restore */
+                    node_name = full_node_id + strlen(full_node_id);
+                }
+                strncpy(node_name, colon ? colon+1 : node, PATH_MAX - (node_name - full_node_id));
+                rule->data_hash += sr_str_hash(full_node_id);
+                node = sr_xpath_next_node_with_ns(NULL, &state);
+            }
+            sr_xpath_recover(&state);
+        }
     }
 
     if (NULL != comment) {
@@ -273,6 +329,133 @@ cleanup:
 }
 
 /**
+ * @brief Deallocate all memory associated with nacm_nodeset_t.
+ */
+static void
+nacm_free_nodeset(void *nodeset_ptr)
+{
+    if (NULL == nodeset_ptr) {
+        return;
+    }
+
+    nacm_nodeset_t *nodeset = (nacm_nodeset_t *)nodeset_ptr;
+    if (NULL != nodeset->set) {
+        ly_set_free(nodeset->set);
+    }
+    free(nodeset);
+}
+
+/*
+ * @brief Allocate and initialize instance of nacm_nodeset_t structure.
+ * Should be then released using ::nacm_free_nodeset.
+ */
+static int
+nacm_alloc_nodeset(uint16_t rule_id, struct ly_set *set, nacm_nodeset_t **nodeset_p)
+{
+    nacm_nodeset_t *nodeset = NULL;
+    CHECK_NULL_ARG2(nodeset_p, set);
+
+    nodeset = calloc(1, sizeof *nodeset);
+    CHECK_NULL_NOMEM_RETURN(nodeset);
+    nodeset->rule_id = rule_id;
+    nodeset->set = set;
+
+    *nodeset_p = nodeset;
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Compare two NACM nodesets.
+ */
+static int
+nacm_compare_nodesets(const void *nodeset1_ptr, const void *nodeset2_ptr)
+{
+    if (NULL == nodeset1_ptr || NULL == nodeset2_ptr) {
+        return 0;
+    }
+
+    nacm_nodeset_t *nodeset1 = (nacm_nodeset_t *)nodeset1_ptr;
+    nacm_nodeset_t *nodeset2 = (nacm_nodeset_t *)nodeset2_ptr;
+    return nodeset1->rule_id - nodeset2->rule_id;
+}
+
+/**
+ * @brief Search for a NACM nodeset by rule ID.
+ */
+static nacm_nodeset_t *
+nacm_get_nodeset(nacm_data_val_ctx_t *nacm_data_val_ctx, uint16_t rule_id)
+{
+    nacm_nodeset_t nodeset_lookup = { rule_id, NULL }, *nodeset = NULL;
+
+    if (NULL == nacm_data_val_ctx || false == nacm_data_val_ctx->cache.enabled) {
+        return NULL;
+    }
+
+    nodeset = sr_btree_search(nacm_data_val_ctx->cache.nodesets, &nodeset_lookup);
+    return nodeset;
+}
+
+/*
+ * @brief Allocate and initialize instance of nacm_data_val_result_t structure.
+ * Should be then released using ::nacm_free_data_val_result.
+ */
+static int
+nacm_alloc_data_val_result(nacm_access_flag_t access_type, const struct lyd_node *node, nacm_action_t action,
+        const char *rule_name, const char *rule_info, nacm_data_val_result_t **val_result_p)
+{
+    nacm_data_val_result_t *val_result = NULL;
+    CHECK_NULL_ARG2(node, val_result_p);
+
+    val_result = calloc(1, sizeof *val_result);
+    CHECK_NULL_NOMEM_RETURN(val_result);
+    val_result->access_type = access_type;
+    val_result->node = node;
+    val_result->action = action;
+    val_result->rule_name = rule_name;
+    val_result->rule_info = rule_info;
+
+    *val_result_p = val_result;
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Compare two NACM data access validation results.
+ */
+static int
+nacm_compare_data_val_result(const void *val_result1_ptr, const void *val_result2_ptr)
+{
+    intptr_t cmp = 0;
+    if (NULL == val_result1_ptr || NULL == val_result2_ptr) {
+        return 0;
+    }
+
+    nacm_data_val_result_t *val_result1 = (nacm_data_val_result_t *)val_result1_ptr;
+    nacm_data_val_result_t *val_result2 = (nacm_data_val_result_t *)val_result2_ptr;
+    cmp = (intptr_t)val_result1->access_type - (intptr_t)val_result2->access_type;
+    if (0 == cmp) {
+        cmp = (intptr_t)val_result1->node - (intptr_t)val_result2->node;
+    }
+    return cmp < 0 ? -1 : (cmp > 0 ? 1 : 0);
+}
+
+/**
+ * @brief Search for a NACM data validation result by node and access type.
+ */
+static nacm_data_val_result_t *
+nacm_get_data_val_result(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t access_type,
+        const struct lyd_node *node)
+{
+    nacm_data_val_result_t val_result_lookup = { access_type, node }, *val_result = NULL;
+
+    if (NULL == nacm_data_val_ctx || false == nacm_data_val_ctx->cache.enabled) {
+        return NULL;
+    }
+
+    val_result = sr_btree_search(nacm_data_val_ctx->cache.results, &val_result_lookup);
+    return val_result;
+}
+
+/**
  * @brief Load NACM configuration from datastore.
  */
 static int
@@ -281,6 +464,7 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
     int rc = SR_ERR_OK;
     int fd = -1, phase = 0;
     bool match_all = false;
+    uint16_t rule_id = 0;
     const char *group_name = NULL, *rl_name = NULL;
     const char *rule_name = NULL, *rule_module = NULL, *rule_data = NULL, *rule_comment = NULL;
     uint8_t rule_access = 0;
@@ -566,7 +750,7 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
 
                     /* process rule data */
                     assert(NULL == nacm_rule);
-                    rc = nacm_alloc_rule(rule_name, rule_module, rule_type, rule_data, rule_access,
+                    rc = nacm_alloc_rule(rule_id++, rule_name, rule_module, rule_type, rule_data, rule_access,
                                          rule_action, rule_comment, &nacm_rule);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to allocate NACM rule.");
                     rc = sr_list_add(nacm_rule_list->rules, nacm_rule);
@@ -687,6 +871,7 @@ nacm_init(dm_ctx_t *dm_ctx, const char *data_search_dir, nacm_ctx_t **nacm_ctx)
     /* allocate context data structure */
     ctx = calloc(1, sizeof *ctx);
     CHECK_NULL_NOMEM_GOTO(ctx, rc, cleanup);
+    ctx->dm_ctx = dm_ctx;
 
     /* initialize RW lock */
     rc = pthread_rwlock_init(&ctx->lock, NULL);
@@ -832,4 +1017,357 @@ nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials,
     /* TODO */
 
     return SR_ERR_OK;
+}
+
+/**
+ * @brief Deallocate all memory associated with nacm_data_val_ctx_t.
+ *
+ */
+static void
+nacm_free_data_val_ctx(nacm_data_val_ctx_t *nacm_data_val_ctx)
+{
+    if (NULL == nacm_data_val_ctx) {
+        free(nacm_data_val_ctx);
+    }
+
+    sr_bitset_cleanup(nacm_data_val_ctx->rule_lists);
+    if (nacm_data_val_ctx->cache.enabled) {
+        sr_btree_cleanup(nacm_data_val_ctx->cache.nodesets);
+        sr_btree_cleanup(nacm_data_val_ctx->cache.results);
+    }
+    free(nacm_data_val_ctx);
+}
+
+int
+nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, struct lyd_node *data_tree,
+        bool cache, nacm_data_val_ctx_t **nacm_data_val_ctx_p)
+{
+    int rc = SR_ERR_OK;
+    const char *username = NULL, *module_name = NULL;
+    bool disjoint = false, bit_val = false;
+    char **ext_groups = NULL;
+    size_t ext_group_cnt = 0;
+    struct lys_submodule *sub = NULL;
+    dm_schema_info_t *schema_info = NULL;
+    nacm_user_t *nacm_user = NULL;
+    nacm_group_t **nacm_ext_groups = NULL;
+    nacm_rule_list_t *nacm_rule_list = NULL;
+    nacm_data_val_ctx_t *nacm_data_val_ctx = NULL;
+
+    CHECK_NULL_ARG4(nacm_ctx, user_credentials, data_tree, nacm_data_val_ctx_p);
+    CHECK_NULL_ARG3(data_tree->schema, data_tree->schema->module, data_tree->schema->module->name);
+
+    if (data_tree->schema->module->type) {
+        /* submodule */
+        sub = (struct lys_submodule *) data_tree->schema->module;
+        CHECK_NULL_ARG3(sub, sub->belongsto, sub->belongsto->name);
+    }
+
+    username = user_credentials->e_username ? user_credentials->e_username : user_credentials->r_username;
+    if (NULL == username) {
+        SR_LOG_ERR_MSG("Unable to validate data access without knowing the username (NULL value detected).");
+        return SR_ERR_INVAL_ARG;
+    }
+
+    nacm_data_val_ctx = calloc(1, sizeof *nacm_data_val_ctx);
+    CHECK_NULL_NOMEM_GOTO(nacm_data_val_ctx, rc, cleanup);
+
+    /* Lock schema info and NACM -- in this order! */
+    module_name = sub == NULL ? data_tree->schema->module->name : sub->belongsto->name;
+    rc = dm_get_module_and_lock(nacm_ctx->dm_ctx, module_name, &schema_info);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Get schema info failed for %s", module_name);
+    pthread_rwlock_rdlock(&nacm_ctx->lock);
+
+    nacm_data_val_ctx->nacm_ctx = nacm_ctx;
+    nacm_data_val_ctx->schema_info = schema_info;
+    nacm_data_val_ctx->user_credentials = user_credentials;
+
+    /* data validation steps 1,2 */
+    if (false == nacm_ctx->enabled) {
+        /* skip the rest */
+        goto cleanup;
+    }
+    if (user_credentials->e_uid == SR_NACM_RECOVERY_UID) {
+        /* skip the rest */
+        goto cleanup;
+    }
+
+    if (cache) {
+        nacm_data_val_ctx->cache.enabled = true;
+        rc = sr_btree_init(nacm_compare_nodesets, nacm_free_nodeset, &nacm_data_val_ctx->cache.nodesets);
+        CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to initialize binary tree with NACM nodesets.");
+        rc = sr_btree_init(nacm_compare_data_val_result, free, &nacm_data_val_ctx->cache.results);
+        CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to initialize binary tree with NACM data access validation results.");
+    }
+
+    rc = sr_bitset_init(nacm_ctx->rule_lists->count, &nacm_data_val_ctx->rule_lists);
+    CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to initialize bitset.");
+
+    /* get the set of groups that this user is member of (step 3) */
+
+    /*  -> get NACM info about this user */
+    nacm_user = nacm_get_user(nacm_ctx, username);
+
+    /*  -> get NACM info about the external groups that this user is member of */
+    if (nacm_ctx->external_groups) {
+        rc = sr_get_system_groups(username, &ext_groups, &ext_group_cnt);
+        CHECK_RC_LOG_GOTO(rc, unlock_if_fail, "Failed to obtain the set of external groups for user '%s'.",
+                          username);
+        if (0 != ext_group_cnt) {
+            nacm_ext_groups = calloc(ext_group_cnt, sizeof *nacm_ext_groups);
+            CHECK_NULL_NOMEM_GOTO(nacm_ext_groups, rc, unlock_if_fail);
+            for (size_t i = 0; i < ext_group_cnt; ++i) {
+                nacm_ext_groups[i] = nacm_get_group(nacm_ctx, ext_groups[i]);
+            }
+        }
+    }
+
+    /* if no groups are found, skip steps 5-8 (step 4) */
+    if ((NULL == nacm_user || sr_bitset_empty(nacm_user->groups)) && 0 == ext_group_cnt) {
+        goto cleanup;
+    }
+
+    /* get the set of all matching rule-lists (pre-processing for step 5) */
+    for (size_t i = 0; i < nacm_ctx->rule_lists->count; ++i) {
+        nacm_rule_list = (nacm_rule_list_t *)nacm_ctx->rule_lists->data[i];
+        /*  -> match all */
+        if (nacm_rule_list->match_all) {
+            rc = sr_bitset_set(nacm_data_val_ctx->rule_lists, i, true);
+            CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to enable bit in a bitset.");
+            continue;
+        }
+        /*  -> groups defined in NACM config */
+        if (NULL != nacm_user) {
+            rc = sr_bitset_disjoint(nacm_user->groups, nacm_rule_list->groups, &disjoint);
+            CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Function sr_bitset_disjoint has failed.");
+            if (false == disjoint) {
+                rc = sr_bitset_set(nacm_data_val_ctx->rule_lists, i, true);
+                CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to enable bit in a bitset.");
+                continue;
+            }
+        }
+        /*  -> external groups */
+        for (size_t j = 0; j < ext_group_cnt; ++j) {
+            if (NULL != nacm_ext_groups[j]) {
+                rc = sr_bitset_get(nacm_rule_list->groups, nacm_ext_groups[j]->id, &bit_val);
+                CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to get value of a bit in a bitset.");
+                if (true == bit_val) {
+                    rc = sr_bitset_set(nacm_data_val_ctx->rule_lists, i, true);
+                    CHECK_RC_MSG_GOTO(rc, unlock_if_fail, "Failed to enable bit in a bitset.");
+                    continue;
+                }
+            }
+        }
+    }
+
+    /* steps 6-12 are evaluated for each node in nacm_check_data */
+
+unlock_if_fail:
+    if (SR_ERR_OK != rc) {
+        pthread_rwlock_unlock(&nacm_ctx->lock);
+        pthread_rwlock_unlock(&schema_info->model_lock);
+    }
+
+cleanup:
+    for (size_t i = 0; i < ext_group_cnt; ++i) {
+        free(ext_groups[i]);
+    }
+    free(ext_groups);
+    free(nacm_ext_groups);
+    if (SR_ERR_OK == rc) {
+        *nacm_data_val_ctx_p = nacm_data_val_ctx;
+    } else {
+        nacm_free_data_val_ctx(nacm_data_val_ctx);
+    }
+
+    return rc;
+}
+
+void
+nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx)
+{
+    if (NULL == nacm_data_val_ctx || NULL == nacm_data_val_ctx->nacm_ctx) {
+        return;
+    }
+
+    pthread_rwlock_unlock(&nacm_data_val_ctx->nacm_ctx->lock);
+    pthread_rwlock_unlock(&nacm_data_val_ctx->schema_info->model_lock);
+    nacm_free_data_val_ctx(nacm_data_val_ctx);
+}
+
+int
+nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t access_type, const struct lyd_node *node,
+        nacm_action_t *action_p, const char **rule_name_p, const char **rule_info_p)
+{
+    int rc = SR_ERR_OK;
+    bool bit_val = true, matches = false;
+    uint32_t node_xpath_hash = 0;
+    struct ly_set *nodeset = NULL;
+    const char *rule_name = NULL, *rule_info = NULL;
+    nacm_action_t action = NACM_ACTION_PERMIT;
+    nacm_data_val_result_t *val_result = NULL;
+    nacm_nodeset_t *nacm_nodeset = NULL;
+    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_rule_list_t *nacm_rule_list = NULL;
+    nacm_rule_t *nacm_rule = NULL;
+
+    CHECK_NULL_ARG4(nacm_data_val_ctx, nacm_data_val_ctx->nacm_ctx, node, action_p);
+    if (NACM_ACCESS_ALL == access_type || NACM_ACCESS_EXEC == access_type) {
+        SR_LOG_ERR("Invalid value of 'access_type' input argument passed to ::nacm_check_data: %d", access_type);
+        return SR_ERR_INVAL_ARG;
+    }
+
+    /* data validation steps 1,2 (perform quickly before doing anything else) */
+    if (false == nacm_data_val_ctx->nacm_ctx->enabled) {
+        action = NACM_ACTION_PERMIT;
+        goto cleanup;
+    }
+    if (nacm_data_val_ctx->user_credentials->e_uid == SR_NACM_RECOVERY_UID) {
+        action = NACM_ACTION_PERMIT;
+        goto cleanup;
+    }
+
+    /* check if access to this node has already been evaluated */
+    val_result = nacm_get_data_val_result(nacm_data_val_ctx, access_type, node);
+    if (NULL != val_result) {
+        *action_p = val_result->action;
+        if (NULL != rule_name_p) {
+            *rule_name_p = val_result->rule_name;
+        }
+        if (NULL != rule_info_p) {
+            *rule_info_p = val_result->rule_info;
+        }
+        return rc;
+    }
+
+    /* check parent node first */
+    if (NULL != node->parent) {
+        nacm_check_data(nacm_data_val_ctx, access_type, node->parent, &action, &rule_name, &rule_info);
+        if (NACM_ACTION_DENY == action) {
+            goto cleanup;
+        } else {
+            rule_name = NULL;
+            rule_info = NULL;
+        }
+    }
+
+    nacm_ctx = nacm_data_val_ctx->nacm_ctx;
+    node_xpath_hash = dm_get_node_xpath_hash(node->schema);
+
+    /* steps 5,6,7: find matching rule */
+    for (size_t i = 0; i < nacm_ctx->rule_lists->count; ++i) {
+        /* step 5: check if this rule-list matches (already evaluated in ::nacm_data_validation_start) */
+        rc = sr_bitset_get(nacm_data_val_ctx->rule_lists, i, &bit_val);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get value of a bit in a bitset.");
+        if (true == bit_val) {
+            /* process matching rule-list */
+            nacm_rule_list = (nacm_rule_list_t *)nacm_ctx->rule_lists->data[i];
+            for (size_t j = 0; j < nacm_rule_list->rules->count; ++j) {
+                nacm_rule = (nacm_rule_t *)nacm_rule_list->rules->data[j];
+                /* step 6: process all rules until a match is found */
+                if (false == (access_type & nacm_rule->access)) {
+                    /* this rule is for different access operation */
+                    continue;
+                }
+                if (NACM_RULE_DATA != nacm_rule->type && NACM_RULE_NOTSET != nacm_rule->type) {
+                    /* this rule is not defined for data access validation */
+                    continue;
+                }
+                if (0 != strcmp("*", nacm_rule->module) &&
+                    0 != strcmp(node->schema->module->name, nacm_rule->module)) {
+                    /* this rule doesn't apply to the module where the node is defined */
+                    continue;
+                }
+                if (NULL != nacm_rule->data.path) {
+                    if (node_xpath_hash != nacm_rule->data_hash) {
+                        /* path doesn't apply to this schema node */
+                        continue;
+                    }
+                    assert(NULL == nacm_nodeset && NULL == nodeset);
+                    if (nacm_data_val_ctx->cache.enabled) {
+                        nacm_nodeset = nacm_get_nodeset(nacm_data_val_ctx, nacm_rule->id);
+                    }
+                    if (NULL != nacm_nodeset) {
+                        /* take matching nodeset from the cache */
+                        nodeset = nacm_nodeset->set;
+                    } else {
+                        /* resolve path to get the matching nodeset */
+                        nodeset = lyd_find_xpath(node, nacm_rule->data.path);
+                        if (NULL == nodeset) {
+                            SR_LOG_WRN("Failed to resolve data node instance identifier for rule '%s'.",
+                                       nacm_rule->name);
+                            continue;
+                        }
+                        if (nacm_data_val_ctx->cache.enabled) {
+                            /* store the nodeset into the cache sorted in the ascending order */
+                            rc = sr_ly_set_sort(nodeset);
+                            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to sort NACM nodeset");
+                        }
+                    }
+                    /* check if node is in nodeset */
+                    matches = sr_ly_set_contains(nodeset, (void *)node, nacm_data_val_ctx->cache.enabled) >= 0;
+                    /* store the nodeset for reuse if cache is enabled */
+                    if (NULL == nacm_nodeset) {
+                        if (nacm_data_val_ctx->cache.enabled) {
+                            rc = nacm_alloc_nodeset(nacm_rule->id, nodeset, &nacm_nodeset);
+                            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to allocate NACM nodeset.");
+                            rc = sr_btree_insert(nacm_data_val_ctx->cache.nodesets, nacm_nodeset);
+                            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into a binary tree.");
+                        } else {
+                            ly_set_free(nodeset);
+                        }
+                    }
+                    nodeset = NULL;
+                    nacm_nodeset = NULL;
+                    if (false == matches) {
+                        /* path doesn't apply to this data node */
+                        continue;
+                    }
+                }
+                /* the rule matches! */
+                action = nacm_rule->action;
+                rule_name = nacm_rule->name;
+                rule_info = nacm_rule->comment;
+                goto cleanup;
+            }
+        }
+    }
+
+    /* step 8: no matching rule was found */
+
+    /* steps 9,10: YANG extensions */
+    if ((LYS_NACM_DENYA & node->schema->nacm) ||
+        ((NACM_ACCESS_READ != access_type) && (LYS_NACM_DENYW & node->schema->nodetype))) {
+        action = NACM_ACTION_DENY;
+        goto cleanup;
+    }
+
+    /* steps 11,12: default actions */
+    if (NACM_ACCESS_READ == access_type) {
+        action = nacm_ctx->dflt.read;
+    } else {
+        action = nacm_ctx->dflt.write;
+    }
+
+cleanup:
+    /* (try to) save the result if cache is enabled */
+    if (nacm_data_val_ctx->cache.enabled) {
+        if (SR_ERR_OK == nacm_alloc_data_val_result(access_type, node, action, rule_name, rule_info, &val_result)) {
+            if (SR_ERR_OK != sr_btree_insert(nacm_data_val_ctx->cache.results, val_result)) {
+                free(val_result);
+            }
+        }
+    }
+    *action_p = action;
+    if (NULL != rule_name_p) {
+        *rule_name_p = rule_name;
+    }
+    if (NULL != rule_info_p) {
+        *rule_info_p = rule_info;
+    }
+    if (NULL == nacm_nodeset) {
+        ly_set_free(nodeset);
+    }
+    nacm_free_nodeset(nacm_nodeset);
+    return rc;
 }

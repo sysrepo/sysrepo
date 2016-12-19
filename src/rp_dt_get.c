@@ -29,6 +29,7 @@
 #include "rp_dt_get.h"
 #include "rp_dt_xpath.h"
 #include "rp_dt_edit.h"
+#include "rp_dt_filter.h"
 
 void
 rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data)
@@ -179,12 +180,14 @@ rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t
 }
 
 int
-rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enabled, sr_val_t **value)
+rp_dt_get_value(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem,
+        const char *xpath, bool check_enabled, sr_val_t **value)
 {
-    CHECK_NULL_ARG4(dm_ctx, data_tree, xpath, value);
+    CHECK_NULL_ARG5(dm_ctx, rp_session, data_tree, xpath, value);
     int rc = SR_ERR_OK;
     sr_val_t *val = NULL;
     struct lyd_node *node = NULL;
+    unsigned int node_cnt = 1;
 
     rc = rp_dt_find_node(dm_ctx, data_tree, xpath, check_enabled, &node);
     if (SR_ERR_OK != rc) {
@@ -192,6 +195,12 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t
             SR_LOG_ERR("Find node failed (%d) xpath %s", rc, xpath);
         }
         return rc;
+    }
+
+    rc = rp_dt_nacm_filtering(dm_ctx, rp_session, data_tree, &node, &node_cnt);
+    CHECK_RC_MSG_RETURN(rc, "Failed to filter node by NACM read access.");
+    if (0 == node_cnt) {
+        return SR_ERR_NOT_FOUND;
     }
 
     val = sr_calloc(sr_mem, 1, sizeof(*val));
@@ -214,20 +223,27 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t
 }
 
 int
-rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enable,
-        sr_val_t **values, size_t *count)
+rp_dt_get_values(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem,
+        const char *xpath, bool check_enable, sr_val_t **values, size_t *count)
 {
     CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, values, count);
 
     int rc = SR_ERR_OK;
-
     struct ly_set *nodes = NULL;
+
     rc = rp_dt_find_nodes(dm_ctx, data_tree, xpath, check_enable, &nodes);
     if (SR_ERR_OK != rc) {
         if (SR_ERR_NOT_FOUND != rc) {
             SR_LOG_ERR("Get nodes for xpath %s failed (%d)", xpath, rc);
         }
-        return rc;
+        goto cleanup;
+    }
+
+    rc = rp_dt_nacm_filtering(dm_ctx, rp_session, data_tree, nodes->set.d, &nodes->number);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to filter nodes by NACM read access.");
+    if (0 == nodes->number) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
     }
 
     rc = rp_dt_get_values_from_nodes(sr_mem, nodes, values, count);
@@ -235,17 +251,23 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
     }
 
-    ly_set_free(nodes);
-    return SR_ERR_OK;
+cleanup:
+    if (NULL != nodes) {
+        ly_set_free(nodes);
+    }
+    return rc;
 }
 
 int
-rp_dt_get_subtree(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enabled, sr_node_t **subtree)
+rp_dt_get_subtree(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem,
+        const char *xpath, bool check_enabled, sr_node_t **subtree)
 {
     CHECK_NULL_ARG4(dm_ctx, data_tree, xpath, subtree);
     int rc = SR_ERR_OK;
     sr_node_t *tree = NULL;
     struct lyd_node *node = NULL;
+    sr_tree_pruning_cb pruning_cb = NULL;
+    rp_tree_pruning_ctx_t *pruning_ctx = NULL;
 
     rc = rp_dt_find_node(dm_ctx, data_tree, xpath, check_enabled, &node);
     if (SR_ERR_OK != rc) {
@@ -255,17 +277,28 @@ rp_dt_get_subtree(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx
         return rc;
     }
 
+    rc = rp_dt_init_tree_pruning(dm_ctx, rp_session, node, data_tree, check_enabled, NULL != node->child,
+            &pruning_cb, &pruning_ctx);
+    if (SR_ERR_UNAUTHORIZED == rc) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize sysrepo tree pruning.");
+
     tree = sr_calloc(sr_mem, 1, sizeof(*tree));
-    CHECK_NULL_NOMEM_RETURN(tree);
+    CHECK_NULL_NOMEM_GOTO(tree, rc, cleanup);
 
     if (sr_mem) {
         tree->_sr_mem = sr_mem;
         sr_mem->obj_count += 1;
     }
 
-    rc = sr_copy_node_to_tree(node, tree);
+    rc = sr_copy_node_to_tree(node, pruning_cb, (void *)pruning_ctx, tree);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Copy node to tree failed for xpath %s", xpath);
+
+cleanup:
+    rp_dt_cleanup_tree_pruning(pruning_ctx);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Copy node to tree failed for xpath %s", xpath);
         sr_free_tree(tree);
     } else {
         *subtree = tree;
@@ -275,15 +308,17 @@ rp_dt_get_subtree(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx
 }
 
 int
-rp_dt_get_subtree_chunk(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath,
-        size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, bool check_enabled,
-        sr_node_t **chunk, char **chunk_id)
+rp_dt_get_subtree_chunk(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem,
+        const char *xpath, size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit,
+        bool check_enabled, sr_node_t **chunk, char **chunk_id)
 {
     CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, chunk, chunk_id);
     int rc = SR_ERR_OK;
     sr_node_t *tree = NULL;
     char *id = NULL, *id_cpy = NULL;
     struct lyd_node *node = NULL;
+    sr_tree_pruning_cb pruning_cb = NULL;
+    rp_tree_pruning_ctx_t *pruning_ctx = NULL;
 
     rc = rp_dt_find_node(dm_ctx, data_tree, xpath, check_enabled, &node);
     if (SR_ERR_OK != rc) {
@@ -293,50 +328,59 @@ rp_dt_get_subtree_chunk(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_m
         return rc;
     }
 
+    rc = rp_dt_init_tree_pruning(dm_ctx, rp_session, node, data_tree, check_enabled, NULL != node->child,
+            &pruning_cb, &pruning_ctx);
+    if (SR_ERR_UNAUTHORIZED == rc) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize sysrepo tree pruning.");
+
     tree = sr_calloc(sr_mem, 1, sizeof(*tree));
-    CHECK_NULL_NOMEM_RETURN(tree);
+    CHECK_NULL_NOMEM_GOTO(tree, rc, cleanup);
 
     if (sr_mem) {
         tree->_sr_mem = sr_mem;
         sr_mem->obj_count += 1;
     }
 
-    rc = sr_copy_node_to_tree_chunk(node, slice_offset, slice_width, child_limit, depth_limit, tree);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Copy node to tree failed for xpath %s", xpath);
-        sr_free_tree(tree);
-        return rc;
-    }
+    rc = sr_copy_node_to_tree_chunk(node, slice_offset, slice_width, child_limit, depth_limit, pruning_cb,
+                                    (void *)pruning_ctx, tree);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Copy node to tree failed for xpath %s", xpath);
 
+    /* get ID of the tree chunk */
     id = lyd_path(node);
     if (NULL == id) {
         SR_LOG_ERR("Failed to get ID of a subtree chunk with xpath %s", xpath);
-        sr_free_tree(tree);
-        return SR_ERR_INTERNAL;
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
     }
     rc = sr_mem_edit_string(sr_mem, &id_cpy, id);
-    free(id);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Failed to copy ID of a subtree chunk with xpath %s", xpath);
-        sr_free_tree(tree);
-        return rc;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to copy ID of a subtree chunk with xpath %s", xpath);
 
-    *chunk = tree;
-    *chunk_id = id_cpy;
+cleanup:
+    free(id);
+    rp_dt_cleanup_tree_pruning(pruning_ctx);
+    if (SR_ERR_OK != rc) {
+        sr_free_tree(tree);
+    } else {
+        *chunk = tree;
+        *chunk_id = id_cpy;
+    }
 
     return rc;
 }
 
 int
-rp_dt_get_subtrees(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enable,
-        sr_node_t **subtrees, size_t *count)
+rp_dt_get_subtrees(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem,
+        const char *xpath, bool check_enable, sr_node_t **subtrees, size_t *count)
 {
     CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, subtrees, count);
-
     int rc = SR_ERR_OK;
-
     struct ly_set *nodes = NULL;
+    sr_tree_pruning_cb pruning_cb = NULL;
+    rp_tree_pruning_ctx_t *pruning_ctx = NULL;
+
     rc = rp_dt_find_nodes(dm_ctx, data_tree, xpath, check_enable, &nodes);
     if (SR_ERR_OK != rc) {
         if (SR_ERR_NOT_FOUND != rc) {
@@ -345,19 +389,30 @@ rp_dt_get_subtrees(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ct
         return rc;
     }
 
-    rc = sr_nodes_to_trees(nodes, sr_mem, subtrees, count);
+    rc = rp_dt_init_tree_pruning(dm_ctx, rp_session, NULL, data_tree, check_enable,
+            nodes->number > 1 || NULL != nodes->set.d[0]->child, &pruning_cb, &pruning_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize sysrepo tree pruning.");
+
+    rc = sr_nodes_to_trees(nodes, sr_mem, pruning_cb, (void *)pruning_ctx, subtrees, count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Conversion of nodes to trees failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+    if (0 == *count) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
     }
 
+cleanup:
+    rp_dt_cleanup_tree_pruning(pruning_ctx);
     ly_set_free(nodes);
     return rc;
 }
 
 int
-rp_dt_get_subtrees_chunks(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath,
-        size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, bool check_enable,
-        sr_node_t **chunks_p, size_t *count_p, char ***chunk_ids_p)
+rp_dt_get_subtrees_chunks(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem,
+        const char *xpath, size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit,
+        bool check_enable, sr_node_t **chunks_p, size_t *count_p, char ***chunk_ids_p)
 {
     CHECK_NULL_ARG3(dm_ctx, data_tree, xpath);
     CHECK_NULL_ARG3(chunks_p, count_p, chunk_ids_p);
@@ -366,9 +421,10 @@ rp_dt_get_subtrees_chunks(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr
     sr_node_t *chunks = NULL;
     size_t count = 0;
     char **chunk_ids = NULL;
-    char *chunk_id = NULL;
-
     struct ly_set *nodes = NULL;
+    sr_tree_pruning_cb pruning_cb = NULL;
+    rp_tree_pruning_ctx_t *pruning_ctx = NULL;
+
     rc = rp_dt_find_nodes(dm_ctx, data_tree, xpath, check_enable, &nodes);
     if (SR_ERR_OK != rc) {
         if (SR_ERR_NOT_FOUND != rc) {
@@ -377,27 +433,16 @@ rp_dt_get_subtrees_chunks(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr
         return rc;
     }
 
-    rc = sr_nodes_to_tree_chunks(nodes, slice_offset, slice_width, child_limit, depth_limit, sr_mem, &chunks, &count);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Conversion of nodes to trees failed for xpath '%s'", xpath);
-    }
+    rc = rp_dt_init_tree_pruning(dm_ctx, rp_session, NULL, data_tree, check_enable,
+            nodes->number > 1 || NULL != nodes->set.d[0]->child, &pruning_cb, &pruning_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize sysrepo tree pruning.");
 
-    chunk_ids = sr_calloc(sr_mem, count, sizeof(char *));
-    CHECK_NULL_NOMEM_GOTO(chunk_ids, rc, cleanup);
-    for (size_t i = 0; i < count; ++i) {
-        chunk_id = lyd_path(nodes->set.d[i]);
-        if (NULL == chunk_id) {
-            SR_LOG_ERR("Failed to get ID of a subtree chunk for xpath %s", xpath);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-        rc = sr_mem_edit_string(sr_mem, chunk_ids+i, chunk_id);
-        free(chunk_id);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Failed to get ID of a subtree chunk for xpath %s", xpath);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
+    rc = sr_nodes_to_tree_chunks(nodes, slice_offset, slice_width, child_limit, depth_limit, sr_mem,
+            pruning_cb, (void *)pruning_ctx, &chunks, &count, &chunk_ids);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Conversion of nodes to trees failed for xpath '%s'", xpath);
+    if (0 == count) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
     }
 
     *chunks_p = chunks;
@@ -405,16 +450,8 @@ rp_dt_get_subtrees_chunks(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr
     *chunk_ids_p = chunk_ids;
 
 cleanup:
+    rp_dt_cleanup_tree_pruning(pruning_ctx);
     ly_set_free(nodes);
-    if (SR_ERR_OK != rc) {
-        if (NULL == sr_mem && NULL != chunk_ids) {
-            for (size_t i = 0; i < count; ++i) {
-                free(chunk_ids[i]);
-            }
-            free(chunk_ids);
-        }
-        sr_free_trees(chunks, count);
-    }
     return rc;
 }
 
@@ -1228,7 +1265,8 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t
         goto cleanup;
     }
 
-    rc = rp_dt_get_value(rp_ctx->dm_ctx, data_tree, sr_mem, xpath, dm_is_running_ds_session(rp_session->dm_session), value);
+    rc = rp_dt_get_value(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath,
+            dm_is_running_ds_session(rp_session->dm_session), value);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && NULL == data_tree)) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
@@ -1250,7 +1288,8 @@ cleanup:
 }
 
 int
-rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath, sr_val_t **values, size_t *count)
+rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath,
+        sr_val_t **values, size_t *count)
 {
     CHECK_NULL_ARG4(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session);
     CHECK_NULL_ARG3(xpath, values, count);
@@ -1271,7 +1310,8 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_
         goto cleanup;
     }
 
-    rc = rp_dt_get_values(rp_ctx->dm_ctx, data_tree, sr_mem, xpath, dm_is_running_ds_session(rp_session->dm_session), values, count);
+    rc = rp_dt_get_values(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath,
+            dm_is_running_ds_session(rp_session->dm_session), values, count);
     if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
         SR_LOG_ERR("Get values failed for xpath '%s'", xpath);
     }
@@ -1322,7 +1362,7 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
         goto cleanup;
     }
 
-    rc = rp_dt_find_nodes_with_opts(rp_ctx->dm_ctx, rp_session->dm_session, get_items_ctx, data_tree, xpath, offset, limit, &nodes);
+    rc = rp_dt_find_nodes_with_opts(rp_ctx->dm_ctx, rp_session, get_items_ctx, data_tree, xpath, offset, limit, &nodes);
     if (SR_ERR_OK != rc) {
         if (SR_ERR_NOT_FOUND != rc) {
             SR_LOG_ERR("Get nodes for xpath %s failed (%d)", xpath, rc);
@@ -1348,7 +1388,6 @@ cleanup:
     ly_set_free(nodes);
     rp_session->state = RP_REQ_FINISHED;
     return rc;
-
 }
 
 int
@@ -1373,7 +1412,8 @@ rp_dt_get_subtree_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx
         goto cleanup;
     }
 
-    rc = rp_dt_get_subtree(rp_ctx->dm_ctx, data_tree, sr_mem, xpath, dm_is_running_ds_session(rp_session->dm_session), subtree);
+    rc = rp_dt_get_subtree(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath,
+                           dm_is_running_ds_session(rp_session->dm_session), subtree);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && NULL == data_tree)) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
@@ -1417,8 +1457,8 @@ rp_dt_get_subtree_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, 
         goto cleanup;
     }
 
-    rc = rp_dt_get_subtree_chunk(rp_ctx->dm_ctx, data_tree, sr_mem, xpath, slice_offset, slice_width, child_limit,
-            depth_limit, dm_is_running_ds_session(rp_session->dm_session), subtree, subtree_id);
+    rc = rp_dt_get_subtree_chunk(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath, slice_offset, slice_width,
+            child_limit, depth_limit, dm_is_running_ds_session(rp_session->dm_session), subtree, subtree_id);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && NULL == data_tree)) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
@@ -1461,7 +1501,8 @@ rp_dt_get_subtrees_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ct
         goto cleanup;
     }
 
-    rc = rp_dt_get_subtrees(rp_ctx->dm_ctx, data_tree, sr_mem, xpath, dm_is_running_ds_session(rp_session->dm_session), subtrees, count);
+    rc = rp_dt_get_subtrees(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath,
+                            dm_is_running_ds_session(rp_session->dm_session), subtrees, count);
     if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
         SR_LOG_ERR("Get subtrees failed for xpath '%s'", xpath);
     }
@@ -1506,8 +1547,8 @@ rp_dt_get_subtrees_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session,
         goto cleanup;
     }
 
-    rc = rp_dt_get_subtrees_chunks(rp_ctx->dm_ctx, data_tree, sr_mem, xpath, slice_offset, slice_width, child_limit,
-            depth_limit, dm_is_running_ds_session(rp_session->dm_session), subtrees, count, subtree_ids);
+    rc = rp_dt_get_subtrees_chunks(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath, slice_offset, slice_width,
+            child_limit, depth_limit, dm_is_running_ds_session(rp_session->dm_session), subtrees, count, subtree_ids);
     if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
         SR_LOG_ERR("Get subtrees failed for xpath '%s'", xpath);
     }
