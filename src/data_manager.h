@@ -570,6 +570,12 @@ bool dm_is_node_enabled_with_children(struct lys_node* node);
 bool dm_is_enabled_check_recursively(struct lys_node *node);
 
 /**
+ * @brief Returns the hash of a schema node xpath identifier.
+ * If NULL is provided as the argument then 0 is returned.
+ */
+uint32_t dm_get_node_xpath_hash(struct lys_node *node);
+
+/**
  * @brief Sets the state of the node.
  *
  * @note Function expects that a schema info is locked for writing.

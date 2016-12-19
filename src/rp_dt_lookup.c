@@ -24,6 +24,7 @@
 
 #include "rp_dt_lookup.h"
 #include "rp_dt_xpath.h"
+#include "rp_dt_filter.h"
 
 int
 rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, struct ly_set **nodes)
@@ -100,10 +101,10 @@ rp_dt_find_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *
 }
 
 int
-rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree,
+rp_dt_find_nodes_with_opts(dm_ctx_t *dm_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree,
         const char *xpath, size_t offset, size_t limit, struct ly_set **nodes)
 {
-    CHECK_NULL_ARG5(dm_ctx, dm_session, get_items_ctx, data_tree, xpath);
+    CHECK_NULL_ARG5(dm_ctx, rp_session, get_items_ctx, data_tree, xpath);
     CHECK_NULL_ARG(nodes);
 
     int rc = SR_ERR_OK;
@@ -115,7 +116,8 @@ rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_
             offset != get_items_ctx->offset) {
         ly_set_free(get_items_ctx->nodes);
         get_items_ctx->nodes = NULL;
-        rc = rp_dt_find_nodes(dm_ctx, data_tree, xpath, dm_is_running_ds_session(dm_session), &get_items_ctx->nodes);
+        rc = rp_dt_find_nodes(dm_ctx, data_tree, xpath, dm_is_running_ds_session(rp_session->dm_session),
+                &get_items_ctx->nodes);
 
         if (SR_ERR_OK != rc) {
             if (SR_ERR_NOT_FOUND != rc) {
@@ -134,13 +136,17 @@ rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_
         }
         get_items_ctx->offset = offset;
 
+        /* filter nodes by read access */
+        rc = rp_dt_nacm_filtering(dm_ctx, rp_session, data_tree, get_items_ctx->nodes->set.d,
+                &get_items_ctx->nodes->number);
+        CHECK_RC_MSG_RETURN(rc, "Failed to filter nodes by NACM read access.");
+
         SR_LOG_DBG_MSG("Cache miss in get_nodes_with_opts");
 
     } else {
         cache_hit = true;
         SR_LOG_DBG_MSG("Cache hit in get_nodes_with_opts");
     }
-
 
     size_t cnt = 0;
     /* setup index whether we continue using get_items_ctx or starting fresh */

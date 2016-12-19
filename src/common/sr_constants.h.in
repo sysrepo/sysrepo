@@ -41,6 +41,9 @@
 /** Enable NETCONF Access Control Model (RFC 6536). */
 #cmakedefine ENABLE_NACM
 
+/** UID to be used to identify NACM recovery session, default value is 0. */
+#define SR_NACM_RECOVERY_UID @NACM_RECOVERY_UID@
+
 /** Use Sysrepo's own memory management. */
 #cmakedefine USE_SR_MEM_MGMT
 

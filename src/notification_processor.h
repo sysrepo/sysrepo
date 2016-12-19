@@ -51,6 +51,7 @@ typedef struct np_subscription_s {
     uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
     const char *module_name;           /**< Name of the module where the subscription is active. */
     const char *xpath;                 /**< XPath to the subtree where the subscription is active (if applicable). */
+    const char *username;              /**< Name of the user behind the subscription (for event notifications only). */
     uint32_t priority;                 /**< Priority of the subscription by delivering notifications (0 is the lowest priority). */
     bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
     sr_api_variant_t api_variant;      /**< API variant -- values vs. trees (relevant for the callback type only). */
@@ -99,6 +100,7 @@ typedef uint32_t np_subscr_options_t;
  * @param[in] dst_id Destination subscription ID.
  * @param[in] module_name Name of the module which the subscription is active in (if applicable).
  * @param[in] xpath XPath to the subtree where the subscription is active (if applicable).
+ * @param[in] username Effective user name used to authorize access to receive (event) notifications.
  * @param[in] notif_event Notification event which the notification subscriber is interested in.
  * @param[in] priority Priority of the subscribtion by delivering notifications (0 is the lowest priority).
  * @param[in] api_variant Variant of the subscription API which was used to create the subscription.
@@ -107,7 +109,7 @@ typedef uint32_t np_subscr_options_t;
  * @return Error code (SR_ERR_OK on success).
  */
 int np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__SubscriptionType type,
-        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath,
+        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const char *username,
         Sr__NotificationEvent notif_event, uint32_t priority, sr_api_variant_t api_variant, const np_subscr_options_t opts);
 
 /**
