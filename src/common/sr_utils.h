@@ -701,13 +701,29 @@ int sr_print(sr_print_ctx_t *print_ctx, const char *format, ...);
 int sr_create_uri_for_module(const struct lys_module *module, char **uri);
 
 /**
+ * @brief Get username from UID.
+ *
+ * @param [in] uid UID of the user to get the name of.
+ * @param [out] username Returned username. Deallocate with ::free.
+ */
+int sr_get_user_name(uid_t uid, char **username);
+
+/**
+ * @brief Get groupname from GID.
+ *
+ * @param [in] gid GID of the group to get the name of.
+ * @param [out] groupname Returned groupname. Deallocate with ::free.
+ */
+int sr_get_group_name(uid_t uid, char **groupname);
+
+/**
  * @brief Returns an array of all system groups that the given user is member of.
  *
  * @param [in] username Name of the user to search for in the group database.
  * @param [out] groups Array of groups (their names) that the user is member of.
  * @param [out] group_cnt Number of returned groups.
  */
-int sr_get_system_groups(const char *username, char ***groups, size_t *group_cnt);
+int sr_get_user_groups(const char *username, char ***groups, size_t *group_cnt);
 
 /**
  * @brief Frees the list and that contains allocated strings (they are freed as well).

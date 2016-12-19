@@ -1,7 +1,8 @@
 /**
  * @file nacm_test.c
  * @author Milan Lenco <milan.lenco@pantheon.tech>
- * @brief NETCONF Access Control unit tests.
+ * @brief NETCONF Access Control unit tests that cover only internals of sysrepo
+ * and not the client library.
  *
  * @copyright
  * Copyright 2016 Pantheon Technologies, s.r.o.

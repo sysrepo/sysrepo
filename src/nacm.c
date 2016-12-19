@@ -1075,7 +1075,7 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
 
     /*  -> get NACM info about the external groups that this user is member of */
     if (nacm_ctx->external_groups) {
-        rc = sr_get_system_groups(username, &ext_groups, &ext_group_cnt);
+        rc = sr_get_user_groups(username, &ext_groups, &ext_group_cnt);
         CHECK_RC_LOG_GOTO(rc, unlock_all, "Failed to obtain the set of external groups for user '%s'.", username);
         if (0 != ext_group_cnt) {
             nacm_ext_groups = calloc(ext_group_cnt, sizeof *nacm_ext_groups);
@@ -1310,7 +1310,7 @@ nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credenti
 
     /*  -> get NACM info about the external groups that this user is member of */
     if (nacm_ctx->external_groups) {
-        rc = sr_get_system_groups(username, &ext_groups, &ext_group_cnt);
+        rc = sr_get_user_groups(username, &ext_groups, &ext_group_cnt);
         CHECK_RC_LOG_GOTO(rc, unlock_if_fail, "Failed to obtain the set of external groups for user '%s'.",
                           username);
         if (0 != ext_group_cnt) {

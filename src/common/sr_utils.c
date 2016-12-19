@@ -38,6 +38,8 @@
 
 #include "data_manager.h"
 
+#define MAX_BUF_REALLOC_ATEMPTS   10
+
 /* used for sr_buff_to_uint32 and sr_uint32_to_buff conversions */
 typedef union {
    uint32_t value;
@@ -2553,10 +2555,99 @@ cleanup:
     return rc;
 }
 
-int
-sr_get_system_groups(const char *username, char ***groups_p, size_t *group_cnt_p)
+int sr_get_user_name(uid_t uid, char **username_p)
 {
-#define MAX_BUF_REALLOC_ATEMPTS   10
+    int rc = SR_ERR_OK, ret = 0;
+    size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
+    size_t pw_bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
+    struct passwd pw = {0}, *pw_p = NULL;
+    char *tmp_buf = NULL, *pw_buf = NULL;
+    char *username = NULL;
+
+    CHECK_NULL_ARG(username_p);
+
+    /* allocate buffer for members of passwd structure */
+    if (-1 == pw_bufsize) {
+        pw_bufsize = 256;
+    }
+    pw_buf = malloc(pw_bufsize);
+    CHECK_NULL_NOMEM_GOTO(pw_buf, rc, cleanup);
+
+    /* get password file entry */
+    while (max_attempts && ERANGE == (ret = getpwuid_r(uid, &pw, pw_buf, pw_bufsize, &pw_p))) {
+        tmp_buf = realloc(pw_buf, pw_bufsize << 1);
+        CHECK_NULL_NOMEM_GOTO(tmp_buf, rc, cleanup);
+        pw_buf = tmp_buf;
+        pw_bufsize <<= 1;
+        --max_attempts;
+    }
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup, "Failed to get the password file record for UID '%d': %s. ",
+                        uid, sr_strerror_safe(ret));
+    if (NULL == pw_p || NULL == pw_p->pw_name) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+
+    /* copy username */
+    username = strdup(pw_p->pw_name);
+    CHECK_NULL_NOMEM_GOTO(username, rc, cleanup);
+
+cleanup:
+    free(pw_buf);
+    if (SR_ERR_OK == rc) {
+        *username_p = username;
+    }
+    return rc;
+}
+
+int sr_get_group_name(gid_t gid, char **groupname_p)
+{
+    int rc = SR_ERR_OK, ret = 0;
+    size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
+    size_t gr_bufsize = sysconf(_SC_GETGR_R_SIZE_MAX);
+    struct group gr = {0}, *gr_p = NULL;
+    char *tmp_buf = NULL, *gr_buf = NULL;
+    char *groupname = NULL;
+
+    CHECK_NULL_ARG(groupname_p);
+
+    /* allocate buffer for members of group structure */
+    if (-1 == gr_bufsize) {
+        gr_bufsize = 256;
+    }
+    gr_buf = malloc(gr_bufsize);
+    CHECK_NULL_NOMEM_GOTO(gr_buf, rc, cleanup);
+
+    /* get password file entry */
+    while (max_attempts && ERANGE == (ret = getgrgid_r(gid, &gr, gr_buf, gr_bufsize, &gr_p))) {
+        tmp_buf = realloc(gr_buf, gr_bufsize << 1);
+        CHECK_NULL_NOMEM_GOTO(tmp_buf, rc, cleanup);
+        gr_buf = tmp_buf;
+        gr_bufsize <<= 1;
+        --max_attempts;
+    }
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup, "Failed to get the group file record for GID '%d': %s. ",
+                        gid, sr_strerror_safe(ret));
+    if (NULL == gr_p || NULL == gr_p->gr_name) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+
+    /* copy groupname */
+    groupname = strdup(gr_p->gr_name);
+    CHECK_NULL_NOMEM_GOTO(groupname, rc, cleanup);
+
+cleanup:
+    free(gr_buf);
+    if (SR_ERR_OK == rc) {
+        *groupname_p = groupname;
+    }
+    return rc;
+}
+
+int
+sr_get_user_groups(const char *username, char ***groups_p, size_t *group_cnt_p)
+{
     int rc = SR_ERR_OK, ret = 0;
     size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
     size_t group_cnt = 0;
@@ -2570,18 +2661,12 @@ sr_get_system_groups(const char *username, char ***groups_p, size_t *group_cnt_p
 #endif
     char **groups = NULL;
     struct passwd pw = {0}, *pw_p = NULL;
-    struct group gr = {0}, *gr_p = NULL;
     size_t pw_bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
-    size_t gr_bufsize = sysconf(_SC_GETGR_R_SIZE_MAX);
-    char *tmp_buf = NULL, *pw_buf = NULL, *gr_buf = NULL;
+    char *tmp_buf = NULL, *pw_buf = NULL;
     CHECK_NULL_ARG3(username, groups_p, group_cnt_p);
 
     if (-1 == pw_bufsize) {
         pw_bufsize = 256;
-    }
-
-    if (-1 == gr_bufsize) {
-        gr_bufsize = 256;
     }
 
     /* get the user's primary group */
@@ -2628,31 +2713,18 @@ sr_get_system_groups(const char *username, char ***groups_p, size_t *group_cnt_p
     groups = calloc(group_id_cnt, sizeof(char *));
     CHECK_NULL_NOMEM_GOTO(groups, rc, cleanup);
 
-    gr_buf = malloc(gr_bufsize);
-    CHECK_NULL_NOMEM_GOTO(gr_buf, rc, cleanup);
-
     for (size_t i = 0; i < group_id_cnt; ++i) {
-        max_attempts = MAX_BUF_REALLOC_ATEMPTS;
-        while (max_attempts && ERANGE == (ret = getgrgid_r((gid_t)group_ids[i], &gr, gr_buf, gr_bufsize, &gr_p))) {
-            tmp_buf = realloc(gr_buf, gr_bufsize << 1);
-            CHECK_NULL_NOMEM_GOTO(gr_buf, rc, cleanup);
-            gr_buf = tmp_buf;
-            gr_bufsize <<= 1;
-            --max_attempts;
-        }
-        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup,
-                            "Failed to get the group database entry for gid '%d': %s. ",
-                            group_ids[i], sr_strerror_safe(ret));
-        if (NULL != gr_p && NULL != gr.gr_name) {
-            groups[group_cnt] = strdup(gr.gr_name);
-            CHECK_NULL_NOMEM_GOTO(groups[group_cnt], rc, cleanup);
+        rc = sr_get_group_name((gid_t)group_ids[i], groups+group_cnt);
+        if (SR_ERR_OK == rc) {
             ++group_cnt;
+        } else if (SR_ERR_NOT_FOUND != rc) {
+            goto cleanup;
         }
+        rc = SR_ERR_OK;
     }
 
 cleanup:
     free(pw_buf);
-    free(gr_buf);
     free(group_ids);
     if (SR_ERR_OK == rc) {
         *groups_p = groups;

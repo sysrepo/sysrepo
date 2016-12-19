@@ -1356,7 +1356,7 @@ sr_get_system_groups_test(void **state)
     uid = geteuid();
     pw = getpwuid(uid);
     if (pw) {
-         assert_int_equal(SR_ERR_OK, sr_get_system_groups(pw->pw_name, &groups, &group_cnt));
+         assert_int_equal(SR_ERR_OK, sr_get_user_groups(pw->pw_name, &groups, &group_cnt));
          for (size_t i = 0; i < group_cnt; ++i) {
              assert_non_null(groups[i]);
              assert_true(0 < strlen(groups[i]));
