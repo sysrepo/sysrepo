@@ -29,7 +29,7 @@ else
     echo "Using cached libraries from $INSTALL_PREFIX_DIR"
 fi
 
-if [[ "$TRAVIS_BRANCH" == "master" ]]; then
+if [[ "$TRAVIS_BRANCH" == *"master"* ]]; then
     git clone https://github.com/CESNET/libyang.git
 else
     git clone -b devel https://github.com/CESNET/libyang.git
