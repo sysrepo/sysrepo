@@ -1564,7 +1564,7 @@ cleanup:
 }
 
 int
-np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath,
+np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, const char *xpath,
         const time_t start_time, const time_t stop_time, const sr_api_variant_t api_variant, sr_list_t **notifications)
 {
     char *module_name = NULL;
@@ -1633,7 +1633,7 @@ np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, sr_
             }
 
             /* parse notification data */
-            rc = dm_parse_event_notif(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, sr_mem, notification, api_variant);
+            rc = dm_parse_event_notif(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, NULL, notification, api_variant);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Error by parsing notification '%s'.", notification->xpath);
 
             SR_LOG_DBG("Adding a new notification: '%s' (time=%ld)", notification->xpath, notification->timestamp);

@@ -2755,9 +2755,8 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
     sr_list_t *notif_list = NULL;
 
     /* get matching notifications from the notification store */
-    rc = np_get_event_notifications(rp_ctx->np_ctx, session, NULL, /* TODO: sr_mem ??? */
-            msg->request->event_notif_replay_req->xpath, msg->request->event_notif_replay_req->start_time,
-            msg->request->event_notif_replay_req->stop_time,
+    rc = np_get_event_notifications(rp_ctx->np_ctx, session, msg->request->event_notif_replay_req->xpath,
+            msg->request->event_notif_replay_req->start_time, msg->request->event_notif_replay_req->stop_time,
             sr_api_variant_gpb_to_sr(msg->request->event_notif_replay_req->api_variant), &notif_list);
     CHECK_RC_LOG_GOTO(rc, finalize, "Error by loading event notifications for xpath '%s'.",
             msg->request->event_notif_replay_req->xpath);

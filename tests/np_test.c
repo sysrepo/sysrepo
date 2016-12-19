@@ -433,8 +433,8 @@ np_notif_store_test(void **state)
     assert_null(node);
 
     /* retrieve notifications  */
-    rc = np_get_event_notifications(np_ctx, test_ctx->rp_session_ctx, NULL, "/test-module:link-discovered",
-            0, time(NULL), SR_API_VALUES, &notif_list);
+    rc = np_get_event_notifications(np_ctx, test_ctx->rp_session_ctx, "/test-module:link-discovered", 0, time(NULL),
+            SR_API_VALUES, &notif_list);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(notif_list);
 
