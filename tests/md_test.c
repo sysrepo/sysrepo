@@ -672,7 +672,8 @@ static int
 md_tests_setup(void **state)
 {
     create_module_yang_schema("A", md_module_A_filepath, md_module_A_body, NULL);
-    create_module_yang_schema("B", md_module_B_filepath, md_module_B_body, "sub-Bs1", "sub-Bs2", "sub-Bs3", NULL);
+    /* TODO: once libyang/#222 is fixed "A" should be removed from vargs */
+    create_module_yang_schema("B", md_module_B_filepath, md_module_B_body, "A", "sub-Bs1", "sub-Bs2", "sub-Bs3", NULL);
     create_submodule_yang_schema("Bs1", "B", md_submodule_B_sub1_filepath, md_submodule_B_sub1_body,
             /* "sub-Bs2" TODO: uncomment once the second issue from libyang/#97 is fixed ,*/ "A", NULL);
     create_submodule_yang_schema("Bs2", "B", md_submodule_B_sub2_filepath, md_submodule_B_sub2_body,
