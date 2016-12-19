@@ -867,7 +867,7 @@ nacm_init(dm_ctx_t *dm_ctx, const char *data_search_dir, nacm_ctx_t **nacm_ctx)
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "RW-lock initialization failed");
 
     /* initialize mutex for stats */
-    rc = pthread_mutex_init(&ctx->stats.lock, NULL);
+    rc = pthread_rwlock_init(&ctx->stats.lock, NULL);
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "Mutex initialization failed");
 
     /* copy data search directory path */
@@ -969,7 +969,7 @@ nacm_cleanup_internal(nacm_ctx_t *nacm_ctx, bool config_only)
     }
 
     pthread_rwlock_destroy(&nacm_ctx->lock);
-    pthread_mutex_destroy(&nacm_ctx->stats.lock);
+    pthread_rwlock_destroy(&nacm_ctx->stats.lock);
     free(nacm_ctx->data_search_dir);
 
     if (NULL != nacm_ctx->schema_info) {
@@ -1173,9 +1173,9 @@ step10:
 unlock_all:
     if (SR_ERR_OK == rc && NACM_ACTION_DENY == action) {
         /* update stats */
-        pthread_mutex_lock(&nacm_ctx->stats.lock);
+        pthread_rwlock_wrlock(&nacm_ctx->stats.lock);
         ++nacm_ctx->stats.denied_rpc;
-        pthread_mutex_unlock(&nacm_ctx->stats.lock);
+        pthread_rwlock_unlock(&nacm_ctx->stats.lock);
     }
     pthread_rwlock_unlock(&nacm_ctx->lock);
 
@@ -1580,3 +1580,29 @@ cleanup:
     nacm_free_nodeset(nacm_nodeset);
     return rc;
 }
+
+int
+nacm_get_stats(nacm_ctx_t *nacm_ctx, uint32_t *denied_rpc_p, uint32_t *denied_event_notif_p,
+        uint32_t *denied_data_write_p)
+{
+    CHECK_NULL_ARG(nacm_ctx);
+
+    if (NULL == denied_rpc_p && NULL == denied_event_notif_p && NULL == denied_data_write_p) {
+        return SR_ERR_OK;
+    }
+
+    pthread_rwlock_rdlock(&nacm_ctx->stats.lock);
+    if (NULL != denied_rpc_p) {
+        *denied_rpc_p = nacm_ctx->stats.denied_rpc;
+    }
+    if (NULL != denied_event_notif_p) {
+        *denied_event_notif_p = nacm_ctx->stats.denied_event_notif;
+    }
+    if (NULL != denied_data_write_p) {
+        *denied_data_write_p = nacm_ctx->stats.denied_data_write;
+    }
+    pthread_rwlock_unlock(&nacm_ctx->stats.lock);
+
+    return SR_ERR_OK;
+}
+

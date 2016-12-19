@@ -134,7 +134,8 @@ typedef struct nacm_ctx_s {
 
     /* NACM state data */
     struct {
-        pthread_mutex_t lock;        /**< Mutex used to protect incrementation of the stats. Never do anything else while holding it. */
+        pthread_rwlock_t lock;       /**< RW-lock used to protect incrementation/reading of the stats.
+                                          Never do anything else while holding it. */
         uint32_t denied_rpc;         /**< Number of denied protocol operations since the last restart. */
         uint32_t denied_data_write;  /**< Number of denied data modifications since the last restart. */
         uint32_t denied_event_notif; /**< Number of denied event notifications since the last restart. */
@@ -266,5 +267,15 @@ void nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx);
  */
 int nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t access_type, const struct lyd_node *node,
         nacm_action_t *action, const char **rule_name, const char **rule_info);
+
+/**
+ * @brief Get current NACM statistics.
+ *
+ * @param [in] nacm_ctx NACM context.
+ * @param [out] denied_rpc Number of denied protocol operations since the last restart.
+ * @param [out] denied_event_notif Number of denied event notifications since the last restart.
+ * @param [out] denied_data_write Number of denied data modifications since the last restart.
+ */
+int nacm_get_stats(nacm_ctx_t *nacm_ctx, uint32_t *denied_rpc, uint32_t *denied_event_notif, uint32_t *denied_data_write);
 
 #endif /* NACM_H_ */
