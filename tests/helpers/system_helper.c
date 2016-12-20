@@ -48,17 +48,18 @@ print_backtrace()
     int frames = 0;
     char **messages = NULL;
     char buff[1024] = { 0, };
+    int p = 0;
+    FILE *fp = { 0, };
 
     frames = backtrace(callstack, 128);
     messages = backtrace_symbols(callstack, frames);
 
-    for (int i = 2; i < frames; ++i) {
-        int p = 0;
+    for (int i = 2; i < frames; i++) {
         while(messages[i][p] != '(' && messages[i][p] != ' ' && messages[i][p] != 0) {
-            ++p;
+            p++;
         }
         sprintf(buff, "addr2line %p -e %.*s", callstack[i], p, messages[i]);
-        FILE *fp = popen(buff, "r");
+        fp = popen(buff, "r");
         fgets(buff, sizeof(buff)-1, fp);
         pclose(fp);
         printf("[bt] #%d %s\n        %s\n", (i - 2), messages[i], buff);
@@ -68,7 +69,7 @@ print_backtrace()
 }
 
 static void
-test_assert_non_null(void *arg)
+assert_non_null_bt(void *arg)
 {
     if (NULL == arg) {
         print_backtrace();
@@ -77,7 +78,7 @@ test_assert_non_null(void *arg)
 }
 
 static void
-test_assert_true(bool arg)
+assert_true_bt(bool arg)
 {
     if (!arg) {
         print_backtrace();
@@ -86,7 +87,7 @@ test_assert_true(bool arg)
 }
 
 static void
-test_assert_string_equal(const char *a, const char *b)
+assert_string_equal_bt(const char *a, const char *b)
 {
     if (!a || !b || 0 != strcmp(a, b)) {
         print_backtrace();
@@ -95,7 +96,7 @@ test_assert_string_equal(const char *a, const char *b)
 }
 
 static void
-test_assert_int_equal(int a, int b)
+assert_int_equal_bt(int a, int b)
 {
     if (a != b) {
         print_backtrace();
@@ -109,7 +110,7 @@ test_file_exists(const char *path, bool exists)
     int rc = 0;
     struct stat info;
     rc = stat(path, &info),
-    test_assert_int_equal(exists ? 0 : -1, rc);
+    assert_int_equal_bt(exists ? 0 : -1, rc);
 }
 
 void
@@ -118,12 +119,12 @@ test_file_owner(const char *path, const char *owner)
     int rc = 0;
     struct stat info;
     rc = stat(path, &info),
-    test_assert_int_equal(0, rc);
+    assert_int_equal_bt(0, rc);
 
     struct passwd *pw = getpwuid(info.st_uid);
-    test_assert_non_null(pw);
+    assert_non_null_bt(pw);
 
-    test_assert_string_equal(owner, pw->pw_name);
+    assert_string_equal_bt(owner, pw->pw_name);
 }
 
 void
@@ -132,9 +133,9 @@ test_file_permissions(const char *path, mode_t permissions)
     int rc = 0;
     struct stat info;
     rc = stat(path, &info),
-    test_assert_int_equal(0, rc);
+    assert_int_equal_bt(0, rc);
     mode_t mask = S_IRWXU | S_IRWXG | S_IRWXO;
-    test_assert_int_equal(permissions & mask, info.st_mode & mask);
+    assert_int_equal_bt(permissions & mask, info.st_mode & mask);
 }
 
 static char *
@@ -142,7 +143,7 @@ read_file_content(FILE *fp)
 {
     size_t size = EXPECTED_MAX_FILE_SIZE;
     char *buffer = malloc(size);
-    test_assert_non_null(buffer);
+    assert_non_null_bt(buffer);
     unsigned cur = 0;
 
     for (;;) {
@@ -151,7 +152,7 @@ read_file_content(FILE *fp)
         if (size > cur + 1) { break; }
         size <<= 1;
         buffer = realloc(buffer, size);
-        test_assert_non_null(buffer);
+        assert_non_null_bt(buffer);
     }
 
     buffer[cur] = '\0';
@@ -176,7 +177,7 @@ test_fp_content(FILE *fp, const char *exp_content, bool regex)
 
         /* Compile regular expression */
         rc = regcomp(&re, exp_content, REG_NOSUB | REG_EXTENDED);
-        test_assert_int_equal(0, rc);
+        assert_int_equal_bt(0, rc);
 
         /* Execute regular expression */
         rc = regexec(&re, buffer, 0, NULL, 0);
@@ -184,7 +185,7 @@ test_fp_content(FILE *fp, const char *exp_content, bool regex)
             printf("REGEX: '%s'\n", exp_content);
             printf("FILE: '%s'\n", buffer);
         }
-        test_assert_int_equal(nomatch ? REG_NOMATCH : 0, rc);
+        assert_int_equal_bt(nomatch ? REG_NOMATCH : 0, rc);
 
         /* Cleanup */
         regfree(&re);
@@ -197,7 +198,7 @@ test_fp_content(FILE *fp, const char *exp_content, bool regex)
             printf("FILE: '%s'\n", buffer);
         }
 
-        test_assert_true(nomatch ? rc != 0 : rc == 0);
+        assert_true_bt(nomatch ? rc != 0 : rc == 0);
     }
 
     /* Cleanup */
@@ -210,7 +211,7 @@ test_file_content(const char *path, const char *exp_content, bool regex)
     FILE *fp = NULL;
 
     fp = fopen(path, "r");
-    test_assert_non_null(fp);
+    assert_non_null_bt(fp);
     test_fp_content(fp, exp_content, regex);
     fclose(fp);
 }
@@ -223,8 +224,8 @@ int compare_files(const char *path1, const char *path2)
     /* open */
     fp1 = fopen(path1, "r");
     fp2 = fopen(path2, "r");
-    test_assert_non_null(fp1);
-    test_assert_non_null(fp2);
+    assert_non_null_bt(fp1);
+    assert_non_null_bt(fp2);
 
     /* read */
     char *content1 = read_file_content(fp1);
@@ -249,8 +250,8 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
     FILE *fp = NULL;
 
     fp = popen(cmd, "r");
-    test_assert_non_null(fp);
+    assert_non_null_bt(fp);
     test_fp_content(fp, exp_content, regex);
     ret = pclose(fp);
-    test_assert_int_equal(exp_ret, WEXITSTATUS(ret));
+    assert_int_equal_bt(exp_ret, WEXITSTATUS(ret));
 }
