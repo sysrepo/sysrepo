@@ -148,10 +148,11 @@ read_file_content(FILE *fp)
     char *buffer = malloc(size);
     assert_non_null_bt(buffer);
     unsigned cur = 0;
+    size_t n = 0;
 
     while (!ferror(fp) && !feof(fp)) {
-        fread(buffer + cur, 1, 1, fp);
-        cur += 1;
+        n = fread(buffer + cur, 1, 1, fp);
+        cur += n;
         if (size < cur + 1) {
             size <<= 1;
             buffer = realloc(buffer, size);
