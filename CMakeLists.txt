@@ -34,7 +34,7 @@ if(CMAKE_COMPILER_IS_GNUCC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-strict-aliasing")
 endif()
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
-set(CMAKE_C_FLAGS_DEBUG   "-g -O0 -rdynamic")
+set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
 
 if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")

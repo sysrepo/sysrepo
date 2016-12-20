@@ -43,29 +43,28 @@
 static void
 print_backtrace()
 {
+#ifdef __linux__
     void *callstack[128] = { 0, };
     int frames = 0;
     char **messages = NULL;
+    char buff[1024] = { 0, };
 
     frames = backtrace(callstack, 128);
     messages = backtrace_symbols(callstack, frames);
 
-    for (int i = 0; i < frames; ++i) {
+    for (int i = 2; i < frames; ++i) {
         int p = 0;
         while(messages[i][p] != '(' && messages[i][p] != ' ' && messages[i][p] != 0) {
             ++p;
         }
-        char cmd[256];
-        sprintf(cmd,"addr2line %p -e %.*s", callstack[i], p, messages[i]);
-        FILE *fp = popen(cmd, "r");
-        char path[1024] = { 0, };
-        fgets(path, sizeof(path)-1, fp);
+        sprintf(buff, "addr2line %p -e %.*s", callstack[i], p, messages[i]);
+        FILE *fp = popen(buff, "r");
+        fgets(buff, sizeof(buff)-1, fp);
         pclose(fp);
-
-        printf("[bt] #%d %s\n    %s\n", i, messages[i], path);
+        printf("[bt] #%d %s\n        %s\n", (i - 2), messages[i], buff);
     }
-
     free(messages);
+#endif
 }
 
 static void
