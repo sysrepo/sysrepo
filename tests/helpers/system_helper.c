@@ -51,14 +51,18 @@ print_backtrace()
     messages = backtrace_symbols(callstack, frames);
 
     for (int i = 0; i < frames; ++i) {
-        printf("[bt] #%d %s\n", i, messages[i]);
         int p = 0;
         while(messages[i][p] != '(' && messages[i][p] != ' ' && messages[i][p] != 0) {
             ++p;
         }
         char cmd[256];
         sprintf(cmd,"addr2line %p -e %.*s", callstack[i], p, messages[i]);
-        system(cmd);
+        FILE *fp = popen(cmd, "r");
+        char path[1024] = { 0, };
+        fgets(path, sizeof(path)-1, fp);
+        pclose(fp);
+
+        printf("[bt] #%d %s\n    %s\n", i, messages[i], path);
     }
 
     free(messages);
