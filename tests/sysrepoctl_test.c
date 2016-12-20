@@ -60,7 +60,7 @@ sysrepoctl_test_list(void **state)
                         "Module Name[[:space:]]*\\| Revision[[:space:]]*\\| Data Owner[[:space:]]*\\| Permissions[[:space:]]*\\| Submodules[[:space:]]*\\| Enabled Features[[:space:]]*\n"
                         "--*[[:space:]]*\n"
                         ".*"
-                        "test-module[[:space:]]*\\|[[:space:]]*\\| [[:alpha:]]*:[[:alpha:]]*[[:space:]]*\\| [0-9]*[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n",
+                        "test-module[[:space:]]*\\|[[:space:]]*\\| [-[:alpha:]]*:[-[:alpha:]]*[[:space:]]*\\| [0-9]*[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n",
                        true, 0);
 }
 

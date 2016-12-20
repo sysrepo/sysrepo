@@ -148,22 +148,33 @@ ac_set_identity(const uid_t euid, const gid_t egid)
     int ret = -1;
     char *username = NULL;
 
+    /* get username */
+    rc = sr_get_user_name(euid, &username);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get username for UID %d.", euid);
+
+    if (0 != euid) {
+        /* set secondary groups while still being the root user */
+        ret = initgroups(username, egid);
+        CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
+                "Unable to switch the set of supplementary groups: %s", sr_strerror_safe(errno));
+    }
+
     /* set gid */
     ret = setegid(egid);
     CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
             "Unable to switch effective gid: %s", sr_strerror_safe(errno));
 
-    /* set secondary groups */
-    rc = sr_get_user_name(euid, &username);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get username for UID %d.", euid);
-    ret = initgroups(username, egid);
-    CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
-            "Unable to switch the set of supplementary groups: %s", sr_strerror_safe(errno));
-
     /* set uid */
     ret = seteuid(euid);
     CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
             "Unable to switch effective uid: %s", sr_strerror_safe(errno));
+
+    if (0 == euid) {
+        /* set secondary groups now that we are back to the root user */
+        ret = initgroups(username, egid);
+        CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
+                "Unable to switch the set of supplementary groups: %s", sr_strerror_safe(errno));
+    }
 
 cleanup:
     free(username);

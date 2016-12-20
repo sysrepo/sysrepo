@@ -709,12 +709,29 @@ int sr_create_uri_for_module(const struct lys_module *module, char **uri);
 int sr_get_user_name(uid_t uid, char **username);
 
 /**
+ * @brief Lookup UID and primary GID in the password database by username.
+ *
+ * @param [in] username Name of the user to search for.
+ * @param [out] uid ID of the user whose name matches the given username.
+ * @param [out] gid ID of the primary group of the matching user.
+ */
+int sr_get_user_id(const char *username, uid_t *uid, gid_t *gid);
+
+/**
  * @brief Get groupname from GID.
  *
  * @param [in] gid GID of the group to get the name of.
  * @param [out] groupname Returned groupname. Deallocate with ::free.
  */
 int sr_get_group_name(uid_t uid, char **groupname);
+
+/**
+ * @brief Lookup GID in the group database by groupname.
+ *
+ * @param [in] groupname Name of the group to search for.
+ * @param [out] gid ID of the group with matching groupname.
+ */
+int sr_get_group_id(const char *groupname, gid_t *gid);
 
 /**
  * @brief Returns an array of all system groups that the given user is member of.

@@ -34,6 +34,7 @@
 #include "test_module_helper.h"
 #include "nacm_module_helper.h"
 
+bool satisfied_requirements = true; /**< Indices if the test can be actually run with the current system configuration */
 bool daemon_run_before_test = false; /**< Indices if the daemon was running before executing the test. */
 
 static void
@@ -61,11 +62,11 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     struct timespec ts = { 0 };
     int rc = SR_ERR_OK;
 
-    if (0 != getuid()) {
-        /* run tests only for privileged user */
+    if (!satisfied_requirements) {
         return;
     }
 
+#ifndef DEBUG_MODE
     /* connect to sysrepo, force daemon connection */
     rc = sr_connect("nacm_cl_test", SR_CONN_DAEMON_REQUIRED, &conn);
     sr_disconnect(conn);
@@ -89,6 +90,7 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     /* start sysrepo in the daemon mode */
     ret = system("../src/sysrepod");
     assert_int_equal(ret, 0);
+#endif
     sr_log_stderr(SR_LL_DBG);
     rc = sr_connect("nacm_cl_test", SR_CONN_DAEMON_REQUIRED, &conn);
     assert_int_equal(rc, SR_ERR_OK);
@@ -113,6 +115,50 @@ sysrepo_setup_with_empty_nacm_cfg(void **state)
     return 0;
 }
 
+static void
+common_nacm_config(test_nacm_cfg_t *nacm_config)
+{
+    /* TODO */
+}
+
+static int
+sysrepo_setup_with_denied_exec_by_dflt(void **state)
+{
+    sr_conn_ctx_t *conn = NULL;
+    test_nacm_cfg_t *nacm_config = NULL;
+
+    /* NACM startup config */
+    new_nacm_config(&nacm_config);
+    set_nacm_exec_dflt(nacm_config, "deny");
+    common_nacm_config(nacm_config);
+    save_nacm_config(nacm_config);
+    delete_nacm_config(nacm_config);
+
+    start_sysrepo_daemon(&conn);
+
+    *state = (void*)conn;
+    return 0;
+}
+
+static int
+sysrepo_setup_with_ext_groups(void **state)
+{
+    sr_conn_ctx_t *conn = NULL;
+    test_nacm_cfg_t *nacm_config = NULL;
+
+    /* NACM startup config */
+    new_nacm_config(&nacm_config);
+    enable_nacm_ext_groups(nacm_config, true);
+    common_nacm_config(nacm_config);
+    save_nacm_config(nacm_config);
+    delete_nacm_config(nacm_config);
+
+    start_sysrepo_daemon(&conn);
+
+    *state = (void*)conn;
+    return 0;
+}
+
 static int
 sysrepo_setup(void **state)
 {
@@ -121,7 +167,7 @@ sysrepo_setup(void **state)
 
     /* create NACM startup config */
     new_nacm_config(&nacm_config);
-    /* TODO */
+    common_nacm_config(nacm_config);
     save_nacm_config(nacm_config);
     delete_nacm_config(nacm_config);
 
@@ -136,21 +182,20 @@ sysrepo_teardown(void **state)
 {
     sr_conn_ctx_t *conn = *state;
 
-    if (0 != getuid()) {
-        /* run tests only for privileged user */
+    if (!satisfied_requirements) {
         return 0;
-    } else {
-        assert_non_null(conn);
     }
 
     /* disconnect from sysrepo */
+    assert_non_null(conn);
     sr_disconnect(conn);
 
+#ifndef DEBUG_MODE
     /* kill the daemon if it was not running before test */
     if (!daemon_run_before_test) {
         daemon_kill();
     }
-
+#endif
     return 0;
 }
 
@@ -173,28 +218,26 @@ nacm_cl_test_rpc_acl_with_empty_nacm_cfg(void **state)
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *output = NULL;
     size_t output_cnt = 0;
+    bool permitted = true;
 
-    if (0 != getuid()) {
-        /* run tests only for privileged user */
+    if (!satisfied_requirements) {
         skip();
-    } else {
-        assert_non_null(conn);
     }
 
     /* start a session */
+    assert_non_null(conn);
     rc = sr_session_start_user(conn, "sysrepo-user1", SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
-
-    sr_val_t *value = NULL;
-    rc = sr_get_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value);
-    assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(value);
-    sr_free_val(value);
 
     /* subscribe for RPC */
     rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", dummy_rpc_cb, &callback_called,
             SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
+
+    /* check permission to execute the RPC */
+    rc = sr_check_exec_permission(session, "/test-module:activate-software-image", &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(permitted);
 
     /* send a RPC */
     rc = sr_rpc_send(session, "/test-module:activate-software-image", NULL, 0, &output, &output_cnt);
@@ -221,15 +264,14 @@ nacm_cl_test_rpc_acl(void **state)
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *output = NULL;
     size_t output_cnt = 0;
+    bool permitted = true;
 
-    if (0 != getuid()) {
-        /* run tests only for privileged user */
+    if (!satisfied_requirements) {
         skip();
-    } else {
-        assert_non_null(conn);
     }
 
     /* start a session */
+    assert_non_null(conn);
     rc = sr_session_start_user(conn, "sysrepo-user1", SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -237,6 +279,109 @@ nacm_cl_test_rpc_acl(void **state)
     rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", dummy_rpc_cb, &callback_called,
             SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
+
+    /* check permission to execute the RPC */
+    rc = sr_check_exec_permission(session, "/test-module:activate-software-image", &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(permitted);
+
+    /* send a RPC */
+    rc = sr_rpc_send(session, "/test-module:activate-software-image", NULL, 0, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1, callback_called);
+    sr_free_values(output, output_cnt);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+nacm_cl_test_rpc_acl_with_denied_exec_by_dflt(void **state)
+{
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+    sr_conn_ctx_t *conn = *state;
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t *output = NULL;
+    size_t output_cnt = 0;
+    bool permitted = true;
+    const sr_error_info_t *error_info = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* start a session */
+    assert_non_null(conn);
+    rc = sr_session_start_user(conn, "sysrepo-user1", SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for RPC */
+    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", dummy_rpc_cb, &callback_called,
+            SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check permission to execute the RPC */
+    rc = sr_check_exec_permission(session, "/test-module:activate-software-image", &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_false(permitted);
+
+    /* send a RPC */
+#undef RPC_XPATH
+#define RPC_XPATH "/test-module:activate-software-image"
+    rc = sr_rpc_send(session, RPC_XPATH, NULL, 0, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_int_equal(0, callback_called);
+    rc = sr_get_last_error(session, &error_info);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_string_equal(RPC_XPATH, error_info->xpath);
+    assert_string_equal("Execution of the operation '" RPC_XPATH "' was blocked by NACM.", error_info->message);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+nacm_cl_test_rpc_acl_with_ext_groups(void **state)
+{
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+    sr_conn_ctx_t *conn = *state;
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t *output = NULL;
+    size_t output_cnt = 0;
+    bool permitted = true;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* start a session */
+    assert_non_null(conn);
+    rc = sr_session_start_user(conn, "sysrepo-user1", SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for RPC */
+    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", dummy_rpc_cb, &callback_called,
+            SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check permission to execute the RPC */
+    rc = sr_check_exec_permission(session, "/test-module:activate-software-image", &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(permitted);
 
     /* send a RPC */
     rc = sr_rpc_send(session, "/test-module:activate-software-image", NULL, 0, &output, &output_cnt);
@@ -258,8 +403,36 @@ main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test(nacm_cl_test_rpc_acl_with_denied_exec_by_default),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_denied_exec_by_dflt, sysrepo_setup_with_denied_exec_by_dflt, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
     };
+
+    if (0 != getuid()) {
+        satisfied_requirements = false;
+    }
+    if (SR_ERR_OK != sr_get_user_id("sysrepo-user1", NULL, NULL) ||
+        SR_ERR_OK != sr_get_user_id("sysrepo-user2", NULL, NULL) ||
+        SR_ERR_OK != sr_get_user_id("sysrepo-user3", NULL, NULL)) {
+        satisfied_requirements = false;
+    }
+    if (SR_ERR_OK != sr_get_group_id("sysrepo-users", NULL)) {
+        satisfied_requirements = false;
+    }
+
+    /* not checking if users are members of the group and access rights of the data files */
+
+    if (!satisfied_requirements) {
+        printf("nacm_cl_test will be skipped due to unsatisfied system requirements.\n");
+        printf("In order to fully run all unit tests from nacm_cl_test, make sure that:\n");
+        printf("    - the executable nacm_cl_test is run with the root privileges\n");
+        printf("    - users 'sysrepo-user1', 'sysrepo-user2', 'sysrepo-user3' exists in the system\n");
+        printf("      and all are members of the group 'sysrepo-users'\n");
+        printf("    - all data files in the testing repository are owned by the group 'sysrepo-users'\n");
+        printf("      (user ownership can remain unchanged) \n");
+        printf("    - all data files in the testing repository can be read and edited by the members\n");
+        printf("      of the group but not by others (g+rw,o-rw)\n");
+        printf("(see deploy/travis/install-test-users.sh for a set of commands to execute)\n");
+    }
 
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

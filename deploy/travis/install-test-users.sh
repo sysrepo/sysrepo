@@ -13,5 +13,6 @@ usermod -a -G sysrepo-users sysrepo-user2
 usermod -a -G sysrepo-users sysrepo-user3
 
 chmod g+rw,o-rw repository/data/*
-chown :sysrepo-users repository/data/*
-
+chmod g+w repository/data
+chgrp sysrepo-users repository/data/*
+chgrp sysrepo-users repository/data

@@ -117,6 +117,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     char *data_filename = NULL;
     int fd = -1;
     int rc = SR_ERR_OK;
+    int error = 0;
 
     CHECK_NULL_ARG4(pm_ctx, pm_ctx->rp_ctx, module_name, data_tree);
 
@@ -129,6 +130,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     }
 
     fd = open(data_filename, (read_only ? O_RDONLY : O_RDWR));
+    error = errno;
 
     if (NULL != user_cred) {
         ac_unset_user_identity(pm_ctx->rp_ctx->ac_ctx);
@@ -136,7 +138,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
 
     if (-1 == fd) {
         /* error by open */
-        if (ENOENT == errno) {
+        if (ENOENT == error) {
             SR_LOG_DBG("Persist data file '%s' does not exist.", data_filename);
             if (read_only) {
                 SR_LOG_DBG("No persistent data for module '%s' will be loaded.", module_name);
@@ -147,15 +149,15 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
                 fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
                 ac_unset_user_identity(pm_ctx->rp_ctx->ac_ctx);
                 if (-1 == fd) {
-                    SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, sr_strerror_safe(errno));
+                    SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, sr_strerror_safe(error));
                     rc = SR_ERR_INTERNAL;
                 }
             }
-        } else if (EACCES == errno) {
+        } else if (EACCES == error) {
             SR_LOG_ERR("Insufficient permissions to access persist data file '%s'.", data_filename);
             rc = SR_ERR_UNAUTHORIZED;
         } else {
-            SR_LOG_ERR("Unable to open persist data file '%s': %s.", data_filename, sr_strerror_safe(errno));
+            SR_LOG_ERR("Unable to open persist data file '%s': %s.", data_filename, sr_strerror_safe(error));
             rc = SR_ERR_INTERNAL;
         }
         if (SR_ERR_OK != rc) {

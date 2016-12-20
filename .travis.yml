@@ -39,9 +39,9 @@ before_script:
 script:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DLOG_THREAD_ID=ON -DUSE_SR_MEM_MGMT=${USE_SR_MEM_MGMT:-ON} .. && make -j2; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then mkdir build ; cd build ; cmake -DGEN_LANGUAGE_BINDINGS=0 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DLOG_THREAD_ID=ON .. && make -j2; fi
-  - sudo sh ../deploy/travis/install-test-users.sh
   - ctest --output-on-failure
   - sudo ctest --output-on-failure --tests-regex ac_test
+  - sudo sh ../deploy/travis/install-test-users.sh
   - sudo ctest --output-on-failure --tests-regex nacm_cl_test
 
 after_success:

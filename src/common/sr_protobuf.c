@@ -925,6 +925,7 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__CHECK_EXEC_PERMISSION:
                 CHECK_NULL_RETURN(msg->request->check_exec_perm_req, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__RPC:
             case SR__OPERATION__ACTION:
                 CHECK_NULL_RETURN(msg->request->rpc_req, SR_ERR_MALFORMED_MSG);

@@ -2564,8 +2564,6 @@ int sr_get_user_name(uid_t uid, char **username_p)
     char *tmp_buf = NULL, *pw_buf = NULL;
     char *username = NULL;
 
-    CHECK_NULL_ARG(username_p);
-
     /* allocate buffer for members of passwd structure */
     if (-1 == pw_bufsize) {
         pw_bufsize = 256;
@@ -2589,14 +2587,61 @@ int sr_get_user_name(uid_t uid, char **username_p)
     }
 
     /* copy username */
-    username = strdup(pw_p->pw_name);
-    CHECK_NULL_NOMEM_GOTO(username, rc, cleanup);
+    if (NULL != username_p) {
+        username = strdup(pw_p->pw_name);
+        CHECK_NULL_NOMEM_GOTO(username, rc, cleanup);
+    }
 
 cleanup:
     free(pw_buf);
-    if (SR_ERR_OK == rc) {
+    if (SR_ERR_OK == rc && NULL != username_p) {
         *username_p = username;
     }
+    return rc;
+}
+
+int sr_get_user_id(const char *username, uid_t *uid_p, gid_t *gid_p)
+{
+    int rc = SR_ERR_OK, ret = 0;
+    size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
+    size_t pw_bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
+    struct passwd pw = {0}, *pw_p = NULL;
+    char *tmp_buf = NULL, *pw_buf = NULL;
+
+    CHECK_NULL_ARG(username);
+
+    /* allocate buffer for members of passwd structure */
+    if (-1 == pw_bufsize) {
+        pw_bufsize = 256;
+    }
+    pw_buf = malloc(pw_bufsize);
+    CHECK_NULL_NOMEM_GOTO(pw_buf, rc, cleanup);
+
+    /* get password file entry */
+    while (max_attempts && ERANGE == (ret = getpwnam_r(username, &pw, pw_buf, pw_bufsize, &pw_p))) {
+        tmp_buf = realloc(pw_buf, pw_bufsize << 1);
+        CHECK_NULL_NOMEM_GOTO(tmp_buf, rc, cleanup);
+        pw_buf = tmp_buf;
+        pw_bufsize <<= 1;
+        --max_attempts;
+    }
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup, "Failed to get the password file record for user '%s': %s. ",
+                        username, sr_strerror_safe(ret));
+    if (NULL == pw_p) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+
+cleanup:
+    if (SR_ERR_OK == rc) {
+        if (NULL != uid_p) {
+            *uid_p = pw_p->pw_uid;
+        }
+        if (NULL != gid_p) {
+            *gid_p = pw_p->pw_gid;
+        }
+    }
+    free(pw_buf);
     return rc;
 }
 
@@ -2645,6 +2690,48 @@ cleanup:
     return rc;
 }
 
+int sr_get_group_id(const char *groupname, gid_t *gid_p)
+{
+    int rc = SR_ERR_OK, ret = 0;
+    size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
+    size_t gr_bufsize = sysconf(_SC_GETGR_R_SIZE_MAX);
+    struct group gr = {0}, *gr_p = NULL;
+    char *tmp_buf = NULL, *gr_buf = NULL;
+
+    CHECK_NULL_ARG(groupname);
+
+    /* allocate buffer for members of group structure */
+    if (-1 == gr_bufsize) {
+        gr_bufsize = 256;
+    }
+    gr_buf = malloc(gr_bufsize);
+    CHECK_NULL_NOMEM_GOTO(gr_buf, rc, cleanup);
+
+    /* get password file entry */
+    while (max_attempts && ERANGE == (ret = getgrnam_r(groupname, &gr, gr_buf, gr_bufsize, &gr_p))) {
+        tmp_buf = realloc(gr_buf, gr_bufsize << 1);
+        CHECK_NULL_NOMEM_GOTO(tmp_buf, rc, cleanup);
+        gr_buf = tmp_buf;
+        gr_bufsize <<= 1;
+        --max_attempts;
+    }
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup, "Failed to get the group file record for group '%s': %s. ",
+                        groupname, sr_strerror_safe(ret));
+    if (NULL == gr_p) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+
+cleanup:
+    if (SR_ERR_OK == rc) {
+        if (NULL != gid_p) {
+            *gid_p = gr_p->gr_gid;
+        }
+    }
+    free(gr_buf);
+    return rc;
+}
+
 int
 sr_get_user_groups(const char *username, char ***groups_p, size_t *group_cnt_p)
 {
@@ -2652,6 +2739,7 @@ sr_get_user_groups(const char *username, char ***groups_p, size_t *group_cnt_p)
     size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
     size_t group_cnt = 0;
     int group_id_cnt = 16;
+    gid_t gid = 0;
 #ifdef __APPLE__
     int *group_ids = NULL, *tmp_group_ids = NULL;
     int user_gid = 0;
@@ -2660,36 +2748,20 @@ sr_get_user_groups(const char *username, char ***groups_p, size_t *group_cnt_p)
     gid_t user_gid = 0;
 #endif
     char **groups = NULL;
-    struct passwd pw = {0}, *pw_p = NULL;
-    size_t pw_bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
-    char *tmp_buf = NULL, *pw_buf = NULL;
     CHECK_NULL_ARG3(username, groups_p, group_cnt_p);
 
-    if (-1 == pw_bufsize) {
-        pw_bufsize = 256;
-    }
-
     /* get the user's primary group */
-    pw_buf = malloc(pw_bufsize);
-    CHECK_NULL_NOMEM_GOTO(pw_buf, rc, cleanup);
-
-    max_attempts = MAX_BUF_REALLOC_ATEMPTS;
-    while (max_attempts && ERANGE == (ret = getpwnam_r(username, &pw, pw_buf, pw_bufsize, &pw_p))) {
-        tmp_buf = realloc(pw_buf, pw_bufsize << 1);
-        CHECK_NULL_NOMEM_GOTO(tmp_buf, rc, cleanup);
-        pw_buf = tmp_buf;
-        pw_bufsize <<= 1;
-        --max_attempts;
-    }
-    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup,
-                        "Failed to get the password file record for user '%s': %s. ", username, sr_strerror_safe(ret));
-    if (NULL == pw_p) {
+    rc = sr_get_user_id(username, NULL, &gid);
+    if (SR_ERR_OK != rc) {
+        if (SR_ERR_NOT_FOUND == rc) {
+            rc = SR_ERR_OK;
+        }
         goto cleanup;
     }
 #ifdef __APPLE__
-    user_gid = (int)pw.pw_gid;
+    user_gid = (int)gid;
 #else
-    user_gid = pw.pw_gid;
+    user_gid = gid;
 #endif
 
     /* get secondary groups */
@@ -2724,7 +2796,6 @@ sr_get_user_groups(const char *username, char ***groups_p, size_t *group_cnt_p)
     }
 
 cleanup:
-    free(pw_buf);
     free(group_ids);
     if (SR_ERR_OK == rc) {
         *groups_p = groups;
