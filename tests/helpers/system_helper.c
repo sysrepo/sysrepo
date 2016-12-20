@@ -63,7 +63,7 @@ print_backtrace()
             fgets(buff, sizeof(buff)-1, fp);
             pclose(fp);
             *parenthesis = '(';
-            fprintf(stderr, "[bt] #%d %s\n        %s\n", (i - 2), messages[i], buff);
+            fprintf(stderr, "[bt] #%d %s\n        %s", (i - 2), messages[i], buff);
         }
     }
     free(messages);
@@ -148,13 +148,14 @@ read_file_content(FILE *fp)
     assert_non_null_bt(buffer);
     unsigned cur = 0;
 
-    for (;;) {
-        size_t n = fread(buffer + cur, 1, size - cur - 1, fp);
-        cur += n;
-        if (size > cur + 1) { break; }
-        size <<= 1;
-        buffer = realloc(buffer, size);
-        assert_non_null_bt(buffer);
+    while(!feof(fp)) {
+        fread(buffer + cur, 1, 1, fp);
+        cur += 1;
+        if (size < cur + 1) {
+            size <<= 1;
+            buffer = realloc(buffer, size);
+            assert_non_null_bt(buffer);
+        }
     }
 
     buffer[cur] = '\0';
