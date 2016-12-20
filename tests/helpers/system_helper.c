@@ -33,6 +33,7 @@
 #include <setjmp.h>
 #include <cmocka.h>
 #include <string.h>
+#include <errno.h>
 #ifdef HAVE_REGEX_H
 #include <regex.h>
 #endif
@@ -148,7 +149,7 @@ read_file_content(FILE *fp)
     assert_non_null_bt(buffer);
     unsigned cur = 0;
 
-    while(!feof(fp)) {
+    while(!ferror(fp) && !feof(fp)) {
         fread(buffer + cur, 1, 1, fp);
         cur += 1;
         if (size < cur + 1) {
@@ -156,6 +157,10 @@ read_file_content(FILE *fp)
             buffer = realloc(buffer, size);
             assert_non_null_bt(buffer);
         }
+    }
+
+    if(ferror(fp)) {
+        fprintf(stderr, "Error in reading from file: %s\n", strerror(errno));
     }
 
     buffer[cur] = '\0';
