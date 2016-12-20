@@ -36,9 +36,62 @@
 #ifdef HAVE_REGEX_H
 #include <regex.h>
 #endif
+#include <execinfo.h>
 
 #define EXPECTED_MAX_FILE_SIZE 512
 
+static void
+print_backtrace()
+{
+    void *callstack[128] = { 0, };
+    int frames = 0;
+    char **symbols = NULL;
+
+    frames = backtrace(callstack, 128);
+    symbols = backtrace_symbols(callstack, frames);
+
+    for (size_t i = 0; i < frames; ++i) {
+        printf("[%zu] %s\n", i, symbols[i]);
+    }
+
+    free(symbols);
+}
+
+static void
+test_assert_non_null(void *arg)
+{
+    if (NULL == arg) {
+        print_backtrace();
+    }
+    assert_non_null(arg);
+}
+
+static void
+test_assert_true(bool arg)
+{
+    if (!arg) {
+        print_backtrace();
+    }
+    assert_true(arg);
+}
+
+static void
+test_assert_string_equal(const char *a, const char *b)
+{
+    if (!a || !b || 0 != strcmp(a, b)) {
+        print_backtrace();
+    }
+    assert_string_equal(a, b);
+}
+
+static void
+test_assert_int_equal(int a, int b)
+{
+    if (a != b) {
+        print_backtrace();
+    }
+    assert_int_equal(a, b);
+}
 
 void
 test_file_exists(const char *path, bool exists)
@@ -46,7 +99,7 @@ test_file_exists(const char *path, bool exists)
     int rc = 0;
     struct stat info;
     rc = stat(path, &info),
-    assert_int_equal(exists ? 0 : -1, rc);
+    test_assert_int_equal(exists ? 0 : -1, rc);
 }
 
 void
@@ -55,12 +108,12 @@ test_file_owner(const char *path, const char *owner)
     int rc = 0;
     struct stat info;
     rc = stat(path, &info),
-    assert_int_equal(0, rc);
+    test_assert_int_equal(0, rc);
 
     struct passwd *pw = getpwuid(info.st_uid);
-    assert_non_null(pw);
+    test_assert_non_null(pw);
 
-    assert_string_equal(owner, pw->pw_name);
+    test_assert_string_equal(owner, pw->pw_name);
 }
 
 void
@@ -69,9 +122,9 @@ test_file_permissions(const char *path, mode_t permissions)
     int rc = 0;
     struct stat info;
     rc = stat(path, &info),
-    assert_int_equal(0, rc);
+    test_assert_int_equal(0, rc);
     mode_t mask = S_IRWXU | S_IRWXG | S_IRWXO;
-    assert_int_equal(permissions & mask, info.st_mode & mask);
+    test_assert_int_equal(permissions & mask, info.st_mode & mask);
 }
 
 static char *
@@ -79,7 +132,7 @@ read_file_content(FILE *fp)
 {
     size_t size = EXPECTED_MAX_FILE_SIZE;
     char *buffer = malloc(size);
-    assert_non_null(buffer);
+    test_assert_non_null(buffer);
     unsigned cur = 0;
 
     for (;;) {
@@ -88,7 +141,7 @@ read_file_content(FILE *fp)
         if (size > cur + 1) { break; }
         size <<= 1;
         buffer = realloc(buffer, size);
-        assert_non_null(buffer);
+        test_assert_non_null(buffer);
     }
 
     buffer[cur] = '\0';
@@ -113,7 +166,7 @@ test_fp_content(FILE *fp, const char *exp_content, bool regex)
 
         /* Compile regular expression */
         rc = regcomp(&re, exp_content, REG_NOSUB | REG_EXTENDED);
-        assert_int_equal(0, rc);
+        test_assert_int_equal(0, rc);
 
         /* Execute regular expression */
         rc = regexec(&re, buffer, 0, NULL, 0);
@@ -121,7 +174,7 @@ test_fp_content(FILE *fp, const char *exp_content, bool regex)
             printf("REGEX: '%s'\n", exp_content);
             printf("FILE: '%s'\n", buffer);
         }
-        assert_int_equal(nomatch ? REG_NOMATCH : 0, rc);
+        test_assert_int_equal(nomatch ? REG_NOMATCH : 0, rc);
 
         /* Cleanup */
         regfree(&re);
@@ -134,7 +187,7 @@ test_fp_content(FILE *fp, const char *exp_content, bool regex)
             printf("FILE: '%s'\n", buffer);
         }
 
-        assert_true(nomatch ? rc != 0 : rc == 0);
+        test_assert_true(nomatch ? rc != 0 : rc == 0);
     }
 
     /* Cleanup */
@@ -147,7 +200,7 @@ test_file_content(const char *path, const char *exp_content, bool regex)
     FILE *fp = NULL;
 
     fp = fopen(path, "r");
-    assert_non_null(fp);
+    test_assert_non_null(fp);
     test_fp_content(fp, exp_content, regex);
     fclose(fp);
 }
@@ -160,8 +213,8 @@ int compare_files(const char *path1, const char *path2)
     /* open */
     fp1 = fopen(path1, "r");
     fp2 = fopen(path2, "r");
-    assert_non_null(fp1);
-    assert_non_null(fp2);
+    test_assert_non_null(fp1);
+    test_assert_non_null(fp2);
 
     /* read */
     char *content1 = read_file_content(fp1);
@@ -186,8 +239,8 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
     FILE *fp = NULL;
 
     fp = popen(cmd, "r");
-    assert_non_null(fp);
+    test_assert_non_null(fp);
     test_fp_content(fp, exp_content, regex);
     ret = pclose(fp);
-    assert_int_equal(exp_ret, WEXITSTATUS(ret));
+    test_assert_int_equal(exp_ret, WEXITSTATUS(ret));
 }
