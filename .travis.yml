@@ -42,7 +42,9 @@ script:
   - ctest --output-on-failure
   - sudo ctest --output-on-failure --tests-regex ac_test
   - sudo sh ../deploy/travis/install-test-users.sh
-  - sudo ctest --output-on-failure --tests-regex nacm_cl_test
+  - ls -al repository
+  - ls -al repository/data
+  - sudo ctest --output-on-failure --tests-regex nacm_cl_test || cat /var/log/syslog
 
 after_success:
   - if [ "$CC" = "gcc" ]; then codecov; fi
