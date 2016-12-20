@@ -207,15 +207,15 @@ srcfg_test_init_datastore_content()
     createDataTreeIETFinterfacesModule();
     return 0;
 }
-
-static int
-srcfg_test_set_startup_datastore(void **state)
-{
-    createDataTreeIETFinterfacesModule();
-    srcfg_test_datastore = strdup("startup");
-    assert_non_null(srcfg_test_datastore);
-    return 0;
-}
+//
+//static int
+//srcfg_test_set_startup_datastore(void **state)
+//{
+//    createDataTreeIETFinterfacesModule();
+//    srcfg_test_datastore = strdup("startup");
+//    assert_non_null(srcfg_test_datastore);
+//    return 0;
+//}
 
 static int
 srcfg_test_set_running_datastore(void **state)
