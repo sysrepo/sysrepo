@@ -547,7 +547,6 @@ Vals::Vals(): _cnt(0), _vals(nullptr)
 {
 }
 Vals::~Vals() {
-    return;
 }
 S_Val Vals::val(size_t n) {
     if (n >= _cnt || _vals == NULL)
