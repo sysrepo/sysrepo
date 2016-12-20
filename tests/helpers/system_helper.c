@@ -48,21 +48,23 @@ print_backtrace()
     int frames = 0;
     char **messages = NULL;
     char buff[1024] = { 0, };
-    int p = 0;
+    char *parenthesis = NULL;
     FILE *fp = { 0, };
 
     frames = backtrace(callstack, 128);
     messages = backtrace_symbols(callstack, frames);
 
     for (int i = 2; i < frames; i++) {
-        while(messages[i][p] != '(' && messages[i][p] != ' ' && messages[i][p] != 0) {
-            p++;
+        parenthesis = strchr(messages[i], '(');
+        *parenthesis = '\0';
+        if (NULL != parenthesis) {
+            sprintf(buff, "addr2line %p -e %s", callstack[i], messages[i]);
+            fp = popen(buff, "r");
+            fgets(buff, sizeof(buff)-1, fp);
+            pclose(fp);
+            *parenthesis = '(';
+            fprintf(stderr, "[bt] #%d %s\n        %s\n", (i - 2), messages[i], buff);
         }
-        sprintf(buff, "addr2line %p -e %.*s", callstack[i], p, messages[i]);
-        fp = popen(buff, "r");
-        fgets(buff, sizeof(buff)-1, fp);
-        pclose(fp);
-        fprintf(stderr, "[bt] #%d %s\n        %s\n", (i - 2), messages[i], buff);
     }
     free(messages);
 #endif
