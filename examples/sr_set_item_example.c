@@ -47,7 +47,7 @@ main(int argc, char **argv)
 
     /* create new interface named 'gigaeth0' of type 'ethernetCsmacd' */
     value.type = SR_IDENTITYREF_T;
-    value.data.string_val = "ethernetCsmacd";
+    value.data.string_val = "iana-if-type:ethernetCsmacd";
     rc = sr_set_item(sess, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/type", &value, SR_EDIT_DEFAULT);
     if (SR_ERR_OK != rc) {
         printf("Error by sr_set_item: %s\n", sr_strerror(rc));
