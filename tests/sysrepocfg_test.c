@@ -905,97 +905,97 @@ srcfg_test_editing(void **state)
     sr_session_stop(session);
     sr_disconnect(conn);
 
-//    /**
-//     * module: cross-module
-//     * format: xml
-//     * valid?: yes (empty config)
-//     * permanent?: no
-//     **/
-//    char *cross_module1 = "";
-//    srcfg_test_prepare_config(cross_module1);
-//    srcfg_test_prepare_user_input("");
-//    strcpy(args,"cross-module");
-//    if (0 == strcmp("running", srcfg_test_datastore)) {
-//        exec_shell_command(cmd, "no active subscriptions", true, 1);
-//        assert_int_equal(0, srcfg_test_subscribe("cross-module"));
-//        exec_shell_command(cmd, "no active subscriptions", true, 1);
-//        assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
-//    }
-//    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
-//    if (0 == strcmp("running", srcfg_test_datastore)) {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml cross-module > /tmp/cross-module_edited.xml", ".*", true, 0);
-//    } else {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml cross-module > /tmp/cross-module_edited.xml", ".*", true, 0);
-//    }
-//    srcfg_test_cmp_data_file_content("/tmp/cross-module_edited.xml", LYD_XML, cross_module1, LYD_XML);
-//
-//    /**
-//     * module: referenced-data
-//     * format: xml
-//     * valid?: yes (empty config)
-//     * permanent?: no
-//     **/
-//    char *referenced_data1 = "";
-//    srcfg_test_prepare_config(referenced_data1);
-//    srcfg_test_prepare_user_input("");
-//    strcpy(args,"referenced-data");
-//    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
-//    if (0 == strcmp("running", srcfg_test_datastore)) {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml referenced-data > /tmp/referenced-data_edited.xml", ".*", true, 0);
-//    } else {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml referenced-data > /tmp/referenced-data_edited.xml", ".*", true, 0);
-//    }
-//    srcfg_test_cmp_data_file_content("/tmp/referenced-data_edited.xml", LYD_XML, referenced_data1, LYD_XML);
-//
-//    /**
-//     * module: cross-module
-//     * format: xml
-//     * valid?: no (unsatisfied cross-module dependency)
-//     * permanent?: no
-//     **/
-//    char *cross_module2 = "<reference xmlns=\"urn:cm\">abcd</reference>";
-//    srcfg_test_prepare_config(cross_module2);
-//    srcfg_test_prepare_user_input("n\n n\n"); /* 1 failed attempt, don't even save locally */
-//    strcpy(args, "cross-module");
-//    exec_shell_command(cmd, "(.*Unable to apply the changes.*){1}"
-//                            "Your changes were discarded", true, 1);
-//    /**
-//     * module: referenced-data
-//     * format: xml
-//     * valid?: yes
-//     * permanent?: no
-//     **/
-//    char *referenced_data2 = "<list-b xmlns=\"urn:rd\">\n"
-//          "  <name>abcd</name>\n"
-//          "</list-b>\n";
-//    srcfg_test_prepare_config(referenced_data2);
-//    srcfg_test_prepare_user_input("");
-//    strcpy(args,"referenced-data");
-//    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
-//    if (0 == strcmp("running", srcfg_test_datastore)) {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml referenced-data > /tmp/referenced-data_edited.xml", ".*", true, 0);
-//    } else {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml referenced-data > /tmp/referenced-data_edited.xml", ".*", true, 0);
-//    }
-//    srcfg_test_cmp_data_file_content("/tmp/referenced-data_edited.xml", LYD_XML, referenced_data2, LYD_XML);
-//
-//    /**
-//     * module: cross-module
-//     * format: xml
-//     * valid?: yes (satisfied cross-module dependency)
-//     * permanent?: no
-//     **/
-//    char *cross_module3 = "<reference xmlns=\"urn:cm\">abcd</reference>";
-//    srcfg_test_prepare_config(cross_module3);
-//    srcfg_test_prepare_user_input("");
-//    strcpy(args,"cross-module");
-//    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
-//    if (0 == strcmp("running", srcfg_test_datastore)) {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml cross-module > /tmp/cross-module_edited.xml", ".*", true, 0);
-//    } else {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml cross-module > /tmp/cross-module_edited.xml", ".*", true, 0);
-//    }
-//    srcfg_test_cmp_data_file_content("/tmp/cross-module_edited.xml", LYD_XML, cross_module3, LYD_XML);
+    /**
+     * module: cross-module
+     * format: xml
+     * valid?: yes (empty config)
+     * permanent?: no
+     **/
+    char *cross_module1 = "";
+    srcfg_test_prepare_config(cross_module1);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"cross-module");
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command(cmd, "no active subscriptions", true, 1);
+        assert_int_equal(0, srcfg_test_subscribe("cross-module"));
+        exec_shell_command(cmd, "no active subscriptions", true, 1);
+        assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
+    }
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml cross-module > /tmp/cross-module_edited.xml", ".*", true, 0);
+    } else {
+        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml cross-module > /tmp/cross-module_edited.xml", ".*", true, 0);
+    }
+    srcfg_test_cmp_data_file_content("/tmp/cross-module_edited.xml", LYD_XML, cross_module1, LYD_XML);
+
+    /**
+     * module: referenced-data
+     * format: xml
+     * valid?: yes (empty config)
+     * permanent?: no
+     **/
+    char *referenced_data1 = "";
+    srcfg_test_prepare_config(referenced_data1);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"referenced-data");
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml referenced-data > /tmp/referenced-data_edited.xml", ".*", true, 0);
+    } else {
+        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml referenced-data > /tmp/referenced-data_edited.xml", ".*", true, 0);
+    }
+    srcfg_test_cmp_data_file_content("/tmp/referenced-data_edited.xml", LYD_XML, referenced_data1, LYD_XML);
+
+    /**
+     * module: cross-module
+     * format: xml
+     * valid?: no (unsatisfied cross-module dependency)
+     * permanent?: no
+     **/
+    char *cross_module2 = "<reference xmlns=\"urn:cm\">abcd</reference>";
+    srcfg_test_prepare_config(cross_module2);
+    srcfg_test_prepare_user_input("n\n n\n"); /* 1 failed attempt, don't even save locally */
+    strcpy(args, "cross-module");
+    exec_shell_command(cmd, "(.*Unable to apply the changes.*){1}"
+                            "Your changes were discarded", true, 1);
+    /**
+     * module: referenced-data
+     * format: xml
+     * valid?: yes
+     * permanent?: no
+     **/
+    char *referenced_data2 = "<list-b xmlns=\"urn:rd\">\n"
+          "  <name>abcd</name>\n"
+          "</list-b>\n";
+    srcfg_test_prepare_config(referenced_data2);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"referenced-data");
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml referenced-data > /tmp/referenced-data_edited.xml", ".*", true, 0);
+    } else {
+        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml referenced-data > /tmp/referenced-data_edited.xml", ".*", true, 0);
+    }
+    srcfg_test_cmp_data_file_content("/tmp/referenced-data_edited.xml", LYD_XML, referenced_data2, LYD_XML);
+
+    /**
+     * module: cross-module
+     * format: xml
+     * valid?: yes (satisfied cross-module dependency)
+     * permanent?: no
+     **/
+    char *cross_module3 = "<reference xmlns=\"urn:cm\">abcd</reference>";
+    srcfg_test_prepare_config(cross_module3);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"cross-module");
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml cross-module > /tmp/cross-module_edited.xml", ".*", true, 0);
+    } else {
+        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml cross-module > /tmp/cross-module_edited.xml", ".*", true, 0);
+    }
+    srcfg_test_cmp_data_file_content("/tmp/cross-module_edited.xml", LYD_XML, cross_module3, LYD_XML);
 
     /* restore pre-test state */
     if (0 == strcmp("running", srcfg_test_datastore)) {
