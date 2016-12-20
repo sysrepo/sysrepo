@@ -88,7 +88,7 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     createDataTreeTestModule();
 
     /* start sysrepo in the daemon mode */
-    ret = system("../src/sysrepod");
+    ret = system("../src/sysrepod -l 4");
     assert_int_equal(ret, 0);
 #endif
     sr_log_stderr(SR_LL_DBG);
