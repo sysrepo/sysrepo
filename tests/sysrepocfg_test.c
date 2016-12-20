@@ -536,7 +536,7 @@ srcfg_test_editing(void **state)
     /* prepare command to execute sysrepocfg */
     strcat(cmd, "cat " FILENAME_USER_INPUT " | PATH=");
     assert_non_null(getcwd(cmd + strlen(cmd), PATH_MAX - strlen(cmd)));
-    strcat(cmd, ":$PATH ../src/sysrepocfg --editor=sysrepocfg_test_editor.sh --datastore=");
+    strcat(cmd, ":$PATH ../src/sysrepocfg -l4 --editor=sysrepocfg_test_editor.sh --datastore=");
     strcat(cmd, srcfg_test_datastore);
     strcat(cmd, " ");
     args = cmd + strlen(cmd);
