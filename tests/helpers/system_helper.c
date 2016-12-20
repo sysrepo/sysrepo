@@ -62,7 +62,7 @@ print_backtrace()
         fp = popen(buff, "r");
         fgets(buff, sizeof(buff)-1, fp);
         pclose(fp);
-        printf("[bt] #%d %s\n        %s\n", (i - 2), messages[i], buff);
+        fprintf(stderr, "[bt] #%d %s\n        %s\n", (i - 2), messages[i], buff);
     }
     free(messages);
 #endif

@@ -807,26 +807,26 @@ srcfg_test_editing(void **state)
     exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml ietf-interfaces > /tmp/ietf-interfaces_edited.xml", ".*", true, 0);
     srcfg_test_cmp_data_file_content("/tmp/ietf-interfaces_edited.xml", LYD_XML, ietf_interfaces2, LYD_XML);
 
-    /**
-     * module: ietf-interfaces
-     * format: xml
-     * valid?: no (missing key)
-     * permanent?: no
-     **/
-    char *ietf_interfaces3 = "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
-        "  <interface>\n"
-        /* missing key leaf "name" */
-        "    <description>GigabitEthernet 2</description>\n"
-        "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
-        "    <enabled>false</enabled>\n"
-        "  </interface>\n"
-        "</interfaces>\n";
-    srcfg_test_prepare_config(ietf_interfaces3);
-    srcfg_test_prepare_user_input("n\n n\n"); /* 1 failed attempt, don't even save locally */
-    strcpy(args,"ietf-interfaces");
-    exec_shell_command(cmd, "(.*Unable to apply the changes.*){1}"
-                            "Your changes were discarded", true, 1);
-
+//    /**
+//     * module: ietf-interfaces
+//     * format: xml
+//     * valid?: no (missing key)
+//     * permanent?: no
+//     **/
+//    char *ietf_interfaces3 = "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+//        "  <interface>\n"
+//        /* missing key leaf "name" */
+//        "    <description>GigabitEthernet 2</description>\n"
+//        "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+//        "    <enabled>false</enabled>\n"
+//        "  </interface>\n"
+//        "</interfaces>\n";
+//    srcfg_test_prepare_config(ietf_interfaces3);
+//    srcfg_test_prepare_user_input("n\n n\n"); /* 1 failed attempt, don't even save locally */
+//    strcpy(args,"ietf-interfaces");
+//    exec_shell_command(cmd, "(.*Unable to apply the changes.*){1}"
+//                            "Your changes were discarded", true, 1);
+//
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *session = NULL;
     assert_int_equal(SR_ERR_OK, sr_connect("sysrepocfg_test", SR_CONN_DEFAULT, &conn));
