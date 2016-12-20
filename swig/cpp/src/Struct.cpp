@@ -549,8 +549,10 @@ Vals::Vals(): _cnt(0), _vals(nullptr)
 Vals::~Vals() {
 }
 S_Val Vals::val(size_t n) {
-    if (n >= _cnt || _vals == NULL)
-        return NULL;
+    if (n >= _cnt)
+        throw std::out_of_range("Vals::val: index out of range");
+    if (!_vals)
+        throw std::logic_error("Vals::val: called on null Vals");
 
     S_Val val(new Val(&_vals[n], _deleter));
     return val;
