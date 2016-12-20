@@ -251,6 +251,7 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
     int ret = 0;
     FILE *fp = NULL;
 
+    fprintf(stderr, "Executing: '%s', expecting '%s'", cmd, exp_content);
     char cwd[1024];
     if (getcwd(cwd, sizeof(cwd)) != NULL) {
         fprintf(stderr, "\nCurrent working dir: %s\n", cwd);
