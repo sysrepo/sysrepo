@@ -207,15 +207,15 @@ srcfg_test_init_datastore_content()
     createDataTreeIETFinterfacesModule();
     return 0;
 }
-//
-//static int
-//srcfg_test_set_startup_datastore(void **state)
-//{
-//    createDataTreeIETFinterfacesModule();
-//    srcfg_test_datastore = strdup("startup");
-//    assert_non_null(srcfg_test_datastore);
-//    return 0;
-//}
+
+static int
+srcfg_test_set_startup_datastore(void **state)
+{
+    createDataTreeIETFinterfacesModule();
+    srcfg_test_datastore = strdup("startup");
+    assert_non_null(srcfg_test_datastore);
+    return 0;
+}
 
 static int
 srcfg_test_set_running_datastore(void **state)
@@ -540,215 +540,215 @@ srcfg_test_editing(void **state)
     strcat(cmd, srcfg_test_datastore);
     strcat(cmd, " ");
     args = cmd + strlen(cmd);
-//
-//    /**
-//     * module: test-module
-//     * format: default(xml)
-//     * valid?: yes
-//     * permanent?: no
-//     **/
-//    char *test_module1 = "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameA</name>\n"
-//        "</user>\n"
-//        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameB</name>\n"
-//        "</user>\n"
-//        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameC</name>\n"
-//        "</user>\n"
-//        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameD</name>\n"
-//        "</user>\n"
-//        /* newly added list entry */
-//        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameE</name>\n"
-//        "  <type>typeE</type>\n"
-//        "</user>\n";
-//    srcfg_test_prepare_config(test_module1);
-//    srcfg_test_prepare_user_input("");
-//    strcpy(args,"test-module");
-//    if (0 == strcmp("running", srcfg_test_datastore)) {
-//        exec_shell_command(cmd, "no active subscriptions", true, 1);
-//        assert_int_equal(0, srcfg_test_subscribe("test-module"));
-//        assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
-//    }
-//    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
-//    if (0 == strcmp("running", srcfg_test_datastore)) {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml test-module > /tmp/test-module_edited.xml", ".*", true, 0);
-//    } else {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml test-module > /tmp/test-module_edited.xml", ".*", true, 0);
-//    }
-//    srcfg_test_cmp_data_file_content("/tmp/test-module_edited.xml", LYD_XML, test_module1, LYD_XML);
-//
-//    /**
-//     * module: test-module
-//     * format: default(xml)
-//     * valid?: yes
-//     * permanent?: yes
-//     **/
-//    char *test_module2 = "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameA</name>\n"
-//        "</user>\n"
-//        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameB</name>\n"
-//        "  <type>typeB</type>\n" /* added leaf */
-//        "</user>\n"
-//        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n" /* moved list entry */
-//        "  <name>nameD</name>\n"
-//        "</user>\n"
-//        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameC</name>\n"
-//        "</user>\n"
-//        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n" /* created (+moved) list entry */
-//        "  <name>nameX</name>\n"
-//        "  <type>typeX</type>\n"
-//        "</user>\n"
-//        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameE</name>\n"
-//        "  <type>typeE2</type>\n" /* changed */
-//        "</user>\n";
-//    srcfg_test_prepare_config(test_module2);
-//    srcfg_test_prepare_user_input("");
-//    strcpy(args,"--permanent test-module");
-//    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
-//    if (0 == strcmp("running", srcfg_test_datastore)) {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml test-module > /tmp/test-module_edited.xml", ".*", true, 0);
-//        srcfg_test_cmp_data_file_content("/tmp/test-module_edited.xml", LYD_XML, test_module2, LYD_XML);
-//    }
-//    exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml test-module > /tmp/test-module_edited.xml", ".*", true, 0);
-//    srcfg_test_cmp_data_file_content("/tmp/test-module_edited.xml", LYD_XML, test_module2, LYD_XML);
-//
-//    /**
-//     * module: test-module
-//     * format: json
-//     * valid?: yes (reverting to test_module1)
-//     * permanent?: yes
-//     **/
-//    char *test_module3 = "{\n"
-//            "\"test-module:user\": [\n"
-//                "{\n"
-//                    "\"name\": \"nameA\"\n"
-//                "},\n"
-//                "{\n"
-//                    "\"name\": \"nameB\"\n"
-//                "},\n"
-//                "{\n"
-//                    "\"name\": \"nameC\"\n"
-//                "},\n"
-//                "{\n"
-//                    "\"name\": \"nameD\"\n"
-//                "},\n"
-//                "{\n"
-//                    "\"name\": \"nameE\",\n"
-//                    "\"type\": \"typeE\"\n"
-//                "}\n"
-//            "]\n"
-//        "}\n";
-//    srcfg_test_prepare_config(test_module3);
-//    srcfg_test_prepare_user_input("");
-//    strcpy(args,"--format=json --permanent test-module");
-//    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
-//    if (0 == strcmp("running", srcfg_test_datastore)) {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml test-module > /tmp/test-module_edited.xml", ".*", true, 0);
-//        srcfg_test_cmp_data_file_content("/tmp/test-module_edited.xml", LYD_XML, test_module3, LYD_JSON);
-//    }
-//    exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml test-module > /tmp/test-module_edited.xml", ".*", true, 0);
-//    srcfg_test_cmp_data_file_content("/tmp/test-module_edited.xml", LYD_XML, test_module3, LYD_JSON);
-//
-//    /**
-//     * module: test-module
-//     * format: default(xml)
-//     * valid?: no
-//     * permanent?: no
-//     **/
-//    char *test_module4 = "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameA</name>\n"
-//        "</user>\n"
-//        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameB</name>\n"
-//        "</user>\n"
-//        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameC</name>\n"
-//        "</user>\n"
-//        /* missing '<' */
-//        "user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
-//        "  <name>nameD</name>\n"
-//        "</user>\n";
-//    srcfg_test_prepare_config(test_module4);
-//    srcfg_test_prepare_user_input("y\n y\n n\n y\n sysrepocfg_test-dump.txt\n"); /* 3 failed attempts, then save to local file */
-//    strcpy(args,"test-module");
-//    exec_shell_command(cmd, "(.*Unable to apply the changes.*){3}"
-//                            "Your changes have been saved to 'sysrepocfg_test-dump.txt'", true, 1);
-//    test_file_content("./sysrepocfg_test-dump.txt", test_module4, false);
-//
-//    /* remove subscription added due to cross-module dependencies */
-//    assert_int_equal(0, srcfg_test_unsubscribe("referenced-data"));
-//
-//    /**
-//     * module: example-module
-//     * format: json
-//     * valid?: yes
-//     * permanent?: yes
-//     **/
-//    char *example_module1 = "{\n"
-//        "  \"example-module:container\": {\n"
-//        "    \"list\": [\n"
-//        "      {\n"
-//        "        \"key1\": \"key1.1\",\n"
-//        "        \"key2\": \"key2.1\",\n"
-//        "        \"leaf\": \"Leaf value A\"\n"
-//        "      },\n"
-//        "      {\n"
-//        "        \"key1\": \"key2.1\",\n"
-//        "        \"key2\": \"key2.2\",\n"
-//        "        \"leaf\": \"Leaf value B\"\n"
-//        "      }\n"
-//        "    ]\n"
-//        "  }\n"
-//        "}\n";
-//    srcfg_test_prepare_config(example_module1);
-//    srcfg_test_prepare_user_input("");
-//    strcpy(args,"--format=json --permanent example-module");
-//    if (0 == strcmp("running", srcfg_test_datastore)) {
-//        exec_shell_command(cmd, "no active subscriptions", true, 1);
-//        assert_int_equal(0, srcfg_test_subscribe("example-module"));
-//    }
-//    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
-//    if (0 == strcmp("running", srcfg_test_datastore)) {
-//        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=json example-module > /tmp/example-module_edited.json", ".*", true, 0);
-//        srcfg_test_cmp_data_file_content("/tmp/example-module_edited.json", LYD_JSON, example_module1, LYD_JSON);
-//    }
-//    exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=json example-module > /tmp/example-module_edited.json", ".*", true, 0);
-//    srcfg_test_cmp_data_file_content("/tmp/example-module_edited.json", LYD_JSON, example_module1, LYD_JSON);
-//
-//    /**
-//     * module: example-module
-//     * format: json
-//     * valid?: no
-//     * permanent?: no
-//     **/
-//    char *example_module2 = "{\n"
-//        "  \"example-module:container\": {\n"
-//        "    \"list\": [\n"
-//        "      {\n"
-//        "        \"key1\": \"key1.1\",\n"
-//        "        \"key2\": \"key2.1\",\n"
-//        "        \"leaf\": \"Leaf value A\"\n"
-//        "      },\n"
-//        "      {\n"
-//        "        \"key1\": \"key2.1\",\n"
-//        "        \"key2\": \"key2.2\",\n"
-//        "        \"leaf\": \"Leaf value B\"\n"
-//        /* missing curly bracket */
-//        "    ]\n"
-//        "  }\n"
-//        "}\n";
-//    srcfg_test_prepare_config(example_module2);
-//    srcfg_test_prepare_user_input("y\n n\n y\n sysrepocfg_test-dump.txt\n"); /* 2 failed attempts, then save to local file */
-//    strcpy(args,"--format=json example-module");
-//    exec_shell_command(cmd, "(.*Unable to apply the changes.*){2}"
-//                            "Your changes have been saved to 'sysrepocfg_test-dump.txt'", true, 1);
-//    test_file_content("./sysrepocfg_test-dump.txt", example_module2, false);
+
+    /**
+     * module: test-module
+     * format: default(xml)
+     * valid?: yes
+     * permanent?: no
+     **/
+    char *test_module1 = "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameA</name>\n"
+        "</user>\n"
+        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameB</name>\n"
+        "</user>\n"
+        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameC</name>\n"
+        "</user>\n"
+        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameD</name>\n"
+        "</user>\n"
+        /* newly added list entry */
+        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameE</name>\n"
+        "  <type>typeE</type>\n"
+        "</user>\n";
+    srcfg_test_prepare_config(test_module1);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"test-module");
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command(cmd, "no active subscriptions", true, 1);
+        assert_int_equal(0, srcfg_test_subscribe("test-module"));
+        assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
+    }
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml test-module > /tmp/test-module_edited.xml", ".*", true, 0);
+    } else {
+        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml test-module > /tmp/test-module_edited.xml", ".*", true, 0);
+    }
+    srcfg_test_cmp_data_file_content("/tmp/test-module_edited.xml", LYD_XML, test_module1, LYD_XML);
+
+    /**
+     * module: test-module
+     * format: default(xml)
+     * valid?: yes
+     * permanent?: yes
+     **/
+    char *test_module2 = "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameA</name>\n"
+        "</user>\n"
+        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameB</name>\n"
+        "  <type>typeB</type>\n" /* added leaf */
+        "</user>\n"
+        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n" /* moved list entry */
+        "  <name>nameD</name>\n"
+        "</user>\n"
+        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameC</name>\n"
+        "</user>\n"
+        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n" /* created (+moved) list entry */
+        "  <name>nameX</name>\n"
+        "  <type>typeX</type>\n"
+        "</user>\n"
+        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameE</name>\n"
+        "  <type>typeE2</type>\n" /* changed */
+        "</user>\n";
+    srcfg_test_prepare_config(test_module2);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"--permanent test-module");
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml test-module > /tmp/test-module_edited.xml", ".*", true, 0);
+        srcfg_test_cmp_data_file_content("/tmp/test-module_edited.xml", LYD_XML, test_module2, LYD_XML);
+    }
+    exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml test-module > /tmp/test-module_edited.xml", ".*", true, 0);
+    srcfg_test_cmp_data_file_content("/tmp/test-module_edited.xml", LYD_XML, test_module2, LYD_XML);
+
+    /**
+     * module: test-module
+     * format: json
+     * valid?: yes (reverting to test_module1)
+     * permanent?: yes
+     **/
+    char *test_module3 = "{\n"
+            "\"test-module:user\": [\n"
+                "{\n"
+                    "\"name\": \"nameA\"\n"
+                "},\n"
+                "{\n"
+                    "\"name\": \"nameB\"\n"
+                "},\n"
+                "{\n"
+                    "\"name\": \"nameC\"\n"
+                "},\n"
+                "{\n"
+                    "\"name\": \"nameD\"\n"
+                "},\n"
+                "{\n"
+                    "\"name\": \"nameE\",\n"
+                    "\"type\": \"typeE\"\n"
+                "}\n"
+            "]\n"
+        "}\n";
+    srcfg_test_prepare_config(test_module3);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"--format=json --permanent test-module");
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml test-module > /tmp/test-module_edited.xml", ".*", true, 0);
+        srcfg_test_cmp_data_file_content("/tmp/test-module_edited.xml", LYD_XML, test_module3, LYD_JSON);
+    }
+    exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml test-module > /tmp/test-module_edited.xml", ".*", true, 0);
+    srcfg_test_cmp_data_file_content("/tmp/test-module_edited.xml", LYD_XML, test_module3, LYD_JSON);
+
+    /**
+     * module: test-module
+     * format: default(xml)
+     * valid?: no
+     * permanent?: no
+     **/
+    char *test_module4 = "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameA</name>\n"
+        "</user>\n"
+        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameB</name>\n"
+        "</user>\n"
+        "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameC</name>\n"
+        "</user>\n"
+        /* missing '<' */
+        "user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+        "  <name>nameD</name>\n"
+        "</user>\n";
+    srcfg_test_prepare_config(test_module4);
+    srcfg_test_prepare_user_input("y\n y\n n\n y\n sysrepocfg_test-dump.txt\n"); /* 3 failed attempts, then save to local file */
+    strcpy(args,"test-module");
+    exec_shell_command(cmd, "(.*Unable to apply the changes.*){3}"
+                            "Your changes have been saved to 'sysrepocfg_test-dump.txt'", true, 1);
+    test_file_content("./sysrepocfg_test-dump.txt", test_module4, false);
+
+    /* remove subscription added due to cross-module dependencies */
+    assert_int_equal(0, srcfg_test_unsubscribe("referenced-data"));
+
+    /**
+     * module: example-module
+     * format: json
+     * valid?: yes
+     * permanent?: yes
+     **/
+    char *example_module1 = "{\n"
+        "  \"example-module:container\": {\n"
+        "    \"list\": [\n"
+        "      {\n"
+        "        \"key1\": \"key1.1\",\n"
+        "        \"key2\": \"key2.1\",\n"
+        "        \"leaf\": \"Leaf value A\"\n"
+        "      },\n"
+        "      {\n"
+        "        \"key1\": \"key2.1\",\n"
+        "        \"key2\": \"key2.2\",\n"
+        "        \"leaf\": \"Leaf value B\"\n"
+        "      }\n"
+        "    ]\n"
+        "  }\n"
+        "}\n";
+    srcfg_test_prepare_config(example_module1);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"--format=json --permanent example-module");
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command(cmd, "no active subscriptions", true, 1);
+        assert_int_equal(0, srcfg_test_subscribe("example-module"));
+    }
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=json example-module > /tmp/example-module_edited.json", ".*", true, 0);
+        srcfg_test_cmp_data_file_content("/tmp/example-module_edited.json", LYD_JSON, example_module1, LYD_JSON);
+    }
+    exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=json example-module > /tmp/example-module_edited.json", ".*", true, 0);
+    srcfg_test_cmp_data_file_content("/tmp/example-module_edited.json", LYD_JSON, example_module1, LYD_JSON);
+
+    /**
+     * module: example-module
+     * format: json
+     * valid?: no
+     * permanent?: no
+     **/
+    char *example_module2 = "{\n"
+        "  \"example-module:container\": {\n"
+        "    \"list\": [\n"
+        "      {\n"
+        "        \"key1\": \"key1.1\",\n"
+        "        \"key2\": \"key2.1\",\n"
+        "        \"leaf\": \"Leaf value A\"\n"
+        "      },\n"
+        "      {\n"
+        "        \"key1\": \"key2.1\",\n"
+        "        \"key2\": \"key2.2\",\n"
+        "        \"leaf\": \"Leaf value B\"\n"
+        /* missing curly bracket */
+        "    ]\n"
+        "  }\n"
+        "}\n";
+    srcfg_test_prepare_config(example_module2);
+    srcfg_test_prepare_user_input("y\n n\n y\n sysrepocfg_test-dump.txt\n"); /* 2 failed attempts, then save to local file */
+    strcpy(args,"--format=json example-module");
+    exec_shell_command(cmd, "(.*Unable to apply the changes.*){2}"
+                            "Your changes have been saved to 'sysrepocfg_test-dump.txt'", true, 1);
+    test_file_content("./sysrepocfg_test-dump.txt", example_module2, false);
 
     /**
      * module: ietf-interfaces
@@ -1020,7 +1020,7 @@ main() {
             cmocka_unit_test_setup_teardown(srcfg_test_version, NULL, NULL),
             cmocka_unit_test_setup_teardown(srcfg_test_help, NULL, NULL),
             cmocka_unit_test_setup_teardown(srcfg_test_export, srcfg_test_init_datastore_content, NULL),
-            //cmocka_unit_test_setup_teardown(srcfg_test_editing, srcfg_test_set_startup_datastore, srcfg_test_teardown),
+            cmocka_unit_test_setup_teardown(srcfg_test_editing, srcfg_test_set_startup_datastore, srcfg_test_teardown),
             cmocka_unit_test_setup_teardown(srcfg_test_editing, srcfg_test_set_running_datastore, srcfg_test_teardown),
             cmocka_unit_test_setup_teardown(srcfg_test_import, srcfg_test_init_datastore_content, NULL)
     };
