@@ -45,16 +45,29 @@ print_backtrace()
 {
     void *callstack[128] = { 0, };
     int frames = 0;
-    char **symbols = NULL;
+    char **messages = NULL;
 
     frames = backtrace(callstack, 128);
-    symbols = backtrace_symbols(callstack, frames);
+    messages = backtrace_symbols(callstack, frames);
 
-    for (size_t i = 0; i < frames; ++i) {
-        printf("[%zu] %s\n", i, symbols[i]);
+    for (int i = 0; i < frames; ++i) {
+        printf("[bt] #%d %s\n", i, messages[i]);
+
+        /* find first occurence of '(' or ' ' in message[i] and assume
+         * everything before that is the file name. (Don't go beyond 0 though
+         * (string terminator)*/
+        int p = 0;
+        while(messages[i][p] != '(' && messages[i][p] != ' '
+                && messages[i][p] != 0)
+            ++p;
+
+        char syscom[256];
+        sprintf(syscom,"addr2line %p -e %.*s", callstack[i], p, messages[i]);
+            //last parameter is the file name of the symbol
+        system(syscom);
     }
 
-    free(symbols);
+    free(messages);
 }
 
 static void
