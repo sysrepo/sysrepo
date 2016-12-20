@@ -251,6 +251,11 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
     int ret = 0;
     FILE *fp = NULL;
 
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        fprintf(stderr, "\nCurrent working dir: %s\n", cwd);
+    }
+
     fp = popen(cmd, "r");
     assert_non_null_bt(fp);
     test_fp_content(fp, exp_content, regex);
