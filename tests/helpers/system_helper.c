@@ -52,19 +52,13 @@ print_backtrace()
 
     for (int i = 0; i < frames; ++i) {
         printf("[bt] #%d %s\n", i, messages[i]);
-
-        /* find first occurence of '(' or ' ' in message[i] and assume
-         * everything before that is the file name. (Don't go beyond 0 though
-         * (string terminator)*/
         int p = 0;
-        while(messages[i][p] != '(' && messages[i][p] != ' '
-                && messages[i][p] != 0)
+        while(messages[i][p] != '(' && messages[i][p] != ' ' && messages[i][p] != 0) {
             ++p;
-
-        char syscom[256];
-        sprintf(syscom,"addr2line %p -e %.*s", callstack[i], p, messages[i]);
-            //last parameter is the file name of the symbol
-        system(syscom);
+        }
+        char cmd[256];
+        sprintf(cmd,"addr2line %p -e %.*s", callstack[i], p, messages[i]);
+        system(cmd);
     }
 
     free(messages);
