@@ -155,9 +155,6 @@ rp_dt_init_tree_pruning(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
         bool check_enabled, bool cache, sr_tree_pruning_cb *pruning_cb, rp_tree_pruning_ctx_t **pruning_ctx_p)
 {
     int rc = SR_ERR_OK;
-    nacm_ctx_t *nacm_ctx = NULL;
-    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
-    const char *rule_name = NULL, *rule_info;
     rp_tree_pruning_ctx_t *pruning_ctx = NULL;
     CHECK_NULL_ARG5(dm_ctx, rp_session, data_tree, pruning_cb, pruning_ctx_p);
 
@@ -166,6 +163,10 @@ rp_dt_init_tree_pruning(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
     pruning_ctx->check_enabled = check_enabled;
 
 #ifdef ENABLE_NACM
+    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
+    const char *rule_name = NULL, *rule_info;
+
     dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
     if (NULL != nacm_ctx) {
@@ -183,9 +184,9 @@ rp_dt_init_tree_pruning(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
             }
         }
     }
-#endif
 
 cleanup:
+#endif
     if (SR_ERR_OK == rc) {
         *pruning_ctx_p = pruning_ctx;
         *pruning_cb = rp_dt_tree_pruning;

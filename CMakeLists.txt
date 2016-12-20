@@ -73,6 +73,7 @@ set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/internal/")
 set(INTERNAL_DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/internal/")
+set(NOTIF_DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/notifications/")
 MESSAGE(STATUS "sysrepo repository location: ${REPOSITORY_LOC}")
 
 # include custom Modules
@@ -143,6 +144,9 @@ set(NACM_RECOVERY_UID 0 CACHE INTEGER "Set UID to be used to identify NACM recov
 
 option (USE_SR_MEM_MGMT
         "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs)."
+        ON)
+option (ENABLE_NOTIF_STORE
+        "Enable event notifications store & notifications replay."
         ON)
 
 set(COMMIT_TIMEOUT 10 CACHE INTEGER "Commit operation timeout (in seconds).")
@@ -230,8 +234,12 @@ install (DIRECTORY DESTINATION ${SUBSCRIPTIONS_SOCKET_DIR} DIRECTORY_PERMISSIONS
 install(DIRECTORY DESTINATION ${PLUGINS_DIR})
 
 # install internal YANGs
-install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
-install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
+set(INTERNAL_YANGS
+    ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang
+    ${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang
+    ${PROJECT_SOURCE_DIR}/yang/sysrepo-notification-store.yang
+)
+install (FILES ${INTERNAL_YANGS} DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 
 # install NACM YANG module
 if(ENABLE_NACM)

@@ -507,7 +507,7 @@ typedef struct sr_locking_set_s {
  * @brief The item of the lock_files binary tree in dm_lock_ctx_t
  */
 typedef struct sr_lock_item_s {
-    char *filename;               /**< File name of the lockfile */
+    const char *filename;         /**< File name of the lockfile */
     int fd;                       /**< File descriptor of the file */
     bool locked;                  /**< Flag signalizing that file is locked */
 } sr_lock_item_t;
@@ -561,7 +561,7 @@ sr_free_lock_item(void *lock_item)
 {
     CHECK_NULL_ARG_VOID(lock_item);
     sr_lock_item_t *li = (sr_lock_item_t *) lock_item;
-    free(li->filename);
+    free((void*)li->filename);
     if (-1 != li->fd) {
         SR_LOG_DBG("Closing fd = %d", li->fd);
         close(li->fd);
@@ -687,7 +687,7 @@ cleanup:
 }
 
 int
-sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, int fd, char *filename, bool write, bool blocking)
+sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, int fd, const char *filename, bool write, bool blocking)
 {
     CHECK_NULL_ARG2(lock_ctx, filename);
     int rc = SR_ERR_OK;

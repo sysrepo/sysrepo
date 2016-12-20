@@ -23,9 +23,10 @@
 #ifndef SR_UTILS_H_
 #define SR_UTILS_H_
 
-#include <time.h>
 #include <stdio.h>
 #include <stdbool.h>
+#define __USE_XOPEN
+#include <time.h>
 
 #ifdef __APPLE__
 /* OS X get_time */
@@ -619,19 +620,21 @@ void sr_daemonize_signal_success(pid_t parent_pid);
 int sr_clock_get_time(clockid_t clock_id, struct timespec *ts);
 
 /**
- * @brief Sets correct permissions on provided socket directory according to the
- * data access permission of the YANG module.
+ * @brief Sets data file permissions on provided data file / directory derived from the
+ * data access permission of the main data file of the module.
  *
- * @param[in] socket_dir Socket directory.
+ * @param[in] target_file Target file / directory whose access permissions need to be modified.
+ * @param[in] target_is_dir True if target is a directory, false if it is a file.
  * @param[in] data_serach_dir Location of the directory with data files.
  * @param[in] module_name Name of the module whose access permissions are used
- * to derive the permissions for the socket directory.
+ * to derive the permissions for the target file / directory.
  * @param[in] strict TRUE in no errors are allowed during the process of setting permissions,
  * FALSE otherwise.
  *
  * @return Error code.
  */
-int sr_set_socket_dir_permissions(const char *socket_dir, const char *data_serach_dir, const char *module_name, bool strict);
+int sr_set_data_file_permissions(const char *target_file, bool target_is_dir, const char *data_serach_dir,
+        const char *module_name, bool strict);
 
 /**
  * @brief Function encapsulates the lys_find_xpath for the use cases where the expected
@@ -677,6 +680,27 @@ int sr_print(sr_print_ctx_t *print_ctx, const char *format, ...);
 int sr_create_uri_for_module(const struct lys_module *module, char **uri);
 
 /**
+ * @brief Converts time_t into string formatted as date-and-time type defined in RFC 6991.
+ *
+ * @param [in] time Time to be coverted into string.
+ * @param [out] buff String buffer where time will be written.
+ * @param [in] buff_size Size of the string buffer.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_time_to_str(time_t time, char *buff, size_t buff_size);
+
+/**
+ * @brief Converts time string formatted as date-and-time type defined in RFC 6991 into time_t.
+ *
+ * @param [in] time_str String to be converted into time.
+ * @param [out] time Resulting time.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_str_to_time(char *time_str, time_t *time);
+
+/*
  * @brief Returns an array of all system groups that the given user is member of.
  *
  * @param [in] username Name of the user to search for in the group database.
@@ -689,7 +713,7 @@ int sr_get_system_groups(const char *username, char ***groups, size_t *group_cnt
  * @brief Frees the list and that contains allocated strings (they are freed as well).
  * @param [in] list
  */
-void sr_free_list_of_strings (sr_list_t *list);
+void sr_free_list_of_strings(sr_list_t *list);
 
 /**@} utils */
 

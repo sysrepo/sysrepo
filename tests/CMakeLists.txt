@@ -134,6 +134,7 @@ add_custom_target(create_internals
     COMMAND mkdir -p "${TEST_SCHEMA_SEARCH_DIR}" "${TEST_DATA_SEARCH_DIR}" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}" "${TEST_INTERNAL_DATA_SEARCH_DIR}"
     COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
     COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
+    COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-notification-store.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
 )
 
 # make common_test depend on sysrepoctl

@@ -39,6 +39,7 @@ script:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then mkdir build ; cd build ; cmake -DGEN_LANGUAGE_BINDINGS=0 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DLOG_THREAD_ID=ON .. && make -j2; fi
   - ctest --output-on-failure
   - sudo ctest --output-on-failure --tests-regex ac_test
+  - sudo make install
 
 after_success:
   - if [ "$CC" = "gcc" ]; then codecov; fi

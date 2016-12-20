@@ -259,6 +259,8 @@ rp_prepare_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *sessio
     rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
 
+    req->request->event_notif_req->timestamp = time(NULL);
+
 cleanup:
     sr_free_values(values, val_cnt);
     if (SR_ERR_OK != rc) {
@@ -2557,12 +2559,66 @@ cleanup:
 }
 
 /**
+ * @brief Sends an event notification to specified notification subscriber.
+ */
+static int
+rp_event_notif_send(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__EventNotifReq__NotifType type,
+        const char *xpath, time_t timestamp, sr_api_variant_t api_variant, const sr_val_t *sr_values, size_t sr_values_cnt,
+        const sr_node_t *sr_trees, size_t sr_trees_cnt, const char *subscription_address, uint32_t subscription_id)
+{
+    Sr__Msg *req = NULL;
+    int rc = SR_ERR_OK;
+
+    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__EVENT_NOTIF, session->id, &req);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to duplicate event notification request (%s).", xpath);
+
+    /* set type, xpath & timestamp */
+    req->request->event_notif_req->type = type;
+    req->request->event_notif_req->xpath = strdup(xpath);
+    CHECK_NULL_NOMEM_GOTO(req->request->event_notif_req->xpath, rc, cleanup);
+    req->request->event_notif_req->timestamp = timestamp;
+
+    /* set values / trees */
+    switch (api_variant) {
+        case SR_API_VALUES:
+            rc = sr_values_sr_to_gpb(sr_values, sr_values_cnt, &req->request->event_notif_req->values,
+                    &req->request->event_notif_req->n_values);
+            break;
+        case SR_API_TREES:
+            rc = sr_trees_sr_to_gpb(sr_trees, sr_trees_cnt, &req->request->event_notif_req->trees,
+                    &req->request->event_notif_req->n_trees);
+            break;
+    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to duplicate event notification (%s) input data.", xpath);
+
+    /* set subscription info */
+    req->request->event_notif_req->subscriber_address = strdup(subscription_address);
+    CHECK_NULL_NOMEM_GOTO(req->request->event_notif_req->subscriber_address, rc, cleanup);
+
+    req->request->event_notif_req->subscription_id = subscription_id;
+    req->request->event_notif_req->has_subscription_id = true;
+
+    /* send the notification */
+    rc = cm_msg_send(rp_ctx->cm_ctx, req);
+    req = NULL;
+
+cleanup:
+    if (NULL != req) {
+        sr_msg_free(req);
+        req = NULL;
+    }
+
+    return rc;
+}
+
+/**
  * @brief Processes an event notification request.
  */
 static int
 rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     char *module_name = NULL;
+    struct lyd_node *notif_data_tree = NULL;
     sr_api_variant_t msg_api_variant = SR_API_VALUES;
     sr_val_t *values = NULL, *with_def = NULL;
     sr_node_t *trees = NULL, *with_def_tree = NULL;
@@ -2570,7 +2626,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     np_subscription_t *subscriptions = NULL;
     size_t subscription_cnt = 0;
     bool sub_match = false;
-    Sr__Msg *req = NULL, *resp = NULL;
+    Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem_msg = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
@@ -2597,10 +2653,10 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     /* validate event-notification request */
     if (SR_API_VALUES == msg_api_variant) {
         rc = dm_validate_event_notif(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath,
-                values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+                values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
     } else {
         rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath,
-                trees, tree_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+                trees, tree_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.",
                       msg->request->event_notif_req->xpath);
@@ -2613,6 +2669,12 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     /* authorize (write permissions are required to deliver the event-notification) */
     rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
     CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
+
+#ifdef ENABLE_NOTIF_STORE
+    /* store the notification in the datastore */
+    rc = np_store_event_notification(rp_ctx->np_ctx, session->user_credentials, msg->request->event_notif_req->xpath,
+            msg->request->event_notif_req->timestamp, &notif_data_tree);
+#endif
 
     /* get event-notification subscriptions */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS,
@@ -2627,47 +2689,16 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
              * @note we are not using memory context for the *req* message because with so many
              * duplications it would be actually less efficient than normally.
              * */
-            rc = sr_gpb_req_alloc(NULL, SR__OPERATION__EVENT_NOTIF, session->id, &req);
-            CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate event notification request (%s).",
-                              msg->request->event_notif_req->xpath);
-            /*  - xpath */
-            req->request->event_notif_req->xpath = strdup(msg->request->event_notif_req->xpath);
-            CHECK_NULL_NOMEM_ERROR(req->request->event_notif_req->xpath, rc);
-            CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate event notification request xpath (%s).",
-                              msg->request->event_notif_req->xpath);
-            /*  - values / trees */
-            switch (subscriptions[i].api_variant) {
-                case SR_API_VALUES:
-                    rc = sr_values_sr_to_gpb(with_def, with_def_cnt, &req->request->event_notif_req->values,
-                                             &req->request->event_notif_req->n_values);
-                    break;
-                case SR_API_TREES:
-                    rc = sr_trees_sr_to_gpb(with_def_tree, with_def_tree_cnt, &req->request->event_notif_req->trees,
-                                            &req->request->event_notif_req->n_trees);
-                    break;
-            }
-            CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate event notification (%s) input data.",
-                              msg->request->event_notif_req->xpath);
-            req->request->event_notif_req->timestamp = msg->request->event_notif_req->timestamp;
-            /*  -- subscription info */
-            req->request->event_notif_req->subscriber_address = strdup(subscriptions[i].dst_address);
-            CHECK_NULL_NOMEM_ERROR(req->request->event_notif_req->subscriber_address, rc);
-            CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate event notification (%s) subscription "
-                              "destination address.", msg->request->event_notif_req->xpath);
-            req->request->event_notif_req->subscription_id = subscriptions[i].dst_id;
-            req->request->event_notif_req->has_subscription_id = true;
-            /* forward the request to the subscriber */
-            rc = cm_msg_send(rp_ctx->cm_ctx, req);
-            req = NULL;
             sub_match = true;
+            rc = rp_event_notif_send(rp_ctx, session, msg->request->event_notif_req->type, subscriptions[i].xpath,
+                    msg->request->event_notif_req->timestamp, subscriptions[i].api_variant, with_def, with_def_cnt,
+                    with_def_tree, with_def_tree_cnt, subscriptions[i].dst_address, subscriptions[i].dst_id);
+            CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the notification '%s' to the subscriber '%s'.",
+                    subscriptions[i].xpath, subscriptions[i].dst_address);
         }
     }
 
 finalize:
-    if (NULL != req) {
-        sr_msg_free(req);
-        req = NULL;
-    }
     if (SR_API_VALUES == msg_api_variant) {
         sr_free_values(values, values_cnt);
     } else {
@@ -2696,6 +2727,78 @@ finalize:
     }
 
     sr_msg_free(msg);
+
+    if (NULL != notif_data_tree) {
+        lyd_free_withsiblings(notif_data_tree);
+    }
+
+    return rc;
+}
+
+/**
+ * @brief Processes an event notification replay request.
+ */
+static int
+rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->event_notif_replay_req);
+
+    SR_LOG_DBG_MSG("Processing event notification replay request.");
+
+    /* allocate the response */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__EVENT_NOTIF_REPLAY, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
+        SR_LOG_ERR_MSG("Allocation of the response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+#ifdef ENABLE_NOTIF_STORE
+    sr_list_t *notif_list = NULL;
+
+    /* get matching notifications from the notification store */
+    rc = np_get_event_notifications(rp_ctx->np_ctx, session, msg->request->event_notif_replay_req->xpath,
+            msg->request->event_notif_replay_req->start_time, msg->request->event_notif_replay_req->stop_time,
+            sr_api_variant_gpb_to_sr(msg->request->event_notif_replay_req->api_variant), &notif_list);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Error by loading event notifications for xpath '%s'.",
+            msg->request->event_notif_replay_req->xpath);
+
+    /* send each notification to the subscriber */
+    for (size_t i = 0; i < notif_list->count; i++) {
+        np_ev_notification_t *notification = notif_list->data[i];
+
+        /* send the notification */
+        rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY, notification->xpath,
+                notification->timestamp, sr_api_variant_gpb_to_sr(msg->request->event_notif_replay_req->api_variant),
+                notification->data.values, notification->data_cnt, notification->data.trees, notification->data_cnt,
+                msg->request->event_notif_replay_req->subscriber_address, msg->request->event_notif_replay_req->subscription_id);
+        CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the replay of notification '%s' to the subscriber '%s'.",
+                notification->xpath, msg->request->event_notif_replay_req->subscriber_address);
+    }
+
+finalize:
+    for (size_t i = 0; i < notif_list->count; i++) {
+        np_event_notification_cleanup(notif_list->data[i]);
+    }
+    sr_list_cleanup(notif_list);
+#endif
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
     return rc;
 }
@@ -2866,6 +2969,9 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             rc = rp_event_notif_req_process(rp_ctx, session, msg);
             *skip_msg_cleanup = true;
             return rc; /* skip further processing */
+        case SR__OPERATION__EVENT_NOTIF_REPLAY:
+            rc = rp_event_notif_replay_req_process(rp_ctx, session, msg);
+            break;
         default:
             SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
                     session->id, msg->request->operation);
@@ -3283,7 +3389,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Commit rwlock initialization failed.");
 
     /* initialize Notification Processor */
-    rc = np_init(ctx, &ctx->np_ctx);
+    rc = np_init(ctx, SR_INTERNAL_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->np_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Notification Processor initialization failed.");
         goto cleanup;
