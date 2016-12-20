@@ -83,6 +83,8 @@ public:
     ~Session();
     sr_session_ctx_t *get() {return _sess;};
 
+    friend class Subscribe;
+
 private:
     sr_session_ctx_t *_sess;
     sr_datastore_t _datastore;

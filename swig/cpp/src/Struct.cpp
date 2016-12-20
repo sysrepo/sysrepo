@@ -533,27 +533,26 @@ Vals::Vals(sr_val_t **vals, size_t *cnt, S_Deleter deleter) {
     _cnt = *cnt;
     _deleter = deleter;
 }
-Vals::Vals(size_t cnt) {
-    int ret = sr_new_values(cnt, &_vals);
-    if (ret != SR_ERR_OK)
-        throw_exception(ret);
+Vals::Vals(size_t cnt): Vals() {
+    if (cnt) {
+        int ret = sr_new_values(cnt, &_vals);
+        if (ret != SR_ERR_OK)
+            throw_exception(ret);
 
-    _cnt = cnt;
-    S_Deleter deleter(new Deleter(_vals, _cnt));
-    _deleter = deleter;
+        _cnt = cnt;
+        _deleter = S_Deleter(new Deleter(_vals, _cnt));
+    }
 }
-Vals::Vals() {
-    _vals = NULL;
-    _cnt = 0;
-    S_Deleter deleter(new Deleter(&_vals, &_cnt));
-    _deleter = deleter;
+Vals::Vals(): _cnt(0), _vals(nullptr)
+{
 }
 Vals::~Vals() {
-    return;
 }
 S_Val Vals::val(size_t n) {
-    if (n >= _cnt || _vals == NULL)
-        return NULL;
+    if (n >= _cnt)
+        throw std::out_of_range("Vals::val: index out of range");
+    if (!_vals)
+        throw std::logic_error("Vals::val: called on null Vals");
 
     S_Val val(new Val(&_vals[n], _deleter));
     return val;

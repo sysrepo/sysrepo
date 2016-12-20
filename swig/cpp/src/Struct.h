@@ -99,9 +99,10 @@ public:
     void dflt_set(bool data) {_val->dflt = data;};
     S_Data data() {S_Data data(new Data(_val->data, _val->type, _deleter)); return data;};
     S_String to_string();
-    sr_val_t *get() {return _val;};
-    sr_val_t **p_get() {return &_val;};
     S_Val dup();
+
+    friend class Session;
+    friend class Subscribe;
 
 private:
     sr_val_t *_val;
@@ -119,10 +120,10 @@ public:
     ~Vals();
     S_Val val(size_t n);
     size_t val_cnt() {return _cnt;};
-    size_t *p_val_cnt() {return &_cnt;};
-    sr_val_t *val() {return _vals;};
-    sr_val_t **p_val() {return &_vals;};
     S_Vals dup();
+
+    friend class Session;
+    friend class Subscribe;
 
 private:
     size_t _cnt;
@@ -175,7 +176,8 @@ public:
     ~Error();
     const char *message() {if (_info) return _info->message; else return NULL;};
     const char *xpath() {if (_info) return _info->message; else return NULL;};
-    const sr_error_info_t **p_error() {return &_info;};
+
+    friend class Session;
 
 private:
     const sr_error_info_t *_info;
@@ -189,8 +191,8 @@ public:
     ~Errors();
     S_Error error(size_t n);
     size_t error_cnt() {return _cnt;};
-    size_t *p_error_cnt() {return &_cnt;};
-    const sr_error_info_t **p_error() {return &_info;};
+
+    friend class Session;
 
 private:
     size_t _cnt;
@@ -241,6 +243,8 @@ public:
     char *enabled_features(size_t n);
     size_t enabled_feature_cnt() {return _sch->enabled_feature_cnt;};
 
+    friend class Session;
+
 private:
     sr_schema_t *_sch;
     S_Deleter _deleter;
@@ -254,8 +258,8 @@ public:
     ~Yang_Schemas();
     S_Yang_Schema schema(size_t n);
     size_t schema_cnt() {return _cnt;};
-    size_t *p_schema_cnt() {return &_cnt;};
-    sr_schema_t **p_schema() {return &_sch;};
+
+    friend class Session;
 
 private:
     size_t _cnt;
@@ -296,9 +300,9 @@ class Iter_Value
 public:
     Iter_Value(sr_val_iter_t *iter = NULL);
     ~Iter_Value();
-    sr_val_iter_t *get() {return _iter;};
-    sr_val_iter_t **p_get() {return &_iter;};
     void Set(sr_val_iter_t *iter);
+
+    friend class Session;
 
 private:
     sr_val_iter_t *_iter;
@@ -310,8 +314,8 @@ class Iter_Change
 public:
     Iter_Change(sr_change_iter_t *iter = NULL);
     ~Iter_Change();
-    sr_change_iter_t *get() {return _iter;};
-    sr_change_iter_t **p_get() {return &_iter;};
+
+    friend class Session;
 
 private:
     sr_change_iter_t *_iter;
@@ -326,9 +330,8 @@ public:
     sr_change_oper_t oper() {return _oper;};
     S_Val new_val();
     S_Val old_val();
-    sr_change_oper_t *p_oper() {return &_oper;};
-    sr_val_t **p_old() {return &_old;};
-    sr_val_t **p_new() {return &_new;};
+
+    friend class Session;
 
 private:
     sr_change_oper_t _oper;

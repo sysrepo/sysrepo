@@ -85,11 +85,9 @@ void throw_exception(int error) {
     }
 }
 
-Logs::Logs()
-{
-    // for consistent swig integration
-    return;
-}
+// for consistent swig integration
+Logs::Logs() {return;}
+Logs::~Logs() {return;}
 
 void Logs::set_stderr(sr_log_level_t log_level)
 {
