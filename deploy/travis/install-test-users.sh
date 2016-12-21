@@ -16,5 +16,6 @@ chmod o+x /home
 chmod o+x /home/travis
 chmod g+rw,o-rw repository/data/*
 chmod g+ws repository/data
+setfacl -d -m g::rw repository/data
 chgrp sysrepo-users repository/data/*
 chgrp sysrepo-users repository/data
