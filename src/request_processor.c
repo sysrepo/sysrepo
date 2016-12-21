@@ -2063,7 +2063,17 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     /* reuse context from msg for req (or resp) */
     sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
 
+    /* get module name */
+    rc = sr_copy_first_ns(msg->request->rpc_req->xpath, &module_name);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for %s request (%s).", op_name,
+            msg->request->rpc_req->xpath);
+
+    /* authorize (write permissions are required to deliver the RPC/Action) */
+    rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
+
 #ifdef ENABLE_NACM
+    /* NACM access control */
     rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
     CHECK_RC_MSG_GOTO(rc, finalize, "Failed to get NACM context");
     if (NULL != nacm_ctx) {
@@ -2120,15 +2130,6 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             break;
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an %s (%s) message failed.", op_name, msg->request->rpc_req->xpath);
-
-    /* get module name */
-    rc = sr_copy_first_ns(msg->request->rpc_req->xpath, &module_name);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for %s request (%s).", op_name,
-            msg->request->rpc_req->xpath);
-
-    /* authorize (write permissions are required to deliver the RPC/Action) */
-    rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
 
     /* fill-in subscription details into the request */
     bool subscription_match = false;

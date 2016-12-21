@@ -15,6 +15,6 @@ usermod -a -G sysrepo-users sysrepo-user3
 chmod o+x /home
 chmod o+x /home/travis
 chmod g+rw,o-rw repository/data/*
-chmod g+w repository/data
+chmod g+ws repository/data
 chgrp sysrepo-users repository/data/*
 chgrp sysrepo-users repository/data
