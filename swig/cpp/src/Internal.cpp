@@ -101,7 +101,8 @@ Deleter::~Deleter() {
         if (!v._sess) break;
         int ret = sr_session_stop(v._sess);
         if (ret != SR_ERR_OK) {
-            throw_exception(ret);
+            //this exception can't be catched
+            //throw_exception(ret);
         }
 	v._sess = NULL;
     break;

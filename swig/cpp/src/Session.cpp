@@ -444,7 +444,8 @@ Subscribe::~Subscribe()
     if (_sub && _sess->_sess) {
         int ret = sr_unsubscribe(_sess->_sess, _sub);
         if (ret != SR_ERR_OK) {
-            throw_exception(ret);
+            //this exception can't be catched
+            //throw_exception(ret);
         }
 	_sub = NULL;
     }
