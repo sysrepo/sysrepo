@@ -152,6 +152,8 @@ ac_set_identity(const uid_t euid, const gid_t egid)
     rc = sr_get_user_name(euid, &username);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get username for UID %d.", euid);
 
+    SR_LOG_DBG("Switching identity to UID='%d' and GID='%d' (username: %s).", euid, egid, username);
+
     if (0 != euid) {
         /* set secondary groups while still being the root user */
         ret = initgroups(username, egid);

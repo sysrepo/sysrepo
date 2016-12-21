@@ -45,6 +45,8 @@ script:
   - ls -al repository
   - ls -al repository/data
   - sudo ctest --output-on-failure --tests-regex nacm_cl_test || (sudo cat /var/log/syslog; exit 1)
+  - su - sysrepo-user1; whoami; echo "test" > repository/data/test-module.persist; cat repository/data/test-module.persist; exit; whoami
+
 
 after_success:
   - if [ "$CC" = "gcc" ]; then codecov; fi
