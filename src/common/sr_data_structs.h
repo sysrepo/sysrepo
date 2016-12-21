@@ -363,7 +363,7 @@ int sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bo
  * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the file is already locked,
  * SR_ERR_UNATHORIZED if the file can not be locked because of the permission.
  */
-int sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, int fd, char *filename, bool write, bool blocking);
+int sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, int fd, const char *filename, bool write, bool blocking);
 
 /**
  * @brief Looks up the file based on the filename in locking set. Then the file is unlocked and fd is closed.

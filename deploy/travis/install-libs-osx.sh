@@ -29,10 +29,10 @@ else
     echo "Using cached libraries from $INSTALL_PREFIX_DIR"
 fi
 
-if [[ "$TRAVIS_BRANCH" == "devel" ]]; then
-    git clone -b devel https://github.com/CESNET/libyang.git
-else
+if [[ "$TRAVIS_BRANCH" == *"master"* ]]; then
     git clone https://github.com/CESNET/libyang.git
+else
+    git clone -b devel https://github.com/CESNET/libyang.git
 fi
 cd libyang ; mkdir build ; cd build
 cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..

@@ -351,14 +351,14 @@ pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscript
             if (0 == strcmp(node->schema->name, "type") && NULL != node_ll->value.ident->name) {
                 subscription->type = sr_subsciption_type_str_to_gpb(node_ll->value.ident->name);
             }
-            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-address")) {
+            if (0 == strcmp(node->schema->name, "destination-address") && NULL != node_ll->value_str) {
                 subscription->dst_address = strdup(node_ll->value_str);
                 CHECK_NULL_NOMEM_GOTO(subscription->dst_address, rc, cleanup);
             }
-            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-id")) {
+            if (0 == strcmp(node->schema->name, "destination-id") && NULL != node_ll->value_str) {
                 subscription->dst_id = atoi(node_ll->value_str);
             }
-            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "xpath")) {
+            if (0 == strcmp(node->schema->name, "xpath") && NULL != node_ll->value_str) {
                 subscription->xpath = strdup(node_ll->value_str);
                 CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
             }
@@ -369,13 +369,13 @@ pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscript
             if (0 == strcmp(node->schema->name, "event") && NULL != node_ll->value.ident->name) {
                 subscription->notif_event = sr_notification_event_str_to_gpb(node_ll->value.ident->name);
             }
-            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "priority")) {
+            if (0 == strcmp(node->schema->name, "priority") && NULL != node_ll->value_str) {
                 subscription->priority = atoi(node_ll->value_str);
             }
             if (0 == strcmp(node->schema->name, "enable-running")) {
                 subscription->enable_running = true;
             }
-            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "api-variant")) {
+            if (0 == strcmp(node->schema->name, "api-variant") && NULL != node_ll->value_str) {
                 subscription->api_variant = sr_api_variant_from_str(node_ll->value_str);
             }
         }
