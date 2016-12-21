@@ -269,7 +269,7 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
         assert_non_null_bt(fp);
 
         buffer = read_file_content(fp);
-        if ('\0' == buffer[0]) {
+        if ('\0' == buffer[0] && 0 != strcmp(exp_content, ".*")) {
             retry = true;
             cnt++;
         } else {
