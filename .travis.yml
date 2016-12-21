@@ -41,7 +41,7 @@ script:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then mkdir build ; cd build ; cmake -DGEN_LANGUAGE_BINDINGS=0 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DLOG_THREAD_ID=ON .. && make -j2; fi
   - ctest --output-on-failure
   - sudo ctest --output-on-failure --tests-regex ac_test
-  - sudo sh ../deploy/travis/install-test-users.sh
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo sh ../deploy/travis/install-test-users.sh; fi
   - sudo ctest --output-on-failure --tests-regex nacm_cl_test || (sudo cat /var/log/syslog; exit 1)
 
 
