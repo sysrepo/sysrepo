@@ -4742,28 +4742,26 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by converting sysrepo values/trees to libyang data tree.");
 
     /* validate the content (and also add default nodes) */
-    if (arg_cnt > 0 && !dm_skip_procedure_content_validation(xpath)) {
+    if (!dm_skip_procedure_content_validation(xpath)) {
         rc = dm_validate_procedure_content(dm_ctx, session, di, type, input, data_tree, proc_node);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Procedure validation failed.");
     }
 
     /* re-read the arguments from the data tree (it can now contain newly added default nodes) */
-    if (arg_cnt > 0) {
-        /* note: both values and trees may be needed */
-        if (with_def && with_def_cnt) {
-            *with_def = NULL;
-            *with_def_cnt = 0;
-            rc = dm_ly_datatree_to_sr_val_node(sr_mem, xpath, data_tree, SR_API_VALUES,
-                    (type != DM_PROCEDURE_EVENT_NOTIF), (void**)with_def, with_def_cnt);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Error by converting libyang data tree to sysrepo values/trees.");
-        }
-        if (with_def_tree && with_def_tree_cnt) {
-            *with_def_tree = NULL;
-            *with_def_tree_cnt = 0;
-            rc = dm_ly_datatree_to_sr_val_node(sr_mem, xpath, data_tree, SR_API_TREES,
-                    (type != DM_PROCEDURE_EVENT_NOTIF), (void**)with_def_tree, with_def_tree_cnt);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Error by converting libyang data tree to sysrepo values/trees.");
-        }
+    /* note: both values and trees may be needed */
+    if (with_def && with_def_cnt) {
+        *with_def = NULL;
+        *with_def_cnt = 0;
+        rc = dm_ly_datatree_to_sr_val_node(sr_mem, xpath, data_tree, SR_API_VALUES,
+                (type != DM_PROCEDURE_EVENT_NOTIF), (void**)with_def, with_def_cnt);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by converting libyang data tree to sysrepo values/trees.");
+    }
+    if (with_def_tree && with_def_tree_cnt) {
+        *with_def_tree = NULL;
+        *with_def_tree_cnt = 0;
+        rc = dm_ly_datatree_to_sr_val_node(sr_mem, xpath, data_tree, SR_API_TREES,
+                (type != DM_PROCEDURE_EVENT_NOTIF), (void**)with_def_tree, with_def_tree_cnt);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by converting libyang data tree to sysrepo values/trees.");
     }
 
     /* resulting data tree may be needed later */
