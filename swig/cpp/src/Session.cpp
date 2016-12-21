@@ -413,16 +413,7 @@ S_Change Session::get_change_next(S_Iter_Change iter)
     }
 }
 
-Session::~Session()
-{
-    if (_sess) {
-        int ret = sr_session_stop(_sess);
-        if (ret != SR_ERR_OK) {
-            throw_exception(ret);
-        }
-	_sess = NULL;
-    }
-}
+Session::~Session() {}
 
 void Session::copy_config(const char *module_name, sr_datastore_t src_datastore, sr_datastore_t dst_datastore)
 {
