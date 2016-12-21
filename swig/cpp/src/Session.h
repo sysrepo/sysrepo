@@ -66,6 +66,7 @@ public:
     S_Tree get_parent(S_Tree in_tree);
 
     void set_item(const char *xpath, S_Val value = NULL, const sr_edit_options_t opts = EDIT_DEFAULT);
+    void set_item_str(const char *xpath, const char *value, const sr_edit_options_t opts = EDIT_DEFAULT);
     void delete_item(const char *xpath, const sr_edit_options_t opts = EDIT_DEFAULT);
     void move_item(const char *xpath, const sr_move_position_t position, const char *relative_item = NULL);
     void refresh();
