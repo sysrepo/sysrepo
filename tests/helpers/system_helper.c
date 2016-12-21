@@ -272,9 +272,9 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
         if ('\0' == buffer[0]) {
             retry = true;
             cnt++;
-            continue;
+        } else {
+            test_file_content_str(buffer, exp_content, regex);
         }
-        test_file_content_str(buffer, exp_content, regex);
 
         free(buffer);
         ret = pclose(fp);
