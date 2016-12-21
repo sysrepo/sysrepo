@@ -34,6 +34,8 @@
 #include "test_module_helper.h"
 #include "nacm_module_helper.h"
 
+//#define DEBUG_MODE
+
 bool satisfied_requirements = true; /**< Indices if the test can be actually run with the current system configuration */
 bool daemon_run_before_test = false; /**< Indices if the daemon was running before executing the test. */
 
@@ -118,7 +120,22 @@ sysrepo_setup_with_empty_nacm_cfg(void **state)
 static void
 common_nacm_config(test_nacm_cfg_t *nacm_config)
 {
-    /* TODO */
+    /* groups & users */
+    add_nacm_user(nacm_config, "sysrepo-user1", "group1");
+    add_nacm_user(nacm_config, "sysrepo-user2", "group2");
+    add_nacm_user(nacm_config, NULL, "group3");
+    add_nacm_user(nacm_config, "sysrepo-user3", "group1");
+    add_nacm_user(nacm_config, "sysrepo-user3", "group2");
+    add_nacm_user(nacm_config, "sysrepo-user3", "group4");
+    /* access lists */
+    add_nacm_rule_list(nacm_config, "acl1", "group1", "group4", "group5", NULL);
+    add_nacm_rule_list(nacm_config, "acl2", "group2", "group3", NULL);
+    add_nacm_rule_list(nacm_config, "acl3", "group4", NULL);
+    /*  -> acl1: */
+    add_nacm_rule(nacm_config, "acl1", "deny-activate-software-image", "test-module", NACM_RULE_RPC,
+            "activate-software-image", "exec", "deny", "Not allowed to run activate-software-image");
+    /*  -> acl2: */
+    /*  -> acl3: */
 }
 
 static int
@@ -214,7 +231,7 @@ nacm_cl_test_rpc_acl_with_empty_nacm_cfg(void **state)
     int callback_called = 0;
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
-    sr_session_ctx_t *session = NULL;
+    sr_session_ctx_t *session[3] = {NULL}, *handler_session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *output = NULL;
     size_t output_cnt = 0;
@@ -224,33 +241,71 @@ nacm_cl_test_rpc_acl_with_empty_nacm_cfg(void **state)
         skip();
     }
 
-    /* start a session */
+    /* start sessions */
     assert_non_null(conn);
-    rc = sr_session_start_user(conn, "sysrepo-user1", SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start_user(conn, "sysrepo-user1", SR_DS_STARTUP, SR_SESS_DEFAULT, &session[0]);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start_user(conn, "sysrepo-user2", SR_DS_STARTUP, SR_SESS_DEFAULT, &session[1]);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start_user(conn, "sysrepo-user3", SR_DS_STARTUP, SR_SESS_DEFAULT, &session[2]);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* subscribe for RPC */
-    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", dummy_rpc_cb, &callback_called,
+    /* subscribe for RPCs with dummy callback */
+    rc = sr_rpc_subscribe(handler_session, "/test-module:activate-software-image", dummy_rpc_cb, &callback_called,
             SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* check permission to execute the RPC */
-    rc = sr_check_exec_permission(session, "/test-module:activate-software-image", &permitted);
+    /* subscribe for Action with dummy callback */
+    rc = sr_action_subscribe(handler_session, "/test-module:kernel-modules/kernel-module/get-dependencies",
+            dummy_rpc_cb, &callback_called, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* test "activate-software-image" RPC */
+#undef RPC_XPATH
+#define RPC_XPATH "/test-module:activate-software-image"
+    /*  -> sysrepo-user1 */
+    rc = sr_check_exec_permission(session[0], RPC_XPATH, &permitted);
     assert_int_equal(rc, SR_ERR_OK);
     assert_true(permitted);
-
-    /* send a RPC */
-    rc = sr_rpc_send(session, "/test-module:activate-software-image", NULL, 0, &output, &output_cnt);
+    callback_called = 0;
+    rc = sr_rpc_send(session[0], RPC_XPATH, NULL, 0, &output, &output_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(1, callback_called);
+    assert_int_equal(2, output_cnt);
+    sr_free_values(output, output_cnt);
+    /*  -> sysrepo-user2 */
+    rc = sr_check_exec_permission(session[1], RPC_XPATH, &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(permitted);
+    callback_called = 0;
+    rc = sr_rpc_send(session[1], RPC_XPATH, NULL, 0, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1, callback_called);
+    assert_int_equal(2, output_cnt);
+    sr_free_values(output, output_cnt);
+    /*  -> sysrepo-user3 */
+    rc = sr_check_exec_permission(session[2], RPC_XPATH, &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(permitted);
+    callback_called = 0;
+    rc = sr_rpc_send(session[2], RPC_XPATH, NULL, 0, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1, callback_called);
+    assert_int_equal(2, output_cnt);
     sr_free_values(output, output_cnt);
 
     /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* stop the session */
-    rc = sr_session_stop(session);
+    /* stop sessions */
+    for (int i = 0; i < 3; ++i) {
+        rc = sr_session_stop(session[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+    rc = sr_session_stop(handler_session);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
@@ -260,53 +315,7 @@ nacm_cl_test_rpc_acl(void **state)
     int callback_called = 0;
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
-    sr_session_ctx_t *session = NULL;
-    sr_subscription_ctx_t *subscription = NULL;
-    sr_val_t *output = NULL;
-    size_t output_cnt = 0;
-    bool permitted = true;
-
-    if (!satisfied_requirements) {
-        skip();
-    }
-
-    /* start a session */
-    assert_non_null(conn);
-    rc = sr_session_start_user(conn, "sysrepo-user1", SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* subscribe for RPC */
-    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", dummy_rpc_cb, &callback_called,
-            SR_SUBSCR_DEFAULT, &subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* check permission to execute the RPC */
-    rc = sr_check_exec_permission(session, "/test-module:activate-software-image", &permitted);
-    assert_int_equal(rc, SR_ERR_OK);
-    assert_true(permitted);
-
-    /* send a RPC */
-    rc = sr_rpc_send(session, "/test-module:activate-software-image", NULL, 0, &output, &output_cnt);
-    assert_int_equal(rc, SR_ERR_OK);
-    assert_int_equal(1, callback_called);
-    sr_free_values(output, output_cnt);
-
-    /* unsubscribe */
-    rc = sr_unsubscribe(NULL, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* stop the session */
-    rc = sr_session_stop(session);
-    assert_int_equal(rc, SR_ERR_OK);
-}
-
-static void
-nacm_cl_test_rpc_acl_with_denied_exec_by_dflt(void **state)
-{
-    int callback_called = 0;
-    int rc = SR_ERR_OK;
-    sr_conn_ctx_t *conn = *state;
-    sr_session_ctx_t *session = NULL;
+    sr_session_ctx_t *session[3] = {NULL}, *handler_session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *output = NULL;
     size_t output_cnt = 0;
@@ -317,38 +326,170 @@ nacm_cl_test_rpc_acl_with_denied_exec_by_dflt(void **state)
         skip();
     }
 
-    /* start a session */
+    /* start sessions */
     assert_non_null(conn);
-    rc = sr_session_start_user(conn, "sysrepo-user1", SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start_user(conn, "sysrepo-user1", SR_DS_STARTUP, SR_SESS_DEFAULT, &session[0]);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start_user(conn, "sysrepo-user2", SR_DS_STARTUP, SR_SESS_DEFAULT, &session[1]);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start_user(conn, "sysrepo-user3", SR_DS_STARTUP, SR_SESS_DEFAULT, &session[2]);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* subscribe for RPC */
-    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", dummy_rpc_cb, &callback_called,
+    /* subscribe for RPCs with dummy callback */
+    rc = sr_rpc_subscribe(handler_session, "/test-module:activate-software-image", dummy_rpc_cb, &callback_called,
             SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* check permission to execute the RPC */
-    rc = sr_check_exec_permission(session, "/test-module:activate-software-image", &permitted);
+    /* subscribe for Action with dummy callback */
+    rc = sr_action_subscribe(handler_session, "/test-module:kernel-modules/kernel-module/get-dependencies",
+            dummy_rpc_cb, &callback_called, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_false(permitted);
 
-    /* send a RPC */
+    /* test "activate-software-image" RPC */
 #undef RPC_XPATH
 #define RPC_XPATH "/test-module:activate-software-image"
-    rc = sr_rpc_send(session, RPC_XPATH, NULL, 0, &output, &output_cnt);
+    /*  -> sysrepo-user1 */
+    rc = sr_check_exec_permission(session[0], RPC_XPATH, &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_false(permitted);
+    callback_called = 0;
+    rc = sr_rpc_send(session[0], RPC_XPATH, NULL, 0, &output, &output_cnt);
     assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
     assert_int_equal(0, callback_called);
-    rc = sr_get_last_error(session, &error_info);
+    rc = sr_get_last_error(session[0], &error_info);
     assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
     assert_string_equal(RPC_XPATH, error_info->xpath);
-    assert_string_equal("Execution of the operation '" RPC_XPATH "' was blocked by NACM.", error_info->message);
+    assert_string_equal("Execution of the operation '" RPC_XPATH "' was blocked by the NACM rule 'deny-activate-software-image' "
+                        "(Not allowed to run activate-software-image).", error_info->message);
+    /*  -> sysrepo-user2 */
+    rc = sr_check_exec_permission(session[1], RPC_XPATH, &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(permitted);
+    callback_called = 0;
+    rc = sr_rpc_send(session[1], RPC_XPATH, NULL, 0, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1, callback_called);
+    assert_int_equal(2, output_cnt);
+    sr_free_values(output, output_cnt);
+    /*  -> sysrepo-user3 */
+    rc = sr_check_exec_permission(session[2], RPC_XPATH, &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_false(permitted);
+    callback_called = 0;
+    rc = sr_rpc_send(session[2], RPC_XPATH, NULL, 0, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_int_equal(0, callback_called);
+    rc = sr_get_last_error(session[2], &error_info);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_string_equal(RPC_XPATH, error_info->xpath);
+    assert_string_equal("Execution of the operation '" RPC_XPATH "' was blocked by the NACM rule 'deny-activate-software-image' "
+                        "(Not allowed to run activate-software-image).", error_info->message);
 
     /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* stop the session */
-    rc = sr_session_stop(session);
+    /* stop sessions */
+    for (int i = 0; i < 3; ++i) {
+        rc = sr_session_stop(session[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+    rc = sr_session_stop(handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+nacm_cl_test_rpc_acl_with_denied_exec_by_dflt(void **state)
+{
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+    sr_conn_ctx_t *conn = *state;
+    sr_session_ctx_t *session[3] = {NULL}, *handler_session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t *output = NULL;
+    size_t output_cnt = 0;
+    bool permitted = true;
+    const sr_error_info_t *error_info = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* start sessions */
+    assert_non_null(conn);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start_user(conn, "sysrepo-user1", SR_DS_STARTUP, SR_SESS_DEFAULT, &session[0]);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start_user(conn, "sysrepo-user2", SR_DS_STARTUP, SR_SESS_DEFAULT, &session[1]);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start_user(conn, "sysrepo-user3", SR_DS_STARTUP, SR_SESS_DEFAULT, &session[2]);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for RPCs with dummy callback */
+    rc = sr_rpc_subscribe(handler_session, "/test-module:activate-software-image", dummy_rpc_cb, &callback_called,
+            SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for Action with dummy callback */
+    rc = sr_action_subscribe(handler_session, "/test-module:kernel-modules/kernel-module/get-dependencies",
+            dummy_rpc_cb, &callback_called, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* test "activate-software-image" RPC */
+#undef RPC_XPATH
+#define RPC_XPATH "/test-module:activate-software-image"
+    /*  -> sysrepo-user1 */
+    rc = sr_check_exec_permission(session[0], RPC_XPATH, &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_false(permitted);
+    callback_called = 0;
+    rc = sr_rpc_send(session[0], RPC_XPATH, NULL, 0, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_int_equal(0, callback_called);
+    rc = sr_get_last_error(session[0], &error_info);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_string_equal(RPC_XPATH, error_info->xpath);
+    assert_string_equal("Execution of the operation '" RPC_XPATH "' was blocked by the NACM rule 'deny-activate-software-image' "
+                        "(Not allowed to run activate-software-image).", error_info->message);
+    /*  -> sysrepo-user2 */
+    rc = sr_check_exec_permission(session[1], RPC_XPATH, &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_false(permitted);
+    callback_called = 0;
+    rc = sr_rpc_send(session[1], RPC_XPATH, NULL, 0, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_int_equal(0, callback_called);
+    rc = sr_get_last_error(session[1], &error_info);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_string_equal(RPC_XPATH, error_info->xpath);
+    assert_string_equal("Execution of the operation '" RPC_XPATH "' was blocked by NACM.", error_info->message);
+    /*  -> sysrepo-user3 */
+    rc = sr_check_exec_permission(session[2], RPC_XPATH, &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_false(permitted);
+    callback_called = 0;
+    rc = sr_rpc_send(session[2], RPC_XPATH, NULL, 0, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_int_equal(0, callback_called);
+    rc = sr_get_last_error(session[2], &error_info);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_string_equal(RPC_XPATH, error_info->xpath);
+    assert_string_equal("Execution of the operation '" RPC_XPATH "' was blocked by the NACM rule 'deny-activate-software-image' "
+                        "(Not allowed to run activate-software-image).", error_info->message);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop sessions */
+    for (int i = 0; i < 3; ++i) {
+        rc = sr_session_stop(session[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+    rc = sr_session_stop(handler_session);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
@@ -358,43 +499,88 @@ nacm_cl_test_rpc_acl_with_ext_groups(void **state)
     int callback_called = 0;
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
-    sr_session_ctx_t *session = NULL;
+    sr_session_ctx_t *session[3] = {NULL}, *handler_session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *output = NULL;
     size_t output_cnt = 0;
     bool permitted = true;
+    const sr_error_info_t *error_info = NULL;
 
     if (!satisfied_requirements) {
         skip();
     }
 
-    /* start a session */
+    /* start sessions */
     assert_non_null(conn);
-    rc = sr_session_start_user(conn, "sysrepo-user1", SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start_user(conn, "sysrepo-user1", SR_DS_STARTUP, SR_SESS_DEFAULT, &session[0]);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start_user(conn, "sysrepo-user2", SR_DS_STARTUP, SR_SESS_DEFAULT, &session[1]);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start_user(conn, "sysrepo-user3", SR_DS_STARTUP, SR_SESS_DEFAULT, &session[2]);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* subscribe for RPC */
-    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", dummy_rpc_cb, &callback_called,
+    /* subscribe for RPCs with dummy callback */
+    rc = sr_rpc_subscribe(handler_session, "/test-module:activate-software-image", dummy_rpc_cb, &callback_called,
             SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* check permission to execute the RPC */
-    rc = sr_check_exec_permission(session, "/test-module:activate-software-image", &permitted);
+    /* subscribe for Action with dummy callback */
+    rc = sr_action_subscribe(handler_session, "/test-module:kernel-modules/kernel-module/get-dependencies",
+            dummy_rpc_cb, &callback_called, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* test "activate-software-image" RPC */
+#undef RPC_XPATH
+#define RPC_XPATH "/test-module:activate-software-image"
+    /*  -> sysrepo-user1 */
+    rc = sr_check_exec_permission(session[0], RPC_XPATH, &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_false(permitted);
+    callback_called = 0;
+    rc = sr_rpc_send(session[0], RPC_XPATH, NULL, 0, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_int_equal(0, callback_called);
+    rc = sr_get_last_error(session[0], &error_info);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_string_equal(RPC_XPATH, error_info->xpath);
+    assert_string_equal("Execution of the operation '" RPC_XPATH "' was blocked by the NACM rule 'deny-activate-software-image' "
+                        "(Not allowed to run activate-software-image).", error_info->message);
+    /*  -> sysrepo-user2 */
+    rc = sr_check_exec_permission(session[1], RPC_XPATH, &permitted);
     assert_int_equal(rc, SR_ERR_OK);
     assert_true(permitted);
-
-    /* send a RPC */
-    rc = sr_rpc_send(session, "/test-module:activate-software-image", NULL, 0, &output, &output_cnt);
+    callback_called = 0;
+    rc = sr_rpc_send(session[1], RPC_XPATH, NULL, 0, &output, &output_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(1, callback_called);
+    assert_int_equal(2, output_cnt);
     sr_free_values(output, output_cnt);
+    /*  -> sysrepo-user3 */
+    rc = sr_check_exec_permission(session[2], RPC_XPATH, &permitted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_false(permitted);
+    callback_called = 0;
+    rc = sr_rpc_send(session[2], RPC_XPATH, NULL, 0, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_int_equal(0, callback_called);
+    rc = sr_get_last_error(session[2], &error_info);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_string_equal(RPC_XPATH, error_info->xpath);
+    assert_string_equal("Execution of the operation '" RPC_XPATH "' was blocked by the NACM rule 'deny-activate-software-image' "
+                        "(Not allowed to run activate-software-image).", error_info->message);
 
     /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* stop the session */
-    rc = sr_session_stop(session);
+    /* stop sessions */
+    for (int i = 0; i < 3; ++i) {
+        rc = sr_session_stop(session[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+    rc = sr_session_stop(handler_session);
     assert_int_equal(rc, SR_ERR_OK);
 }
 

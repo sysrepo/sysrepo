@@ -1000,9 +1000,8 @@ nacm_config_for_basic_read_access_tests(bool disable_nacm, const char *read_dflt
     add_nacm_rule_list(nacm_config, "acl2", "group2", "group3", NULL);
     add_nacm_rule_list(nacm_config, "acl3", "group4", NULL);
     /*  -> acl1: */
-#define ACL1_RULE1_COMMENT  "Do not allow any access to the 'boolean' leaf."
     add_nacm_rule(nacm_config, "acl1", "deny-boolean", "test-module", NACM_RULE_DATA,
-            XP_TEST_MODULE_BOOL, "*", "deny", ACL1_RULE1_COMMENT);
+            XP_TEST_MODULE_BOOL, "*", "deny", "Do not allow any access to the 'boolean' leaf.");
     add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
             "/test-module:main/numbers[.>10]", "*", "deny", NULL);
     add_nacm_rule(nacm_config, "acl1", "permit-access-to-list", "test-module", NACM_RULE_DATA,
