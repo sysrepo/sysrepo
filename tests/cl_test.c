@@ -426,7 +426,7 @@ cl_get_item_test(void **state)
     assert_null(value);
 
     /* empty data tree */
-    rc = sr_get_item(session, "/small-module:item", &value);
+    rc = sr_get_item(session, "/small-module:item/name", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* bad element in existing module returns SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT*/
@@ -506,7 +506,7 @@ cl_get_subtree_test(void **state)
     assert_null(tree);
 
     /* empty data tree */
-    rc = sr_get_subtree(session, "/small-module:item", 0, &tree);
+    rc = sr_get_subtree(session, "/small-module:item/name", 0, &tree);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* bad element in existing module returns SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT*/
@@ -659,7 +659,7 @@ cl_get_items_test(void **state)
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
 
     /* empty data tree */
-    rc = sr_get_items(session, "/small-module:item", &values, &values_cnt);
+    rc = sr_get_items(session, "/small-module:item/name", &values, &values_cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* bad element in existing module produces SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT */
@@ -729,7 +729,7 @@ cl_get_subtrees_test(void **state)
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
 
     /* empty data tree */
-    rc = sr_get_subtrees(session, "/small-module:item", 0, &trees, &tree_cnt);
+    rc = sr_get_subtrees(session, "/small-module:item/name", 0, &trees, &tree_cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* bad element in existing module produces SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT */
@@ -795,7 +795,7 @@ cl_get_items_iter_test(void **state)
     assert_null(it);
 
     /* empty data tree */
-    rc = sr_get_items_iter(session, "/small-module:item", &it);
+    rc = sr_get_items_iter(session, "/small-module:item/name", &it);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(it);
 

@@ -1415,7 +1415,9 @@ void get_value_wrapper_test(void **state){
     /* empty data tree */
     ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/small-module:item", &value);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val(value);
+    value = NULL;
 
     /* not exisiting now in existing data tree*/
     ses_ctx->state = RP_REQ_NEW;
@@ -1446,7 +1448,8 @@ void get_tree_wrapper_test(void **state){
     /* empty data tree */
     ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/small-module:item", &tree);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_tree(tree);
     tree = NULL;
 
     /* not exisiting now in existing data tree*/
