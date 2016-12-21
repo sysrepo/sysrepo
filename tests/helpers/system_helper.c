@@ -169,9 +169,8 @@ read_file_content(FILE *fp)
 }
 
 static void
-test_fp_content(FILE *fp, const char *exp_content, bool regex)
+test_file_content_str(const char *file_content, const char *exp_content, bool regex)
 {
-    char *buffer = read_file_content(fp);
     bool nomatch = false;
     int rc = 0;
 
@@ -189,10 +188,10 @@ test_fp_content(FILE *fp, const char *exp_content, bool regex)
         assert_int_equal_bt(0, rc);
 
         /* Execute regular expression */
-        rc = regexec(&re, buffer, 0, NULL, 0);
+        rc = regexec(&re, file_content, 0, NULL, 0);
         if ((nomatch ? REG_NOMATCH : 0) != rc) {
             printf("REGEX: '%s'\n", exp_content);
-            printf("FILE: '%s'\n", buffer);
+            printf("FILE: '%s'\n", file_content);
         }
         assert_int_equal_bt(nomatch ? REG_NOMATCH : 0, rc);
 
@@ -201,27 +200,29 @@ test_fp_content(FILE *fp, const char *exp_content, bool regex)
 #endif
     } else {
         /* Plain string comparison */
-        rc = strcmp(exp_content, buffer);
+        rc = strcmp(exp_content, file_content);
         if (!(nomatch ? rc != 0 : rc == 0)) {
             printf("EXPECTED: '%s'\n", exp_content);
-            printf("FILE: '%s'\n", buffer);
+            printf("FILE: '%s'\n", file_content);
         }
 
         assert_true_bt(nomatch ? rc != 0 : rc == 0);
     }
-
-    /* Cleanup */
-    free(buffer);
 }
 
 void
 test_file_content(const char *path, const char *exp_content, bool regex)
 {
     FILE *fp = NULL;
+    char *buffer = NULL;
 
     fp = fopen(path, "r");
     assert_non_null_bt(fp);
-    test_fp_content(fp, exp_content, regex);
+
+    buffer = read_file_content(fp);
+    test_file_content_str(buffer, exp_content, regex);
+
+    free(buffer);
     fclose(fp);
 }
 
@@ -257,16 +258,26 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
 {
     int ret = 0;
     FILE *fp = NULL;
+    char *buffer = NULL;
+    bool retry = false;
+    size_t cnt = 0;
 
-    fprintf(stderr, "Executing: '%s', expecting '%s'", cmd, exp_content);
-    char cwd[1024];
-    if (getcwd(cwd, sizeof(cwd)) != NULL) {
-        fprintf(stderr, "\nCurrent working dir: %s\n", cwd);
-    }
+    do {
+        retry = false;
 
-    fp = popen(cmd, "r");
-    assert_non_null_bt(fp);
-    test_fp_content(fp, exp_content, regex);
-    ret = pclose(fp);
-    assert_int_equal_bt(exp_ret, WEXITSTATUS(ret));
+        fp = popen(cmd, "r");
+        assert_non_null_bt(fp);
+
+        buffer = read_file_content(fp);
+        if ('\0' == buffer[0]) {
+            retry = true;
+            cnt++;
+            continue;
+        }
+        test_file_content_str(buffer, exp_content, regex);
+
+        free(buffer);
+        ret = pclose(fp);
+        assert_int_equal_bt(exp_ret, WEXITSTATUS(ret));
+    } while (retry && cnt < 10);
 }
