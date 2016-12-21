@@ -278,6 +278,8 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
 
         free(buffer);
         ret = pclose(fp);
-        assert_int_equal_bt(exp_ret, WEXITSTATUS(ret));
+        if (!retry) {
+            assert_int_equal_bt(exp_ret, WEXITSTATUS(ret));
+        }
     } while (retry && cnt < 10);
 }
