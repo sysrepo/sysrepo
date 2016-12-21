@@ -45,7 +45,7 @@ test_rp_ctx_create(cm_connection_mode_t conn_mode, rp_ctx_t **rp_ctx_p)
     rc = ac_init(TEST_DATA_SEARCH_DIR, &ctx->ac_ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = np_init(ctx, &ctx->np_ctx);
+    rc = np_init(ctx, TEST_INTERNAL_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx->np_ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = pm_init(ctx, TEST_INTERNAL_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx->pm_ctx);

@@ -58,14 +58,41 @@ typedef struct np_subscription_s {
 } np_subscription_t;
 
 /**
+ * @brief Type of the event notification data stored within the ::np_ev_notification_t structure.
+ */
+typedef enum np_ev_notif_data_type_s {
+    NP_EV_NOTIF_DATA_NONE,             /**< No data. */
+    NP_EV_NOTIF_DATA_XML,              /**< Data in XML format. */
+    NP_EV_NOTIF_DATA_VALUES,           /**< Data in st_val_t format. */
+    NP_EV_NOTIF_DATA_TREES,            /**< Data in sr_node_t format. */
+} np_ev_notif_data_type_t;
+
+/**
+ * @brief Event notification retrieved from the datastore.
+ */
+typedef struct np_ev_notification_s {
+    const char *xpath;                  /**< XPath of the notification. */
+    time_t timestamp;                   /**< Notification generation time. */
+    np_ev_notif_data_type_t data_type;  /**< type of the notification data, if available. */
+    union {
+        struct lyxml_elem *xml;         /**< XML of the data as parsed by libyang. */
+        sr_val_t *values;               /**< Values with the notification data. */
+        sr_node_t *trees;               /**< Trees with the notification data. */
+    } data;
+    size_t data_cnt;                    /**< Values of the data. */
+} np_ev_notification_t;
+
+/**
  * @brief Initializes a Notification Processor instance.
  *
  * @param[in] rp_ctx Request Processor context.
+ * @param[in] schema_search_dir Directory containing PM's YANG module schema.
+ * @param[in] data_search_dir Directory containing the data files.
  * @param[out] np_ctx Allocated Notification Processor context that can be used in subsequent NP API calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx);
+int np_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search_dir, np_ctx_t **np_ctx);
 
 /**
  * @brief Cleans up the Notification Processor instance.
@@ -287,6 +314,54 @@ void np_free_subscription_content(np_subscription_t *subscription);
  * @param[in] subscriptions_cnt Count of the subscriptions in the array.
  */
 void np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt);
+
+/**
+ * @brief Stores an event notification in the notification datastore.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] user_cred Credentials of the user requesting storing of the notification.
+ * @param[in] xpath XPath of the notification to be stored.
+ * @param[in] generated_time Time when notification has been generated.
+ * @param[in] data_tree Pointer to the data tree of the notification. Will be freed and pointer
+ * set to NULL upon successful execution.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath,
+        const time_t generated_time, struct lyd_node **data_tree);
+
+/**
+ * @brief Retrieves event notifications from the notification datastore.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] rp_session Request Processor session context.
+ * @param[in] sr_mem Sysrepo memory context.
+ * @param[in] xpath XPath of the notification to be retrieved.
+ * @param[in] start_time Start time of the time window.
+ * @param[in] stop_time Stop time of the time window.
+ * @param[in] Requested API variant (values/trees) of the data to be retrieved.
+ * @param[out] notifications List with all notifications matching requested parameters.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, const char *xpath,
+        const time_t start_time, const time_t stop_time, const sr_api_variant_t api_variant, sr_list_t **notifications);
+
+/**
+ * @brief Cleans up an event notification structure.
+ *
+ * @param[in] notification Event notification context to be destroyed.
+ */
+void np_event_notification_cleanup(np_ev_notification_t *notification);
+
+/**
+ * @brief Cleans up notification store - old notification data files.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_notification_store_cleanup(np_ctx_t *np_ctx);
 
 /**@} np */
 

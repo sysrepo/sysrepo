@@ -677,14 +677,26 @@ message GetChangesResp {
 // RPC (Remote Procedure Calls) / Action API
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief Sends a request to check if the owner of this session is authorized to invoke
+ * the protocol operation referenced by the xpath.
+ * Sent by sr_check_exec_permission.
+ */
 message CheckExecPermReq {
     required string xpath = 1;
 }
 
+/**
+ * @brief Response to sr_check_exec_permission request.
+ */
 message CheckExecPermResp {
     required bool permitted = 1;
 }
 
+/**
+ * @brief Sends a RPC / action request into the datastore, will be delivered to the RPC subscriber.
+ * Sent by sr_rpc_send / sr_rpc_send_tree and sr_action_send / sr_action_send_tree API calls.
+ */
 message RPCReq {
   required bool action = 1;
   required string xpath = 2;
@@ -696,6 +708,9 @@ message RPCReq {
   optional uint32 subscription_id = 11;
 }
 
+/**
+ * @brief Response to sr_rpc_send / sr_rpc_send_tree or sr_action_send / sr_action_send_tree request.
+ */
 message RPCResp {
   required bool action = 1;
   required string xpath = 2;
@@ -709,11 +724,26 @@ message RPCResp {
 // Event Notifications API
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief Sends an event notification into the datastore, will be delivered to all notification subscribers.
+ * Sent by sr_event_notif_send API call.
+ */
 message EventNotifReq {
-  required string xpath = 1;
-  repeated Value values = 2;
-  repeated Node trees = 3;
-  required uint64 timestamp = 4;
+  /**
+   * @brief Type of the event notification.
+   */
+  enum NotifType {
+    REALTIME = 1;
+    REPLAY = 2;
+    REPLAY_COMPLETE = 3;
+    REPLAY_STOP = 4;
+  }
+
+  required NotifType type = 1;
+  required string xpath = 2;
+  repeated Value values = 3;
+  repeated Node trees = 4;
+  required uint64 timestamp = 5;
 
   optional string subscriber_address = 10;
   optional uint32 subscription_id = 11;
@@ -721,7 +751,30 @@ message EventNotifReq {
   required bool do_not_send_reply = 20;
 }
 
+/**
+ * @brief Response to sr_event_notif_send request.
+ */
 message EventNotifResp {
+}
+
+/**
+ * @brief Sends a request to replay event notifications stored in the datastore.
+ * Sent by sr_event_notif_replay API call.
+ */
+message EventNotifReplayReq {
+  required string xpath = 1;
+  required uint64 start_time = 2;
+  required uint64 stop_time = 3;
+
+  required string subscriber_address = 10;
+  required uint32 subscription_id = 11;
+  required ApiVariant api_variant = 12;
+}
+
+/**
+ * @brief Response to sr_event_notif_replay request.
+ */
+message EventNotifReplayResp {
 }
 
 
@@ -860,10 +913,17 @@ enum Operation {
   GET_CHANGES = 73;
 
   DATA_PROVIDE = 80;
+<<<<<<< HEAD
   CHECK_EXEC_PERMISSION = 81;
   RPC = 82;
   ACTION = 83;
   EVENT_NOTIF = 84;
+=======
+  RPC = 81;
+  ACTION = 82;
+  EVENT_NOTIF = 83;
+  EVENT_NOTIF_REPLAY = 84;
+>>>>>>> sysrepo/devel
 
   UNSUBSCRIBE_DESTINATION = 101;
   COMMIT_TIMEOUT = 102;
@@ -914,9 +974,15 @@ message Request {
   optional GetChangesReq get_changes_req = 73;
 
   optional DataProvideReq data_provide_req = 80;
+<<<<<<< HEAD
   optional CheckExecPermReq check_exec_perm_req = 81;
   optional RPCReq rpc_req = 82;
   optional EventNotifReq event_notif_req = 83;
+=======
+  optional RPCReq rpc_req = 81;
+  optional EventNotifReq event_notif_req = 82;
+  optional EventNotifReplayReq event_notif_replay_req = 83;
+>>>>>>> sysrepo/devel
 }
 
 /**
@@ -964,9 +1030,15 @@ message Response {
   optional GetChangesResp get_changes_resp = 73;
 
   optional DataProvideResp data_provide_resp = 80;
+<<<<<<< HEAD
   optional CheckExecPermResp check_exec_perm_resp = 81;
   optional RPCResp rpc_resp = 82;
   optional EventNotifResp event_notif_resp = 83;
+=======
+  optional RPCResp rpc_resp = 81;
+  optional EventNotifResp event_notif_resp = 82;
+  optional EventNotifReplayResp event_notif_replay_resp = 83;
+>>>>>>> sysrepo/devel
 }
 
 /**

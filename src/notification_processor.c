@@ -21,14 +21,29 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <stdio.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <math.h>
+#include <time.h>
 
 #include "sr_common.h"
 #include "rp_internal.h"
 #include "persistence_manager.h"
 #include "notification_processor.h"
 #include "request_processor.h"
+#include "data_manager.h"
+
+#define NP_NS_SCHEMA_FILE                  "sysrepo-notification-store.yang"  /**< Schema of notification store. */
+#define NP_NS_XPATH_NOTIFICATION           "/sysrepo-notification-store:notifications/notification[xpath='%s'][generated-time='%s'][logged-time='%u']"
+#define NP_NS_XPATH_NOTIFICATION_BY_XPATH  "/sysrepo-notification-store:notifications/notification[xpath='%s']"
+
+
+#define NP_NOTIF_FILE_WINDOW 10 /** Time window for notifications to be grouped into one data file (in minutes). */
+#define NP_NOTIF_AGE_TIMEOUT 60 /** Timeout after which notifications will be erased from the notification store (in minutes). */
 
 /**
  * @brief Information about a notification destination.
@@ -63,6 +78,10 @@ typedef struct np_ctx_s {
     sr_btree_t *dst_info_btree;           /**< Binary tree used for fast destination info lookup. */
     sr_llist_t *commits;                  /**< Linked-list of ongoing commits. */
     pthread_rwlock_t lock;                /**< Read-write lock for the context. */
+    struct ly_ctx *ly_ctx;                /**< libyang context used locally in NP. */
+    const char *data_search_dir;          /**< Directory containing the data files. */
+    const struct lys_module *ns_schema;   /**< Schema tree of the notification store YANG. */
+    sr_locking_set_t *lock_ctx;           /**< Context for locking notification store files. */
 } np_ctx_t;
 
 /**
@@ -297,7 +316,8 @@ unlock:
  * @brief Adds an error xpath into commit context.
  */
 static int
-np_commit_error_add(np_commit_ctx_t *commit_ctx, const char *err_subs_xpath, bool do_not_send_abort, const char *err_msg, const char *err_xpath)
+np_commit_error_add(np_commit_ctx_t *commit_ctx, const char *err_subs_xpath, bool do_not_send_abort,
+        const char *err_msg, const char *err_xpath)
 {
     sr_error_info_t *error = NULL;
     int rc = SR_ERR_OK;
@@ -329,11 +349,353 @@ np_commit_error_add(np_commit_ctx_t *commit_ctx, const char *err_subs_xpath, boo
     return rc;
 }
 
+/**
+ * @brief Loads the data tree from provided file.
+ */
+static int
+np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *data_filename,
+        const bool read_only, struct lyd_node **data_tree, int *fd_p)
+{
+    int fd = -1;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, data_filename, data_tree);
+
+    /* open the file as the proper user */
+    if (NULL != user_cred) {
+        ac_set_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
+    }
+
+    fd = open(data_filename, (read_only ? O_RDONLY : O_RDWR));
+
+    if (NULL != user_cred) {
+        ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx);
+    }
+
+    if (-1 == fd) {
+        /* error by open */
+        if (ENOENT == errno) {
+            SR_LOG_DBG("Data file '%s' does not exist.", data_filename);
+            if (read_only) {
+                SR_LOG_DBG("No data for '%s' will be loaded.", data_filename);
+                rc = SR_ERR_DATA_MISSING;
+            } else {
+                /* create new persist file */
+                ac_set_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
+                fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+                ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx);
+                if (-1 == fd) {
+                    SR_LOG_ERR("Unable to create a new data file '%s': %s", data_filename, sr_strerror_safe(errno));
+                    rc = SR_ERR_INTERNAL;
+                }
+            }
+        } else if (EACCES == errno) {
+            SR_LOG_ERR("Insufficient permissions to access the data file '%s'.", data_filename);
+            rc = SR_ERR_UNAUTHORIZED;
+        } else {
+            SR_LOG_ERR("Unable to open the data file '%s': %s.", data_filename, sr_strerror_safe(errno));
+            rc = SR_ERR_INTERNAL;
+        }
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
+    }
+
+    /* lock & load the data tree */
+    rc = sr_locking_set_lock_fd(np_ctx->lock_ctx, fd, data_filename, (read_only ? false : true), true);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to lock data file '%s'.", data_filename);
+
+    *data_tree = lyd_parse_fd(np_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_OPT_NOAUTODEL);
+    if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
+        SR_LOG_ERR("Parsing data from file '%s' failed: %s", data_filename, ly_errmsg());
+        rc = SR_ERR_INTERNAL;
+    } else {
+        SR_LOG_DBG("Data successfully loaded from file '%s'.", data_filename);
+    }
+
+    if ((SR_ERR_OK != rc) || (true == read_only) || (NULL == fd_p)) {
+        /* unlock and close fd in case of read_only has been requested */
+        sr_locking_set_unlock_close_fd(np_ctx->lock_ctx, fd);
+    } else {
+        /* return open fd to locked file otherwise */
+        *fd_p = fd;
+    }
+
+cleanup:
+    return rc;
+}
+
+/**
+ * @brief Saves the data tree into the file specified by file descriptor.
+ */
+static int
+np_save_data_tree(struct lyd_node *data_tree, int fd)
+{
+    int ret = 0;
+
+    CHECK_NULL_ARG(data_tree);
+
+    /* empty file content */
+    ret = ftruncate(fd, 0);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File truncate failed: %s", sr_strerror_safe(errno));
+
+    /* print data tree to file */
+    ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_EXPLICIT);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving notification store data tree failed: %s", ly_errmsg());
+
+    /* flush in-core data to the disc */
+    ret = fsync(fd);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", sr_strerror_safe(errno));
+
+    SR_LOG_DBG_MSG("Data tree successfully saved.");
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Cleans up specified data tree and closes specified file descriptor.
+ */
+static void
+np_cleanup_data_tree(np_ctx_t *np_ctx, struct lyd_node *data_tree, int fd)
+{
+    if (NULL != data_tree) {
+        lyd_free_withsiblings(data_tree);
+    }
+    if (-1 != fd && NULL != np_ctx) {
+        sr_locking_set_unlock_close_fd(np_ctx->lock_ctx, fd);
+    }
+}
+
+/**
+ * @brief Returns the name of a file that can be used to store a notification received in given time.
+ */
+static int
+np_get_notif_store_filename(const char *module_name, time_t received_time, char *filename_buff, size_t filename_buff_size)
+{
+    mode_t old_umask = 0;
+    time_t raw_time = 0;
+    struct tm *tm_time = { 0, };
+    int fd = -1;
+    int ret = 0, rc = SR_ERR_OK;
+
+    /* create the parent directory for notifications (if it does not exist already) */
+    strncat(filename_buff, SR_NOTIF_DATA_SEARCH_DIR, filename_buff_size - 1);
+    strncat(filename_buff, "/", filename_buff_size - strlen(filename_buff) - 1);
+    if (-1 == access(filename_buff, F_OK)) {
+        old_umask = umask(0);
+        ret = mkdir(filename_buff, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", filename_buff,
+                sr_strerror_safe(errno));
+    }
+
+    /* create directory for module notifications (if it does not exist already) */
+    strncat(filename_buff, module_name, filename_buff_size - strlen(filename_buff) - 1);
+    strncat(filename_buff, "/", filename_buff_size - strlen(filename_buff) - 1);
+    if (-1 == access(filename_buff, F_OK)) {
+        old_umask = umask(0);
+        ret = mkdir(filename_buff, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", filename_buff,
+                sr_strerror_safe(errno));
+    }
+
+    /* generate data filename according to the current time */
+    raw_time = received_time;
+    tm_time = localtime(&raw_time);
+    /* move raw_time back to the beginning of the current NP_NOTIF_FILE_WINDOW */
+    raw_time -= (((tm_time->tm_hour * 60) + tm_time->tm_min) % NP_NOTIF_FILE_WINDOW) * 60;
+    strftime(filename_buff + strlen(filename_buff), filename_buff_size - strlen(filename_buff) - 1,
+            "%Y-%m-%d_%H-%M.xml", localtime(&raw_time));
+
+    /* create file if not exists & apply access permissions */
+    if (-1 == access(filename_buff, F_OK)) {
+        old_umask = umask(0);
+        fd = open(filename_buff, O_CREAT, S_IRUSR | S_IWUSR);
+        close(fd);
+        umask(old_umask);
+        rc = sr_set_data_file_permissions(filename_buff, false, SR_DATA_SEARCH_DIR, module_name, false);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN("Error by applying correct data file permissions on file '%s'.", filename_buff);
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Get notification files of given module with last modification time from provided time interval.
+ */
+static int
+np_get_notification_files(np_ctx_t *np_ctx, const char *module_name, time_t time_from, time_t time_to,
+        sr_list_t *file_list)
+{
+    char dirname[PATH_MAX] = { 0, };
+    char filename[PATH_MAX] = { 0, };
+    struct dirent **entries = NULL;
+    int dir_elem_cnt = 0;
+    struct stat sb = { 0, };
+    int ret = 0, rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(np_ctx, module_name, file_list);
+
+    if (sr_ll_stderr >= SR_LL_DBG) {
+        strftime(dirname, PATH_MAX - 1, "%Y-%m-%d %H:%M", localtime(&time_from));
+        strftime(filename, PATH_MAX - 1, "%Y-%m-%d %H:%M", localtime(&time_to));
+    }
+    SR_LOG_DBG("Listing notification data files for '%s' modified from '%s' to '%s'.", module_name, dirname, filename);
+
+    snprintf(dirname, PATH_MAX - 1, "%s/%s", SR_NOTIF_DATA_SEARCH_DIR, module_name);
+
+    /* scan files in the directory with the data files (in alphabetical order) */
+    dir_elem_cnt = scandir(dirname, &entries, NULL, alphasort);
+    if (dir_elem_cnt < 0) {
+        SR_LOG_ERR("Error by scanning directory: %s.", sr_strerror_safe(errno));
+    } else {
+        for (size_t i = 0; i < dir_elem_cnt; i++) {
+            if ((DT_DIR != entries[i]->d_type) &&
+                    (0 != strcmp(entries[i]->d_name, ".")) && (0 != strcmp(entries[i]->d_name, ".."))) {
+                /* for each file */
+                snprintf(filename, PATH_MAX - 1, "%s/%s", dirname, entries[i]->d_name);
+                ret = stat(filename, &sb);
+                if ((-1 != ret) && (sb.st_mtime >= time_from) && (sb.st_mtime <= time_to)) {
+                    /* file modification time matches with provided time interval */
+                    SR_LOG_DBG("Adding file '%s', mtim=%ld", filename, sb.st_mtime);
+                    rc = sr_list_add(file_list, strdup(filename));
+                    if (SR_ERR_OK != rc) {
+                        SR_LOG_WRN("Error by adding file '%s' to the list: %s.", filename, sr_strerror(rc));
+                    }
+                }
+            }
+            free(entries[i]);
+        }
+        free(entries);
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Get notification files of all modules with last modification time from provided time interval.
+ */
+static int
+np_get_all_notification_files(np_ctx_t *np_ctx, time_t time_from, time_t time_to, sr_list_t *file_list)
+{
+    DIR *dir = { 0, };
+    struct dirent entry = { 0, }, *result = NULL;
+    int ret = 0, rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(np_ctx, file_list);
+
+    SR_LOG_DBG("Listing notification directories in '%s'.", SR_NOTIF_DATA_SEARCH_DIR);
+
+    /* open the directory with notifications */
+    dir = opendir(SR_NOTIF_DATA_SEARCH_DIR);
+    if (NULL == dir) {
+        SR_LOG_ERR("Error by opening directory '%s': %s.", SR_NOTIF_DATA_SEARCH_DIR, sr_strerror_safe(errno));
+        return SR_ERR_INTERNAL;
+    }
+    /* read files in the directory */
+    do {
+        ret = readdir_r(dir, &entry, &result);
+        if (0 != ret) {
+            SR_LOG_ERR("Error by reading directory: %s.", sr_strerror_safe(errno));
+            break;
+        }
+        if ((NULL != result) && (0 != strcmp(entry.d_name, ".")) && (0 != strcmp(entry.d_name, ".."))) {
+            /* for each directory */
+            SR_LOG_DBG("Listing notification directory '%s'.", entry.d_name);
+            rc = np_get_notification_files(np_ctx, entry.d_name, time_from, time_to, file_list);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN("Error by retrieving notification files from '%s' directory: %s.",
+                        entry.d_name, sr_strerror(rc));
+            }
+        }
+    } while (NULL != result);
+    closedir(dir);
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief cleans up the content of an event notification structure.
+ */
+static void
+np_event_notification_content_cleanup(np_ev_notification_t *notification)
+{
+    if (NULL != notification) {
+        switch (notification->data_type) {
+            case NP_EV_NOTIF_DATA_VALUES:
+                sr_free_values(notification->data.values, notification->data_cnt);
+                break;
+            case NP_EV_NOTIF_DATA_TREES:
+                sr_free_trees(notification->data.trees, notification->data_cnt);
+                break;
+            default:
+                break;
+        }
+        free((void*)notification->xpath);
+    }
+}
+
+/**
+ * @brief Fills event notification details from libyang's list instance of a notification.
+ */
+static int
+np_event_notification_entry_fill(np_ev_notification_t *notification, struct lyd_node *node)
+{
+    struct lyd_node_leaf_list *node_ll = NULL;
+    struct lyd_node_anydata *node_anydata = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(notification, node, node->schema);
+
+    while (NULL != node) {
+        if (NULL != node->schema && NULL != node->schema->name) {
+            node_ll = (struct lyd_node_leaf_list*)node;
+            if (0 == strcmp(node->schema->name, "xpath") && NULL != node_ll->value_str) {
+                notification->xpath = strdup(node_ll->value_str);
+                CHECK_NULL_NOMEM_GOTO(notification->xpath, rc, cleanup);
+            }
+            if (0 == strcmp(node->schema->name, "generated-time") && NULL != node_ll->value_str) {
+                rc = sr_str_to_time((char*)node_ll->value_str, &notification->timestamp);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "String to time conversion failed.");
+            }
+            if (0 == strcmp(node->schema->name, "data") && LYS_ANYDATA == node->schema->nodetype) {
+                node_anydata = (struct lyd_node_anydata*)node;
+                if (LYD_ANYDATA_XML == node_anydata->value_type) {
+                    notification->data.xml = node_anydata->value.xml;
+                    notification->data_type = NP_EV_NOTIF_DATA_XML;
+                }
+            }
+        }
+        node = node->next;
+    }
+
+    return SR_ERR_OK;
+
+cleanup:
+    np_event_notification_content_cleanup(notification);
+    return rc;
+}
+
+/**
+ * @brief Logging callback called from libyang for each log entry.
+ */
+static void
+np_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
+{
+    if (LY_LLERR == level) {
+        SR_LOG_DBG("libyang error: %s", msg);
+    }
+}
+
 int
-np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
+np_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search_dir, np_ctx_t **np_ctx_p)
 {
     np_ctx_t *ctx = NULL;
-    int rc = 0, ret = 0;
+    char *schema_filename = NULL;
+    int rc = SR_ERR_OK, ret = 0;
 
     CHECK_NULL_ARG2(rp_ctx, np_ctx_p);
 
@@ -351,9 +713,40 @@ np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
     rc = sr_llist_init(&ctx->commits);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate commits linked-list.");
 
-    /* initialize subscriptions lock */
+    /* init subscriptions lock */
     ret = pthread_rwlock_init(&ctx->lock, NULL);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Subscriptions lock initialization failed.");
+
+    /* init notif. data files locking set */
+    rc = sr_locking_set_init(&ctx->lock_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize locking set.");
+
+    /* save data search directory */
+    ctx->data_search_dir = strdup(data_search_dir);
+    CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
+
+    /* init libyang ctx */
+    ctx->ly_ctx = ly_ctx_new(schema_search_dir);
+    if (NULL == ctx->ly_ctx) {
+        SR_LOG_ERR("libyang initialization failed: %s", ly_errmsg());
+        rc = SR_ERR_INIT_FAILED;
+        goto cleanup;
+    }
+    ly_set_log_clb(np_ly_log_cb, 0);
+
+    rc = sr_str_join(schema_search_dir, NP_NS_SCHEMA_FILE, &schema_filename);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
+
+    /* load persist files schema to the context */
+    ctx->ns_schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YANG);
+    free(schema_filename);
+    if (NULL == ctx->ns_schema) {
+        SR_LOG_ERR("Unable to parse the schema file '%s': %s", NP_NS_SCHEMA_FILE, ly_errmsg());
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
 
     SR_LOG_DBG_MSG("Notification Processor initialized successfully.");
 
@@ -388,6 +781,15 @@ np_cleanup(np_ctx_t *np_ctx)
 
         sr_btree_cleanup(np_ctx->dst_info_btree);
         pthread_rwlock_destroy(&np_ctx->lock);
+
+        sr_locking_set_cleanup(np_ctx->lock_ctx);
+        free((void*)np_ctx->data_search_dir);
+        if (NULL != np_ctx->ly_ctx) {
+            ly_ctx_destroy(np_ctx->ly_ctx, NULL);
+        }
+
+        np_notification_store_cleanup(np_ctx); // TODO: change this to a repeated asynchronous task
+
         free(np_ctx);
     }
 }
@@ -1092,4 +1494,215 @@ np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt
         np_free_subscription_content(&subscriptions[i]);
     }
     free(subscriptions);
+}
+
+int
+np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t generated_time,
+        struct lyd_node **notif_data_tree)
+{
+#define TIME_BUF_SIZE 64
+
+    char *module_name = NULL;
+    char data_filename[PATH_MAX] = { 0, };
+    char data_xpath[PATH_MAX] = { 0, };
+    char generated_time_buf[TIME_BUF_SIZE] = { 0, };
+    struct timespec logged_time_spec = { 0, };
+    struct lyd_node *data_tree = NULL, *new_node = NULL;
+    int fd = -1;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(np_ctx, xpath, notif_data_tree);
+
+    SR_LOG_DBG("Storing notification '%s' generated on '%ld'.", xpath, generated_time);
+
+    /* extract module name from xpath */
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+
+    /* get current notification data filename */
+    rc = np_get_notif_store_filename(module_name, generated_time, data_filename, PATH_MAX);
+    CHECK_RC_LOG_RETURN(rc, "Unable to compose notification data file name for '%s'.", module_name);
+
+    /* load notif. data */
+    rc = np_load_data_tree(np_ctx, user_cred, data_filename, false, &data_tree, &fd);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load notification store data for module '%s'.", module_name);
+
+    /* format the time & retrieve current time */
+    sr_time_to_str(generated_time, generated_time_buf, TIME_BUF_SIZE);
+    sr_clock_get_time(CLOCK_REALTIME, &logged_time_spec);
+
+    /* create data subtree to be stored in the notif. data file */
+    snprintf(data_xpath, PATH_MAX - 1, NP_NS_XPATH_NOTIFICATION, xpath, generated_time_buf,
+            /* logged-time in hundreds of seconds */
+            (uint32_t) (((logged_time_spec.tv_sec * 100) + (uint32_t)(logged_time_spec.tv_nsec / 1.0e7)) % UINT32_MAX));
+    new_node = lyd_new_path(data_tree, np_ctx->ly_ctx, data_xpath, NULL, 0, 0);
+    if (NULL == new_node) {
+        SR_LOG_WRN("Error by adding new notification entry: %s.", ly_errmsg());
+        goto cleanup; /* do not set error code - it may be just too much notifications within the same hundred of second */
+    }
+    if (NULL == data_tree) {
+        /* if the new data tree has been just created */
+        data_tree = new_node;
+        new_node = new_node->child; /* new_node is 'notifications' container */
+    }
+
+    /* store notification data as anydata */
+    new_node = lyd_new_anydata(new_node, NULL, "data", (void*)*notif_data_tree, LYD_ANYDATA_DATATREE);
+    if (NULL == new_node) {
+        SR_LOG_ERR("Error by adding notification content into notification store: %s.", ly_errmsg());
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    } else {
+        *notif_data_tree = NULL; /* data tree freed in lyd_new_anydata */
+    }
+
+    /* save notif. data */
+    rc = np_save_data_tree(data_tree, fd);
+    if (SR_ERR_OK == rc) {
+        SR_LOG_DBG("Notification successfully logged into '%s' notification store.", module_name);
+    }
+
+cleanup:
+    np_cleanup_data_tree(np_ctx, data_tree, fd);
+    free(module_name);
+    return rc;
+}
+
+int
+np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, const char *xpath,
+        const time_t start_time, const time_t stop_time, const sr_api_variant_t api_variant, sr_list_t **notifications)
+{
+    char *module_name = NULL;
+    char req_xpath[PATH_MAX] = { 0, };
+    sr_list_t *file_list = NULL, *notif_list = NULL;
+    struct lyd_node *data_tree = NULL, *main_tree = NULL;
+    struct ly_set *node_set = NULL;
+    np_ev_notification_t *notification = NULL;
+    time_t effective_stop_time = 0;
+    int rc = SR_ERR_OK, ret = 0;
+
+    CHECK_NULL_ARG3(np_ctx, xpath, notifications);
+
+    effective_stop_time = (0 == stop_time) ? time(NULL) : stop_time;
+
+    SR_LOG_DBG("Loading notifications '%s' generated between '%ld' and '%ld'.", xpath, start_time, effective_stop_time);
+
+    /* extract module name from xpath */
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+
+    /* get all notification files matching module name and time interval */
+    rc = sr_list_init(&file_list);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize file list.");
+
+    /* get all notification files matching module name and provided time interval */
+    rc = np_get_notification_files(np_ctx, module_name,
+            (0 == start_time) ? 0 : (start_time - (NP_NOTIF_FILE_WINDOW * 60)),
+            (effective_stop_time + (NP_NOTIF_FILE_WINDOW * 60)),
+            file_list);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve notification file list.");
+
+    /* load all notification files */
+    for (size_t i = 0; i < file_list->count; i++) {
+        rc = np_load_data_tree(np_ctx, rp_session->user_credentials, file_list->data[i], true, &data_tree, NULL);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load notification store data for module '%s'.", module_name);
+        if (NULL == main_tree) {
+            main_tree = data_tree;
+        } else {
+            ret = lyd_merge(main_tree, data_tree, LYD_OPT_DESTRUCT);
+            CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Unable to merge notification trees: %s", ly_errmsg());
+        }
+    }
+
+    /* get all notifications matching the xpath */
+    snprintf(req_xpath, PATH_MAX, NP_NS_XPATH_NOTIFICATION_BY_XPATH, xpath);
+    node_set = lyd_find_xpath(main_tree, req_xpath);
+
+    if (NULL != node_set && node_set->number > 0) {
+        /* init the notification list */
+        rc = sr_list_init(&notif_list);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize notification list.");
+
+        for (size_t i = 0; i < node_set->number; i++) {
+            /* allocate a new notification entry */
+            notification = calloc(1, sizeof(*notification));
+            CHECK_NULL_NOMEM_GOTO(notification, rc, cleanup);
+            /* fill in the notification details */
+            rc = np_event_notification_entry_fill(notification, node_set->set.d[i]->child);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Error by filling a notification entry.");
+
+            /* filter out notifications not exactly matching the time interval */
+            if (notification->timestamp < start_time || notification->timestamp > effective_stop_time) {
+                np_event_notification_cleanup(notification); // TODO: optimize this
+                continue;
+            }
+
+            /* parse notification data */
+            rc = dm_parse_event_notif(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, NULL, notification, api_variant);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Error by parsing notification '%s'.", notification->xpath);
+
+            SR_LOG_DBG("Adding a new notification: '%s' (time=%ld)", notification->xpath, notification->timestamp);
+
+            /* add the notification into notification list */
+            rc = sr_list_add(notif_list, notification);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Error by adding notification into list.");
+            notification = NULL;
+        }
+    }
+
+    *notifications = notif_list;
+    notif_list = NULL;
+
+cleanup:
+    np_event_notification_cleanup(notification);
+    if (NULL != notif_list) {
+        /* in case of error */
+        for (size_t i = 0; i < notif_list->count; i++) {
+            np_event_notification_cleanup(notif_list->data[i]);
+        }
+        sr_list_cleanup(notif_list);
+    }
+    ly_set_free(node_set);
+    lyd_free_withsiblings(main_tree);
+    sr_free_list_of_strings(file_list);
+    free(module_name);
+    return rc;
+}
+
+void
+np_event_notification_cleanup(np_ev_notification_t *notification)
+{
+    if (NULL != notification) {
+        np_event_notification_content_cleanup(notification);
+        free(notification);
+    }
+}
+
+int
+np_notification_store_cleanup(np_ctx_t *np_ctx)
+{
+    sr_list_t *file_list = NULL;
+    int ret = 0, rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(np_ctx);
+
+    SR_LOG_DBG_MSG("Notification store cleanup requested.");
+
+    rc = sr_list_init(&file_list);
+    CHECK_RC_MSG_RETURN(rc, "Unable to initialize file list.");
+
+    rc = np_get_all_notification_files(np_ctx, 0, (time(NULL) - (NP_NOTIF_AGE_TIMEOUT * 60)), file_list);
+
+    for (size_t i = 0; i < file_list->count; i++) {
+        SR_LOG_DBG("Deleting old notification data file '%s'.", (char*)file_list->data[i]);
+        ret = unlink((char*)file_list->data[i]);
+        if (-1 == ret) {
+            SR_LOG_WRN("Unable to delete notification data file '%s': %s.",
+                    (char*)file_list->data[i], sr_strerror_safe(ret));
+        }
+    }
+
+    sr_free_list_of_strings(file_list);
+
+    return rc;
 }

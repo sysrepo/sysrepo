@@ -426,7 +426,7 @@ cl_get_item_test(void **state)
     assert_null(value);
 
     /* empty data tree */
-    rc = sr_get_item(session, "/small-module:item", &value);
+    rc = sr_get_item(session, "/small-module:item/name", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* bad element in existing module returns SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT*/
@@ -506,7 +506,7 @@ cl_get_subtree_test(void **state)
     assert_null(tree);
 
     /* empty data tree */
-    rc = sr_get_subtree(session, "/small-module:item", 0, &tree);
+    rc = sr_get_subtree(session, "/small-module:item/name", 0, &tree);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* bad element in existing module returns SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT*/
@@ -659,7 +659,7 @@ cl_get_items_test(void **state)
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
 
     /* empty data tree */
-    rc = sr_get_items(session, "/small-module:item", &values, &values_cnt);
+    rc = sr_get_items(session, "/small-module:item/name", &values, &values_cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* bad element in existing module produces SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT */
@@ -729,7 +729,7 @@ cl_get_subtrees_test(void **state)
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
 
     /* empty data tree */
-    rc = sr_get_subtrees(session, "/small-module:item", 0, &trees, &tree_cnt);
+    rc = sr_get_subtrees(session, "/small-module:item/name", 0, &trees, &tree_cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* bad element in existing module produces SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT */
@@ -795,7 +795,7 @@ cl_get_items_iter_test(void **state)
     assert_null(it);
 
     /* empty data tree */
-    rc = sr_get_items_iter(session, "/small-module:item", &it);
+    rc = sr_get_items_iter(session, "/small-module:item/name", &it);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(it);
 
@@ -4172,8 +4172,8 @@ typedef struct cl_test_en_session_s {
 } cl_test_en_session_t;
 
 static void
-test_event_notif_link_discovery_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_link_discovery_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
@@ -4208,8 +4208,8 @@ test_event_notif_link_discovery_cb(const char *xpath, const sr_val_t *values, co
 }
 
 static void
-test_event_notif_link_removed_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_link_removed_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values,
+        const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
@@ -4244,15 +4244,15 @@ test_event_notif_link_removed_cb(const char *xpath, const sr_val_t *values, cons
 }
 
 static void
-test_event_notif_link_overutilized_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_link_overutilized_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     assert_true(0 && "This callback should not get called");
 }
 
 static void
-test_event_notif_status_change_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_status_change_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
@@ -4432,8 +4432,8 @@ cl_event_notif_test(void **state)
 }
 
 static void
-test_event_notif_link_discovery_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_link_discovery_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     const sr_node_t *tree = NULL;
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
@@ -4504,8 +4504,8 @@ test_event_notif_link_discovery_tree_cb(const char *xpath, const sr_node_t *tree
 }
 
 static void
-test_event_notif_link_removed_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_link_removed_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     const sr_node_t *tree = NULL;
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
@@ -4576,15 +4576,15 @@ test_event_notif_link_removed_tree_cb(const char *xpath, const sr_node_t *trees,
 }
 
 static void
-test_event_notif_link_overutilized_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_link_overutilized_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     assert_true(0 && "This callback should not get called");
 }
 
 static void
-test_event_notif_status_change_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
-        time_t timestamp, void *private_ctx)
+test_event_notif_status_change_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     const sr_node_t *tree = NULL;
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
@@ -5050,6 +5050,187 @@ cl_event_notif_combo_test(void **state)
     assert_int_equal(0, pthread_cond_destroy(&cb_status.cond));
 }
 
+#ifdef ENABLE_NOTIF_STORE
+static void
+test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
+{
+    cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
+
+    assert_int_equal(values_cnt, 7);
+    assert_string_equal("/test-module:link-discovered", xpath);
+    assert_string_equal("/test-module:link-discovered/source", values[0].xpath);
+    assert_int_equal(SR_CONTAINER_T, values[0].type);
+    assert_string_equal("/test-module:link-discovered/source/address", values[1].xpath);
+    assert_int_equal(SR_STRING_T, values[1].type);
+    assert_string_equal("10.10.1.5", values[1].data.string_val);
+    assert_string_equal("/test-module:link-discovered/source/interface", values[2].xpath);
+    assert_int_equal(SR_STRING_T, values[2].type);
+    assert_string_equal("eth1", values[2].data.string_val);
+    assert_string_equal("/test-module:link-discovered/destination", values[3].xpath);
+    assert_int_equal(SR_CONTAINER_T, values[3].type);
+    assert_string_equal("/test-module:link-discovered/destination/address", values[4].xpath);
+    assert_int_equal(SR_STRING_T, values[4].type);
+    assert_string_equal("10.10.1.8", values[4].data.string_val);
+    assert_string_equal("/test-module:link-discovered/destination/interface", values[5].xpath);
+    assert_int_equal(SR_STRING_T, values[5].type);
+    assert_string_equal("eth0", values[5].data.string_val);
+    assert_string_equal("/test-module:link-discovered/MTU", values[6].xpath);  /**< default */
+    assert_int_equal(SR_UINT16_T, values[6].type);
+    assert_int_equal(1500, values[6].data.uint16_val);
+
+    if (SR_EV_NOTIF_REPLAY == notif_type) {
+        assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+        cb_status->link_discovered += 1;
+        if (cb_status->link_discovered == 1) {
+            assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+        }
+        assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+    }
+}
+#endif
+
+#ifdef ENABLE_NOTIF_STORE
+static void
+test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values,
+        const size_t values_cnt, time_t timestamp, void *private_ctx)
+{
+    cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
+
+    assert_int_equal(values_cnt, 7);
+    assert_string_equal("/test-module:link-removed", xpath);
+    assert_string_equal("/test-module:link-removed/source", values[0].xpath);
+    assert_int_equal(SR_CONTAINER_T, values[0].type);
+    assert_string_equal("/test-module:link-removed/source/address", values[1].xpath);
+    assert_int_equal(SR_STRING_T, values[1].type);
+    assert_string_equal("10.10.2.4", values[1].data.string_val);
+    assert_string_equal("/test-module:link-removed/source/interface", values[2].xpath);
+    assert_int_equal(SR_STRING_T, values[2].type);
+    assert_string_equal("eth0", values[2].data.string_val);
+    assert_string_equal("/test-module:link-removed/destination", values[3].xpath);
+    assert_int_equal(SR_CONTAINER_T, values[3].type);
+    assert_string_equal("/test-module:link-removed/destination/address", values[4].xpath);
+    assert_int_equal(SR_STRING_T, values[4].type);
+    assert_string_equal("10.10.2.5", values[4].data.string_val);
+    assert_string_equal("/test-module:link-removed/destination/interface", values[5].xpath);
+    assert_int_equal(SR_STRING_T, values[5].type);
+    assert_string_equal("eth2", values[5].data.string_val);
+    assert_string_equal("/test-module:link-removed/MTU", values[6].xpath); /**< default */
+    assert_int_equal(SR_UINT16_T, values[6].type);
+    assert_int_equal(1500, values[6].data.uint16_val);
+
+    if (SR_EV_NOTIF_REPLAY == notif_type) {
+        assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+        cb_status->link_removed += 1;
+        if (cb_status->link_removed == 1) {
+            assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+        }
+        assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+    }
+}
+#endif
+
+static void
+cl_event_notif_replay_test(void **state)
+{
+#ifndef ENABLE_NOTIF_STORE
+    skip();
+#else
+    sr_conn_ctx_t *conn = *state;
+    sr_subscription_ctx_t *subscription = NULL;
+    assert_non_null(conn);
+    cl_test_en_cb_status_t cb_status;
+    sr_val_t values[4];
+    int rc = SR_ERR_OK;
+
+    time_t start_time = time(NULL);
+
+    sr_session_ctx_t *session = NULL;
+
+    memset(&values, '\0', sizeof(values));
+    cb_status.link_discovered = 0;
+    cb_status.link_removed = 0;
+    cb_status.status_change = 0;
+    assert_int_equal(0, pthread_mutex_init(&cb_status.mutex, NULL));
+    assert_int_equal(0, pthread_cond_init(&cb_status.cond, NULL));
+    assert_int_equal(0, pthread_mutex_lock(&cb_status.mutex));
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for link discovery */
+    rc = sr_event_notif_subscribe(session, "/test-module:link-discovered", test_event_notif_link_discovery_replay_cb,
+            &cb_status, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for link removal */
+    rc = sr_event_notif_subscribe(session, "/test-module:link-removed", test_event_notif_link_removed_replay_cb,
+            &cb_status, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* send event notification - link discovery */
+    values[0].xpath = "/test-module:link-discovered/source/address";
+    values[0].type = SR_STRING_T;
+    values[0].data.string_val = "10.10.1.5";
+    values[1].xpath = "/test-module:link-discovered/source/interface";
+    values[1].type = SR_STRING_T;
+    values[1].data.string_val = "eth1";
+    values[2].xpath = "/test-module:link-discovered/destination/address";
+    values[2].type = SR_STRING_T;
+    values[2].data.string_val = "10.10.1.8";
+    values[3].xpath = "/test-module:link-discovered/destination/interface";
+    values[3].type = SR_STRING_T;
+    values[3].data.string_val = "eth0";
+
+    rc = sr_event_notif_send(session, "/test-module:link-discovered", values, 4);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* send event notification - link removal */
+    values[0].xpath = "/test-module:link-removed/source/address";
+    values[0].type = SR_STRING_T;
+    values[0].data.string_val = "10.10.2.4";
+    values[1].xpath = "/test-module:link-removed/source/interface";
+    values[1].type = SR_STRING_T;
+    values[1].data.string_val = "eth0";
+    values[2].xpath = "/test-module:link-removed/destination/address";
+    values[2].type = SR_STRING_T;
+    values[2].data.string_val = "10.10.2.5";
+    values[3].xpath = "/test-module:link-removed/destination/interface";
+    values[3].type = SR_STRING_T;
+    values[3].data.string_val = "eth2";
+
+    rc = sr_event_notif_send(session, "/test-module:link-removed", values, 4);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* replay the notifications */
+    rc = sr_event_notif_replay(session, subscription, start_time, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* wait at most 5 seconds for all callbacks to get called */
+    struct timespec ts;
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 5;
+    while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
+            && (cb_status.link_removed < 1 || cb_status.link_discovered < 1));
+    assert_true(cb_status.link_discovered >= 1);
+    assert_true(cb_status.link_removed >= 1);
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status.mutex));
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* cleanup */
+    assert_int_equal(0, pthread_mutex_destroy(&cb_status.mutex));
+    assert_int_equal(0, pthread_cond_destroy(&cb_status.cond));
+#endif
+}
+
 static void
 cl_cross_module_dependency(void **state)
 {
@@ -5261,6 +5442,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_event_notif_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_event_notif_tree_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_event_notif_combo_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_event_notif_replay_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_cross_module_dependency, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_data_in_submodule, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_schema_with_subscription, sysrepo_setup, sysrepo_teardown),

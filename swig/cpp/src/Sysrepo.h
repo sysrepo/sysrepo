@@ -114,6 +114,7 @@ class Logs
 {
 public:
     Logs();
+    ~Logs();
     void set_stderr(sr_log_level_t log_level);
     void set_syslog(sr_log_level_t log_level);
 };

@@ -203,6 +203,7 @@ cl_sm_subscription_cleanup_internal(void *subscription_p)
     if (NULL != subscription_p) {
         subscription = (cl_sm_subscription_ctx_t *)subscription_p;
         free((void*)subscription->module_name);
+        free((void*)subscription->xpath);
         free(subscription);
     }
 }
@@ -979,10 +980,14 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
     SR_LOG_DBG("Calling event notification callback for subscription id=%"PRIu32".", subscription->id);
 
     if (SR_API_VALUES == subscription->api_variant) {
-        subscription->callback.event_notif_cb(msg->request->event_notif_req->xpath, values, values_cnt,
+        subscription->callback.event_notif_cb(
+                sr_ev_notification_type_gpb_to_sr(msg->request->event_notif_req->type),
+                msg->request->event_notif_req->xpath, values, values_cnt,
                 msg->request->event_notif_req->timestamp, subscription->private_ctx);
     } else {
-        subscription->callback.event_notif_tree_cb(msg->request->event_notif_req->xpath, trees, tree_cnt,
+        subscription->callback.event_notif_tree_cb(
+                sr_ev_notification_type_gpb_to_sr(msg->request->event_notif_req->type),
+                msg->request->event_notif_req->xpath, trees, tree_cnt,
                 msg->request->event_notif_req->timestamp, subscription->private_ctx);
     }
 
@@ -1406,10 +1411,10 @@ cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, c
         ret = mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
         umask(old_umask);
         CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", path, sr_strerror_safe(errno));
-        rc = sr_set_socket_dir_permissions(path, SR_DATA_SEARCH_DIR, module_name, false);
+        rc = sr_set_data_file_permissions(path, true, SR_DATA_SEARCH_DIR, module_name, false);
         if (SR_ERR_OK != rc) {
             rmdir(path);
-            SR_LOG_WRN("Attempt to subscribe to unknown '%s' module probably", module_name);
+            SR_LOG_WRN("Attempt to subscribe to unknown '%s' module.", module_name);
         }
         CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
     }

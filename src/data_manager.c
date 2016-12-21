@@ -91,6 +91,15 @@ typedef struct dm_node_info_s {
     uint32_t xpath_hash;
 } dm_node_info_t;
 
+/**
+ * @brief Kind of procedure that DM can validate.
+ */
+typedef enum dm_procedure_e {
+    DM_PROCEDURE_RPC,               /**< Remote procedure call */
+    DM_PROCEDURE_EVENT_NOTIF,       /**< Event notification */
+    DM_PROCEDURE_ACTION,            /**< NETCONF RPC operation connected to a specific data node. */
+} dm_procedure_t;
+
 /** @brief Invalid value for the commit context id, used for signaling e.g.: duplicate id */
 #define DM_COMMIT_CTX_ID_INVALID 0
 /** @brief Number of attempts to generate unique id for commit context */
@@ -801,11 +810,25 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
     }
 
     /* if there is no data dependency validate it with of LYD_OPT_STRICT, validate it (only non-empty data trees are validated)*/
-    if (!schema_info->cross_module_data_dependency && NULL != data_tree && 0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx)) {
-        SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
-        lyd_free_withsiblings(data_tree);
-        free(data);
-        return SR_ERR_INTERNAL;
+    if (!schema_info->cross_module_data_dependency) {
+        if (NULL != data_tree) {
+            rc = lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx);
+            if (rc) {
+                SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
+                lyd_free_withsiblings(data_tree);
+                free(data);
+                return SR_ERR_INTERNAL;
+            }
+        } else {
+            rc = lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx);
+            if (rc) {
+                SR_LOG_INF("lyd_validate failed, maybe empty data is illegal but no initial data? data_file: %s",
+                        data_filename);
+                rc = 0;
+                lyd_free_withsiblings(data_tree);
+                data_tree = NULL;
+            }
+        }
     }
 
     data->schema = schema_info;
@@ -3186,6 +3209,13 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
                 ret = lyd_print_fd(c_ctx->fds[count], merged_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
             }
             if (0 == ret) {
+                /* TODO: this is a workaround for https://github.com/CESNET/libyang/issues/213, remove after it is fixed */
+                long pagesize = sysconf(_SC_PAGE_SIZE);
+                long filesize = lseek(c_ctx->fds[count], 0, SEEK_END);
+                if ((filesize >= pagesize) && (0 == filesize % pagesize)) {
+                    lseek(c_ctx->fds[count], 1, SEEK_END);
+                    write(c_ctx->fds[count], "\n", 1);
+                }
                 ret = fsync(c_ctx->fds[count]);
             }
             if (0 != ret) {
@@ -4383,13 +4413,231 @@ cleanup:
 }
 
 /**
- * @brief Kind of procedure that DM can validate.
+ * @brief Converts sysrepo values/trees into libyang data tree.
  */
-typedef enum dm_procedure_e {
-    DM_PROCEDURE_RPC,               /**< Remote procedure call */
-    DM_PROCEDURE_EVENT_NOTIF,       /**< Event notification */
-    DM_PROCEDURE_ACTION,            /**< NETCONF RPC operation connected to a specific data node. */
-} dm_procedure_t;
+static int
+dm_sr_val_node_to_ly_datatree(dm_session_t *session, dm_data_info_t *di, const char *xpath, void *args_p, size_t arg_cnt,
+        const sr_api_variant_t api_variant, const bool input, struct lyd_node **data_tree_ptr)
+{
+    sr_val_t *args = NULL;
+    sr_node_t *args_tree = NULL;
+    struct lyd_node *data_tree = NULL, *new_node = NULL;
+    const struct lys_node *arg_node = NULL;
+    char root_xpath[PATH_MAX] = { 0, };
+    char *string_value = NULL;
+    int allow_update = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, di, xpath, data_tree_ptr);
+
+    if (SR_API_VALUES == api_variant) {
+        args = (sr_val_t *)args_p;
+    } else {
+        args_tree = (sr_node_t *)args_p;
+    }
+
+    if (SR_API_VALUES == api_variant) {
+        /* convert from values */
+        data_tree = lyd_new_path(NULL, di->schema->ly_ctx, xpath, NULL, 0, 0);
+        if (NULL == data_tree) {
+            SR_LOG_ERR("Unable to create the data tree node '%s': %s", xpath, ly_errmsg());
+            rc = dm_report_error(session, ly_errmsg(), xpath, SR_ERR_VALIDATION_FAILED);
+            goto cleanup;
+        }
+
+        for (size_t i = 0; i < arg_cnt; i++) {
+            /* get argument's schema node */
+            arg_node = sr_find_schema_node(di->schema->module->data, args[i].xpath, (input ? 0 : LYS_FIND_OUTPUT));
+            if (NULL == arg_node) {
+                SR_LOG_ERR("Unable to find the schema node for '%s': %s", args[i].xpath, ly_errmsg());
+                rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_VALIDATION_FAILED);
+                goto cleanup;
+            }
+            /* copy argument value to string */
+            string_value = NULL;
+            if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
+                rc = sr_val_to_str_with_schema(&args[i], arg_node, &string_value);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR("Unable to convert value of '%s' to string.", args[i].xpath);
+                    rc = dm_report_error(session, "Unable to convert argument value to string", args[i].xpath, rc);
+                    goto cleanup;
+                }
+            }
+
+            allow_update = (LYS_LIST == arg_node->nodetype || sr_is_key_node(arg_node)) ? LYD_PATH_OPT_UPDATE : 0;
+
+            /* create the argument node in the tree */
+            new_node = lyd_new_path(data_tree, di->schema->ly_ctx, args[i].xpath, string_value, 0,
+                                    (input ? allow_update : allow_update | LYD_PATH_OPT_OUTPUT));
+            free(string_value);
+            if (NULL == new_node && !allow_update) {
+                SR_LOG_ERR("Unable to add new data tree node '%s': %s.", args[i].xpath, ly_errmsg());
+                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
+                goto cleanup;
+            }
+        }
+    } else {
+        /* convert from trees */
+        for (size_t i = 0; i < arg_cnt; i++) {
+            snprintf(root_xpath, PATH_MAX, "%s/%s", xpath, args_tree[i].name);
+            rc = sr_tree_to_dt(di->schema->ly_ctx, args_tree + i, root_xpath, !input, &data_tree);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Unable to convert sysrepo tree into a libyang tree ('%s').", root_xpath);
+                rc = dm_report_error(session, "Unable to convert sysrepo tree into a libyang tree", root_xpath,
+                        SR_ERR_VALIDATION_FAILED);
+                goto cleanup;
+            }
+        }
+    }
+
+cleanup:
+    *data_tree_ptr = data_tree;
+    return rc;
+}
+
+/**
+ * @brief Converts libyang data tree into sysrepo values/trees.
+ */
+static int
+dm_ly_datatree_to_sr_val_node(sr_mem_ctx_t *sr_mem, const char *xpath, const struct lyd_node *data_tree,
+        const sr_api_variant_t api_variant, const bool rpc, void **val_node_ptr, size_t *val_node_cnt)
+{
+    char *tmp_xpath = NULL;
+    struct ly_set *nodeset = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(xpath, data_tree, val_node_ptr, val_node_cnt);
+
+    if (SR_API_VALUES == api_variant) {
+        /* convert into values */
+        tmp_xpath = calloc(strlen(xpath) + 4, sizeof(*tmp_xpath));
+        CHECK_NULL_NOMEM_GOTO(tmp_xpath, rc, cleanup);
+        if (NULL != tmp_xpath) {
+            strcat(tmp_xpath, xpath);
+            strcat(tmp_xpath, "//*");
+            nodeset = lyd_find_xpath(data_tree, tmp_xpath);
+            if (NULL != nodeset) {
+                rc = rp_dt_get_values_from_nodes(sr_mem, nodeset, (sr_val_t**)val_node_ptr, val_node_cnt);
+            } else {
+                SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
+                rc = SR_ERR_INTERNAL;
+            }
+        }
+    } else if (SR_API_TREES == api_variant) {
+        /* convert into trees */
+        tmp_xpath = calloc(strlen(xpath) + 3 + (rpc ? 2 : 0), sizeof(*tmp_xpath));
+        CHECK_NULL_NOMEM_GOTO(tmp_xpath, rc, cleanup);
+        if (NULL != tmp_xpath) {
+            strcat(tmp_xpath, xpath);
+            strcat(tmp_xpath, "/");
+            if (rpc) {
+                strcat(tmp_xpath, "./"); /* skip "input" / "output" */
+            }
+            strcat(tmp_xpath, "*");
+            nodeset = lyd_find_xpath(data_tree, tmp_xpath);
+            if (NULL != nodeset) {
+                rc = sr_nodes_to_trees(nodeset, sr_mem, NULL, NULL, (sr_node_t**)val_node_ptr, val_node_cnt);
+            } else {
+                SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
+                rc = SR_ERR_INTERNAL;
+            }
+        }
+    }
+
+cleanup:
+    if (NULL != nodeset) {
+        ly_set_free(nodeset);
+    }
+    free(tmp_xpath);
+
+    return rc;
+}
+
+/**
+ * @brief Validates content of a procedure (and adds default values).
+ */
+static int
+dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *di, const dm_procedure_t type,
+        const bool input, struct lyd_node *data_tree, const struct lys_node *proc_node)
+{
+    int validation_options = 0;
+    bool ext_ref = false, backtracking = false;
+    const struct lys_node *node = NULL;
+    int ret = 0, rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(dm_ctx, session, di, data_tree, proc_node);
+
+    validation_options = LYD_OPT_STRICT | LYD_OPT_NOAUTODEL;
+    switch (type) {
+        case DM_PROCEDURE_RPC:
+        case DM_PROCEDURE_ACTION:
+            validation_options |= (input ? LYD_OPT_RPC : LYD_OPT_RPCREPLY);
+            break;
+        case DM_PROCEDURE_EVENT_NOTIF:
+            validation_options |= LYD_OPT_NOTIF;
+    }
+
+    /* TODO: obtain a set of data trees referenced by when/must conditions inside RPC/notification */
+
+    /* load necessary data trees */
+    ext_ref = (proc_node->parent != NULL);
+    backtracking = false;
+    node = proc_node;
+    while (false == ext_ref && (!backtracking || node != proc_node)) {
+        if (false == backtracking) {
+            if (node->flags & LYS_VALID_DEP) {
+                ext_ref = true; /* reference outside the procedure subtree */
+            }
+            if (node->child) {
+                node = node->child;
+            } else if (node->next) {
+                node = node->next;
+            } else {
+                backtracking = true;
+            }
+        } else {
+            if (node->next) {
+                node = node->next;
+                backtracking = false;
+            } else {
+                node = node->parent;
+            }
+        }
+    }
+    if (ext_ref && di->schema->cross_module_data_dependency) {
+        rc = dm_load_dependant_data(dm_ctx, session, di);
+        CHECK_RC_LOG_RETURN(rc, "Loading dependant modules failed for %s", di->schema->module_name);
+    }
+
+    /* validate */
+    ret = lyd_validate(&data_tree, validation_options, ext_ref ? di->node : NULL);
+    if (ext_ref && di->schema->cross_module_data_dependency) {
+        /* remove data appended from other modules for the purpose of validation */
+        rc = dm_remove_added_data_trees(session, di);
+        CHECK_RC_MSG_RETURN(rc, "Removing of added data trees failed");
+    }
+    if (0 != ret) {
+        SR_LOG_ERR("%s content validation failed: %s", proc_node->name, ly_errmsg());
+        rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
+    }
+
+    return rc;
+}
+
+/**
+ * @brief returns TRUE if the procedure content should not be validated, FALSE otherwise.
+ */
+static bool
+dm_skip_procedure_content_validation(const char *xpath)
+{
+    if (NULL == xpath) {
+        return true;
+    }
+    if (0 == strcmp(xpath, "/ietf-netconf-notifications:netconf-config-change")) {
+        return true;
+    }
+    return false;
+}
 
 /**
  * @brief Validates arguments of a procedure (RPC, Event notification, Action).
@@ -4405,36 +4653,26 @@ typedef enum dm_procedure_e {
  * @param [out] with_def_cnt Number of items inside the *with_def* array.
  * @param [out] with_def_tree Input/Output arguments including default values represented as sysrepo trees.
  * @param [out] with_def_tree_cnt Number of items inside the *with_def_tree* array.
+ * @param [out] res_data_tree Resulting data tree, can be NULL in case that the caller does not need it.
  * @return Error code (SR_ERR_OK on success)
  */
 static int
 dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t type, const char *xpath,
         sr_api_variant_t api_variant, void *args_p, size_t arg_cnt, bool input,
-        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
+        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt,
+        struct lyd_node **res_data_tree)
 {
-    sr_val_t *args = NULL;
-    sr_node_t *args_tree = NULL;
     dm_data_info_t *di = NULL;
-    char root_xpath[PATH_MAX] = { 0, };
-    const struct lys_node *proc_node = NULL, *arg_node = NULL, *node = NULL;
-    struct lyd_node *data_tree = NULL, *new_node = NULL;
-    char *string_value = NULL, *tmp_xpath = NULL;
+    const struct lys_node *proc_node = NULL;
+    struct lyd_node *data_tree = NULL;
+    char *tmp_xpath = NULL;
     struct ly_set *nodeset = NULL;
     char *module_name = NULL;
     const char *procedure_name = NULL;
-    int validation_options = 0;
     const char *last_delim = NULL;
-    int ret = 0, rc = SR_ERR_OK;
-    int allow_update = 0;
-    bool ext_ref = false, backtracking = false;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
-
-    if (SR_API_VALUES == api_variant) {
-        args = (sr_val_t *)args_p;
-    } else {
-        args_tree = (sr_node_t *)args_p;
-    }
 
     /* get name of the procedure - only for error messages */
     switch (type) {
@@ -4499,178 +4737,44 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
         }
     }
 
-    /* converse sysrepo values/trees to libyang data tree */
-    if (SR_API_VALUES == api_variant) {
-        data_tree = lyd_new_path(NULL, di->schema->ly_ctx, xpath, NULL, 0, 0);
-        if (NULL == data_tree) {
-            SR_LOG_ERR("%s xpath validation failed ('%s'): %s", procedure_name, xpath, ly_errmsg());
-            rc = dm_report_error(session, ly_errmsg(), xpath, SR_ERR_VALIDATION_FAILED);
-            goto cleanup;
-        }
-
-        for (size_t i = 0; i < arg_cnt; i++) {
-            /* get argument's schema node */
-            arg_node = sr_find_schema_node(di->schema->module->data, args[i].xpath, (input ? 0 : LYS_FIND_OUTPUT));
-            if (NULL == arg_node) {
-                SR_LOG_ERR("%s argument xpath validation failed( '%s'): %s", procedure_name, args[i].xpath, ly_errmsg());
-                rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_VALIDATION_FAILED);
-                goto cleanup;
-            }
-            /* copy argument value to string */
-            string_value = NULL;
-            if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
-                rc = sr_val_to_str_with_schema(&args[i], arg_node, &string_value);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_ERR("Unable to convert %s argument value to string.", procedure_name);
-                    rc = dm_report_error(session, "Unable to convert argument value to string", args[i].xpath,
-                            SR_ERR_VALIDATION_FAILED);
-                    goto cleanup;
-                }
-            }
-
-            allow_update = (LYS_LIST == arg_node->nodetype || sr_is_key_node(arg_node)) ? LYD_PATH_OPT_UPDATE : 0;
-
-            /* create the argument node in the tree */
-            new_node = lyd_new_path(data_tree, di->schema->ly_ctx, args[i].xpath, string_value, 0,
-                                    (input ? allow_update : allow_update | LYD_PATH_OPT_OUTPUT));
-            free(string_value);
-            if (NULL == new_node && !allow_update) {
-                SR_LOG_ERR("Unable to add new %s argument '%s': %s.", procedure_name, args[i].xpath, ly_errmsg());
-                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
-                goto cleanup;
-            }
-        }
-    } else { /**< SR_API_TREES */
-        for (size_t i = 0; i < arg_cnt; i++) {
-            snprintf(root_xpath, PATH_MAX, "%s/%s", xpath, args_tree[i].name);
-            rc = sr_tree_to_dt(di->schema->ly_ctx, args_tree + i, root_xpath, !input, &data_tree);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Unable to convert sysrepo tree into a libyang tree ('%s').", root_xpath);
-                rc = dm_report_error(session, "Unable to convert sysrepo tree into a libyang tree", root_xpath,
-                        SR_ERR_VALIDATION_FAILED);
-                goto cleanup;
-            }
-        }
-    }
+    /* convert sysrepo values/trees to libyang data tree */
+    rc = dm_sr_val_node_to_ly_datatree(session, di, xpath, args_p, arg_cnt, api_variant, input, &data_tree);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by converting sysrepo values/trees to libyang data tree.");
 
     /* validate the content (and also add default nodes) */
+    if (arg_cnt > 0 && !dm_skip_procedure_content_validation(xpath)) {
+        rc = dm_validate_procedure_content(dm_ctx, session, di, type, input, data_tree, proc_node);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Procedure validation failed.");
+    }
+
+    /* re-read the arguments from the data tree (it can now contain newly added default nodes) */
     if (arg_cnt > 0) {
-        validation_options = LYD_OPT_STRICT | LYD_OPT_NOAUTODEL;
-        switch (type) {
-            case DM_PROCEDURE_RPC:
-            case DM_PROCEDURE_ACTION:
-                validation_options |= (input ? LYD_OPT_RPC : LYD_OPT_RPCREPLY);
-                break;
-            case DM_PROCEDURE_EVENT_NOTIF:
-                validation_options |= LYD_OPT_NOTIF;
+        /* note: both values and trees may be needed */
+        if (with_def && with_def_cnt) {
+            *with_def = NULL;
+            *with_def_cnt = 0;
+            rc = dm_ly_datatree_to_sr_val_node(sr_mem, xpath, data_tree, SR_API_VALUES,
+                    (type != DM_PROCEDURE_EVENT_NOTIF), (void**)with_def, with_def_cnt);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Error by converting libyang data tree to sysrepo values/trees.");
         }
-        /* TODO: obtain a set of data trees referenced by when/must conditions inside RPC/notification */
-        /* load necessary data trees */
-        ext_ref = (proc_node->parent != NULL);
-        backtracking = false;
-        node = proc_node;
-        while (false == ext_ref && (!backtracking || node != proc_node)) {
-            if (false == backtracking) {
-                if (node->flags & LYS_VALID_DEP) {
-                    ext_ref = true; /* reference outside the procedure subtree */
-                }
-                if (node->child) {
-                    node = node->child;
-                } else if (node->next) {
-                    node = node->next;
-                } else {
-                    backtracking = true;
-                }
-            } else {
-                if (node->next) {
-                    node = node->next;
-                    backtracking = false;
-                } else {
-                    node = node->parent;
-                }
-            }
-        }
-        if (ext_ref && di->schema->cross_module_data_dependency) {
-            rc = dm_load_dependant_data(dm_ctx, session, di);
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", di->schema->module_name);
-        }
-        ret = lyd_validate(&data_tree, validation_options, ext_ref ? di->node : NULL);
-        if (ext_ref && di->schema->cross_module_data_dependency) {
-            /* remove data appended from other modules for the purpose of validation */
-            rc = dm_remove_added_data_trees(session, di);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Removing of added data trees failed");
-        }
-        if (0 != ret) {
-            SR_LOG_ERR("%s content validation failed: %s", procedure_name, ly_errmsg());
-            rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
-            goto cleanup;
+        if (with_def_tree && with_def_tree_cnt) {
+            *with_def_tree = NULL;
+            *with_def_tree_cnt = 0;
+            rc = dm_ly_datatree_to_sr_val_node(sr_mem, xpath, data_tree, SR_API_TREES,
+                    (type != DM_PROCEDURE_EVENT_NOTIF), (void**)with_def_tree, with_def_tree_cnt);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Error by converting libyang data tree to sysrepo values/trees.");
         }
     }
 
-    /* re-read the arguments from data tree (it can now contain newly added default nodes) */
-    if (with_def && with_def_cnt) {
-        *with_def = NULL;
-        *with_def_cnt = 0;
-    }
-    if (with_def_tree && with_def_tree_cnt) {
-        *with_def_tree = NULL;
-        *with_def_tree_cnt = 0;
-    }
-    if (0 != arg_cnt) {
-        if (with_def && with_def_cnt) {
-            /* arguments with defaults as values */
-            tmp_xpath = calloc(strlen(xpath)+4, sizeof(*tmp_xpath));
-            CHECK_NULL_NOMEM_GOTO(tmp_xpath, rc, cleanup);
-            if (NULL != tmp_xpath) {
-                strcat(tmp_xpath, xpath);
-                strcat(tmp_xpath, "//*");
-                nodeset = lyd_find_xpath(data_tree, tmp_xpath);
-                if (NULL != nodeset) {
-                    rc = rp_dt_get_values_from_nodes(sr_mem, nodeset, with_def, with_def_cnt);
-                } else {
-                    SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
-                    rc = SR_ERR_INTERNAL;
-                }
-                ly_set_free(nodeset);
-                free(tmp_xpath);
-                tmp_xpath = NULL;
-                if (SR_ERR_OK != rc) {
-                    goto cleanup;
-                }
-            }
-        }
-        if (with_def_tree && with_def_tree_cnt) {
-            /* arguments with defaults as trees */
-            tmp_xpath = calloc(strlen(xpath) + 3 + (type != DM_PROCEDURE_EVENT_NOTIF ? 2 : 0),
-                               sizeof(*tmp_xpath));
-            CHECK_NULL_NOMEM_GOTO(tmp_xpath, rc, cleanup);
-            if (NULL != tmp_xpath) {
-                strcat(tmp_xpath, xpath);
-                strcat(tmp_xpath, "/");
-                if (type != DM_PROCEDURE_EVENT_NOTIF) {
-                    strcat(tmp_xpath, "./"); /* skip "input" / "output" */
-                }
-                strcat(tmp_xpath, "*");
-                nodeset = lyd_find_xpath(data_tree, tmp_xpath);
-                if (NULL != nodeset) {
-                    rc = sr_nodes_to_trees(nodeset, sr_mem, NULL, NULL, with_def_tree, with_def_tree_cnt);
-                } else {
-                    SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
-                    rc = SR_ERR_INTERNAL;
-                }
-                ly_set_free(nodeset);
-                free(tmp_xpath);
-                tmp_xpath = NULL;
-                if (SR_ERR_OK != rc) {
-                    goto cleanup;
-                }
-            }
-        }
+    /* resulting data tree may be needed later */
+    if (NULL != res_data_tree) {
+        *res_data_tree = data_tree;
+        data_tree = NULL;
     }
 
 cleanup:
     free(module_name);
-    if (data_tree) {
+    if (NULL != data_tree) {
         lyd_free_withsiblings(data_tree);
     }
 
@@ -4682,7 +4786,7 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
         sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_RPC, rpc_xpath, SR_API_VALUES,
-            (void *)args, arg_cnt, input, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)args, arg_cnt, input, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt, NULL);
 }
 
 int
@@ -4690,7 +4794,7 @@ dm_validate_rpc_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xp
         sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_RPC, rpc_xpath, SR_API_TREES,
-            (void *)args, arg_cnt, input, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)args, arg_cnt, input, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt, NULL);
 }
 
 int
@@ -4698,7 +4802,7 @@ dm_validate_action(dm_ctx_t *dm_ctx, dm_session_t *session, const char *action_x
         sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_ACTION, action_xpath, SR_API_VALUES,
-            (void *)args, arg_cnt, input, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)args, arg_cnt, input, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt, NULL);
 }
 
 int
@@ -4706,23 +4810,94 @@ dm_validate_action_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *act
         sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_ACTION, action_xpath, SR_API_TREES,
-            (void *)args, arg_cnt, input, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)args, arg_cnt, input, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt, NULL);
 }
 
 int
 dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_val_t *values, size_t value_cnt,
-        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
+        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt,
+        struct lyd_node **res_data_tree)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_VALUES,
-            (void *)values, value_cnt, true, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)values, value_cnt, true, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt, res_data_tree);
 }
 
 int
 dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_node_t *trees, size_t tree_cnt,
-        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
+        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt,
+        struct lyd_node **res_data_tree)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_TREES,
-            (void *)trees, tree_cnt, true, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)trees, tree_cnt, true, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt, res_data_tree);
+}
+
+int
+dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_mem, np_ev_notification_t *notification,
+        const sr_api_variant_t api_variant)
+{
+    char *module_name = NULL;
+    dm_data_info_t *di = NULL;
+    const struct lys_node *proc_node = NULL;
+    struct lyd_node *data_tree = NULL;
+    char *xml_str = NULL;
+    struct lyxml_elem *xml = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(dm_ctx, session, notification, notification->xpath, notification->data.xml);
+
+    if (NP_EV_NOTIF_DATA_XML != notification->data_type) {
+        SR_LOG_ERR_MSG("Invalid notification data type (should be XML).");
+        return SR_ERR_INVAL_ARG;
+    }
+
+    rc = sr_copy_first_ns(notification->xpath, &module_name);
+    CHECK_RC_MSG_RETURN(rc, "Error by extracting module name from xpath.");
+
+    rc = dm_get_data_info(dm_ctx, session, module_name, &di);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Dm_get_dat_info failed for module %s", module_name);
+
+    /* test for the presence of the procedure in the schema tree */
+    proc_node = sr_find_schema_node(di->schema->module->data, notification->xpath, 0);
+    if (NULL == proc_node) {
+        SR_LOG_ERR("Notification xpath validation failed ('%s'): the target node is not present in the schema tree.",
+                notification->xpath);
+        rc = dm_report_error(session, ly_errmsg(), notification->xpath, SR_ERR_VALIDATION_FAILED);
+        goto cleanup;
+    }
+
+    /* TODO: remove, WORKAROUND for https://github.com/CESNET/libyang/issues/225 */
+    lyxml_print_mem(&xml_str, notification->data.xml, LYP_FORMAT);
+    xml = lyxml_parse_mem(di->schema->ly_ctx, xml_str, 0);
+
+    /* parse the XML into the data tree */
+    data_tree = lyd_parse_xml(di->schema->ly_ctx, &xml /* &notification->data.xml */, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
+    if (NULL == data_tree) {
+        SR_LOG_ERR("Error by parsing notification data: %s", ly_errmsg());
+        rc = dm_report_error(session, ly_errmsg(), notification->xpath, SR_ERR_VALIDATION_FAILED);
+        goto cleanup;
+    }
+
+    /* validate the data tree & add default nodes */
+    rc = dm_validate_procedure_content(dm_ctx, session, di, DM_PROCEDURE_EVENT_NOTIF, true, data_tree, proc_node);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Procedure validation failed.");
+
+    /* convert data tree into desired format */
+    rc = dm_ly_datatree_to_sr_val_node(sr_mem, notification->xpath, data_tree, api_variant, false,
+            (SR_API_VALUES == api_variant) ? (void**)(&notification->data.values) : (void**)(&notification->data.trees),
+            &notification->data_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to convert notification data tree into desired format.");
+
+    notification->data_type = (SR_API_VALUES == api_variant) ? NP_EV_NOTIF_DATA_VALUES : NP_EV_NOTIF_DATA_TREES;
+
+cleanup:
+    if (NULL != xml) {
+        lyxml_free(di->schema->ly_ctx, xml);
+    }
+    free(xml_str);
+    lyd_free_withsiblings(data_tree);
+    free(module_name);
+
+    return rc;
 }
 
 struct lyd_node *

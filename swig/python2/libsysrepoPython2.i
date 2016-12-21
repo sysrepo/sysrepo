@@ -297,7 +297,7 @@ public:
         }
     }
 
-    void event_notif(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
+    void event_notif(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
         PyObject *arglist;
 
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
@@ -317,7 +317,7 @@ public:
         }
     }
 
-    void event_notif_tree(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
+    void event_notif_tree(const sr_ev_notif_type_t, const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
         PyObject *arglist;
 
         Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, NULL);
@@ -403,16 +403,16 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
     return ctx->dp_get_items(xpath, values, values_cnt, ctx->private_ctx);
 }
 
-static void g_event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
+static void g_event_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->event_notif(xpath, values, values_cnt, timestamp, ctx->private_ctx);
+    ctx->event_notif(notif_type, xpath, values, values_cnt, timestamp, ctx->private_ctx);
 }
 
-static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
+static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->event_notif_tree(xpath, trees, tree_cnt, timestamp, ctx->private_ctx);
+    ctx->event_notif_tree(notif_type, xpath, trees, tree_cnt, timestamp, ctx->private_ctx);
 }
 
 

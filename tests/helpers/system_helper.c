@@ -33,12 +33,79 @@
 #include <setjmp.h>
 #include <cmocka.h>
 #include <string.h>
+#include <errno.h>
 #ifdef HAVE_REGEX_H
 #include <regex.h>
 #endif
+#include <execinfo.h>
 
 #define EXPECTED_MAX_FILE_SIZE 512
 
+static void
+print_backtrace()
+{
+#ifdef __linux__
+    void *callstack[128] = { 0, };
+    int frames = 0;
+    char **messages = NULL;
+    char buff[1024] = { 0, };
+    char *parenthesis = NULL;
+    FILE *fp = { 0, };
+
+    frames = backtrace(callstack, 128);
+    messages = backtrace_symbols(callstack, frames);
+
+    for (int i = 2; i < frames; i++) {
+        parenthesis = strchr(messages[i], '(');
+        *parenthesis = '\0';
+        if (NULL != parenthesis) {
+            sprintf(buff, "addr2line %p -e %s", callstack[i], messages[i]);
+            fp = popen(buff, "r");
+            fgets(buff, sizeof(buff)-1, fp);
+            pclose(fp);
+            *parenthesis = '(';
+            fprintf(stderr, "[bt] #%d %s\n        %s", (i - 2), messages[i], buff);
+        }
+    }
+    free(messages);
+#endif
+}
+
+static void
+assert_non_null_bt(void *arg)
+{
+    if (NULL == arg) {
+        print_backtrace();
+    }
+    assert_non_null(arg);
+}
+
+static void
+assert_true_bt(bool arg)
+{
+    if (!arg) {
+        print_backtrace();
+    }
+    assert_true(arg);
+}
+
+static void
+assert_string_equal_bt(const char *a, const char *b)
+{
+    if (!a || !b || 0 != strcmp(a, b)) {
+        print_backtrace();
+    }
+    assert_string_equal(a, b);
+}
+
+static void
+assert_int_equal_bt(int a, int b)
+{
+    if (a != b) {
+        print_backtrace();
+    }
+    assert_int_equal(a, b);
+}
 
 void
 test_file_exists(const char *path, bool exists)
@@ -46,7 +113,7 @@ test_file_exists(const char *path, bool exists)
     int rc = 0;
     struct stat info;
     rc = stat(path, &info),
-    assert_int_equal(exists ? 0 : -1, rc);
+    assert_int_equal_bt(exists ? 0 : -1, rc);
 }
 
 void
@@ -55,12 +122,12 @@ test_file_owner(const char *path, const char *owner)
     int rc = 0;
     struct stat info;
     rc = stat(path, &info),
-    assert_int_equal(0, rc);
+    assert_int_equal_bt(0, rc);
 
     struct passwd *pw = getpwuid(info.st_uid);
-    assert_non_null(pw);
+    assert_non_null_bt(pw);
 
-    assert_string_equal(owner, pw->pw_name);
+    assert_string_equal_bt(owner, pw->pw_name);
 }
 
 void
@@ -69,9 +136,9 @@ test_file_permissions(const char *path, mode_t permissions)
     int rc = 0;
     struct stat info;
     rc = stat(path, &info),
-    assert_int_equal(0, rc);
+    assert_int_equal_bt(0, rc);
     mode_t mask = S_IRWXU | S_IRWXG | S_IRWXO;
-    assert_int_equal(permissions & mask, info.st_mode & mask);
+    assert_int_equal_bt(permissions & mask, info.st_mode & mask);
 }
 
 static char *
@@ -96,9 +163,8 @@ read_file_content(FILE *fp)
 }
 
 static void
-test_fp_content(FILE *fp, const char *exp_content, bool regex)
+test_file_content_str(const char *file_content, const char *exp_content, bool regex)
 {
-    char *buffer = read_file_content(fp);
     bool nomatch = false;
     int rc = 0;
 
@@ -113,42 +179,44 @@ test_fp_content(FILE *fp, const char *exp_content, bool regex)
 
         /* Compile regular expression */
         rc = regcomp(&re, exp_content, REG_NOSUB | REG_EXTENDED);
-        assert_int_equal(0, rc);
+        assert_int_equal_bt(0, rc);
 
         /* Execute regular expression */
-        rc = regexec(&re, buffer, 0, NULL, 0);
+        rc = regexec(&re, file_content, 0, NULL, 0);
         if ((nomatch ? REG_NOMATCH : 0) != rc) {
             printf("REGEX: '%s'\n", exp_content);
-            printf("FILE: '%s'\n", buffer);
+            printf("FILE: '%s'\n", file_content);
         }
-        assert_int_equal(nomatch ? REG_NOMATCH : 0, rc);
+        assert_int_equal_bt(nomatch ? REG_NOMATCH : 0, rc);
 
         /* Cleanup */
         regfree(&re);
 #endif
     } else {
         /* Plain string comparison */
-        rc = strcmp(exp_content, buffer);
+        rc = strcmp(exp_content, file_content);
         if (!(nomatch ? rc != 0 : rc == 0)) {
             printf("EXPECTED: '%s'\n", exp_content);
-            printf("FILE: '%s'\n", buffer);
+            printf("FILE: '%s'\n", file_content);
         }
 
-        assert_true(nomatch ? rc != 0 : rc == 0);
+        assert_true_bt(nomatch ? rc != 0 : rc == 0);
     }
-
-    /* Cleanup */
-    free(buffer);
 }
 
 void
 test_file_content(const char *path, const char *exp_content, bool regex)
 {
     FILE *fp = NULL;
+    char *buffer = NULL;
 
     fp = fopen(path, "r");
-    assert_non_null(fp);
-    test_fp_content(fp, exp_content, regex);
+    assert_non_null_bt(fp);
+
+    buffer = read_file_content(fp);
+    test_file_content_str(buffer, exp_content, regex);
+
+    free(buffer);
     fclose(fp);
 }
 
@@ -160,8 +228,8 @@ int compare_files(const char *path1, const char *path2)
     /* open */
     fp1 = fopen(path1, "r");
     fp2 = fopen(path2, "r");
-    assert_non_null(fp1);
-    assert_non_null(fp2);
+    assert_non_null_bt(fp1);
+    assert_non_null_bt(fp2);
 
     /* read */
     char *content1 = read_file_content(fp1);
@@ -184,10 +252,29 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
 {
     int ret = 0;
     FILE *fp = NULL;
+    char *buffer = NULL;
+    bool retry = false;
+    size_t cnt = 0;
 
-    fp = popen(cmd, "r");
-    assert_non_null(fp);
-    test_fp_content(fp, exp_content, regex);
-    ret = pclose(fp);
-    assert_int_equal(exp_ret, WEXITSTATUS(ret));
+    do {
+        /* if needed, retry to workaround the fork bug in glibc: https://bugzilla.redhat.com/show_bug.cgi?id=1275384 */
+        retry = false;
+
+        fp = popen(cmd, "r");
+        assert_non_null_bt(fp);
+
+        buffer = read_file_content(fp);
+        if ('\0' == buffer[0] && 0 != strcmp(exp_content, ".*")) {
+            retry = true;
+            cnt++;
+        } else {
+            test_file_content_str(buffer, exp_content, regex);
+        }
+
+        free(buffer);
+        ret = pclose(fp);
+        if (!retry) {
+            assert_int_equal_bt(exp_ret, WEXITSTATUS(ret));
+        }
+    } while (retry && cnt < 10);
 }
