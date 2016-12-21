@@ -146,22 +146,16 @@ read_file_content(FILE *fp)
 {
     size_t size = EXPECTED_MAX_FILE_SIZE;
     char *buffer = malloc(size);
-    assert_non_null_bt(buffer);
+    assert_non_null(buffer);
     unsigned cur = 0;
-    size_t n = 0;
 
-    while (!ferror(fp) && !feof(fp)) {
-        n = fread(buffer + cur, 1, size - cur - 1, fp);
+    for (;;) {
+        size_t n = fread(buffer + cur, 1, size - cur - 1, fp);
         cur += n;
-        if (size < cur + 1) {
-            size <<= 1;
-            buffer = realloc(buffer, size);
-            assert_non_null_bt(buffer);
-        }
-    }
-
-    if (ferror(fp)) {
-        fprintf(stderr, "Error in reading from file: %s\n", strerror(errno));
+        if (size > cur + 1) { break; }
+        size <<= 1;
+        buffer = realloc(buffer, size);
+        assert_non_null(buffer);
     }
 
     buffer[cur] = '\0';
@@ -263,7 +257,7 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
     size_t cnt = 0;
 
     do {
-        /* retry to workaround the fork bug in glibc: https://bugzilla.redhat.com/show_bug.cgi?id=1275384 */
+        /* if needed, retry to workaround the fork bug in glibc: https://bugzilla.redhat.com/show_bug.cgi?id=1275384 */
         retry = false;
 
         fp = popen(cmd, "r");

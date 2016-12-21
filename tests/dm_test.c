@@ -772,11 +772,6 @@ dm_event_notif_parse_test(void **state)
 
     np_event_notification_cleanup(notification);
 
-    // TODO: if the next 3 lines are removed, error - bug in libyang: https://github.com/CESNET/libyang/issues/224
-    lyxml_free(schema_info->ly_ctx, xml);
-    xml = lyxml_parse_mem(schema_info->ly_ctx, xml_str, 0);
-    assert_non_null(xml);
-
     /* prepare ev. notification ctx */
     notification = calloc(1, sizeof(*notification));
     assert_non_null(notification);
