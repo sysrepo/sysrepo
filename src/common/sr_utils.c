@@ -2568,7 +2568,8 @@ int
 sr_str_to_time(char *time_str, time_t *time)
 {
     struct tm tm = { 0, };
-    char *time_str_copy = NULL, *colon = NULL;
+    char *time_str_copy = NULL, *colon = NULL, *ret = NULL;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(time_str, time);
 
@@ -2577,14 +2578,24 @@ sr_str_to_time(char *time_str, time_t *time)
 
     /* time str ends in '+hh:mm' but should be '+hhmm' */
     colon = strrchr(time_str_copy, ':');
+    if (NULL == colon) {
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
     memmove(colon, colon + 1, 2);
     *(colon + 2) = '\0';
-    strptime(time_str_copy, "%Y-%m-%dT%H:%M:%S%z", &tm);
 
-    free(time_str_copy);
+    ret = strptime(time_str_copy, "%Y-%m-%dT%H:%M:%S%z", &tm);
+    if (NULL == ret || '\0' != *ret) {
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
 
     *time = mktime(&tm);
-    return SR_ERR_OK;
+
+cleanup:
+    free(time_str_copy);
+    return rc;
 }
 
 int
