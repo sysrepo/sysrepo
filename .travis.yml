@@ -42,20 +42,6 @@ script:
   - ctest --output-on-failure
   - sudo ctest --output-on-failure --tests-regex ac_test
   - sudo sh ../deploy/travis/install-test-users.sh
-  - ls -al /home
-  - ls -al /home/travis
-  - ls -al /home/travis/build
-  - ls -al /home/travis/build/milanlenco
-  - ls -al /home/travis/build/milanlenco/sysrepo
-  - ls -al /home/travis/build/milanlenco/sysrepo/build
-  - ls -al /home/travis/build/milanlenco/sysrepo/build/repository
-  - ls -al /home/travis/build/milanlenco/sysrepo/build/repository/data
-  - cat /etc/passwd
-  - cat /etc/group
-  - sudo -u sysrepo-user1 cat /home/travis/build/milanlenco/sysrepo/build/repository/data/test-module.startup
-  - echo aaa | sudo -u sysrepo-user1 tee /home/travis/build/milanlenco/sysrepo/build/repository/data/test-module.startup
-  - sudo -u sysrepo-user1 cat /home/travis/build/milanlenco/sysrepo/build/repository/data/test-module.startup
-  - sudo echo > /home/travis/build/milanlenco/sysrepo/build/repository/data/test-module.startup
   - sudo ctest --output-on-failure --tests-regex nacm_cl_test || (sudo cat /var/log/syslog; exit 1)
 
 
