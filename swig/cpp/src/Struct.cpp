@@ -510,6 +510,18 @@ S_String Val::to_string() {
         return NULL;
     }
 }
+S_String Val::val_to_string() {
+    char *value = sr_val_to_str(_val);
+    if (value == NULL) {
+        throw_exception(SR_ERR_OPERATION_FAILED);
+        return NULL;
+    }
+    S_String string_val = value;
+    free(value);
+
+    return string_val;
+}
+
 S_Val Val::dup() {
     sr_val_t *new_val = NULL;
     int ret = sr_dup_val(_val, &new_val);
