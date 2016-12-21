@@ -151,7 +151,7 @@ read_file_content(FILE *fp)
     size_t n = 0;
 
     while (!ferror(fp) && !feof(fp)) {
-        n = fread(buffer + cur, 1, 1, fp);
+        n = fread(buffer + cur, 1, size - cur - 1, fp);
         cur += n;
         if (size < cur + 1) {
             size <<= 1;
@@ -263,6 +263,7 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
     size_t cnt = 0;
 
     do {
+        /* retry to workaround the fork bug in glibc: https://bugzilla.redhat.com/show_bug.cgi?id=1275384 */
         retry = false;
 
         fp = popen(cmd, "r");
