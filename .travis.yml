@@ -44,13 +44,11 @@ script:
   - sudo sh ../deploy/travis/install-test-users.sh
   - ls -al repository
   - ls -al repository/data
-  - cat /etc/group; cat /etc/passwd
-  - sudo runuser -l sysrepo-user1 -c "echo test > /home/travis/build/milanlenco/sysrepo/build/repository/data/test-module.persist"
-  - sudo runuser -l sysrepo-user1 -c "cat /home/travis/build/milanlenco/sysrepo/build/repository/data/test-module.persist"
+  - cat /etc/passwd
+  - cat /etc/group
+  - sudo -u sysrepo-user1 echo test > /home/travis/build/milanlenco/sysrepo/build/repository/data/test-module.persist
+  - sudo -u sysrepo-user1 cat /home/travis/build/milanlenco/sysrepo/build/repository/data/test-module.persist
   - sudo ctest --output-on-failure --tests-regex nacm_cl_test || (sudo cat /var/log/syslog; exit 1)
-  - sudo su
-  - whoami; su - sysrepo-user1; whoami; echo "test" > /home/travis/build/milanlenco/sysrepo/build/repository/data/test-module.persist; cat /home/travis/build/milanlenco/sysrepo/build/repository/data/test-module.persist
-  - exit
 
 
 after_success:
