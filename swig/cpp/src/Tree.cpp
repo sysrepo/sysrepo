@@ -138,7 +138,7 @@ void Tree::set_str_data(sr_type_t type, const char *string_val) {
 }
 void Tree::add_child(const char *child_name, const char *child_module_name, S_Tree child) {
     if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
-    int ret = sr_node_add_child(_node, child_name, child_module_name, child->get());
+    int ret = sr_node_add_child(_node, child_name, child_module_name, &child->_node);
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
 void Tree::set(const char *value, sr_type_t type) {

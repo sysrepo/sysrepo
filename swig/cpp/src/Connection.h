@@ -35,8 +35,9 @@ class Connection
 {
 public:
     Connection(const char *app_name, const sr_conn_options_t opts = CONN_DEFAULT);
-    sr_conn_ctx_t *get_conn();
     ~Connection();
+
+    friend class Session;
 
 private:
     sr_conn_ctx_t *_conn;

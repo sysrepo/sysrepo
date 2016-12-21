@@ -35,7 +35,6 @@
 #ifndef SWIGLUA
 %shared_ptr(Connection);
 #endif
-%ignore Connection::get_conn();
 
 #ifndef SWIGLUA
 %shared_ptr(Session);
@@ -59,7 +58,6 @@
 #ifndef SWIGLUA
 %shared_ptr(Callback);
 #endif
-%ignore Callback::get();
 %ignore Callback::private_ctx;
 
 #ifndef SWIGLUA
@@ -83,8 +81,6 @@
 #endif
 %ignore Val::Val(sr_val_t *, S_Deleter);
 %ignore Val::Val(sr_val_t *);
-%ignore Val::get();
-%ignore Val::p_get();
 %newobject Val::data;
 %newobject Val::dup;
 %newobject Val::to_string;
@@ -98,9 +94,7 @@
 %ignore Vals::Vals(sr_val_t **, size_t *, S_Deleter);
 %ignore Vals::Vals(sr_val_t **, size_t *);
 %ignore Vals::Vals(sr_val_t **);
-%ignore Vals::p_val();
 %ignore Vals::val();
-%ignore Vals::p_val_cnt();
 %newobject Vals::val;
 %newobject Vals::dup;
 
@@ -127,13 +121,10 @@
 %shared_ptr(Error);
 #endif
 %ignore Error::Error(const sr_error_info_t *);
-%ignore Error::p_error();
 
 #ifndef SWIGLUA
 %shared_ptr(Errors);
 #endif
-%ignore Error::p_error();
-%ignore Error::p_error_cnt();
 %newobject Errors::error;
 
 #ifndef SWIGLUA
@@ -158,8 +149,6 @@
 %shared_ptr(Yang_Schemas);
 #endif
 %newobject Yang_Schemas::schema;
-%ignore Yang_Schemas::p_schema_cnt;
-%ignore Yang_Schemas::p_schema;
 
 #ifndef SWIGLUA
 %shared_ptr(Fd_Change);
@@ -177,22 +166,15 @@
 %shared_ptr(Iter_Value);
 #endif
 %ignore Iter_Value::Iter_Value(sr_val_iter_t *);
-%ignore Iter_Value::get();
-%ignore Iter_Value::p_get();
 
 #ifndef SWIGLUA
 %shared_ptr(Iter_Change);
 #endif
 %ignore Iter_Change::Iter_Change(sr_change_iter_t *);
-%ignore Iter_Change::get();
-%ignore Iter_Change::p_get();
 
 #ifndef SWIGLUA
 %shared_ptr(Change);
 #endif
-%ignore Change::p_oper();
-%ignore Change::p_old();
-%ignore Change::p_new();
 %newobject new_val;
 %newobject old_val;
 
@@ -204,7 +186,6 @@
 %ignore Tree::Tree(sr_node_t *, S_Deleter);
 %ignore Tree::Tree(sr_node_t *);
 %ignore Tree::tree();
-%ignore Tree::get();
 %newobject Tree::dup;
 %newobject Tree::node;
 %newobject Tree::data;
@@ -225,8 +206,6 @@
 %ignore Trees::Trees(const sr_node_t *, const size_t);
 %ignore Trees::Trees(const sr_node_t *);
 %ignore Trees::trees();
-%ignore Trees::p_trees();
-%ignore Trees::p_trees_cnt();
 %newobject Trees::tree;
 %newobject Trees::dup;
 
