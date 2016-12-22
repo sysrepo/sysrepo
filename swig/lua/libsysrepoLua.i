@@ -114,7 +114,7 @@ public:
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
-        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals, 0);
+        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals_Holder, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 4, 1);
         in_vals->~Vals();
@@ -136,7 +136,7 @@ public:
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
-        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals, 0);
+        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals_Holder, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 4, 1);
         in_vals->~Vals();
@@ -158,7 +158,7 @@ public:
         Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
-        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Trees, 0);
+        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Trees_Holder, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 4, 1);
         in_vals->~Trees();
@@ -180,7 +180,7 @@ public:
         Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
-        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Trees, 0);
+        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Trees_Holder, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 4, 1);
         in_vals->~Trees();
@@ -197,12 +197,12 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
+        Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(values, values_cnt);
         lua_pushstring(fn.L, xpath);
-        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
+        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals_Holder, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 3, 1);
-        in_vals->~Vals();
+        out_vals->~Vals_Holder();
         if (!lua_isnumber(fn.L, -1))
             throw std::runtime_error("Lua function must return a sysrepo error code (number)");
         int ret = lua_tonumber(fn.L, -1);
