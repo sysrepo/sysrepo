@@ -2398,7 +2398,7 @@ typedef struct netconf_change_s{
 }netconf_change_t;
 
 static void
-netconf_change_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
+netconf_change_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     netconf_change_t *change = (netconf_change_t *) private_ctx;
     pthread_mutex_lock(&change->mutex);

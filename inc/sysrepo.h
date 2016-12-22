@@ -1087,25 +1087,55 @@ int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
  * @brief Flags used to override default handling of subscriptions.
  */
 typedef enum sr_subscr_flag_e {
-    SR_SUBSCR_DEFAULT = 0,    /**< Default behavior of the subscription. In case of ::sr_module_change_subscribe and
-                                   ::sr_subtree_change_subscribe calls it means that:
-                                   - the subscriber is the "owner" of the subscribed data tree and and the data tree will be
-                                   enabled in the running datastore while this subcription is alive (can be changed using ::SR_SUBSCR_PASSIVE flag),
-                                   - configuration data of the subscribed module or subtree is copied from startup to running datastore,
-                                   - the callback will be called twice, once with ::SR_EV_VERIFY event and once with ::SR_EV_APPLY / ::SR_EV_ABORT
-                                   event passed in (can be changed with ::SR_SUBSCR_APPLY_ONLY flag). */
-    SR_SUBSCR_CTX_REUSE = 1,  /**< This option enables the application to re-use an already existing subscription context
-                                   previously returned from any sr_*_subscribe call instead of requesting the creation of a new one.
-                                   In that case a single ::sr_unsubscribe call unsubscribes from all subscriptions filed within the context. */
-    SR_SUBSCR_PASSIVE = 2,    /**< The subscriber is not the "owner" of the subscribed data tree, just a passive watcher for changes.
-                                   When this option is passed in to ::sr_module_change_subscribe or ::sr_subtree_change_subscribe,
-                                   the subscription will have no effect on the presence of the subtree in the running datastore. */
-    SR_SUBSCR_APPLY_ONLY = 4, /**< The subscriber does not support verification of the changes and wants to be notified only
-                                   after the changes has been applied in the datastore, without the possibility to deny them
-                                   (it will receive only ::SR_EV_APPLY events). */
-    SR_SUBSCR_EV_ENABLED = 8, /**< The subscriber wants ::SR_EV_ENABLED notifications to be sent to them. */
-    SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG = 16, /**< The subscriber will not receive ::SR_EV_ABORT if he returns an error in verify phase
-                                              * (if the commit is refused by other verifier ::SR_EV_ABORT will be delivered). */
+    /**
+     * @brief Default behavior of the subscription. In case of ::sr_module_change_subscribe and
+     * ::sr_subtree_change_subscribe calls it means that:
+     *
+     * - the subscriber is the "owner" of the subscribed data tree and and the data tree will be enabled in the running
+     *   datastore while this subscription is alive (can be changed using ::SR_SUBSCR_PASSIVE flag),
+     * - configuration data of the subscribed module or subtree is copied from startup to running datastore,
+     * - the callback will be called twice, once with ::SR_EV_VERIFY event and once with ::SR_EV_APPLY / ::SR_EV_ABORT
+     *   event passed in (can be changed with ::SR_SUBSCR_APPLY_ONLY flag).
+     */
+    SR_SUBSCR_DEFAULT = 0,
+
+    /**
+     * @brief This option enables the application to re-use an already existing subscription context previously returned
+     * from any sr_*_subscribe call instead of requesting the creation of a new one. In that case a single
+     * ::sr_unsubscribe call unsubscribes from all subscriptions filed within the context.
+     */
+    SR_SUBSCR_CTX_REUSE = 1,
+
+    /**
+     * @brief The subscriber is not the "owner" of the subscribed data tree, just a passive watcher for changes.
+     * When this option is passed in to ::sr_module_change_subscribe or ::sr_subtree_change_subscribe,
+     * the subscription will have no effect on the presence of the subtree in the running datastore.
+     */
+    SR_SUBSCR_PASSIVE = 2,
+
+    /**
+     * @brief The subscriber does not support verification of the changes and wants to be notified only after
+     * the changes has been applied in the datastore, without the possibility to deny them
+     * (it will receive only ::SR_EV_APPLY events).
+     */
+    SR_SUBSCR_APPLY_ONLY = 4,
+
+    /**
+     * @brief The subscriber wants ::SR_EV_ENABLED notifications to be sent to them.
+     */
+    SR_SUBSCR_EV_ENABLED = 8,
+
+    /**
+     * @brief The subscriber will not receive ::SR_EV_ABORT if he returns an error in verify phase
+     * (if the commit is refused by other verifier ::SR_EV_ABORT will be delivered).
+     */
+    SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG = 16,
+
+    /**
+     * @brief This is a strict notification replay subscription: no realtime notifications will be delivered
+     * until all reply notifications are delivered (::SR_EV_NOTIF_REPLAY_COMPLETE is delivered).
+     */
+    SR_SUBSCR_NOTIF_REPLAY_STRICT = 32,
 } sr_subscr_flag_t;
 
 /**
@@ -1469,110 +1499,6 @@ int sr_rpc_send_tree(sr_session_ctx_t *session, const char *xpath,
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Event Notifications API
-////////////////////////////////////////////////////////////////////////////////
-
-/**
- * @brief Callback to be called by the delivery of event notification specified by xpath.
- * Subscribe to it by ::sr_event_notif_subscribe call.
- *
- * @param[in] xpath XPath identifying the event notification.
- * @param[in] values Array of all nodes that hold some data in event notification subtree.
- * @param[in] values_cnt Number of items inside the values array.
- * @param[in] timestamp Time when the notification was generated
- * @param[in] private_ctx Private context opaque to sysrepo,
- * as passed to ::sr_event_notif_subscribe call.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-typedef void (*sr_event_notif_cb)(const char *xpath, const sr_val_t *values, const size_t values_cnt,
-        time_t timestamp, void *private_ctx);
-
-/**
- * @brief Callback to be called by the delivery of event notification specified by xpath.
- * This callback variant operates with sysrepo trees rather than with sysrepo values,
- * use it with ::sr_event_notif_subscribe_tree and ::sr_event_notif_send_tree.
- *
- * @param[in] xpath XPath identifying the event notification.
- * @param[in] trees Array of subtrees carrying event notification data.
- * @param[in] tree_cnt Number of subtrees with data.
- * @param[in] timestamp Time when the notification was generated
- * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_event_notif_subscribe_tree call.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-typedef void (*sr_event_notif_tree_cb)(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
-        time_t timestamp, void *private_ctx);
-
-/**
- * @brief Subscribes for delivery of an event notification specified by xpath.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath XPath identifying the event notification.
- * @param[in] callback Callback to be called when the event notification is send.
- * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
- * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
- * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath,
-        sr_event_notif_cb callback, void *private_ctx, sr_subscr_options_t opts,
-        sr_subscription_ctx_t **subscription);
-
-/**
- * @brief Subscribes for delivery of event notification specified by xpath.
- * Unlike ::sr_event_notif_subscribe, this function expects callback of type ::sr_event_notif_tree_cb,
- * therefore use this version if you prefer to manipulate with event notification data organized
- * in a list of trees rather than as a flat enumeration of all values.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath XPath identifying the event notification.
- * @param[in] callback Callback to be called when the event notification is called.
- * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
- * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
- * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *xpath,
-        sr_event_notif_tree_cb callback, void *private_ctx, sr_subscr_options_t opts,
-        sr_subscription_ctx_t **subscription);
-
-/**
- * @brief Sends an event notification specified by xpath and waits for the result.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath XPath identifying the event notification.
- * @param[in] values Array of all nodes that hold some data in event notification subtree
- * (same as ::sr_get_items would return).
- * @param[in] values_cnt Number of items inside the values array.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values,
-        const size_t values_cnt);
-
-/**
- * @brief Sends an event notification specified by xpath and waits for the result.
- * The notification data are represented as arrays of subtrees reflecting the scheme
- * of the event notification.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath XPath identifying the RPC.
- * @param[in] tree Array of subtrees carrying event notification data.
- * @param[in] tree_cnt Number of subtrees with data.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
-        const sr_node_t *trees,  const size_t tree_cnt);
-
-////////////////////////////////////////////////////////////////////////////////
 // Action API
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1663,6 +1589,144 @@ int sr_action_send(sr_session_ctx_t *session, const char *xpath,
  */
 int sr_action_send_tree(sr_session_ctx_t *session, const char *xpath,
         const sr_node_t *input,  const size_t input_cnt, sr_node_t **output, size_t *output_cnt);
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Event Notifications API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Type of the notification passed to the ::sr_event_notif_cb and ::sr_event_notif_tree_cb callbacks.
+ */
+typedef enum sr_ev_notif_type_e {
+    SR_EV_NOTIF_REALTIME,         /**< Real-time notification. The only possible type if you don't use ::sr_event_notif_replay. */
+    SR_EV_NOTIF_REPLAY,           /**< Replayed notification. */
+    SR_EV_NOTIF_REPLAY_COMPLETE,  /**< Not a real notification, just a signal that the notification replay has completed
+                                       (all the stored notifications from the given time interval have been delivered). */
+    SR_EV_NOTIF_REPLAY_STOP,      /**< Not a real notification, just a signal that replay stop time has been reached
+                                       (delivered only if stop_time was specified to ::sr_event_notif_replay). */
+} sr_ev_notif_type_t;
+
+/**
+ * @brief Callback to be called by the delivery of event notification specified by xpath.
+ * Subscribe to it by ::sr_event_notif_subscribe call.
+ *
+ * @param[in] notif_type Type of the notification.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] values Array of all nodes that hold some data in event notification subtree.
+ * @param[in] values_cnt Number of items inside the values array.
+ * @param[in] timestamp Time when the notification was generated
+ * @param[in] private_ctx Private context opaque to sysrepo,
+ * as passed to ::sr_event_notif_subscribe call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+typedef void (*sr_event_notif_cb)(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx);
+
+/**
+ * @brief Callback to be called by the delivery of event notification specified by xpath.
+ * This callback variant operates with sysrepo trees rather than with sysrepo values,
+ * use it with ::sr_event_notif_subscribe_tree and ::sr_event_notif_send_tree.
+ *
+ * @param[in] notif_type Type of the notification.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] trees Array of subtrees carrying event notification data.
+ * @param[in] tree_cnt Number of subtrees with data.
+ * @param[in] timestamp Time when the notification was generated
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_event_notif_subscribe_tree call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+typedef void (*sr_event_notif_tree_cb)(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx);
+
+/**
+ * @brief Subscribes for delivery of an event notification specified by xpath.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] callback Callback to be called when the event notification is send.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath,
+        sr_event_notif_cb callback, void *private_ctx, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Subscribes for delivery of event notification specified by xpath.
+ * Unlike ::sr_event_notif_subscribe, this function expects callback of type ::sr_event_notif_tree_cb,
+ * therefore use this version if you prefer to manipulate with event notification data organized
+ * in a list of trees rather than as a flat enumeration of all values.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] callback Callback to be called when the event notification is called.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *xpath,
+        sr_event_notif_tree_cb callback, void *private_ctx, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Sends an event notification specified by xpath and waits for the result.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] values Array of all nodes that hold some data in event notification subtree
+ * (same as ::sr_get_items would return).
+ * @param[in] values_cnt Number of items inside the values array.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values,
+        const size_t values_cnt);
+
+/**
+ * @brief Sends an event notification specified by xpath and waits for the result.
+ * The notification data are represented as arrays of subtrees reflecting the scheme
+ * of the event notification.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the RPC.
+ * @param[in] tree Array of subtrees carrying event notification data.
+ * @param[in] tree_cnt Number of subtrees with data.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
+        const sr_node_t *trees,  const size_t tree_cnt);
+
+/**
+ * @brief Replays already generated notifications stored in the notification store related to
+ * the provided notification subscription (or subscriptions, in case that ::SR_SUBSCR_CTX_REUSE
+ * was used). Notification callbacks of the given susbscriptions will be called with the type set to
+ * ::SR_EV_NOTIF_REPLAY, ::SR_EV_NOTIF_REPLAY_COMPLETE or ::SR_EV_NOTIF_REPLAY_STOP.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] subscription Session context acquired with ::sr_session_start call.
+ * @param[in] start_time Starting time of the desired time window for notification replay.
+ * @param[in] stop_time End time of the desired time window for notification replay. If set to 0,
+ * no stop time will be applied (all notifications up to the current time will be delivered,
+ * ::SR_EV_NOTIF_REPLAY_STOP notification won't be delivered.).
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription,
+        time_t start_time, time_t stop_time);
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Operational Data API

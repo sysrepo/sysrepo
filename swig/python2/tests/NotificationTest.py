@@ -38,7 +38,7 @@ class NotificationTester(SysrepoTester):
         self.process = subprocess.Popen(["notifications_test_app", xpath, self.filename])
         self.report_pid(self.process.pid)
         # wait for running data file to be copied
-        time.sleep(0.1)
+        time.sleep(0.2)
 
     def cancelSubscriptionStep(self):
         os.kill(self.process.pid, signal.SIGINT)
@@ -123,7 +123,7 @@ class NotificationTest(unittest.TestCase):
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
+        subscriber.add_step(subscriber.waitTimeoutStep, 0.2)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
 
@@ -212,7 +212,7 @@ class NotificationTest(unittest.TestCase):
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
+        subscriber.add_step(subscriber.waitTimeoutStep, 0.2)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
 
@@ -297,7 +297,7 @@ class NotificationTest(unittest.TestCase):
         subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.waitStep)
+        tester.add_step(tester.waitTimeoutStep, 0.2)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
@@ -402,7 +402,7 @@ class NotificationTest(unittest.TestCase):
         subscriber4.add_step(subscriber4.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.waitStep)
+        tester.add_step(tester.waitTimeoutStep, 0.2)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
@@ -544,7 +544,7 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.waitStep)
+        tester.add_step(tester.waitTimeoutStep, 0.2)
         subscriber.add_step(subscriber.waitStep)
 
 

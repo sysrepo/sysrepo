@@ -35,7 +35,7 @@
 volatile int exit_application = 0;
 
 static void
-event_notif_cb(const char *xpath, const sr_val_t *values, const size_t value_cnt,
+event_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t value_cnt,
        time_t timestamp, void *private_ctx)
 {
     /* print notification */

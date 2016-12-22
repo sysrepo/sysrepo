@@ -95,6 +95,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "commit-timeout";
     case SR__OPERATION__EVENT_NOTIF:
         return "event-notification";
+    case SR__OPERATION__EVENT_NOTIF_REPLAY:
+        return "event-notification-replay";
     case SR__OPERATION__OPER_DATA_TIMEOUT:
         return "oper-data-timeout";
     case SR__OPERATION__INTERNAL_STATE_DATA:
@@ -322,6 +324,12 @@ sr_gpb_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uint
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__event_notif_req__init((Sr__EventNotifReq*)sub_msg);
             req->event_notif_req = (Sr__EventNotifReq*)sub_msg;
+            break;
+        case SR__OPERATION__EVENT_NOTIF_REPLAY:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__EventNotifReplayReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__event_notif_replay_req__init((Sr__EventNotifReplayReq*)sub_msg);
+            req->event_notif_replay_req = (Sr__EventNotifReplayReq*)sub_msg;
             break;
         default:
             rc = SR_ERR_UNSUPPORTED;
@@ -566,6 +574,12 @@ sr_gpb_resp_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uin
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__event_notif_resp__init((Sr__EventNotifResp*)sub_msg);
             resp->event_notif_resp = (Sr__EventNotifResp*)sub_msg;
+            break;
+        case SR__OPERATION__EVENT_NOTIF_REPLAY:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__EventNotifReplayResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__event_notif_replay_resp__init((Sr__EventNotifReplayResp*)sub_msg);
+            resp->event_notif_replay_resp = (Sr__EventNotifReplayResp*)sub_msg;
             break;
         default:
             rc = SR_ERR_UNSUPPORTED;
@@ -916,6 +930,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__EVENT_NOTIF:
                 CHECK_NULL_RETURN(msg->request->event_notif_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__EVENT_NOTIF_REPLAY:
+                CHECK_NULL_RETURN(msg->request->event_notif_replay_req, SR_ERR_MALFORMED_MSG);
+                break;
             default:
                 return SR_ERR_MALFORMED_MSG;
         }
@@ -1019,6 +1036,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__EVENT_NOTIF:
                 CHECK_NULL_RETURN(msg->response->event_notif_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__EVENT_NOTIF_REPLAY:
+                CHECK_NULL_RETURN(msg->response->event_notif_replay_resp, SR_ERR_MALFORMED_MSG);
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
@@ -2089,12 +2109,12 @@ sr_subscription_type_gpb_to_str(Sr__SubscriptionType type)
             return "rpc";
         case SR__SUBSCRIPTION_TYPE__ACTION_SUBS:
             return "action";
+        case SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS:
+            return "event-notification";
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             return "hello";
         case SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS:
             return "commit-end";
-        case SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS:
-            return "event-notification";
         default:
             return "unknown";
     }
@@ -2117,6 +2137,15 @@ sr_subsciption_type_str_to_gpb(const char *type_name)
     }
     if (0 == strcmp(type_name, "dp-get-items")) {
         return SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS;
+    }
+    if (0 == strcmp(type_name, "rpc")) {
+        return SR__SUBSCRIPTION_TYPE__RPC_SUBS;
+    }
+    if (0 == strcmp(type_name, "action")) {
+        return SR__SUBSCRIPTION_TYPE__ACTION_SUBS;
+    }
+    if (0 == strcmp(type_name, "event-notification")) {
+        return SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS;
     }
     SR_LOG_ERR("Unknown type %s can not be converted", type_name);
     return _SR__SUBSCRIPTION_TYPE_IS_INT_SIZE;
@@ -2202,6 +2231,23 @@ sr_notification_event_gpb_to_sr(Sr__NotificationEvent event)
             return SR_EV_ENABLED;
         default:
             return SR_EV_ABORT;
+    }
+}
+
+sr_ev_notif_type_t
+sr_ev_notification_type_gpb_to_sr(Sr__EventNotifReq__NotifType ev_notif_type)
+{
+    switch (ev_notif_type) {
+        case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REALTIME:
+            return SR_EV_NOTIF_REALTIME;
+        case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY:
+            return SR_EV_NOTIF_REPLAY;
+        case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_COMPLETE:
+            return SR_EV_NOTIF_REPLAY_COMPLETE;
+        case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_STOP:
+            return SR_EV_NOTIF_REPLAY_STOP;
+        default:
+            return SR_EV_NOTIF_REALTIME;
     }
 }
 

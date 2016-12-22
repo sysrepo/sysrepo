@@ -99,7 +99,7 @@ void dm_get_data_tree(void **state)
     /* Get from avl tree */
     assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx ,"example-module", &data_tree));
     /* Module without data */
-    assert_int_equal(SR_ERR_NOT_FOUND, dm_get_datatree(ctx, ses_ctx ,"small-module", &data_tree));
+    assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx ,"small-module", &data_tree));
     /* Not existing module should return an error*/
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, dm_get_datatree(ctx, ses_ctx ,"not-existing-module", &data_tree));
 
@@ -594,7 +594,7 @@ dm_event_notif_test(void **state)
 
     /* non-existing event notification */
     rc = dm_validate_event_notif(ctx, session, "/test-module:non-existing-event-notif", values, values_cnt,
-            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     dm_copy_errors(session, NULL, &error_msg, &error_xpath);
     assert_string_equal("target node is not present in the schema tree", error_msg);
@@ -627,7 +627,7 @@ dm_event_notif_test(void **state)
     values[5].data.string_val = strdup("eth2");
 
     rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", values, values_cnt,
-            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL);
     assert_int_equal(SR_ERR_OK, rc);
     /* including default leaf */
     assert_int_equal(7, with_def_cnt);
@@ -640,7 +640,7 @@ dm_event_notif_test(void **state)
     free(with_def[6].xpath);
     with_def[6].xpath = strdup("/test-module:link-removed/non-existing-node");
     rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", with_def, with_def_cnt,
-            NULL, NULL, NULL, NULL, NULL);
+            NULL, NULL, NULL, NULL, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     dm_copy_errors(session, NULL, &error_msg, &error_xpath);
     assert_string_equal("Resolving XPath expression \"/test-module:link-removed/non-existing-node\" failed.", error_msg);
@@ -666,7 +666,7 @@ dm_event_notif_test(void **state)
 
     /* non-existing location of the notification in the data tree */
     rc = dm_validate_event_notif(ctx, session, "/test-module:kernel-modules/kernel-module[name=\"non-existent-module\"]/status-change",
-            values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     dm_copy_errors(session, NULL, &error_msg, &error_xpath);
     assert_string_equal("target node is not present in the data tree", error_msg);
@@ -690,7 +690,7 @@ dm_event_notif_test(void **state)
 
     /* unsatisfied "must" condition */
     rc = dm_validate_event_notif(ctx, session, "/test-module:kernel-modules/kernel-module[name=\"irqbypass.ko\"]/status-change",
-            values, values_cnt, NULL, NULL, NULL, NULL, NULL);
+            values, values_cnt, NULL, NULL, NULL, NULL, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     dm_copy_errors(session, NULL, &error_msg, &error_xpath);
     assert_string_equal("time-of-change must be greater than magic_number", error_msg);
@@ -703,7 +703,7 @@ dm_event_notif_test(void **state)
     /* satisfied "must" condition */
     values[1].data.uint32_val = 132;
     rc = dm_validate_event_notif(ctx, session, "/test-module:kernel-modules/kernel-module[name=\"irqbypass.ko\"]/status-change",
-            values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, with_def_cnt);
     assert_int_equal(2, with_def_tree_cnt);
@@ -711,6 +711,91 @@ dm_event_notif_test(void **state)
     sr_free_values(values, values_cnt);
     sr_free_values(with_def, with_def_cnt);
     sr_free_trees(with_def_tree, with_def_tree_cnt);
+
+    dm_session_stop(ctx, session);
+    dm_cleanup(ctx);
+}
+
+void
+dm_event_notif_parse_test(void **state)
+{
+    int rc = SR_ERR_OK;
+    dm_ctx_t *ctx = NULL;
+    dm_session_t *session = NULL;
+    dm_schema_info_t *schema_info = NULL;
+    np_ev_notification_t *notification = NULL;
+    struct lyxml_elem *xml = NULL;
+
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* load test-module */
+    rc = dm_get_module_and_lock(ctx, "test-module", &schema_info);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* prepare lyxml with the notification */
+    const char *xml_str = "\
+      <link-removed xmlns=\"urn:ietf:params:xml:ns:yang:test-module\"> \
+        <source> \
+          <address>10.10.2.4</address> \
+          <interface>eth0</interface> \
+        </source> \
+        <destination> \
+          <address>10.10.2.5</address> \
+          <interface>eth2</interface> \
+        </destination> \
+      </link-removed>";
+    xml = lyxml_parse_mem(schema_info->ly_ctx, xml_str, 0);
+    assert_non_null(xml);
+
+    /* prepare ev. notification ctx */
+    notification = calloc(1, sizeof(*notification));
+    assert_non_null(notification);
+    notification->xpath = strdup("/test-module:link-removed");
+    assert_non_null(notification->xpath);
+    notification->data.xml = xml;
+    notification->data_type = NP_EV_NOTIF_DATA_XML;
+
+    /* parse to values */
+    rc = dm_parse_event_notif(ctx, session, NULL, notification, SR_API_VALUES);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(NP_EV_NOTIF_DATA_VALUES == notification->data_type);
+
+    assert_int_equal(notification->data_cnt, 7); /* including the default node */
+    assert_string_equal(notification->data.values[1].xpath, "/test-module:link-removed/source/address");
+    assert_string_equal(notification->data.values[1].data.string_val, "10.10.2.4");
+    assert_string_equal(notification->data.values[6].xpath, "/test-module:link-removed/MTU");
+    assert_true(notification->data.values[6].dflt);
+
+    np_event_notification_cleanup(notification);
+
+    /* prepare ev. notification ctx */
+    notification = calloc(1, sizeof(*notification));
+    assert_non_null(notification);
+    notification->xpath = strdup("/test-module:link-removed");
+    assert_non_null(notification->xpath);
+    notification->data.xml = xml;
+    notification->data_type = NP_EV_NOTIF_DATA_XML;
+
+    /* parse to values */
+    rc = dm_parse_event_notif(ctx, session, NULL, notification, SR_API_TREES);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(NP_EV_NOTIF_DATA_TREES == notification->data_type);
+
+    assert_int_equal(notification->data_cnt, 3); /* including the default node */
+    assert_string_equal(notification->data.trees[0].name, "source");
+    assert_non_null(notification->data.trees[0].first_child);
+    assert_string_equal(notification->data.trees[0].first_child->data.string_val, "10.10.2.4");
+    assert_string_equal(notification->data.trees[2].name, "MTU");
+    assert_true(notification->data.trees[2].dflt);
+
+    np_event_notification_cleanup(notification);
+
+    /* cleanup the lyxml */
+    lyxml_free(schema_info->ly_ctx, xml);
 
     dm_session_stop(ctx, session);
     dm_cleanup(ctx);
@@ -1022,6 +1107,7 @@ main()
             cmocka_unit_test(dm_rpc_test),
             cmocka_unit_test(dm_state_data_test),
             cmocka_unit_test(dm_event_notif_test),
+            cmocka_unit_test(dm_event_notif_parse_test),
             cmocka_unit_test(dm_action_test),
             cmocka_unit_test(dm_schema_node_xpath_hash),
     };

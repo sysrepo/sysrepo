@@ -677,6 +677,10 @@ message GetChangesResp {
 // RPC (Remote Procedure Calls) / Action API
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief Sends a RPC / action request into the datastore, will be delivered to the RPC subscriber.
+ * Sent by sr_rpc_send / sr_rpc_send_tree and sr_action_send / sr_action_send_tree API calls.
+ */
 message RPCReq {
   required bool action = 1;
   required string xpath = 2;
@@ -688,6 +692,9 @@ message RPCReq {
   optional uint32 subscription_id = 11;
 }
 
+/**
+ * @brief Response to sr_rpc_send / sr_rpc_send_tree or sr_action_send / sr_action_send_tree request.
+ */
 message RPCResp {
   required bool action = 1;
   required string xpath = 2;
@@ -701,11 +708,26 @@ message RPCResp {
 // Event Notifications API
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief Sends an event notification into the datastore, will be delivered to all notification subscribers.
+ * Sent by sr_event_notif_send API call.
+ */
 message EventNotifReq {
-  required string xpath = 1;
-  repeated Value values = 2;
-  repeated Node trees = 3;
-  required uint64 timestamp = 4;
+  /**
+   * @brief Type of the event notification.
+   */
+  enum NotifType {
+    REALTIME = 1;
+    REPLAY = 2;
+    REPLAY_COMPLETE = 3;
+    REPLAY_STOP = 4;
+  }
+
+  required NotifType type = 1;
+  required string xpath = 2;
+  repeated Value values = 3;
+  repeated Node trees = 4;
+  required uint64 timestamp = 5;
 
   optional string subscriber_address = 10;
   optional uint32 subscription_id = 11;
@@ -713,7 +735,30 @@ message EventNotifReq {
   required bool do_not_send_reply = 20;
 }
 
+/**
+ * @brief Response to sr_event_notif_send request.
+ */
 message EventNotifResp {
+}
+
+/**
+ * @brief Sends a request to replay event notifications stored in the datastore.
+ * Sent by sr_event_notif_replay API call.
+ */
+message EventNotifReplayReq {
+  required string xpath = 1;
+  required uint64 start_time = 2;
+  required uint64 stop_time = 3;
+
+  required string subscriber_address = 10;
+  required uint32 subscription_id = 11;
+  required ApiVariant api_variant = 12;
+}
+
+/**
+ * @brief Response to sr_event_notif_replay request.
+ */
+message EventNotifReplayResp {
 }
 
 
@@ -855,6 +900,7 @@ enum Operation {
   RPC = 81;
   ACTION = 82;
   EVENT_NOTIF = 83;
+  EVENT_NOTIF_REPLAY = 84;
 
   UNSUBSCRIBE_DESTINATION = 101;
   COMMIT_TIMEOUT = 102;
@@ -907,6 +953,7 @@ message Request {
   optional DataProvideReq data_provide_req = 80;
   optional RPCReq rpc_req = 81;
   optional EventNotifReq event_notif_req = 82;
+  optional EventNotifReplayReq event_notif_replay_req = 83;
 }
 
 /**
@@ -956,6 +1003,7 @@ message Response {
   optional DataProvideResp data_provide_resp = 80;
   optional RPCResp rpc_resp = 81;
   optional EventNotifResp event_notif_resp = 82;
+  optional EventNotifReplayResp event_notif_replay_resp = 83;
 }
 
 /**

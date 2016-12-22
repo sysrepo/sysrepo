@@ -31,6 +31,8 @@
 #include <stdarg.h>
 #include <pwd.h>
 #include <grp.h>
+#define __USE_XOPEN
+#include <time.h>
 #include <libyang/libyang.h>
 
 #include "sr_common.h"
@@ -2284,14 +2286,15 @@ sr_daemonize_signal_success(pid_t parent_pid)
 }
 
 int
-sr_set_socket_dir_permissions(const char *socket_dir, const char *data_serach_dir, const char *module_name, bool strict)
+sr_set_data_file_permissions(const char *target_file, bool target_is_dir, const char *data_serach_dir,
+        const char *module_name, bool strict)
 {
     char *data_file_name = NULL;
     struct stat data_file_stat = { 0, };
     mode_t mode = 0;
     int ret = 0, rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(socket_dir, module_name);
+    CHECK_NULL_ARG3(target_file, data_serach_dir, module_name);
 
     /* skip privilege setting for internal 'module name' */
     if (0 == strcmp(module_name, SR_GLOBAL_SUBSCRIPTIONS_SUBDIR)) {
@@ -2309,32 +2312,34 @@ sr_set_socket_dir_permissions(const char *socket_dir, const char *data_serach_di
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to stat data file for '%s': %s.", module_name, sr_strerror_safe(errno));
 
     mode = data_file_stat.st_mode;
-    /* set the execute permissions to be the same as write permissions */
-    if (mode & S_IWUSR) {
-        mode |= S_IXUSR;
-    }
-    if (mode & S_IWGRP) {
-        mode |= S_IXGRP;
-    }
-    if (mode & S_IWOTH) {
-        mode |= S_IXOTH;
+    /* for directory, set the execute permissions to be the same as write permissions */
+    if (target_is_dir) {
+        if (mode & S_IWUSR) {
+            mode |= S_IXUSR;
+        }
+        if (mode & S_IWGRP) {
+            mode |= S_IXGRP;
+        }
+        if (mode & S_IWOTH) {
+            mode |= S_IXOTH;
+        }
     }
 
     /* change the permissions */
-    ret = chmod(socket_dir, mode);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_UNAUTHORIZED, "Unable to execute chmod on '%s': %s.", socket_dir, sr_strerror_safe(errno));
+    ret = chmod(target_file, mode);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_UNAUTHORIZED, "Unable to execute chmod on '%s': %s.", target_file, sr_strerror_safe(errno));
 
     /* change the owner (if possible) */
-    ret = chown(socket_dir, data_file_stat.st_uid, data_file_stat.st_gid);
+    ret = chown(target_file, data_file_stat.st_uid, data_file_stat.st_gid);
     if (0 != ret) {
         if (strict) {
-            SR_LOG_ERR("Unable to execute chown on '%s': %s.", socket_dir, sr_strerror_safe(errno));
+            SR_LOG_ERR("Unable to execute chown on '%s': %s.", target_file, sr_strerror_safe(errno));
             return SR_ERR_INTERNAL;
         } else {
             /* non-privileged process may not be able to set chown - print warning, since
              * this may prevent some users otherwise allowed to access the data to connect to our socket.
              * Correct permissions can be set up at any time using sysrepoctl. */
-            SR_LOG_WRN("Unable to execute chown on '%s': %s.", socket_dir, sr_strerror_safe(errno));
+            SR_LOG_WRN("Unable to execute chown on '%s': %s.", target_file, sr_strerror_safe(errno));
         }
     }
 
@@ -2547,6 +2552,53 @@ cleanup:
 }
 
 int
+sr_time_to_str(time_t time, char *buff, size_t buff_size)
+{
+    CHECK_NULL_ARG(buff);
+
+    strftime(buff, buff_size - 1, "%Y-%m-%dT%H:%M:%S%z", localtime(&time));
+    /* time buff ends in '+hhmm' but should be '+hh:mm' */
+    memmove(buff + strlen(buff) - 1, buff + strlen(buff) - 2, 3);
+    buff[strlen(buff) - 3] = ':';
+
+    return SR_ERR_OK;
+}
+
+int
+sr_str_to_time(char *time_str, time_t *time)
+{
+    struct tm tm = { 0, };
+    char *time_str_copy = NULL, *colon = NULL, *ret = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(time_str, time);
+
+    time_str_copy = strdup(time_str);
+    CHECK_NULL_NOMEM_RETURN(time_str_copy);
+
+    /* time str ends in '+hh:mm' but should be '+hhmm' */
+    colon = strrchr(time_str_copy, ':');
+    if (NULL == colon) {
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+    memmove(colon, colon + 1, 2);
+    *(colon + 2) = '\0';
+
+    ret = strptime(time_str_copy, "%Y-%m-%dT%H:%M:%S%z", &tm);
+    if (NULL == ret || '\0' != *ret) {
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    *time = mktime(&tm);
+
+cleanup:
+    free(time_str_copy);
+    return rc;
+}
+
+int
 sr_get_system_groups(const char *username, char ***groups_p, size_t *group_cnt_p)
 {
 #define MAX_BUF_REALLOC_ATEMPTS   10
@@ -2662,7 +2714,7 @@ cleanup:
 }
 
 void
-sr_free_list_of_strings (sr_list_t *list)
+sr_free_list_of_strings(sr_list_t *list)
 {
     if (NULL != list) {
         for (size_t i = 0; i < list->count; i++) {
