@@ -3213,8 +3213,10 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
                 long pagesize = sysconf(_SC_PAGE_SIZE);
                 long filesize = lseek(c_ctx->fds[count], 0, SEEK_END);
                 if ((filesize >= pagesize) && (0 == filesize % pagesize)) {
-                    lseek(c_ctx->fds[count], 1, SEEK_END);
-                    write(c_ctx->fds[count], "\n", 1);
+                    filesize = lseek(c_ctx->fds[count], 1, SEEK_END);
+                    if (-1 != filesize) {
+                        write(c_ctx->fds[count], "\n", 1);
+                    }
                 }
                 ret = fsync(c_ctx->fds[count]);
             }

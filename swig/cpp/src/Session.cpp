@@ -303,6 +303,14 @@ void Session::set_item(const char *xpath, S_Val value, const sr_edit_options_t o
     }
 }
 
+void Session::set_item_str(const char *xpath, const char *value, const sr_edit_options_t opts)
+{
+    int ret = sr_set_item_str(_sess, xpath, value, opts);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
 void Session::delete_item(const char *xpath, const sr_edit_options_t opts)
 {
     int ret = sr_delete_item(_sess, xpath, opts);
@@ -444,7 +452,8 @@ Subscribe::~Subscribe()
     if (_sub && _sess->_sess) {
         int ret = sr_unsubscribe(_sess->_sess, _sub);
         if (ret != SR_ERR_OK) {
-            throw_exception(ret);
+            //this exception can't be catched
+            //throw_exception(ret);
         }
 	_sub = NULL;
     }

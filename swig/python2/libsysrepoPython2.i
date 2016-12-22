@@ -426,9 +426,6 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -445,9 +442,6 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -463,9 +457,6 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         /* create class */
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -484,9 +475,6 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -502,9 +490,6 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -522,9 +507,6 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -540,9 +522,6 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -560,9 +539,6 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -578,9 +554,6 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -598,9 +571,6 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -616,9 +586,6 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;

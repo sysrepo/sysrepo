@@ -512,11 +512,16 @@ np_get_notif_store_filename(const char *module_name, time_t received_time, char 
     if (-1 == access(filename_buff, F_OK)) {
         old_umask = umask(0);
         fd = open(filename_buff, O_CREAT, S_IRUSR | S_IWUSR);
-        close(fd);
-        umask(old_umask);
-        rc = sr_set_data_file_permissions(filename_buff, false, SR_DATA_SEARCH_DIR, module_name, false);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_WRN("Error by applying correct data file permissions on file '%s'.", filename_buff);
+        if (-1 == fd) {
+            SR_LOG_WRN("Error by opening file '%s': %s.", filename_buff, sr_strerror_safe(errno));
+        } else {
+            /* close and apply access permissions */
+            close(fd);
+            umask(old_umask);
+            rc = sr_set_data_file_permissions(filename_buff, false, SR_DATA_SEARCH_DIR, module_name, false);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN("Error by applying correct data file permissions on file '%s'.", filename_buff);
+            }
         }
     }
 
@@ -1521,7 +1526,7 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
 
     /* get current notification data filename */
     rc = np_get_notif_store_filename(module_name, generated_time, data_filename, PATH_MAX);
-    CHECK_RC_LOG_RETURN(rc, "Unable to compose notification data file name for '%s'.", module_name);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to compose notification data file name for '%s'.", module_name);
 
     /* load notif. data */
     rc = np_load_data_tree(np_ctx, user_cred, data_filename, false, &data_tree, &fd);
@@ -1634,6 +1639,7 @@ np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, con
             /* filter out notifications not exactly matching the time interval */
             if (notification->timestamp < start_time || notification->timestamp > effective_stop_time) {
                 np_event_notification_cleanup(notification); // TODO: optimize this
+                notification = NULL;
                 continue;
             }
 

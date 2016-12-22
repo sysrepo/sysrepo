@@ -409,12 +409,12 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
                 ret = system("sysrepod");
                 if (0 == ret) {
                     SR_LOG_INF_MSG("Sysrepo daemon has been started.");
-                    rc = cl_socket_connect(connection, SR_DAEMON_SOCKET);
-                    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepod: %s.", sr_strerror(rc));
                 } else {
                     SR_LOG_WRN("Unable to start sysrepo daemon, error code=%d.", ret);
-                    goto cleanup;
                 }
+                /* retry to connect again in any case */
+                rc = cl_socket_connect(connection, SR_DAEMON_SOCKET);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepod: %s.", sr_strerror(rc));
             } else {
                 SR_LOG_ERR_MSG("Sysrepo daemon not detected while library mode disallowed.");
                 goto cleanup;
@@ -3594,9 +3594,6 @@ sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subscrip
 
     cl_session_clear_errors(session);
 
-    rc = sr_mem_new(0, &sr_mem);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
-
     for (size_t i = 0; i < subscription->sm_subscription_cnt; i++) {
         sm_subscription = subscription->sm_subscriptions[i];
 
@@ -3604,6 +3601,9 @@ sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subscrip
             /* only event notification subscriptions */
             continue;
         }
+
+        rc = sr_mem_new(0, &sr_mem);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
 
         /* prepare event-notification message */
         rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__EVENT_NOTIF_REPLAY, session->id, &msg_req);
