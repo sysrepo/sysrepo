@@ -137,13 +137,10 @@
 /** Timeout for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action). */
 #define SR_LONG_REQUEST_TIMEOUT @LONG_REQUEST_TIMEOUT@
 
-/**
- * Timeout (in seconds) after which the commit will be aborted / released
- * in case that not all notification ACKs have been received.
- */
-#define SR_COMMIT_TIMEOUT @COMMIT_TIMEOUT@
+/** Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers. */
+#define SR_COMMIT_VERIFY_TIMEOUT @COMMIT_VERIFY_TIMEOUT@
 
 /** Timeout (in seconds) that a request can wait for operational data from data providers. */
-#define SR_OPER_DATA_REQ_TIMEOUT @OPER_DATA_REQ_TIMEOUT@
+#define SR_OPER_DATA_PROVIDE_TIMEOUT @OPER_DATA_PROVIDE_TIMEOUT@
 
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

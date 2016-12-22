@@ -1393,7 +1393,7 @@ np_commit_notifications_sent(np_ctx_t *np_ctx, uint32_t commit_id, bool commit_f
             } else {
                 /* not all ACKs recieved - deliver the msg after timeout */
                 req->internal_request->commit_timeout_req->expired = true;  /* produce error */
-                req->internal_request->postpone_timeout = SR_COMMIT_TIMEOUT;
+                req->internal_request->postpone_timeout = SR_COMMIT_VERIFY_TIMEOUT;
                 req->internal_request->has_postpone_timeout = true;
             }
             rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, req);
