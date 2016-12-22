@@ -84,6 +84,7 @@
 %newobject Val::data;
 %newobject Val::dup;
 %newobject Val::to_string;
+%newobject Val::val_to_string;
 
 #ifndef SWIGLUA
 %shared_ptr(Vals);
