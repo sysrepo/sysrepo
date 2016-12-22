@@ -277,7 +277,7 @@ cleanup:
     return rc;
 }
 
-int
+static int
 rp_send_netconf_change_notification(rp_ctx_t *rp_ctx, Sr__Msg *msg) {
 
     CHECK_NULL_ARG2(rp_ctx, msg);

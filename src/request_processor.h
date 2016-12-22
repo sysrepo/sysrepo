@@ -134,14 +134,6 @@ int rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg);
 int rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, int result, sr_list_t *err_subs_xpaths, sr_list_t *errors);
 
 /**
- * @brief Sends internally generated netconf notification.
- * @param [in] rp_ctx
- * @param [in] msg
- * @return Error code (SR_ERR_OK on success)
- */
-int rp_send_netconf_change_notification(rp_ctx_t *rp_ctx, Sr__Msg *msg);
-
-/**
  * @brief Prepares notification config-chagnge message.
  * @param [in] rp_ctx
  * @param [in] session
