@@ -364,7 +364,7 @@ pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscript
             }
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "username")) {
                 subscription->username = strdup(node_ll->value_str);
-                CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
+                CHECK_NULL_NOMEM_GOTO(subscription->username, rc, cleanup);
             }
             if (0 == strcmp(node->schema->name, "event") && NULL != node_ll->value.ident->name) {
                 subscription->notif_event = sr_notification_event_str_to_gpb(node_ll->value.ident->name);

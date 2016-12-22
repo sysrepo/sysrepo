@@ -34,6 +34,7 @@
 #include <cmocka.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
 #ifdef HAVE_REGEX_H
 #include <regex.h>
 #endif
@@ -48,7 +49,8 @@ print_backtrace()
     void *callstack[128] = { 0, };
     int frames = 0;
     char **messages = NULL;
-    char buff[1024] = { 0, };
+    char cmd[PATH_MAX] = { 0, };
+    char buff[PATH_MAX] = { 0, };
     char *parenthesis = NULL;
     FILE *fp = { 0, };
 
@@ -57,10 +59,10 @@ print_backtrace()
 
     for (int i = 2; i < frames; i++) {
         parenthesis = strchr(messages[i], '(');
-        *parenthesis = '\0';
         if (NULL != parenthesis) {
-            sprintf(buff, "addr2line %p -e %s", callstack[i], messages[i]);
-            fp = popen(buff, "r");
+            *parenthesis = '\0';
+            snprintf(cmd, PATH_MAX, "addr2line %p -e %s", callstack[i], messages[i]);
+            fp = popen(cmd, "r");
             fgets(buff, sizeof(buff)-1, fp);
             pclose(fp);
             *parenthesis = '(';
