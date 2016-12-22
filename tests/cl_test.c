@@ -5057,29 +5057,35 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
-    assert_int_equal(values_cnt, 7);
     assert_string_equal("/test-module:link-discovered", xpath);
-    assert_string_equal("/test-module:link-discovered/source", values[0].xpath);
-    assert_int_equal(SR_CONTAINER_T, values[0].type);
-    assert_string_equal("/test-module:link-discovered/source/address", values[1].xpath);
-    assert_int_equal(SR_STRING_T, values[1].type);
-    assert_string_equal("10.10.1.5", values[1].data.string_val);
-    assert_string_equal("/test-module:link-discovered/source/interface", values[2].xpath);
-    assert_int_equal(SR_STRING_T, values[2].type);
-    assert_string_equal("eth1", values[2].data.string_val);
-    assert_string_equal("/test-module:link-discovered/destination", values[3].xpath);
-    assert_int_equal(SR_CONTAINER_T, values[3].type);
-    assert_string_equal("/test-module:link-discovered/destination/address", values[4].xpath);
-    assert_int_equal(SR_STRING_T, values[4].type);
-    assert_string_equal("10.10.1.8", values[4].data.string_val);
-    assert_string_equal("/test-module:link-discovered/destination/interface", values[5].xpath);
-    assert_int_equal(SR_STRING_T, values[5].type);
-    assert_string_equal("eth0", values[5].data.string_val);
-    assert_string_equal("/test-module:link-discovered/MTU", values[6].xpath);  /**< default */
-    assert_int_equal(SR_UINT16_T, values[6].type);
-    assert_int_equal(1500, values[6].data.uint16_val);
 
-    if (SR_EV_NOTIF_REPLAY == notif_type) {
+    if (SR_EV_NOTIF_REPLAY_COMPLETE != notif_type) {
+        assert_int_equal(values_cnt, 7);
+        assert_string_equal("/test-module:link-discovered/source", values[0].xpath);
+        assert_int_equal(SR_CONTAINER_T, values[0].type);
+        assert_string_equal("/test-module:link-discovered/source/address", values[1].xpath);
+        assert_int_equal(SR_STRING_T, values[1].type);
+        assert_string_equal("10.10.1.5", values[1].data.string_val);
+        assert_string_equal("/test-module:link-discovered/source/interface", values[2].xpath);
+        assert_int_equal(SR_STRING_T, values[2].type);
+        assert_string_equal("eth1", values[2].data.string_val);
+        assert_string_equal("/test-module:link-discovered/destination", values[3].xpath);
+        assert_int_equal(SR_CONTAINER_T, values[3].type);
+        assert_string_equal("/test-module:link-discovered/destination/address", values[4].xpath);
+        assert_int_equal(SR_STRING_T, values[4].type);
+        assert_string_equal("10.10.1.8", values[4].data.string_val);
+        assert_string_equal("/test-module:link-discovered/destination/interface", values[5].xpath);
+        assert_int_equal(SR_STRING_T, values[5].type);
+        assert_string_equal("eth0", values[5].data.string_val);
+        assert_string_equal("/test-module:link-discovered/MTU", values[6].xpath);  /**< default */
+        assert_int_equal(SR_UINT16_T, values[6].type);
+        assert_int_equal(1500, values[6].data.uint16_val);
+    }
+
+    if (SR_EV_NOTIF_REPLAY_COMPLETE == notif_type) {
+        assert_int_equal(values_cnt, 0);
+        assert_null(values);
+
         assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
         cb_status->link_discovered += 1;
         if (cb_status->link_discovered == 1) {
@@ -5097,29 +5103,34 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
-    assert_int_equal(values_cnt, 7);
-    assert_string_equal("/test-module:link-removed", xpath);
-    assert_string_equal("/test-module:link-removed/source", values[0].xpath);
-    assert_int_equal(SR_CONTAINER_T, values[0].type);
-    assert_string_equal("/test-module:link-removed/source/address", values[1].xpath);
-    assert_int_equal(SR_STRING_T, values[1].type);
-    assert_string_equal("10.10.2.4", values[1].data.string_val);
-    assert_string_equal("/test-module:link-removed/source/interface", values[2].xpath);
-    assert_int_equal(SR_STRING_T, values[2].type);
-    assert_string_equal("eth0", values[2].data.string_val);
-    assert_string_equal("/test-module:link-removed/destination", values[3].xpath);
-    assert_int_equal(SR_CONTAINER_T, values[3].type);
-    assert_string_equal("/test-module:link-removed/destination/address", values[4].xpath);
-    assert_int_equal(SR_STRING_T, values[4].type);
-    assert_string_equal("10.10.2.5", values[4].data.string_val);
-    assert_string_equal("/test-module:link-removed/destination/interface", values[5].xpath);
-    assert_int_equal(SR_STRING_T, values[5].type);
-    assert_string_equal("eth2", values[5].data.string_val);
-    assert_string_equal("/test-module:link-removed/MTU", values[6].xpath); /**< default */
-    assert_int_equal(SR_UINT16_T, values[6].type);
-    assert_int_equal(1500, values[6].data.uint16_val);
+    if (SR_EV_NOTIF_REPLAY_COMPLETE != notif_type) {
+        assert_int_equal(values_cnt, 7);
+        assert_string_equal("/test-module:link-removed", xpath);
+        assert_string_equal("/test-module:link-removed/source", values[0].xpath);
+        assert_int_equal(SR_CONTAINER_T, values[0].type);
+        assert_string_equal("/test-module:link-removed/source/address", values[1].xpath);
+        assert_int_equal(SR_STRING_T, values[1].type);
+        assert_string_equal("10.10.2.4", values[1].data.string_val);
+        assert_string_equal("/test-module:link-removed/source/interface", values[2].xpath);
+        assert_int_equal(SR_STRING_T, values[2].type);
+        assert_string_equal("eth0", values[2].data.string_val);
+        assert_string_equal("/test-module:link-removed/destination", values[3].xpath);
+        assert_int_equal(SR_CONTAINER_T, values[3].type);
+        assert_string_equal("/test-module:link-removed/destination/address", values[4].xpath);
+        assert_int_equal(SR_STRING_T, values[4].type);
+        assert_string_equal("10.10.2.5", values[4].data.string_val);
+        assert_string_equal("/test-module:link-removed/destination/interface", values[5].xpath);
+        assert_int_equal(SR_STRING_T, values[5].type);
+        assert_string_equal("eth2", values[5].data.string_val);
+        assert_string_equal("/test-module:link-removed/MTU", values[6].xpath); /**< default */
+        assert_int_equal(SR_UINT16_T, values[6].type);
+        assert_int_equal(1500, values[6].data.uint16_val);
+    }
 
-    if (SR_EV_NOTIF_REPLAY == notif_type) {
+    if (SR_EV_NOTIF_REPLAY_COMPLETE == notif_type) {
+        assert_int_equal(values_cnt, 0);
+        assert_null(values);
+
         assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
         cb_status->link_removed += 1;
         if (cb_status->link_removed == 1) {

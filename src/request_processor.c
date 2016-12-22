@@ -2760,6 +2760,7 @@ finalize:
 static int
 rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
+    Sr__EventNotifReplayReq *replay_req = NULL;
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
@@ -2767,6 +2768,8 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->event_notif_replay_req);
 
     SR_LOG_DBG_MSG("Processing event notification replay request.");
+
+    replay_req = msg->request->event_notif_replay_req;
 
     /* allocate the response */
     rc = sr_mem_new(0, &sr_mem);
@@ -2782,11 +2785,9 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
     sr_list_t *notif_list = NULL;
 
     /* get matching notifications from the notification store */
-    rc = np_get_event_notifications(rp_ctx->np_ctx, session, msg->request->event_notif_replay_req->xpath,
-            msg->request->event_notif_replay_req->start_time, msg->request->event_notif_replay_req->stop_time,
-            sr_api_variant_gpb_to_sr(msg->request->event_notif_replay_req->api_variant), &notif_list);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Error by loading event notifications for xpath '%s'.",
-            msg->request->event_notif_replay_req->xpath);
+    rc = np_get_event_notifications(rp_ctx->np_ctx, session, replay_req->xpath, replay_req->start_time,
+            replay_req->stop_time, sr_api_variant_gpb_to_sr(replay_req->api_variant), &notif_list);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Error by loading event notifications for xpath '%s'.", replay_req->xpath);
 
     /* send each notification to the subscriber */
     for (size_t i = 0; i < notif_list->count; i++) {
@@ -2794,12 +2795,19 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
 
         /* send the notification */
         rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY, notification->xpath,
-                notification->timestamp, sr_api_variant_gpb_to_sr(msg->request->event_notif_replay_req->api_variant),
+                notification->timestamp, sr_api_variant_gpb_to_sr(replay_req->api_variant),
                 notification->data.values, notification->data_cnt, notification->data.trees, notification->data_cnt,
-                msg->request->event_notif_replay_req->subscriber_address, msg->request->event_notif_replay_req->subscription_id);
+                replay_req->subscriber_address, replay_req->subscription_id);
         CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the replay of notification '%s' to the subscriber '%s'.",
-                notification->xpath, msg->request->event_notif_replay_req->subscriber_address);
+                notification->xpath, replay_req->subscriber_address);
     }
+
+    /* send replay-complete notification */
+    rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_COMPLETE, replay_req->xpath,
+            time(NULL), sr_api_variant_gpb_to_sr(replay_req->api_variant), NULL, 0, NULL, 0,
+            replay_req->subscriber_address, replay_req->subscription_id);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the replay-complete notification to the subscriber '%s'.",
+            replay_req->subscriber_address);
 
 finalize:
     for (size_t i = 0; i < notif_list->count; i++) {
