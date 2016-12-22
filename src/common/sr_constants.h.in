@@ -137,4 +137,7 @@
  */
 #define SR_COMMIT_TIMEOUT @COMMIT_TIMEOUT@
 
+/** Timeout (in seconds) for processing of a request that includes operational data. */
+#define SR_OPER_DATA_REQ_TIMEOUT @OPER_DATA_REQ_TIMEOUT@
+
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

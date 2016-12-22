@@ -150,6 +150,9 @@ set(ENABLE_NOTIF_STORE 1 CACHE BOOL
 set(COMMIT_TIMEOUT 10 CACHE INTEGER
     "Commit operation timeout (in seconds).")
 
+set(OPER_DATA_REQ_TIMEOUT 10 CACHE INTEGER
+    "Timeout (in seconds) for processing of a request that includes operational data.")
+
 set(USE_SR_MEM_MGMT 1 CACHE BOOL
     "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs).")
 

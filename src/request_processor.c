@@ -36,7 +36,6 @@
 #include "rp_dt_xpath.h"
 
 #define RP_INIT_REQ_QUEUE_SIZE   10  /**< Initial size of the request queue. */
-#define RP_OPER_DATA_REQ_TIMEOUT 2   /**< Timeout (in seconds) for processing of a request that includes operational data. */
 
 /*
  * Attributes that can significantly affect performance of the threadpool.
@@ -590,7 +589,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
         /* setup timeout */
-        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, SR_OPER_DATA_REQ_TIMEOUT);
         sr_free_val(value);
         sr_msg_free(resp);
         pthread_mutex_unlock(&session->cur_req_mutex);
@@ -695,7 +694,7 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
         /* setup timeout */
-        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, SR_OPER_DATA_REQ_TIMEOUT);
         sr_free_values(values, count);
         sr_msg_free(resp);
         pthread_mutex_unlock(&session->cur_req_mutex);
@@ -785,7 +784,7 @@ rp_get_subtree_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
         /* setup timeout */
-        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, SR_OPER_DATA_REQ_TIMEOUT);
         sr_free_tree(tree);
         sr_msg_free(resp);
         pthread_mutex_unlock(&session->cur_req_mutex);
@@ -882,7 +881,7 @@ rp_get_subtrees_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *ms
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
         /* setup timeout */
-        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, SR_OPER_DATA_REQ_TIMEOUT);
         sr_free_trees(trees, count);
         sr_msg_free(resp);
         pthread_mutex_unlock(&session->cur_req_mutex);
@@ -999,7 +998,7 @@ rp_get_subtree_chunk_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
         /* setup timeout */
-        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, SR_OPER_DATA_REQ_TIMEOUT);
         sr_free_trees(chunks, chunk_cnt);
         if (NULL == sr_mem && chunk_ids) {
             for (size_t i = 0; i < chunk_cnt; ++i) {
