@@ -275,19 +275,19 @@ public:
     int dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
         PyObject *arglist;
 
-        Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
-        shared_ptr<Vals> *shared_in_vals = in_vals ? new shared_ptr<Vals>(in_vals) : 0;
-        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Vals_t, SWIG_POINTER_DISOWN);
+        Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(values, values_cnt);
+        shared_ptr<Vals_Holder> *shared_out_vals = out_vals ? new shared_ptr<Vals_Holder>(out_vals) : 0;
+        PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Vals_Holder_t, SWIG_POINTER_DISOWN);
 
         PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(sOO)", xpath, in, p);
+        arglist = Py_BuildValue("(sOO)", xpath, out, p);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL) {
-            in_vals->~Vals();
+            out_vals->~Vals_Holder();
             throw std::runtime_error("Python callback dp_get_items failed.\n");
         } else {
-            in_vals->~Vals();
+            out_vals->~Vals_Holder();
             int ret = SR_ERR_OK;
             if (result && PyInt_Check(result)) {
                 ret = PyInt_AsLong(result);
