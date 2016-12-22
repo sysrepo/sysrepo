@@ -358,10 +358,11 @@ void np_event_notification_cleanup(np_ev_notification_t *notification);
  * @brief Cleans up notification store - old notification data files.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] reschedule TRUE if cleanup should be rescheduled after some timeout again.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_store_cleanup(np_ctx_t *np_ctx);
+int np_notification_store_cleanup(np_ctx_t *np_ctx, bool reschedule);
 
 /**@} np */
 

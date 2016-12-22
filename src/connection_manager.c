@@ -1982,6 +1982,10 @@ cm_watch_signal(cm_ctx_t *cm_ctx, int signum, cm_signal_cb callback)
 cm_connection_mode_t
 cm_get_connection_mode(cm_ctx_t *cm_ctx)
 {
-    return cm_ctx->mode;
+    if (NULL != cm_ctx) {
+        return cm_ctx->mode;
+    } else {
+        return CM_MODE_LOCAL;
+    }
 }
 
