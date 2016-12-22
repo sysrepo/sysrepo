@@ -222,7 +222,7 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
         daemon_kill();
         /* wait for the daemon to terminate */
         ts.tv_sec = 0;
-        ts.tv_nsec = 100000000L; /* 100 milliseconds */
+        ts.tv_nsec = 500000000L; /* 500 milliseconds */
         nanosleep(&ts, NULL);
     } else {
         daemon_run_before_test = false;
