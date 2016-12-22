@@ -147,11 +147,17 @@ set(NACM_RECOVERY_UID 0 CACHE INTEGER
 set(ENABLE_NOTIF_STORE 1 CACHE BOOL
     "Enable event notifications store & notifications replay.")
 
+set(REQUEST_TIMEOUT 3 CACHE INTEGER
+    "Timeout for standard Sysrepo API requests.")
+
+set(LONG_REQUEST_TIMEOUT 15 CACHE INTEGER
+    "Timeout for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action).")
+
 set(COMMIT_TIMEOUT 10 CACHE INTEGER
     "Commit operation timeout (in seconds).")
 
-set(OPER_DATA_REQ_TIMEOUT 10 CACHE INTEGER
-    "Timeout (in seconds) for processing of a request that includes operational data.")
+set(OPER_DATA_REQ_TIMEOUT 2 CACHE INTEGER
+    "Timeout (in seconds) that a request can wait for operational data from data providers.")
 
 set(USE_SR_MEM_MGMT 1 CACHE BOOL
     "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs).")
