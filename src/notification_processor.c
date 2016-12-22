@@ -82,6 +82,7 @@ typedef struct np_ctx_s {
     const char *data_search_dir;          /**< Directory containing the data files. */
     const struct lys_module *ns_schema;   /**< Schema tree of the notification store YANG. */
     sr_locking_set_t *lock_ctx;           /**< Context for locking notification store files. */
+    bool do_notif_store_cleanup;          /**< TRUE if notification store cleanups should be performed.*/
 } np_ctx_t;
 
 /**
@@ -685,6 +686,32 @@ cleanup:
 }
 
 /**
+ * @brief Sets up notification store cleanup timer.
+ */
+static int
+np_setup_notif_store_cleanup_timer(np_ctx_t *np_ctx, uint32_t timeout)
+{
+    Sr__Msg *req = NULL;
+    int rc = SR_ERR_OK;
+
+    /* setup the timer */
+    rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__NOTIF_STORE_CLEANUP, &req);
+    if (SR_ERR_OK == rc) {
+        req->internal_request->postpone_timeout = timeout;
+        req->internal_request->has_postpone_timeout = true;
+        /* enqueue the message */
+        rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, req);
+    }
+    if (SR_ERR_OK == rc) {
+        SR_LOG_DBG("Notification store cleanup timer set up for %"PRIu32" seconds.", timeout);
+    } else {
+        SR_LOG_ERR_MSG("Unable to setup notification store cleanup timer.");
+    }
+
+    return rc;
+}
+
+/**
  * @brief Logging callback called from libyang for each log entry.
  */
 static void
@@ -753,6 +780,12 @@ np_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
         goto cleanup;
     }
 
+    /* if running in daemon mode, setup notif. store cleanup timer */
+    if (CM_MODE_DAEMON == cm_get_connection_mode(rp_ctx->cm_ctx)) {
+        ctx->do_notif_store_cleanup = true;
+        np_setup_notif_store_cleanup_timer(ctx, (NP_NOTIF_FILE_WINDOW * 60));
+    }
+
     SR_LOG_DBG_MSG("Notification Processor initialized successfully.");
 
     *np_ctx_p = ctx;
@@ -793,7 +826,9 @@ np_cleanup(np_ctx_t *np_ctx)
             ly_ctx_destroy(np_ctx->ly_ctx, NULL);
         }
 
-        np_notification_store_cleanup(np_ctx); // TODO: change this to a repeated asynchronous task
+        if (np_ctx->do_notif_store_cleanup) {
+            np_notification_store_cleanup(np_ctx, false);
+        }
 
         free(np_ctx);
     }
@@ -1685,7 +1720,7 @@ np_event_notification_cleanup(np_ev_notification_t *notification)
 }
 
 int
-np_notification_store_cleanup(np_ctx_t *np_ctx)
+np_notification_store_cleanup(np_ctx_t *np_ctx, bool reschedule)
 {
     sr_list_t *file_list = NULL;
     int ret = 0, rc = SR_ERR_OK;
@@ -1709,6 +1744,11 @@ np_notification_store_cleanup(np_ctx_t *np_ctx)
     }
 
     sr_free_list_of_strings(file_list);
+
+    if (reschedule) {
+        /* setup next notif. store cleanup timer */
+        np_setup_notif_store_cleanup_timer(np_ctx, (NP_NOTIF_FILE_WINDOW * 60));
+    }
 
     return rc;
 }

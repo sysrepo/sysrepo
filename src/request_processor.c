@@ -2511,6 +2511,9 @@ rp_oper_data_timeout_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
     return rc;
 }
 
+/**
+ * @brief Processes an internal state data request.
+ */
 static int
 rp_internal_state_data_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg * msg)
 {
@@ -2556,6 +2559,22 @@ cleanup:
     }
     pthread_mutex_unlock(&session->cur_req_mutex);
     return rc;
+}
+
+/**
+ * @brief Processes a notification store cleanup internal request.
+ */
+static int
+rp_notif_store_cleanup_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg * msg)
+{
+    CHECK_NULL_ARG(rp_ctx);
+
+    SR_LOG_DBG_MSG("Processing notif-store-cleanup request.");
+
+    np_notification_store_cleanup(rp_ctx->np_ctx, true);
+
+    return SR_ERR_OK;
+
 }
 
 /**
@@ -3040,6 +3059,9 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             break;
         case SR__OPERATION__INTERNAL_STATE_DATA:
             rc = rp_internal_state_data_req_process(rp_ctx, session, msg);
+            break;
+        case SR__OPERATION__NOTIF_STORE_CLEANUP:
+            rc = rp_notif_store_cleanup_req_process(rp_ctx, session, msg);
             break;
         default:
             SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->internal_request->operation);
