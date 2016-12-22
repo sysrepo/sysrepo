@@ -191,6 +191,7 @@ daemon_kill()
     assert_int_equal(ret, 1);
 
     /* send SIGTERM to the daemon process */
+    SR_LOG_DBG("Sending SIGTERM signal to PID=%d.", pid);
     ret = kill(pid, SIGTERM);
     assert_int_not_equal(ret, -1);
 }
@@ -209,6 +210,8 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     if (!satisfied_requirements) {
         return;
     }
+
+    sr_log_stderr(SR_LL_DBG);
 
 #ifndef DEBUG_MODE
     /* connect to sysrepo, force daemon connection */
@@ -235,7 +238,6 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     ret = system("../src/sysrepod -l 4");
     assert_int_equal(ret, 0);
 #endif
-    sr_log_stderr(SR_LL_DBG);
     rc = sr_connect("nacm_cl_test", SR_CONN_DAEMON_REQUIRED, &conn);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(conn_p);

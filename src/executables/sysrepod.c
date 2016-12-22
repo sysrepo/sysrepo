@@ -114,7 +114,7 @@ main(int argc, char* argv[])
     /* daemonize the process */
     parent_pid = sr_daemonize(debug_mode, log_level, SR_DAEMON_PID_FILE, &pidfile_fd);
 
-    SR_LOG_DBG_MSG("Sysrepo daemon initialization started.");
+    SR_LOG_DBG("Sysrepo daemon initialization started (PID=%d).", getpid());
 
     /* initialize local Connection Manager */
     rc = cm_init(CM_MODE_DAEMON, SR_DAEMON_SOCKET, &sr_cm_ctx);
