@@ -138,23 +138,42 @@ CHECK_FUNCTION_EXISTS(setfsuid HAVE_SETFSUID)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
 # user options
-set(ENABLE_NACM 1 CACHE BOOL "Enable NETCONF Access Control Model (RFC 6536).")
+set(ENABLE_NACM 1 CACHE BOOL 
+    "Enable NETCONF Access Control Model (RFC 6536).")
 
-set(NACM_RECOVERY_UID 0 CACHE INTEGER "Set UID to be used to identify NACM recovery session, default value is 0.")
+set(NACM_RECOVERY_UID 0 CACHE INTEGER
+    "UID to be used to identify NACM recovery session, default value is 0.")
 
-option (USE_SR_MEM_MGMT
-        "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs)."
-        ON)
-option (ENABLE_NOTIF_STORE
-        "Enable event notifications store & notifications replay."
-        ON)
+set(ENABLE_NOTIF_STORE 1 CACHE BOOL
+    "Enable event notifications store & notifications replay.")
 
-set(COMMIT_TIMEOUT 10 CACHE INTEGER "Commit operation timeout (in seconds).")
+set(USE_SR_MEM_MGMT 1 CACHE BOOL
+    "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs).")
 
-option (LOG_THREAD_ID
-        "If enabled, sysrepo logger will append thread ID (as well as function name) to each printed message."
-        OFF)
-option(DISABLE_CONFIG_CHANGE_NOTIF "Skip generation of config change notifications" OFF)
+set(LOG_THREAD_ID 0 CACHE BOOL
+    "If enabled, sysrepo logger will append thread ID (as well as function name) to each printed message.")
+
+set(DISABLE_CONFIG_CHANGE_NOTIF 0 CACHE BOOL
+    "Skip generation of config change notifications")
+
+# timeouts
+set(REQUEST_TIMEOUT 3 CACHE INTEGER
+    "Timeout for standard Sysrepo API requests.")
+
+set(LONG_REQUEST_TIMEOUT 15 CACHE INTEGER
+    "Timeout for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action).")
+
+set(COMMIT_VERIFY_TIMEOUT 10 CACHE INTEGER
+    "Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers.")
+
+set(OPER_DATA_PROVIDE_TIMEOUT 2 CACHE INTEGER
+    "Timeout (in seconds) that a request can wait for operational data from data providers.")
+
+set(NOTIF_AGE_TIMEOUT 60 CACHE INTEGER
+    "Timeout (in minutes) after which stored notifications will be aged out and erased from notification store.")
+
+set(NOTIF_TIME_WINDOW 10 CACHE INTEGER
+    "Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files).")
 
 # add subdirectories
 add_subdirectory(src)

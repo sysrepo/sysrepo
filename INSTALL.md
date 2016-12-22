@@ -144,6 +144,18 @@ to `${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/` (e.g. `/usr/local/lib/sysrepo/plug
 #### Building with / without examples:
 By default, some [example programs](examples/) are built with sysrepo and several [example YANG modules](examples/yang/) are installed into sysrepo repository, along with some meaningless data. If you wish to not build and install them, use `BUILD_EXAMPLES` varibale as follows: `cmake -DBUILD_EXAMPLES:BOOL=FALSE ..`
 
+#### Adjusting timeouts:
+There are several timeouts that can be configured via CMake variables:
+
+CMake variable              | Default value | Description
+--------------------------- | ------------- | -----------
+`REQUEST_TIMEOUT`           | 3 sec         | Timeout (in seconds) for standard Sysrepo API requests.
+`LONG_REQUEST_TIMEOUT`      | 15 sec        | Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action).
+`COMMIT_VERIFY_TIMEOUT`     | 10 sec        | Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers.
+`OPER_DATA_PROVIDE_TIMEOUT` | 2 sec         | Timeout (in seconds) that a request can wait for operational data from data providers.
+`NOTIF_AGE_TIMEOUT`         | 60 min        | Timeout (in minutes) after which stored notifications will be aged out and erased from notification store.
+`NOTIF_TIME_WINDOW`         | 10 min        | Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files).
+
 ## Using sysrepo
 By installation, three main parts of sysrepo are installed on the system: **sysrepoctl tool**, **sysrepo library** and **sysrepo daemon**.
 
