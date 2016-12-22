@@ -166,6 +166,12 @@ set(COMMIT_VERIFY_TIMEOUT 10 CACHE INTEGER
 set(OPER_DATA_PROVIDE_TIMEOUT 2 CACHE INTEGER
     "Timeout (in seconds) that a request can wait for operational data from data providers.")
 
+set(NOTIF_AGE_TIMEOUT 60 CACHE INTEGER
+    "Timeout (in minutes) after which stored notifications will be aged out and erased from notification store.")
+
+set(NOTIF_TIME_WINDOW 10 CACHE INTEGER
+    "Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files).")
+
 # add subdirectories
 add_subdirectory(src)
 

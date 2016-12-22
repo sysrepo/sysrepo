@@ -143,4 +143,10 @@
 /** Timeout (in seconds) that a request can wait for operational data from data providers. */
 #define SR_OPER_DATA_PROVIDE_TIMEOUT @OPER_DATA_PROVIDE_TIMEOUT@
 
+/** Timeout (in minutes) after which stored notifications will be aged out and erased from notification store. */
+#define SR_NOTIF_AGE_TIMEOUT @NOTIF_AGE_TIMEOUT@
+
+/** Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files). */
+#define SR_NOTIF_TIME_WINDOW @NOTIF_TIME_WINDOW@
+
 #endif /* SRC_SR_CONSTANTS_H_IN_ */
