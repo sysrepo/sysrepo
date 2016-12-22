@@ -347,9 +347,6 @@ static void global_loop() {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -367,9 +364,6 @@ static void global_loop() {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -386,9 +380,6 @@ static void global_loop() {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -408,9 +399,6 @@ static void global_loop() {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -427,9 +415,6 @@ static void global_loop() {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -448,9 +433,6 @@ static void global_loop() {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -467,9 +449,6 @@ static void global_loop() {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -488,9 +467,6 @@ static void global_loop() {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -507,9 +483,6 @@ static void global_loop() {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -528,9 +501,6 @@ static void global_loop() {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -547,9 +517,6 @@ static void global_loop() {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
