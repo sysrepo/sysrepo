@@ -448,6 +448,8 @@ module test-module {
         }
       }
 
+      action unload { }
+
       action get-dependencies {
         output {
           leaf-list dependency {
