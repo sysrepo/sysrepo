@@ -210,32 +210,34 @@ public:
         return ret;
     }
 
-    void event_notif(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
+    void event_notif(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
         swiglua_ref_get(&fn);
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
+        lua_pushnumber(fn.L, (lua_Number)(int)(notif_type));
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
         lua_pushnumber(fn.L, timestamp);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 4, 0);
+        lua_call(fn.L, 5, 0);
         in_vals->~Vals();
     }
 
-    void event_notif_tree(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
+    void event_notif_tree(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
 
         swiglua_ref_get(&fn);
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
         Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, NULL);
+        lua_pushnumber(fn.L, (lua_Number)(int)(notif_type));
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
         lua_pushnumber(fn.L, timestamp);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
-        lua_call(fn.L, 4, 0);
+        lua_call(fn.L, 5, 0);
         in_vals->~Trees();
     }
 
@@ -306,16 +308,16 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
     return ctx->dp_get_items(xpath, values, values_cnt, ctx->private_ctx);
 }
 
-static void g_event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
+static void g_event_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->event_notif(xpath, values, values_cnt, timestamp, ctx->private_ctx);
+    ctx->event_notif(notif_type, xpath, values, values_cnt, timestamp, ctx->private_ctx);
 }
 
-static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
+static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->event_notif_tree(xpath, trees, tree_cnt, timestamp, ctx->private_ctx);
+    ctx->event_notif_tree(notif_type, xpath, trees, tree_cnt, timestamp, ctx->private_ctx);
 }
 
 
@@ -347,9 +349,6 @@ static void global_loop() {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -367,9 +366,6 @@ static void global_loop() {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -386,9 +382,6 @@ static void global_loop() {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -408,9 +401,6 @@ static void global_loop() {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -427,9 +417,6 @@ static void global_loop() {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -448,9 +435,6 @@ static void global_loop() {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -467,9 +451,6 @@ static void global_loop() {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -488,9 +469,6 @@ static void global_loop() {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -507,9 +485,6 @@ static void global_loop() {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -528,9 +503,6 @@ static void global_loop() {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
-
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
@@ -547,9 +519,6 @@ static void global_loop() {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
-
-        if (class_ctx == NULL)
-            throw std::runtime_error("Ne enough space for helper class!\n");
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
