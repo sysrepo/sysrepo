@@ -331,8 +331,8 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
     sr_val_t *values = NULL;
     size_t val_cnt = 3;
 
-    rc = sr_new_values(val_cnt, &values);
-    CHECK_RC_MSG_RETURN(rc, "Failed to allocate values");
+    values = calloc(val_cnt, sizeof(*values));
+    CHECK_NULL_NOMEM_RETURN(values);
 
     rc = sr_val_set_xpath(&values[0], CONFIG_CHANGE_SESSION_ID_XPATH);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath");
@@ -353,13 +353,13 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
     rc = sr_val_set_str_data(&values[2], SR_ENUM_T, SR_DS_STARTUP == session->datastore ? "startup" : "running");
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set datstore value in config-changed notification");
 
-    rc = sr_gpb_req_alloc(values->_sr_mem, SR__OPERATION__EVENT_NOTIF, session->id, &req);
+    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__EVENT_NOTIF, session->id, &req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to allocate message");
 
     req->session_id = session->id;
     req->request->event_notif_req->do_not_send_reply = true;
 
-    rc = sr_mem_edit_string(values->_sr_mem, &req->request->event_notif_req->xpath, CONFIG_CHANGE_NOTIFICATION_XPATH);
+    rc = sr_mem_edit_string(NULL, &req->request->event_notif_req->xpath, CONFIG_CHANGE_NOTIFICATION_XPATH);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath in the message");
 
     rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
