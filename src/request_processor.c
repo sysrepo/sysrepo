@@ -365,6 +365,7 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
     rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
 
+    //TODO: currently the changes are only logged as debug waiting for libyang support to create lists without keys
     size_t diff_count = rp_count_changes_in_difflists(diff_lists);
     SR_LOG_DBG("%zu instance of /ietf-netconf-notifications/netconf-config-change/edit list will be created", diff_count);
 
