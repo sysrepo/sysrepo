@@ -28,17 +28,6 @@
 typedef struct cm_ctx_s cm_ctx_t;
 
 /**
- * @brief Timeout (in seconds) for waiting for a response from server by a standard request.
- */
-#define CL_REQUEST_TIMEOUT 3
-
-/**
- * @brief Timeout (in seconds) for waiting for a response from server by each request
- * that may take longer time such as commit or copy-config.
- */
-#define CL_REQUEST_LONG_TIMEOUT 60
-
-/**
  * @brief Connection context used to identify a connection to sysrepo datastore.
  */
 typedef struct sr_conn_ctx_s {

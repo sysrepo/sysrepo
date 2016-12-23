@@ -36,7 +36,6 @@
 #include "rp_dt_xpath.h"
 
 #define RP_INIT_REQ_QUEUE_SIZE   10  /**< Initial size of the request queue. */
-#define RP_OPER_DATA_REQ_TIMEOUT 2   /**< Timeout (in seconds) for processing of a request that includes operational data. */
 
 /*
  * Attributes that can significantly affect performance of the threadpool.
@@ -622,7 +621,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
         /* setup timeout */
-        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, SR_OPER_DATA_PROVIDE_TIMEOUT);
         sr_free_val(value);
         sr_msg_free(resp);
         pthread_mutex_unlock(&session->cur_req_mutex);
@@ -727,7 +726,7 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
         /* setup timeout */
-        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, SR_OPER_DATA_PROVIDE_TIMEOUT);
         sr_free_values(values, count);
         sr_msg_free(resp);
         pthread_mutex_unlock(&session->cur_req_mutex);
@@ -817,7 +816,7 @@ rp_get_subtree_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
         /* setup timeout */
-        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, SR_OPER_DATA_PROVIDE_TIMEOUT);
         sr_free_tree(tree);
         sr_msg_free(resp);
         pthread_mutex_unlock(&session->cur_req_mutex);
@@ -914,7 +913,7 @@ rp_get_subtrees_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *ms
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
         /* setup timeout */
-        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, SR_OPER_DATA_PROVIDE_TIMEOUT);
         sr_free_trees(trees, count);
         sr_msg_free(resp);
         pthread_mutex_unlock(&session->cur_req_mutex);
@@ -1031,7 +1030,7 @@ rp_get_subtree_chunk_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
         /* setup timeout */
-        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, SR_OPER_DATA_PROVIDE_TIMEOUT);
         sr_free_trees(chunks, chunk_cnt);
         if (NULL == sr_mem && chunk_ids) {
             for (size_t i = 0; i < chunk_cnt; ++i) {
@@ -2619,6 +2618,9 @@ rp_oper_data_timeout_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
     return rc;
 }
 
+/**
+ * @brief Processes an internal state data request.
+ */
 static int
 rp_internal_state_data_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg * msg)
 {
@@ -2664,6 +2666,22 @@ cleanup:
     }
     pthread_mutex_unlock(&session->cur_req_mutex);
     return rc;
+}
+
+/**
+ * @brief Processes a notification store cleanup internal request.
+ */
+static int
+rp_notif_store_cleanup_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg * msg)
+{
+    CHECK_NULL_ARG(rp_ctx);
+
+    SR_LOG_DBG_MSG("Processing notif-store-cleanup request.");
+
+    np_notification_store_cleanup(rp_ctx->np_ctx, true);
+
+    return SR_ERR_OK;
+
 }
 
 /**
@@ -2849,6 +2867,7 @@ finalize:
 static int
 rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
+    Sr__EventNotifReplayReq *replay_req = NULL;
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
@@ -2856,6 +2875,8 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->event_notif_replay_req);
 
     SR_LOG_DBG_MSG("Processing event notification replay request.");
+
+    replay_req = msg->request->event_notif_replay_req;
 
     /* allocate the response */
     rc = sr_mem_new(0, &sr_mem);
@@ -2871,11 +2892,9 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
     sr_list_t *notif_list = NULL;
 
     /* get matching notifications from the notification store */
-    rc = np_get_event_notifications(rp_ctx->np_ctx, session, msg->request->event_notif_replay_req->xpath,
-            msg->request->event_notif_replay_req->start_time, msg->request->event_notif_replay_req->stop_time,
-            sr_api_variant_gpb_to_sr(msg->request->event_notif_replay_req->api_variant), &notif_list);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Error by loading event notifications for xpath '%s'.",
-            msg->request->event_notif_replay_req->xpath);
+    rc = np_get_event_notifications(rp_ctx->np_ctx, session, replay_req->xpath, replay_req->start_time,
+            replay_req->stop_time, sr_api_variant_gpb_to_sr(replay_req->api_variant), &notif_list);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Error by loading event notifications for xpath '%s'.", replay_req->xpath);
 
     /* send each notification to the subscriber */
     for (size_t i = 0; i < notif_list->count; i++) {
@@ -2883,12 +2902,19 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
 
         /* send the notification */
         rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY, notification->xpath,
-                notification->timestamp, sr_api_variant_gpb_to_sr(msg->request->event_notif_replay_req->api_variant),
+                notification->timestamp, sr_api_variant_gpb_to_sr(replay_req->api_variant),
                 notification->data.values, notification->data_cnt, notification->data.trees, notification->data_cnt,
-                msg->request->event_notif_replay_req->subscriber_address, msg->request->event_notif_replay_req->subscription_id);
+                replay_req->subscriber_address, replay_req->subscription_id);
         CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the replay of notification '%s' to the subscriber '%s'.",
-                notification->xpath, msg->request->event_notif_replay_req->subscriber_address);
+                notification->xpath, replay_req->subscriber_address);
     }
+
+    /* send replay-complete notification */
+    rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_COMPLETE, replay_req->xpath,
+            time(NULL), sr_api_variant_gpb_to_sr(replay_req->api_variant), NULL, 0, NULL, 0,
+            replay_req->subscriber_address, replay_req->subscription_id);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the replay-complete notification to the subscriber '%s'.",
+            replay_req->subscriber_address);
 
 finalize:
     for (size_t i = 0; i < notif_list->count; i++) {
@@ -3151,6 +3177,9 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             break;
         case SR__OPERATION__INTERNAL_STATE_DATA:
             rc = rp_internal_state_data_req_process(rp_ctx, session, msg);
+            break;
+        case SR__OPERATION__NOTIF_STORE_CLEANUP:
+            rc = rp_notif_store_cleanup_req_process(rp_ctx, session, msg);
             break;
         default:
             SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->internal_request->operation);

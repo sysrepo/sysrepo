@@ -41,10 +41,6 @@
 #define NP_NS_XPATH_NOTIFICATION           "/sysrepo-notification-store:notifications/notification[xpath='%s'][generated-time='%s'][logged-time='%u']"
 #define NP_NS_XPATH_NOTIFICATION_BY_XPATH  "/sysrepo-notification-store:notifications/notification[xpath='%s']"
 
-
-#define NP_NOTIF_FILE_WINDOW 10 /** Time window for notifications to be grouped into one data file (in minutes). */
-#define NP_NOTIF_AGE_TIMEOUT 60 /** Timeout after which notifications will be erased from the notification store (in minutes). */
-
 /**
  * @brief Information about a notification destination.
  */
@@ -82,6 +78,7 @@ typedef struct np_ctx_s {
     const char *data_search_dir;          /**< Directory containing the data files. */
     const struct lys_module *ns_schema;   /**< Schema tree of the notification store YANG. */
     sr_locking_set_t *lock_ctx;           /**< Context for locking notification store files. */
+    bool do_notif_store_cleanup;          /**< TRUE if notification store cleanups should be performed.*/
 } np_ctx_t;
 
 /**
@@ -504,7 +501,7 @@ np_get_notif_store_filename(const char *module_name, time_t received_time, char 
     raw_time = received_time;
     tm_time = localtime(&raw_time);
     /* move raw_time back to the beginning of the current NP_NOTIF_FILE_WINDOW */
-    raw_time -= (((tm_time->tm_hour * 60) + tm_time->tm_min) % NP_NOTIF_FILE_WINDOW) * 60;
+    raw_time -= (((tm_time->tm_hour * 60) + tm_time->tm_min) % SR_NOTIF_TIME_WINDOW) * 60;
     strftime(filename_buff + strlen(filename_buff), filename_buff_size - strlen(filename_buff) - 1,
             "%Y-%m-%d_%H-%M.xml", localtime(&raw_time));
 
@@ -685,6 +682,32 @@ cleanup:
 }
 
 /**
+ * @brief Sets up notification store cleanup timer.
+ */
+static int
+np_setup_notif_store_cleanup_timer(np_ctx_t *np_ctx, uint32_t timeout)
+{
+    Sr__Msg *req = NULL;
+    int rc = SR_ERR_OK;
+
+    /* setup the timer */
+    rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__NOTIF_STORE_CLEANUP, &req);
+    if (SR_ERR_OK == rc) {
+        req->internal_request->postpone_timeout = timeout;
+        req->internal_request->has_postpone_timeout = true;
+        /* enqueue the message */
+        rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, req);
+    }
+    if (SR_ERR_OK == rc) {
+        SR_LOG_DBG("Notification store cleanup timer set up for %"PRIu32" seconds.", timeout);
+    } else {
+        SR_LOG_ERR_MSG("Unable to setup notification store cleanup timer.");
+    }
+
+    return rc;
+}
+
+/**
  * @brief Logging callback called from libyang for each log entry.
  */
 static void
@@ -753,6 +776,12 @@ np_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
         goto cleanup;
     }
 
+    /* if running in daemon mode, setup notif. store cleanup timer */
+    if (CM_MODE_DAEMON == cm_get_connection_mode(rp_ctx->cm_ctx)) {
+        ctx->do_notif_store_cleanup = true;
+        np_setup_notif_store_cleanup_timer(ctx, (SR_NOTIF_TIME_WINDOW * 60));
+    }
+
     SR_LOG_DBG_MSG("Notification Processor initialized successfully.");
 
     *np_ctx_p = ctx;
@@ -793,7 +822,9 @@ np_cleanup(np_ctx_t *np_ctx)
             ly_ctx_destroy(np_ctx->ly_ctx, NULL);
         }
 
-        np_notification_store_cleanup(np_ctx); // TODO: change this to a repeated asynchronous task
+        if (np_ctx->do_notif_store_cleanup) {
+            np_notification_store_cleanup(np_ctx, false);
+        }
 
         free(np_ctx);
     }
@@ -1358,7 +1389,7 @@ np_commit_notifications_sent(np_ctx_t *np_ctx, uint32_t commit_id, bool commit_f
             } else {
                 /* not all ACKs recieved - deliver the msg after timeout */
                 req->internal_request->commit_timeout_req->expired = true;  /* produce error */
-                req->internal_request->postpone_timeout = SR_COMMIT_TIMEOUT;
+                req->internal_request->postpone_timeout = SR_COMMIT_VERIFY_TIMEOUT;
                 req->internal_request->has_postpone_timeout = true;
             }
             rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, req);
@@ -1602,8 +1633,8 @@ np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, con
 
     /* get all notification files matching module name and provided time interval */
     rc = np_get_notification_files(np_ctx, module_name,
-            (0 == start_time) ? 0 : (start_time - (NP_NOTIF_FILE_WINDOW * 60)),
-            (effective_stop_time + (NP_NOTIF_FILE_WINDOW * 60)),
+            (0 == start_time) ? 0 : (start_time - (SR_NOTIF_TIME_WINDOW * 60)),
+            (effective_stop_time + (SR_NOTIF_TIME_WINDOW * 60)),
             file_list);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve notification file list.");
 
@@ -1685,7 +1716,7 @@ np_event_notification_cleanup(np_ev_notification_t *notification)
 }
 
 int
-np_notification_store_cleanup(np_ctx_t *np_ctx)
+np_notification_store_cleanup(np_ctx_t *np_ctx, bool reschedule)
 {
     sr_list_t *file_list = NULL;
     int ret = 0, rc = SR_ERR_OK;
@@ -1697,7 +1728,7 @@ np_notification_store_cleanup(np_ctx_t *np_ctx)
     rc = sr_list_init(&file_list);
     CHECK_RC_MSG_RETURN(rc, "Unable to initialize file list.");
 
-    rc = np_get_all_notification_files(np_ctx, 0, (time(NULL) - (NP_NOTIF_AGE_TIMEOUT * 60)), file_list);
+    rc = np_get_all_notification_files(np_ctx, 0, (time(NULL) - (SR_NOTIF_AGE_TIMEOUT * 60)), file_list);
 
     for (size_t i = 0; i < file_list->count; i++) {
         SR_LOG_DBG("Deleting old notification data file '%s'.", (char*)file_list->data[i]);
@@ -1709,6 +1740,11 @@ np_notification_store_cleanup(np_ctx_t *np_ctx)
     }
 
     sr_free_list_of_strings(file_list);
+
+    if (reschedule) {
+        /* setup next notif. store cleanup timer */
+        np_setup_notif_store_cleanup_timer(np_ctx, (SR_NOTIF_TIME_WINDOW * 60));
+    }
 
     return rc;
 }
