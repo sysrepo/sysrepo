@@ -153,6 +153,9 @@ set(USE_SR_MEM_MGMT 1 CACHE BOOL
 set(LOG_THREAD_ID 0 CACHE BOOL
     "If enabled, sysrepo logger will append thread ID (as well as function name) to each printed message.")
 
+set(DISABLE_CONFIG_CHANGE_NOTIF 0 CACHE BOOL
+    "Skip generation of config change notifications")
+
 # timeouts
 set(REQUEST_TIMEOUT 3 CACHE INTEGER
     "Timeout for standard Sysrepo API requests.")

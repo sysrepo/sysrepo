@@ -3140,9 +3140,10 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             goto cleanup;
         }
 
-        if (SR_DS_STARTUP != session->datastore) {
-            /* for candidate and running we save prev state */
-            if (SR_DS_RUNNING != session->datastore || copy_uptodate) {
+        if (SR_DS_STARTUP != session->datastore || !c_ctx->disabled_config_change) {
+            /* for candidate and running we save prev state, if config change notifications are generated
+             * we have to save prev state for startup as well */
+            if (SR_DS_CANDIDATE == session->datastore || copy_uptodate) {
                 /* load data tree from file system */
                 rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->schema, &di);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Loading data file failed");
@@ -5316,4 +5317,13 @@ dm_get_nacm_ctx(dm_ctx_t *dm_ctx, nacm_ctx_t **nacm_ctx){
     CHECK_NULL_ARG2(dm_ctx, nacm_ctx);
     *nacm_ctx = dm_ctx->nacm_ctx;
     return SR_ERR_OK;
+}
+
+int
+dm_get_session_datatrees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_btree_t **session_models)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, session_models);
+    int rc = SR_ERR_OK;
+    *session_models = session->session_modules[session->datastore];
+    return rc;
 }

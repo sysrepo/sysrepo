@@ -60,10 +60,16 @@ typedef enum rp_capability_change_type_e {
     SR_CAPABILITY_MODIFIED,
 }rp_capability_change_type_t;
 
+#define CAPABILITY_CHANGE_NOTIFICATION_XPATH "/ietf-netconf-notifications:netconf-capability-change"
 #define CAPABILITY_ADDED_XPATH "/ietf-netconf-notifications:netconf-capability-change/added-capability"
 #define CAPABILITY_DELETED_XPATH "/ietf-netconf-notifications:netconf-capability-change/deleted-capability"
 #define CAPABILITY_MODIFIED_XPATH "/ietf-netconf-notifications:netconf-capability-change/modified-capability"
 #define CAPABILITY_CHANGED_BY_SERVER "/ietf-netconf-notifications:netconf-capability-change/changed-by/server"
+
+#define CONFIG_CHANGE_NOTIFICATION_XPATH "/ietf-netconf-notifications:netconf-config-change"
+#define CONFIG_CHANGE_USERNAME_XPATH "/ietf-netconf-notifications:netconf-config-change/changed-by/username"
+#define CONFIG_CHANGE_SESSION_ID_XPATH "/ietf-netconf-notifications:netconf-config-change/changed-by/session-id"
+#define CONFIG_CHANGE_DATASTORE_XPATH "/ietf-netconf-notifications:netconf-config-change/datastore"
 
 /**
  * @brief Copy errors saved in the Data Manager session into the GPB response.
@@ -252,7 +258,7 @@ rp_prepare_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *sessio
     req->session_id = session->id;
     req->request->event_notif_req->do_not_send_reply = true;
 
-    rc = sr_mem_edit_string(values->_sr_mem, &req->request->event_notif_req->xpath, "/ietf-netconf-notifications:netconf-capability-change");
+    rc = sr_mem_edit_string(values->_sr_mem, &req->request->event_notif_req->xpath, CAPABILITY_CHANGE_NOTIFICATION_XPATH);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath in the message");
 
     rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
@@ -271,12 +277,12 @@ cleanup:
 }
 
 static int
-rp_send_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg) {
+rp_send_netconf_change_notification(rp_ctx_t *rp_ctx, Sr__Msg *msg) {
 
-    CHECK_NULL_ARG3(rp_ctx, session, msg);
+    CHECK_NULL_ARG2(rp_ctx, msg);
     int rc = SR_ERR_OK;
 
-    rc = rp_msg_process(rp_ctx, session, msg);
+    rc = rp_msg_process(rp_ctx, NULL, msg);
     return rc;
 }
 
@@ -293,7 +299,115 @@ rp_generate_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *sessi
     rc = rp_prepare_capability_change_notification(rp_ctx, session, module_name, change_type, &msg);
     CHECK_RC_LOG_RETURN(rc, "Failed to prepare capability notification message for module %s", module_name);
 
-    rc = rp_send_capability_change_notification(rp_ctx, session, msg);
+    rc = rp_send_netconf_change_notification(rp_ctx, msg);
+    return rc;
+}
+
+static size_t
+rp_count_changes_in_difflists(sr_list_t *diff_lists)
+{
+    size_t diff_cnt = 0;
+    if (NULL != diff_lists) {
+        for (size_t i = 0; i < diff_lists->count; i++) {
+            struct lyd_difflist *dl = (struct lyd_difflist *) diff_lists->data[i];
+            size_t diff_index = 0;
+
+            while (LYD_DIFF_END != dl->type[diff_index]) {
+                diff_index++;
+                diff_cnt++;
+            }
+        }
+    }
+
+    return diff_cnt;
+}
+
+
+int
+rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, sr_list_t *diff_lists) {
+    CHECK_NULL_ARG3(rp_ctx, session, diff_lists);
+    int rc = SR_ERR_OK;
+    Sr__Msg *req = NULL;
+    sr_val_t *values = NULL;
+    size_t val_cnt = 3;
+
+    values = calloc(val_cnt, sizeof(*values));
+    CHECK_NULL_NOMEM_RETURN(values);
+
+    rc = sr_val_set_xpath(&values[0], CONFIG_CHANGE_SESSION_ID_XPATH);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath");
+
+    values[0].type = SR_UINT32_T;
+    values[0].data.uint32_val = session->id;
+
+    rc = sr_val_set_xpath(&values[1], CONFIG_CHANGE_USERNAME_XPATH);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath");
+
+    const char *user_name = NULL != session->user_credentials->e_username ? session->user_credentials->e_username : session->user_credentials->r_username;
+    rc = sr_val_set_str_data(&values[1], SR_STRING_T, user_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set username value in config-changed notification");
+
+    rc = sr_val_set_xpath(&values[2], CONFIG_CHANGE_DATASTORE_XPATH);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath");
+
+    rc = sr_val_set_str_data(&values[2], SR_ENUM_T, SR_DS_STARTUP == session->datastore ? "startup" : "running");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set datstore value in config-changed notification");
+
+    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__EVENT_NOTIF, session->id, &req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to allocate message");
+
+    req->session_id = session->id;
+    req->request->event_notif_req->do_not_send_reply = true;
+
+    rc = sr_mem_edit_string(NULL, &req->request->event_notif_req->xpath, CONFIG_CHANGE_NOTIFICATION_XPATH);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath in the message");
+
+    rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
+
+    //TODO: currently the changes are only logged as debug waiting for libyang support to create lists without keys
+    size_t diff_count = rp_count_changes_in_difflists(diff_lists);
+    SR_LOG_DBG("%zu instance of /ietf-netconf-notifications/netconf-config-change/edit list will be created", diff_count);
+
+    for (size_t i = 0; i < diff_lists->count; i++) {
+        struct lyd_difflist *dl = (struct lyd_difflist *) diff_lists->data[i];
+        size_t diff_index = 0;
+
+        while (LYD_DIFF_END != dl->type[diff_index]) {
+            char *path = NULL;
+            switch (dl->type[diff_index]) {
+            case LYD_DIFF_CHANGED:
+            case LYD_DIFF_MOVEDAFTER1:
+                path = lyd_path(dl->first[diff_index]);
+                SR_LOG_DBG("CONFIG CHANGE: merge %s", path);
+                break;
+            case LYD_DIFF_DELETED:
+                path = lyd_path(dl->first[diff_index]);
+                SR_LOG_DBG("CONFIG CHANGE: delete %s", path);
+                break;
+            case LYD_DIFF_CREATED:
+                path = lyd_path(dl->second[diff_index]);
+                SR_LOG_DBG("CONFIG CHANGE: create %s", path);
+                break;
+            case LYD_DIFF_MOVEDAFTER2:
+            case LYD_DIFF_END:
+                /* do nothing*/
+                break;
+            }
+            free(path);
+            diff_index++;
+        }
+    }
+
+    rc = rp_send_netconf_change_notification(rp_ctx, req);
+    req = NULL;
+    SR_LOG_DBG("Config changed notification generated session %"PRIu32, session->id);
+cleanup:
+    sr_free_values(values, val_cnt);
+    if (SR_ERR_OK != rc) {
+        sr_msg_free(req);
+    }
+
     return rc;
 }
 
@@ -432,7 +546,7 @@ rp_module_install_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *
                         msg->request->module_install_req->revision,
                         &implicitly_removed);
             if (SR_ERR_OK == oper_rc) {
-                rp_send_capability_change_notification(rp_ctx, session, notif);
+                rp_send_netconf_change_notification(rp_ctx, notif);
             } else {
                 sr_msg_free(notif);
             }
@@ -2587,7 +2701,7 @@ rp_event_notif_send(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Eve
     Sr__Msg *req = NULL;
     int rc = SR_ERR_OK;
 
-    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__EVENT_NOTIF, session->id, &req);
+    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__EVENT_NOTIF, NULL != session ? session->id : 0, &req);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to duplicate event notification request (%s).", xpath);
 
     /* set type, xpath & timestamp */
@@ -2646,14 +2760,22 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     bool sub_match = false;
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem_msg = NULL;
+    dm_session_t *dm_session = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
-    CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->event_notif_req);
+    CHECK_NULL_ARG_NORET4(rc, rp_ctx, msg, msg->request, msg->request->event_notif_req);
     if (SR_ERR_OK != rc) {
         goto finalize;
     }
 
     SR_LOG_DBG_MSG("Processing event notification request.");
+
+    if (NULL != session) {
+        dm_session = session->dm_session;
+    } else {
+        rc = dm_session_start(rp_ctx->dm_ctx, NULL, SR_DS_RUNNING, &dm_session);
+        CHECK_RC_MSG_GOTO(rc, finalize, "Failed to create temporary dm_session");
+    }
 
     /* parse input arguments */
     sr_mem_msg = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
@@ -2670,10 +2792,10 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 
     /* validate event-notification request */
     if (SR_API_VALUES == msg_api_variant) {
-        rc = dm_validate_event_notif(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath,
+        rc = dm_validate_event_notif(rp_ctx->dm_ctx, dm_session, msg->request->event_notif_req->xpath,
                 values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
     } else {
-        rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath,
+        rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, dm_session, msg->request->event_notif_req->xpath,
                 trees, tree_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.",
@@ -2684,13 +2806,15 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for event notification request (%s).",
                       msg->request->event_notif_req->xpath);
 
-    /* authorize (write permissions are required to deliver the event-notification) */
-    rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
+    if (NULL != session) {
+        /* authorize (write permissions are required to deliver the event-notification) */
+        rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
+        CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
+    }
 
 #ifdef ENABLE_NOTIF_STORE
     /* store the notification in the datastore */
-    rc = np_store_event_notification(rp_ctx->np_ctx, session->user_credentials, msg->request->event_notif_req->xpath,
+    rc = np_store_event_notification(rp_ctx->np_ctx, NULL != session ? session->user_credentials : NULL, msg->request->event_notif_req->xpath,
             msg->request->event_notif_req->timestamp, &notif_data_tree);
 #endif
 
@@ -2746,10 +2870,12 @@ finalize:
 
     sr_msg_free(msg);
 
+    if (NULL == session) {
+        dm_session_stop(rp_ctx->dm_ctx, dm_session);
+    }
     if (NULL != notif_data_tree) {
         lyd_free_withsiblings(notif_data_tree);
     }
-
     return rc;
 }
 
@@ -2878,11 +3004,13 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
     bool locked = false;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, skip_msg_cleanup);
+    CHECK_NULL_ARG4(rp_ctx, msg, msg->request, skip_msg_cleanup);
 
     *skip_msg_cleanup = false;
 
-    dm_clear_session_errors(session->dm_session);
+    if (NULL != session) {
+        dm_clear_session_errors(session->dm_session);
+    }
 
     /* acquire lock for operation accessing data */
     switch (msg->request->operation) {
@@ -3000,7 +3128,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             break;
         default:
             SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
-                    session->id, msg->request->operation);
+                    NULL != session ? session->id : 0, msg->request->operation);
             rc = SR_ERR_UNSUPPORTED;
             break;
     }
@@ -3079,6 +3207,24 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     return rc;
 }
 
+static bool
+rp_session_can_be_null_for_msg (Sr__Msg *msg) {
+
+    if (NULL != msg ) {
+        if ((SR__MSG__MSG_TYPE__INTERNAL_REQUEST == msg->type) ||
+           (SR__MSG__MSG_TYPE__NOTIFICATION_ACK == msg->type)) {
+            return true;
+        } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&
+                (SR__OPERATION__EVENT_NOTIF == msg->request->operation) &&
+                ((0 == strcmp(CAPABILITY_CHANGE_NOTIFICATION_XPATH, msg->request->event_notif_req->xpath) ||
+                 (0 == strcmp(CONFIG_CHANGE_NOTIFICATION_XPATH, msg->request->event_notif_req->xpath)))
+                )) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * @brief Dispatches the received message.
  */
@@ -3091,9 +3237,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     CHECK_NULL_ARG2(rp_ctx, msg);
 
     /* NULL session is only allowed for internal messages */
-    if ((NULL == session) &&
-            (SR__MSG__MSG_TYPE__INTERNAL_REQUEST != msg->type) &&
-            (SR__MSG__MSG_TYPE__NOTIFICATION_ACK != msg->type)) {
+    if ((NULL == session) && !rp_session_can_be_null_for_msg(msg)) {
         SR_LOG_ERR("Session argument of the message  to be processed is NULL (type=%d).", msg->type);
         sr_msg_free(msg);
         return SR_ERR_INVAL_ARG;
@@ -3416,6 +3560,10 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     ret = pthread_rwlock_init(&ctx->commit_lock, &attr);
     pthread_rwlockattr_destroy(&attr);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Commit rwlock initialization failed.");
+
+#if defined(DISABLE_CONFIG_CHANGE_NOTIF)
+    ctx->do_not_generate_config_change = true;
+#endif
 
     /* initialize Notification Processor */
     rc = np_init(ctx, SR_INTERNAL_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->np_ctx);
