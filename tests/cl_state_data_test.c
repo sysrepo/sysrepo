@@ -193,6 +193,28 @@ sr_node_get_child_cnt(sr_session_ctx_t *session, sr_node_t *parent)
 }
 
 static int
+provide_distance_travalled_without_type(sr_val_t **values, size_t *values_cnt, void *private_ctx)
+{
+    sr_list_t *l = (sr_list_t *) private_ctx;
+    const char *xpath = "/state-module:bus/distance_travelled";
+    if (0 != sr_list_add(l, strdup(xpath))) {
+        SR_LOG_ERR_MSG("Error while adding into list");
+    }
+
+    *values = calloc(1, sizeof(**values));
+    if (NULL == *values) {
+        SR_LOG_ERR_MSG("Allocation failed");
+        return -2;
+    }
+    (*values)->xpath = strdup(xpath);
+    /* type not set */
+    (*values)->data.uint32_val = 999;
+    *values_cnt = 1;
+
+    return 0;
+}
+
+static int
 provide_distance_travalled(sr_val_t **values, size_t *values_cnt, void *private_ctx)
 {
     sr_list_t *l = (sr_list_t *) private_ctx;
@@ -333,6 +355,20 @@ int cl_dp_seats_reserved (const char *xpath, sr_val_t **values, size_t *values_c
         return provide_seats_reserved(xpath, values, values_cnt, private_ctx);
     }
     SR_LOG_ERR("Data provider received unexpected xpath %s expected %s", xpath, expected_xpath);
+    return -1;
+}
+
+int cl_dp_missing_type_bus (const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+{
+    if (0 == strcmp(xpath, "/state-module:bus/distance_travelled"))
+    {
+        return provide_distance_travalled_without_type(values, values_cnt, private_ctx);
+    } else if (0 == strcmp(xpath, "/state-module:bus/gps_located")) {
+        return provide_gps_located(values, values_cnt, private_ctx);
+    } else if (sr_xpath_node_name_eq(xpath, "reserved")) {
+        return provide_seats_reserved(xpath, values, values_cnt, private_ctx);
+    }
+    SR_LOG_ERR("Data provider received unexpected xpath %s", xpath);
     return -1;
 }
 
@@ -2896,6 +2932,82 @@ cl_no_dp_subscription(void **state)
     sr_session_stop(session);
 }
 
+static void
+cl_type_not_filled_by_dp(void **state)
+{
+   sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_list_t *xpath_retrieved = NULL;
+    sr_val_t *values = NULL;
+    size_t cnt = 0;
+    int rc = SR_ERR_OK;
+
+    rc = sr_list_init(&xpath_retrieved);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe data providers */
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus", cl_dp_missing_type_bus, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* retrieve data */
+    rc = sr_get_items(session, "/state-module:bus//*", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check data */
+    sr_free_values(values, cnt);
+
+    /* check xpath that were retrieved */
+    const char *xpath_expected_to_be_loaded [] = {
+        "/state-module:bus/gps_located",
+        "/state-module:bus/distance_travelled",
+        "/state-module:bus/seats[number='0']/reserved",
+        "/state-module:bus/seats[number='1']/reserved",
+        "/state-module:bus/seats[number='2']/reserved",
+        "/state-module:bus/seats[number='3']/reserved",
+        "/state-module:bus/seats[number='4']/reserved",
+        "/state-module:bus/seats[number='5']/reserved",
+        "/state-module:bus/seats[number='6']/reserved",
+        "/state-module:bus/seats[number='7']/reserved",
+        "/state-module:bus/seats[number='8']/reserved",
+        "/state-module:bus/seats[number='9']/reserved",
+    };
+    CHECK_LIST_OF_STRINGS(xpath_retrieved, xpath_expected_to_be_loaded);
+
+
+    /* one more time */
+    for (size_t i = 0; i < xpath_retrieved->count; i++) {
+        free(xpath_retrieved->data[i]);
+    }
+    xpath_retrieved->count = 0;
+
+    /* retrieve data */
+    rc = sr_get_items(session, "/state-module:bus//*", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check data */
+    sr_free_values(values, cnt);
+
+    /* cleanup */
+    sr_unsubscribe(session, subscription);
+    sr_session_stop(session);
+
+    for (size_t i = 0; i < xpath_retrieved->count; i++) {
+        free(xpath_retrieved->data[i]);
+    }
+    sr_list_cleanup(xpath_retrieved);
+
+}
+
 int
 main()
 {
@@ -2925,6 +3037,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_only_nested_container_dp, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_extraleaf_dp, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_no_dp_subscription, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_type_not_filled_by_dp, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
