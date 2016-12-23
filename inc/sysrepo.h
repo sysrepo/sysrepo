@@ -1391,10 +1391,11 @@ int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_cha
  * the NETCONF Access Control Model (RFC 6536) to restrict the protocol operations that
  * each user is authorized to execute.
  *
- * NETCONF access control is already included in the processing of ::sr_rpc_send and
- * ::sr_rpc_send_tree and thus it should be sufficient to call this function only
- * prior to executing any of the NETCONF standard protocol operations as they cannot
- * be always directly translated to a single sysrepo API call.
+ * NETCONF access control is already included in the processing of ::sr_rpc_send,
+ * ::sr_rpc_send_tree, ::sr_action_send and ::sr_action_send_tree and thus it should be
+ * sufficient to call this function only prior to executing any of the NETCONF standard
+ * protocol operations as they cannot be always directly translated to a single sysrepo
+ * API call.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath XPath identifying the protocol operation.

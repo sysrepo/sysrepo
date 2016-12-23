@@ -185,6 +185,7 @@ daemon_kill()
     int pid = 0, ret = 0;
 
     /* read PID of the daemon from sysrepo PID file */
+    SR_LOG_DBG("Reading PID from file: %s.", SR_DAEMON_PID_FILE);
     pidfile = fopen(SR_DAEMON_PID_FILE, "r");
     assert_non_null(pidfile);
     ret = fscanf(pidfile, "%d", &pid);
