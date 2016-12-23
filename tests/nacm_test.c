@@ -39,6 +39,7 @@
 #include "rp_dt_context_helper.h"
 #include "test_module_helper.h"
 #include "nacm_module_helper.h"
+#include "system_helper.h"
 
 static bool daemon_run_before_test = false; /**< Indices if the daemon was running before executing the test. */
 static rp_ctx_t *rp_ctx = NULL; /**< Request processor global context. */
@@ -3005,6 +3006,9 @@ int main() {
     sr_log_stderr(SR_LL_DBG);
     sr_log_syslog(SR_LL_NONE);
 
-    return cmocka_run_group_tests(tests, nacm_tests_setup, nacm_tests_teardown);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, nacm_tests_setup, nacm_tests_teardown);
+    watchdog_stop();
+    return ret;
 }
 

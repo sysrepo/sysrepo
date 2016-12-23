@@ -31,6 +31,7 @@
 #include "test_module_helper.h"
 #include "rp_dt_lookup.h"
 #include "rp_dt_xpath.h"
+#include "system_helper.h"
 
 int setup(void **state)
 {
@@ -1111,6 +1112,10 @@ main()
             cmocka_unit_test(dm_action_test),
             cmocka_unit_test(dm_schema_node_xpath_hash),
     };
-    return cmocka_run_group_tests(tests, setup, NULL);
+
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, setup, NULL);
+    watchdog_stop();
+    return ret;
 }
 

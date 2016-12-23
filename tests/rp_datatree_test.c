@@ -34,6 +34,7 @@
 #include "test_module_helper.h"
 #include "rp_dt_context_helper.h"
 #include "rp_internal.h"
+#include "system_helper.h"
 
 #define LEAF_VALUE "leafV"
 
@@ -1896,7 +1897,11 @@ int main(){
             cmocka_unit_test(default_nodes_toplevel_test),
             cmocka_unit_test_setup(union_test, createData),
     };
-    return cmocka_run_group_tests(tests, setup, teardown);
+
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, setup, teardown);
+    watchdog_stop();
+    return ret;
 }
 
 

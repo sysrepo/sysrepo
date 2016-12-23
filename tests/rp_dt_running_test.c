@@ -35,6 +35,7 @@
 #include "rp_dt_context_helper.h"
 #include "data_manager.h"
 #include "rp_internal.h"
+#include "system_helper.h"
 
 int setup(void **state)
 {
@@ -260,5 +261,8 @@ main() {
             cmocka_unit_test_setup_teardown(enable_running_for_submodule, setup, teardown),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

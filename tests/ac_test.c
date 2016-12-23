@@ -31,6 +31,7 @@
 #include "access_control.h"
 #include "test_module_helper.h"
 #include "test_data.h"
+#include "system_helper.h"
 
 /**
  * @brief Test setup routine.
@@ -368,5 +369,8 @@ main() {
             cmocka_unit_test_setup_teardown(ac_test_negative, ac_test_setup, ac_test_teardown),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

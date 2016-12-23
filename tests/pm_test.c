@@ -33,7 +33,7 @@
 #include "persistence_manager.h"
 #include "rp_internal.h"
 #include "rp_dt_context_helper.h"
-
+#include "system_helper.h"
 #include "test_data.h"
 
 typedef struct test_ctx_s {
@@ -260,5 +260,8 @@ main() {
             cmocka_unit_test_setup_teardown(pm_subscription_test, test_setup, test_teardown),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

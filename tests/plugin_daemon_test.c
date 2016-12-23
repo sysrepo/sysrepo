@@ -30,6 +30,7 @@
 
 #include "sysrepo.h"
 #include "sr_common.h"
+#include "system_helper.h"
 
 bool sysrepod_run_before_test = false; /**< Indices if the sysrepo daemon was running before executing the test. */
 bool plugind_run_before_test = false;  /**< Indices if the plugin daemon was running before executing the test. */
@@ -125,5 +126,9 @@ main() {
             cmocka_unit_test_setup_teardown(sysrepo_plugin_daemon_test, test_setup, test_teardown),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+
+    return ret;
 }

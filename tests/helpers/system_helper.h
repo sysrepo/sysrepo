@@ -59,5 +59,16 @@ int compare_files(const char *path1, const char *path2);
  */
 void exec_shell_command(const char *cmd, const char *exp_out, bool regex, int exp_ret);
 
+/**
+ * @brief Spawns a new thread that will abort the process if the runtime limit (in seconds)
+ * has exceeded.
+ */
+void watchdog_start(int runtime_limit);
+
+/**
+ * @brief Stop watchdog thread.
+ */
+void watchdog_stop();
+
 #endif /* SYSTEM_HELPER_H */
 

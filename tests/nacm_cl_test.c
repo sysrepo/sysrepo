@@ -33,6 +33,7 @@
 #include "test_data.h"
 #include "test_module_helper.h"
 #include "nacm_module_helper.h"
+#include "system_helper.h"
 
 #define NUM_OF_USERS  3
 #define MAX_ATTEMPTS_TO_KILL_DAEMON  5
@@ -1003,5 +1004,8 @@ main() {
         printf("(see deploy/travis/install-test-users.sh for a set of commands to execute)\n");
     }
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

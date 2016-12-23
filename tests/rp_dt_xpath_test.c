@@ -29,6 +29,7 @@
 #include "sr_common.h"
 #include "data_manager.h"
 #include "test_data.h"
+#include "system_helper.h"
 
 int validate_node_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, struct lys_node **match){
     int rc = SR_ERR_OK;
@@ -224,7 +225,11 @@ int main(){
             cmocka_unit_test_setup_teardown(rp_dt_validate_fail, setup, teardown),
             cmocka_unit_test_setup_teardown(check_error_reporting, setup, teardown),
     };
-    return cmocka_run_group_tests(tests, NULL, NULL);
+
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }
 
 

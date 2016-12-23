@@ -33,6 +33,7 @@
 #include "sr_common.h"
 #include "request_processor.h"
 #include "test_data.h"
+#include "system_helper.h"
 
 static int
 logging_setup(void **state)
@@ -1413,5 +1414,8 @@ main() {
             cmocka_unit_test_setup_teardown(sr_free_list_of_strings_test, logging_setup, logging_cleanup),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

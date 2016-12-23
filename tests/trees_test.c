@@ -1034,5 +1034,8 @@ main() {
         cmocka_unit_test(sr_print_tree_test)
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

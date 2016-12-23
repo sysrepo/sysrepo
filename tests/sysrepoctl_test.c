@@ -377,5 +377,8 @@ main() {
             cmocka_unit_test_setup_teardown(sysrepoctl_test_init, NULL, NULL),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

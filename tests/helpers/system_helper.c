@@ -39,8 +39,25 @@
 #include <regex.h>
 #endif
 #include <execinfo.h>
-
+#include <pthread.h>
 #define EXPECTED_MAX_FILE_SIZE 512
+
+/**
+ * @brief Context for watchdog thread.
+ */
+typedef struct watchgod_ctx_s {
+    volatile int runtime_limit;
+    volatile bool exit;
+    pthread_t thread;
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+} watchdog_ctx_t;
+
+/**
+ * @brief A global instance of the watchdog context.
+ */
+static watchdog_ctx_t watchdog_ctx = {0, false};
+
 
 static void
 print_backtrace()
@@ -279,4 +296,70 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
             assert_int_equal_bt(exp_ret, WEXITSTATUS(ret));
         }
     } while (retry && cnt < 10);
+}
+
+static void *
+watchdog_routine(void *arg)
+{
+    (void)arg;
+    struct timespec ts;
+    int ret = 0;
+
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += watchdog_ctx.runtime_limit;
+
+    pthread_mutex_lock(&watchdog_ctx.lock);
+    do {
+        ret = pthread_cond_timedwait(&watchdog_ctx.cond, &watchdog_ctx.lock, &ts);
+        if (ETIMEDOUT == ret) {
+            fprintf(stderr, "Aborting the test as it has exceeded the runtime limit (%d seconds).",
+                    watchdog_ctx.runtime_limit);
+            abort();
+        } else {
+            assert_int_equal(0, ret);
+        }
+    } while (!watchdog_ctx.exit);
+    pthread_mutex_unlock(&watchdog_ctx.lock);
+
+    return NULL;
+}
+
+void
+watchdog_start(int runtime_limit)
+{
+    int ret = 0;
+
+    /* initialize watchdog context */
+    watchdog_ctx.runtime_limit = runtime_limit;
+    watchdog_ctx.exit = false;
+    ret = pthread_mutex_init(&watchdog_ctx.lock, NULL);
+    assert_int_equal(0, ret);
+    ret = pthread_cond_init(&watchdog_ctx.cond, NULL);
+    assert_int_equal(0, ret);
+
+    /* start watchdog thread */
+    ret = pthread_create(&watchdog_ctx.thread, NULL, watchdog_routine, NULL);
+    assert_int_equal(0, ret);
+}
+
+void
+watchdog_stop()
+{
+    int ret = 0;
+
+    /* signal watchdog to exit */
+    ret = pthread_mutex_lock(&watchdog_ctx.lock);
+    assert_int_equal(0, ret);
+    watchdog_ctx.exit = true;
+    ret = pthread_cond_signal(&watchdog_ctx.cond);
+    assert_int_equal(0, ret);
+    ret = pthread_mutex_unlock(&watchdog_ctx.lock);
+    assert_int_equal(0, ret);
+
+    /* wait for watchdog to exit */
+    ret = pthread_join(watchdog_ctx.thread, NULL);
+    assert_int_equal(0, ret);
+
+    pthread_cond_destroy(&watchdog_ctx.cond);
+    pthread_mutex_destroy(&watchdog_ctx.lock);
 }
