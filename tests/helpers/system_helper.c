@@ -302,11 +302,10 @@ static void *
 watchdog_routine(void *arg)
 {
     (void)arg;
-    struct timespec ts;
+    struct timespec ts = {0};
     int ret = 0;
 
-    clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_sec += watchdog_ctx.runtime_limit;
+    ts.tv_sec = time(NULL) + watchdog_ctx.runtime_limit;
 
     pthread_mutex_lock(&watchdog_ctx.lock);
     do {
