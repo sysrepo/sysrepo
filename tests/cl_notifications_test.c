@@ -2549,9 +2549,16 @@ cl_config_change_notif_test(void **state)
 
     assert_int_equal(4, change.val_cnt);
     assert_string_equal("/ietf-netconf-notifications:netconf-config-change/changed-by", change.values[0].xpath);
+
     assert_string_equal("/ietf-netconf-notifications:netconf-config-change/changed-by/session-id", change.values[1].xpath);
+    assert_int_equal(SR_UINT32_T, change.values[1].type);
+    assert_int_equal(change.values[1].data.uint32_val, sr_session_get_id(session));
+
     assert_string_equal("/ietf-netconf-notifications:netconf-config-change/changed-by/username", change.values[2].xpath);
+
     assert_string_equal("/ietf-netconf-notifications:netconf-config-change/datastore", change.values[3].xpath);
+    assert_int_equal(SR_ENUM_T, change.values[3].type);
+    assert_string_equal("startup", change.values[3].data.string_val);
 
     sr_free_values(change.values, change.val_cnt);
     change.values = NULL;
