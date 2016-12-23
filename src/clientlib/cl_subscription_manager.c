@@ -820,7 +820,9 @@ cl_sm_dp_request_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *m
     if (SR_ERR_OK == cb_rc) {
         rc = sr_values_sr_to_gpb(values, values_cnt, &resp->response->data_provide_resp->values,
                 &resp->response->data_provide_resp->n_values);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying output values to GPB.");
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Error by copying output values to GPB.");
+        }
     }
 
     /* send the response */
