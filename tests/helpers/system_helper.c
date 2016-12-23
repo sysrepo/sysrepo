@@ -48,15 +48,16 @@
 typedef struct watchgod_ctx_s {
     volatile int runtime_limit;
     volatile bool exit;
+    volatile bool running;
     pthread_t thread;
-    pthread_mutex_t lock;
-    pthread_cond_t cond;
+    pthread_mutex_t lock1, lock2;
+    pthread_cond_t cond1, cond2;
 } watchdog_ctx_t;
 
 /**
  * @brief A global instance of the watchdog context.
  */
-static watchdog_ctx_t watchdog_ctx = {0, false};
+static watchdog_ctx_t watchdog_ctx = {0, false, false};
 
 
 static void
@@ -307,9 +308,22 @@ watchdog_routine(void *arg)
 
     ts.tv_sec = time(NULL) + watchdog_ctx.runtime_limit;
 
-    pthread_mutex_lock(&watchdog_ctx.lock);
+    /* watchdog_stop cannot signal before watchdog enters pthread_cond_timedwait */
+    ret = pthread_mutex_lock(&watchdog_ctx.lock2);
+    assert_int_equal(0, ret);
+
+    /* signal successful start */
+    ret = pthread_mutex_lock(&watchdog_ctx.lock1);
+    assert_int_equal(0, ret);
+    watchdog_ctx.running = true;
+    ret = pthread_cond_signal(&watchdog_ctx.cond1);
+    assert_int_equal(0, ret);
+    ret = pthread_mutex_unlock(&watchdog_ctx.lock1);
+    assert_int_equal(0, ret);
+
+    /* wait for the program to signal exit */
     do {
-        ret = pthread_cond_timedwait(&watchdog_ctx.cond, &watchdog_ctx.lock, &ts);
+        ret = pthread_cond_timedwait(&watchdog_ctx.cond2, &watchdog_ctx.lock2, &ts);
         if (ETIMEDOUT == ret) {
             fprintf(stderr, "Aborting the test as it has exceeded the runtime limit (%d seconds).",
                     watchdog_ctx.runtime_limit);
@@ -318,7 +332,7 @@ watchdog_routine(void *arg)
             assert_int_equal(0, ret);
         }
     } while (!watchdog_ctx.exit);
-    pthread_mutex_unlock(&watchdog_ctx.lock);
+    pthread_mutex_unlock(&watchdog_ctx.lock2);
 
     return NULL;
 }
@@ -330,15 +344,28 @@ watchdog_start(int runtime_limit)
 
     /* initialize watchdog context */
     watchdog_ctx.runtime_limit = runtime_limit;
+    watchdog_ctx.running = false;
     watchdog_ctx.exit = false;
-    ret = pthread_mutex_init(&watchdog_ctx.lock, NULL);
+    ret = pthread_mutex_init(&watchdog_ctx.lock1, NULL);
     assert_int_equal(0, ret);
-    ret = pthread_cond_init(&watchdog_ctx.cond, NULL);
+    ret = pthread_mutex_init(&watchdog_ctx.lock2, NULL);
+    assert_int_equal(0, ret);
+    ret = pthread_cond_init(&watchdog_ctx.cond1, NULL);
+    assert_int_equal(0, ret);
+    ret = pthread_cond_init(&watchdog_ctx.cond2, NULL);
     assert_int_equal(0, ret);
 
     /* start watchdog thread */
+    pthread_mutex_lock(&watchdog_ctx.lock1);
     ret = pthread_create(&watchdog_ctx.thread, NULL, watchdog_routine, NULL);
     assert_int_equal(0, ret);
+
+    /* wait for watchdog to start */
+    do {
+        ret = pthread_cond_wait(&watchdog_ctx.cond1, &watchdog_ctx.lock1);
+        assert_int_equal(0, ret);
+    } while (!watchdog_ctx.running);
+    pthread_mutex_unlock(&watchdog_ctx.lock1);
 }
 
 void
@@ -347,18 +374,20 @@ watchdog_stop()
     int ret = 0;
 
     /* signal watchdog to exit */
-    ret = pthread_mutex_lock(&watchdog_ctx.lock);
+    ret = pthread_mutex_lock(&watchdog_ctx.lock2);
     assert_int_equal(0, ret);
     watchdog_ctx.exit = true;
-    ret = pthread_cond_signal(&watchdog_ctx.cond);
+    ret = pthread_cond_signal(&watchdog_ctx.cond2);
     assert_int_equal(0, ret);
-    ret = pthread_mutex_unlock(&watchdog_ctx.lock);
+    ret = pthread_mutex_unlock(&watchdog_ctx.lock2);
     assert_int_equal(0, ret);
 
     /* wait for watchdog to exit */
     ret = pthread_join(watchdog_ctx.thread, NULL);
     assert_int_equal(0, ret);
 
-    pthread_cond_destroy(&watchdog_ctx.cond);
-    pthread_mutex_destroy(&watchdog_ctx.lock);
+    pthread_cond_destroy(&watchdog_ctx.cond1);
+    pthread_cond_destroy(&watchdog_ctx.cond2);
+    pthread_mutex_destroy(&watchdog_ctx.lock1);
+    pthread_mutex_destroy(&watchdog_ctx.lock2);
 }
