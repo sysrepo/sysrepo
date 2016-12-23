@@ -2176,7 +2176,6 @@ sr_daemon_check_single_instance(const char *pid_file, int *pid_file_fd)
     }
 
     /* write PID into the PID file */
-    SR_LOG_DBG("Writing PID=%d into the file: %s.", getpid(), pid_file);
     snprintf(str, NAME_MAX, "%d\n", getpid());
     ret = write(*pid_file_fd, str, strlen(str));
     if (-1 == ret) {

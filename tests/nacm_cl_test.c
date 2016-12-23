@@ -35,6 +35,7 @@
 #include "nacm_module_helper.h"
 
 #define NUM_OF_USERS  3
+#define MAX_ATTEMPTS_TO_KILL_DAEMON  5
 //#define DEBUG_MODE
 
 #define CHECK_UNAUTHORIZED_ERROR(EVENT, SESSION, XPATH, RULE, RULE_INFO) \
@@ -179,21 +180,20 @@ bool daemon_run_before_test = false; /**< Indices if the daemon was running befo
 
 #ifndef DEBUG_MODE
 static void
-daemon_kill()
+daemon_kill(bool last_attempt)
 {
     FILE *pidfile = NULL;
     int pid = 0, ret = 0;
 
     /* read PID of the daemon from sysrepo PID file */
-    SR_LOG_DBG("Reading PID from file: %s.", SR_DAEMON_PID_FILE);
     pidfile = fopen(SR_DAEMON_PID_FILE, "r");
     assert_non_null(pidfile);
     ret = fscanf(pidfile, "%d", &pid);
     assert_int_equal(ret, 1);
 
-    /* send SIGTERM to the daemon process */
-    SR_LOG_DBG("Sending SIGTERM signal to PID=%d.", pid);
-    ret = kill(pid, SIGTERM);
+    /* send SIGTERM/SIGKILL to the daemon process */
+    SR_LOG_DBG("Sending %s signal to PID=%d.", (last_attempt ? "SIGKILL" : "SIGTERM"), pid);
+    ret = kill(pid, last_attempt ? SIGKILL : SIGTERM);
     assert_int_not_equal(ret, -1);
 }
 #endif
@@ -204,6 +204,7 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
 #ifndef DEBUG_MODE
     int ret = 0;
     struct timespec ts = { 0 };
+    int attempt = 1;
 #endif
     sr_conn_ctx_t *conn = NULL;
     int rc = SR_ERR_OK;
@@ -215,21 +216,29 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     sr_log_stderr(SR_LL_DBG);
 
 #ifndef DEBUG_MODE
-    /* connect to sysrepo, force daemon connection */
-    rc = sr_connect("nacm_cl_test", SR_CONN_DAEMON_REQUIRED, &conn);
-    sr_disconnect(conn);
-    assert_true(SR_ERR_OK == rc || SR_ERR_DISCONNECT == rc);
+    while (attempt <= MAX_ATTEMPTS_TO_KILL_DAEMON) {
+        /* connect to sysrepo, force daemon connection */
+        rc = sr_connect("nacm_cl_test", SR_CONN_DAEMON_REQUIRED, &conn);
+        sr_disconnect(conn);
+        assert_true(SR_ERR_OK == rc || SR_ERR_DISCONNECT == rc);
 
-    /* kill the daemon if it was running */
-    if (SR_ERR_OK == rc) {
-        daemon_run_before_test = true;
-        daemon_kill();
-        /* wait for the daemon to terminate */
-        ts.tv_sec = 0;
-        ts.tv_nsec = 500000000L; /* 500 milliseconds */
-        nanosleep(&ts, NULL);
-    } else {
-        daemon_run_before_test = false;
+        /* kill the daemon if it was running */
+        if (SR_ERR_OK == rc) {
+            if (1 == attempt) {
+                daemon_run_before_test = true;
+            }
+            daemon_kill(attempt == MAX_ATTEMPTS_TO_KILL_DAEMON);
+            /* wait for the daemon to terminate */
+            ts.tv_sec = 0;
+            ts.tv_nsec = 500000000L; /* 500 milliseconds */
+            nanosleep(&ts, NULL);
+        } else {
+            if (1 == attempt) {
+                daemon_run_before_test = false;
+            }
+            break;
+        }
+        ++attempt;
     }
 
     /* create initial datastore content */
@@ -238,6 +247,10 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     /* start sysrepo in the daemon mode */
     ret = system("../src/sysrepod -l 4");
     assert_int_equal(ret, 0);
+    /* wait for the daemon to start */
+    ts.tv_sec = 0;
+    ts.tv_nsec = 500000000L; /* 500 milliseconds */
+    nanosleep(&ts, NULL);
 #endif
     rc = sr_connect("nacm_cl_test", SR_CONN_DAEMON_REQUIRED, &conn);
     assert_int_equal(rc, SR_ERR_OK);
@@ -366,7 +379,7 @@ sysrepo_teardown(void **state)
 #ifndef DEBUG_MODE
     /* kill the daemon if it was not running before test */
     if (!daemon_run_before_test) {
-        daemon_kill();
+        daemon_kill(false);
     }
 #endif
     return 0;
