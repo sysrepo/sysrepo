@@ -220,6 +220,7 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
         /* connect to sysrepo, force daemon connection */
         rc = sr_connect("nacm_cl_test", SR_CONN_DAEMON_REQUIRED, &conn);
         sr_disconnect(conn);
+        conn = NULL;
         assert_true(SR_ERR_OK == rc || SR_ERR_DISCONNECT == rc);
 
         /* kill the daemon if it was running */
