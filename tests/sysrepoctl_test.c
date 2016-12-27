@@ -173,7 +173,7 @@ sysrepoctl_test_install(void **state)
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
     exec_shell_command("../src/sysrepoctl --install --yang=../../tests/yang/inner/test-dep-installed.yang "
-            "--search-installed", ".*", true, 0);
+            "--search-installed  --permissions=644", ".*", true, 0);
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.startup", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.startup.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.running", true);
