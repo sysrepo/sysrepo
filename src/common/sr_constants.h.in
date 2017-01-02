@@ -131,10 +131,10 @@
 /** Plugin health check timeout (in seconds). */
 #define SR_PLUGIN_HEALTH_CHECK_TIMEOUT 10
 
-/** Timeout for standard Sysrepo API requests. */
+/** Timeout (in seconds) for standard Sysrepo API requests. */
 #define SR_REQUEST_TIMEOUT @REQUEST_TIMEOUT@
 
-/** Timeout for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action). */
+/** Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action). */
 #define SR_LONG_REQUEST_TIMEOUT @LONG_REQUEST_TIMEOUT@
 
 /** Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers. */

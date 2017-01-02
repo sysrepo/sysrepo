@@ -155,10 +155,10 @@ set(LOG_THREAD_ID 0 CACHE BOOL
 
 # timeouts
 set(REQUEST_TIMEOUT 3 CACHE INTEGER
-    "Timeout for standard Sysrepo API requests.")
+    "Timeout (in seconds) for standard Sysrepo API requests.")
 
 set(LONG_REQUEST_TIMEOUT 15 CACHE INTEGER
-    "Timeout for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action).")
+    "Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action).")
 
 set(COMMIT_VERIFY_TIMEOUT 10 CACHE INTEGER
     "Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers.")
