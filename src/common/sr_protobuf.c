@@ -105,6 +105,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "internal-state-data";
     case SR__OPERATION__NOTIF_STORE_CLEANUP:
         return "notif-store-cleanup";
+    case SR__OPERATION__DELAYED_MSG:
+        return "delayed-msg";
     case _SR__OPERATION_IS_INT_SIZE:
         return "unknown";
     }
@@ -821,6 +823,12 @@ sr_gpb_internal_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, S
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__notif_store_cleanup_req__init((Sr__NotifStoreCleanupReq*)sub_msg);
             req->notif_store_cleanup_req = (Sr__NotifStoreCleanupReq*) sub_msg;
+            break;
+        case SR__OPERATION__DELAYED_MSG:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__DelayedMsgReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__delayed_msg_req__init((Sr__DelayedMsgReq*)sub_msg);
+            req->delayed_msg_req = (Sr__DelayedMsgReq*) sub_msg;
             break;
         default:
             break;

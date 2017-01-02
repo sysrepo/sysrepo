@@ -5088,8 +5088,9 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
 
     assert_string_equal("/test-module:link-discovered", xpath);
 
-    if (SR_EV_NOTIF_REPLAY_COMPLETE != notif_type) {
-        assert_true(SR_EV_NOTIF_REPLAY == notif_type);
+    assert_false(SR_EV_NOTIF_REALTIME == notif_type);
+
+    if (SR_EV_NOTIF_REPLAY == notif_type) {
         assert_int_equal(values_cnt, 7);
         assert_string_equal("/test-module:link-discovered/source", values[0].xpath);
         assert_int_equal(SR_CONTAINER_T, values[0].type);
@@ -5110,6 +5111,10 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
         assert_string_equal("/test-module:link-discovered/MTU", values[6].xpath);  /**< default */
         assert_int_equal(SR_UINT16_T, values[6].type);
         assert_int_equal(1500, values[6].data.uint16_val);
+
+        assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+        cb_status->link_discovered += 1;
+        assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
 
     if (SR_EV_NOTIF_REPLAY_COMPLETE == notif_type) {
@@ -5118,11 +5123,23 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
 
         assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
         cb_status->link_discovered += 1;
-        if (cb_status->link_discovered == 1) {
-            assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
-        }
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
+
+    if (SR_EV_NOTIF_REPLAY_STOP == notif_type) {
+        assert_int_equal(values_cnt, 0);
+        assert_null(values);
+
+        assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+        cb_status->link_discovered += 1;
+        assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+    }
+
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+    if (cb_status->link_discovered == 3) {
+        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    }
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
 }
 #endif
 
@@ -5133,8 +5150,9 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
-    if (SR_EV_NOTIF_REPLAY_COMPLETE != notif_type) {
-        assert_true(SR_EV_NOTIF_REPLAY == notif_type);
+    assert_false(SR_EV_NOTIF_REALTIME == notif_type);
+
+    if (SR_EV_NOTIF_REPLAY == notif_type) {
         assert_int_equal(values_cnt, 7);
         assert_string_equal("/test-module:link-removed", xpath);
         assert_string_equal("/test-module:link-removed/source", values[0].xpath);
@@ -5156,6 +5174,10 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
         assert_string_equal("/test-module:link-removed/MTU", values[6].xpath); /**< default */
         assert_int_equal(SR_UINT16_T, values[6].type);
         assert_int_equal(1500, values[6].data.uint16_val);
+
+        assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+        cb_status->link_removed += 1;
+        assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
 
     if (SR_EV_NOTIF_REPLAY_COMPLETE == notif_type) {
@@ -5164,11 +5186,23 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
 
         assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
         cb_status->link_removed += 1;
-        if (cb_status->link_removed == 1) {
-            assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
-        }
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
+
+    if (SR_EV_NOTIF_REPLAY_STOP == notif_type) {
+        assert_int_equal(values_cnt, 0);
+        assert_null(values);
+
+        assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+        cb_status->link_removed += 1;
+        assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+    }
+
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+    if (cb_status->link_removed == 3) {
+        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    }
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
 }
 #endif
 
@@ -5246,7 +5280,7 @@ cl_event_notif_replay_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* replay the notifications */
-    rc = sr_event_notif_replay(session, subscription, start_time, 0);
+    rc = sr_event_notif_replay(session, subscription, start_time, time(NULL) + 1);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* wait at most 5 seconds for all callbacks to get called */
@@ -5254,9 +5288,9 @@ cl_event_notif_replay_test(void **state)
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += 5;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
-            && (cb_status.link_removed < 1 || cb_status.link_discovered < 1));
-    assert_true(cb_status.link_discovered >= 1);
-    assert_true(cb_status.link_removed >= 1);
+            && (cb_status.link_removed < 3 || cb_status.link_discovered < 3));
+    assert_true(cb_status.link_discovered >= 3);
+    assert_true(cb_status.link_removed >= 3);
     assert_int_equal(0, pthread_mutex_unlock(&cb_status.mutex));
 
     /* unsubscribe */

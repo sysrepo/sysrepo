@@ -2799,17 +2799,39 @@ rp_notif_store_cleanup_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__
 }
 
 /**
+ * @brief Processes a delayed-msg internal request.
+ */
+static int
+rp_delayed_msg_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg * msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(rp_ctx, msg->internal_request, msg->internal_request->delayed_msg_req);
+
+    SR_LOG_DBG_MSG("Processing delayed-msg request.");
+
+    if (NULL != msg->internal_request->delayed_msg_req->message) {
+        rc = cm_msg_send(rp_ctx->cm_ctx, msg->internal_request->delayed_msg_req->message);
+        msg->internal_request->delayed_msg_req->message = NULL;
+    }
+
+    return rc;
+
+}
+
+/**
  * @brief Sends an event notification to specified notification subscriber.
  */
 static int
 rp_event_notif_send(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__EventNotifReq__NotifType type,
         const char *xpath, time_t timestamp, sr_api_variant_t api_variant, const sr_val_t *sr_values, size_t sr_values_cnt,
-        const sr_node_t *sr_trees, size_t sr_trees_cnt, const char *subscription_address, uint32_t subscription_id)
+        const sr_node_t *sr_trees, size_t sr_trees_cnt, const char *subscription_address, uint32_t subscription_id,
+        time_t delivery_time)
 {
-    Sr__Msg *req = NULL;
+    Sr__Msg *req = NULL, *internal_req = NULL;
     int rc = SR_ERR_OK;
 
-    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__EVENT_NOTIF, NULL != session ? session->id : 0, &req);
+    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__EVENT_NOTIF, (NULL != session ? session->id : 0), &req);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to duplicate event notification request (%s).", xpath);
 
     /* set type, xpath & timestamp */
@@ -2838,9 +2860,22 @@ rp_event_notif_send(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Eve
     req->request->event_notif_req->subscription_id = subscription_id;
     req->request->event_notif_req->has_subscription_id = true;
 
-    /* send the notification */
-    rc = cm_msg_send(rp_ctx->cm_ctx, req);
-    req = NULL;
+    if (0 == delivery_time) {
+        /* send the notification immediately */
+        rc = cm_msg_send(rp_ctx->cm_ctx, req);
+        req = NULL;
+    } else {
+        /* send the notification later */
+        rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__DELAYED_MSG, &internal_req);
+        if (SR_ERR_OK == rc) {
+            internal_req->session_id = (NULL != session ? session->id : 0);
+            internal_req->internal_request->delayed_msg_req->message = req;
+            req = NULL;
+            internal_req->internal_request->postpone_timeout = delivery_time - time(NULL);
+            internal_req->internal_request->has_postpone_timeout = true;
+            rc = cm_msg_send(rp_ctx->cm_ctx, internal_req);
+        }
+    }
 
 cleanup:
     if (NULL != req) {
@@ -2942,7 +2977,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
             sub_match = true;
             rc = rp_event_notif_send(rp_ctx, session, msg->request->event_notif_req->type, subscriptions[i].xpath,
                     msg->request->event_notif_req->timestamp, subscriptions[i].api_variant, with_def, with_def_cnt,
-                    with_def_tree, with_def_tree_cnt, subscriptions[i].dst_address, subscriptions[i].dst_id);
+                    with_def_tree, with_def_tree_cnt, subscriptions[i].dst_address, subscriptions[i].dst_id, 0);
             CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the notification '%s' to the subscriber '%s'.",
                     subscriptions[i].xpath, subscriptions[i].dst_address);
         }
@@ -3030,7 +3065,7 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
         rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY, notification->xpath,
                 notification->timestamp, sr_api_variant_gpb_to_sr(replay_req->api_variant),
                 notification->data.values, notification->data_cnt, notification->data.trees, notification->data_cnt,
-                replay_req->subscriber_address, replay_req->subscription_id);
+                replay_req->subscriber_address, replay_req->subscription_id, 0);
         CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the replay of notification '%s' to the subscriber '%s'.",
                 notification->xpath, replay_req->subscriber_address);
     }
@@ -3038,7 +3073,7 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
     /* send replay-complete notification */
     rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_COMPLETE, replay_req->xpath,
             time(NULL), sr_api_variant_gpb_to_sr(replay_req->api_variant), NULL, 0, NULL, 0,
-            replay_req->subscriber_address, replay_req->subscription_id);
+            replay_req->subscriber_address, replay_req->subscription_id, 0);
     CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the replay-complete notification to the subscriber '%s'.",
             replay_req->subscriber_address);
 
@@ -3048,6 +3083,15 @@ finalize:
     }
     sr_list_cleanup(notif_list);
 #endif
+
+    /* schedule replay-stop notification */
+    if ((0 != replay_req->stop_time) && (time(NULL) <= replay_req->stop_time)) {
+        rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_STOP, replay_req->xpath,
+                replay_req->stop_time, sr_api_variant_gpb_to_sr(replay_req->api_variant), NULL, 0, NULL, 0,
+                replay_req->subscriber_address, replay_req->subscription_id, replay_req->stop_time);
+        CHECK_RC_LOG_GOTO(rc, finalize, "Error by scheduling the replay-stop notification to the subscriber '%s'.",
+                replay_req->subscriber_address);
+    }
 
     /* set response code */
     resp->response->result = rc;
@@ -3308,6 +3352,9 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             break;
         case SR__OPERATION__NOTIF_STORE_CLEANUP:
             rc = rp_notif_store_cleanup_req_process(rp_ctx, session, msg);
+            break;
+        case SR__OPERATION__DELAYED_MSG:
+            rc = rp_delayed_msg_req_process(rp_ctx, session, msg);
             break;
         default:
             SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->internal_request->operation);
