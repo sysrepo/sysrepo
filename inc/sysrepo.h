@@ -1391,6 +1391,28 @@ int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_cha
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
+ * @brief Check if the owner of this session is authorized by NACM to invoke the protocol
+ * operation defined in a (installed) YANG module under the given xpath (as RPC or Action).
+ *
+ * This call is intended for northbound management applications that need to implement
+ * the NETCONF Access Control Model (RFC 6536) to restrict the protocol operations that
+ * each user is authorized to execute.
+ *
+ * NETCONF access control is already included in the processing of ::sr_rpc_send,
+ * ::sr_rpc_send_tree, ::sr_action_send and ::sr_action_send_tree and thus it should be
+ * sufficient to call this function only prior to executing any of the NETCONF standard
+ * protocol operations as they cannot be always directly translated to a single sysrepo
+ * API call.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the protocol operation.
+ * @param[out] permitted TRUE if the user is permitted to execute the given operation, FALSE otherwise.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_check_exec_permission(sr_session_ctx_t *session, const char *xpath, bool *permitted);
+
+/**
  * @brief Callback to be called by the delivery of RPC specified by xpath.
  * Subscribe to it by ::sr_rpc_subscribe call.
  *

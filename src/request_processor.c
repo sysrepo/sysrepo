@@ -96,6 +96,38 @@ rp_resp_fill_errors(Sr__Msg *msg, dm_session_t *dm_session)
 }
 
 /**
+ * @brief Report that access to execute a given operation was not allowed.
+ */
+static int
+rp_report_exec_access_denied(dm_session_t *dm_session, const char *xpath, const char *rule_name,
+        const char *rule_info)
+{
+    int rc = SR_ERR_OK;
+    char *error_msg = NULL;
+    CHECK_NULL_ARG2(dm_session, xpath);
+
+    if (NULL != rule_name) {
+        if (NULL != rule_info) {
+            rc = sr_asprintf(&error_msg, "Execution of the operation '%s' was blocked by the NACM rule '%s' (%s).",
+                    xpath, rule_name, rule_info);
+        } else {
+            rc = sr_asprintf(&error_msg, "Execution of the operation '%s' was blocked by the NACM rule '%s'.",
+                    xpath, rule_name);
+        }
+    } else {
+        rc = sr_asprintf(&error_msg, "Execution of the operation '%s' was blocked by NACM.", xpath);
+    }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN_MSG("::sr_asprintf has failed");
+    } else {
+        SR_LOG_DBG("%s", error_msg);
+        dm_report_error(dm_session, error_msg, xpath, SR_ERR_UNAUTHORIZED);
+        free(error_msg);
+    }
+    return rc;
+}
+
+/**
  * @brief Verifies that the requested commit context still exists. Copies data tree from commit context to the session if
  * needed.
  */
@@ -2059,12 +2091,65 @@ cleanup:
 }
 
 /**
+ * @brief Processes a Check-exec-permission request.
+ */
+static int
+rp_check_exec_perm_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
+    char *nacm_rule = NULL, *nacm_rule_info = NULL;
+    int rc = SR_ERR_OK, oper_rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->check_exec_perm_req);
+    SR_LOG_DBG_MSG("Processing check-exec-permission request.");
+
+    /* allocate the response */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__CHECK_EXEC_PERMISSION, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
+        SR_LOG_ERR_MSG("Cannot allocate check-exec-permission response.");
+        return SR_ERR_NOMEM;
+    }
+
+#ifdef ENABLE_NACM
+    Sr__CheckExecPermReq *req = msg->request->check_exec_perm_req;
+
+    oper_rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
+    if (SR_ERR_OK == oper_rc && NULL != nacm_ctx) {
+        oper_rc = nacm_check_rpc(nacm_ctx, session->user_credentials, req->xpath,
+                &nacm_action, &nacm_rule, &nacm_rule_info);
+        if (SR_ERR_OK == oper_rc && NACM_ACTION_DENY == nacm_action) {
+            rp_report_exec_access_denied(session->dm_session, req->xpath, nacm_rule, nacm_rule_info);
+        }
+    }
+    if (SR_ERR_OK != oper_rc) {
+        SR_LOG_WRN("Failed to verify if the user is allowed to execute operation: %s", req->xpath);
+    }
+#endif
+
+    /* set response data */
+    resp->response->result = oper_rc;
+    resp->response->check_exec_perm_resp->permitted = (nacm_action == NACM_ACTION_PERMIT);
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
  * @brief Processes a RPC/Action request.
  */
 static int
 rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
-    char *module_name = NULL;
+    const char *xpath = NULL;
+    char *module_name = NULL, *error_msg = NULL;
     sr_api_variant_t msg_api_variant = SR_API_VALUES;
     sr_val_t *input = NULL, *with_def = NULL;
     sr_node_t *input_tree = NULL, *with_def_tree = NULL;
@@ -2075,6 +2160,9 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     sr_mem_ctx_t *sr_mem = NULL;
     const char *op_name = NULL;
     bool action = false;
+    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
+    char *nacm_rule = NULL, *nacm_rule_info = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->rpc_req);
@@ -2082,12 +2170,38 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
         goto finalize;
     }
 
+    xpath = msg->request->rpc_req->xpath;
     action = msg->request->rpc_req->action;
     op_name = (action ? "Action" : "RPC");
     SR_LOG_DBG("Processing %s request.", op_name);
 
     /* reuse context from msg for req (or resp) */
     sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
+
+    /* get module name */
+    rc = sr_copy_first_ns(msg->request->rpc_req->xpath, &module_name);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for %s request (%s).", op_name,
+            msg->request->rpc_req->xpath);
+
+    /* authorize (write permissions are required to deliver the RPC/Action) */
+    rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
+
+#ifdef ENABLE_NACM
+    /* NACM access control */
+    rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
+    CHECK_RC_MSG_GOTO(rc, finalize, "Failed to get NACM context");
+    if (NULL != nacm_ctx) {
+        /* check if the user is authorized to execute the RPC */
+        rc = nacm_check_rpc(nacm_ctx, session->user_credentials, xpath, &nacm_action, &nacm_rule, &nacm_rule_info);
+        CHECK_RC_LOG_GOTO(rc, finalize, "Failed to verify if the user is allowed to execute RPC: %s", xpath);
+        if (NACM_ACTION_DENY == nacm_action) {
+            rp_report_exec_access_denied(session->dm_session, xpath, nacm_rule, nacm_rule_info);
+            rc = SR_ERR_UNAUTHORIZED;
+            goto finalize;
+        }
+    }
+#endif
 
     /* parse input arguments */
     msg_api_variant = sr_api_variant_gpb_to_sr(msg->request->rpc_req->orig_api_variant);
@@ -2131,15 +2245,6 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             break;
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an %s (%s) message failed.", op_name, msg->request->rpc_req->xpath);
-
-    /* get module name */
-    rc = sr_copy_first_ns(msg->request->rpc_req->xpath, &module_name);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for %s request (%s).", op_name,
-            msg->request->rpc_req->xpath);
-
-    /* authorize (write permissions are required to deliver the RPC/Action) */
-    rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
 
     /* fill-in subscription details into the request */
     bool subscription_match = false;
@@ -2211,6 +2316,9 @@ finalize:
     /* free all the allocated data */
     np_free_subscriptions(subscriptions, subscription_cnt);
     free(module_name);
+    free(error_msg);
+    free(nacm_rule);
+    free(nacm_rule_info);
     if (SR_API_VALUES == msg_api_variant) {
         sr_free_values(input, input_cnt);
     } else {
@@ -3113,6 +3221,9 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             break;
         case SR__OPERATION__GET_CHANGES:
             rc = rp_get_changes_req_process(rp_ctx, session, msg);
+            break;
+        case SR__OPERATION__CHECK_EXEC_PERMISSION:
+            rc = rp_check_exec_perm_req_process(rp_ctx, session, msg);
             break;
         case SR__OPERATION__RPC:
         case SR__OPERATION__ACTION:

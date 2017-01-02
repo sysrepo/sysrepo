@@ -37,6 +37,7 @@
 #include "test_module_helper.h"
 #include "sysrepo/xpath.h"
 #include "sysrepo/values.h"
+#include "system_helper.h"
 
 #define CHECK_LIST_OF_STRINGS(list, expected)                           \
     do {                                                                \
@@ -3040,5 +3041,8 @@ main()
         cmocka_unit_test_setup_teardown(cl_type_not_filled_by_dp, sysrepo_setup, sysrepo_teardown),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

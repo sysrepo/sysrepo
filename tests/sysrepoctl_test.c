@@ -60,7 +60,7 @@ sysrepoctl_test_list(void **state)
                         "Module Name[[:space:]]*\\| Revision[[:space:]]*\\| Data Owner[[:space:]]*\\| Permissions[[:space:]]*\\| Submodules[[:space:]]*\\| Enabled Features[[:space:]]*\n"
                         "--*[[:space:]]*\n"
                         ".*"
-                        "test-module[[:space:]]*\\|[[:space:]]*\\| [[:alpha:]]*:[[:alpha:]]*[[:space:]]*\\| [0-9]*[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n",
+                        "test-module[[:space:]]*\\|[[:space:]]*\\| [-[:alpha:]]*:[-[:alpha:]]*[[:space:]]*\\| [0-9]*[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n",
                        true, 0);
 }
 
@@ -377,5 +377,8 @@ main() {
             cmocka_unit_test_setup_teardown(sysrepoctl_test_init, NULL, NULL),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

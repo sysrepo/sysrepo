@@ -30,6 +30,7 @@
 #include <sys/stat.h>
 
 #include "sr_common.h"
+#include "system_helper.h"
 
 /**
  * @brief Get number of memory blocks allocated in a context.
@@ -735,5 +736,8 @@ main() {
 
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

@@ -1,7 +1,8 @@
 /**
  * @file nacm_test.c
  * @author Milan Lenco <milan.lenco@pantheon.tech>
- * @brief NETCONF Access Control unit tests.
+ * @brief NETCONF Access Control unit tests that cover only internals of sysrepo
+ * and not the client library.
  *
  * @copyright
  * Copyright 2016 Pantheon Technologies, s.r.o.
@@ -38,6 +39,7 @@
 #include "rp_dt_context_helper.h"
 #include "test_module_helper.h"
 #include "nacm_module_helper.h"
+#include "system_helper.h"
 
 static bool daemon_run_before_test = false; /**< Indices if the daemon was running before executing the test. */
 static rp_ctx_t *rp_ctx = NULL; /**< Request processor global context. */
@@ -999,9 +1001,8 @@ nacm_config_for_basic_read_access_tests(bool disable_nacm, const char *read_dflt
     add_nacm_rule_list(nacm_config, "acl2", "group2", "group3", NULL);
     add_nacm_rule_list(nacm_config, "acl3", "group4", NULL);
     /*  -> acl1: */
-#define ACL1_RULE1_COMMENT  "Do not allow any access to the 'boolean' leaf."
     add_nacm_rule(nacm_config, "acl1", "deny-boolean", "test-module", NACM_RULE_DATA,
-            XP_TEST_MODULE_BOOL, "*", "deny", ACL1_RULE1_COMMENT);
+            XP_TEST_MODULE_BOOL, "*", "deny", "Do not allow any access to the 'boolean' leaf.");
     add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
             "/test-module:main/numbers[.>10]", "*", "deny", NULL);
     add_nacm_rule(nacm_config, "acl1", "permit-access-to-list", "test-module", NACM_RULE_DATA,
@@ -1048,6 +1049,8 @@ nacm_test_read_access_single_value(void **state)
     dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
     rp_session_t *rp_session[4] = {NULL,};
     struct lyd_node *data_tree[4] = {NULL,};
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
+    uint32_t denied_rpc = 0, denied_event_notif = 0, denied_data_write = 0;
     sr_val_t *value = NULL;
 
     /* datastore content */
@@ -1253,6 +1256,13 @@ nacm_test_read_access_single_value(void **state)
     assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
     sr_free_val(value);
 
+    /* check stats */
+    rc = nacm_get_stats(nacm_ctx, &denied_rpc, &denied_event_notif, &denied_data_write);
+    assert_int_equal(0, rc);
+    assert_int_equal(0, denied_rpc);
+    assert_int_equal(0, denied_event_notif);
+    assert_int_equal(0, denied_data_write);
+
     /* cleanup */
     for (int i = 0; i < 4; ++i) {
         test_rp_session_cleanup(rp_ctx, rp_session[i]);
@@ -1270,6 +1280,8 @@ nacm_test_read_access_multiple_values(void **state)
     dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
     rp_session_t *rp_session[4] = {NULL,};
     struct lyd_node *data_tree[4] = {NULL,};
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
+    uint32_t denied_rpc = 0, denied_event_notif = 0, denied_data_write = 0;
     sr_val_t *values = NULL;
     size_t count = 0;
 
@@ -1463,6 +1475,13 @@ nacm_test_read_access_multiple_values(void **state)
     assert_int_equal(3, count);              /* access allowed to all instances */
     sr_free_values(values, count);
 
+    /* check stats */
+    rc = nacm_get_stats(nacm_ctx, &denied_rpc, &denied_event_notif, &denied_data_write);
+    assert_int_equal(0, rc);
+    assert_int_equal(0, denied_rpc);
+    assert_int_equal(0, denied_event_notif);
+    assert_int_equal(0, denied_data_write);
+
     /* cleanup */
     for (int i = 0; i < 4; ++i) {
         test_rp_session_cleanup(rp_ctx, rp_session[i]);
@@ -1480,6 +1499,8 @@ nacm_test_read_access_multiple_values_with_opts(void **state)
     rp_session_t *rp_session[4] = {NULL,};
     struct ly_set *nodes = NULL;
     struct lyd_node *data_tree[4] = {NULL,};
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
+    uint32_t denied_rpc = 0, denied_event_notif = 0, denied_data_write = 0;
     dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
     rp_dt_get_items_ctx_t get_items_ctx;
     get_items_ctx.nodes = NULL;
@@ -1844,6 +1865,13 @@ nacm_test_read_access_multiple_values_with_opts(void **state)
     assert_int_equal(3, nodes->number);              /* access allowed to all instances */
     ly_set_free(nodes);
 
+    /* check stats */
+    rc = nacm_get_stats(nacm_ctx, &denied_rpc, &denied_event_notif, &denied_data_write);
+    assert_int_equal(0, rc);
+    assert_int_equal(0, denied_rpc);
+    assert_int_equal(0, denied_event_notif);
+    assert_int_equal(0, denied_data_write);
+
     /* cleanup */
     reset_get_items_ctx(&get_items_ctx);
     for (int i = 0; i < 4; ++i) {
@@ -1862,6 +1890,8 @@ nacm_test_read_access_single_subtree(void **state)
     dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
     rp_session_t *rp_session[4] = {NULL,};
     struct lyd_node *data_tree[4] = {NULL,};
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
+    uint32_t denied_rpc = 0, denied_event_notif = 0, denied_data_write = 0;
     sr_node_t *subtree = NULL;
     char *chunk_id = NULL;
 
@@ -2132,6 +2162,13 @@ nacm_test_read_access_single_subtree(void **state)
     verify_child_count(subtree, 3);          /* access allowed to all child nodes */
     sr_free_tree(subtree);
 
+    /* check stats */
+    rc = nacm_get_stats(nacm_ctx, &denied_rpc, &denied_event_notif, &denied_data_write);
+    assert_int_equal(0, rc);
+    assert_int_equal(0, denied_rpc);
+    assert_int_equal(0, denied_event_notif);
+    assert_int_equal(0, denied_data_write);
+
     /* cleanup */
     for (int i = 0; i < 4; ++i) {
         test_rp_session_cleanup(rp_ctx, rp_session[i]);
@@ -2149,6 +2186,8 @@ nacm_test_read_access_multiple_subtrees(void **state)
     dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
     rp_session_t *rp_session[4] = {NULL,};
     struct lyd_node *data_tree[4] = {NULL,};
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
+    uint32_t denied_rpc = 0, denied_event_notif = 0, denied_data_write = 0;
     sr_node_t *subtrees = NULL;
     size_t count = 0;
     char **chunk_ids = NULL;
@@ -2433,6 +2472,13 @@ nacm_test_read_access_multiple_subtrees(void **state)
     verify_tree_size(subtrees+2, 1);
     sr_free_trees(subtrees, count);
 
+    /* check stats */
+    rc = nacm_get_stats(nacm_ctx, &denied_rpc, &denied_event_notif, &denied_data_write);
+    assert_int_equal(0, rc);
+    assert_int_equal(0, denied_rpc);
+    assert_int_equal(0, denied_event_notif);
+    assert_int_equal(0, denied_data_write);
+
     /* cleanup */
     for (int i = 0; i < 4; ++i) {
         test_rp_session_cleanup(rp_ctx, rp_session[i]);
@@ -2450,6 +2496,8 @@ nacm_test_read_access_with_disabled_nacm(void **state)
     dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
     rp_session_t *rp_session[4] = {NULL,};
     struct lyd_node *data_tree[4] = {NULL,};
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
+    uint32_t denied_rpc = 0, denied_event_notif = 0, denied_data_write = 0;
     sr_val_t *value = NULL, *values = NULL;
     sr_node_t *subtree = NULL, *subtrees = NULL;
     size_t count = 0;
@@ -2631,6 +2679,13 @@ nacm_test_read_access_with_disabled_nacm(void **state)
     verify_child_count(subtree, 9);          /* access allowed to all child nodes */
     sr_free_tree(subtree);
 
+    /* check stats */
+    rc = nacm_get_stats(nacm_ctx, &denied_rpc, &denied_event_notif, &denied_data_write);
+    assert_int_equal(0, rc);
+    assert_int_equal(0, denied_rpc);
+    assert_int_equal(0, denied_event_notif);
+    assert_int_equal(0, denied_data_write);
+
     /* cleanup */
     for (int i = 0; i < 4; ++i) {
         test_rp_session_cleanup(rp_ctx, rp_session[i]);
@@ -2648,6 +2703,8 @@ nacm_test_read_access_denied_by_default(void **state)
     dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
     rp_session_t *rp_session[4] = {NULL,};
     struct lyd_node *data_tree[4] = {NULL,};
+    nacm_ctx_t *nacm_ctx = get_nacm_ctx();
+    uint32_t denied_rpc = 0, denied_event_notif = 0, denied_data_write = 0;
     sr_val_t *values = NULL;
     sr_node_t *subtrees = NULL;
     size_t count = 0;
@@ -2716,6 +2773,13 @@ nacm_test_read_access_denied_by_default(void **state)
     }
     sr_free_trees(subtrees, count);
 
+    /* check stats */
+    rc = nacm_get_stats(nacm_ctx, &denied_rpc, &denied_event_notif, &denied_data_write);
+    assert_int_equal(0, rc);
+    assert_int_equal(0, denied_rpc);
+    assert_int_equal(0, denied_event_notif);
+    assert_int_equal(0, denied_data_write);
+
     /* cleanup */
     for (int i = 0; i < 4; ++i) {
         test_rp_session_cleanup(rp_ctx, rp_session[i]);
@@ -2738,6 +2802,7 @@ nacm_test_read_access_with_empty_config(void **state)
     size_t count = 0;
     test_nacm_cfg_t *nacm_config = NULL;
     nacm_ctx_t *nacm_ctx = get_nacm_ctx();
+    uint32_t denied_rpc = 0, denied_event_notif = 0, denied_data_write = 0;
 
     /* empty NACM config */
     new_nacm_config(&nacm_config);
@@ -2908,6 +2973,13 @@ nacm_test_read_access_with_empty_config(void **state)
     verify_child_count(subtree, 6);          /* access allowed to all child nodes */
     sr_free_tree(subtree);
 
+    /* check stats */
+    rc = nacm_get_stats(nacm_ctx, &denied_rpc, &denied_event_notif, &denied_data_write);
+    assert_int_equal(0, rc);
+    assert_int_equal(0, denied_rpc);
+    assert_int_equal(0, denied_event_notif);
+    assert_int_equal(0, denied_data_write);
+
     /* cleanup */
     for (int i = 0; i < 4; ++i) {
         test_rp_session_cleanup(rp_ctx, rp_session[i]);
@@ -2934,6 +3006,9 @@ int main() {
     sr_log_stderr(SR_LL_DBG);
     sr_log_syslog(SR_LL_NONE);
 
-    return cmocka_run_group_tests(tests, nacm_tests_setup, nacm_tests_teardown);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, nacm_tests_setup, nacm_tests_teardown);
+    watchdog_stop();
+    return ret;
 }
 

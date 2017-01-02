@@ -114,8 +114,6 @@ main(int argc, char* argv[])
     /* daemonize the process */
     parent_pid = sr_daemonize(debug_mode, log_level, SR_DAEMON_PID_FILE, &pidfile_fd);
 
-    SR_LOG_DBG_MSG("Sysrepo daemon initialization started.");
-
     /* initialize local Connection Manager */
     rc = cm_init(CM_MODE_DAEMON, SR_DAEMON_SOCKET, &sr_cm_ctx);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to initialize Connection Manager: %s.", sr_strerror(rc));

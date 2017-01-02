@@ -76,7 +76,6 @@ void
 sr_logger_init(const char *app_name)
 {
 #if SR_LOGGING_ENABLED
-    size_t buff_size = 0;
     if (NULL != sr_syslog_identifier) {
         /* if some syslog identifier was already set, release it as we are going to set new one */
         free((char*)sr_syslog_identifier);
@@ -85,11 +84,7 @@ sr_logger_init(const char *app_name)
     if ((NULL != app_name) && (0 != strcmp(SR_DEFAULT_LOG_IDENTIFIER, app_name)) &&
             (0 != strcmp(SR_DAEMON_LOG_IDENTIFIER, app_name))) {
         /* specific application name will be used as the suffix */
-        buff_size = snprintf(NULL, 0, "%s-%s", SR_DEFAULT_LOG_IDENTIFIER, app_name);
-        sr_syslog_identifier = malloc(buff_size + 1);
-        if (NULL != sr_syslog_identifier) {
-            sprintf((char*)sr_syslog_identifier, "%s-%s", SR_DEFAULT_LOG_IDENTIFIER, app_name);
-        }
+        sr_asprintf((char **)&sr_syslog_identifier, "%s-%s", SR_DEFAULT_LOG_IDENTIFIER, app_name);
     }
     if (NULL == sr_syslog_identifier) {
         /* set default identifier */

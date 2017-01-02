@@ -29,6 +29,7 @@
 #include "module_dependencies.h"
 #include "sr_common.h"
 #include "test_data.h"
+#include "system_helper.h"
 
 #define TEST_MODULE_PREFIX     "md_test_module-"
 #define TEST_SUBMODULE_PREFIX  "md_test_submodule-"
@@ -1900,6 +1901,9 @@ int main(){
             cmocka_unit_test(md_test_has_data),
     };
 
-    return cmocka_run_group_tests(tests, md_tests_setup, md_tests_teardown);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, md_tests_setup, md_tests_teardown);
+    watchdog_stop();
+    return ret;
 }
 

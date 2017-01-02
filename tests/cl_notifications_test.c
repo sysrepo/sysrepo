@@ -33,6 +33,7 @@
 
 #include "sr_common.h"
 #include "test_module_helper.h"
+#include "system_helper.h"
 
 static int
 sysrepo_setup(void **state)
@@ -2601,7 +2602,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_one_abort_notification, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subtree_verifier, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_unsuccessfull_subscription, sysrepo_setup, sysrepo_teardown),
-	cmocka_unit_test_setup_teardown(cl_enabled_notifications, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subtree_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_multiple_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subtree_empty_enabled_notifications, sysrepo_setup, sysrepo_teardown),
@@ -2611,5 +2612,8 @@ main()
         cmocka_unit_test_setup_teardown(cl_config_change_notif_test, sysrepo_setup, sysrepo_teardown),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }
