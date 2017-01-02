@@ -1369,6 +1369,11 @@ unlock_schema:
     pthread_rwlock_unlock(&schema_info->model_lock);
 
 cleanup:
+    for (size_t i = 0; i < ext_group_cnt; ++i) {
+        free(ext_groups[i]);
+    }
+    free(ext_groups);
+    free(nacm_ext_groups);
     free(module_name);
     if (SR_ERR_OK == rc) {
         *action_p = action;
