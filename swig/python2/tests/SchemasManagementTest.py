@@ -138,9 +138,11 @@ class SchemasManagementTest(unittest.TestCase):
         tester3.add_step(tester3.unlockModelStep, "test-module")
 
 
-        #tester 1,2 closed the session, tester released lock -> module can be uninstalled
+        #testers 1,2 close the session, tester 3 releases the lock -> module can be uninstalled
         srd.add_step(srd.waitStep)
         admin.add_step(admin.waitStep)
+        tester1.add_step(tester1.stopSession)
+        tester2.add_step(tester2.stopSession)
         tester3.add_step(tester3.waitStep)
 
         #uninstall succeed
