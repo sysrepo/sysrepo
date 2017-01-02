@@ -90,7 +90,7 @@ rp_resp_fill_errors(Sr__Msg *msg, dm_session_t *dm_session)
 }
 
 /**
- * @brief Report that access to execute a given operation was not allowed.
+ * @brief Report that access to execute a given operation was not allowed by NACM.
  */
 static int
 rp_report_exec_access_denied(dm_session_t *dm_session, const char *xpath, const char *rule_name,
@@ -116,6 +116,44 @@ rp_report_exec_access_denied(dm_session_t *dm_session, const char *xpath, const 
     } else {
         SR_LOG_DBG("%s", error_msg);
         dm_report_error(dm_session, error_msg, xpath, SR_ERR_UNAUTHORIZED);
+        free(error_msg);
+    }
+    return rc;
+}
+
+/**
+ * @brief Report that delivery of a notification was blocked for a given subscription by NACM.
+ */
+static int
+rp_report_delivery_blocked(np_subscription_t *subscription, const char *xpath,
+        int nacm_rc, const char *rule_name, const char *rule_info)
+{
+    int rc = SR_ERR_OK;
+    char *error_msg = NULL;
+    CHECK_NULL_ARG2(subscription, xpath);
+
+    if (SR_ERR_OK != nacm_rc) {
+        rc = sr_asprintf(&error_msg, "NETCONF access control verification failed for the notification '%s' and "
+                "subscription '%s' @ %PRIu32. Delivery will be blocked.", xpath, subscription->dst_address,
+                subscription->dst_id);
+    } else if (NULL != rule_name) {
+        if (NULL != rule_info) {
+            rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %PRIu32 "
+                    "was blocked by the NACM rule '%s' (%s).", xpath, subscription->dst_address, subscription->dst_id,
+                    rule_name, rule_info);
+        } else {
+            rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %PRIu32 "
+                    "was blocked by the NACM rule '%s'.", xpath, subscription->dst_address, subscription->dst_id,
+                    rule_name);
+        }
+    } else {
+        rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %PRIu32 "
+                "was blocked by NACM.", xpath, subscription->dst_address, subscription->dst_id);
+    }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN_MSG("::sr_asprintf has failed");
+    } else {
+        SR_LOG_DBG("%s", error_msg);
         free(error_msg);
     }
     return rc;
@@ -2743,6 +2781,7 @@ cleanup:
 static int
 rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
+    const char *xpath = NULL;
     char *module_name = NULL;
     struct lyd_node *notif_data_tree = NULL;
     sr_api_variant_t msg_api_variant = SR_API_VALUES;
@@ -2754,6 +2793,9 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     bool sub_match = false;
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem_msg = NULL;
+    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
+    char *nacm_rule = NULL, *nacm_rule_info = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->event_notif_req);
@@ -2761,7 +2803,8 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         goto finalize;
     }
 
-    SR_LOG_DBG_MSG("Processing event notification request.");
+    xpath = msg->request->event_notif_req->xpath;
+    SR_LOG_DBG("Processing event notification request (%s).", xpath);
 
     /* parse input arguments */
     sr_mem_msg = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
@@ -2773,24 +2816,21 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         rc = sr_trees_gpb_to_sr(sr_mem_msg, msg->request->event_notif_req->trees,
                 msg->request->event_notif_req->n_trees, &trees, &tree_cnt);
     }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse event notification (%s) data trees from GPB message.",
-                      msg->request->event_notif_req->xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse event notification (%s) data trees from GPB message.", xpath);
 
     /* validate event-notification request */
     if (SR_API_VALUES == msg_api_variant) {
-        rc = dm_validate_event_notif(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath,
-                values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
+        rc = dm_validate_event_notif(rp_ctx->dm_ctx, session->dm_session, xpath, values, values_cnt, NULL,
+                &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
     } else {
-        rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath,
-                trees, tree_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
+        rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, session->dm_session, xpath, trees, tree_cnt, NULL,
+                &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
     }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.",
-                      msg->request->event_notif_req->xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.", xpath);
 
     /* get module name */
-    rc = sr_copy_first_ns(msg->request->event_notif_req->xpath, &module_name);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for event notification request (%s).",
-                      msg->request->event_notif_req->xpath);
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for event notification request (%s).", xpath);
 
     /* authorize (write permissions are required to deliver the event-notification) */
     rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
@@ -2798,23 +2838,43 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 
 #ifdef ENABLE_NOTIF_STORE
     /* store the notification in the datastore */
-    rc = np_store_event_notification(rp_ctx->np_ctx, session->user_credentials, msg->request->event_notif_req->xpath,
+    rc = np_store_event_notification(rp_ctx->np_ctx, session->user_credentials, xpath,
             msg->request->event_notif_req->timestamp, &notif_data_tree);
 #endif
 
     /* get event-notification subscriptions */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS,
             &subscriptions, &subscription_cnt);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for event notification request (%s).",
-                      msg->request->event_notif_req->xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for event notification request (%s).", xpath);
+
+#ifdef ENABLE_NACM
+    /* get NACM context */
+    rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
+    CHECK_RC_MSG_GOTO(rc, finalize, "Failed to get NACM context");
+#endif
 
     /* broadcast the notification to all subscribed processes */
     for (unsigned i = 0; SR_ERR_OK == rc && i < subscription_cnt; ++i) {
-        if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, msg->request->event_notif_req->xpath)) {
+        if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, xpath)) {
             /* duplicate msg into req with values and subscription details
              * @note we are not using memory context for the *req* message because with so many
              * duplications it would be actually less efficient than normally.
-             * */
+             */
+#ifdef ENABLE_NACM
+            /* NACM access control */
+            if (NULL != nacm_ctx) {
+                free(nacm_rule);
+                free(nacm_rule_info);
+                nacm_rule = NULL;
+                nacm_rule_info = NULL;
+                /* check if the user is authorized to receive the notification */
+                rc = nacm_check_event_notif(nacm_ctx, subscriptions[i].username, xpath, &nacm_action,
+                        &nacm_rule, &nacm_rule_info);
+                if (SR_ERR_OK != rc || NACM_ACTION_DENY == nacm_action) {
+                    rp_report_delivery_blocked(&subscriptions[i], xpath, rc, nacm_rule, nacm_rule_info);
+                }
+            }
+#endif
             sub_match = true;
             rc = rp_event_notif_send(rp_ctx, session, msg->request->event_notif_req->type, subscriptions[i].xpath,
                     msg->request->event_notif_req->timestamp, subscriptions[i].api_variant, with_def, with_def_cnt,
@@ -2825,6 +2885,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
 finalize:
+    /* free all the allocated data */
     if (SR_API_VALUES == msg_api_variant) {
         sr_free_values(values, values_cnt);
     } else {
@@ -2833,6 +2894,8 @@ finalize:
     sr_free_values(with_def, with_def_cnt);
     sr_free_trees(with_def_tree, with_def_tree_cnt);
     free(module_name);
+    free(nacm_rule);
+    free(nacm_rule_info);
     np_free_subscriptions(subscriptions, subscription_cnt);
 
     if (!sub_match && SR_ERR_OK == rc) {
