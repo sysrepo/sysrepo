@@ -1012,7 +1012,7 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
     nacm_action_t action = NACM_ACTION_PERMIT;
     CHECK_NULL_ARG4(nacm_ctx, user_credentials, xpath, action_p);
 
-    /* get effective user credentials*/
+    /* get effective user credentials */
     if (NULL != user_credentials->e_username) {
         username = user_credentials->e_username;
         uid = user_credentials->e_uid;
@@ -1144,13 +1144,15 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
                     continue;
                 }
             }
-            /* the rule matches! */
+            /* step 8: the rule matches! */
             action = nacm_rule->action;
             rule_name = nacm_rule->name;
             rule_info = nacm_rule->comment;
             goto unlock_all;
         }
     }
+
+    /* step 9 : no matching rule was found in any rule-list entry */
 
 step10:
     /* steps 10: YANG extensions */
@@ -1187,7 +1189,7 @@ cleanup:
     if (SR_ERR_OK == rc) {
         *action_p = action;
         if (NULL != rule_name_p) {
-            *rule_name_p = rule_name ? strdup(rule_name) : NULL; /* ingore failure */
+            *rule_name_p = rule_name ? strdup(rule_name) : NULL; /* ignore failure */
         }
         if (NULL != rule_info_p) {
             *rule_info_p = rule_info ? strdup(rule_info) : NULL; /* ignore failure */
@@ -1197,14 +1199,187 @@ cleanup:
 }
 
 int
-nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const char *xpath,
-        nacm_action_t *action, char **rule_name_p, char **rule_info_p)
+nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const char *username, const char *xpath,
+        nacm_action_t *action_p, char **rule_name_p, char **rule_info_p)
 {
-    CHECK_NULL_ARG4(nacm_ctx, user_credentials, xpath, action);
+    int rc = SR_ERR_OK;
+    uid_t uid;
+    char *module_name = NULL;
+    char **ext_groups = NULL;
+    size_t ext_group_cnt = 0;
+    nacm_group_t **nacm_ext_groups = NULL;
+    dm_schema_info_t *schema_info = NULL;
+    struct lys_node *sch_node = NULL;
+    char *rule_name = NULL, *rule_info = NULL;
+    bool disjoint = false, bit_val = false, matches = false;
+    nacm_user_t *nacm_user = NULL;
+    nacm_rule_list_t *nacm_rule_list = NULL;
+    nacm_rule_t *nacm_rule = NULL;
+    nacm_action_t action = NACM_ACTION_PERMIT;
 
-    /* TODO */
+    CHECK_NULL_ARG4(nacm_ctx, username, xpath, action_p);
 
-    return SR_ERR_OK;
+    /* get user ID */
+    rc = sr_get_user_id(username, &uid, NULL);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get the UID of user '%s': %s", username, sr_strerror(rc));
+
+    /* get schema node of the Event notification */
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+    rc = dm_get_module_and_lock(nacm_ctx->dm_ctx, module_name, &schema_info);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Get schema info failed for %s", module_name);
+    sch_node = sr_find_schema_node(schema_info->module->data, xpath, 0);
+    if (NULL == sch_node) {
+        SR_LOG_ERR("Schema node not found for Event notification: %s.", xpath);
+        rc = SR_ERR_INVAL_ARG;
+        goto unlock_schema;
+    }
+    if (LYS_NOTIF != sch_node->nodetype) {
+        SR_LOG_ERR("XPath '%s' does not resolve to Event notification node.", xpath);
+        rc = SR_ERR_INVAL_ARG;
+        goto unlock_schema;
+    }
+
+    /* lock NACM context for reading */
+    pthread_rwlock_rdlock(&nacm_ctx->lock);
+
+    /* steps 1,2 */
+    if (false == nacm_ctx->enabled) {
+        action = NACM_ACTION_PERMIT;
+        goto unlock_all;
+    }
+    if (SR_NACM_RECOVERY_UID == uid) {
+        action = NACM_ACTION_PERMIT;
+        goto unlock_all;
+    }
+
+    /* step 3: notifications NETCONF replayComplete and notificationComplete are always permitted */
+    if (NULL == sch_node->parent &&
+        0 == strcmp("nc-notifications", sch_node->module->name) &&
+        (0 == strcmp("replayComplete", sch_node->name) || 0 == strcmp("notificationComplete", sch_node->name))) {
+        action = NACM_ACTION_PERMIT;
+        goto unlock_all;
+    }
+
+    /* step 4: collect the list of groups that the user is a member of */
+    /*  -> get NACM info about this user */
+    nacm_user = nacm_get_user(nacm_ctx, username);
+
+    /*  -> get NACM info about the external groups that this user is member of */
+    if (nacm_ctx->external_groups) {
+        rc = sr_get_user_groups(username, &ext_groups, &ext_group_cnt);
+        CHECK_RC_LOG_GOTO(rc, unlock_all, "Failed to obtain the set of external groups for user '%s'.", username);
+        if (0 != ext_group_cnt) {
+            nacm_ext_groups = calloc(ext_group_cnt, sizeof *nacm_ext_groups);
+            CHECK_NULL_NOMEM_GOTO(nacm_ext_groups, rc, unlock_all);
+            for (size_t i = 0; i < ext_group_cnt; ++i) {
+                nacm_ext_groups[i] = nacm_get_group(nacm_ctx, ext_groups[i]);
+            }
+        }
+    }
+
+    /* step 5: if no groups are found, skip steps 6-9 */
+    if ((NULL == nacm_user || sr_bitset_empty(nacm_user->groups)) && 0 == ext_group_cnt) {
+        goto step10;
+    }
+
+    for (size_t i = 0; i < nacm_ctx->rule_lists->count; ++i) {
+        /* step 6: process all *matching* rule lists */
+        nacm_rule_list = (nacm_rule_list_t *)nacm_ctx->rule_lists->data[i];
+        matches = false;
+        /*  -> match all */
+        if (true == nacm_rule_list->match_all) {
+            matches = true;
+        }
+        /*  -> groups defined in NACM config */
+        if (!matches && NULL != nacm_user) {
+            rc = sr_bitset_disjoint(nacm_user->groups, nacm_rule_list->groups, &disjoint);
+            CHECK_RC_MSG_GOTO(rc, unlock_all, "Function sr_bitset_disjoint has failed.");
+            if (false == disjoint) {
+                matches = true;
+            }
+        }
+        /*  -> external groups */
+        for (size_t j = 0; !matches && j < ext_group_cnt; ++j) {
+            if (NULL != nacm_ext_groups[j]) {
+                rc = sr_bitset_get(nacm_rule_list->groups, nacm_ext_groups[j]->id, &bit_val);
+                CHECK_RC_MSG_GOTO(rc, unlock_all, "Failed to get value of a bit in a bitset.");
+                if (true == bit_val) {
+                    matches = true;
+                }
+            }
+        }
+        if (false == matches) {
+            /* rule-list's "group" leaf-list does not match any of the user's groups */
+            continue;
+        }
+        /* step 7: process matching rule-list */
+        for (size_t j = 0; j < nacm_rule_list->rules->count; ++j) {
+            nacm_rule = (nacm_rule_t *)nacm_rule_list->rules->data[j];
+            if (false == (NACM_ACCESS_READ & nacm_rule->access)) {
+                /* this rule is for different access operation */
+                continue;
+            }
+            if (NACM_RULE_NOTIF != nacm_rule->type && NACM_RULE_NOTSET != nacm_rule->type) {
+                /* this rule is not defined for outgoing notification authorization */
+                continue;
+            }
+            if (0 != strcmp("*", nacm_rule->module) &&
+                0 != strcmp(sch_node->module->name, nacm_rule->module)) {
+                /* this rule doesn't apply to the module where the node is defined */
+                continue;
+            }
+            if (NACM_RULE_NOTIF == nacm_rule->type) {
+                if (0 != strcmp("*", nacm_rule->data.event_notif_name) &&
+                    0 != strcmp(sch_node->name, nacm_rule->data.event_notif_name)) {
+                    /* this rule doesn't apply to this specific notification */
+                    continue;
+                }
+            }
+            /* step 8: the rule matches! */
+            action = nacm_rule->action;
+            rule_name = nacm_rule->name;
+            rule_info = nacm_rule->comment;
+            goto unlock_all;
+        }
+    }
+
+    /* step 9 : no matching rule was found in any rule-list entry */
+
+step10:
+    /* steps 10: YANG extensions */
+    if (LYS_NACM_DENYA & sch_node->nacm) {
+        action = NACM_ACTION_DENY;
+        goto unlock_all;
+    }
+
+    /* step 11: default action */
+    action = nacm_ctx->dflt.read;
+
+unlock_all:
+    if (SR_ERR_OK == rc && NACM_ACTION_DENY == action) {
+        /* update stats */
+        pthread_rwlock_wrlock(&nacm_ctx->stats.lock);
+        ++nacm_ctx->stats.denied_event_notif;
+        pthread_rwlock_unlock(&nacm_ctx->stats.lock);
+    }
+    pthread_rwlock_unlock(&nacm_ctx->lock);
+
+unlock_schema:
+    pthread_rwlock_unlock(&schema_info->model_lock);
+
+cleanup:
+    free(module_name);
+    if (SR_ERR_OK == rc) {
+        *action_p = action;
+        if (NULL != rule_name_p) {
+            *rule_name_p = rule_name ? strdup(rule_name) : NULL; /* ignore failure */
+        }
+        if (NULL != rule_info_p) {
+            *rule_info_p = rule_info ? strdup(rule_info) : NULL; /* ignore failure */
+        }
+    }
+    return rc;
 }
 
 /**
