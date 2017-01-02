@@ -2966,7 +2966,7 @@ finalize:
     }
 
     /* send the response with return code */
-    if (!msg->request->event_notif_req->do_not_send_reply) {
+    if (!msg->request->event_notif_req->do_not_send_reply && NULL != session) {
         rc_tmp = sr_gpb_resp_alloc(sr_mem_msg, SR__OPERATION__EVENT_NOTIF, session->id, &resp);
         if (SR_ERR_OK == rc_tmp) {
             resp->response->result = rc;
