@@ -35,6 +35,7 @@
 #include "sysrepo.pb-c.h"
 
 #include "test_module_helper.h"
+#include "system_helper.h"
 
 #define CM_AF_SOCKET_PATH "/tmp/sysrepo-test"  /* unix-domain socket used for the test*/
 
@@ -540,5 +541,8 @@ main() {
             cmocka_unit_test_setup_teardown(cm_signals_test, cm_setup, cm_teardown),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

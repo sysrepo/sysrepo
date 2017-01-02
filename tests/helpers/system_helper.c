@@ -29,6 +29,8 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <fcntl.h>
 #include <pwd.h>
 #include <setjmp.h>
 #include <cmocka.h>
@@ -39,8 +41,75 @@
 #include <regex.h>
 #endif
 #include <execinfo.h>
-
+#include <pthread.h>
 #define EXPECTED_MAX_FILE_SIZE 512
+
+/**
+ * @brief Context for watchdog thread.
+ */
+typedef struct watchgod_ctx_s {
+    volatile int runtime_limit;
+    volatile bool exit;
+    volatile bool running;
+    pthread_t thread;
+    pthread_mutex_t lock1, lock2;
+    pthread_cond_t cond1, cond2;
+} watchdog_ctx_t;
+
+
+/**
+ * @brief A global instance of the watchdog context.
+ */
+static watchdog_ctx_t watchdog_ctx = {0, false, false};
+
+/**
+ * @brief A custom implementation of ::popen that hopefully doesn't
+ * suffer from this glibc bug: https://bugzilla.redhat.com/show_bug.cgi?id=1275384
+ */
+static pid_t
+sr_popen(const char *command, int *in_p, int *out_p)
+{
+#define READ 0
+#define WRITE 1
+    int p_stdin[2], p_stdout[2];
+    pid_t pid;
+
+    if (pipe(p_stdin) != 0 || pipe(p_stdout) != 0) {
+        return -1;
+    }
+
+    pid = fork();
+
+    if (pid < 0) {
+        return pid;
+    } else if (pid == 0) {
+        close(p_stdin[WRITE]);
+        dup2(p_stdin[READ], READ);
+        close(p_stdout[READ]);
+        dup2(p_stdout[WRITE], WRITE);
+
+        execl("/bin/sh", "sh", "-c", command, NULL);
+        perror("execl");
+        exit(1);
+    } else {
+        close(p_stdin[READ]);
+        close(p_stdout[WRITE]);
+    }
+
+    if (in_p == NULL) {
+        close(p_stdin[WRITE]);
+    } else {
+        *in_p = p_stdin[WRITE];
+    }
+
+    if (out_p == NULL) {
+        close(p_stdout[READ]);
+    } else {
+        *out_p = p_stdout[READ];
+    }
+
+    return pid;
+}
 
 static void
 print_backtrace()
@@ -52,7 +121,8 @@ print_backtrace()
     char cmd[PATH_MAX] = { 0, };
     char buff[PATH_MAX] = { 0, };
     char *parenthesis = NULL;
-    FILE *fp = { 0, };
+    pid_t child = 0;
+    int fd = 0, status = 0;
 
     frames = backtrace(callstack, 128);
     messages = backtrace_symbols(callstack, frames);
@@ -62,9 +132,12 @@ print_backtrace()
         if (NULL != parenthesis) {
             *parenthesis = '\0';
             snprintf(cmd, PATH_MAX, "addr2line %p -e %s", callstack[i], messages[i]);
-            fp = popen(cmd, "r");
-            fgets(buff, sizeof(buff)-1, fp);
-            pclose(fp);
+            child = sr_popen(cmd, NULL, &fd);
+            assert_int_not_equal(-1, child);
+            assert_true(fd >= 0);
+            read(fd, buff, sizeof(buff)-1);
+            close(fd);
+            assert_int_equal(child, waitpid(child, &status, 0));
             *parenthesis = '(';
             fprintf(stderr, "[bt] #%d %s\n        %s", (i - 2), messages[i], buff);
         }
@@ -144,7 +217,7 @@ test_file_permissions(const char *path, mode_t permissions)
 }
 
 static char *
-read_file_content(FILE *fp)
+read_file_content(int fd)
 {
     size_t size = EXPECTED_MAX_FILE_SIZE;
     char *buffer = malloc(size);
@@ -152,12 +225,14 @@ read_file_content(FILE *fp)
     unsigned cur = 0;
 
     for (;;) {
-        size_t n = fread(buffer + cur, 1, size - cur - 1, fp);
+        size_t n = read(fd, buffer + cur, size - cur - 1);
         cur += n;
-        if (size > cur + 1) { break; }
-        size <<= 1;
-        buffer = realloc(buffer, size);
-        assert_non_null(buffer);
+        if (0 == n) { break; }
+        if (cur + 1 == size) {
+            size <<= 1;
+            buffer = realloc(buffer, size);
+            assert_non_null(buffer);
+        }
     }
 
     buffer[cur] = '\0';
@@ -209,40 +284,40 @@ test_file_content_str(const char *file_content, const char *exp_content, bool re
 void
 test_file_content(const char *path, const char *exp_content, bool regex)
 {
-    FILE *fp = NULL;
+    int fd = 0;
     char *buffer = NULL;
 
-    fp = fopen(path, "r");
-    assert_non_null_bt(fp);
+    fd = open(path, O_RDONLY);
+    assert_int_not_equal(-1, fd);
 
-    buffer = read_file_content(fp);
+    buffer = read_file_content(fd);
     test_file_content_str(buffer, exp_content, regex);
 
     free(buffer);
-    fclose(fp);
+    close(fd);
 }
 
 int compare_files(const char *path1, const char *path2)
 {
     int rc = 0;
-    FILE *fp1 = NULL, *fp2 = NULL;
+    int fd1 = 0, fd2 = 0;
 
     /* open */
-    fp1 = fopen(path1, "r");
-    fp2 = fopen(path2, "r");
-    assert_non_null_bt(fp1);
-    assert_non_null_bt(fp2);
+    fd1 = open(path1, O_RDONLY);
+    fd2 = open(path2, O_RDONLY);
+    assert_int_not_equal(-1, fd1);
+    assert_int_not_equal(-1, fd2);
 
     /* read */
-    char *content1 = read_file_content(fp1);
-    char *content2 = read_file_content(fp2);
+    char *content1 = read_file_content(fd1);
+    char *content2 = read_file_content(fd2);
 
     /* compare */
     rc = strcmp(content1, content2);
 
     /* cleanup */
-    fclose(fp1);
-    fclose(fp2);
+    close(fd1);
+    close(fd2);
     free(content1);
     free(content2);
 
@@ -253,19 +328,21 @@ void
 exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp_ret)
 {
     int ret = 0;
-    FILE *fp = NULL;
     char *buffer = NULL;
     bool retry = false;
     size_t cnt = 0;
+    pid_t child = 0;
+    int fd = 0;
 
     do {
         /* if needed, retry to workaround the fork bug in glibc: https://bugzilla.redhat.com/show_bug.cgi?id=1275384 */
         retry = false;
 
-        fp = popen(cmd, "r");
-        assert_non_null_bt(fp);
+        child = sr_popen(cmd, NULL, &fd);
+        assert_int_not_equal(-1, child);
+        assert_true(fd >= 0);
 
-        buffer = read_file_content(fp);
+        buffer = read_file_content(fd);
         if ('\0' == buffer[0] && 0 != strcmp(exp_content, ".*")) {
             retry = true;
             cnt++;
@@ -274,9 +351,103 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
         }
 
         free(buffer);
-        ret = pclose(fp);
+        close(fd);
+        assert_int_equal(child, waitpid(child, &ret, 0));
         if (!retry) {
             assert_int_equal_bt(exp_ret, WEXITSTATUS(ret));
         }
     } while (retry && cnt < 10);
+}
+
+static void *
+watchdog_routine(void *arg)
+{
+    (void)arg;
+    struct timespec ts = {0};
+    int ret = 0;
+
+    ts.tv_sec = time(NULL) + watchdog_ctx.runtime_limit;
+
+    /* watchdog_stop cannot signal before watchdog enters pthread_cond_timedwait */
+    ret = pthread_mutex_lock(&watchdog_ctx.lock2);
+    assert_int_equal(0, ret);
+
+    /* signal successful start */
+    ret = pthread_mutex_lock(&watchdog_ctx.lock1);
+    assert_int_equal(0, ret);
+    watchdog_ctx.running = true;
+    ret = pthread_cond_signal(&watchdog_ctx.cond1);
+    assert_int_equal(0, ret);
+    ret = pthread_mutex_unlock(&watchdog_ctx.lock1);
+    assert_int_equal(0, ret);
+
+    /* wait for the program to signal exit */
+    do {
+        ret = pthread_cond_timedwait(&watchdog_ctx.cond2, &watchdog_ctx.lock2, &ts);
+        if (ETIMEDOUT == ret) {
+            fprintf(stderr, "Aborting the test as it has exceeded the runtime limit (%d seconds).",
+                    watchdog_ctx.runtime_limit);
+            abort();
+        } else {
+            assert_int_equal(0, ret);
+        }
+    } while (!watchdog_ctx.exit);
+    pthread_mutex_unlock(&watchdog_ctx.lock2);
+
+    return NULL;
+}
+
+void
+watchdog_start(int runtime_limit)
+{
+    int ret = 0;
+
+    /* initialize watchdog context */
+    watchdog_ctx.runtime_limit = runtime_limit;
+    watchdog_ctx.running = false;
+    watchdog_ctx.exit = false;
+    ret = pthread_mutex_init(&watchdog_ctx.lock1, NULL);
+    assert_int_equal(0, ret);
+    ret = pthread_mutex_init(&watchdog_ctx.lock2, NULL);
+    assert_int_equal(0, ret);
+    ret = pthread_cond_init(&watchdog_ctx.cond1, NULL);
+    assert_int_equal(0, ret);
+    ret = pthread_cond_init(&watchdog_ctx.cond2, NULL);
+    assert_int_equal(0, ret);
+
+    /* start watchdog thread */
+    pthread_mutex_lock(&watchdog_ctx.lock1);
+    ret = pthread_create(&watchdog_ctx.thread, NULL, watchdog_routine, NULL);
+    assert_int_equal(0, ret);
+
+    /* wait for watchdog to start */
+    do {
+        ret = pthread_cond_wait(&watchdog_ctx.cond1, &watchdog_ctx.lock1);
+        assert_int_equal(0, ret);
+    } while (!watchdog_ctx.running);
+    pthread_mutex_unlock(&watchdog_ctx.lock1);
+}
+
+void
+watchdog_stop()
+{
+    int ret = 0;
+
+    /* signal watchdog to exit */
+    ret = pthread_mutex_lock(&watchdog_ctx.lock2);
+    assert_int_equal(0, ret);
+    watchdog_ctx.exit = true;
+    ret = pthread_cond_signal(&watchdog_ctx.cond2);
+    assert_int_equal(0, ret);
+    ret = pthread_mutex_unlock(&watchdog_ctx.lock2);
+    assert_int_equal(0, ret);
+
+    /* wait for watchdog to exit */
+    ret = pthread_join(watchdog_ctx.thread, NULL);
+    assert_int_equal(0, ret);
+
+    pthread_cond_destroy(&watchdog_ctx.cond1);
+    pthread_cond_destroy(&watchdog_ctx.cond2);
+    pthread_mutex_destroy(&watchdog_ctx.lock1);
+    pthread_mutex_destroy(&watchdog_ctx.lock2);
 }

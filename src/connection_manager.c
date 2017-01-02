@@ -1501,17 +1501,21 @@ cm_out_event_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     SR_LOG_DBG("Sending an event notification to '%s'.", destination_address);
 
     /* find the session */
-    rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to find the session matching with id specified in the message "
-                "(id=%"PRIu32").", msg->session_id);
-        sr_msg_free(msg);
-        return SR_ERR_INTERNAL;
-    }
-    if ((NULL == session) || (NULL == session->cm_data)) {
-        SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
-        sr_msg_free(msg);
-        return SR_ERR_INTERNAL;
+    if (0 != msg->session_id) {
+        rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Unable to find the session matching with id specified in the message "
+                    "(id=%"PRIu32").", msg->session_id);
+            sr_msg_free(msg);
+            return SR_ERR_INTERNAL;
+        }
+        if ((NULL == session) || (NULL == session->cm_data)) {
+            SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
+            sr_msg_free(msg);
+            return SR_ERR_INTERNAL;
+        }
+    } else {
+        SR_LOG_DBG_MSG("Processing event notification without associated session");
     }
 
     /* get a connection to the notification destination */

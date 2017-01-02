@@ -1090,7 +1090,9 @@ main() {
     truncate(TEST_DATA_SEARCH_DIR "referenced-data.persist", 0);
     truncate(TEST_DATA_SEARCH_DIR "cross-module.persist", 0);
 
+    watchdog_start(300);
     ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
 
 terminate:
     if (NULL != srcfg_test_session) {

@@ -40,6 +40,8 @@
 
 #include "data_manager.h"
 
+#define MAX_BUF_REALLOC_ATEMPTS   10
+
 /* used for sr_buff_to_uint32 and sr_uint32_to_buff conversions */
 typedef union {
    uint32_t value;
@@ -164,6 +166,47 @@ sr_str_hash(const char *str)
     }
 
     return hash;
+}
+
+int
+sr_vasprintf(char **strp, const char *fmt, va_list ap)
+{
+    int ret = 0;
+    va_list ap1;
+    size_t size;
+    char *buffer;
+
+    /* get the size of the resulting string */
+    va_copy(ap1, ap);
+    size = vsnprintf(NULL, 0, fmt, ap1) + 1;
+    va_end(ap1);
+
+    /* allocate memory for the string */
+    buffer = calloc(size, sizeof *buffer);
+    CHECK_NULL_NOMEM_RETURN(buffer);
+
+    /* print */
+    ret = vsnprintf(buffer, size, fmt, ap);
+    if (ret >= 0) {
+        *strp = buffer;
+        return SR_ERR_OK;
+    } else {
+        free(buffer);
+        return SR_ERR_INTERNAL;
+    }
+}
+
+int
+sr_asprintf(char **strp, const char *fmt, ...)
+{
+    int rc = SR_ERR_OK;
+    va_list ap;
+
+    va_start(ap, fmt);
+    rc = sr_vasprintf(strp, fmt, ap);
+    va_end(ap);
+
+    return rc;
 }
 
 int
@@ -1300,18 +1343,13 @@ sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
     char format_string [MAX_FMT_LEN] = {0,};
     snprintf(format_string, MAX_FMT_LEN, "%%.%zuf", fraction_digits);
 
-    size_t len = snprintf(NULL, 0, format_string, val);
-    *out = calloc(len + 1, sizeof(**out));
-    CHECK_NULL_NOMEM_RETURN(*out);
-    snprintf(*out, len + 1, format_string, val);
-    return SR_ERR_OK;
+    return sr_asprintf(out, format_string, val);
 }
 
 int
 sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_node, char **out)
 {
     CHECK_NULL_ARG3(value, schema_node, out);
-    size_t len = 0;
     int rc = SR_ERR_OK;
     rc = sr_check_value_conform_to_schema(schema_node, value);
     CHECK_RC_LOG_RETURN(rc, "Value doesn't conform to schema node %s", schema_node->name);
@@ -1361,28 +1399,16 @@ sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_n
         }
         break;
     case SR_INT8_T:
-        len = snprintf(NULL, 0, "%"PRId8, value->data.int8_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRId8, value->data.int8_val);
+        rc = sr_asprintf(out, "%"PRId8, value->data.int8_val);
         break;
     case SR_INT16_T:
-        len = snprintf(NULL, 0, "%"PRId16, value->data.int16_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRId16, value->data.int16_val);
+        rc = sr_asprintf(out, "%"PRId16, value->data.int16_val);
         break;
     case SR_INT32_T:
-        len = snprintf(NULL, 0, "%"PRId32, value->data.int32_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRId32, value->data.int32_val);
+        rc = sr_asprintf(out, "%"PRId32, value->data.int32_val);
         break;
     case SR_INT64_T:
-        len = snprintf(NULL, 0, "%"PRId64, value->data.int64_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRId64, value->data.int64_val);
+        rc = sr_asprintf(out, "%"PRId64, value->data.int64_val);
         break;
     case SR_STRING_T:
         if (NULL != value->data.string_val){
@@ -1394,28 +1420,16 @@ sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_n
         }
         break;
     case SR_UINT8_T:
-        len = snprintf(NULL, 0, "%"PRIu8, value->data.uint8_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRIu8, value->data.uint8_val);
+        rc = sr_asprintf(out, "%"PRIu8, value->data.uint8_val);
         break;
     case SR_UINT16_T:
-        len = snprintf(NULL, 0, "%"PRIu16, value->data.uint16_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRIu16, value->data.uint16_val);
+        rc = sr_asprintf(out, "%"PRIu16, value->data.uint16_val);
         break;
     case SR_UINT32_T:
-        len = snprintf(NULL, 0, "%"PRIu32, value->data.uint32_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRIu32, value->data.uint32_val);
+        rc = sr_asprintf(out, "%"PRIu32, value->data.uint32_val);
         break;
     case SR_UINT64_T:
-        len = snprintf(NULL, 0, "%"PRIu64, value->data.uint64_val);
-        *out = calloc(len + 1, sizeof(**out));
-        CHECK_NULL_NOMEM_RETURN(*out);
-        snprintf(*out, len + 1, "%"PRIu64, value->data.uint64_val);
+        rc = sr_asprintf(out, "%"PRIu64, value->data.uint64_val);
         break;
     case SR_ANYXML_T:
         if (NULL != value->data.anyxml_val){
@@ -1439,7 +1453,7 @@ sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_n
         SR_LOG_ERR_MSG("Conversion of value_t to string failed");
         *out = NULL;
     }
-    return SR_ERR_OK;
+    return rc;
 }
 
 bool
@@ -2021,7 +2035,6 @@ sr_add_error(sr_error_info_t **sr_errors, size_t *sr_error_cnt, const char *xpat
 {
     CHECK_NULL_ARG3(sr_errors, sr_error_cnt, msg_fmt);
     int rc = SR_ERR_OK;
-    int length = 0;
     char *message = NULL;
     char *xpath_dup = NULL;
     sr_error_info_t *tmp_errors = NULL;
@@ -2036,12 +2049,8 @@ sr_add_error(sr_error_info_t **sr_errors, size_t *sr_error_cnt, const char *xpat
     }
 
     /* construct error message */
-    length = vsnprintf(NULL, 0, msg_fmt, va);
-    message = calloc(length+1, sizeof *message);
-    CHECK_NULL_NOMEM_GOTO(message, rc, cleanup);
-    va_end(va); /**< restart va_list */
-    va_start(va, msg_fmt);
-    vsnprintf(message, length+1, msg_fmt, va);
+    rc = sr_vasprintf(&message, msg_fmt, va);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "::sr_vasprintf has failed.");
 
     /* add error into the array */
     tmp_errors = realloc(*sr_errors, (*sr_error_cnt+1) * sizeof(**sr_errors));
@@ -2551,6 +2560,273 @@ cleanup:
     return rc;
 }
 
+int sr_get_user_name(uid_t uid, char **username_p)
+{
+    int rc = SR_ERR_OK, ret = 0;
+    size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
+    size_t pw_bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
+    struct passwd pw = {0}, *pw_p = NULL;
+    char *tmp_buf = NULL, *pw_buf = NULL;
+    char *username = NULL;
+
+    /* allocate buffer for members of passwd structure */
+    if (-1 == pw_bufsize) {
+        pw_bufsize = 256;
+    }
+    pw_buf = malloc(pw_bufsize);
+    CHECK_NULL_NOMEM_GOTO(pw_buf, rc, cleanup);
+
+    /* get password file entry */
+    while (max_attempts && ERANGE == (ret = getpwuid_r(uid, &pw, pw_buf, pw_bufsize, &pw_p))) {
+        tmp_buf = realloc(pw_buf, pw_bufsize << 1);
+        CHECK_NULL_NOMEM_GOTO(tmp_buf, rc, cleanup);
+        pw_buf = tmp_buf;
+        pw_bufsize <<= 1;
+        --max_attempts;
+    }
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup, "Failed to get the password file record for UID '%d': %s. ",
+                        uid, sr_strerror_safe(ret));
+    if (NULL == pw_p || NULL == pw_p->pw_name) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+
+    /* copy username */
+    if (NULL != username_p) {
+        username = strdup(pw_p->pw_name);
+        CHECK_NULL_NOMEM_GOTO(username, rc, cleanup);
+    }
+
+cleanup:
+    free(pw_buf);
+    if (SR_ERR_OK == rc && NULL != username_p) {
+        *username_p = username;
+    }
+    return rc;
+}
+
+int sr_get_user_id(const char *username, uid_t *uid_p, gid_t *gid_p)
+{
+    int rc = SR_ERR_OK, ret = 0;
+    size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
+    size_t pw_bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
+    struct passwd pw = {0}, *pw_p = NULL;
+    char *tmp_buf = NULL, *pw_buf = NULL;
+
+    CHECK_NULL_ARG(username);
+
+    /* allocate buffer for members of passwd structure */
+    if (-1 == pw_bufsize) {
+        pw_bufsize = 256;
+    }
+    pw_buf = malloc(pw_bufsize);
+    CHECK_NULL_NOMEM_GOTO(pw_buf, rc, cleanup);
+
+    /* get password file entry */
+    while (max_attempts && ERANGE == (ret = getpwnam_r(username, &pw, pw_buf, pw_bufsize, &pw_p))) {
+        tmp_buf = realloc(pw_buf, pw_bufsize << 1);
+        CHECK_NULL_NOMEM_GOTO(tmp_buf, rc, cleanup);
+        pw_buf = tmp_buf;
+        pw_bufsize <<= 1;
+        --max_attempts;
+    }
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup, "Failed to get the password file record for user '%s': %s. ",
+                        username, sr_strerror_safe(ret));
+    if (NULL == pw_p) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+
+cleanup:
+    if (SR_ERR_OK == rc) {
+        if (NULL != uid_p) {
+            *uid_p = pw_p->pw_uid;
+        }
+        if (NULL != gid_p) {
+            *gid_p = pw_p->pw_gid;
+        }
+    }
+    free(pw_buf);
+    return rc;
+}
+
+int sr_get_group_name(gid_t gid, char **groupname_p)
+{
+    int rc = SR_ERR_OK, ret = 0;
+    size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
+    size_t gr_bufsize = sysconf(_SC_GETGR_R_SIZE_MAX);
+    struct group gr = {0}, *gr_p = NULL;
+    char *tmp_buf = NULL, *gr_buf = NULL;
+    char *groupname = NULL;
+
+    CHECK_NULL_ARG(groupname_p);
+
+    /* allocate buffer for members of group structure */
+    if (-1 == gr_bufsize) {
+        gr_bufsize = 256;
+    }
+    gr_buf = malloc(gr_bufsize);
+    CHECK_NULL_NOMEM_GOTO(gr_buf, rc, cleanup);
+
+    /* get password file entry */
+    while (max_attempts && ERANGE == (ret = getgrgid_r(gid, &gr, gr_buf, gr_bufsize, &gr_p))) {
+        tmp_buf = realloc(gr_buf, gr_bufsize << 1);
+        CHECK_NULL_NOMEM_GOTO(tmp_buf, rc, cleanup);
+        gr_buf = tmp_buf;
+        gr_bufsize <<= 1;
+        --max_attempts;
+    }
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup, "Failed to get the group file record for GID '%d': %s. ",
+                        gid, sr_strerror_safe(ret));
+    if (NULL == gr_p || NULL == gr_p->gr_name) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+
+    /* copy groupname */
+    groupname = strdup(gr_p->gr_name);
+    CHECK_NULL_NOMEM_GOTO(groupname, rc, cleanup);
+
+cleanup:
+    free(gr_buf);
+    if (SR_ERR_OK == rc) {
+        *groupname_p = groupname;
+    }
+    return rc;
+}
+
+int sr_get_group_id(const char *groupname, gid_t *gid_p)
+{
+    int rc = SR_ERR_OK, ret = 0;
+    size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
+    size_t gr_bufsize = sysconf(_SC_GETGR_R_SIZE_MAX);
+    struct group gr = {0}, *gr_p = NULL;
+    char *tmp_buf = NULL, *gr_buf = NULL;
+
+    CHECK_NULL_ARG(groupname);
+
+    /* allocate buffer for members of group structure */
+    if (-1 == gr_bufsize) {
+        gr_bufsize = 256;
+    }
+    gr_buf = malloc(gr_bufsize);
+    CHECK_NULL_NOMEM_GOTO(gr_buf, rc, cleanup);
+
+    /* get password file entry */
+    while (max_attempts && ERANGE == (ret = getgrnam_r(groupname, &gr, gr_buf, gr_bufsize, &gr_p))) {
+        tmp_buf = realloc(gr_buf, gr_bufsize << 1);
+        CHECK_NULL_NOMEM_GOTO(tmp_buf, rc, cleanup);
+        gr_buf = tmp_buf;
+        gr_bufsize <<= 1;
+        --max_attempts;
+    }
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup, "Failed to get the group file record for group '%s': %s. ",
+                        groupname, sr_strerror_safe(ret));
+    if (NULL == gr_p) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+
+cleanup:
+    if (SR_ERR_OK == rc) {
+        if (NULL != gid_p) {
+            *gid_p = gr_p->gr_gid;
+        }
+    }
+    free(gr_buf);
+    return rc;
+}
+
+int
+sr_get_user_groups(const char *username, char ***groups_p, size_t *group_cnt_p)
+{
+    int rc = SR_ERR_OK, ret = 0;
+    size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
+    size_t group_cnt = 0;
+    int group_id_cnt = 16;
+    gid_t gid = 0;
+#ifdef __APPLE__
+    int *group_ids = NULL, *tmp_group_ids = NULL;
+    int user_gid = 0;
+#else
+    gid_t *group_ids = NULL, *tmp_group_ids = NULL;
+    gid_t user_gid = 0;
+#endif
+    char **groups = NULL;
+    CHECK_NULL_ARG3(username, groups_p, group_cnt_p);
+
+    /* get the user's primary group */
+    rc = sr_get_user_id(username, NULL, &gid);
+    if (SR_ERR_OK != rc) {
+        if (SR_ERR_NOT_FOUND == rc) {
+            rc = SR_ERR_OK;
+        }
+        goto cleanup;
+    }
+#ifdef __APPLE__
+    user_gid = (int)gid;
+#else
+    user_gid = gid;
+#endif
+
+    /* get secondary groups */
+    group_ids = calloc(group_id_cnt, sizeof *group_ids);
+    CHECK_NULL_NOMEM_GOTO(group_ids, rc, cleanup);
+
+    max_attempts = MAX_BUF_REALLOC_ATEMPTS;
+    while (max_attempts && (ret = getgrouplist(username, user_gid, group_ids, &group_id_cnt)) < 0) {
+        tmp_group_ids = realloc(group_ids, group_id_cnt * (sizeof *tmp_group_ids));
+        CHECK_NULL_NOMEM_GOTO(tmp_group_ids, rc, cleanup);
+        group_ids = tmp_group_ids;
+        --max_attempts;
+    }
+    CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup,
+                              "Failed to get the list of secondary groups for user '%s'.", username);
+    if (0 == group_id_cnt) {
+        goto cleanup;
+    }
+
+    /* get names of the groups */
+    groups = calloc(group_id_cnt, sizeof(char *));
+    CHECK_NULL_NOMEM_GOTO(groups, rc, cleanup);
+
+    for (size_t i = 0; i < group_id_cnt; ++i) {
+        rc = sr_get_group_name((gid_t)group_ids[i], groups+group_cnt);
+        if (SR_ERR_OK == rc) {
+            ++group_cnt;
+        } else if (SR_ERR_NOT_FOUND != rc) {
+            goto cleanup;
+        }
+        rc = SR_ERR_OK;
+    }
+
+cleanup:
+    free(group_ids);
+    if (SR_ERR_OK == rc) {
+        *groups_p = groups;
+        *group_cnt_p = group_cnt;
+    } else {
+        if (NULL != groups) {
+            for (size_t i = 0; i < group_cnt; ++i) {
+                free(groups[i]);
+            }
+            free(groups);
+        }
+    }
+    return rc;
+}
+
+void
+sr_free_list_of_strings(sr_list_t *list)
+{
+    if (NULL != list) {
+        for (size_t i = 0; i < list->count; i++) {
+            free((char *) list->data[i]);
+        }
+        sr_list_cleanup(list);
+    }
+}
+
 int
 sr_time_to_str(time_t time, char *buff, size_t buff_size)
 {
@@ -2596,130 +2872,4 @@ sr_str_to_time(char *time_str, time_t *time)
 cleanup:
     free(time_str_copy);
     return rc;
-}
-
-int
-sr_get_system_groups(const char *username, char ***groups_p, size_t *group_cnt_p)
-{
-#define MAX_BUF_REALLOC_ATEMPTS   10
-    int rc = SR_ERR_OK, ret = 0;
-    size_t max_attempts = MAX_BUF_REALLOC_ATEMPTS;
-    size_t group_cnt = 0;
-    int group_id_cnt = 16;
-#ifdef __APPLE__
-    int *group_ids = NULL, *tmp_group_ids = NULL;
-    int user_gid = 0;
-#else
-    gid_t *group_ids = NULL, *tmp_group_ids = NULL;
-    gid_t user_gid = 0;
-#endif
-    char **groups = NULL;
-    struct passwd pw = {0}, *pw_p = NULL;
-    struct group gr = {0}, *gr_p = NULL;
-    size_t pw_bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
-    size_t gr_bufsize = sysconf(_SC_GETGR_R_SIZE_MAX);
-    char *tmp_buf = NULL, *pw_buf = NULL, *gr_buf = NULL;
-    CHECK_NULL_ARG3(username, groups_p, group_cnt_p);
-
-    if (-1 == pw_bufsize) {
-        pw_bufsize = 256;
-    }
-
-    if (-1 == gr_bufsize) {
-        gr_bufsize = 256;
-    }
-
-    /* get the user's primary group */
-    pw_buf = malloc(pw_bufsize);
-    CHECK_NULL_NOMEM_GOTO(pw_buf, rc, cleanup);
-
-    max_attempts = MAX_BUF_REALLOC_ATEMPTS;
-    while (max_attempts && ERANGE == (ret = getpwnam_r(username, &pw, pw_buf, pw_bufsize, &pw_p))) {
-        tmp_buf = realloc(pw_buf, pw_bufsize << 1);
-        CHECK_NULL_NOMEM_GOTO(tmp_buf, rc, cleanup);
-        pw_buf = tmp_buf;
-        pw_bufsize <<= 1;
-        --max_attempts;
-    }
-    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup,
-                        "Failed to get the password file record for user '%s': %s. ", username, sr_strerror_safe(ret));
-    if (NULL == pw_p) {
-        goto cleanup;
-    }
-#ifdef __APPLE__
-    user_gid = (int)pw.pw_gid;
-#else
-    user_gid = pw.pw_gid;
-#endif
-
-    /* get secondary groups */
-    group_ids = calloc(group_id_cnt, sizeof *group_ids);
-    CHECK_NULL_NOMEM_GOTO(group_ids, rc, cleanup);
-
-    max_attempts = MAX_BUF_REALLOC_ATEMPTS;
-    while (max_attempts && (ret = getgrouplist(username, user_gid, group_ids, &group_id_cnt)) < 0) {
-        tmp_group_ids = realloc(group_ids, group_id_cnt * (sizeof *tmp_group_ids));
-        CHECK_NULL_NOMEM_GOTO(tmp_group_ids, rc, cleanup);
-        group_ids = tmp_group_ids;
-        --max_attempts;
-    }
-    CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup,
-                              "Failed to get the list of secondary groups for user '%s'.", username);
-    if (0 == group_id_cnt) {
-        goto cleanup;
-    }
-
-    /* get names of the groups */
-    groups = calloc(group_id_cnt, sizeof(char *));
-    CHECK_NULL_NOMEM_GOTO(groups, rc, cleanup);
-
-    gr_buf = malloc(gr_bufsize);
-    CHECK_NULL_NOMEM_GOTO(gr_buf, rc, cleanup);
-
-    for (size_t i = 0; i < group_id_cnt; ++i) {
-        max_attempts = MAX_BUF_REALLOC_ATEMPTS;
-        while (max_attempts && ERANGE == (ret = getgrgid_r((gid_t)group_ids[i], &gr, gr_buf, gr_bufsize, &gr_p))) {
-            tmp_buf = realloc(gr_buf, gr_bufsize << 1);
-            CHECK_NULL_NOMEM_GOTO(gr_buf, rc, cleanup);
-            gr_buf = tmp_buf;
-            gr_bufsize <<= 1;
-            --max_attempts;
-        }
-        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup,
-                            "Failed to get the group database entry for gid '%d': %s. ",
-                            group_ids[i], sr_strerror_safe(ret));
-        if (NULL != gr_p && NULL != gr.gr_name) {
-            groups[group_cnt] = strdup(gr.gr_name);
-            CHECK_NULL_NOMEM_GOTO(groups[group_cnt], rc, cleanup);
-            ++group_cnt;
-        }
-    }
-
-cleanup:
-    free(pw_buf);
-    free(gr_buf);
-    free(group_ids);
-    if (SR_ERR_OK == rc) {
-        *groups_p = groups;
-        *group_cnt_p = group_cnt;
-    } else {
-        if (NULL != groups) {
-            for (size_t i = 0; i < group_cnt; ++i) {
-                free(groups[i]);
-            }
-            free(groups);
-        }
-    }
-    return rc;
-}
-
-void
-sr_free_list_of_strings(sr_list_t *list)
-{
-    if (NULL != list) {
-        for (size_t i = 0; i < list->count; i++) {
-            free((char *) list->data[i]);
-        }
-        sr_list_cleanup(list);
-    }
 }
