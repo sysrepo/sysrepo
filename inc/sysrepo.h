@@ -1132,10 +1132,10 @@ typedef enum sr_subscr_flag_e {
     SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG = 16,
 
     /**
-     * @brief This is a strict notification replay subscription: no realtime notifications will be delivered
-     * until all reply notifications are delivered (::SR_EV_NOTIF_REPLAY_COMPLETE is delivered).
+     * @brief No real-time notifications will be delivered until ::sr_event_notif_replay is called
+     * and replay has finished (::SR_EV_NOTIF_REPLAY_COMPLETE is delivered).
      */
-    SR_SUBSCR_NOTIF_REPLAY_STRICT = 32,
+    SR_SUBSCR_NOTIF_REPLAY_FIRST = 32,
 } sr_subscr_flag_t;
 
 /**

@@ -5089,6 +5089,7 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
     assert_string_equal("/test-module:link-discovered", xpath);
 
     if (SR_EV_NOTIF_REPLAY_COMPLETE != notif_type) {
+        assert_true(SR_EV_NOTIF_REPLAY == notif_type);
         assert_int_equal(values_cnt, 7);
         assert_string_equal("/test-module:link-discovered/source", values[0].xpath);
         assert_int_equal(SR_CONTAINER_T, values[0].type);
@@ -5133,6 +5134,7 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
     if (SR_EV_NOTIF_REPLAY_COMPLETE != notif_type) {
+        assert_true(SR_EV_NOTIF_REPLAY == notif_type);
         assert_int_equal(values_cnt, 7);
         assert_string_equal("/test-module:link-removed", xpath);
         assert_string_equal("/test-module:link-removed/source", values[0].xpath);
@@ -5201,12 +5203,12 @@ cl_event_notif_replay_test(void **state)
 
     /* subscribe for link discovery */
     rc = sr_event_notif_subscribe(session, "/test-module:link-discovered", test_event_notif_link_discovery_replay_cb,
-            &cb_status, SR_SUBSCR_DEFAULT, &subscription);
+            &cb_status, SR_SUBSCR_NOTIF_REPLAY_FIRST, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe for link removal */
     rc = sr_event_notif_subscribe(session, "/test-module:link-removed", test_event_notif_link_removed_replay_cb,
-            &cb_status, SR_SUBSCR_CTX_REUSE, &subscription);
+            &cb_status, SR_SUBSCR_NOTIF_REPLAY_FIRST | SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* send event notification - link discovery */
