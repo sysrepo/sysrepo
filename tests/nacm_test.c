@@ -2241,13 +2241,8 @@ nacm_test_read_access_multiple_subtrees(void **state)
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
     assert_non_null(node_get_child(subtrees, "key"));
-    if (0 == strcmp("k1", node_get_child(subtrees, "key")->data.string_val)) {
-        verify_tree_size(subtrees, 4);      /* list, id_ref, key, wireless */
-        verify_tree_size(subtrees+1, 4);
-    } else {
-        verify_tree_size(subtrees, 4);
-        verify_tree_size(subtrees+1, 4);    /* list, id_ref, key, wireless */
-    }
+    verify_tree_size(subtrees, 4);          /* k1: list, id_ref, key, wireless */
+    verify_tree_size(subtrees+1, 4);
     sr_free_trees(subtrees, count);
     /*     -> session 2 */
     rc = rp_dt_get_subtrees(dm_ctx, rp_session[2], data_tree[2], NULL, TEST_MODULE_LIST, false, &subtrees, &count);

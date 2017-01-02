@@ -4015,6 +4015,7 @@ cl_get_changes_iter_multi_test(void **state)
         sr_free_val(changes.old_values[i]);
     }
 
+    pthread_mutex_unlock(&changes.mutex);
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
 

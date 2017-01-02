@@ -2126,6 +2126,8 @@ rp_check_exec_perm_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
         if (SR_ERR_OK == oper_rc && NACM_ACTION_DENY == nacm_action) {
             rp_report_exec_access_denied(session->dm_session, req->xpath, nacm_rule, nacm_rule_info);
         }
+        free(nacm_rule);
+        free(nacm_rule_info);
     }
     if (SR_ERR_OK != oper_rc) {
         SR_LOG_WRN("Failed to verify if the user is allowed to execute operation: %s", req->xpath);
@@ -2871,19 +2873,13 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     dm_session_t *dm_session = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
-    CHECK_NULL_ARG_NORET4(rc, rp_ctx, msg, msg->request, msg->request->event_notif_req);
+    CHECK_NULL_ARG_NORET5(rc, session, rp_ctx, msg, msg->request, msg->request->event_notif_req);
     if (SR_ERR_OK != rc) {
         goto finalize;
     }
 
     SR_LOG_DBG_MSG("Processing event notification request.");
-
-    if (NULL != session) {
-        dm_session = session->dm_session;
-    } else {
-        rc = dm_session_start(rp_ctx->dm_ctx, NULL, SR_DS_RUNNING, &dm_session);
-        CHECK_RC_MSG_GOTO(rc, finalize, "Failed to create temporary dm_session");
-    }
+    dm_session = session->dm_session;
 
     /* parse input arguments */
     sr_mem_msg = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
