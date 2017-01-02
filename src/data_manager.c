@@ -4593,7 +4593,7 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
     node = proc_node;
     while (false == ext_ref && (!backtracking || node != proc_node)) {
         if (false == backtracking) {
-            if (node->flags & LYS_VALID_DEP) {
+            if (node->flags & (LYS_XPATH_DEP | LYS_LEAFREF_DEP)) {
                 ext_ref = true; /* reference outside the procedure subtree */
             }
             if (node->child) {
