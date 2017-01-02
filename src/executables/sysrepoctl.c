@@ -1225,6 +1225,7 @@ srctl_print_help()
     printf("  -o, --owner            Owner user and group of the module's data in chown format (--install, --init, --change operations).\n");
     printf("  -p, --permissions      Access permissions of the module's data in chmod format (--install, --init, --change operations).\n");
     printf("  -s, --search-dir       Directory to search for included/imported modules. Defaults to the directory with the YANG file being installed. (--install operation).\n");
+    printf("  -S, --search-installed Search for included/imported modules in sysrepo schema directory. (--install operation).\n");
     printf("\n");
     printf("Examples:\n");
     printf("  1) Install a new module by specifying YANG file, ownership and access permissions:\n");
@@ -1249,6 +1250,7 @@ main(int argc, char* argv[])
     char local_schema_search_dir[PATH_MAX] = { 0, }, local_data_search_dir[PATH_MAX] = { 0, };
     char local_internal_schema_search_dir[PATH_MAX] = { 0, }, local_internal_data_search_dir[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
+    int search_installed = 0;
 
     struct option longopts[] = {
        { "help",            no_argument,       NULL, 'h' },
@@ -1270,10 +1272,11 @@ main(int argc, char* argv[])
        { "owner",           required_argument, NULL, 'o' },
        { "permissions",     required_argument, NULL, 'p' },
        { "search-dir",      required_argument, NULL, 's' },
+       { "search-installed",no_argument,       NULL, 'S' },
        { 0, 0, 0, 0 }
     };
 
-    while ((c = getopt_long(argc, argv, "hvlituce:d:L:g:n:m:r:o:p:s:0:W;", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "hvlituce:d:L:g:n:m:r:o:p:s:S0:W;", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srctl_print_help();
@@ -1319,6 +1322,9 @@ main(int argc, char* argv[])
             case 's':
                 search_dir = optarg;
                 break;
+            case 'S':
+                search_installed = 1;
+                break;
             case '0':
                 /* 'hidden' option - custom repository location */
                 strncpy(local_schema_search_dir, optarg, PATH_MAX - 6);
@@ -1346,6 +1352,10 @@ main(int argc, char* argv[])
                 exit(EXIT_FAILURE);
                 break;
         }
+    }
+
+    if (search_installed) {
+        search_dir = srctl_schema_search_dir;
     }
 
     /* set log levels */
