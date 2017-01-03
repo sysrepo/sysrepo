@@ -2396,6 +2396,7 @@ cl_auto_enable_manadatory_nodes(void **state)
 
     rc = sr_subtree_change_subscribe(session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", cl_empty_module_cb, NULL,
             0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -2452,6 +2453,8 @@ cl_capability_changed_notif_test(void **state)
     int rc = SR_ERR_OK;
     netconf_change_t change = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER};
     struct timespec ts = {0};
+
+    skip_if_daemon_running(); /* module uninstall & install requires restart of the Sysrepo Engine */
 
     /* start session */
     rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);

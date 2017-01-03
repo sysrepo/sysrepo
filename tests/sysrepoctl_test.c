@@ -34,6 +34,7 @@
 #include "sysrepo.h"
 #include "sr_common.h"
 #include "test_data.h"
+#include "test_module_helper.h"
 #include "system_helper.h"
 #include "module_dependencies.h"
 
@@ -70,6 +71,8 @@ sysrepoctl_test_uninstall(void **state)
     int rc = 0;
     md_ctx_t *md_ctx = NULL;
     md_module_t *module = NULL;
+
+    skip_if_daemon_running(); /* module uninstall & install requires restart of the Sysrepo Engine */
 
     /* invalid arguments */
     exec_shell_command("../src/sysrepoctl --uninstall --revision=2014-06-16", ".*", true, 1);
@@ -141,6 +144,8 @@ sysrepoctl_test_install(void **state)
     md_module_t *module = NULL;
     char buff[PATH_MAX] = { 0, };
     char *user = getenv("USER");
+
+    skip_if_daemon_running(); /* module uninstall & install requires restart of the Sysrepo Engine */
 
     /* invalid arguments */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --owner=%s --permissions=644", user);
@@ -270,6 +275,8 @@ sysrepoctl_test_init(void **state)
     md_module_t *module = NULL;
     char buff[PATH_MAX] = { 0, };
     char *user = getenv("USER");
+
+    skip_if_daemon_running(); /* module uninstall & install requires restart of the Sysrepo Engine */
 
     /* invalid arguments */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --owner=%s --permissions=644", user);

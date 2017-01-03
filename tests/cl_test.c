@@ -1990,6 +1990,8 @@ cl_notification_test(void **state)
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
+    skip_if_daemon_running(); /* module uninstall & install requires restart of the Sysrepo Engine */
+
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
     volatile int callback_called = 0;
