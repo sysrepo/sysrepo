@@ -207,7 +207,7 @@ nacm_tests_teardown(void **state)
 
     /* restart the daemon if it was running before the test */
     if (daemon_run_before_test) {
-        ret = system("sysrepod");
+        ret = system("../src/sysrepod -l 4");
         assert_int_equal(0, ret);
     }
 
