@@ -19,6 +19,8 @@
  * limitations under the License.
  */
 
+#include "test_data.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -27,10 +29,13 @@
 #include <stdbool.h>
 #include <signal.h>
 #include <time.h>
+#include <sys/types.h>
+#ifdef HAVE_REGEX_H
+#include <regex.h>
+#endif
 
 #include "sysrepo.h"
 #include "sr_common.h"
-#include "test_data.h"
 #include "test_module_helper.h"
 #include "nacm_module_helper.h"
 #include "system_helper.h"
@@ -39,20 +44,34 @@
 #define MAX_ATTEMPTS_TO_KILL_DAEMON  5
 //#define DEBUG_MODE
 
-#define CHECK_UNAUTHORIZED_ERROR(EVENT, SESSION, XPATH, RULE, RULE_INFO) \
+#define CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO) \
     do { \
         rc = sr_get_last_error(sessions[SESSION], &error_info); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
         assert_string_equal(XPATH, error_info->xpath); \
         if (strlen(RULE) && strlen(RULE_INFO)) { \
-            assert_string_equal(EVENT " '" XPATH "' was blocked by the NACM rule '" RULE "' (" RULE_INFO ").", \
+            assert_string_equal("Execution of the operation '" XPATH "' was blocked by the NACM rule '" RULE "' (" RULE_INFO ").", \
                                 error_info->message); \
         } else if (strlen(RULE)) { \
-            assert_string_equal(EVENT " '" XPATH "' was blocked by the NACM rule '" RULE "'.", \
+            assert_string_equal("Execution of the operation '" XPATH "' was blocked by the NACM rule '" RULE "'.", \
                                 error_info->message); \
         } else { \
-            assert_string_equal(EVENT " '" XPATH "' was blocked by NACM.", error_info->message); \
+            assert_string_equal("Execution of the operation '" XPATH "' was blocked by NACM.", error_info->message); \
         } \
+    } while (0)
+
+#define CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO) \
+    do { \
+        if (strlen(RULE) && strlen(RULE_INFO)) { \
+            assert_true(has_log_message(SR_LL_DBG, "Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                                   "was blocked by the NACM rule '" RULE "' (" RULE_INFO").")); \
+        } else if (strlen(RULE)) { \
+            assert_true(has_log_message(SR_LL_DBG, "Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                                   "was blocked by the NACM rule '" RULE "'.")); \
+        } else { \
+            assert_true(has_log_message(SR_LL_DBG, "Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                                   "was blocked by NACM.")); \
+        }\
     } while (0)
 
 #define RPC_DENIED(SESSION, XPATH, INPUT, INPUT_CNT, RULE, RULE_INFO) \
@@ -64,7 +83,7 @@
         rc = sr_rpc_send(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
         assert_int_equal(0, callback_called); \
-        CHECK_UNAUTHORIZED_ERROR("Execution of the operation", SESSION, XPATH, RULE, RULE_INFO); \
+        CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
 #define RPC_DENIED_TREE(SESSION, XPATH, INPUT, INPUT_CNT, RULE, RULE_INFO) \
@@ -76,7 +95,7 @@
         rc = sr_rpc_send_tree(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output_tree, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
         assert_int_equal(0, callback_called); \
-        CHECK_UNAUTHORIZED_ERROR("Execution of the operation", SESSION, XPATH, RULE, RULE_INFO); \
+        CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
 #define RPC_PERMITED(SESSION, XPATH, INPUT, INPUT_CNT, EXP_OUTPUT_CNT) \
@@ -122,7 +141,7 @@
         rc = sr_action_send(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
         assert_int_equal(0, callback_called); \
-        CHECK_UNAUTHORIZED_ERROR("Execution of the operation", SESSION, XPATH, RULE, RULE_INFO); \
+        CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
 #define ACTION_DENIED_TREE(SESSION, XPATH, INPUT, INPUT_CNT, RULE, RULE_INFO) \
@@ -134,7 +153,7 @@
         rc = sr_action_send_tree(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output_tree, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
         assert_int_equal(0, callback_called); \
-        CHECK_UNAUTHORIZED_ERROR("Execution of the operation", SESSION, XPATH, RULE, RULE_INFO); \
+        CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
 #define ACTION_PERMITED(SESSION, XPATH, INPUT, INPUT_CNT, EXP_OUTPUT_CNT) \
@@ -171,13 +190,67 @@
         assert_int_equal(1, callback_called); \
     } while (0)
 
+#define EVENT_NOTIF_PERMITED(SESSION, XPATH, VALUES, VALUE_CNT) \
+    do { \
+        callback_called = 0; \
+        rc = sr_event_notif_send(sessions[SESSION], XPATH, VALUES, VALUE_CNT); \
+        assert_int_equal(rc, SR_ERR_OK); \
+        assert_int_equal(1, callback_called); \
+    } while (0)
+
+#define EVENT_NOTIF_DENIED(SESSION, XPATH, VALUES, VALUE_CNT, RULE, RULE_INFO) \
+    do { \
+        callback_called = 0; \
+        rc = sr_event_notif_send(sessions[SESSION], XPATH, VALUES, VALUE_CNT); \
+        assert_int_equal(rc, SR_ERR_OK); \
+        assert_int_equal(0, callback_called); \
+        CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
+        clear_log_history(); \
+    } while (0)
+
+#define EVENT_NOTIF_PERMITED_TREE(SESSION, XPATH, TREES, TREE_CNT) \
+    do { \
+        callback_called = 0; \
+        rc = sr_event_notif_send_tree(sessions[SESSION], XPATH, TREES, TREE_CNT); \
+        assert_int_equal(rc, SR_ERR_OK); \
+        assert_int_equal(1, callback_called); \
+    } while (0)
+
+#define EVENT_NOTIF_DENIED_TREE(SESSION, XPATH, TREES, TREE_CNT, RULE, RULE_INFO) \
+    do { \
+        callback_called = 0; \
+        rc = sr_event_notif_send_tree(sessions[SESSION], XPATH, TREES, TREE_CNT); \
+        assert_int_equal(rc, SR_ERR_OK); \
+        assert_int_equal(0, callback_called); \
+        CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
+        clear_log_history(); \
+    } while (0)
+
 typedef sr_session_ctx_t *user_sessions_t[NUM_OF_USERS];
 
-bool satisfied_requirements = true; /**< Indices if the test can be actually run with the current system configuration */
-bool daemon_run_before_test = false; /**< Indices if the daemon was running before executing the test. */
+/**
+ * @brief A message sent to log.
+ */
+typedef struct log_msg_s {
+    sr_log_level_t level;
+    char *message;
+} log_msg_t;
+
+/**
+ * @brief Recent log history.
+ */
+typedef struct log_history_s {
+    pthread_mutex_t lock;
+    sr_list_t *logs; /**< items are of type log_msg_t */
+} log_history_t;
+
+static bool satisfied_requirements = true;  /**< Indices if the test can be actually run with the current system configuration */
+static bool daemon_run_before_test = false; /**< Indices if the daemon was running before executing the test. */
+static log_history_t log_history = { .lock = PTHREAD_MUTEX_INITIALIZER, .logs = NULL }; /* recent log history */
 
 
 /* TODO: Report the issue with failed validation when action reply is empty. Then reflect the fix. */
+
 
 #ifndef DEBUG_MODE
 static void
@@ -258,6 +331,66 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(conn_p);
     *conn_p = conn;
+}
+
+static void
+add_log_message(sr_log_level_t level, const char *message)
+{
+    log_msg_t *log_msg = calloc(1, sizeof *log_msg);
+    assert_non_null(log_msg);
+    log_msg->level = level;
+    log_msg->message = strdup(message);
+    assert_non_null(log_msg->message);
+    pthread_mutex_lock(&log_history.lock);
+    assert_int_equal(SR_ERR_OK, sr_list_add(log_history.logs, log_msg));
+    pthread_mutex_unlock(&log_history.lock);
+}
+
+static bool
+has_log_message(sr_log_level_t level, const char *msg_re)
+{
+    bool has = false;
+
+    pthread_mutex_lock(&log_history.lock);
+    for (size_t i = 0; !has && i < log_history.logs->count; ++i) {
+        log_msg_t *log_msg = (log_msg_t *)log_history.logs->data[i];
+        if (level != log_msg->level) {
+            continue;
+        }
+#ifdef HAVE_REGEX_H
+        regex_t re;
+        /* Compile regular expression */
+        assert_int_equal(0, regcomp(&re, msg_re, REG_NOSUB | REG_EXTENDED));
+        if (0 == regexec(&re, log_msg->message, 0, NULL, 0)) {
+            has = true;
+        }
+        regfree(&re);
+#else
+        has = true; /**< let the test pass */
+#endif
+    }
+    pthread_mutex_unlock(&log_history.lock);
+
+    return has;
+}
+
+static void
+clear_log_history()
+{
+    pthread_mutex_lock(&log_history.lock);
+    for (size_t i = 0; i < log_history.logs->count; ++i) {
+        log_msg_t *log_msg = (log_msg_t *)log_history.logs->data[i];
+        free(log_msg->message);
+        free(log_msg);
+    }
+    log_history.logs->count = 0;
+    pthread_mutex_unlock(&log_history.lock);
+}
+
+static void
+log_callback(sr_log_level_t level, const char *message)
+{
+    add_log_message(level, message);
 }
 
 static int
@@ -384,6 +517,8 @@ sysrepo_teardown(void **state)
         daemon_kill(false);
     }
 #endif
+
+    clear_log_history();
     return 0;
 }
 
@@ -968,6 +1103,138 @@ nacm_cl_test_rpc_acl_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
+{
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+    sr_conn_ctx_t *conn = *state;
+    sr_session_ctx_t *handler_session = NULL;
+    user_sessions_t sessions = {NULL};
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t *output = NULL;
+    sr_node_t *output_tree = NULL;
+    size_t output_cnt = 0;
+    bool permitted = true;
+    sr_val_t *input = NULL;
+    sr_node_t *input_tree = NULL;
+    const sr_error_info_t *error_info = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* prepare for RPC and Action executions */
+    start_user_sessions(conn, &handler_session, &sessions);
+    subscribe_dummy_callback(handler_session, &callback_called, &subscription);
+
+    /* test RPC "activate-software-image" */
+#undef RPC_XPATH
+#define RPC_XPATH "/test-module:activate-software-image"
+    /*  -> sysrepo-user1 */
+    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 2);
+    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 2);
+    /*  -> sysrepo-user2 */
+    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 2);
+    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 2);
+    /*  -> sysrepo-user3 */
+    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 2);
+    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 2);
+
+    /* test NETCONF operation "close-session" */
+#undef RPC_XPATH
+#define RPC_XPATH "/ietf-netconf:close-session"
+    /*  -> sysrepo-user1 */
+    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user2 */
+    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user3 */
+    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
+
+    /* test NETCONF operation "kill-session" */
+#undef RPC_XPATH
+#define RPC_XPATH "/ietf-netconf:kill-session"
+    assert_int_equal(SR_ERR_OK, sr_new_val(RPC_XPATH "/session-id", &input));
+    input->type = SR_UINT32_T;
+    input->data.uint32_val = 12;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("session-id", "ietf-netconf", &input_tree));
+    input_tree->type = SR_UINT32_T;
+    input_tree->data.uint32_val = 12;
+    /*  -> sysrepo-user1 */
+    RPC_DENIED(0, RPC_XPATH, input, 1, "", "");
+    RPC_DENIED_TREE(0, RPC_XPATH, input_tree, 1, "", "");
+    /*  -> sysrepo-user2 */
+    RPC_DENIED(1, RPC_XPATH, input, 1, "", "");
+    RPC_DENIED_TREE(1, RPC_XPATH, input_tree, 1, "", "");
+    /*  -> sysrepo-user3 */
+    RPC_DENIED(1, RPC_XPATH, input, 1, "", "");
+    RPC_DENIED_TREE(1, RPC_XPATH, input_tree, 1, "", "");
+    sr_free_val(input);
+    sr_free_tree(input_tree);
+
+    /* test RPC "initialize" from turing-machine */
+#undef RPC_XPATH
+#define RPC_XPATH "/turing-machine:initialize"
+    /*  -> sysrepo-user1 */
+    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user2 */
+    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user3 */
+    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
+
+    /* test Action "unload" from test-model */
+#undef ACTION_XPATH
+#define ACTION_XPATH "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/unload"
+    /*  -> sysrepo-user1 */
+    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, -1);
+    /*  -> sysrepo-user2 */
+    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, -1);
+    /*  -> sysrepo-user3 */
+    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+
+    /* test Action "load" from test-model */
+#undef ACTION_XPATH
+#define ACTION_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load"
+    assert_int_equal(SR_ERR_OK, sr_new_val(ACTION_XPATH "/params", &input));
+    input->type = SR_STRING_T;
+    sr_val_set_str_data(input, SR_STRING_T, "--force");
+    assert_int_equal(SR_ERR_OK, sr_new_tree("params", "test-module", &input_tree));
+    input_tree->type = SR_STRING_T;
+    sr_node_set_str_data(input_tree, SR_STRING_T, "--force");
+    /*  -> sysrepo-user1 */
+    ACTION_PERMITED(0, ACTION_XPATH, input, 1, -1);
+    ACTION_PERMITED_TREE(0, ACTION_XPATH, input_tree, 1, -1);
+    /*  -> sysrepo-user2 */
+    ACTION_PERMITED(1, ACTION_XPATH, input, 1, -1);
+    ACTION_PERMITED_TREE(1, ACTION_XPATH, input_tree, 1, -1);
+    /*  -> sysrepo-user3 */
+    ACTION_PERMITED(2, ACTION_XPATH, input, 1, -1);
+    ACTION_PERMITED_TREE(2, ACTION_XPATH, input_tree, 1, -1);
+    sr_free_val(input);
+    sr_free_tree(input_tree);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop sessions */
+    for (int i = 0; i < NUM_OF_USERS; ++i) {
+        rc = sr_session_stop(sessions[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+    rc = sr_session_stop(handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -975,6 +1242,7 @@ main() {
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_denied_exec_by_dflt, sysrepo_setup_with_denied_exec_by_dflt, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
     };
 
     if (0 != getuid()) {
@@ -1002,10 +1270,13 @@ main() {
         printf("    - all data files in the testing repository can be read and edited by the members\n");
         printf("      of the group but not by others (g+rw,o-rw)\n");
         printf("(see deploy/travis/install-test-users.sh for a set of commands to execute)\n");
+    } else {
+        assert_int_equal(SR_ERR_OK, sr_list_init(&log_history.logs));
     }
 
     watchdog_start(300);
     int ret = cmocka_run_group_tests(tests, NULL, NULL);
     watchdog_stop();
+    sr_list_cleanup(log_history.logs);
     return ret;
 }
