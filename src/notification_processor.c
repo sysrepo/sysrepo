@@ -440,6 +440,16 @@ np_save_data_tree(struct lyd_node *data_tree, int fd)
     ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_EXPLICIT);
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving notification store data tree failed: %s", ly_errmsg());
 
+    /* TODO: this is a workaround for https://github.com/CESNET/libyang/issues/213, remove after it is fixed */
+    long pagesize = sysconf(_SC_PAGE_SIZE);
+    long filesize = lseek(fd, 0, SEEK_END);
+    if ((filesize >= pagesize) && (0 == filesize % pagesize)) {
+        filesize = lseek(fd, 1, SEEK_END);
+        if (-1 != filesize) {
+            write(fd, "\n", 1);
+        }
+    }
+
     /* flush in-core data to the disc */
     ret = fsync(fd);
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", sr_strerror_safe(errno));
