@@ -2956,9 +2956,11 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
 #ifdef ENABLE_NOTIF_STORE
-    /* store the notification in the datastore */
-    rc = np_store_event_notification(rp_ctx->np_ctx, NULL != session ? session->user_credentials : NULL, msg->request->event_notif_req->xpath,
-            msg->request->event_notif_req->timestamp, &notif_data_tree);
+    if (!(msg->request->event_notif_req->options & SR__EVENT_NOTIF_REQ__NOTIF_FLAGS__EPHEMERAL)) {
+        /* store the notification in the datastore */
+        rc = np_store_event_notification(rp_ctx->np_ctx, NULL != session ? session->user_credentials : NULL,
+                msg->request->event_notif_req->xpath, msg->request->event_notif_req->timestamp, &notif_data_tree);
+    }
 #endif
 
     /* get event-notification subscriptions */

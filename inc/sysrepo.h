@@ -1163,8 +1163,8 @@ typedef enum sr_notif_event_e {
                         has denied the change / returned an error). The subscriber is supposed to return the managed
                         application to the state before the commit. Any returned errors are just logged and ignored. */
     SR_EV_ENABLED, /**< Occurs just after the subscription. Subscriber gets notified about configuration that was copied
-                        from startup to running. This allows to reuse the callback for applying changes made in running to reflect the changes
-                        when the configuration is copied from startup to running during subscription process */
+                        from startup to running. This allows to reuse the callback for applying changes made in running to
+                        reflect the changes when the configuration is copied from startup to running during subscription process */
 } sr_notif_event_t;
 
 /**
@@ -1536,7 +1536,7 @@ typedef sr_rpc_cb sr_action_cb;
  * specified by xpath.
  * This callback variant operates with sysrepo trees rather than with sysrepo values,
  * use it with ::sr_action_subscribe_tree and ::sr_action_send_tree.
- * @see This type is an alias for tree variant of @ref sr_rpc_tree_cb "the RPC callback type"
+ * @see This type is an alias for tree variant of @ref sr_rpc_tree_cb "the RPC callback "
  */
 typedef sr_rpc_tree_cb sr_action_tree_cb;
 
@@ -1621,13 +1621,27 @@ int sr_action_send_tree(sr_session_ctx_t *session, const char *xpath,
  * @brief Type of the notification passed to the ::sr_event_notif_cb and ::sr_event_notif_tree_cb callbacks.
  */
 typedef enum sr_ev_notif_type_e {
-    SR_EV_NOTIF_REALTIME,         /**< Real-time notification. The only possible type if you don't use ::sr_event_notif_replay. */
-    SR_EV_NOTIF_REPLAY,           /**< Replayed notification. */
-    SR_EV_NOTIF_REPLAY_COMPLETE,  /**< Not a real notification, just a signal that the notification replay has completed
-                                       (all the stored notifications from the given time interval have been delivered). */
-    SR_EV_NOTIF_REPLAY_STOP,      /**< Not a real notification, just a signal that replay stop time has been reached
-                                       (delivered only if stop_time was specified to ::sr_event_notif_replay). */
+    SR_EV_NOTIF_T_REALTIME,         /**< Real-time notification. The only possible type if you don't use ::sr_event_notif_replay. */
+    SR_EV_NOTIF_T_REPLAY,           /**< Replayed notification. */
+    SR_EV_NOTIF_T_REPLAY_COMPLETE,  /**< Not a real notification, just a signal that the notification replay has completed
+                                         (all the stored notifications from the given time interval have been delivered). */
+    SR_EV_NOTIF_T_REPLAY_STOP,      /**< Not a real notification, just a signal that replay stop time has been reached
+                                         (delivered only if stop_time was specified to ::sr_event_notif_replay). */
 } sr_ev_notif_type_t;
+
+/**
+ * @brief Flags used to override default notification handling i the datastore.
+ */
+typedef enum sr_ev_notif_flag_e {
+    SR_EV_NOTIF_DEFAULT = 0,      /**< Notification will be handled normally. */
+    SR_EV_NOTIF_EPHEMERAL = 1,    /**< Notification will not be stored in the notification store. */
+} sr_ev_notif_flag_t;
+
+/**
+ * @brief Options overriding default behavior of subscriptions,
+ * it is supposed to be a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ */
+typedef uint32_t sr_subscr_options_t;
 
 /**
  * @brief Callback to be called by the delivery of event notification specified by xpath.
@@ -1710,11 +1724,13 @@ int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *xpath,
  * @param[in] values Array of all nodes that hold some data in event notification subtree
  * (same as ::sr_get_items would return).
  * @param[in] values_cnt Number of items inside the values array.
+ * @param[in] opts Options overriding default handling of the notification, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_ev_notif_flag_t flags.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values,
-        const size_t values_cnt);
+        const size_t values_cnt, sr_ev_notif_flag_t opts);
 
 /**
  * @brief Sends an event notification specified by xpath and waits for the result.
@@ -1725,11 +1741,13 @@ int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_v
  * @param[in] xpath XPath identifying the RPC.
  * @param[in] tree Array of subtrees carrying event notification data.
  * @param[in] tree_cnt Number of subtrees with data.
+ * @param[in] opts Options overriding default handling of the notification, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_ev_notif_flag_t flags.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
-        const sr_node_t *trees,  const size_t tree_cnt);
+int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath, const sr_node_t *trees,
+        const size_t tree_cnt, sr_ev_notif_flag_t opts);
 
 /**
  * @brief Replays already generated notifications stored in the notification store related to

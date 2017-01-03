@@ -3465,8 +3465,8 @@ sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *xpath,
 }
 
 int
-sr_event_notif_send(sr_session_ctx_t *session, const char *xpath,
-        const sr_val_t *values,  const size_t values_cnt)
+sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values, const size_t values_cnt,
+        sr_ev_notif_flag_t opts)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
@@ -3488,6 +3488,7 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *xpath,
 
     /* set arguments */
     msg_req->request->event_notif_req->type = SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REALTIME;
+    msg_req->request->event_notif_req->options = opts;
     sr_mem_edit_string(sr_mem, &msg_req->request->event_notif_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_req->xpath, rc, cleanup);
 
@@ -3525,8 +3526,8 @@ cleanup:
 }
 
 int
-sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
-        const sr_node_t *trees,  const size_t tree_cnt)
+sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath, const sr_node_t *trees,  const size_t tree_cnt,
+        sr_ev_notif_flag_t opts)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
@@ -3548,6 +3549,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
 
     /* set arguments */
     msg_req->request->event_notif_req->type = SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REALTIME;
+    msg_req->request->event_notif_req->options = opts;
     sr_mem_edit_string(sr_mem, &msg_req->request->event_notif_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_req->xpath, rc, cleanup);
 

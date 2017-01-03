@@ -4374,7 +4374,7 @@ cl_event_notif_test(void **state)
     values[3].type = SR_STRING_T;
     values[3].data.string_val = "eth0";
 
-    rc = sr_event_notif_send(notif_session, "/test-module:link-discovered", values, 4);
+    rc = sr_event_notif_send(notif_session, "/test-module:link-discovered", values, 4, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* send event notification - link removal */
@@ -4391,7 +4391,7 @@ cl_event_notif_test(void **state)
     values[3].type = SR_STRING_T;
     values[3].data.string_val = "eth2";
 
-    rc = sr_event_notif_send(notif_session, "/test-module:link-removed", values, 4);
+    rc = sr_event_notif_send(notif_session, "/test-module:link-removed", values, 4, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* send event notification - link overutilized (not defined in yang) */
@@ -4408,7 +4408,7 @@ cl_event_notif_test(void **state)
     values[3].type = SR_STRING_T;
     values[3].data.string_val = "eth0";
 
-    rc = sr_event_notif_send(notif_session, "/test-module:link-overutilized", values, 4);
+    rc = sr_event_notif_send(notif_session, "/test-module:link-overutilized", values, 4, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
 
     /* send event notification - status-change */
@@ -4420,7 +4420,7 @@ cl_event_notif_test(void **state)
     values[1].data.uint32_val = 18;
 
     rc = sr_event_notif_send(notif_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
-            values, 2);
+            values, 2, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* wait at most 5 seconds for all callbacks to get called */
@@ -4731,7 +4731,7 @@ cl_event_notif_tree_test(void **state)
     tree->type = SR_STRING_T;
     tree->data.string_val = strdup("eth0");
 
-    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-discovered", trees, tree_cnt);
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-discovered", trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_trees(trees, tree_cnt);
 
@@ -4759,7 +4759,7 @@ cl_event_notif_tree_test(void **state)
     tree->type = SR_STRING_T;
     tree->data.string_val = strdup("eth2");
 
-    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-removed", trees, tree_cnt);
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-removed", trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_trees(trees, tree_cnt);
 
@@ -4787,7 +4787,7 @@ cl_event_notif_tree_test(void **state)
     tree->type = SR_STRING_T;
     tree->data.string_val = strdup("eth0");
 
-    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-overutilized", trees, tree_cnt);
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-overutilized", trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
     sr_free_trees(trees, tree_cnt);
 
@@ -4806,7 +4806,7 @@ cl_event_notif_tree_test(void **state)
     tree->data.uint32_val = 18;
 
     rc = sr_event_notif_send_tree(notif_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
-            trees, tree_cnt);
+            trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_trees(trees, tree_cnt);
 
@@ -4962,7 +4962,7 @@ cl_event_notif_combo_test(void **state)
     tree->type = SR_STRING_T;
     tree->data.string_val = strdup("eth0");
 
-    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-discovered", trees, tree_cnt);
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-discovered", trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_trees(trees, tree_cnt);
 
@@ -4980,7 +4980,7 @@ cl_event_notif_combo_test(void **state)
     values[3].type = SR_STRING_T;
     values[3].data.string_val = "eth2";
 
-    rc = sr_event_notif_send(notif_session, "/test-module:link-removed", values, 4);
+    rc = sr_event_notif_send(notif_session, "/test-module:link-removed", values, 4, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* send event notification - link overutilized (not defined in yang) */
@@ -5007,7 +5007,7 @@ cl_event_notif_combo_test(void **state)
     tree->type = SR_STRING_T;
     tree->data.string_val = strdup("eth0");
 
-    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-overutilized", trees, tree_cnt);
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-overutilized", trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
     sr_free_trees(trees, tree_cnt);
 
@@ -5026,7 +5026,7 @@ cl_event_notif_combo_test(void **state)
     tree->data.uint32_val = 18;
 
     rc = sr_event_notif_send_tree(notif_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
-            trees, tree_cnt);
+            trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_trees(trees, tree_cnt);
 
@@ -5039,7 +5039,7 @@ cl_event_notif_combo_test(void **state)
     values[1].data.uint32_val = 18;
 
     rc = sr_event_notif_send(notif_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
-            values, 2);
+            values, 2, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* wait at most 5 seconds for all callbacks to get called */
@@ -5088,9 +5088,9 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
 
     assert_string_equal("/test-module:link-discovered", xpath);
 
-    assert_false(SR_EV_NOTIF_REALTIME == notif_type);
+    assert_false(SR_EV_NOTIF_T_REALTIME == notif_type);
 
-    if (SR_EV_NOTIF_REPLAY == notif_type) {
+    if (SR_EV_NOTIF_T_REPLAY == notif_type) {
         assert_int_equal(values_cnt, 7);
         assert_string_equal("/test-module:link-discovered/source", values[0].xpath);
         assert_int_equal(SR_CONTAINER_T, values[0].type);
@@ -5117,7 +5117,7 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
 
-    if (SR_EV_NOTIF_REPLAY_COMPLETE == notif_type) {
+    if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
         assert_int_equal(values_cnt, 0);
         assert_null(values);
 
@@ -5126,7 +5126,7 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
 
-    if (SR_EV_NOTIF_REPLAY_STOP == notif_type) {
+    if (SR_EV_NOTIF_T_REPLAY_STOP == notif_type) {
         assert_int_equal(values_cnt, 0);
         assert_null(values);
 
@@ -5150,9 +5150,9 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
-    assert_false(SR_EV_NOTIF_REALTIME == notif_type);
+    assert_false(SR_EV_NOTIF_T_REALTIME == notif_type);
 
-    if (SR_EV_NOTIF_REPLAY == notif_type) {
+    if (SR_EV_NOTIF_T_REPLAY == notif_type) {
         assert_int_equal(values_cnt, 7);
         assert_string_equal("/test-module:link-removed", xpath);
         assert_string_equal("/test-module:link-removed/source", values[0].xpath);
@@ -5180,7 +5180,7 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
 
-    if (SR_EV_NOTIF_REPLAY_COMPLETE == notif_type) {
+    if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
         assert_int_equal(values_cnt, 0);
         assert_null(values);
 
@@ -5189,7 +5189,7 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
 
-    if (SR_EV_NOTIF_REPLAY_STOP == notif_type) {
+    if (SR_EV_NOTIF_T_REPLAY_STOP == notif_type) {
         assert_int_equal(values_cnt, 0);
         assert_null(values);
 
@@ -5259,7 +5259,7 @@ cl_event_notif_replay_test(void **state)
     values[3].type = SR_STRING_T;
     values[3].data.string_val = "eth0";
 
-    rc = sr_event_notif_send(session, "/test-module:link-discovered", values, 4);
+    rc = sr_event_notif_send(session, "/test-module:link-discovered", values, 4, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* send event notification - link removal */
@@ -5276,7 +5276,7 @@ cl_event_notif_replay_test(void **state)
     values[3].type = SR_STRING_T;
     values[3].data.string_val = "eth2";
 
-    rc = sr_event_notif_send(session, "/test-module:link-removed", values, 4);
+    rc = sr_event_notif_send(session, "/test-module:link-removed", values, 4, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* replay the notifications */

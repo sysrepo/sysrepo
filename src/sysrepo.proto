@@ -135,7 +135,7 @@ enum SessionFlags {
 message SessionStartReq {
   required DataStore datastore = 1;
   optional string user_name = 2;
-  required uint32 options = 3;
+  required uint32 options = 3;   /**< Bitwise OR of SessionFlags. */
   optional uint32 commit_id = 4; /**< Applicable if SESS_NOTIFICATION was specified. */
 }
 
@@ -739,11 +739,21 @@ message EventNotifReq {
     REPLAY_STOP = 4;
   }
 
+  /**
+   * @brief Flags used to override default session handling.
+   */
+  enum NotifFlags {
+    DEFAULT    = 0x00;     /**< Notification will be handled normally. */
+    EPHEMERAL  = 0x01;     /**< Notification will not be stored in the notification store. */
+  }
+
   required NotifType type = 1;
-  required string xpath = 2;
-  repeated Value values = 3;
-  repeated Node trees = 4;
-  required uint64 timestamp = 5;
+  required uint32 options = 2;  /**< Bitwise OR of NotifFlags. */
+
+  required string xpath = 3;
+  repeated Value values = 4;
+  repeated Node trees = 5;
+  required uint64 timestamp = 6;
 
   optional string subscriber_address = 10;
   optional uint32 subscription_id = 11;

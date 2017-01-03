@@ -985,10 +985,10 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
 
     /* handle SR_SUBSCR_NOTIF_REPLAY_FIRST flag */
     if (subscription->opts & SR_SUBSCR_NOTIF_REPLAY_FIRST) {
-        if (SR_EV_NOTIF_REPLAY_COMPLETE == notif_type) {
+        if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
             subscription->replay_completed = true;
         }
-        if (SR_EV_NOTIF_REALTIME == notif_type && !subscription->replay_completed) {
+        if (SR_EV_NOTIF_T_REALTIME == notif_type && !subscription->replay_completed) {
             SR_LOG_DBG_MSG("Skipping the real-time notification since replay has not finished yet.");
             skip = true;
         }

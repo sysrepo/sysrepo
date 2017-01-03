@@ -2283,15 +2283,15 @@ sr_ev_notification_type_gpb_to_sr(Sr__EventNotifReq__NotifType ev_notif_type)
 {
     switch (ev_notif_type) {
         case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REALTIME:
-            return SR_EV_NOTIF_REALTIME;
+            return SR_EV_NOTIF_T_REALTIME;
         case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY:
-            return SR_EV_NOTIF_REPLAY;
+            return SR_EV_NOTIF_T_REPLAY;
         case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_COMPLETE:
-            return SR_EV_NOTIF_REPLAY_COMPLETE;
+            return SR_EV_NOTIF_T_REPLAY_COMPLETE;
         case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_STOP:
-            return SR_EV_NOTIF_REPLAY_STOP;
+            return SR_EV_NOTIF_T_REPLAY_STOP;
         default:
-            return SR_EV_NOTIF_REALTIME;
+            return SR_EV_NOTIF_T_REALTIME;
     }
 }
 
