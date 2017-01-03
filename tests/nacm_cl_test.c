@@ -196,6 +196,9 @@
         rc = sr_event_notif_send(sessions[SESSION], XPATH, VALUES, VALUE_CNT); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_int_equal(1, callback_called); \
+        assert_false(has_log_message(SR_LL_DBG, "Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                                "was blocked by .*NACM.*")); \
+        clear_log_history(); \
     } while (0)
 
 #define EVENT_NOTIF_DENIED(SESSION, XPATH, VALUES, VALUE_CNT, RULE, RULE_INFO) \
@@ -214,6 +217,9 @@
         rc = sr_event_notif_send_tree(sessions[SESSION], XPATH, TREES, TREE_CNT); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_int_equal(1, callback_called); \
+        assert_false(has_log_message(SR_LL_DBG, "Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                                "was blocked by .*NACM.*")); \
+        clear_log_history(); \
     } while (0)
 
 #define EVENT_NOTIF_DENIED_TREE(SESSION, XPATH, TREES, TREE_CNT, RULE, RULE_INFO) \
@@ -548,7 +554,7 @@ start_user_sessions(sr_conn_ctx_t *conn, sr_session_ctx_t **handler_session, use
 }
 
 static void
-subscribe_dummy_callback(sr_session_ctx_t *handler_session, void *private_ctx, sr_subscription_ctx_t **subscription)
+subscribe_dummy_rpc_callback(sr_session_ctx_t *handler_session, void *private_ctx, sr_subscription_ctx_t **subscription)
 {
     int rc = SR_ERR_OK;
 
@@ -576,6 +582,25 @@ subscribe_dummy_callback(sr_session_ctx_t *handler_session, void *private_ctx, s
 }
 
 static void
+dummy_event_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values,
+        const size_t value_cnt, time_t timestamp, void *private_ctx)
+{
+    int *callback_called = (int*)private_ctx;
+    *callback_called += 1;
+}
+
+static void
+subscribe_dummy_event_notif_callback(sr_session_ctx_t *handler_session, void *private_ctx, sr_subscription_ctx_t **subscription)
+{
+    int rc = SR_ERR_OK;
+
+    /* subscribe for Event notifications with dummy callback */
+    rc = sr_event_notif_subscribe(handler_session, "/test-module:link-discovered", dummy_event_notif_cb, private_ctx,
+            SR_SUBSCR_DEFAULT, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
 nacm_cl_test_rpc_acl_with_empty_nacm_cfg(void **state)
 {
     int callback_called = 0;
@@ -598,7 +623,7 @@ nacm_cl_test_rpc_acl_with_empty_nacm_cfg(void **state)
 
     /* prepare for RPC and Action executions */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_rpc_callback(handler_session, &callback_called, &subscription);
 
     /* test RPC "activate-software-image" */
 #undef RPC_XPATH
@@ -730,7 +755,7 @@ nacm_cl_test_rpc_acl(void **state)
 
     /* prepare for RPC and Action executions */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_rpc_callback(handler_session, &callback_called, &subscription);
 
     /* test RPC "activate-software-image" */
 #undef RPC_XPATH
@@ -862,7 +887,7 @@ nacm_cl_test_rpc_acl_with_denied_exec_by_dflt(void **state)
 
     /* prepare for RPC and Action executions */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_rpc_callback(handler_session, &callback_called, &subscription);
 
     /* test RPC "activate-software-image" */
 #undef RPC_XPATH
@@ -994,7 +1019,7 @@ nacm_cl_test_rpc_acl_with_ext_groups(void **state)
 
     /* prepare for RPC and Action executions */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_rpc_callback(handler_session, &callback_called, &subscription);
 
     /* test RPC "activate-software-image" */
 #undef RPC_XPATH
@@ -1112,115 +1137,29 @@ nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
     sr_session_ctx_t *handler_session = NULL;
     user_sessions_t sessions = {NULL};
     sr_subscription_ctx_t *subscription = NULL;
-    sr_val_t *output = NULL;
-    sr_node_t *output_tree = NULL;
-    size_t output_cnt = 0;
-    bool permitted = true;
-    sr_val_t *input = NULL;
-    sr_node_t *input_tree = NULL;
-    const sr_error_info_t *error_info = NULL;
+    sr_val_t *values = NULL;
+    sr_node_t *trees = NULL;
 
     if (!satisfied_requirements) {
         skip();
     }
 
-    /* prepare for RPC and Action executions */
+    /* prepare for notification delivery */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_event_notif_callback(handler_session, &callback_called, &subscription);
 
-    /* test RPC "activate-software-image" */
-#undef RPC_XPATH
-#define RPC_XPATH "/test-module:activate-software-image"
+    /* test Event notification "link-discovered " */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
     /*  -> sysrepo-user1 */
-    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 2);
-    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 2);
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
     /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 2);
-    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 2);
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
     /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 2);
-    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 2);
-
-    /* test NETCONF operation "close-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:close-session"
-    /*  -> sysrepo-user1 */
-    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
-
-    /* test NETCONF operation "kill-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:kill-session"
-    assert_int_equal(SR_ERR_OK, sr_new_val(RPC_XPATH "/session-id", &input));
-    input->type = SR_UINT32_T;
-    input->data.uint32_val = 12;
-    assert_int_equal(SR_ERR_OK, sr_new_tree("session-id", "ietf-netconf", &input_tree));
-    input_tree->type = SR_UINT32_T;
-    input_tree->data.uint32_val = 12;
-    /*  -> sysrepo-user1 */
-    RPC_DENIED(0, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(0, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user2 */
-    RPC_DENIED(1, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(1, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user3 */
-    RPC_DENIED(1, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(1, RPC_XPATH, input_tree, 1, "", "");
-    sr_free_val(input);
-    sr_free_tree(input_tree);
-
-    /* test RPC "initialize" from turing-machine */
-#undef RPC_XPATH
-#define RPC_XPATH "/turing-machine:initialize"
-    /*  -> sysrepo-user1 */
-    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
-
-    /* test Action "unload" from test-model */
-#undef ACTION_XPATH
-#define ACTION_XPATH "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/unload"
-    /*  -> sysrepo-user1 */
-    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, -1);
-    /*  -> sysrepo-user2 */
-    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, -1);
-    /*  -> sysrepo-user3 */
-    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
-
-    /* test Action "load" from test-model */
-#undef ACTION_XPATH
-#define ACTION_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load"
-    assert_int_equal(SR_ERR_OK, sr_new_val(ACTION_XPATH "/params", &input));
-    input->type = SR_STRING_T;
-    sr_val_set_str_data(input, SR_STRING_T, "--force");
-    assert_int_equal(SR_ERR_OK, sr_new_tree("params", "test-module", &input_tree));
-    input_tree->type = SR_STRING_T;
-    sr_node_set_str_data(input_tree, SR_STRING_T, "--force");
-    /*  -> sysrepo-user1 */
-    ACTION_PERMITED(0, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(0, ACTION_XPATH, input_tree, 1, -1);
-    /*  -> sysrepo-user2 */
-    ACTION_PERMITED(1, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(1, ACTION_XPATH, input_tree, 1, -1);
-    /*  -> sysrepo-user3 */
-    ACTION_PERMITED(2, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(2, ACTION_XPATH, input_tree, 1, -1);
-    sr_free_val(input);
-    sr_free_tree(input_tree);
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
 
     /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
