@@ -66,15 +66,15 @@ static watchdog_ctx_t watchdog_ctx = {0, false, false};
  * @brief A custom implementation of ::popen that hopefully doesn't
  * suffer from this glibc bug: https://bugzilla.redhat.com/show_bug.cgi?id=1275384
  */
-static pid_t
-sr_popen(const char *command, int *in_p, int *out_p)
+pid_t
+sr_popen(const char *command, int *stdin_p, int *stdout_p, int *stderr_p)
 {
 #define READ 0
 #define WRITE 1
-    int p_stdin[2], p_stdout[2];
+    int p_stdin[2], p_stdout[2], p_stderr[2];
     pid_t pid;
 
-    if (pipe(p_stdin) != 0 || pipe(p_stdout) != 0) {
+    if (pipe(p_stdin) != 0 || pipe(p_stdout) != 0 || pipe(p_stderr) != 0) {
         return -1;
     }
 
@@ -84,9 +84,11 @@ sr_popen(const char *command, int *in_p, int *out_p)
         return pid;
     } else if (pid == 0) {
         close(p_stdin[WRITE]);
-        dup2(p_stdin[READ], READ);
+        dup2(p_stdin[READ], STDIN_FILENO);
         close(p_stdout[READ]);
-        dup2(p_stdout[WRITE], WRITE);
+        dup2(p_stdout[WRITE], STDOUT_FILENO);
+        close(p_stderr[READ]);
+        dup2(p_stderr[WRITE], STDERR_FILENO);
 
         execl("/bin/sh", "sh", "-c", command, NULL);
         perror("execl");
@@ -94,21 +96,72 @@ sr_popen(const char *command, int *in_p, int *out_p)
     } else {
         close(p_stdin[READ]);
         close(p_stdout[WRITE]);
+        close(p_stderr[WRITE]);
     }
 
-    if (in_p == NULL) {
+    if (stdin_p == NULL) {
         close(p_stdin[WRITE]);
     } else {
-        *in_p = p_stdin[WRITE];
+        *stdin_p = p_stdin[WRITE];
     }
 
-    if (out_p == NULL) {
+    if (stdout_p == NULL) {
         close(p_stdout[READ]);
     } else {
-        *out_p = p_stdout[READ];
+        *stdout_p = p_stdout[READ];
+    }
+
+    if (stderr_p == NULL) {
+        close(p_stderr[READ]);
+    } else {
+        *stderr_p = p_stderr[READ];
     }
 
     return pid;
+}
+
+size_t readline(int fd, char **line_p, size_t *len_p)
+{
+    size_t n = 0, ret = 0;
+    size_t len = 0;
+    char c = '\0', *line = NULL;
+
+    assert_non_null(line_p);
+    assert_non_null(len_p);
+
+    line = *line_p;
+    len = *len_p;
+    if (NULL == line || 0 == len) {
+        len = 10;
+        line = calloc(len, sizeof *line);
+        assert_non_null(line);
+    }
+
+    do {
+        ret = read(fd, &c, 1);
+        if (1 == ret) {
+            if (n == len-1) {
+                len *= 2;
+                line = realloc(line, len * (sizeof *line));
+                assert_non_null(line);
+            }
+            line[n] = c;
+            ++n;
+            if (c == '\n') {
+                break; /* newline is stored, like fgets() */
+            }
+        } else if (0 == ret) {
+            break; /* EOF */
+        } else {
+            assert_int_equal(EINTR, errno);
+            continue;
+        }
+    } while (true);
+
+    line[n] = '\0'; /* null terminate like fgets() */
+    *line_p = line;
+    *len_p = len;
+    return n;
 }
 
 static void
@@ -132,7 +185,7 @@ print_backtrace()
         if (NULL != parenthesis) {
             *parenthesis = '\0';
             snprintf(cmd, PATH_MAX, "addr2line %p -e %s", callstack[i], messages[i]);
-            child = sr_popen(cmd, NULL, &fd);
+            child = sr_popen(cmd, NULL, &fd, NULL);
             assert_int_not_equal(-1, child);
             assert_true(fd >= 0);
             read(fd, buff, sizeof(buff)-1);
@@ -338,7 +391,7 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
         /* if needed, retry to workaround the fork bug in glibc: https://bugzilla.redhat.com/show_bug.cgi?id=1275384 */
         retry = false;
 
-        child = sr_popen(cmd, NULL, &fd);
+        child = sr_popen(cmd, NULL, &fd, NULL);
         assert_int_not_equal(-1, child);
         assert_true(fd >= 0);
 

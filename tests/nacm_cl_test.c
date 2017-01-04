@@ -30,6 +30,7 @@
 #include <signal.h>
 #include <time.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #ifdef HAVE_REGEX_H
 #include <regex.h>
 #endif
@@ -42,7 +43,7 @@
 
 #define NUM_OF_USERS  3
 #define MAX_ATTEMPTS_TO_KILL_DAEMON  5
-//#define DEBUG_MODE
+//#define DEBUG_MODE /* Note: in debug mode we are not able to read logs from sysrepo daemon! */
 
 #define CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO) \
     do { \
@@ -63,14 +64,14 @@
 #define CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO) \
     do { \
         if (strlen(RULE) && strlen(RULE_INFO)) { \
-            assert_true(has_log_message(SR_LL_DBG, "Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                                   "was blocked by the NACM rule '" RULE "' (" RULE_INFO").")); \
+            assert_true(has_log_message("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                        "was blocked by the NACM rule '" RULE "' (" RULE_INFO").\n")); \
         } else if (strlen(RULE)) { \
-            assert_true(has_log_message(SR_LL_DBG, "Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                                   "was blocked by the NACM rule '" RULE "'.")); \
+            assert_true(has_log_message("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                        "was blocked by the NACM rule '" RULE "'.\n")); \
         } else { \
-            assert_true(has_log_message(SR_LL_DBG, "Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                                   "was blocked by NACM.")); \
+            assert_true(has_log_message("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                        "was blocked by NACM.\n")); \
         }\
     } while (0)
 
@@ -196,9 +197,8 @@
         rc = sr_event_notif_send(sessions[SESSION], XPATH, VALUES, VALUE_CNT); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_int_equal(1, callback_called); \
-        assert_false(has_log_message(SR_LL_DBG, "Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                                "was blocked by .*NACM.*")); \
-        clear_log_history(); \
+        assert_false(has_log_message("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                     "was blocked by .*NACM.*")); \
     } while (0)
 
 #define EVENT_NOTIF_DENIED(SESSION, XPATH, VALUES, VALUE_CNT, RULE, RULE_INFO) \
@@ -208,7 +208,6 @@
         assert_int_equal(rc, SR_ERR_OK); \
         assert_int_equal(0, callback_called); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
-        clear_log_history(); \
     } while (0)
 
 #define EVENT_NOTIF_PERMITED_TREE(SESSION, XPATH, TREES, TREE_CNT) \
@@ -217,9 +216,8 @@
         rc = sr_event_notif_send_tree(sessions[SESSION], XPATH, TREES, TREE_CNT); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_int_equal(1, callback_called); \
-        assert_false(has_log_message(SR_LL_DBG, "Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                                "was blocked by .*NACM.*")); \
-        clear_log_history(); \
+        assert_false(has_log_message("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                     "was blocked by .*NACM.*")); \
     } while (0)
 
 #define EVENT_NOTIF_DENIED_TREE(SESSION, XPATH, TREES, TREE_CNT, RULE, RULE_INFO) \
@@ -229,30 +227,14 @@
         assert_int_equal(rc, SR_ERR_OK); \
         assert_int_equal(0, callback_called); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
-        clear_log_history(); \
     } while (0)
 
 typedef sr_session_ctx_t *user_sessions_t[NUM_OF_USERS];
 
-/**
- * @brief A message sent to log.
- */
-typedef struct log_msg_s {
-    sr_log_level_t level;
-    char *message;
-} log_msg_t;
-
-/**
- * @brief Recent log history.
- */
-typedef struct log_history_s {
-    pthread_mutex_t lock;
-    sr_list_t *logs; /**< items are of type log_msg_t */
-} log_history_t;
-
 static bool satisfied_requirements = true;  /**< Indices if the test can be actually run with the current system configuration */
 static bool daemon_run_before_test = false; /**< Indices if the daemon was running before executing the test. */
-static log_history_t log_history = { .lock = PTHREAD_MUTEX_INITIALIZER, .logs = NULL }; /* recent log history */
+static pid_t daemon_pid = -1; /* PID of the sysrepo daemon (child of this process) */
+static int daemon_stderr = -1;    /* read-end of the daemon's stderr */
 
 
 /* TODO: Report the issue with failed validation when action reply is empty. Then reflect the fix. */
@@ -282,7 +264,6 @@ static void
 start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
 {
 #ifndef DEBUG_MODE
-    int ret = 0;
     struct timespec ts = { 0 };
     int attempt = 1;
 #endif
@@ -325,9 +306,10 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     /* create initial datastore content */
     createDataTreeTestModule();
 
-    /* start sysrepo in the daemon mode */
-    ret = system("../src/sysrepod -l 4");
-    assert_int_equal(ret, 0);
+    /* start sysrepo in the daemon debug mode as a child process */
+    daemon_pid = sr_popen("../src/sysrepod -l4 -d", NULL, NULL, &daemon_stderr);
+    assert_int_not_equal(-1, daemon_pid);
+    assert_true(daemon_stderr >= 0);
     /* wait for the daemon to start */
     ts.tv_sec = 0;
     ts.tv_nsec = 500000000L; /* 500 milliseconds */
@@ -339,64 +321,30 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     *conn_p = conn;
 }
 
-static void
-add_log_message(sr_log_level_t level, const char *message)
-{
-    log_msg_t *log_msg = calloc(1, sizeof *log_msg);
-    assert_non_null(log_msg);
-    log_msg->level = level;
-    log_msg->message = strdup(message);
-    assert_non_null(log_msg->message);
-    pthread_mutex_lock(&log_history.lock);
-    assert_int_equal(SR_ERR_OK, sr_list_add(log_history.logs, log_msg));
-    pthread_mutex_unlock(&log_history.lock);
-}
-
 static bool
-has_log_message(sr_log_level_t level, const char *msg_re)
+has_log_message(const char *msg_re)
 {
     bool has = false;
+    char *line = NULL;
+    size_t len = 0;
 
-    pthread_mutex_lock(&log_history.lock);
-    for (size_t i = 0; !has && i < log_history.logs->count; ++i) {
-        log_msg_t *log_msg = (log_msg_t *)log_history.logs->data[i];
-        if (level != log_msg->level) {
-            continue;
-        }
 #ifdef HAVE_REGEX_H
+    assert_true(daemon_stderr >= 0);
+    while (!has && readline(daemon_stderr, &line, &len)) {
         regex_t re;
         /* Compile regular expression */
         assert_int_equal(0, regcomp(&re, msg_re, REG_NOSUB | REG_EXTENDED));
-        if (0 == regexec(&re, log_msg->message, 0, NULL, 0)) {
+        if (0 == regexec(&re, line, 0, NULL, 0)) {
             has = true;
         }
         regfree(&re);
+    }
 #else
-        has = true; /**< let the test pass */
+    has = true; /**< let the test pass */
 #endif
-    }
-    pthread_mutex_unlock(&log_history.lock);
 
+    free(line);
     return has;
-}
-
-static void
-clear_log_history()
-{
-    pthread_mutex_lock(&log_history.lock);
-    for (size_t i = 0; i < log_history.logs->count; ++i) {
-        log_msg_t *log_msg = (log_msg_t *)log_history.logs->data[i];
-        free(log_msg->message);
-        free(log_msg);
-    }
-    log_history.logs->count = 0;
-    pthread_mutex_unlock(&log_history.lock);
-}
-
-static void
-log_callback(sr_log_level_t level, const char *message)
-{
-    add_log_message(level, message);
 }
 
 static int
@@ -435,14 +383,24 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
             "activate-software-image", "exec", "deny", "Not allowed to run activate-software-image");
     add_nacm_rule(nacm_config, "acl1", "rule-with-no-effect", "ietf-netconf", NACM_RULE_RPC,
             "close-session", "*", "deny", "close-session NETCONF operation cannot be effectively denied");
+    add_nacm_rule(nacm_config, "acl1", "deny-link-discovered", "test-module", NACM_RULE_NOTIF,
+            "link-discovered", "read", "deny", "Not allowed to receive the link-discovered notification");
+    add_nacm_rule(nacm_config, "acl1", "rule-with-no-effect2", "nc-notifications", NACM_RULE_NOTIF,
+            "replayComplete", "*", "deny", "NETCONF replayComplete notification cannot be effectively denied");
     /*  -> acl2: */
     add_nacm_rule(nacm_config, "acl2", "permit-kill-session", "ietf-netconf", NACM_RULE_RPC,
             "kill-session", "exec", "permit", "Permit execution of the kill-session NETCONF operation.");
     add_nacm_rule(nacm_config, "acl2", "deny-initialize", "*", NACM_RULE_RPC,
             "initialize", "*", "deny", "Not allowed to touch RPC 'initialize' in any module.");
+    add_nacm_rule(nacm_config, "acl2", "deny-halted", "*", NACM_RULE_NOTIF,
+            "halted", "*", "deny", "Not allowed to receive 'halted' notification from any module.");
     /*  -> acl3: */
     add_nacm_rule(nacm_config, "acl3", "permit-unload", "test-module", NACM_RULE_RPC,
             "unload", "exec", "permit", "Permit action unload");
+    add_nacm_rule(nacm_config, "acl3", "permit-status-change", "test-module", NACM_RULE_NOTIF,
+            "status-change", "*", "permit", "Permit notification 'status-change'.");
+    add_nacm_rule(nacm_config, "acl3", "deny-netconf-capability-change", "ietf-netconf-notifications", NACM_RULE_NOTIF,
+            "netconf-capability-change", "read", "deny", "Not allowed to receive the NETCONF capability change notification");
     add_nacm_rule(nacm_config, "acl3", "deny-test-module", "test-module", NACM_RULE_NOTSET,
             NULL, "*", "deny", "Deny everything not explicitly permitted in test-module.");
 }
@@ -456,6 +414,26 @@ sysrepo_setup_with_denied_exec_by_dflt(void **state)
     /* NACM startup config */
     new_nacm_config(&nacm_config);
     set_nacm_exec_dflt(nacm_config, "deny");
+    enable_nacm_ext_groups(nacm_config, false);
+    common_nacm_config(nacm_config);
+    save_nacm_config(nacm_config);
+    delete_nacm_config(nacm_config);
+
+    start_sysrepo_daemon(&conn);
+
+    *state = (void*)conn;
+    return 0;
+}
+
+static int
+sysrepo_setup_with_denied_read_by_dflt(void **state)
+{
+    sr_conn_ctx_t *conn = NULL;
+    test_nacm_cfg_t *nacm_config = NULL;
+
+    /* NACM startup config */
+    new_nacm_config(&nacm_config);
+    set_nacm_read_dflt(nacm_config, "deny");
     enable_nacm_ext_groups(nacm_config, false);
     common_nacm_config(nacm_config);
     save_nacm_config(nacm_config);
@@ -507,6 +485,7 @@ sysrepo_setup(void **state)
 static int
 sysrepo_teardown(void **state)
 {
+    int ret = 0, status = 0;
     sr_conn_ctx_t *conn = *state;
 
     if (!satisfied_requirements) {
@@ -518,13 +497,21 @@ sysrepo_teardown(void **state)
     sr_disconnect(conn);
 
 #ifndef DEBUG_MODE
-    /* kill the daemon if it was not running before test */
-    if (!daemon_run_before_test) {
-        daemon_kill(false);
+    /* kill the daemon run as the child process */
+    daemon_kill(false);
+    assert_int_not_equal(-1, daemon_pid);
+    assert_true(daemon_stderr >= 0);
+    close(daemon_stderr);
+    assert_int_equal(daemon_pid, waitpid(daemon_pid, &status, 0));
+    daemon_stderr = -1;
+    daemon_pid = -1;
+
+    /* restart daemon if it was running before the test */
+    if (daemon_run_before_test) {
+        ret = system("../src/sysrepod -l4");
+        assert_int_equal(ret, 0);
     }
 #endif
-
-    clear_log_history();
     return 0;
 }
 
@@ -595,9 +582,25 @@ subscribe_dummy_event_notif_callback(sr_session_ctx_t *handler_session, void *pr
     int rc = SR_ERR_OK;
 
     /* subscribe for Event notifications with dummy callback */
-    rc = sr_event_notif_subscribe(handler_session, "/test-module:link-discovered", dummy_event_notif_cb, private_ctx,
-            SR_SUBSCR_DEFAULT, subscription);
+    rc = sr_event_notif_subscribe(handler_session, "/test-module:link-discovered",
+            dummy_event_notif_cb, private_ctx, SR_SUBSCR_DEFAULT, subscription);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_event_notif_subscribe(handler_session, "/test-module:link-removed",
+            dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_event_notif_subscribe(handler_session, "/test-module:kernel-modules/kernel-module/status-change",
+            dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_event_notif_subscribe(handler_session, "/turing-machine:halted",
+            dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_event_notif_subscribe(handler_session, "/ietf-netconf-notifications:netconf-capability-change",
+            dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_event_notif_subscribe(handler_session, "/nc-notifications:replayComplete",
+            dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
 }
 
 static void
@@ -1148,9 +1151,439 @@ nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
     start_user_sessions(conn, &handler_session, &sessions);
     subscribe_dummy_event_notif_callback(handler_session, &callback_called, &subscription);
 
-    /* test Event notification "link-discovered " */
+    /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, trees, 1);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, trees, 1);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop sessions */
+    for (int i = 0; i < NUM_OF_USERS; ++i) {
+        rc = sr_session_stop(sessions[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+    rc = sr_session_stop(handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+nacm_cl_test_event_notif_acl(void **state)
+{
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+    sr_conn_ctx_t *conn = *state;
+    sr_session_ctx_t *handler_session = NULL;
+    user_sessions_t sessions = {NULL};
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t *values = NULL;
+    sr_node_t *trees = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* prepare for notification delivery */
+    start_user_sessions(conn, &handler_session, &sessions);
+    subscribe_dummy_event_notif_callback(handler_session, &callback_called, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, trees, 1);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop sessions */
+    for (int i = 0; i < NUM_OF_USERS; ++i) {
+        rc = sr_session_stop(sessions[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+    rc = sr_session_stop(handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
+{
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+    sr_conn_ctx_t *conn = *state;
+    sr_session_ctx_t *handler_session = NULL;
+    user_sessions_t sessions = {NULL};
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t *values = NULL;
+    sr_node_t *trees = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* prepare for notification delivery */
+    start_user_sessions(conn, &handler_session, &sessions);
+    subscribe_dummy_event_notif_callback(handler_session, &callback_called, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, values, 1, "", "");
+    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, trees, 1, "", "");
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop sessions */
+    for (int i = 0; i < NUM_OF_USERS; ++i) {
+        rc = sr_session_stop(sessions[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+    rc = sr_session_stop(handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
+{
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+    sr_conn_ctx_t *conn = *state;
+    sr_session_ctx_t *handler_session = NULL;
+    user_sessions_t sessions = {NULL};
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t *values = NULL;
+    sr_node_t *trees = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* prepare for notification delivery */
+    start_user_sessions(conn, &handler_session, &sessions);
+    subscribe_dummy_event_notif_callback(handler_session, &callback_called, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, trees, 1);
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    /*  -> sysrepo-user1 */
+    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    /*  -> sysrepo-user3 */
+    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
     /*  -> sysrepo-user1 */
     EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
     EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
@@ -1182,6 +1615,9 @@ main() {
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_denied_exec_by_dflt, sysrepo_setup_with_denied_exec_by_dflt, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl_with_denied_read_by_dflt, sysrepo_setup_with_denied_read_by_dflt, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
     };
 
     if (0 != getuid()) {
@@ -1209,13 +1645,9 @@ main() {
         printf("    - all data files in the testing repository can be read and edited by the members\n");
         printf("      of the group but not by others (g+rw,o-rw)\n");
         printf("(see deploy/travis/install-test-users.sh for a set of commands to execute)\n");
-    } else {
-        assert_int_equal(SR_ERR_OK, sr_list_init(&log_history.logs));
     }
-
     watchdog_start(300);
     int ret = cmocka_run_group_tests(tests, NULL, NULL);
     watchdog_stop();
-    sr_list_cleanup(log_history.logs);
     return ret;
 }
