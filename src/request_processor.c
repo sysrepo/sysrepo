@@ -289,14 +289,13 @@ rp_prepare_capability_change_notification(rp_ctx_t *rp_ctx, rp_session_t *sessio
 
     req->session_id = session->id;
     req->request->event_notif_req->do_not_send_reply = true;
+    req->request->event_notif_req->timestamp = time(NULL);
 
     rc = sr_mem_edit_string(values->_sr_mem, &req->request->event_notif_req->xpath, CAPABILITY_CHANGE_NOTIFICATION_XPATH);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath in the message");
 
     rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
-
-    req->request->event_notif_req->timestamp = time(NULL);
 
 cleanup:
     sr_free_values(values, val_cnt);
@@ -354,7 +353,6 @@ rp_count_changes_in_difflists(sr_list_t *diff_lists)
     return diff_cnt;
 }
 
-
 int
 rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, sr_list_t *diff_lists) {
     CHECK_NULL_ARG3(rp_ctx, session, diff_lists);
@@ -390,6 +388,7 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
 
     req->session_id = session->id;
     req->request->event_notif_req->do_not_send_reply = true;
+    req->request->event_notif_req->timestamp = time(NULL);
 
     rc = sr_mem_edit_string(NULL, &req->request->event_notif_req->xpath, CONFIG_CHANGE_NOTIFICATION_XPATH);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath in the message");
