@@ -4597,7 +4597,7 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
             }
             if (node->child) {
                 node = node->child;
-            } else if (node->next) {
+            } else if (node->next && node != proc_node) {
                 node = node->next;
             } else {
                 backtracking = true;

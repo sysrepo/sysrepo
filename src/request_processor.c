@@ -2097,7 +2097,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     xpath = msg->request->rpc_req->xpath;
     action = msg->request->rpc_req->action;
     op_name = (action ? "Action" : "RPC");
-    SR_LOG_DBG("Processing %s request.", op_name);
+    SR_LOG_DBG("Processing %s request (%s).", op_name, xpath);
 
     /* reuse context from msg for req (or resp) */
     sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
@@ -2512,6 +2512,7 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     }
 
     action = msg->response->rpc_resp->action;
+    SR_LOG_DBG("Processing %s response (%s).", (action ? "Action" : "RPC"), msg->response->rpc_resp->xpath);
 
     /* reuse memory context from msg for resp */
     sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;

@@ -31,6 +31,7 @@
 #include <time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 #ifdef HAVE_REGEX_H
 #include <regex.h>
 #endif
@@ -43,6 +44,8 @@
 
 #define NUM_OF_USERS  3
 #define MAX_ATTEMPTS_TO_KILL_DAEMON  5
+#define MAX_ATTEMPTS_TO_GET_LOG_MSG  10
+
 //#define DEBUG_MODE /* Note: in debug mode we are not able to read logs from sysrepo daemon! */
 
 #define CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO) \
@@ -80,10 +83,10 @@
         rc = sr_check_exec_permission(sessions[SESSION], XPATH, &permitted); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_false(permitted); \
-        callback_called = 0; \
+        reset_cb_call_count(); \
         rc = sr_rpc_send(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
-        assert_int_equal(0, callback_called); \
+        assert_int_equal(0, get_cb_call_count()); \
         CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
@@ -92,10 +95,10 @@
         rc = sr_check_exec_permission(sessions[SESSION], XPATH, &permitted); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_false(permitted); \
-        callback_called = 0; \
+        reset_cb_call_count(); \
         rc = sr_rpc_send_tree(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output_tree, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
-        assert_int_equal(0, callback_called); \
+        assert_int_equal(0, get_cb_call_count()); \
         CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
@@ -104,7 +107,7 @@
         rc = sr_check_exec_permission(sessions[SESSION], XPATH, &permitted); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_true(permitted); \
-        callback_called = 0; \
+        reset_cb_call_count(); \
         rc = sr_rpc_send(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output, &output_cnt); \
         if (-1 == EXP_OUTPUT_CNT) { \
             assert_int_equal(rc, SR_ERR_VALIDATION_FAILED); \
@@ -113,7 +116,7 @@
             assert_int_equal(EXP_OUTPUT_CNT, output_cnt); \
             sr_free_values(output, output_cnt); \
         } \
-        assert_int_equal(1, callback_called); \
+        assert_int_equal(1, get_cb_call_count()); \
     } while (0)
 
 #define RPC_PERMITED_TREE(SESSION, XPATH, INPUT, INPUT_CNT, EXP_OUTPUT_CNT) \
@@ -121,7 +124,7 @@
         rc = sr_check_exec_permission(sessions[SESSION], XPATH, &permitted); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_true(permitted); \
-        callback_called = 0; \
+        reset_cb_call_count(); \
         rc = sr_rpc_send_tree(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output_tree, &output_cnt); \
         if (-1 == EXP_OUTPUT_CNT) { \
             assert_int_equal(rc, SR_ERR_VALIDATION_FAILED); \
@@ -130,7 +133,7 @@
             assert_int_equal(EXP_OUTPUT_CNT, output_cnt); \
             sr_free_trees(output_tree, output_cnt); \
         } \
-        assert_int_equal(1, callback_called); \
+        assert_int_equal(1, get_cb_call_count()); \
     } while (0)
 
 #define ACTION_DENIED(SESSION, XPATH, INPUT, INPUT_CNT, RULE, RULE_INFO) \
@@ -138,10 +141,10 @@
         rc = sr_check_exec_permission(sessions[SESSION], XPATH, &permitted); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_false(permitted); \
-        callback_called = 0; \
+        reset_cb_call_count(); \
         rc = sr_action_send(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
-        assert_int_equal(0, callback_called); \
+        assert_int_equal(0, get_cb_call_count()); \
         CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
@@ -150,10 +153,10 @@
         rc = sr_check_exec_permission(sessions[SESSION], XPATH, &permitted); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_false(permitted); \
-        callback_called = 0; \
+        reset_cb_call_count(); \
         rc = sr_action_send_tree(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output_tree, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
-        assert_int_equal(0, callback_called); \
+        assert_int_equal(0, get_cb_call_count()); \
         CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
@@ -162,7 +165,7 @@
         rc = sr_check_exec_permission(sessions[SESSION], XPATH, &permitted); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_true(permitted); \
-        callback_called = 0; \
+        reset_cb_call_count(); \
         rc = sr_action_send(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output, &output_cnt); \
         if (-1 == EXP_OUTPUT_CNT) { \
             assert_int_equal(rc, SR_ERR_VALIDATION_FAILED); \
@@ -171,7 +174,7 @@
             assert_int_equal(EXP_OUTPUT_CNT, output_cnt); \
             sr_free_values(output, output_cnt); \
         } \
-        assert_int_equal(1, callback_called); \
+        assert_int_equal(1, get_cb_call_count()); \
     } while (0)
 
 #define ACTION_PERMITED_TREE(SESSION, XPATH, INPUT, INPUT_CNT, EXP_OUTPUT_CNT) \
@@ -179,7 +182,7 @@
         rc = sr_check_exec_permission(sessions[SESSION], XPATH, &permitted); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_true(permitted); \
-        callback_called = 0; \
+        reset_cb_call_count(); \
         rc = sr_action_send_tree(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output_tree, &output_cnt); \
         if (-1 == EXP_OUTPUT_CNT) { \
             assert_int_equal(rc, SR_ERR_VALIDATION_FAILED); \
@@ -188,57 +191,111 @@
             assert_int_equal(EXP_OUTPUT_CNT, output_cnt); \
             sr_free_trees(output_tree, output_cnt); \
         } \
-        assert_int_equal(1, callback_called); \
+        assert_int_equal(1, get_cb_call_count()); \
     } while (0)
 
 #define EVENT_NOTIF_PERMITED(SESSION, XPATH, VALUES, VALUE_CNT) \
     do { \
-        callback_called = 0; \
+        reset_cb_call_count(); \
         rc = sr_event_notif_send(sessions[SESSION], XPATH, VALUES, VALUE_CNT); \
+        wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
-        assert_int_equal(1, callback_called); \
+        assert_int_equal(1, get_cb_call_count()); \
         assert_false(has_log_message("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
                                      "was blocked by .*NACM.*")); \
+        clear_log_history(); \
     } while (0)
 
 #define EVENT_NOTIF_DENIED(SESSION, XPATH, VALUES, VALUE_CNT, RULE, RULE_INFO) \
     do { \
-        callback_called = 0; \
+        reset_cb_call_count(); \
         rc = sr_event_notif_send(sessions[SESSION], XPATH, VALUES, VALUE_CNT); \
+        wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
-        assert_int_equal(0, callback_called); \
+        assert_int_equal(0, get_cb_call_count()); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
+        clear_log_history(); \
     } while (0)
 
 #define EVENT_NOTIF_PERMITED_TREE(SESSION, XPATH, TREES, TREE_CNT) \
     do { \
-        callback_called = 0; \
+        reset_cb_call_count(); \
         rc = sr_event_notif_send_tree(sessions[SESSION], XPATH, TREES, TREE_CNT); \
+        wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
-        assert_int_equal(1, callback_called); \
+        assert_int_equal(1, get_cb_call_count()); \
         assert_false(has_log_message("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
                                      "was blocked by .*NACM.*")); \
+        clear_log_history(); \
     } while (0)
 
 #define EVENT_NOTIF_DENIED_TREE(SESSION, XPATH, TREES, TREE_CNT, RULE, RULE_INFO) \
     do { \
-        callback_called = 0; \
+        reset_cb_call_count(); \
         rc = sr_event_notif_send_tree(sessions[SESSION], XPATH, TREES, TREE_CNT); \
+        wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
-        assert_int_equal(0, callback_called); \
+        assert_int_equal(0, get_cb_call_count()); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
+        clear_log_history(); \
     } while (0)
 
 typedef sr_session_ctx_t *user_sessions_t[NUM_OF_USERS];
+
+/**
++ * @brief Recent log history.
++ */
+typedef struct log_history_s {
+    pthread_mutex_t lock;
+    sr_list_t *logs; /**< items are of type (char *) */
+    bool running;
+} log_history_t;
 
 static bool satisfied_requirements = true;  /**< Indices if the test can be actually run with the current system configuration */
 static bool daemon_run_before_test = false; /**< Indices if the daemon was running before executing the test. */
 static pid_t daemon_pid = -1; /* PID of the sysrepo daemon (child of this process) */
 static int daemon_stderr = -1;    /* read-end of the daemon's stderr */
-
+static log_history_t log_history = { .lock = PTHREAD_MUTEX_INITIALIZER, .logs = NULL, .running = false }; /* recent log history */
+static pthread_t stderr_reader = {0}; /* log-reader thread's control structure */
+static int cb_call_count; /* how many times a callback was called */
+pthread_mutex_t cb_call_count_lock = PTHREAD_MUTEX_INITIALIZER; /* protecting cb_call_count */
 
 /* TODO: Report the issue with failed validation when action reply is empty. Then reflect the fix. */
 
+
+static void
+wait_ms(long int ms)
+{
+    struct timespec ts = { 0 };
+    ts.tv_nsec = ms * 1000000L;
+    nanosleep(&ts, NULL);
+}
+
+static void
+inc_cb_call_count()
+{
+    pthread_mutex_lock(&cb_call_count_lock);
+    ++cb_call_count;
+    pthread_mutex_unlock(&cb_call_count_lock);
+}
+
+static int
+get_cb_call_count()
+{
+    int count = 0;
+    pthread_mutex_lock(&cb_call_count_lock);
+    count = cb_call_count;
+    pthread_mutex_unlock(&cb_call_count_lock);
+    return count;
+}
+
+static void
+reset_cb_call_count()
+{
+    pthread_mutex_lock(&cb_call_count_lock);
+    cb_call_count = 0;
+    pthread_mutex_unlock(&cb_call_count_lock);
+}
 
 #ifndef DEBUG_MODE
 static void
@@ -260,12 +317,49 @@ daemon_kill(bool last_attempt)
 }
 #endif
 
+static void *
+daemon_log_reader(void *arg)
+{
+    (void)arg;
+    char *line = NULL, *msg = NULL;
+    size_t len = 0;
+    bool running = false;
+
+    do {
+        pthread_mutex_lock(&log_history.lock);
+        running = log_history.running;
+        pthread_mutex_unlock(&log_history.lock);
+        if (!running) {
+            wait_ms(5);
+        }
+    } while (!running);
+    assert_true(daemon_stderr >= 0);
+
+    while (running) {
+        pthread_mutex_lock(&log_history.lock);
+        while (readline(daemon_stderr, &line, &len)) {
+            msg = strdup(line);
+            assert_non_null(msg);
+//            SR_LOG_DBG("Appending message: %s", msg);
+            assert_int_equal(SR_ERR_OK, sr_list_add(log_history.logs, msg));
+        }
+        running = log_history.running;
+        pthread_mutex_unlock(&log_history.lock);
+        if (running) {
+            wait_ms(5);
+        }
+    }
+
+    free(line);
+    return NULL;
+}
+
 static void
 start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
 {
 #ifndef DEBUG_MODE
-    struct timespec ts = { 0 };
     int attempt = 1;
+    int flags = 0;
 #endif
     sr_conn_ctx_t *conn = NULL;
     int rc = SR_ERR_OK;
@@ -291,9 +385,7 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
             }
             daemon_kill(attempt == MAX_ATTEMPTS_TO_KILL_DAEMON);
             /* wait for the daemon to terminate */
-            ts.tv_sec = 0;
-            ts.tv_nsec = 500000000L; /* 500 milliseconds */
-            nanosleep(&ts, NULL);
+            wait_ms(500);
         } else {
             if (1 == attempt) {
                 daemon_run_before_test = false;
@@ -307,13 +399,20 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     createDataTreeTestModule();
 
     /* start sysrepo in the daemon debug mode as a child process */
+    pthread_create(&stderr_reader, NULL, daemon_log_reader, NULL);
     daemon_pid = sr_popen("../src/sysrepod -l4 -d", NULL, NULL, &daemon_stderr);
     assert_int_not_equal(-1, daemon_pid);
     assert_true(daemon_stderr >= 0);
+
+    /* start log reader */
+    flags = fcntl(daemon_stderr, F_GETFL, 0);
+    fcntl(daemon_stderr, F_SETFL, flags | O_NONBLOCK);
+    pthread_mutex_lock(&log_history.lock);
+    log_history.running = true;
+    pthread_mutex_unlock(&log_history.lock);
+
     /* wait for the daemon to start */
-    ts.tv_sec = 0;
-    ts.tv_nsec = 500000000L; /* 500 milliseconds */
-    nanosleep(&ts, NULL);
+    wait_ms(500);
 #endif
     rc = sr_connect("nacm_cl_test", SR_CONN_DAEMON_REQUIRED, &conn);
     assert_int_equal(rc, SR_ERR_OK);
@@ -321,29 +420,56 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     *conn_p = conn;
 }
 
+static void
+clear_log_history()
+{
+    pthread_mutex_lock(&log_history.lock);
+    for (size_t i = 0; i < log_history.logs->count; ++i) {
+        free(log_history.logs->data[i]);
+    }
+    log_history.logs->count = 0;
+    pthread_mutex_unlock(&log_history.lock);
+}
+
 static bool
 has_log_message(const char *msg_re)
 {
     bool has = false;
-    char *line = NULL;
-    size_t len = 0;
+    int attempt = 1;
+    size_t log_count = 0;
 
 #ifdef HAVE_REGEX_H
-    assert_true(daemon_stderr >= 0);
-    while (!has && readline(daemon_stderr, &line, &len)) {
-        regex_t re;
-        /* Compile regular expression */
-        assert_int_equal(0, regcomp(&re, msg_re, REG_NOSUB | REG_EXTENDED));
-        if (0 == regexec(&re, line, 0, NULL, 0)) {
-            has = true;
+    while (!has && attempt < MAX_ATTEMPTS_TO_GET_LOG_MSG) {
+        pthread_mutex_lock(&log_history.lock);
+        for (size_t i = log_count; !has && (i < log_history.logs->count); ++i) {
+            char *message = (char *)log_history.logs->data[i];
+            regex_t re;
+            /* Compile regular expression */
+            assert_int_equal(0, regcomp(&re, msg_re, REG_NOSUB | REG_EXTENDED));
+            if (0 == regexec(&re, message, 0, NULL, 0)) {
+                has = true;
+            }
+
+            printf("REGEX TEST BEGIN -------------\n");
+            printf("Regex: %s\n", msg_re);
+            printf("Message: %s\n", message);
+            printf("Matches: %s\n", has ? "YES" : "NO");
+            printf("REGEX TEST END -------------\n");
+
+            regfree(&re);
         }
-        regfree(&re);
+        log_count = log_history.logs->count;
+        pthread_mutex_unlock(&log_history.lock);
+        ++attempt;
+        if (!has) {
+            /* log reader may need more time to sync */
+            wait_ms(10);
+        }
     }
 #else
     has = true; /**< let the test pass */
 #endif
 
-    free(line);
     return has;
 }
 
@@ -499,10 +625,19 @@ sysrepo_teardown(void **state)
 #ifndef DEBUG_MODE
     /* kill the daemon run as the child process */
     daemon_kill(false);
+
+    /* stop stderr reader */
+    pthread_mutex_lock(&log_history.lock);
+    log_history.running = false;
+    pthread_mutex_unlock(&log_history.lock);
+    pthread_join(stderr_reader, NULL);
+    clear_log_history();
+
+    /* wait for daemon to stop */
     assert_int_not_equal(-1, daemon_pid);
+    assert_int_equal(daemon_pid, waitpid(daemon_pid, &status, 0));
     assert_true(daemon_stderr >= 0);
     close(daemon_stderr);
-    assert_int_equal(daemon_pid, waitpid(daemon_pid, &status, 0));
     daemon_stderr = -1;
     daemon_pid = -1;
 
@@ -519,8 +654,8 @@ static int
 dummy_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
-    int *callback_called = (int*)private_ctx;
-    *callback_called += 1;
+    inc_cb_call_count();
+    SR_LOG_DBG("Running dummy callback for RPC: %s", xpath);
     return SR_ERR_OK;
 }
 
@@ -572,8 +707,8 @@ static void
 dummy_event_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values,
         const size_t value_cnt, time_t timestamp, void *private_ctx)
 {
-    int *callback_called = (int*)private_ctx;
-    *callback_called += 1;
+    inc_cb_call_count();
+    SR_LOG_DBG("Running dummy callback for Event notification: %s", xpath);
 }
 
 static void
@@ -588,7 +723,7 @@ subscribe_dummy_event_notif_callback(sr_session_ctx_t *handler_session, void *pr
     rc = sr_event_notif_subscribe(handler_session, "/test-module:link-removed",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_event_notif_subscribe(handler_session, "/test-module:kernel-modules/kernel-module/status-change",
+    rc = sr_event_notif_subscribe(handler_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_event_notif_subscribe(handler_session, "/turing-machine:halted",
@@ -606,7 +741,6 @@ subscribe_dummy_event_notif_callback(sr_session_ctx_t *handler_session, void *pr
 static void
 nacm_cl_test_rpc_acl_with_empty_nacm_cfg(void **state)
 {
-    int callback_called = 0;
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
     sr_session_ctx_t *handler_session = NULL;
@@ -626,7 +760,7 @@ nacm_cl_test_rpc_acl_with_empty_nacm_cfg(void **state)
 
     /* prepare for RPC and Action executions */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_rpc_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_rpc_callback(handler_session, NULL, &subscription);
 
     /* test RPC "activate-software-image" */
 #undef RPC_XPATH
@@ -738,7 +872,6 @@ nacm_cl_test_rpc_acl_with_empty_nacm_cfg(void **state)
 static void
 nacm_cl_test_rpc_acl(void **state)
 {
-    int callback_called = 0;
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
     sr_session_ctx_t *handler_session = NULL;
@@ -758,7 +891,7 @@ nacm_cl_test_rpc_acl(void **state)
 
     /* prepare for RPC and Action executions */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_rpc_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_rpc_callback(handler_session, NULL, &subscription);
 
     /* test RPC "activate-software-image" */
 #undef RPC_XPATH
@@ -870,7 +1003,6 @@ nacm_cl_test_rpc_acl(void **state)
 static void
 nacm_cl_test_rpc_acl_with_denied_exec_by_dflt(void **state)
 {
-    int callback_called = 0;
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
     sr_session_ctx_t *handler_session = NULL;
@@ -890,7 +1022,7 @@ nacm_cl_test_rpc_acl_with_denied_exec_by_dflt(void **state)
 
     /* prepare for RPC and Action executions */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_rpc_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_rpc_callback(handler_session, NULL, &subscription);
 
     /* test RPC "activate-software-image" */
 #undef RPC_XPATH
@@ -1002,7 +1134,6 @@ nacm_cl_test_rpc_acl_with_denied_exec_by_dflt(void **state)
 static void
 nacm_cl_test_rpc_acl_with_ext_groups(void **state)
 {
-    int callback_called = 0;
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
     sr_session_ctx_t *handler_session = NULL;
@@ -1022,7 +1153,7 @@ nacm_cl_test_rpc_acl_with_ext_groups(void **state)
 
     /* prepare for RPC and Action executions */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_rpc_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_rpc_callback(handler_session, NULL, &subscription);
 
     /* test RPC "activate-software-image" */
 #undef RPC_XPATH
@@ -1134,14 +1265,13 @@ nacm_cl_test_rpc_acl_with_ext_groups(void **state)
 static void
 nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
 {
-    int callback_called = 0;
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
     sr_session_ctx_t *handler_session = NULL;
     user_sessions_t sessions = {NULL};
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *values = NULL;
-    sr_node_t *trees = NULL;
+    sr_node_t *trees = NULL, *node = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1149,7 +1279,7 @@ nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
 
     /* prepare for notification delivery */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_event_notif_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_event_notif_callback(handler_session, NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
@@ -1214,15 +1344,23 @@ nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
     /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
     /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, trees, 1);
     /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, trees, 1);
     /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
 
     /* test Event notification "replayComplete" from nc-notifications */
 #undef EVENT_NOTIF_XPATH
@@ -1253,14 +1391,13 @@ nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
 static void
 nacm_cl_test_event_notif_acl(void **state)
 {
-    int callback_called = 0;
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
     sr_session_ctx_t *handler_session = NULL;
     user_sessions_t sessions = {NULL};
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *values = NULL;
-    sr_node_t *trees = NULL;
+    sr_node_t *trees = NULL, *node = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1268,7 +1405,7 @@ nacm_cl_test_event_notif_acl(void **state)
 
     /* prepare for notification delivery */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_event_notif_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_event_notif_callback(handler_session, NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
@@ -1333,6 +1470,12 @@ nacm_cl_test_event_notif_acl(void **state)
     /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
     /*  -> sysrepo-user1 */
     EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
     EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
@@ -1342,6 +1485,8 @@ nacm_cl_test_event_notif_acl(void **state)
     /*  -> sysrepo-user3 */
     EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
     EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    sr_free_val(values);
+    sr_free_tree(trees);
 
     /* test Event notification "replayComplete" from nc-notifications */
 #undef EVENT_NOTIF_XPATH
@@ -1372,14 +1517,13 @@ nacm_cl_test_event_notif_acl(void **state)
 static void
 nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
 {
-    int callback_called = 0;
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
     sr_session_ctx_t *handler_session = NULL;
     user_sessions_t sessions = {NULL};
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *values = NULL;
-    sr_node_t *trees = NULL;
+    sr_node_t *trees = NULL, *node = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1387,7 +1531,7 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
 
     /* prepare for notification delivery */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_event_notif_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_event_notif_callback(handler_session, NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
@@ -1452,6 +1596,12 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
     /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
     /*  -> sysrepo-user1 */
     EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
     EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
@@ -1461,6 +1611,8 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
     /*  -> sysrepo-user3 */
     EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
     EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    sr_free_val(values);
+    sr_free_tree(trees);
 
     /* test Event notification "replayComplete" from nc-notifications */
 #undef EVENT_NOTIF_XPATH
@@ -1491,14 +1643,13 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
 static void
 nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
 {
-    int callback_called = 0;
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
     sr_session_ctx_t *handler_session = NULL;
     user_sessions_t sessions = {NULL};
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *values = NULL;
-    sr_node_t *trees = NULL;
+    sr_node_t *trees = NULL, *node = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1506,7 +1657,7 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
 
     /* prepare for notification delivery */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_event_notif_callback(handler_session, &callback_called, &subscription);
+    subscribe_dummy_event_notif_callback(handler_session, NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
@@ -1571,6 +1722,12 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
     /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
     /*  -> sysrepo-user1 */
     EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
     EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
@@ -1580,6 +1737,8 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
     /*  -> sysrepo-user3 */
     EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
     EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    sr_free_val(values);
+    sr_free_tree(trees);
 
     /* test Event notification "replayComplete" from nc-notifications */
 #undef EVENT_NOTIF_XPATH
@@ -1645,9 +1804,13 @@ main() {
         printf("    - all data files in the testing repository can be read and edited by the members\n");
         printf("      of the group but not by others (g+rw,o-rw)\n");
         printf("(see deploy/travis/install-test-users.sh for a set of commands to execute)\n");
+    } else {
+        assert_int_equal(SR_ERR_OK, sr_list_init(&log_history.logs));
     }
-    watchdog_start(300);
+
+    watchdog_start(30000);
     int ret = cmocka_run_group_tests(tests, NULL, NULL);
     watchdog_stop();
+    sr_list_cleanup(log_history.logs);
     return ret;
 }

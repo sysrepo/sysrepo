@@ -153,6 +153,9 @@ size_t readline(int fd, char **line_p, size_t *len_p)
         } else if (0 == ret) {
             break; /* EOF */
         } else {
+            if (EWOULDBLOCK == errno || EAGAIN == errno) {
+                break; /* non-blocking file descriptor */
+            }
             assert_int_equal(EINTR, errno);
             continue;
         }
