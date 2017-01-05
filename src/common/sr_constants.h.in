@@ -53,6 +53,12 @@
 /** Controls whether thread IDs should be printed. */
 #cmakedefine LOG_THREAD_ID
 
+/** Generate config-change notifications (RFC 6470). */
+#cmakedefine ENABLE_CONFIG_CHANGE_NOTIF
+
+/** Save config-change notifications (RFC 6470) in the notification store (slows down the commit process). */
+#cmakedefine STORE_CONFIG_CHANGE_NOTIF
+
 /** Path to the directory with schemas. */
 #define SR_SCHEMA_SEARCH_DIR "@SCHEMA_SEARCH_DIR@"
 
@@ -148,7 +154,5 @@
 
 /** Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files). */
 #define SR_NOTIF_TIME_WINDOW @NOTIF_TIME_WINDOW@
-
-#cmakedefine DISABLE_CONFIG_CHANGE_NOTIF @DISABLE_CONFIG_CHANGE_NOTIF@
 
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

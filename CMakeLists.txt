@@ -138,7 +138,7 @@ CHECK_FUNCTION_EXISTS(setfsuid HAVE_SETFSUID)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
 # user options
-set(ENABLE_NACM 1 CACHE BOOL 
+set(ENABLE_NACM 1 CACHE BOOL
     "Enable NETCONF Access Control Model (RFC 6536).")
 
 set(NACM_RECOVERY_UID 0 CACHE INTEGER
@@ -153,8 +153,11 @@ set(USE_SR_MEM_MGMT 1 CACHE BOOL
 set(LOG_THREAD_ID 0 CACHE BOOL
     "If enabled, sysrepo logger will append thread ID (as well as function name) to each printed message.")
 
-set(DISABLE_CONFIG_CHANGE_NOTIF 0 CACHE BOOL
-    "Skip generation of config change notifications")
+set(ENABLE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
+    "Generate config-change notifications (RFC 6470).")
+
+set(STORE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
+    "Save config-change notifications (RFC 6470) in the notification store (slows down the commit process).")
 
 # timeouts
 set(REQUEST_TIMEOUT 3 CACHE INTEGER

@@ -2955,12 +2955,18 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
 #ifdef ENABLE_NOTIF_STORE
+#ifndef STORE_CONFIG_CHANGE_NOTIF
+    if (0 != strcmp(msg->request->event_notif_req->xpath, "/ietf-netconf-notifications:netconf-config-change")) {
+#endif /* STORE_CONFIG_CHANGE_NOTIF */
     if (!(msg->request->event_notif_req->options & SR__EVENT_NOTIF_REQ__NOTIF_FLAGS__EPHEMERAL)) {
         /* store the notification in the datastore */
         rc = np_store_event_notification(rp_ctx->np_ctx, NULL != session ? session->user_credentials : NULL,
                 msg->request->event_notif_req->xpath, msg->request->event_notif_req->timestamp, &notif_data_tree);
     }
-#endif
+#ifndef STORE_CONFIG_CHANGE_NOTIF
+    }
+#endif /* STORE_CONFIG_CHANGE_NOTIF */
+#endif /* ENABLE_NOTIF_STORE */
 
     /* get event-notification subscriptions */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS,
@@ -3090,8 +3096,10 @@ finalize:
         rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_STOP, replay_req->xpath,
                 replay_req->stop_time, sr_api_variant_gpb_to_sr(replay_req->api_variant), NULL, 0, NULL, 0,
                 replay_req->subscriber_address, replay_req->subscription_id, replay_req->stop_time);
-        CHECK_RC_LOG_GOTO(rc, finalize, "Error by scheduling the replay-stop notification to the subscriber '%s'.",
-                replay_req->subscriber_address);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Error by scheduling the replay-stop notification to the subscriber '%s'.",
+                    replay_req->subscriber_address);
+        }
     }
 
     /* set response code */
@@ -3720,7 +3728,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     pthread_rwlockattr_destroy(&attr);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Commit rwlock initialization failed.");
 
-#if defined(DISABLE_CONFIG_CHANGE_NOTIF)
+#ifndef ENABLE_CONFIG_CHANGE_NOTIF
     ctx->do_not_generate_config_change = true;
 #endif
 
