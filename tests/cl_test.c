@@ -1389,7 +1389,7 @@ cl_validate_test(void **state)
     rc = sr_validate(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* leafref: non-existing leaf and then fix it */
+    /* leafref: non-existing leaf */
     value.type = SR_UINT8_T;
     value.data.uint8_val = 18;
     rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
@@ -1408,6 +1408,7 @@ cl_validate_test(void **state)
     /* fix leafref */
     value.data.uint8_val = 17;
     rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_validate(session);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1437,6 +1438,7 @@ cl_validate_test(void **state)
     /* fix the value of "B" */
     value.data.string_val = "final-leaf";
     rc = sr_set_item(session, "/test-module:leafref-chain/B", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_validate(session);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1504,6 +1506,7 @@ cl_commit_test(void **state)
     value.type = SR_UINT8_T;
     value.data.uint8_val = 18;
     rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
@@ -1519,8 +1522,9 @@ cl_commit_test(void **state)
     /* fix leafref */
     value.data.uint8_val = 17;
     rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_commit(session);
+    rc = sr_validate(session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* leafref chain */
@@ -1548,6 +1552,7 @@ cl_commit_test(void **state)
     /* fix the value of "B" */
     value.data.string_val = "final-leaf";
     rc = sr_set_item(session, "/test-module:leafref-chain/B", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
