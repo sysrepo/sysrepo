@@ -1679,7 +1679,7 @@ np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, con
 
             /* filter out notifications not exactly matching the time interval */
             if (notification->timestamp < start_time || notification->timestamp > effective_stop_time) {
-                np_event_notification_cleanup(notification); // TODO: optimize this
+                np_event_notification_cleanup(notification);
                 notification = NULL;
                 continue;
             }

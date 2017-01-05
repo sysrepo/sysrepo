@@ -1634,7 +1634,8 @@ typedef enum sr_ev_notif_type_e {
  */
 typedef enum sr_ev_notif_flag_e {
     SR_EV_NOTIF_DEFAULT = 0,      /**< Notification will be handled normally. */
-    SR_EV_NOTIF_EPHEMERAL = 1,    /**< Notification will not be stored in the notification store. */
+    SR_EV_NOTIF_EPHEMERAL = 1,    /**< Notification will not be stored in the notification store
+                                       (and therefore will be also delivered faster). */
 } sr_ev_notif_flag_t;
 
 /**
