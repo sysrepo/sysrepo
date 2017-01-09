@@ -225,7 +225,7 @@
         reset_cb_call_count(); \
         rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT); \
         wait_ms(100); \
-        assert_int_equal(rc, SR_ERR_OK); \
+        assert_int_equal(rc, SR_ERR_NOT_FOUND); \
         verify_cb_call_count(true, 0); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
         clear_log_history(); \
@@ -236,7 +236,7 @@
         reset_cb_call_count(); \
         rc = sr_event_notif_send_tree(handler_session, XPATH, TREES, TREE_CNT); \
         wait_ms(100); \
-        assert_int_equal(rc, SR_ERR_OK); \
+        assert_int_equal(rc, SR_ERR_NOT_FOUND); \
         verify_cb_call_count(true, 0); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
         clear_log_history(); \

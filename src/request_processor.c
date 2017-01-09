@@ -2873,6 +2873,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
                         &nacm_rule, &nacm_rule_info);
                 if (SR_ERR_OK != rc || NACM_ACTION_DENY == nacm_action) {
                     rp_report_delivery_blocked(&subscriptions[i], xpath, rc, nacm_rule, nacm_rule_info);
+                    continue;
                 }
             }
 #endif
