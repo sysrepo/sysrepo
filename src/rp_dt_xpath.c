@@ -40,6 +40,8 @@ rp_dt_create_xpath_for_node(sr_mem_ctx_t *sr_mem, const struct lyd_node *node, c
        char *leaf_list_name = strstr(result, "[.='");
        if (NULL != leaf_list_name) {
            *leaf_list_name = 0;
+       } else if (NULL != (leaf_list_name = strstr(result, "[.=\""))) {
+           *leaf_list_name = 0;
        }
     }
 
