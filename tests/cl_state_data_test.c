@@ -259,8 +259,10 @@ provide_gps_located(sr_val_t **values, size_t *values_cnt, void *private_ctx) {
 }
 
 static int
-provide_seats_reserved(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
+provide_seats_reserved(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+{
     sr_list_t *l = (sr_list_t *) private_ctx;
+    int ret = 0;
 
     char *xp = strdup(xpath);
 
@@ -278,7 +280,8 @@ provide_seats_reserved(const char *xpath, sr_val_t **values, size_t *values_cnt,
     char *number = sr_xpath_key_value(xp, "seats", "number", &xp_ctx);
     int num_val = 0;
 
-    sscanf(number, "%d", &num_val);
+    ret = sscanf(number, "%d", &num_val);
+    assert_int_equal(1, ret);
 
     sr_xpath_recover(&xp_ctx);
 

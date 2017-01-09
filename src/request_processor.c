@@ -2125,6 +2125,8 @@ rp_check_exec_perm_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
         if (SR_ERR_OK == oper_rc && NACM_ACTION_DENY == nacm_action) {
             rp_report_exec_access_denied(session->dm_session, req->xpath, nacm_rule, nacm_rule_info);
         }
+        free(nacm_rule);
+        free(nacm_rule_info);
     }
     if (SR_ERR_OK != oper_rc) {
         SR_LOG_WRN("Failed to verify if the user is allowed to execute operation: %s", req->xpath);
@@ -3008,8 +3010,8 @@ finalize:
     }
 
     /* send the response with return code */
-    if (!msg->request->event_notif_req->do_not_send_reply && NULL != session) {
-        rc_tmp = sr_gpb_resp_alloc(sr_mem_msg, SR__OPERATION__EVENT_NOTIF, session->id, &resp);
+    if (!msg->request->event_notif_req->do_not_send_reply) {
+        rc_tmp = sr_gpb_resp_alloc(sr_mem_msg, SR__OPERATION__EVENT_NOTIF, session ? session->id : 0, &resp);
         if (SR_ERR_OK == rc_tmp) {
             resp->response->result = rc;
             rc = cm_msg_send(rp_ctx->cm_ctx, resp);

@@ -44,6 +44,9 @@ class SysrepoTester(Tester):
                 raise r
         self.session = sr.Session(self.sr, self.ds)
 
+    def stopSession(self):
+        self.session.session_stop()
+
     def lockStep(self):
         self.session.lock_datastore()
 

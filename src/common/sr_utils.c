@@ -848,7 +848,7 @@ sr_libyang_leaf_get_type_sch(const struct lys_node_leaf *leaf)
 sr_type_t
 sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
 {
-    switch(leaf->value_type) {
+    switch(leaf->value_type & LY_DATA_TYPE_MASK) {
         case LY_TYPE_BINARY:
             return SR_BINARY_T;
         case LY_TYPE_BITS:
@@ -1165,7 +1165,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
     CHECK_NULL_ARG2(leaf, value);
     int rc = SR_ERR_OK;
     struct lys_type *actual_type = NULL;
-    LY_DATA_TYPE type = leaf->value_type;
+    LY_DATA_TYPE type = leaf->value_type & LY_DATA_TYPE_MASK;
     const char *node_name = "(unknown)";
     if (NULL != leaf->schema && NULL != leaf->schema->name) {
         node_name = leaf->schema->name;
