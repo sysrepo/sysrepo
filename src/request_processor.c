@@ -2969,7 +2969,7 @@ finalize:
 
     /* send the response with return code */
     if (!msg->request->event_notif_req->do_not_send_reply) {
-        rc_tmp = sr_gpb_resp_alloc(sr_mem_msg, SR__OPERATION__EVENT_NOTIF, session->id, &resp);
+        rc_tmp = sr_gpb_resp_alloc(sr_mem_msg, SR__OPERATION__EVENT_NOTIF, session ? session->id : 0, &resp);
         if (SR_ERR_OK == rc_tmp) {
             resp->response->result = rc;
             rc = cm_msg_send(rp_ctx->cm_ctx, resp);
