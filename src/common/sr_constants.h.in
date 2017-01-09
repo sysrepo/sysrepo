@@ -149,4 +149,6 @@
 /** Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files). */
 #define SR_NOTIF_TIME_WINDOW @NOTIF_TIME_WINDOW@
 
+#cmakedefine DISABLE_CONFIG_CHANGE_NOTIF @DISABLE_CONFIG_CHANGE_NOTIF@
+
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

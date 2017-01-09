@@ -249,11 +249,11 @@ nacm_alloc_rule(uint16_t id, const char *name, const char *module, nacm_rule_typ
                 if (NULL != colon) {
                     char c = colon[1];
                     colon[1] = '\0';
-                    strncpy(full_node_id, node, PATH_MAX);
+                    strncpy(full_node_id, node, PATH_MAX-1);
                     colon[1] = c; /* restore */
                     node_name = full_node_id + strlen(full_node_id);
                 }
-                strncpy(node_name, colon ? colon+1 : node, PATH_MAX - (node_name - full_node_id));
+                strncpy(node_name, colon ? colon+1 : node, PATH_MAX - (node_name - full_node_id) - 1);
                 rule->data_hash += sr_str_hash(full_node_id);
                 node = sr_xpath_next_node_with_ns(NULL, &state);
             }
@@ -1185,6 +1185,11 @@ unlock_schema:
     pthread_rwlock_unlock(&schema_info->model_lock);
 
 cleanup:
+    for (size_t i = 0; i < ext_group_cnt; ++i) {
+        free(ext_groups[i]);
+    }
+    free(ext_groups);
+    free(nacm_ext_groups);
     free(module_name);
     if (SR_ERR_OK == rc) {
         *action_p = action;
@@ -1395,7 +1400,7 @@ static void
 nacm_free_data_val_ctx(nacm_data_val_ctx_t *nacm_data_val_ctx)
 {
     if (NULL == nacm_data_val_ctx) {
-        free(nacm_data_val_ctx);
+        return;
     }
 
     sr_bitset_cleanup(nacm_data_val_ctx->rule_lists);

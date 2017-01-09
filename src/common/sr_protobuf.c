@@ -1656,7 +1656,9 @@ sr_values_sr_to_gpb(const sr_val_t *sr_values, const size_t sr_value_cnt, Sr__Va
 cleanup:
     if (NULL == sr_mem) {
         for (size_t i = 0; i < sr_value_cnt; i++) {
-            sr__value__free_unpacked(gpb_values[i], NULL);
+            if (NULL != gpb_values[i]) {
+                sr__value__free_unpacked(gpb_values[i], NULL);
+            }
         }
         free(gpb_values);
     } else {

@@ -42,6 +42,8 @@ test_rp_ctx_create(cm_connection_mode_t conn_mode, rp_ctx_t **rp_ctx_p)
     ctx = calloc(1, sizeof(*ctx));
     assert_non_null(ctx);
 
+    ctx->do_not_generate_config_change = true;
+
     rc = ac_init(TEST_DATA_SEARCH_DIR, &ctx->ac_ctx);
     assert_int_equal(SR_ERR_OK, rc);
 

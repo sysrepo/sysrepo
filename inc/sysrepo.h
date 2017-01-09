@@ -551,6 +551,13 @@ int sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_
  */
 int sr_set_error(sr_session_ctx_t *session, const char *message, const char *xpath);
 
+/**
+ * @brief Returns the assigned id of the session. Can be used to pair the session with
+ * netconf-config-change notification initiator.
+ * @param [in] session
+ * @return session id or 0 in case of error
+ */
+uint32_t sr_session_get_id(sr_session_ctx_t *session);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Data Retrieval API (get / get-config functionality)

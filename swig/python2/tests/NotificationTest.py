@@ -123,7 +123,7 @@ class NotificationTest(unittest.TestCase):
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
+        subscriber.add_step(subscriber.waitTimeoutStep, 0.4)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
 
@@ -212,7 +212,7 @@ class NotificationTest(unittest.TestCase):
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
+        subscriber.add_step(subscriber.waitTimeoutStep, 0.4)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
 
@@ -297,7 +297,7 @@ class NotificationTest(unittest.TestCase):
         subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.waitStep)
+        tester.add_step(tester.waitTimeoutStep, 0.4)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
@@ -402,7 +402,7 @@ class NotificationTest(unittest.TestCase):
         subscriber4.add_step(subscriber4.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.waitStep)
+        tester.add_step(tester.waitTimeoutStep, 0.4)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
@@ -483,7 +483,7 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.waitStep)
+        tester.add_step(tester.waitTimeoutStep, 0.2)
         subscriber.add_step(subscriber.waitStep)
 
         srd.add_step(srd.waitStep)
@@ -544,7 +544,7 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.waitStep)
+        tester.add_step(tester.waitTimeoutStep, 0.4)
         subscriber.add_step(subscriber.waitStep)
 
 

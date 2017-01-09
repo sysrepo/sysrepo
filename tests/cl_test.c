@@ -38,6 +38,8 @@
 #include "test_module_helper.h"
 #include "system_helper.h"
 
+#define COND_WAIT_SEC 5
+
 static int
 logging_setup(void **state)
 {
@@ -1186,7 +1188,7 @@ cl_set_item_test(void **state)
 
     rc = sr_set_item(session, "/test-module:tpdfs/undecided", &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
-    
+
     value.type = SR_INSTANCEID_T;
     value.data.instanceid_val = "/test-module:main";
 
@@ -1387,11 +1389,26 @@ cl_validate_test(void **state)
     rc = sr_validate(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* leafref: non-existing leaf an error is returned by set_item* call */
+    /* leafref: non-existing leaf */
     value.type = SR_UINT8_T;
     value.data.uint8_val = 18;
     rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    rc = sr_validate(session);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+
+    /* print out all errors (if any) */
+    rc = sr_get_last_errors(session, &errors, &error_cnt);
+    if (error_cnt > 0) {
+        for (size_t i = 0; i < error_cnt; i++) {
+            printf("Error[%zu]: %s: %s\n", i, errors[i].xpath, errors[i].message);
+        }
+    }
+
+    /* fix leafref */
+    value.data.uint8_val = 17;
+    rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_validate(session);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1421,6 +1438,7 @@ cl_validate_test(void **state)
     /* fix the value of "B" */
     value.data.string_val = "final-leaf";
     rc = sr_set_item(session, "/test-module:leafref-chain/B", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_validate(session);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1488,9 +1506,25 @@ cl_commit_test(void **state)
     value.type = SR_UINT8_T;
     value.data.uint8_val = 18;
     rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+
+    /* print out all errors (if any) */
+    rc = sr_get_last_errors(session, &errors, &error_cnt);
+    if (error_cnt > 0) {
+        for (size_t i = 0; i < error_cnt; i++) {
+            printf("Error[%zu]: %s: %s\n", i, errors[i].xpath, errors[i].message);
+        }
+    }
+
+    /* fix leafref */
+    value.data.uint8_val = 17;
+    rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_validate(session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* leafref chain */
@@ -1518,6 +1552,7 @@ cl_commit_test(void **state)
     /* fix the value of "B" */
     value.data.string_val = "final-leaf";
     rc = sr_set_item(session, "/test-module:leafref-chain/B", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
@@ -3812,6 +3847,8 @@ cl_candidate_refresh(void **state)
 
 #define MAX_CHANGE 150
 typedef struct changes_s{
+    pthread_mutex_t mutex;
+    pthread_cond_t cv;
     size_t cnt;
     sr_val_t *new_values[MAX_CHANGE];
     sr_val_t *old_values[MAX_CHANGE];
@@ -3824,6 +3861,8 @@ list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_eve
     changes_t *ch = (changes_t *) private_ctx;
     sr_change_iter_t *it = NULL;
     int rc = SR_ERR_OK;
+
+    pthread_mutex_lock(&ch->mutex);
     rc = sr_get_changes_iter(session, "/example-module:container", &it);
     puts("Iteration over changes started");
     if (SR_ERR_OK != rc) {
@@ -3843,6 +3882,8 @@ list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_eve
     }
 
 cleanup:
+    pthread_cond_signal(&ch->cv);
+    pthread_mutex_unlock(&ch->mutex);
     sr_free_change_iter(it);
     return SR_ERR_OK;
 }
@@ -3854,8 +3895,9 @@ cl_get_changes_iter_test(void **state)
     assert_non_null(conn);
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
-    changes_t changes = {0};
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER};
     sr_change_iter_t *iter = NULL;
+    struct timespec ts;
 
     sr_val_t *val = NULL;
     const char *xpath = NULL;
@@ -3883,11 +3925,14 @@ cl_get_changes_iter_test(void **state)
     /* remove the list instance */
     rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
 
+    pthread_mutex_lock(&changes.mutex);
     /* save changes to running */
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    usleep(100000);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     assert_int_equal(changes.cnt, 1);
     for (size_t i = 0; i < changes.cnt; i++) {
@@ -3895,6 +3940,10 @@ cl_get_changes_iter_test(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+
+    pthread_mutex_unlock(&changes.mutex);
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -3910,10 +3959,11 @@ cl_get_changes_iter_multi_test(void **state)
     assert_non_null(conn);
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
-    changes_t changes = { 0, };
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER };
     sr_val_t val = { 0, };
     char xpath[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
+    struct timespec ts;
 
     /* start session */
     rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
@@ -3934,11 +3984,14 @@ cl_get_changes_iter_multi_test(void **state)
         assert_int_equal(rc, SR_ERR_OK);
     }
 
+    pthread_mutex_lock(&changes.mutex);
     /* save changes to running */
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    usleep(100000);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     assert_int_equal(changes.cnt, 120);
     for (size_t i = 0; i < changes.cnt; i++) {
@@ -3962,7 +4015,9 @@ cl_get_changes_iter_multi_test(void **state)
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    usleep(100000);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     assert_int_equal(changes.cnt, 150);
     for (size_t i = 0; i < changes.cnt; i++) {
@@ -3982,7 +4037,9 @@ cl_get_changes_iter_multi_test(void **state)
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    usleep(100000);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     assert_int_equal(changes.cnt, 30);
     for (size_t i = 0; i < changes.cnt; i++) {
@@ -3990,6 +4047,10 @@ cl_get_changes_iter_multi_test(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+
+    pthread_mutex_unlock(&changes.mutex);
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -5405,6 +5466,23 @@ cl_get_schema_with_subscription(void **state)
     sr_session_stop(session);
 }
 
+static void
+cl_session_get_id_test (void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    int rc = SR_ERR_OK;
+
+    assert_int_equal(0, sr_session_get_id(session));
+
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_not_equal(0, sr_session_get_id(session));
+
+    sr_session_stop(session);
+}
+
 int
 main()
 {
@@ -5459,6 +5537,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_data_in_submodule, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_schema_with_subscription, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_set_item_str_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_session_get_id_test, sysrepo_setup, sysrepo_teardown),
     };
 
     watchdog_start(300);

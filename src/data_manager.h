@@ -181,6 +181,7 @@ typedef struct dm_commit_context_s {
     sr_error_info_t *errors;    /**< errors returned by verifiers */
     size_t err_cnt;             /**< number of errors from verifiers */
     sr_list_t *err_subs_xpaths; /**< subscriptions that returned an error */
+    bool disabled_config_change;/**< flag whether config change notification are disabled */
 } dm_commit_context_t;
 
 /**
@@ -1075,6 +1076,15 @@ int dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const
  *
  */
 int dm_get_nacm_ctx(dm_ctx_t *dm_ctx, nacm_ctx_t **nacm_ctx);
+
+/**
+ * @brief Returns pointer to the session's data trees.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [out] session_models
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_get_session_datatrees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_btree_t **session_models);
 
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */
