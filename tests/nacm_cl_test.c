@@ -194,10 +194,10 @@
         assert_int_equal(1, get_cb_call_count()); \
     } while (0)
 
-#define EVENT_NOTIF_PERMITED(SESSION, XPATH, VALUES, VALUE_CNT) \
+#define EVENT_NOTIF_PERMITED(XPATH, VALUES, VALUE_CNT) \
     do { \
         reset_cb_call_count(); \
-        rc = sr_event_notif_send(sessions[SESSION], XPATH, VALUES, VALUE_CNT); \
+        rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT); \
         wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_int_equal(1, get_cb_call_count()); \
@@ -206,10 +206,10 @@
         clear_log_history(); \
     } while (0)
 
-#define EVENT_NOTIF_DENIED(SESSION, XPATH, VALUES, VALUE_CNT, RULE, RULE_INFO) \
+#define EVENT_NOTIF_DENIED(XPATH, VALUES, VALUE_CNT, RULE, RULE_INFO) \
     do { \
         reset_cb_call_count(); \
-        rc = sr_event_notif_send(sessions[SESSION], XPATH, VALUES, VALUE_CNT); \
+        rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT); \
         wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_int_equal(0, get_cb_call_count()); \
@@ -217,10 +217,10 @@
         clear_log_history(); \
     } while (0)
 
-#define EVENT_NOTIF_PERMITED_TREE(SESSION, XPATH, TREES, TREE_CNT) \
+#define EVENT_NOTIF_PERMITED_TREE(XPATH, TREES, TREE_CNT) \
     do { \
         reset_cb_call_count(); \
-        rc = sr_event_notif_send_tree(sessions[SESSION], XPATH, TREES, TREE_CNT); \
+        rc = sr_event_notif_send_tree(handler_session, XPATH, TREES, TREE_CNT); \
         wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_int_equal(1, get_cb_call_count()); \
@@ -229,10 +229,10 @@
         clear_log_history(); \
     } while (0)
 
-#define EVENT_NOTIF_DENIED_TREE(SESSION, XPATH, TREES, TREE_CNT, RULE, RULE_INFO) \
+#define EVENT_NOTIF_DENIED_TREE(XPATH, TREES, TREE_CNT, RULE, RULE_INFO) \
     do { \
         reset_cb_call_count(); \
-        rc = sr_event_notif_send_tree(sessions[SESSION], XPATH, TREES, TREE_CNT); \
+        rc = sr_event_notif_send_tree(handler_session, XPATH, TREES, TREE_CNT); \
         wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_int_equal(0, get_cb_call_count()); \
@@ -712,27 +712,27 @@ dummy_event_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, con
 }
 
 static void
-subscribe_dummy_event_notif_callback(sr_session_ctx_t *handler_session, void *private_ctx, sr_subscription_ctx_t **subscription)
+subscribe_dummy_event_notif_callback(sr_session_ctx_t *user_session, void *private_ctx, sr_subscription_ctx_t **subscription)
 {
     int rc = SR_ERR_OK;
 
     /* subscribe for Event notifications with dummy callback */
-    rc = sr_event_notif_subscribe(handler_session, "/test-module:link-discovered",
+    rc = sr_event_notif_subscribe(user_session, "/test-module:link-discovered",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_DEFAULT, subscription);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_event_notif_subscribe(handler_session, "/test-module:link-removed",
+    rc = sr_event_notif_subscribe(user_session, "/test-module:link-removed",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_event_notif_subscribe(handler_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
+    rc = sr_event_notif_subscribe(user_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_event_notif_subscribe(handler_session, "/turing-machine:halted",
+    rc = sr_event_notif_subscribe(user_session, "/turing-machine:halted",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_event_notif_subscribe(handler_session, "/ietf-netconf-notifications:netconf-capability-change",
+    rc = sr_event_notif_subscribe(user_session, "/ietf-netconf-notifications:netconf-capability-change",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_event_notif_subscribe(handler_session, "/nc-notifications:replayComplete",
+    rc = sr_event_notif_subscribe(user_session, "/nc-notifications:replayComplete",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1277,48 +1277,29 @@ nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
         skip();
     }
 
-    /* prepare for notification delivery */
+    /* start all sessions */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_event_notif_callback(handler_session, NULL, &subscription);
+
+    /***** subscribe for notifications with sysrepo-user1 *****/
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:link-discovered"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* test Event notification "link-removed" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:link-removed"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* test Event notification "status-change" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* test Event notification "halted" from turing-machine */
 #undef EVENT_NOTIF_XPATH
@@ -1329,15 +1310,8 @@ nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
     assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
     trees[0].type = SR_UINT16_T;
     trees[0].data.uint16_val = 13;
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, values, 1);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, trees, 1);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, values, 1);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, trees, 1);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, values, 1);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, trees, 1);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -1350,32 +1324,136 @@ nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
     trees[0].type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, values, 1);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, trees, 1);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, values, 1);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, trees, 1);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, values, 1);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, trees, 1);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
     sr_free_val(values);
     sr_free_tree(trees);
 
     /* test Event notification "replayComplete" from nc-notifications */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
-    /* unsubscribe */
+    /* unsubscribe sysrepo-user1 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /***** subscribe for notifications with sysrepo-user2 *****/
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user2 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /***** subscribe for notifications with sysrepo-user3 *****/
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user3 */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1403,48 +1481,29 @@ nacm_cl_test_event_notif_acl(void **state)
         skip();
     }
 
-    /* prepare for notification delivery */
+    /* start all sessions */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_event_notif_callback(handler_session, NULL, &subscription);
+
+    /***** subscribe for notifications with sysrepo-user1 *****/
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:link-discovered"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
-    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
-    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
 
     /* test Event notification "link-removed" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:link-removed"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
-    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* test Event notification "status-change" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* test Event notification "halted" from turing-machine */
 #undef EVENT_NOTIF_XPATH
@@ -1455,15 +1514,8 @@ nacm_cl_test_event_notif_acl(void **state)
     assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
     trees[0].type = SR_UINT16_T;
     trees[0].data.uint16_val = 13;
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, values, 1);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, trees, 1);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
-    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
-    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -1476,30 +1528,141 @@ nacm_cl_test_event_notif_acl(void **state)
     trees[0].type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
-    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
     sr_free_val(values);
     sr_free_tree(trees);
 
     /* test Event notification "replayComplete" from nc-notifications */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user1 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /***** subscribe for notifications with sysrepo-user2 *****/
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
     /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    /*  -> sysrepo-user2 */
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user2 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /***** subscribe for notifications with sysrepo-user3 *****/
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user3 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
@@ -1529,48 +1692,29 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
         skip();
     }
 
-    /* prepare for notification delivery */
+    /* start all sessions */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_event_notif_callback(handler_session, NULL, &subscription);
+
+    /***** subscribe for notifications with sysrepo-user1 *****/
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:link-discovered"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
-    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
-    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
 
     /* test Event notification "link-removed" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:link-removed"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
-    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
 
     /* test Event notification "status-change" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
 
     /* test Event notification "halted" from turing-machine */
 #undef EVENT_NOTIF_XPATH
@@ -1581,15 +1725,8 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
     assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
     trees[0].type = SR_UINT16_T;
     trees[0].data.uint16_val = 13;
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, values, 1, "", "");
-    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, trees, 1, "", "");
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
-    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
-    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "", "");
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -1602,30 +1739,138 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
     trees[0].type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
-    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
     sr_free_val(values);
     sr_free_tree(trees);
 
     /* test Event notification "replayComplete" from nc-notifications */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user1 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /***** subscribe for notifications with sysrepo-user2 *****/
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user2 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /***** subscribe for notifications with sysrepo-user3 *****/
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user3 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
@@ -1655,48 +1900,29 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
         skip();
     }
 
-    /* prepare for notification delivery */
+    /* start all sessions */
     start_user_sessions(conn, &handler_session, &sessions);
-    subscribe_dummy_event_notif_callback(handler_session, NULL, &subscription);
+
+    /***** subscribe for notifications with sysrepo-user1 *****/
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:link-discovered"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
-    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
-    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
-    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
 
     /* test Event notification "link-removed" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:link-removed"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
-    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
-    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
-    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
 
     /* test Event notification "status-change" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* test Event notification "halted" from turing-machine */
 #undef EVENT_NOTIF_XPATH
@@ -1707,15 +1933,8 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
     assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
     trees[0].type = SR_UINT16_T;
     trees[0].data.uint16_val = 13;
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, values, 1);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, trees, 1);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
-    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
-    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -1728,30 +1947,138 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
     trees[0].type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_DENIED(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
-    EVENT_NOTIF_DENIED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_DENIED(1, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
-    EVENT_NOTIF_DENIED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_DENIED(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
-    EVENT_NOTIF_DENIED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
     sr_free_val(values);
     sr_free_tree(trees);
 
     /* test Event notification "replayComplete" from nc-notifications */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    /*  -> sysrepo-user1 */
-    EVENT_NOTIF_PERMITED(0, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(0, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(1, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(1, EVENT_NOTIF_XPATH, NULL, 0);
-    /*  -> sysrepo-user3 */
-    EVENT_NOTIF_PERMITED(2, EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(2, EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user1 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /***** subscribe for notifications with sysrepo-user2 *****/
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user2 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /***** subscribe for notifications with sysrepo-user3 *****/
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "deny-halted", "Not allowed to receive 'halted' notification from any module.");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user3 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
@@ -1769,10 +2096,12 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
 int
 main() {
     const struct CMUnitTest tests[] = {
+#if 0
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_denied_exec_by_dflt, sysrepo_setup_with_denied_exec_by_dflt, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
+#endif
             cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl_with_denied_read_by_dflt, sysrepo_setup_with_denied_read_by_dflt, sysrepo_teardown),
