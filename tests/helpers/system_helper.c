@@ -167,7 +167,7 @@ size_t readline(int fd, char **line_p, size_t *len_p)
     return n;
 }
 
-static void
+void
 print_backtrace()
 {
 #ifdef __linux__

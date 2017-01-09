@@ -68,16 +68,23 @@
 
 #define CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO) \
     do { \
+        escaped_xpath = escape(XPATH); \
         if (strlen(RULE) && strlen(RULE_INFO)) { \
-            verify_existence_of_log_msg("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                        "was blocked by the NACM rule '" RULE "' (" RULE_INFO").\n", true); \
+            assert_int_equal(SR_ERR_OK, \
+                             sr_asprintf(&regex, "\\[DBG\\] .* Delivery of the notification '%s' for subscription '[^']+' @ [0-9]+ " \
+                                                 "was blocked by the NACM rule '%s' \\(%s\\).\n", escaped_xpath, RULE, RULE_INFO)); \
         } else if (strlen(RULE)) { \
-            verify_existence_of_log_msg("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                        "was blocked by the NACM rule '" RULE "'.\n", true); \
+            assert_int_equal(SR_ERR_OK, \
+                             sr_asprintf(&regex, "\\[DBG\\] .* Delivery of the notification '%s' for subscription '[^']+' @ [0-9]+ " \
+                                                 "was blocked by the NACM rule '%s'.\n", escaped_xpath, RULE)); \
         } else { \
-            verify_existence_of_log_msg("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                        "was blocked by NACM.\n", true); \
+            assert_int_equal(SR_ERR_OK, \
+                             sr_asprintf(&regex, "\\[DBG\\] .* Delivery of the notification '%s' for subscription '[^']+' @ [0-9]+ " \
+                                                 "was blocked by NACM.\n", escaped_xpath)); \
         }\
+        verify_existence_of_log_msg(regex, true); \
+        free(regex); regex = NULL; \
+        free(escaped_xpath); escaped_xpath = NULL; \
     } while (0)
 
 #define RPC_DENIED(SESSION, XPATH, INPUT, INPUT_CNT, RULE, RULE_INFO) \
@@ -202,8 +209,13 @@
         rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT); \
         assert_int_equal(rc, SR_ERR_OK); \
         verify_cb_call_count(true, 1); \
-        verify_existence_of_log_msg("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                    "was blocked by .*NACM.*", false); \
+        escaped_xpath = escape(XPATH); \
+        assert_int_equal(SR_ERR_OK, \
+                         sr_asprintf(&regex, "\\[DBG\\] .* Delivery of the notification '%s' for subscription '[^']+' @ [0-9]+ " \
+                                             "was blocked by .*NACM.*", escaped_xpath)); \
+        verify_existence_of_log_msg(regex, false); \
+        free(escaped_xpath); escaped_xpath = NULL; \
+        free(regex); regex = NULL; \
         clear_log_history(); \
     } while (0)
 
@@ -213,8 +225,13 @@
         rc = sr_event_notif_send_tree(handler_session, XPATH, TREES, TREE_CNT); \
         assert_int_equal(rc, SR_ERR_OK); \
         verify_cb_call_count(true, 1); \
-        verify_existence_of_log_msg("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                    "was blocked by .*NACM.*", false); \
+        escaped_xpath = escape(XPATH); \
+        assert_int_equal(SR_ERR_OK, \
+                         sr_asprintf(&regex, "\\[DBG\\] .* Delivery of the notification '%s' for subscription '[^']+' @ [0-9]+ " \
+                                             "was blocked by .*NACM.*", escaped_xpath)); \
+        verify_existence_of_log_msg(regex, false); \
+        free(escaped_xpath); escaped_xpath = NULL; \
+        free(regex); regex = NULL; \
         clear_log_history(); \
     } while (0)
 
@@ -298,6 +315,9 @@ verify_cb_call_count(bool async_cb, int exp_count)
         }
     } while (async_cb && count < exp_count && attempt < MAX_ATTEMPTS);
 
+    if (exp_count != count) {
+        print_backtrace();
+    }
     assert_int_equal(exp_count, count);
 }
 
@@ -443,6 +463,36 @@ clear_log_history()
     pthread_mutex_unlock(&log_history.lock);
 }
 
+static char *
+escape(const char *regex)
+{
+    assert_non_null(regex);
+    static char *special_chars = ".^$*+?()[{\\|^-]";
+    char *escaped = NULL;
+    size_t new_size = strlen(regex);
+    int pos = 0;
+
+    for (size_t i = 0; i < strlen(regex); ++i) {
+        if (strchr(special_chars, regex[i])) {
+            new_size++;
+        }
+    }
+
+    escaped = calloc(new_size+1, sizeof *escaped);
+    assert_non_null(escaped);
+
+    for (size_t i = 0; i < strlen(regex); ++i) {
+        if (strchr(special_chars, regex[i])) {
+            escaped[pos] = '\\';
+            ++pos;
+        }
+        escaped[pos++] = regex[i];
+    }
+
+    escaped[pos] = '\0';
+    return escaped;
+}
+
 static void
 verify_existence_of_log_msg(const char *msg_re, bool should_exist)
 {
@@ -466,13 +516,13 @@ verify_existence_of_log_msg(const char *msg_re, bool should_exist)
             if (0 == regexec(&re, message, 0, NULL, 0)) {
                 exists = true;
             }
-
+#ifdef DEBUG
             printf("REGEX TEST BEGIN -------------\n");
             printf("Regex: %s\n", msg_re);
             printf("Message: %s\n", message);
             printf("Matches: %s\n", exists ? "YES" : "NO");
             printf("REGEX TEST END -------------\n");
-
+#endif
             regfree(&re);
         }
         already_checked = log_history.logs->count;
@@ -484,6 +534,9 @@ verify_existence_of_log_msg(const char *msg_re, bool should_exist)
         }
     } while (should_exist && !exists && attempt < MAX_ATTEMPTS);
 
+    if (should_exist != exists) {
+        print_backtrace();
+    }
     assert_true(should_exist == exists);
 #endif
 }
@@ -1287,6 +1340,7 @@ nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *values = NULL;
     sr_node_t *trees = NULL, *node = NULL;
+    char *escaped_xpath = NULL, *regex = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1355,7 +1409,7 @@ nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /***** subscribe for notifications with sysrepo-user2 *****/
-    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+    subscribe_dummy_event_notif_callback(sessions[1], NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
@@ -1414,7 +1468,7 @@ nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /***** subscribe for notifications with sysrepo-user3 *****/
-    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+    subscribe_dummy_event_notif_callback(sessions[2], NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
@@ -1491,6 +1545,7 @@ nacm_cl_test_event_notif_acl(void **state)
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *values = NULL;
     sr_node_t *trees = NULL, *node = NULL;
+    char *escaped_xpath = NULL, *regex = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1543,8 +1598,8 @@ nacm_cl_test_event_notif_acl(void **state)
     trees[0].type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -1559,7 +1614,7 @@ nacm_cl_test_event_notif_acl(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /***** subscribe for notifications with sysrepo-user2 *****/
-    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+    subscribe_dummy_event_notif_callback(sessions[1], NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
@@ -1577,7 +1632,6 @@ nacm_cl_test_event_notif_acl(void **state)
     /* test Event notification "status-change" */
 #undef EVENT_NOTIF_XPATH
 #define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
-
     EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
     EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
@@ -1605,8 +1659,8 @@ nacm_cl_test_event_notif_acl(void **state)
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
     /*  -> sysrepo-user2 */
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -1621,7 +1675,7 @@ nacm_cl_test_event_notif_acl(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /***** subscribe for notifications with sysrepo-user3 *****/
-    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+    subscribe_dummy_event_notif_callback(sessions[2], NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
@@ -1664,8 +1718,8 @@ nacm_cl_test_event_notif_acl(void **state)
     trees[0].type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
-    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
-    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -1676,10 +1730,6 @@ nacm_cl_test_event_notif_acl(void **state)
     EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* unsubscribe sysrepo-user3 */
-    rc = sr_unsubscribe(NULL, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1702,6 +1752,7 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *values = NULL;
     sr_node_t *trees = NULL, *node = NULL;
+    char *escaped_xpath = NULL, *regex = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1754,8 +1805,8 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
     trees[0].type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
-    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "", "");
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -1770,7 +1821,7 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /***** subscribe for notifications with sysrepo-user2 *****/
-    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+    subscribe_dummy_event_notif_callback(sessions[1], NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
@@ -1813,8 +1864,8 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
     trees[0].type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
-    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "", "");
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -1829,7 +1880,7 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /***** subscribe for notifications with sysrepo-user3 *****/
-    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+    subscribe_dummy_event_notif_callback(sessions[2], NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
@@ -1872,8 +1923,8 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
     trees[0].type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
-    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
-    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -1884,10 +1935,6 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
     EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* unsubscribe sysrepo-user3 */
-    rc = sr_unsubscribe(NULL, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1910,6 +1957,7 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
     sr_subscription_ctx_t *subscription = NULL;
     sr_val_t *values = NULL;
     sr_node_t *trees = NULL, *node = NULL;
+    char *escaped_xpath = NULL, *regex = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1962,8 +2010,8 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
     trees[0].type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
-    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
-    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -1978,7 +2026,7 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /***** subscribe for notifications with sysrepo-user2 *****/
-    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+    subscribe_dummy_event_notif_callback(sessions[1], NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
@@ -2021,8 +2069,8 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
     trees[0].type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
-    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
-    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -2037,7 +2085,7 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /***** subscribe for notifications with sysrepo-user3 *****/
-    subscribe_dummy_event_notif_callback(sessions[0], NULL, &subscription);
+    subscribe_dummy_event_notif_callback(sessions[2], NULL, &subscription);
 
     /* test Event notification "link-discovered" */
 #undef EVENT_NOTIF_XPATH
@@ -2080,8 +2128,8 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
     trees[0].type = SR_CONTAINER_T;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
     node->type = SR_LEAF_EMPTY_T;
-    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
-    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, values, 1, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
     sr_free_val(values);
     sr_free_tree(trees);
 
@@ -2092,10 +2140,6 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
     EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* unsubscribe sysrepo-user3 */
-    rc = sr_unsubscribe(NULL, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -2111,12 +2155,10 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
 int
 main() {
     const struct CMUnitTest tests[] = {
-#if 0
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_denied_exec_by_dflt, sysrepo_setup_with_denied_exec_by_dflt, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
-#endif
             cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl_with_denied_read_by_dflt, sysrepo_setup_with_denied_read_by_dflt, sysrepo_teardown),

@@ -34,6 +34,11 @@
 pid_t sr_popen(const char *command, int *stdin_p, int *stdout_p, int *stderr_p);
 
 /**
+ * @brief Print current backtrace to stderr.
+ */
+void print_backtrace();
+
+/**
  * @brief Reads an entire line from a file, storing the address of the buffer
  * containing the text into *line_p. The buffer is null-terminated and includes
  * the newline character, if one was found.
