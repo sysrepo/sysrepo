@@ -333,6 +333,7 @@ dm_insert_data_info_copy(sr_btree_t *tree, const dm_data_info_t *di)
         copy->node = sr_dup_datatree(di->node);
         CHECK_NULL_NOMEM_GOTO(copy->node, rc, cleanup);
     }
+
     pthread_mutex_lock(&di->schema->usage_count_mutex);
     di->schema->usage_count++;
     SR_LOG_DBG("Usage count %s incremented (value=%zu)", di->schema->module_name, di->schema->usage_count);
@@ -3116,6 +3117,8 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             di = calloc(1, sizeof(*di));
             CHECK_NULL_NOMEM_GOTO(di, rc, cleanup);
             di->node = sr_dup_datatree(info->node);
+            /* set flag to true to force the validation */
+            di->modified = true;
             if (NULL != info->node && NULL == di->node) {
                 SR_LOG_ERR_MSG("Data tree duplication failed");
                 rc = SR_ERR_INTERNAL;
@@ -3158,6 +3161,8 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 /* we can reuse data that were just read from file system */
                 rc = dm_insert_data_info_copy(c_ctx->prev_data_trees, di);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Insert data info copy failed");
+                /* set flag to true to force the validation */
+                di->modified = true;
             }
         }
 
@@ -4593,7 +4598,7 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
     node = proc_node;
     while (false == ext_ref && (!backtracking || node != proc_node)) {
         if (false == backtracking) {
-            if (node->flags & LYS_VALID_DEP) {
+            if (node->flags & (LYS_XPATH_DEP | LYS_LEAFREF_DEP)) {
                 ext_ref = true; /* reference outside the procedure subtree */
             }
             if (node->child) {

@@ -227,7 +227,6 @@ cl_get_changes_create_test(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
-
     pthread_mutex_unlock(&changes.mutex);
 
     pthread_mutex_destroy(&changes.mutex);
@@ -300,10 +299,10 @@ cl_get_changes_modified_test(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+    pthread_mutex_unlock(&changes.mutex);
 
     sr_free_val(val);
     sr_free_tree(tree);
-    pthread_mutex_unlock(&changes.mutex);
 
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
@@ -1533,6 +1532,7 @@ cl_combined_subscribers(void **state)
         sr_clock_get_time(CLOCK_REALTIME, &ts);
         ts.tv_sec += COND_WAIT_SEC;
         pthread_cond_timedwait(&changesA.cv, &changesA.mutex, &ts);
+        pthread_mutex_unlock(&changesA.mutex);
     }
 
     assert_int_equal(changesV.cnt, 3);
@@ -1570,6 +1570,7 @@ cl_combined_subscribers(void **state)
         sr_free_val(changesV.new_values[i]);
         sr_free_val(changesV.old_values[i]);
     }
+    pthread_mutex_unlock(&changesV.mutex);
 
     for (size_t i = 0; i < changesA.cnt; i++) {
         sr_free_val(changesA.new_values[i]);
@@ -1649,6 +1650,7 @@ cl_successful_verifiers(void **state)
         sr_clock_get_time(CLOCK_REALTIME, &ts);
         ts.tv_sec += COND_WAIT_SEC;
         pthread_cond_timedwait(&changesB.cv, &changesB.mutex, &ts);
+        pthread_mutex_unlock(&changesB.mutex);
     }
 
     assert_int_equal(changesA.cnt, 3);
@@ -1686,6 +1688,7 @@ cl_successful_verifiers(void **state)
         sr_free_val(changesA.new_values[i]);
         sr_free_val(changesA.old_values[i]);
     }
+    pthread_mutex_unlock(&changesA.mutex);
 
     for (size_t i = 0; i < changesB.cnt; i++) {
         sr_free_val(changesB.new_values[i]);
@@ -2030,6 +2033,7 @@ cl_subtree_verifier(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+    pthread_mutex_unlock(&changes.mutex);
 
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
@@ -2119,6 +2123,7 @@ cl_enabled_notifications(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+    pthread_mutex_unlock(&changes.mutex);
 
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
@@ -2166,6 +2171,7 @@ cl_subtree_enabled_notifications(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+    pthread_mutex_unlock(&changes.mutex);
 
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
@@ -2225,6 +2231,7 @@ cl_multiple_enabled_notifications(void **state)
         sr_free_val(changesA.new_values[i]);
         sr_free_val(changesA.old_values[i]);
     }
+    pthread_mutex_unlock(&changesA.mutex);
 
     pthread_mutex_destroy(&changesA.mutex);
     pthread_cond_destroy(&changesA.cv);
@@ -2241,6 +2248,7 @@ cl_multiple_enabled_notifications(void **state)
         sr_free_val(changesB.new_values[i]);
         sr_free_val(changesB.old_values[i]);
     }
+    pthread_mutex_unlock(&changesB.mutex);
 
     pthread_mutex_destroy(&changesB.mutex);
     pthread_cond_destroy(&changesB.cv);
@@ -2291,6 +2299,7 @@ cl_subtree_empty_enabled_notifications(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+    pthread_mutex_unlock(&changes.mutex);
 
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
@@ -2348,6 +2357,7 @@ cl_module_empty_enabled_notifications(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+    pthread_mutex_unlock(&changes.mutex);
 
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
