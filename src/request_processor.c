@@ -2873,13 +2873,19 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     dm_session_t *dm_session = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
-    CHECK_NULL_ARG_NORET5(rc, session, rp_ctx, msg, msg->request, msg->request->event_notif_req);
+    CHECK_NULL_ARG_NORET4(rc, rp_ctx, msg, msg->request, msg->request->event_notif_req);
     if (SR_ERR_OK != rc) {
         goto finalize;
     }
 
     SR_LOG_DBG_MSG("Processing event notification request.");
-    dm_session = session->dm_session;
+
+    if (NULL != session) {
+        dm_session = session->dm_session;
+    } else {
+        rc = dm_session_start(rp_ctx->dm_ctx, NULL, SR_DS_RUNNING, &dm_session);
+        CHECK_RC_MSG_GOTO(rc, finalize, "Failed to create temporary dm_session");
+    }
 
     /* parse input arguments */
     sr_mem_msg = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
