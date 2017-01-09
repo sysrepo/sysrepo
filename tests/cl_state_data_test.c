@@ -714,6 +714,33 @@ cl_dp_traffic_light(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
     return 0;
 }
 
+static int
+cl_dp_card_state(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+{
+    sr_val_t *v = NULL;
+    int rc = SR_ERR_OK;
+
+    sr_list_t *l = (sr_list_t *) private_ctx;
+    if (0 != sr_list_add(l, strdup(xpath))) {
+        SR_LOG_ERR_MSG("Error while adding into list");
+    }
+
+    /* allocate space for data to return */
+    rc = sr_new_values(1, &v);
+    if (SR_ERR_OK != rc) {
+        return rc;
+    }
+
+    sr_val_build_xpath(&v[0], "%s/%s", xpath, "c_state");
+    sr_val_set_str_data(&v[0], SR_STRING_T, "OK");
+
+    *values = v;
+    *values_cnt = 1;
+
+    return SR_ERR_OK;
+}
+
+
 static void
 cl_parent_subscription(void **state)
 {
@@ -3012,6 +3039,65 @@ cl_type_not_filled_by_dp(void **state)
 
 }
 
+static void
+cl_state_data_in_grouping(void **state)
+{
+   sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_list_t *xpath_retrieved = NULL;
+    sr_val_t *values = NULL;
+    size_t cnt = 0;
+    int rc = SR_ERR_OK;
+
+    rc = sr_list_init(&xpath_retrieved);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe data providers */
+    rc = sr_dp_get_items_subscribe(session, "/state-module:cards/card/state", cl_dp_card_state, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_set_item(session, "/state-module:cards/card[dn='abc']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_set_item(session, "/state-module:cards/card[dn='def']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+
+    /* retrieve data */
+    rc = sr_get_items(session, "/state-module:cards//*", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check data */
+    sr_free_values(values, cnt);
+
+    /* check xpath that were retrieved */
+    const char *xpath_expected_to_be_loaded [] = {
+        "/state-module:cards/card[dn='abc']/state",
+        "/state-module:cards/card[dn='def']/state",
+    };
+    CHECK_LIST_OF_STRINGS(xpath_retrieved, xpath_expected_to_be_loaded);
+
+    for (size_t i = 0; i < xpath_retrieved->count; i++) {
+        free(xpath_retrieved->data[i]);
+    }
+    sr_list_cleanup(xpath_retrieved);
+
+    /* cleanup */
+    sr_unsubscribe(session, subscription);
+    sr_session_stop(session);
+
+}
+
 int
 main()
 {
@@ -3042,6 +3128,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_extraleaf_dp, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_no_dp_subscription, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_type_not_filled_by_dp, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_state_data_in_grouping, sysrepo_setup, sysrepo_teardown),
     };
 
     watchdog_start(300);
