@@ -5483,6 +5483,65 @@ cl_session_get_id_test (void **state)
     sr_session_stop(session);
 }
 
+static void
+cl_apos_xpath_test (void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    int rc = SR_ERR_OK;
+
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    char *xp = "/example-module:container/list[key1=\"abc'def\"][key2=\"xy'z\"]";
+
+    /* list */
+    rc = sr_set_item(session, xp, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_val_t *v = NULL;
+
+    rc = sr_get_item(session, xp, &v);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_string_equal(xp, v->xpath);
+
+    sr_free_val(v);
+
+    rc = sr_delete_item(session, xp, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(session, xp, &v);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* leaf-list */
+    char *ll_xpath = "/example-module:array[.=\"val'apos\"]";
+    rc = sr_set_item(session, ll_xpath, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(session, ll_xpath, &v);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_string_equal("/example-module:array", v->xpath);
+
+    sr_free_val(v);
+
+    rc = sr_delete_item(session, ll_xpath, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(session, ll_xpath, &v);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    sr_session_stop(session);
+}
+
 int
 main()
 {
@@ -5538,6 +5597,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_get_schema_with_subscription, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_set_item_str_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_session_get_id_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_apos_xpath_test, sysrepo_setup, sysrepo_teardown),
     };
 
     watchdog_start(300);
