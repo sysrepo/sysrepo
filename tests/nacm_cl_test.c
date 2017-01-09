@@ -43,8 +43,10 @@
 #include "system_helper.h"
 
 #define NUM_OF_USERS  3
-#define MAX_ATTEMPTS_TO_KILL_DAEMON  5
-#define MAX_ATTEMPTS_TO_GET_LOG_MSG  10
+
+#define MAX_ATTEMPTS         10
+#define DELAY_DURATION       10
+#define DAEMON_WAIT_DURATION 500
 
 //#define DEBUG_MODE /* Note: in debug mode we are not able to read logs from sysrepo daemon! */
 
@@ -67,14 +69,14 @@
 #define CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO) \
     do { \
         if (strlen(RULE) && strlen(RULE_INFO)) { \
-            assert_true(has_log_message("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                        "was blocked by the NACM rule '" RULE "' (" RULE_INFO").\n")); \
+            verify_existence_of_log_msg("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                        "was blocked by the NACM rule '" RULE "' (" RULE_INFO").\n", true); \
         } else if (strlen(RULE)) { \
-            assert_true(has_log_message("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                        "was blocked by the NACM rule '" RULE "'.\n")); \
+            verify_existence_of_log_msg("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                        "was blocked by the NACM rule '" RULE "'.\n", true); \
         } else { \
-            assert_true(has_log_message("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                        "was blocked by NACM.\n")); \
+            verify_existence_of_log_msg("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                        "was blocked by NACM.\n", true); \
         }\
     } while (0)
 
@@ -86,7 +88,7 @@
         reset_cb_call_count(); \
         rc = sr_rpc_send(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
-        assert_int_equal(0, get_cb_call_count()); \
+        verify_cb_call_count(false, 0); \
         CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
@@ -98,7 +100,7 @@
         reset_cb_call_count(); \
         rc = sr_rpc_send_tree(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output_tree, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
-        assert_int_equal(0, get_cb_call_count()); \
+        verify_cb_call_count(false, 0); \
         CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
@@ -116,7 +118,7 @@
             assert_int_equal(EXP_OUTPUT_CNT, output_cnt); \
             sr_free_values(output, output_cnt); \
         } \
-        assert_int_equal(1, get_cb_call_count()); \
+        verify_cb_call_count(false, 1); \
     } while (0)
 
 #define RPC_PERMITED_TREE(SESSION, XPATH, INPUT, INPUT_CNT, EXP_OUTPUT_CNT) \
@@ -133,7 +135,7 @@
             assert_int_equal(EXP_OUTPUT_CNT, output_cnt); \
             sr_free_trees(output_tree, output_cnt); \
         } \
-        assert_int_equal(1, get_cb_call_count()); \
+        verify_cb_call_count(false, 1); \
     } while (0)
 
 #define ACTION_DENIED(SESSION, XPATH, INPUT, INPUT_CNT, RULE, RULE_INFO) \
@@ -144,7 +146,7 @@
         reset_cb_call_count(); \
         rc = sr_action_send(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
-        assert_int_equal(0, get_cb_call_count()); \
+        verify_cb_call_count(false, 0); \
         CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
@@ -156,7 +158,7 @@
         reset_cb_call_count(); \
         rc = sr_action_send_tree(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output_tree, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
-        assert_int_equal(0, get_cb_call_count()); \
+        verify_cb_call_count(false, 0); \
         CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
@@ -174,7 +176,7 @@
             assert_int_equal(EXP_OUTPUT_CNT, output_cnt); \
             sr_free_values(output, output_cnt); \
         } \
-        assert_int_equal(1, get_cb_call_count()); \
+        verify_cb_call_count(false, 1); \
     } while (0)
 
 #define ACTION_PERMITED_TREE(SESSION, XPATH, INPUT, INPUT_CNT, EXP_OUTPUT_CNT) \
@@ -191,7 +193,7 @@
             assert_int_equal(EXP_OUTPUT_CNT, output_cnt); \
             sr_free_trees(output_tree, output_cnt); \
         } \
-        assert_int_equal(1, get_cb_call_count()); \
+        verify_cb_call_count(false, 1); \
     } while (0)
 
 #define EVENT_NOTIF_PERMITED(XPATH, VALUES, VALUE_CNT) \
@@ -200,20 +202,9 @@
         rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT); \
         wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
-        assert_int_equal(1, get_cb_call_count()); \
-        assert_false(has_log_message("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                     "was blocked by .*NACM.*")); \
-        clear_log_history(); \
-    } while (0)
-
-#define EVENT_NOTIF_DENIED(XPATH, VALUES, VALUE_CNT, RULE, RULE_INFO) \
-    do { \
-        reset_cb_call_count(); \
-        rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT); \
-        wait_ms(100); \
-        assert_int_equal(rc, SR_ERR_OK); \
-        assert_int_equal(0, get_cb_call_count()); \
-        CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
+        verify_cb_call_count(true, 1); \
+        verify_existence_of_log_msg("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                    "was blocked by .*NACM.*", false); \
         clear_log_history(); \
     } while (0)
 
@@ -223,9 +214,20 @@
         rc = sr_event_notif_send_tree(handler_session, XPATH, TREES, TREE_CNT); \
         wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
-        assert_int_equal(1, get_cb_call_count()); \
-        assert_false(has_log_message("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
-                                     "was blocked by .*NACM.*")); \
+        verify_cb_call_count(true, 1); \
+        verify_existence_of_log_msg("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
+                                    "was blocked by .*NACM.*", false); \
+        clear_log_history(); \
+    } while (0)
+
+#define EVENT_NOTIF_DENIED(XPATH, VALUES, VALUE_CNT, RULE, RULE_INFO) \
+    do { \
+        reset_cb_call_count(); \
+        rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT); \
+        wait_ms(100); \
+        assert_int_equal(rc, SR_ERR_OK); \
+        verify_cb_call_count(true, 0); \
+        CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
         clear_log_history(); \
     } while (0)
 
@@ -235,7 +237,7 @@
         rc = sr_event_notif_send_tree(handler_session, XPATH, TREES, TREE_CNT); \
         wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
-        assert_int_equal(0, get_cb_call_count()); \
+        verify_cb_call_count(true, 0); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
         clear_log_history(); \
     } while (0)
@@ -260,6 +262,7 @@ static pthread_t stderr_reader = {0}; /* log-reader thread's control structure *
 static int cb_call_count; /* how many times a callback was called */
 pthread_mutex_t cb_call_count_lock = PTHREAD_MUTEX_INITIALIZER; /* protecting cb_call_count */
 
+
 /* TODO: Report the issue with failed validation when action reply is empty. Then reflect the fix. */
 
 
@@ -279,14 +282,27 @@ inc_cb_call_count()
     pthread_mutex_unlock(&cb_call_count_lock);
 }
 
-static int
-get_cb_call_count()
+static void
+verify_cb_call_count(bool async_cb, int exp_count)
 {
-    int count = 0;
-    pthread_mutex_lock(&cb_call_count_lock);
-    count = cb_call_count;
-    pthread_mutex_unlock(&cb_call_count_lock);
-    return count;
+    int count = 0, attempt = 0;
+
+    if (async_cb && 0 == exp_count) {
+        wait_ms(4*DELAY_DURATION);
+        /* if the callback hasn't been called within this delay, then we assume that it will never be. */
+    }
+
+    do {
+        pthread_mutex_lock(&cb_call_count_lock);
+        count = cb_call_count;
+        pthread_mutex_unlock(&cb_call_count_lock);
+        ++attempt;
+        if (async_cb && count < exp_count) {
+            wait_ms(DELAY_DURATION);
+        }
+    } while (async_cb && count < exp_count && attempt < MAX_ATTEMPTS);
+
+    assert_int_equal(exp_count, count);
 }
 
 static void
@@ -330,7 +346,7 @@ daemon_log_reader(void *arg)
         running = log_history.running;
         pthread_mutex_unlock(&log_history.lock);
         if (!running) {
-            wait_ms(5);
+            wait_ms(DELAY_DURATION);
         }
     } while (!running);
     assert_true(daemon_stderr >= 0);
@@ -346,7 +362,7 @@ daemon_log_reader(void *arg)
         running = log_history.running;
         pthread_mutex_unlock(&log_history.lock);
         if (running) {
-            wait_ms(5);
+            wait_ms(DELAY_DURATION);
         }
     }
 
@@ -371,7 +387,7 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     sr_log_stderr(SR_LL_DBG);
 
 #ifndef DEBUG_MODE
-    while (attempt <= MAX_ATTEMPTS_TO_KILL_DAEMON) {
+    while (attempt <= MAX_ATTEMPTS) {
         /* connect to sysrepo, force daemon connection */
         rc = sr_connect("nacm_cl_test", SR_CONN_DAEMON_REQUIRED, &conn);
         sr_disconnect(conn);
@@ -383,9 +399,9 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
             if (1 == attempt) {
                 daemon_run_before_test = true;
             }
-            daemon_kill(attempt == MAX_ATTEMPTS_TO_KILL_DAEMON);
+            daemon_kill(attempt == MAX_ATTEMPTS);
             /* wait for the daemon to terminate */
-            wait_ms(500);
+            wait_ms(DAEMON_WAIT_DURATION);
         } else {
             if (1 == attempt) {
                 daemon_run_before_test = false;
@@ -412,7 +428,7 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     pthread_mutex_unlock(&log_history.lock);
 
     /* wait for the daemon to start */
-    wait_ms(500);
+    wait_ms(DAEMON_WAIT_DURATION);
 #endif
     rc = sr_connect("nacm_cl_test", SR_CONN_DAEMON_REQUIRED, &conn);
     assert_int_equal(rc, SR_ERR_OK);
@@ -431,46 +447,49 @@ clear_log_history()
     pthread_mutex_unlock(&log_history.lock);
 }
 
-static bool
-has_log_message(const char *msg_re)
+static void
+verify_existence_of_log_msg(const char *msg_re, bool should_exist)
 {
-    bool has = false;
-    int attempt = 1;
-    size_t log_count = 0;
-
 #ifdef HAVE_REGEX_H
-    while (!has && attempt < MAX_ATTEMPTS_TO_GET_LOG_MSG) {
+    bool exists = false;
+    int attempt = 0;
+    size_t already_checked = 0;
+
+    if (!should_exist) {
+        wait_ms(4*DELAY_DURATION);
+        /* if the message hasn't been logged in within this delay, then we assume that it will never be. */
+    }
+
+    do {
         pthread_mutex_lock(&log_history.lock);
-        for (size_t i = log_count; !has && (i < log_history.logs->count); ++i) {
+        for (size_t i = already_checked; !exists && (i < log_history.logs->count); ++i) {
             char *message = (char *)log_history.logs->data[i];
             regex_t re;
             /* Compile regular expression */
             assert_int_equal(0, regcomp(&re, msg_re, REG_NOSUB | REG_EXTENDED));
             if (0 == regexec(&re, message, 0, NULL, 0)) {
-                has = true;
+                exists = true;
             }
 
             printf("REGEX TEST BEGIN -------------\n");
             printf("Regex: %s\n", msg_re);
             printf("Message: %s\n", message);
-            printf("Matches: %s\n", has ? "YES" : "NO");
+            printf("Matches: %s\n", exists ? "YES" : "NO");
             printf("REGEX TEST END -------------\n");
 
             regfree(&re);
         }
-        log_count = log_history.logs->count;
+        already_checked = log_history.logs->count;
         pthread_mutex_unlock(&log_history.lock);
         ++attempt;
-        if (!has) {
+        if (should_exist && !exists) {
             /* log reader may need more time to sync */
-            wait_ms(10);
+            wait_ms(DELAY_DURATION);
         }
-    }
-#else
-    has = true; /**< let the test pass */
-#endif
+    } while (should_exist && !exists && attempt < MAX_ATTEMPTS);
 
-    return has;
+    assert_true(should_exist == exists);
+#endif
 }
 
 static int
