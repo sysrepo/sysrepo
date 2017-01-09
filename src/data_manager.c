@@ -4850,7 +4850,6 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     dm_data_info_t *di = NULL;
     const struct lys_node *proc_node = NULL;
     struct lyd_node *data_tree = NULL;
-    char *xml_str = NULL;
     struct lyxml_elem *xml = NULL;
     int rc = SR_ERR_OK;
 
@@ -4876,9 +4875,13 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
         goto cleanup;
     }
 
-    /* TODO: remove, WORKAROUND for https://github.com/CESNET/libyang/issues/225 */
-    lyxml_print_mem(&xml_str, notification->data.xml, LYP_FORMAT);
-    xml = lyxml_parse_mem(di->schema->ly_ctx, xml_str, 0);
+    /* duplicate the xml tree for use in the dm_ctx */
+    xml = lyxml_dup(di->schema->ly_ctx, notification->data.xml);
+    if (NULL == xml) {
+        SR_LOG_ERR("Error by duplicating of the notification XML tree: %s", ly_errmsg());
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
 
     /* parse the XML into the data tree */
     data_tree = lyd_parse_xml(di->schema->ly_ctx, &xml /* &notification->data.xml */, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
@@ -4904,7 +4907,6 @@ cleanup:
     if (NULL != xml) {
         lyxml_free(di->schema->ly_ctx, xml);
     }
-    free(xml_str);
     lyd_free_withsiblings(data_tree);
     free(module_name);
 

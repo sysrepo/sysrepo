@@ -1576,6 +1576,7 @@ cl_combined_subscribers(void **state)
         sr_free_val(changesA.new_values[i]);
         sr_free_val(changesA.old_values[i]);
     }
+    pthread_mutex_unlock(&changesA.mutex);
 
     pthread_mutex_destroy(&changesV.mutex);
     pthread_cond_destroy(&changesV.cv);
@@ -1694,6 +1695,7 @@ cl_successful_verifiers(void **state)
         sr_free_val(changesB.new_values[i]);
         sr_free_val(changesB.old_values[i]);
     }
+    pthread_mutex_unlock(&changesB.mutex);
 
     pthread_mutex_destroy(&changesA.mutex);
     pthread_cond_destroy(&changesA.cv);
@@ -1804,11 +1806,13 @@ cl_refused_by_verifier(void **state)
         sr_free_val(changesA.new_values[i]);
         sr_free_val(changesA.old_values[i]);
     }
+    pthread_mutex_unlock(&changesA.mutex);
 
     for (size_t i = 0; i < changesB.cnt; i++) {
         sr_free_val(changesB.new_values[i]);
         sr_free_val(changesB.old_values[i]);
     }
+    pthread_mutex_unlock(&changesB.mutex);
 
     pthread_mutex_destroy(&changesA.mutex);
     pthread_cond_destroy(&changesA.cv);
@@ -1881,6 +1885,7 @@ cl_no_abort_notifications(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+    pthread_mutex_unlock(&changes.mutex);
 
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
@@ -1956,6 +1961,7 @@ cl_one_abort_notification(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+    pthread_mutex_unlock(&changes.mutex);
 
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
@@ -2392,6 +2398,7 @@ cl_auto_enable_manadatory_nodes(void **state)
 
     rc = sr_subtree_change_subscribe(session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", cl_empty_module_cb, NULL,
             0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -2448,6 +2455,8 @@ cl_capability_changed_notif_test(void **state)
     int rc = SR_ERR_OK;
     netconf_change_t change = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER};
     struct timespec ts = {0};
+
+    skip_if_daemon_running(); /* module uninstall & install requires restart of the Sysrepo Engine */
 
     /* start session */
     rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);

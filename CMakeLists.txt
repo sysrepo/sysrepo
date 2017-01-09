@@ -138,7 +138,7 @@ CHECK_FUNCTION_EXISTS(setfsuid HAVE_SETFSUID)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
 # user options
-set(ENABLE_NACM 1 CACHE BOOL 
+set(ENABLE_NACM 1 CACHE BOOL
     "Enable NETCONF Access Control Model (RFC 6536).")
 
 set(NACM_RECOVERY_UID 0 CACHE INTEGER
@@ -153,15 +153,18 @@ set(USE_SR_MEM_MGMT 1 CACHE BOOL
 set(LOG_THREAD_ID 0 CACHE BOOL
     "If enabled, sysrepo logger will append thread ID (as well as function name) to each printed message.")
 
-set(DISABLE_CONFIG_CHANGE_NOTIF 0 CACHE BOOL
-    "Skip generation of config change notifications")
+set(ENABLE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
+    "Generate config-change notifications (RFC 6470).")
+
+set(STORE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
+    "Save config-change notifications (RFC 6470) in the notification store (slows down the commit process).")
 
 # timeouts
 set(REQUEST_TIMEOUT 3 CACHE INTEGER
-    "Timeout for standard Sysrepo API requests.")
+    "Timeout (in seconds) for standard Sysrepo API requests.")
 
 set(LONG_REQUEST_TIMEOUT 15 CACHE INTEGER
-    "Timeout for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action).")
+    "Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action).")
 
 set(COMMIT_VERIFY_TIMEOUT 10 CACHE INTEGER
     "Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers.")

@@ -276,7 +276,7 @@ cleanup:
  */
 static int
 cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const char *module_name,
-        sr_api_variant_t api_variant, void *private_ctx, sr_subscription_ctx_t **sr_subscription_p,
+        sr_api_variant_t api_variant, int opts, void *private_ctx, sr_subscription_ctx_t **sr_subscription_p,
         cl_sm_subscription_ctx_t **sm_subscription_p, Sr__Msg **msg_req_p)
 {
     Sr__Msg *msg_req = NULL;
@@ -314,6 +314,7 @@ cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
 
     sm_subscription->api_variant = api_variant;
     sm_subscription->type = type;
+    sm_subscription->opts = opts;
     sm_subscription->private_ctx = private_ctx;
     if (NULL != module_name) {
         sm_subscription->module_name = strdup(module_name);
@@ -2277,7 +2278,7 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS, NULL, SR_API_VALUES,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS, NULL, SR_API_VALUES, opts,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -2325,7 +2326,7 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS, NULL, SR_API_VALUES,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS, NULL, SR_API_VALUES, opts,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -2418,15 +2419,11 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, module_name, SR_API_VALUES,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, module_name, SR_API_VALUES, opts,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
     sm_subscription->callback.module_change_cb = callback;
-
-    if (opts & SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG) {
-        sm_subscription->dont_send_abort_on_failure = true;
-    }
 
     /* fill-in subscription details */
     sr_mem = (sr_mem_ctx_t *)msg_req->_sysrepo_mem_ctx;
@@ -2493,15 +2490,11 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS, module_name, SR_API_VALUES,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS, module_name, SR_API_VALUES, opts,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
     sm_subscription->callback.subtree_change_cb = callback;
-
-    if (opts & SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG) {
-        sm_subscription->dont_send_abort_on_failure = true;
-    }
 
     /* fill-in subscription details */
     sr_mem = (sr_mem_ctx_t *)msg_req->_sysrepo_mem_ctx;
@@ -2955,7 +2948,7 @@ cl_rpc_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session, const 
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__RPC_SUBS, module_name, api_variant,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__RPC_SUBS, module_name, api_variant, opts,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -3228,7 +3221,7 @@ cl_action_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session, con
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__ACTION_SUBS, module_name, api_variant,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__ACTION_SUBS, module_name, api_variant, opts,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -3324,7 +3317,7 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_ge
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS, module_name, SR_API_VALUES,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS, module_name, SR_API_VALUES, opts,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -3407,7 +3400,7 @@ cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS, module_name, api_variant,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS, module_name, api_variant, opts,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -3472,8 +3465,8 @@ sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *xpath,
 }
 
 int
-sr_event_notif_send(sr_session_ctx_t *session, const char *xpath,
-        const sr_val_t *values,  const size_t values_cnt)
+sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values, const size_t values_cnt,
+        sr_ev_notif_flag_t opts)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
@@ -3495,6 +3488,7 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *xpath,
 
     /* set arguments */
     msg_req->request->event_notif_req->type = SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REALTIME;
+    msg_req->request->event_notif_req->options = opts;
     sr_mem_edit_string(sr_mem, &msg_req->request->event_notif_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_req->xpath, rc, cleanup);
 
@@ -3532,8 +3526,8 @@ cleanup:
 }
 
 int
-sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
-        const sr_node_t *trees,  const size_t tree_cnt)
+sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath, const sr_node_t *trees,  const size_t tree_cnt,
+        sr_ev_notif_flag_t opts)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
@@ -3555,6 +3549,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
 
     /* set arguments */
     msg_req->request->event_notif_req->type = SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REALTIME;
+    msg_req->request->event_notif_req->options = opts;
     sr_mem_edit_string(sr_mem, &msg_req->request->event_notif_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_req->xpath, rc, cleanup);
 

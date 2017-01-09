@@ -732,7 +732,7 @@ ack:
         if (SR_ERR_OK == rc_tmp) {
             ack_msg->notification_ack->result = rc;
             if (SR_ERR_OK != rc) {
-                if (subscription->dont_send_abort_on_failure) {
+                if (subscription->opts & SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG) {
                     ack_msg->notification_ack->do_not_send_abort = true;
                 }
                 if (NULL != data_session && data_session->error_cnt > 0) {
@@ -946,16 +946,20 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
 {
     cl_sm_subscription_ctx_t *subscription = NULL;
     cl_sm_subscription_ctx_t subscription_lookup = { 0, };
+    sr_ev_notif_type_t notif_type = 0;
     sr_val_t *values = NULL;
     sr_node_t *trees = NULL;
     size_t values_cnt = 0;
     size_t tree_cnt = 0;
+    bool skip = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->event_notif_req);
 
-    SR_LOG_DBG("Received an event notification for subscription id=%"PRIu32".",
-            msg->request->event_notif_req->subscription_id);
+    notif_type = sr_ev_notification_type_gpb_to_sr(msg->request->event_notif_req->type);
+
+    SR_LOG_DBG("Received an event notification type=%u for subscription id=%"PRIu32".",
+            notif_type, msg->request->event_notif_req->subscription_id);
 
     /* copy input data from GPB */
     if (msg->request->event_notif_req->n_values) {
@@ -979,18 +983,30 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
         goto cleanup;
     }
 
-    SR_LOG_DBG("Calling event notification callback for subscription id=%"PRIu32".", subscription->id);
+    /* handle SR_SUBSCR_NOTIF_REPLAY_FIRST flag */
+    if (subscription->opts & SR_SUBSCR_NOTIF_REPLAY_FIRST) {
+        if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
+            subscription->replay_completed = true;
+        }
+        if (SR_EV_NOTIF_T_REALTIME == notif_type && !subscription->replay_completed) {
+            SR_LOG_DBG_MSG("Skipping the real-time notification since replay has not finished yet.");
+            skip = true;
+        }
+    }
 
-    if (SR_API_VALUES == subscription->api_variant) {
-        subscription->callback.event_notif_cb(
-                sr_ev_notification_type_gpb_to_sr(msg->request->event_notif_req->type),
-                msg->request->event_notif_req->xpath, values, values_cnt,
-                msg->request->event_notif_req->timestamp, subscription->private_ctx);
-    } else {
-        subscription->callback.event_notif_tree_cb(
-                sr_ev_notification_type_gpb_to_sr(msg->request->event_notif_req->type),
-                msg->request->event_notif_req->xpath, trees, tree_cnt,
-                msg->request->event_notif_req->timestamp, subscription->private_ctx);
+    if (!skip) {
+        /* call the callback */
+        SR_LOG_DBG("Calling event notification callback for subscription id=%"PRIu32".", subscription->id);
+
+        if (SR_API_VALUES == subscription->api_variant) {
+            subscription->callback.event_notif_cb(notif_type,
+                    msg->request->event_notif_req->xpath, values, values_cnt,
+                    msg->request->event_notif_req->timestamp, subscription->private_ctx);
+        } else {
+            subscription->callback.event_notif_tree_cb(notif_type,
+                    msg->request->event_notif_req->xpath, trees, tree_cnt,
+                    msg->request->event_notif_req->timestamp, subscription->private_ctx);
+        }
     }
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);

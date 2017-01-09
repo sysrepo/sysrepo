@@ -65,6 +65,11 @@ void createDataTreeReferencedModule(int8_t magic_number);
  */
 void createDataTreeStateModule();
 
+/**
+ * Skips the testcase if sysrepod is running.
+ */
+void skip_if_daemon_running();
+
 #define XP_TEST_MODULE_ENUM "/test-module:main/enum"
 #define XP_TEST_MODULE_ENUM_VALUE "maybe"
 

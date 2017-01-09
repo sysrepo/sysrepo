@@ -22,6 +22,8 @@
 #include "test_module_helper.h"
 #include "sr_common.h"
 #include "test_data.h"
+#include <stdio.h>
+#include <unistd.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <setjmp.h>
@@ -494,5 +496,13 @@ createDataTreeStateModule()
     lyd_free_withsiblings(r1);
 
     ly_ctx_destroy(ctx, NULL);
+}
 
+void
+skip_if_daemon_running()
+{
+    if (-1 != access(SR_DAEMON_PID_FILE, F_OK)) {
+        printf("Skipping the testcase since sysrepod is running.");
+        skip();
+    }
 }
