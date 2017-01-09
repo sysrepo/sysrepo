@@ -200,7 +200,6 @@
     do { \
         reset_cb_call_count(); \
         rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT); \
-        wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
         verify_cb_call_count(true, 1); \
         verify_existence_of_log_msg("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
@@ -212,7 +211,6 @@
     do { \
         reset_cb_call_count(); \
         rc = sr_event_notif_send_tree(handler_session, XPATH, TREES, TREE_CNT); \
-        wait_ms(100); \
         assert_int_equal(rc, SR_ERR_OK); \
         verify_cb_call_count(true, 1); \
         verify_existence_of_log_msg("\\[DBG\\] .* Delivery of the notification '" XPATH "' for subscription '[^']+' @ [0-9]+ " \
@@ -224,8 +222,7 @@
     do { \
         reset_cb_call_count(); \
         rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT); \
-        wait_ms(100); \
-        assert_int_equal(rc, SR_ERR_NOT_FOUND); \
+        assert_int_equal(rc, SR_ERR_OK); \
         verify_cb_call_count(true, 0); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
         clear_log_history(); \
@@ -235,8 +232,7 @@
     do { \
         reset_cb_call_count(); \
         rc = sr_event_notif_send_tree(handler_session, XPATH, TREES, TREE_CNT); \
-        wait_ms(100); \
-        assert_int_equal(rc, SR_ERR_NOT_FOUND); \
+        assert_int_equal(rc, SR_ERR_OK); \
         verify_cb_call_count(true, 0); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
         clear_log_history(); \

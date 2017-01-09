@@ -134,20 +134,20 @@ rp_report_delivery_blocked(np_subscription_t *subscription, const char *xpath,
 
     if (SR_ERR_OK != nacm_rc) {
         rc = sr_asprintf(&error_msg, "NETCONF access control verification failed for the notification '%s' and "
-                "subscription '%s' @ %PRIu32. Delivery will be blocked.", xpath, subscription->dst_address,
+                "subscription '%s' @ %"PRIu32". Delivery will be blocked.", xpath, subscription->dst_address,
                 subscription->dst_id);
     } else if (NULL != rule_name) {
         if (NULL != rule_info) {
-            rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %PRIu32 "
+            rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %"PRIu32" "
                     "was blocked by the NACM rule '%s' (%s).", xpath, subscription->dst_address, subscription->dst_id,
                     rule_name, rule_info);
         } else {
-            rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %PRIu32 "
+            rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %"PRIu32" "
                     "was blocked by the NACM rule '%s'.", xpath, subscription->dst_address, subscription->dst_id,
                     rule_name);
         }
     } else {
-        rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %PRIu32 "
+        rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %"PRIu32" "
                 "was blocked by NACM.", xpath, subscription->dst_address, subscription->dst_id);
     }
     if (SR_ERR_OK != rc) {
@@ -2861,6 +2861,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
              * @note we are not using memory context for the *req* message because with so many
              * duplications it would be actually less efficient than normally.
              */
+            sub_match = true;
 #ifdef ENABLE_NACM
             /* NACM access control */
             if (NULL != nacm_ctx) {
@@ -2877,7 +2878,6 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
                 }
             }
 #endif
-            sub_match = true;
             rc = rp_event_notif_send(rp_ctx, session, msg->request->event_notif_req->type, subscriptions[i].xpath,
                     msg->request->event_notif_req->timestamp, subscriptions[i].api_variant, with_def, with_def_cnt,
                     with_def_tree, with_def_tree_cnt, subscriptions[i].dst_address, subscriptions[i].dst_id);
