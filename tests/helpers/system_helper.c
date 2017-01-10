@@ -406,7 +406,6 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
         assert_true(fd >= 0);
 
         buffer = read_file_content(fd);
-        printf("buffer: %s\n", buffer);
         if ('\0' == buffer[0] && 0 != strcmp(exp_content, ".*")) {
             retry = true;
             cnt++;
