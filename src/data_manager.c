@@ -3117,8 +3117,6 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             di = calloc(1, sizeof(*di));
             CHECK_NULL_NOMEM_GOTO(di, rc, cleanup);
             di->node = sr_dup_datatree(info->node);
-            /* set flag to true to force the validation */
-            di->modified = true;
             if (NULL != info->node && NULL == di->node) {
                 SR_LOG_ERR_MSG("Data tree duplication failed");
                 rc = SR_ERR_INTERNAL;
@@ -3161,8 +3159,6 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 /* we can reuse data that were just read from file system */
                 rc = dm_insert_data_info_copy(c_ctx->prev_data_trees, di);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Insert data info copy failed");
-                /* set flag to true to force the validation */
-                di->modified = true;
             }
         }
 
