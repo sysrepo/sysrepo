@@ -74,7 +74,8 @@ sr_popen(const char *command, int *stdin_p, int *stdout_p, int *stderr_p)
     int p_stdin[2], p_stdout[2], p_stderr[2];
     pid_t pid;
 
-    if (pipe(p_stdin) != 0 || pipe(p_stdout) != 0 || pipe(p_stderr) != 0) {
+    if ((stdin_p && 0 != pipe(p_stdin)) || (stdout_p && 0 != pipe(p_stdout)) ||
+        (stderr_p && 0 != pipe(p_stderr))) {
         return -1;
     }
 
@@ -83,37 +84,43 @@ sr_popen(const char *command, int *stdin_p, int *stdout_p, int *stderr_p)
     if (pid < 0) {
         return pid;
     } else if (pid == 0) {
-        close(p_stdin[WRITE]);
-        dup2(p_stdin[READ], STDIN_FILENO);
-        close(p_stdout[READ]);
-        dup2(p_stdout[WRITE], STDOUT_FILENO);
-        close(p_stderr[READ]);
-        dup2(p_stderr[WRITE], STDERR_FILENO);
+        if (stdin_p) {
+            close(p_stdin[WRITE]);
+            dup2(p_stdin[READ], STDIN_FILENO);
+        }
+        if (stdout_p) {
+            close(p_stdout[READ]);
+            dup2(p_stdout[WRITE], STDOUT_FILENO);
+        }
+        if (stderr_p) {
+            close(p_stderr[READ]);
+            dup2(p_stderr[WRITE], STDERR_FILENO);
+        }
 
         execl("/bin/sh", "sh", "-c", command, NULL);
         perror("execl");
         exit(1);
     } else {
-        close(p_stdin[READ]);
-        close(p_stdout[WRITE]);
-        close(p_stderr[WRITE]);
+        if (stdin_p) {
+            close(p_stdin[READ]);
+        }
+        if (stdout_p) {
+            close(p_stdout[WRITE]);
+        }
+        if (stderr_p) {
+            close(p_stderr[WRITE]);
+        }
     }
 
-    if (stdin_p == NULL) {
-        close(p_stdin[WRITE]);
-    } else {
+    if (stdin_p != NULL) {
         *stdin_p = p_stdin[WRITE];
     }
 
-    if (stdout_p == NULL) {
-        close(p_stdout[READ]);
-    } else {
+    if (stdout_p != NULL) {
         *stdout_p = p_stdout[READ];
     }
 
-    if (stderr_p == NULL) {
-        close(p_stderr[READ]);
-    } else {
+    if (stderr_p != NULL) {
         *stderr_p = p_stderr[READ];
     }
 
@@ -399,6 +406,7 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
         assert_true(fd >= 0);
 
         buffer = read_file_content(fd);
+        printf("buffer: %s\n", buffer);
         if ('\0' == buffer[0] && 0 != strcmp(exp_content, ".*")) {
             retry = true;
             cnt++;
