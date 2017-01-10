@@ -206,7 +206,7 @@
 #define EVENT_NOTIF_PERMITED(XPATH, VALUES, VALUE_CNT) \
     do { \
         reset_cb_call_count(); \
-        rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT); \
+        rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT, SR_EV_NOTIF_DEFAULT); \
         assert_int_equal(rc, SR_ERR_OK); \
         verify_cb_call_count(true, 1); \
         escaped_xpath = escape(XPATH); \
@@ -222,7 +222,7 @@
 #define EVENT_NOTIF_PERMITED_TREE(XPATH, TREES, TREE_CNT) \
     do { \
         reset_cb_call_count(); \
-        rc = sr_event_notif_send_tree(handler_session, XPATH, TREES, TREE_CNT); \
+        rc = sr_event_notif_send_tree(handler_session, XPATH, TREES, TREE_CNT, SR_EV_NOTIF_DEFAULT); \
         assert_int_equal(rc, SR_ERR_OK); \
         verify_cb_call_count(true, 1); \
         escaped_xpath = escape(XPATH); \
@@ -238,7 +238,7 @@
 #define EVENT_NOTIF_DENIED(XPATH, VALUES, VALUE_CNT, RULE, RULE_INFO) \
     do { \
         reset_cb_call_count(); \
-        rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT); \
+        rc = sr_event_notif_send(handler_session, XPATH, VALUES, VALUE_CNT, SR_EV_NOTIF_DEFAULT); \
         assert_int_equal(rc, SR_ERR_OK); \
         verify_cb_call_count(true, 0); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
@@ -248,7 +248,7 @@
 #define EVENT_NOTIF_DENIED_TREE(XPATH, TREES, TREE_CNT, RULE, RULE_INFO) \
     do { \
         reset_cb_call_count(); \
-        rc = sr_event_notif_send_tree(handler_session, XPATH, TREES, TREE_CNT); \
+        rc = sr_event_notif_send_tree(handler_session, XPATH, TREES, TREE_CNT, SR_EV_NOTIF_DEFAULT); \
         assert_int_equal(rc, SR_ERR_OK); \
         verify_cb_call_count(true, 0); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \

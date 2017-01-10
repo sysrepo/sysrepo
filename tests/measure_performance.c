@@ -241,7 +241,8 @@ data_provide_setup(void **state)
     rc = sr_session_start(dp_setup->conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &dp_setup->session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_dp_get_items_subscribe(dp_setup->session, "/ietf-interfaces:interfaces-state/interface", data_provide_cb, &dp_setup->if_count, SR_SUBSCR_DEFAULT, &dp_setup->subs);
+    rc = sr_dp_get_items_subscribe(dp_setup->session, "/ietf-interfaces:interfaces-state/interface", data_provide_cb,
+            &dp_setup->if_count, SR_SUBSCR_DEFAULT, &dp_setup->subs);
     assert_int_equal(rc, SR_ERR_OK);
 
     *state = (void *) dp_setup;
@@ -259,7 +260,7 @@ data_provide_teardown(void **state)
 }
 
 static void
-perf_data_provide(void **state, int op_num, int *items) {
+perf_data_provide_test(void **state, int op_num, int *items) {
     dp_setup_t *dp_setup = *state;
     assert_non_null(dp_setup);
 
@@ -753,6 +754,136 @@ perf_commit_test(void **state, int op_num, int *items) {
     *items = 1;
 }
 
+static int
+test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt, void *private_ctx)
+{
+    sr_val_t *v = NULL;
+    int rc = SR_ERR_OK;
+
+    /* check input */
+    assert_true(input_cnt > 0);
+
+    rc = sr_new_values(1, &v);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_val_set_xpath(v, "/test-module:activate-software-image/status");
+    sr_val_set_str_data(v, SR_STRING_T, "The image acmefw-2.3 is being installed.");
+
+    *output = v;
+    *output_cnt = 1;
+
+    return SR_ERR_OK;
+}
+
+static void
+perf_rpc_test(void **state, int op_num, int *items) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t input = { 0, };
+    sr_val_t *output = NULL;
+    size_t output_cnt = 0;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for RPC */
+    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", test_rpc_cb, NULL, SR_SUBSCR_DEFAULT,
+            &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    input.xpath = "/test-module:activate-software-image/image-name";
+    input.type = SR_STRING_T;
+    input.data.string_val = "acmefw-2.3";
+
+    /* send the RPC */
+    for (size_t i = 0; i < op_num; i++) {
+        rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
+        assert_int_equal(rc, SR_ERR_OK);
+        assert_true(output_cnt > 0);
+        sr_free_values(output, output_cnt);
+    }
+
+    /* unsubscribe from RPCs */
+    rc = sr_unsubscribe(session, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    *items = 1;
+}
+
+static void
+test_event_notif_link_discovery_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
+{
+    assert_true(values_cnt > 0);
+}
+
+static void
+perf_ev_notification_test(void **state, int op_num, int *items, bool ephemeral) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t values[4] = { { 0, }, };
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for event notification */
+    rc = sr_event_notif_subscribe(session, "/test-module:link-discovered", test_event_notif_link_discovery_cb,
+            NULL, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* send event notification - link discovery */
+    values[0].xpath = "/test-module:link-discovered/source/address";
+    values[0].type = SR_STRING_T;
+    values[0].data.string_val = "10.10.1.5";
+    values[1].xpath = "/test-module:link-discovered/source/interface";
+    values[1].type = SR_STRING_T;
+    values[1].data.string_val = "eth1";
+    values[2].xpath = "/test-module:link-discovered/destination/address";
+    values[2].type = SR_STRING_T;
+    values[2].data.string_val = "10.10.1.8";
+    values[3].xpath = "/test-module:link-discovered/destination/interface";
+    values[3].type = SR_STRING_T;
+    values[3].data.string_val = "eth0";
+
+    /* send the notification */
+    for (size_t i = 0; i < op_num; i++) {
+        rc = sr_event_notif_send(session, "/test-module:link-discovered", values, 4,
+                ephemeral ? SR_EV_NOTIF_EPHEMERAL :SR_EV_NOTIF_DEFAULT);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* unsubscribe from notifications */
+    rc = sr_unsubscribe(session, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    *items = 1;
+}
+
+static void
+perf_ev_notification_ephemeral_test(void **state, int op_num, int *items) {
+    perf_ev_notification_test(state, op_num, items, true);
+}
+
+static void
+perf_ev_notification_store_test(void **state, int op_num, int *items) {
+    perf_ev_notification_test(state, op_num, items, false);
+}
+
 static void
 perf_libyang_get_node(void **state, int op_num, int *items)
 {
@@ -826,9 +957,12 @@ main (int argc, char **argv)
         {perf_set_delete_test, "Set & delete one list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_set_delete_100_test, "Set & delete 100 lists", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_commit_test, "Commit one leaf change", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
+        {perf_data_provide_test, "Operational data provide", OP_COUNT, data_provide_setup, data_provide_teardown},
+        {perf_rpc_test, "RPC", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
+        {perf_ev_notification_ephemeral_test, "Event notification - ephemeral", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
+        {perf_ev_notification_store_test, "Event notification - store", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_libyang_get_node, "Libyang get one node", OP_COUNT, libyang_setup, libyang_teardown},
         {perf_libyang_get_all_list, "Libyang get all list", OP_COUNT, libyang_setup, libyang_teardown},
-        {perf_data_provide, "Data provide", OP_COUNT, data_provide_setup, data_provide_teardown},
     };
 
     size_t test_count = sizeof(tests)/sizeof(*tests);

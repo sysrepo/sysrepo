@@ -53,6 +53,12 @@
 /** Controls whether thread IDs should be printed. */
 #cmakedefine LOG_THREAD_ID
 
+/** Generate config-change notifications (RFC 6470). */
+#cmakedefine ENABLE_CONFIG_CHANGE_NOTIF
+
+/** Save config-change notifications (RFC 6470) in the notification store (slows down the commit process). */
+#cmakedefine STORE_CONFIG_CHANGE_NOTIF
+
 /** Path to the directory with schemas. */
 #define SR_SCHEMA_SEARCH_DIR "@SCHEMA_SEARCH_DIR@"
 
@@ -131,10 +137,10 @@
 /** Plugin health check timeout (in seconds). */
 #define SR_PLUGIN_HEALTH_CHECK_TIMEOUT 10
 
-/** Timeout for standard Sysrepo API requests. */
+/** Timeout (in seconds) for standard Sysrepo API requests. */
 #define SR_REQUEST_TIMEOUT @REQUEST_TIMEOUT@
 
-/** Timeout for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action). */
+/** Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action). */
 #define SR_LONG_REQUEST_TIMEOUT @LONG_REQUEST_TIMEOUT@
 
 /** Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers. */
@@ -148,7 +154,5 @@
 
 /** Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files). */
 #define SR_NOTIF_TIME_WINDOW @NOTIF_TIME_WINDOW@
-
-#cmakedefine DISABLE_CONFIG_CHANGE_NOTIF @DISABLE_CONFIG_CHANGE_NOTIF@
 
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

@@ -3117,8 +3117,6 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             di = calloc(1, sizeof(*di));
             CHECK_NULL_NOMEM_GOTO(di, rc, cleanup);
             di->node = sr_dup_datatree(info->node);
-            /* set flag to true to force the validation */
-            di->modified = true;
             if (NULL != info->node && NULL == di->node) {
                 SR_LOG_ERR_MSG("Data tree duplication failed");
                 rc = SR_ERR_INTERNAL;
@@ -3161,8 +3159,6 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 /* we can reuse data that were just read from file system */
                 rc = dm_insert_data_info_copy(c_ctx->prev_data_trees, di);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Insert data info copy failed");
-                /* set flag to true to force the validation */
-                di->modified = true;
             }
         }
 
@@ -4850,7 +4846,6 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     dm_data_info_t *di = NULL;
     const struct lys_node *proc_node = NULL;
     struct lyd_node *data_tree = NULL;
-    char *xml_str = NULL;
     struct lyxml_elem *xml = NULL;
     int rc = SR_ERR_OK;
 
@@ -4876,9 +4871,13 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
         goto cleanup;
     }
 
-    /* TODO: remove, WORKAROUND for https://github.com/CESNET/libyang/issues/225 */
-    lyxml_print_mem(&xml_str, notification->data.xml, LYP_FORMAT);
-    xml = lyxml_parse_mem(di->schema->ly_ctx, xml_str, 0);
+    /* duplicate the xml tree for use in the dm_ctx */
+    xml = lyxml_dup(di->schema->ly_ctx, notification->data.xml);
+    if (NULL == xml) {
+        SR_LOG_ERR("Error by duplicating of the notification XML tree: %s", ly_errmsg());
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
 
     /* parse the XML into the data tree */
     data_tree = lyd_parse_xml(di->schema->ly_ctx, &xml /* &notification->data.xml */, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
@@ -4904,7 +4903,6 @@ cleanup:
     if (NULL != xml) {
         lyxml_free(di->schema->ly_ctx, xml);
     }
-    free(xml_str);
     lyd_free_withsiblings(data_tree);
     free(module_name);
 

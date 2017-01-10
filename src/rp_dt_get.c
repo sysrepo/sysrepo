@@ -871,9 +871,12 @@ rp_dt_has_parent_list(struct lys_node *node, struct lys_node **found_list, size_
 {
     if (NULL != node) {
         struct lys_node *n = node->parent;
-        size_t dep = 1;
+        size_t dep = 0;
 
         while (NULL != n) {
+            if (0 == (LYS_USES & n->nodetype)) {
+                dep++;
+            }
             if (LYS_LIST & n->nodetype) {
                 if (NULL != depth) {
                     *depth = dep;
@@ -884,7 +887,6 @@ rp_dt_has_parent_list(struct lys_node *node, struct lys_node **found_list, size_
                 return true;
             }
             n = lys_parent(n);
-            dep++;
         }
     }
     return false;

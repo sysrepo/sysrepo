@@ -377,7 +377,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         new_value = strdup(str_val);
         CHECK_NULL_NOMEM_RETURN(new_value);
     } else if (!((LYS_CONTAINER | LYS_LIST) & sch_node->nodetype) &&
-            !(LYS_LEAFLIST == sch_node->nodetype && NULL != strstr(xpath, "[.='") && ']' == xpath[strlen(xpath)-1])) {
+            !(LYS_LEAFLIST == sch_node->nodetype && (NULL != strstr(xpath, "[.='") || NULL != strstr(xpath, "[.=\"")) && ']' == xpath[strlen(xpath)-1])) {
         /* value can be NULL only if a presence container, list or leaf-list with predicated is being created */
         SR_LOG_ERR_MSG("Argument value not passed");
         return SR_ERR_INVAL_ARG;

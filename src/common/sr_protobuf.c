@@ -105,6 +105,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "internal-state-data";
     case SR__OPERATION__NOTIF_STORE_CLEANUP:
         return "notif-store-cleanup";
+    case SR__OPERATION__DELAYED_MSG:
+        return "delayed-msg";
     case _SR__OPERATION_IS_INT_SIZE:
         return "unknown";
     }
@@ -821,6 +823,12 @@ sr_gpb_internal_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, S
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__notif_store_cleanup_req__init((Sr__NotifStoreCleanupReq*)sub_msg);
             req->notif_store_cleanup_req = (Sr__NotifStoreCleanupReq*) sub_msg;
+            break;
+        case SR__OPERATION__DELAYED_MSG:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__DelayedMsgReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__delayed_msg_req__init((Sr__DelayedMsgReq*)sub_msg);
+            req->delayed_msg_req = (Sr__DelayedMsgReq*) sub_msg;
             break;
         default:
             break;
@@ -2275,15 +2283,15 @@ sr_ev_notification_type_gpb_to_sr(Sr__EventNotifReq__NotifType ev_notif_type)
 {
     switch (ev_notif_type) {
         case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REALTIME:
-            return SR_EV_NOTIF_REALTIME;
+            return SR_EV_NOTIF_T_REALTIME;
         case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY:
-            return SR_EV_NOTIF_REPLAY;
+            return SR_EV_NOTIF_T_REPLAY;
         case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_COMPLETE:
-            return SR_EV_NOTIF_REPLAY_COMPLETE;
+            return SR_EV_NOTIF_T_REPLAY_COMPLETE;
         case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_STOP:
-            return SR_EV_NOTIF_REPLAY_STOP;
+            return SR_EV_NOTIF_T_REPLAY_STOP;
         default:
-            return SR_EV_NOTIF_REALTIME;
+            return SR_EV_NOTIF_T_REALTIME;
     }
 }
 

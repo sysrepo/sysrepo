@@ -2023,6 +2023,8 @@ cl_notification_test(void **state)
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
+    skip_if_daemon_running(); /* module uninstall & install requires restart of the Sysrepo Engine */
+
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
     volatile int callback_called = 0;
@@ -4407,7 +4409,7 @@ cl_event_notif_test(void **state)
     values[3].type = SR_STRING_T;
     values[3].data.string_val = "eth0";
 
-    rc = sr_event_notif_send(notif_session, "/test-module:link-discovered", values, 4);
+    rc = sr_event_notif_send(notif_session, "/test-module:link-discovered", values, 4, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* send event notification - link removal */
@@ -4424,7 +4426,7 @@ cl_event_notif_test(void **state)
     values[3].type = SR_STRING_T;
     values[3].data.string_val = "eth2";
 
-    rc = sr_event_notif_send(notif_session, "/test-module:link-removed", values, 4);
+    rc = sr_event_notif_send(notif_session, "/test-module:link-removed", values, 4, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* send event notification - link overutilized (not defined in yang) */
@@ -4441,7 +4443,7 @@ cl_event_notif_test(void **state)
     values[3].type = SR_STRING_T;
     values[3].data.string_val = "eth0";
 
-    rc = sr_event_notif_send(notif_session, "/test-module:link-overutilized", values, 4);
+    rc = sr_event_notif_send(notif_session, "/test-module:link-overutilized", values, 4, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
 
     /* send event notification - status-change */
@@ -4453,7 +4455,7 @@ cl_event_notif_test(void **state)
     values[1].data.uint32_val = 18;
 
     rc = sr_event_notif_send(notif_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
-            values, 2);
+            values, 2, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* wait at most 5 seconds for all callbacks to get called */
@@ -4764,7 +4766,7 @@ cl_event_notif_tree_test(void **state)
     tree->type = SR_STRING_T;
     tree->data.string_val = strdup("eth0");
 
-    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-discovered", trees, tree_cnt);
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-discovered", trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_trees(trees, tree_cnt);
 
@@ -4792,7 +4794,7 @@ cl_event_notif_tree_test(void **state)
     tree->type = SR_STRING_T;
     tree->data.string_val = strdup("eth2");
 
-    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-removed", trees, tree_cnt);
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-removed", trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_trees(trees, tree_cnt);
 
@@ -4820,7 +4822,7 @@ cl_event_notif_tree_test(void **state)
     tree->type = SR_STRING_T;
     tree->data.string_val = strdup("eth0");
 
-    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-overutilized", trees, tree_cnt);
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-overutilized", trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
     sr_free_trees(trees, tree_cnt);
 
@@ -4839,7 +4841,7 @@ cl_event_notif_tree_test(void **state)
     tree->data.uint32_val = 18;
 
     rc = sr_event_notif_send_tree(notif_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
-            trees, tree_cnt);
+            trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_trees(trees, tree_cnt);
 
@@ -4995,7 +4997,7 @@ cl_event_notif_combo_test(void **state)
     tree->type = SR_STRING_T;
     tree->data.string_val = strdup("eth0");
 
-    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-discovered", trees, tree_cnt);
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-discovered", trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_trees(trees, tree_cnt);
 
@@ -5013,7 +5015,7 @@ cl_event_notif_combo_test(void **state)
     values[3].type = SR_STRING_T;
     values[3].data.string_val = "eth2";
 
-    rc = sr_event_notif_send(notif_session, "/test-module:link-removed", values, 4);
+    rc = sr_event_notif_send(notif_session, "/test-module:link-removed", values, 4, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* send event notification - link overutilized (not defined in yang) */
@@ -5040,7 +5042,7 @@ cl_event_notif_combo_test(void **state)
     tree->type = SR_STRING_T;
     tree->data.string_val = strdup("eth0");
 
-    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-overutilized", trees, tree_cnt);
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-overutilized", trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
     sr_free_trees(trees, tree_cnt);
 
@@ -5059,7 +5061,7 @@ cl_event_notif_combo_test(void **state)
     tree->data.uint32_val = 18;
 
     rc = sr_event_notif_send_tree(notif_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
-            trees, tree_cnt);
+            trees, tree_cnt, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_trees(trees, tree_cnt);
 
@@ -5072,7 +5074,7 @@ cl_event_notif_combo_test(void **state)
     values[1].data.uint32_val = 18;
 
     rc = sr_event_notif_send(notif_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
-            values, 2);
+            values, 2, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* wait at most 5 seconds for all callbacks to get called */
@@ -5121,7 +5123,9 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
 
     assert_string_equal("/test-module:link-discovered", xpath);
 
-    if (SR_EV_NOTIF_REPLAY_COMPLETE != notif_type) {
+    assert_false(SR_EV_NOTIF_T_REALTIME == notif_type);
+
+    if (SR_EV_NOTIF_T_REPLAY == notif_type) {
         assert_int_equal(values_cnt, 7);
         assert_string_equal("/test-module:link-discovered/source", values[0].xpath);
         assert_int_equal(SR_CONTAINER_T, values[0].type);
@@ -5142,19 +5146,35 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
         assert_string_equal("/test-module:link-discovered/MTU", values[6].xpath);  /**< default */
         assert_int_equal(SR_UINT16_T, values[6].type);
         assert_int_equal(1500, values[6].data.uint16_val);
+
+        assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+        cb_status->link_discovered += 1;
+        assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
 
-    if (SR_EV_NOTIF_REPLAY_COMPLETE == notif_type) {
+    if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
         assert_int_equal(values_cnt, 0);
         assert_null(values);
 
         assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
         cb_status->link_discovered += 1;
-        if (cb_status->link_discovered == 1) {
-            assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
-        }
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
+
+    if (SR_EV_NOTIF_T_REPLAY_STOP == notif_type) {
+        assert_int_equal(values_cnt, 0);
+        assert_null(values);
+
+        assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+        cb_status->link_discovered += 1;
+        assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+    }
+
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+    if (cb_status->link_discovered == 3) {
+        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    }
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
 }
 #endif
 
@@ -5165,7 +5185,9 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
-    if (SR_EV_NOTIF_REPLAY_COMPLETE != notif_type) {
+    assert_false(SR_EV_NOTIF_T_REALTIME == notif_type);
+
+    if (SR_EV_NOTIF_T_REPLAY == notif_type) {
         assert_int_equal(values_cnt, 7);
         assert_string_equal("/test-module:link-removed", xpath);
         assert_string_equal("/test-module:link-removed/source", values[0].xpath);
@@ -5187,19 +5209,35 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
         assert_string_equal("/test-module:link-removed/MTU", values[6].xpath); /**< default */
         assert_int_equal(SR_UINT16_T, values[6].type);
         assert_int_equal(1500, values[6].data.uint16_val);
+
+        assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+        cb_status->link_removed += 1;
+        assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
 
-    if (SR_EV_NOTIF_REPLAY_COMPLETE == notif_type) {
+    if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
         assert_int_equal(values_cnt, 0);
         assert_null(values);
 
         assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
         cb_status->link_removed += 1;
-        if (cb_status->link_removed == 1) {
-            assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
-        }
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
     }
+
+    if (SR_EV_NOTIF_T_REPLAY_STOP == notif_type) {
+        assert_int_equal(values_cnt, 0);
+        assert_null(values);
+
+        assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+        cb_status->link_removed += 1;
+        assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+    }
+
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+    if (cb_status->link_removed == 3) {
+        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    }
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
 }
 #endif
 
@@ -5234,12 +5272,12 @@ cl_event_notif_replay_test(void **state)
 
     /* subscribe for link discovery */
     rc = sr_event_notif_subscribe(session, "/test-module:link-discovered", test_event_notif_link_discovery_replay_cb,
-            &cb_status, SR_SUBSCR_DEFAULT, &subscription);
+            &cb_status, SR_SUBSCR_NOTIF_REPLAY_FIRST, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe for link removal */
     rc = sr_event_notif_subscribe(session, "/test-module:link-removed", test_event_notif_link_removed_replay_cb,
-            &cb_status, SR_SUBSCR_CTX_REUSE, &subscription);
+            &cb_status, SR_SUBSCR_NOTIF_REPLAY_FIRST | SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* send event notification - link discovery */
@@ -5256,7 +5294,7 @@ cl_event_notif_replay_test(void **state)
     values[3].type = SR_STRING_T;
     values[3].data.string_val = "eth0";
 
-    rc = sr_event_notif_send(session, "/test-module:link-discovered", values, 4);
+    rc = sr_event_notif_send(session, "/test-module:link-discovered", values, 4, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* send event notification - link removal */
@@ -5273,11 +5311,11 @@ cl_event_notif_replay_test(void **state)
     values[3].type = SR_STRING_T;
     values[3].data.string_val = "eth2";
 
-    rc = sr_event_notif_send(session, "/test-module:link-removed", values, 4);
+    rc = sr_event_notif_send(session, "/test-module:link-removed", values, 4, SR_EV_NOTIF_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* replay the notifications */
-    rc = sr_event_notif_replay(session, subscription, start_time, 0);
+    rc = sr_event_notif_replay(session, subscription, start_time, time(NULL) + 1);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* wait at most 5 seconds for all callbacks to get called */
@@ -5285,9 +5323,9 @@ cl_event_notif_replay_test(void **state)
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += 5;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
-            && (cb_status.link_removed < 1 || cb_status.link_discovered < 1));
-    assert_true(cb_status.link_discovered >= 1);
-    assert_true(cb_status.link_removed >= 1);
+            && (cb_status.link_removed < 3 || cb_status.link_discovered < 3));
+    assert_true(cb_status.link_discovered >= 3);
+    assert_true(cb_status.link_removed >= 3);
     assert_int_equal(0, pthread_mutex_unlock(&cb_status.mutex));
 
     /* unsubscribe */
@@ -5483,6 +5521,65 @@ cl_session_get_id_test (void **state)
     sr_session_stop(session);
 }
 
+static void
+cl_apos_xpath_test (void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    int rc = SR_ERR_OK;
+
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    char *xp = "/example-module:container/list[key1=\"abc'def\"][key2=\"xy'z\"]";
+
+    /* list */
+    rc = sr_set_item(session, xp, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_val_t *v = NULL;
+
+    rc = sr_get_item(session, xp, &v);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_string_equal(xp, v->xpath);
+
+    sr_free_val(v);
+
+    rc = sr_delete_item(session, xp, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(session, xp, &v);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* leaf-list */
+    char *ll_xpath = "/example-module:array[.=\"val'apos\"]";
+    rc = sr_set_item(session, ll_xpath, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(session, ll_xpath, &v);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_string_equal("/example-module:array", v->xpath);
+
+    sr_free_val(v);
+
+    rc = sr_delete_item(session, ll_xpath, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(session, ll_xpath, &v);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    sr_session_stop(session);
+}
+
 int
 main()
 {
@@ -5538,6 +5635,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_get_schema_with_subscription, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_set_item_str_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_session_get_id_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_apos_xpath_test, sysrepo_setup, sysrepo_teardown),
     };
 
     watchdog_start(300);

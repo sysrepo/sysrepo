@@ -87,7 +87,7 @@ rpc_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,
     /* send notification for event_notif_sub(_tree)_example */
     printf(">>> Sending event notification for '/turing-machine:paused'...\n");
     /* note: we can re-use input trees as Sysrepo trees are not bind to xpath */
-    rc = sr_event_notif_send_tree(session, "/turing-machine:paused", input, input_cnt);
+    rc = sr_event_notif_send_tree(session, "/turing-machine:paused", input, input_cnt, SR_EV_NOTIF_DEFAULT);
     if (SR_ERR_NOT_FOUND == rc) {
         printf("No application subscribed for '/turing-machine:paused', skipping.\n"
                "(run event_notif_sub_example or event_notif_sub_tree_example)\n\n");
