@@ -59,12 +59,78 @@
  * @brief Persistence Manager context.
  */
 typedef struct pm_ctx_s {
-    rp_ctx_t *rp_ctx;                 /**< Request Processor context. */
-    struct ly_ctx *ly_ctx;            /**< libyang context used locally in PM. */
-    const struct lys_module *schema;  /**< Schema tree of sysrepo-persistent-data YANG. */
-    const char *data_search_dir;      /**< Directory containing the data files. */
-    sr_locking_set_t *lock_ctx;        /**< Context for locking persist data files. */
+    rp_ctx_t *rp_ctx;                   /**< Request Processor context. */
+    struct ly_ctx *ly_ctx;              /**< libyang context used locally in PM. */
+    const struct lys_module *schema;    /**< Schema tree of sysrepo-persistent-data YANG. */
+    const char *data_search_dir;        /**< Directory containing the data files. */
+    sr_locking_set_t *lock_ctx;         /**< Context for locking persist data files. */
+    sr_btree_t *module_data;            /**< Binary tree holding cached data of a module. */
+    pthread_rwlock_t module_data_lock;  /**< RW lock for accessing ::module_data. */
 } pm_ctx_t;
+
+/**
+ * @brief PM module data info structure.
+ */
+typedef struct pm_module_data_s {
+    const char *module_name;    /**< Name of the module. */
+    sr_list_t *cached_data;     /**< Cached data of the module. */
+} pm_module_data_t;
+
+/**
+ * @brief Structure used to store cached data of a module.
+ */
+typedef struct pm_cached_data_s {
+    Sr__SubscriptionType subscription_type;  /**< Type of the subscriptions that are cached in this entry. */
+    np_subscription_t *subscriptions;        /**< Array of the cached subscriptions. */
+    size_t subscription_cnt;                 /**< Count of the items in the ::subscriptions array. */
+    bool valid;                              /**< Flag that marks whether the cached data is valid or invalidated. */
+} pm_cached_data_t;
+
+/**
+ * @brief Compares two module data structures by module name.
+ */
+static int
+pm_module_data_cmp(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    pm_module_data_t *data_a = (pm_module_data_t *) a;
+    pm_module_data_t *data_b = (pm_module_data_t *) b;
+
+    int res = strcmp(data_a->module_name, data_b->module_name);
+    if (res == 0) {
+        return 0;
+    } else if (res < 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+/**
+ * @brief Cleans up the module data structure.
+ */
+static void
+pm_free_module_data(void *module_data)
+{
+    pm_module_data_t *md = (pm_module_data_t *) module_data;
+    pm_cached_data_t *cd = NULL;
+
+    CHECK_NULL_ARG_VOID(md);
+
+    /* cleanup cached_data */
+    for (size_t i = 0; i < md->cached_data->count; i++) {
+        cd = md->cached_data->data[i];
+        if (cd->valid) {
+            np_free_subscriptions(cd->subscriptions, cd->subscription_cnt);
+        }
+        free(cd);
+    }
+    sr_list_cleanup(md->cached_data);
+
+    free((void*)md->module_name);
+    free(md);
+}
 
 /**
  * @brief Saves the data tree into the file specified by file descriptor.
@@ -392,6 +458,213 @@ cleanup:
 }
 
 /**
+ * @brief Return cached subscriptions of requested module and type, if present in the cache.
+ */
+static int
+pm_get_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType subscription_type,
+        np_subscription_t **subscriptions_p, size_t *subscription_cnt_p, bool *cache_hit)
+{
+    pm_module_data_t *md = NULL, lookup_md = {0};
+    pm_cached_data_t *cd = NULL, *lookup_cd = NULL;
+
+    CHECK_NULL_ARG5(pm_ctx, module_name, subscriptions_p, subscription_cnt_p, cache_hit);
+
+    *cache_hit = false;
+
+    RWLOCK_RDLOCK_TIMED_CHECK_RETURN(&pm_ctx->module_data_lock);
+
+    /* find module data info */
+    lookup_md.module_name = module_name;
+    md = sr_btree_search(pm_ctx->module_data, &lookup_md);
+
+    if (NULL == md) {
+        /* module data does not exist */
+        goto success;
+    }
+
+    /* find cached info of given type */
+    for (size_t i = 0; i < md->cached_data->count; i++) {
+        lookup_cd = md->cached_data->data[i];
+        if (lookup_cd->subscription_type == subscription_type) {
+            cd = lookup_cd;
+            break;
+        }
+    }
+
+    if (NULL == cd) {
+        /* cached info of given type does not exist */
+        goto success;
+    }
+
+    if (!cd->valid) {
+        /* cache is invalid */
+        goto success;
+    }
+
+    // TODO - remove & just set the pointer
+    np_subscription_t *subscriptions = NULL;
+    if (cd->subscription_cnt > 0) {
+        subscriptions = calloc(cd->subscription_cnt, sizeof(*subscriptions));
+        for (size_t i = 0; i < cd->subscription_cnt; i++) {
+            subscriptions[i].api_variant = cd->subscriptions[i].api_variant;
+            if (cd->subscriptions[i].dst_address)
+                subscriptions[i].dst_address = strdup(cd->subscriptions[i].dst_address);
+            subscriptions[i].dst_id = cd->subscriptions[i].dst_id;
+            subscriptions[i].enable_running = cd->subscriptions[i].enable_running;
+            if (cd->subscriptions[i].module_name)
+                subscriptions[i].module_name = strdup(cd->subscriptions[i].module_name);
+            subscriptions[i].notif_event = cd->subscriptions[i].notif_event;
+            subscriptions[i].priority = cd->subscriptions[i].priority;
+            subscriptions[i].type = cd->subscriptions[i].type;
+            if (cd->subscriptions[i].username)
+                subscriptions[i].username = strdup(cd->subscriptions[i].username);
+            if (cd->subscriptions[i].xpath)
+                subscriptions[i].xpath = strdup(cd->subscriptions[i].xpath);
+        }
+    }
+    *subscriptions_p = subscriptions;
+
+    *subscription_cnt_p = cd->subscription_cnt;
+    *cache_hit = true;
+
+success:
+    pthread_rwlock_unlock(&pm_ctx->module_data_lock);
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Store the subscriptions in the cache.
+ */
+static int
+pm_cache_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType subscription_type,
+        np_subscription_t *subscriptions, size_t subscription_cnt)
+{
+    pm_module_data_t *md = NULL, lookup_md = {0};
+    pm_cached_data_t *cd = NULL, *lookup_cd = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(pm_ctx, module_name);
+
+    RWLOCK_WRLOCK_TIMED_CHECK_RETURN(&pm_ctx->module_data_lock);
+
+    /* find module data info */
+    lookup_md.module_name = module_name;
+    md = sr_btree_search(pm_ctx->module_data, &lookup_md);
+
+    if (NULL == md) {
+        /* module data does not exist, create it */
+        md = calloc(1, sizeof(*md));
+        CHECK_NULL_NOMEM_GOTO(md, rc, cleanup);
+
+        md->module_name = strdup(module_name);
+        CHECK_NULL_NOMEM_GOTO(md->module_name, rc, cleanup);
+
+        rc = sr_list_init(&md->cached_data);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Cached data list init failed.");
+
+        rc = sr_btree_insert(pm_ctx->module_data, md);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Module data btree insert failed.");
+    }
+
+    /* find cached info of given type */
+    for (size_t i = 0; i < md->cached_data->count; i++) {
+        lookup_cd = md->cached_data->data[i];
+        if (lookup_cd->subscription_type == subscription_type) {
+            cd = lookup_cd;
+            break;
+        }
+    }
+
+    if (NULL == cd) {
+        /* cached info of given type does not exist, create it */
+        cd = calloc(1, sizeof(*cd));
+        CHECK_NULL_NOMEM_GOTO(cd, rc, cleanup);
+
+        cd->subscription_type = subscription_type;
+
+        rc = sr_list_add(md->cached_data, cd);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Cached data add failed.");
+    }
+
+    SR_LOG_DBG("Caching %zu subscriptions from '%s' persist file.", subscription_cnt, module_name);
+
+    // TODO - remove & just set the pointer
+    if (subscription_cnt > 0) {
+        cd->subscriptions = calloc(subscription_cnt, sizeof(*cd->subscriptions));
+        for (size_t i = 0; i < subscription_cnt; i++) {
+            cd->subscriptions[i].api_variant = subscriptions[i].api_variant;
+            if (subscriptions[i].dst_address)
+                cd->subscriptions[i].dst_address = strdup(subscriptions[i].dst_address);
+            cd->subscriptions[i].dst_id = subscriptions[i].dst_id;
+            cd->subscriptions[i].enable_running = subscriptions[i].enable_running;
+            if (subscriptions[i].module_name)
+                cd->subscriptions[i].module_name = strdup(subscriptions[i].module_name);
+            cd->subscriptions[i].notif_event = subscriptions[i].notif_event;
+            cd->subscriptions[i].priority = subscriptions[i].priority;
+            cd->subscriptions[i].type = subscriptions[i].type;
+            if (subscriptions[i].username)
+                cd->subscriptions[i].username = strdup(subscriptions[i].username);
+            if (subscriptions[i].xpath)
+                cd->subscriptions[i].xpath = strdup(subscriptions[i].xpath);
+        }
+    }
+
+    cd->valid = true;
+    cd->subscription_cnt = subscription_cnt;
+
+cleanup:
+    // TODO
+    pthread_rwlock_unlock(&pm_ctx->module_data_lock);
+
+    return rc;
+}
+
+/**
+ * @brief Invalidates cache of subscriptions of given module.
+ */
+static int
+pm_invalidate_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType subscription_type,
+        bool all_types)
+{
+    pm_module_data_t *md = NULL, lookup_md = {0};
+    pm_cached_data_t *cd = NULL;
+
+    CHECK_NULL_ARG2(pm_ctx, module_name);
+
+    RWLOCK_WRLOCK_TIMED_CHECK_RETURN(&pm_ctx->module_data_lock);
+
+    /* find module data info */
+    lookup_md.module_name = module_name;
+    md = sr_btree_search(pm_ctx->module_data, &lookup_md);
+
+    if (NULL == md) {
+        /* module data does not exist */
+        pthread_rwlock_unlock(&pm_ctx->module_data_lock);
+        return SR_ERR_OK;
+    }
+
+    /* find cached info of given type */
+    for (size_t i = 0; i < md->cached_data->count; i++) {
+        cd = md->cached_data->data[i];
+        if (cd->valid) {
+            if (all_types || (cd->subscription_type == subscription_type)) {
+                cd->valid = false;
+                np_free_subscriptions(cd->subscriptions, cd->subscription_cnt);
+                cd->subscriptions = NULL;
+                if (!all_types) {
+                    break;
+                }
+            }
+        }
+    }
+
+    pthread_rwlock_unlock(&pm_ctx->module_data_lock);
+
+    return SR_ERR_OK;
+}
+
+/**
  * @brief Checks whether there are some subscriptions that enable running datastore
  * within the data tree.
  */
@@ -423,6 +696,7 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
 {
     pm_ctx_t *ctx = NULL;
     char *schema_filename = NULL;
+    pthread_rwlockattr_t attr;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(rp_ctx, schema_search_dir, data_search_dir, pm_ctx);
@@ -437,6 +711,17 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
 
     rc = sr_locking_set_init(&ctx->lock_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize locking set.");
+
+    pthread_rwlockattr_init(&attr);
+#if defined(HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+#endif
+
+    rc = pthread_rwlock_init(&ctx->module_data_lock, &attr);
+    CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "lyctx mutex initialization failed");
+
+    rc = sr_btree_init(pm_module_data_cmp, pm_free_module_data, &ctx->module_data);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Module data binary tree init failed.");
 
     /* initialize libyang */
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
@@ -463,10 +748,12 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     }
 
     *pm_ctx = ctx;
-    return SR_ERR_OK;
 
 cleanup:
-    pm_cleanup(ctx);
+    pthread_rwlockattr_destroy(&attr);
+    if (SR_ERR_OK != rc) {
+        pm_cleanup(ctx);
+    }
     return rc;
 }
 
@@ -477,6 +764,8 @@ pm_cleanup(pm_ctx_t *pm_ctx)
         if (NULL != pm_ctx->ly_ctx) {
             ly_ctx_destroy(pm_ctx->ly_ctx, NULL);
         }
+        pthread_rwlock_destroy(&pm_ctx->module_data_lock);
+        sr_btree_cleanup(pm_ctx->module_data);
         sr_locking_set_cleanup(pm_ctx->lock_ctx);
         free((void*)pm_ctx->data_search_dir);
         free(pm_ctx);
@@ -740,6 +1029,9 @@ pm_remove_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char
 
     CHECK_NULL_ARG5(pm_ctx, user_cred, module_name, subscription, disable_running);
 
+    /* invalidate the subscription cache for this module and subscription type */
+    pm_invalidate_cached_subscriptions(pm_ctx, module_name, subscription->type, false);
+
     *disable_running = false;
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
@@ -774,6 +1066,9 @@ pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_nam
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(pm_ctx, module_name, dst_address, disable_running);
+
+    /* invalidate the subscription cache for this module */
+    pm_invalidate_cached_subscriptions(pm_ctx, module_name, 0, true);
 
     *disable_running = false;
 
@@ -810,9 +1105,17 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscription
     struct ly_set *node_set = NULL;
     np_subscription_t *subscriptions = NULL;
     size_t subscription_cnt = 0;
+    bool cache_hit = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(pm_ctx, module_name, subscriptions_p, subscription_cnt_p);
+
+    /* attempt to satisfy the request from cache */
+    rc = pm_get_cached_subscriptions(pm_ctx, module_name, type, subscriptions_p, subscription_cnt_p, &cache_hit);
+    if (cache_hit) {
+        SR_LOG_DBG("Returning %zu subscriptions from '%s' persist file cache.", *subscription_cnt_p, module_name);
+        return rc;
+    }
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
@@ -841,6 +1144,9 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscription
             subscription_cnt++;
         }
     }
+
+    /* store the result in the cache */
+    pm_cache_subscriptions(pm_ctx, module_name, type, subscriptions, subscription_cnt);
 
     SR_LOG_DBG("Returning %zu subscriptions found in '%s' persist file.", subscription_cnt, module_name);
 

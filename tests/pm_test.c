@@ -253,11 +253,118 @@ pm_subscription_test(void **state)
     assert_int_equal(subtrees_cnt, 0);
 }
 
+static void
+pm_subscription_cache_test(void **state)
+{
+    test_ctx_t *test_ctx = *state;
+    pm_ctx_t *pm_ctx = test_ctx->rp_ctx->pm_ctx;
+    np_subscription_t *subscriptions = NULL;
+    size_t subscription_cnt = 0;
+    bool disable_running = false;
+    int rc = SR_ERR_OK;
+
+    np_subscription_t subscription = { 0, };
+    subscription.dst_id = 123456789;
+
+    /* delete old subscriptions, if any */
+    pm_remove_subscriptions_for_destination(pm_ctx, "example-module", "/tmp/test-subscription-address1.sock",
+            &disable_running);
+    pm_remove_subscriptions_for_destination(pm_ctx, "example-module", "/tmp/test-subscription-address2.sock",
+                &disable_running);
+
+    /* create subscriptions for destination 1 */
+    subscription.dst_address = "/tmp/test-subscription-address1.sock";
+
+    subscription.type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
+    subscription.enable_running = true;
+    subscription.notif_event = SR__NOTIFICATION_EVENT__APPLY_EV;
+    subscription.priority = 53;
+    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    subscription.type = SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
+    subscription.xpath = "/example-module:container";
+    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    subscription.enable_running = false;
+
+    subscription.type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
+    subscription.xpath = NULL;
+    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
+
+    /* create subscriptions for destination 2 */
+    subscription.dst_address = "/tmp/test-subscription-address2.sock";
+
+    subscription.type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
+    subscription.xpath = NULL;
+    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    subscription.type = SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
+    subscription.xpath = "/example-module:container";
+    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* retrieve active subscriptions */
+    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
+            &subscriptions, &subscription_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(subscription_cnt >= 1);
+    for (size_t i = 0; i < subscription_cnt; i++) {
+        assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscriptions[i].notif_event);
+        assert_int_equal(subscriptions[i].priority, 53);
+        printf("Found subscription: %s @ %"PRIu32"\n", subscriptions[i].dst_address, subscriptions[i].dst_id);
+        np_free_subscription_content(&subscriptions[i]);
+    }
+    free(subscriptions);
+
+    /* retrieve active subscriptions - from cache */
+    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
+            &subscriptions, &subscription_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(subscription_cnt, 2);
+    for (size_t i = 0; i < subscription_cnt; i++) {
+        assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscriptions[i].notif_event);
+        assert_int_equal(subscriptions[i].priority, 53);
+        printf("Found subscription: %s @ %"PRIu32"\n", subscriptions[i].dst_address, subscriptions[i].dst_id);
+        np_free_subscription_content(&subscriptions[i]);
+    }
+    free(subscriptions);
+
+    /* remove subscriptions for destination 1 */
+    rc = pm_remove_subscriptions_for_destination(pm_ctx, "example-module", "/tmp/test-subscription-address1.sock",
+            &disable_running);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(disable_running);
+
+    /* retrieve active subscriptions - from disk, cache should be invalidated */
+    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
+            &subscriptions, &subscription_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(subscription_cnt, 1);
+    for (size_t i = 0; i < subscription_cnt; i++) {
+        assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscriptions[i].notif_event);
+        assert_int_equal(subscriptions[i].priority, 53);
+        printf("Found subscription: %s @ %"PRIu32"\n", subscriptions[i].dst_address, subscriptions[i].dst_id);
+        np_free_subscription_content(&subscriptions[i]);
+    }
+    free(subscriptions);
+
+    /* remove subscriptions for destination 2 */
+    rc = pm_remove_subscriptions_for_destination(pm_ctx, "example-module", "/tmp/test-subscription-address2.sock",
+            &disable_running);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(disable_running);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(pm_feature_test, test_setup, test_teardown),
             cmocka_unit_test_setup_teardown(pm_subscription_test, test_setup, test_teardown),
+            cmocka_unit_test_setup_teardown(pm_subscription_cache_test, test_setup, test_teardown),
     };
 
     watchdog_start(300);
