@@ -172,6 +172,7 @@ INSTALL_YANG_FOR_TESTS("referenced-data")
 INSTALL_YANG_FOR_TESTS("cross-module")
 INSTALL_YANG_FOR_TESTS("turing-machine")
 INSTALL_YANG_FOR_TESTS("ietf-netconf-notifications")
+INSTALL_YANG_FOR_TESTS("nc-notifications")
 INSTALL_YANG_FOR_TESTS("servers")
 
 # dummy testing plugins
