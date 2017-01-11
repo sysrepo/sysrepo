@@ -540,8 +540,8 @@ static int
 pm_cache_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType subscription_type,
         np_subscription_t *subscriptions, size_t subscription_cnt)
 {
-    pm_module_data_t *md = NULL, lookup_md = {0};
-    pm_cached_data_t *cd = NULL, *lookup_cd = NULL;
+    pm_module_data_t *md = NULL, *md_tmp = NULL, lookup_md = {0};
+    pm_cached_data_t *cd = NULL, *cd_tmp = NULL, *lookup_cd = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(pm_ctx, module_name);
@@ -554,17 +554,20 @@ pm_cache_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscripti
 
     if (NULL == md) {
         /* module data does not exist, create it */
-        md = calloc(1, sizeof(*md));
-        CHECK_NULL_NOMEM_GOTO(md, rc, cleanup);
+        md_tmp = calloc(1, sizeof(*md));
+        CHECK_NULL_NOMEM_GOTO(md_tmp, rc, cleanup);
 
-        md->module_name = strdup(module_name);
-        CHECK_NULL_NOMEM_GOTO(md->module_name, rc, cleanup);
+        md_tmp->module_name = strdup(module_name);
+        CHECK_NULL_NOMEM_GOTO(md_tmp->module_name, rc, cleanup);
 
-        rc = sr_list_init(&md->cached_data);
+        rc = sr_list_init(&md_tmp->cached_data);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Cached data list init failed.");
 
-        rc = sr_btree_insert(pm_ctx->module_data, md);
+        rc = sr_btree_insert(pm_ctx->module_data, md_tmp);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Module data btree insert failed.");
+
+        md = md_tmp;
+        md_tmp = NULL;
     }
 
     /* find cached info of given type */
@@ -578,13 +581,16 @@ pm_cache_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscripti
 
     if (NULL == cd) {
         /* cached info of given type does not exist, create it */
-        cd = calloc(1, sizeof(*cd));
-        CHECK_NULL_NOMEM_GOTO(cd, rc, cleanup);
+        cd_tmp = calloc(1, sizeof(*cd_tmp));
+        CHECK_NULL_NOMEM_GOTO(cd_tmp, rc, cleanup);
 
-        cd->subscription_type = subscription_type;
+        cd_tmp->subscription_type = subscription_type;
 
-        rc = sr_list_add(md->cached_data, cd);
+        rc = sr_list_add(md->cached_data, cd_tmp);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Cached data add failed.");
+
+        cd = cd_tmp;
+        cd_tmp = NULL;
     }
 
     SR_LOG_DBG("Caching %zu subscriptions from '%s' persist file.", subscription_cnt, module_name);
@@ -614,7 +620,14 @@ pm_cache_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscripti
     cd->subscription_cnt = subscription_cnt;
 
 cleanup:
-    // TODO
+    if (NULL != md_tmp) {
+        sr_list_cleanup(md_tmp->cached_data);
+        free((void*)md_tmp->module_name);
+        free(md_tmp);
+    }
+    if (NULL != cd_tmp) {
+        free(cd_tmp);
+    }
     pthread_rwlock_unlock(&pm_ctx->module_data_lock);
 
     return rc;
