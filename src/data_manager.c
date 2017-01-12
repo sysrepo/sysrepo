@@ -272,10 +272,7 @@ dm_model_subscription_free(void *sub)
 {
     dm_model_subscription_t *ms = (dm_model_subscription_t *) sub;
     if (NULL != ms) {
-        for (size_t i = 0; i < ms->subscription_cnt; i++) {
-            np_free_subscription(ms->subscriptions[i]);
-        }
-        free(ms->subscriptions);
+        np_free_subscriptions_list(ms->subscriptions);
         free(ms->nodes);
         lyd_free_diff(ms->difflist);
         if (NULL != ms->changes) {
@@ -2721,6 +2718,7 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info,
     CHECK_NULL_ARG3(dm_ctx, schema_info, model_sub);
     int rc = SR_ERR_OK;
     dm_model_subscription_t *ms = NULL;
+    np_subscription_t *sub = NULL;
 
     ms = calloc(1, sizeof(*ms));
     CHECK_NULL_NOMEM_RETURN(ms);
@@ -2729,26 +2727,28 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info,
 
     rc = np_get_module_change_subscriptions(dm_ctx->np_ctx,
             schema_info->module_name,
-            &ms->subscriptions,
-            &ms->subscription_cnt);
+            &ms->subscriptions);
 
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module subscription failed for module %s", schema_info->module_name);
 
-    qsort(ms->subscriptions, ms->subscription_cnt, sizeof(*ms->subscriptions), dm_subs_cmp);
+    if (NULL != ms->subscriptions && ms->subscriptions->count > 0) {
+        qsort(ms->subscriptions->data, ms->subscriptions->count, sizeof(*ms->subscriptions->data), dm_subs_cmp);
 
-    ms->nodes = calloc(ms->subscription_cnt, sizeof(*ms->nodes));
-    CHECK_NULL_NOMEM_GOTO(ms->nodes, rc, cleanup);
+        ms->nodes = calloc(ms->subscriptions->count, sizeof(*ms->nodes));
+        CHECK_NULL_NOMEM_GOTO(ms->nodes, rc, cleanup);
 
-    for (size_t s = 0; s < ms->subscription_cnt; s++) {
-        if (NULL == ms->subscriptions[s]->xpath) {
-            ms->nodes[s] = NULL;
-        } else {
-            rc = rp_dt_validate_node_xpath(dm_ctx, NULL,
-                    ms->subscriptions[s]->xpath,
-                    NULL,
-                    &ms->nodes[s]);
-            if (SR_ERR_OK != rc || NULL == ms->nodes[s]) {
-                SR_LOG_WRN("Node for xpath %s has not been found", ms->subscriptions[s]->xpath);
+        for (size_t s = 0; s < ms->subscriptions->count; s++) {
+            sub = ms->subscriptions->data[s];
+            if (NULL == sub->xpath) {
+                ms->nodes[s] = NULL;
+            } else {
+                rc = rp_dt_validate_node_xpath(dm_ctx, NULL,
+                        sub->xpath,
+                        NULL,
+                        &ms->nodes[s]);
+                if (SR_ERR_OK != rc || NULL == ms->nodes[s]) {
+                    SR_LOG_WRN("Node for xpath %s has not been found", sub->xpath);
+                }
             }
         }
     }
@@ -3368,37 +3368,40 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
         }
 
         /* loop through subscription test if they should be notified */
-        for (size_t s = 0; s < ms->subscription_cnt; s++) {
-            if (dm_should_skip_subscription(ms->subscriptions[s], c_ctx, ev)) {
-                continue;
-            }
-
-            for (d_cnt = 0; LYD_DIFF_END != ms->difflist->type[d_cnt]; d_cnt++) {
-                const struct lyd_node *cmp_node = dm_get_notification_match_node(ms->difflist, d_cnt);
-                rc = dm_match_subscription(ms->nodes[s], cmp_node, &match);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_WRN_MSG("Subscription match failed");
+        if (NULL != ms->subscriptions) {
+            for (size_t s = 0; s < ms->subscriptions->count; s++) {
+                np_subscription_t *sub = ms->subscriptions->data[s];
+                if (dm_should_skip_subscription(sub, c_ctx, ev)) {
                     continue;
                 }
-                if (match) {
-                    break;
-                }
-            }
 
-            if (match) {
-                /* something has been changed for this subscription, send notification */
-                rc = np_subscription_notify(dm_ctx->np_ctx, ms->subscriptions[s], ev, c_ctx->id);
-                if (SR_ERR_OK != rc) {
-                   SR_LOG_WRN("Unable to send notifications about the changes for the subscription in module %s xpath %s.",
-                           ms->subscriptions[s]->module_name,
-                           ms->subscriptions[s]->xpath);
+                for (d_cnt = 0; LYD_DIFF_END != ms->difflist->type[d_cnt]; d_cnt++) {
+                    const struct lyd_node *cmp_node = dm_get_notification_match_node(ms->difflist, d_cnt);
+                    rc = dm_match_subscription(ms->nodes[s], cmp_node, &match);
+                    if (SR_ERR_OK != rc) {
+                        SR_LOG_WRN_MSG("Subscription match failed");
+                        continue;
+                    }
+                    if (match) {
+                        break;
+                    }
                 }
-                rc = sr_list_add(notified_notif, ms->subscriptions[s]);
-                if (SR_ERR_OK != rc) {
-                   SR_LOG_WRN_MSG("List add failed");
+
+                if (match) {
+                    /* something has been changed for this subscription, send notification */
+                    rc = np_subscription_notify(dm_ctx->np_ctx, sub, ev, c_ctx->id);
+                    if (SR_ERR_OK != rc) {
+                       SR_LOG_WRN("Unable to send notifications about the changes for the subscription in module %s xpath %s.",
+                               sub->module_name,
+                               sub->xpath);
+                    }
+                    rc = sr_list_add(notified_notif, sub);
+                    if (SR_ERR_OK != rc) {
+                       SR_LOG_WRN_MSG("List add failed");
+                    }
                 }
             }
-        }
+            }
     }
 
     if (SR_EV_VERIFY == ev) {

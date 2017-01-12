@@ -135,8 +135,8 @@ pm_subscription_test(void **state)
 {
     test_ctx_t *test_ctx = *state;
     pm_ctx_t *pm_ctx = test_ctx->rp_ctx->pm_ctx;
-    np_subscription_t *subscriptions = NULL;
-    size_t subscription_cnt = 0;
+    sr_list_t *subscriptions_list = NULL;
+    np_subscription_t *subscription_p = NULL;
     char **subtrees = NULL, **features = NULL;
     size_t subtrees_cnt = 0, feature_cnt = 0;
     bool running_enabled = false, disable_running = false;
@@ -197,17 +197,18 @@ pm_subscription_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* retrieve active subscriptions */
-    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            &subscriptions, &subscription_cnt);
+    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, &subscriptions_list);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_true(subscription_cnt >= 1);
-    for (size_t i = 0; i < subscription_cnt; i++) {
-        assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscriptions[i].notif_event);
-        assert_int_equal(subscriptions[i].priority, 53);
-        printf("Found subscription: %s @ %"PRIu32"\n", subscriptions[i].dst_address, subscriptions[i].dst_id);
-        np_free_subscription_content(&subscriptions[i]);
+    assert_non_null(subscriptions_list);
+    assert_true(subscriptions_list->count >= 1);
+    for (size_t i = 0; i < subscriptions_list->count; i++) {
+        subscription_p = subscriptions_list->data[i];
+        assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscription_p->notif_event);
+        assert_int_equal(subscription_p->priority, 53);
+        printf("Found subscription: %s @ %"PRIu32"\n", subscription_p->dst_address, subscription_p->dst_id);
     }
-    free(subscriptions);
+    np_free_subscriptions_list(subscriptions_list);
+    subscriptions_list = NULL;
 
     /* retrieve module info */
     rc = pm_get_module_info(pm_ctx, "example-module", NULL, &running_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
@@ -258,8 +259,8 @@ pm_subscription_cache_test(void **state)
 {
     test_ctx_t *test_ctx = *state;
     pm_ctx_t *pm_ctx = test_ctx->rp_ctx->pm_ctx;
-    np_subscription_t *subscriptions = NULL;
-    size_t subscription_cnt = 0;
+    sr_list_t *subscriptions_list = NULL;
+    np_subscription_t *subscription_p = NULL;
     bool disable_running = false;
     int rc = SR_ERR_OK;
 
@@ -308,30 +309,32 @@ pm_subscription_cache_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* retrieve active subscriptions */
-    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            &subscriptions, &subscription_cnt);
+    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, &subscriptions_list);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_true(subscription_cnt >= 1);
-    for (size_t i = 0; i < subscription_cnt; i++) {
-        assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscriptions[i].notif_event);
-        assert_int_equal(subscriptions[i].priority, 53);
-        printf("Found subscription: %s @ %"PRIu32"\n", subscriptions[i].dst_address, subscriptions[i].dst_id);
-        np_free_subscription_content(&subscriptions[i]);
+    assert_non_null(subscriptions_list);
+    assert_int_equal(subscriptions_list->count, 2);
+    for (size_t i = 0; i < subscriptions_list->count; i++) {
+        subscription_p = subscriptions_list->data[i];
+        assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscription_p->notif_event);
+        assert_int_equal(subscription_p->priority, 53);
+        printf("Found subscription: %s @ %"PRIu32"\n", subscription_p->dst_address, subscription_p->dst_id);
     }
-    free(subscriptions);
+    np_free_subscriptions_list(subscriptions_list);
+    subscriptions_list = NULL;
 
     /* retrieve active subscriptions - from cache */
-    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            &subscriptions, &subscription_cnt);
+    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, &subscriptions_list);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(subscription_cnt, 2);
-    for (size_t i = 0; i < subscription_cnt; i++) {
-        assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscriptions[i].notif_event);
-        assert_int_equal(subscriptions[i].priority, 53);
-        printf("Found subscription: %s @ %"PRIu32"\n", subscriptions[i].dst_address, subscriptions[i].dst_id);
-        np_free_subscription_content(&subscriptions[i]);
+    assert_non_null(subscriptions_list);
+    assert_int_equal(subscriptions_list->count, 2);
+    for (size_t i = 0; i < subscriptions_list->count; i++) {
+        subscription_p = subscriptions_list->data[i];
+        assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscription_p->notif_event);
+        assert_int_equal(subscription_p->priority, 53);
+        printf("Found subscription: %s @ %"PRIu32"\n", subscription_p->dst_address, subscription_p->dst_id);
     }
-    free(subscriptions);
+    np_free_subscriptions_list(subscriptions_list);
+    subscriptions_list = NULL;
 
     /* remove subscriptions for destination 1 */
     rc = pm_remove_subscriptions_for_destination(pm_ctx, "example-module", "/tmp/test-subscription-address1.sock",
@@ -340,17 +343,18 @@ pm_subscription_cache_test(void **state)
     assert_true(disable_running);
 
     /* retrieve active subscriptions - from disk, cache should be invalidated */
-    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            &subscriptions, &subscription_cnt);
+    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, &subscriptions_list);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(subscription_cnt, 1);
-    for (size_t i = 0; i < subscription_cnt; i++) {
-        assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscriptions[i].notif_event);
-        assert_int_equal(subscriptions[i].priority, 53);
-        printf("Found subscription: %s @ %"PRIu32"\n", subscriptions[i].dst_address, subscriptions[i].dst_id);
-        np_free_subscription_content(&subscriptions[i]);
+    assert_non_null(subscriptions_list);
+    assert_int_equal(subscriptions_list->count, 1);
+    for (size_t i = 0; i < subscriptions_list->count; i++) {
+        subscription_p = subscriptions_list->data[i];
+        assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscription_p->notif_event);
+        assert_int_equal(subscription_p->priority, 53);
+        printf("Found subscription: %s @ %"PRIu32"\n", subscription_p->dst_address, subscription_p->dst_id);
     }
-    free(subscriptions);
+    np_free_subscriptions_list(subscriptions_list);
+    subscriptions_list = NULL;
 
     /* remove subscriptions for destination 2 */
     rc = pm_remove_subscriptions_for_destination(pm_ctx, "example-module", "/tmp/test-subscription-address2.sock",

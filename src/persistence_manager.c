@@ -81,8 +81,7 @@ typedef struct pm_module_data_s {
  */
 typedef struct pm_cached_data_s {
     Sr__SubscriptionType subscription_type;  /**< Type of the subscriptions that are cached in this entry. */
-    np_subscription_t *subscriptions;        /**< Array of the cached subscriptions. */
-    size_t subscription_cnt;                 /**< Count of the items in the ::subscriptions array. */
+    sr_list_t *subscriptions;                /**< List of the cached subscriptions. */
     bool valid;                              /**< Flag that marks whether the cached data is valid or invalidated. */
 } pm_cached_data_t;
 
@@ -122,7 +121,7 @@ pm_free_module_data(void *module_data)
     for (size_t i = 0; i < md->cached_data->count; i++) {
         cd = md->cached_data->data[i];
         if (cd->valid) {
-            np_free_subscriptions(cd->subscriptions, cd->subscription_cnt);
+            np_free_subscriptions_list(cd->subscriptions);
         }
         free(cd);
     }
@@ -462,12 +461,15 @@ cleanup:
  */
 static int
 pm_get_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType subscription_type,
-        np_subscription_t **subscriptions_p, size_t *subscription_cnt_p, bool *cache_hit)
+        sr_list_t **subscriptions_p, bool *cache_hit)
 {
     pm_module_data_t *md = NULL, lookup_md = {0};
     pm_cached_data_t *cd = NULL, *lookup_cd = NULL;
+    sr_list_t *res_subscriptions = NULL;
+    np_subscription_t *subscription = NULL;
+    int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(pm_ctx, module_name, subscriptions_p, subscription_cnt_p, cache_hit);
+    CHECK_NULL_ARG4(pm_ctx, module_name, subscriptions_p, cache_hit);
 
     *cache_hit = false;
 
@@ -479,7 +481,7 @@ pm_get_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subsc
 
     if (NULL == md) {
         /* module data does not exist */
-        goto success;
+        goto cleanup;
     }
 
     /* find cached info of given type */
@@ -493,44 +495,40 @@ pm_get_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subsc
 
     if (NULL == cd) {
         /* cached info of given type does not exist */
-        goto success;
+        goto cleanup;
     }
 
     if (!cd->valid) {
         /* cache is invalid */
-        goto success;
+        goto cleanup;
     }
 
-    // TODO - remove & just set the pointer
-    np_subscription_t *subscriptions = NULL;
-    if (cd->subscription_cnt > 0) {
-        subscriptions = calloc(cd->subscription_cnt, sizeof(*subscriptions));
-        for (size_t i = 0; i < cd->subscription_cnt; i++) {
-            subscriptions[i].api_variant = cd->subscriptions[i].api_variant;
-            if (cd->subscriptions[i].dst_address)
-                subscriptions[i].dst_address = strdup(cd->subscriptions[i].dst_address);
-            subscriptions[i].dst_id = cd->subscriptions[i].dst_id;
-            subscriptions[i].enable_running = cd->subscriptions[i].enable_running;
-            if (cd->subscriptions[i].module_name)
-                subscriptions[i].module_name = strdup(cd->subscriptions[i].module_name);
-            subscriptions[i].notif_event = cd->subscriptions[i].notif_event;
-            subscriptions[i].priority = cd->subscriptions[i].priority;
-            subscriptions[i].type = cd->subscriptions[i].type;
-            if (cd->subscriptions[i].username)
-                subscriptions[i].username = strdup(cd->subscriptions[i].username);
-            if (cd->subscriptions[i].xpath)
-                subscriptions[i].xpath = strdup(cd->subscriptions[i].xpath);
+    if (NULL != cd->subscriptions) {
+        rc = sr_list_init(&res_subscriptions);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize subscriptions list.");
+
+        for (size_t i = 0; i < cd->subscriptions->count; i++) {
+            subscription = cd->subscriptions->data[i];
+
+            rc = sr_list_add(res_subscriptions, subscription);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add a subscription into the subscription list.");
+
+            /* increase copy refcount */
+            subscription->copy_cnt += 1;
         }
     }
-    *subscriptions_p = subscriptions;
 
-    *subscription_cnt_p = cd->subscription_cnt;
+    *subscriptions_p = res_subscriptions;
+    res_subscriptions = NULL;
     *cache_hit = true;
 
-success:
+cleanup:
+    if (NULL != res_subscriptions) {
+        np_free_subscriptions_list(res_subscriptions);
+    }
     pthread_rwlock_unlock(&pm_ctx->module_data_lock);
 
-    return SR_ERR_OK;
+    return rc;
 }
 
 /**
@@ -538,10 +536,12 @@ success:
  */
 static int
 pm_cache_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType subscription_type,
-        np_subscription_t *subscriptions, size_t subscription_cnt)
+        sr_list_t *orig_subscriptions)
 {
     pm_module_data_t *md = NULL, *md_tmp = NULL, lookup_md = {0};
     pm_cached_data_t *cd = NULL, *cd_tmp = NULL, *lookup_cd = NULL;
+    sr_list_t *cached_subscriptions = NULL;
+    np_subscription_t *subscription = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(pm_ctx, module_name);
@@ -593,33 +593,33 @@ pm_cache_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscripti
         cd_tmp = NULL;
     }
 
-    SR_LOG_DBG("Caching %zu subscriptions from '%s' persist file.", subscription_cnt, module_name);
+    SR_LOG_DBG("Caching %zu subscriptions from '%s' persist file.",
+            (NULL != orig_subscriptions) ? orig_subscriptions->count : 0, module_name);
 
-    // TODO - remove & just set the pointer
-    if (subscription_cnt > 0) {
-        cd->subscriptions = calloc(subscription_cnt, sizeof(*cd->subscriptions));
-        for (size_t i = 0; i < subscription_cnt; i++) {
-            cd->subscriptions[i].api_variant = subscriptions[i].api_variant;
-            if (subscriptions[i].dst_address)
-                cd->subscriptions[i].dst_address = strdup(subscriptions[i].dst_address);
-            cd->subscriptions[i].dst_id = subscriptions[i].dst_id;
-            cd->subscriptions[i].enable_running = subscriptions[i].enable_running;
-            if (subscriptions[i].module_name)
-                cd->subscriptions[i].module_name = strdup(subscriptions[i].module_name);
-            cd->subscriptions[i].notif_event = subscriptions[i].notif_event;
-            cd->subscriptions[i].priority = subscriptions[i].priority;
-            cd->subscriptions[i].type = subscriptions[i].type;
-            if (subscriptions[i].username)
-                cd->subscriptions[i].username = strdup(subscriptions[i].username);
-            if (subscriptions[i].xpath)
-                cd->subscriptions[i].xpath = strdup(subscriptions[i].xpath);
+    /* fill in the list of pointers to subscriptions & store it in the cache */
+    if (NULL != orig_subscriptions) {
+        rc = sr_list_init(&cached_subscriptions);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize cached subscriptions list.");
+
+        for (size_t i = 0; i < orig_subscriptions->count; i++) {
+            subscription = orig_subscriptions->data[i];
+
+            rc = sr_list_add(cached_subscriptions, subscription);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add a subscription into the cache list.");
+
+            /* increase copy refcount */
+            subscription->copy_cnt += 1;
         }
     }
 
     cd->valid = true;
-    cd->subscription_cnt = subscription_cnt;
+    cd->subscriptions = cached_subscriptions;
+    cached_subscriptions = NULL;
 
 cleanup:
+    if (NULL != cached_subscriptions) {
+        np_free_subscriptions_list(cached_subscriptions);
+    }
     if (NULL != md_tmp) {
         sr_list_cleanup(md_tmp->cached_data);
         free((void*)md_tmp->module_name);
@@ -663,7 +663,7 @@ pm_invalidate_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr
         if (cd->valid) {
             if (all_types || (cd->subscription_type == subscription_type)) {
                 cd->valid = false;
-                np_free_subscriptions(cd->subscriptions, cd->subscription_cnt);
+                np_free_subscriptions_list(cd->subscriptions);
                 cd->subscriptions = NULL;
                 if (!all_types) {
                     break;
@@ -1110,23 +1110,23 @@ pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_nam
 }
 
 int
-pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType type,
-        np_subscription_t **subscriptions_p, size_t *subscription_cnt_p)
+pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType type, sr_list_t **subscriptions_p)
 {
     char xpath[PATH_MAX] = { 0, };
     struct lyd_node *data_tree = NULL;
     struct ly_set *node_set = NULL;
-    np_subscription_t *subscriptions = NULL;
-    size_t subscription_cnt = 0;
+    sr_list_t *subscriptions_list = NULL;
+    np_subscription_t *subscription = NULL;
     bool cache_hit = false;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(pm_ctx, module_name, subscriptions_p, subscription_cnt_p);
+    CHECK_NULL_ARG3(pm_ctx, module_name, subscriptions_p);
 
     /* attempt to satisfy the request from cache */
-    rc = pm_get_cached_subscriptions(pm_ctx, module_name, type, subscriptions_p, subscription_cnt_p, &cache_hit);
+    rc = pm_get_cached_subscriptions(pm_ctx, module_name, type, subscriptions_p, &cache_hit);
     if (cache_hit) {
-        SR_LOG_DBG("Returning %zu subscriptions from '%s' persist file cache.", *subscription_cnt_p, module_name);
+        SR_LOG_DBG("Returning %zu subscriptions from '%s' persist file cache.",
+                (NULL != *subscriptions_p) ? (*subscriptions_p)->count : 0, module_name);
         return rc;
     }
 
@@ -1139,7 +1139,6 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscription
     if (NULL == data_tree) {
         /* empty data file */
         *subscriptions_p = NULL;
-        *subscription_cnt_p = 0;
         rc = SR_ERR_OK;
         goto cleanup;
     }
@@ -1148,23 +1147,28 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscription
     node_set = lyd_find_xpath(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
-        subscriptions = calloc(node_set->number, sizeof(*subscriptions));
-        CHECK_NULL_NOMEM_GOTO(subscriptions, rc, cleanup);
+        rc = sr_list_init(&subscriptions_list);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to init subscription list.");
 
         for (size_t i = 0; i < node_set->number; i++) {
-            rc = pm_subscription_entry_fill(module_name, &subscriptions[subscription_cnt], node_set->set.d[i]->child);
+            subscription = calloc(1, sizeof(*subscription));
+            CHECK_NULL_NOMEM_GOTO(subscription, rc, cleanup);
+
+            rc = pm_subscription_entry_fill(module_name, subscription, node_set->set.d[i]->child);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to fill subscription details.");
-            subscription_cnt++;
+
+            rc = sr_list_add(subscriptions_list, subscription);
+            subscription = NULL;
         }
     }
 
     /* store the result in the cache */
-    pm_cache_subscriptions(pm_ctx, module_name, type, subscriptions, subscription_cnt);
+    pm_cache_subscriptions(pm_ctx, module_name, type, subscriptions_list);
 
-    SR_LOG_DBG("Returning %zu subscriptions found in '%s' persist file.", subscription_cnt, module_name);
+    SR_LOG_DBG("Returning %zu subscriptions found in '%s' persist file.",
+            (NULL == subscriptions_list ? 0 : subscriptions_list->count), module_name);
 
-    *subscriptions_p = subscriptions;
-    *subscription_cnt_p = subscription_cnt;
+    *subscriptions_p = subscriptions_list;
 
 cleanup:
     if (NULL != node_set) {
@@ -1175,7 +1179,8 @@ cleanup:
     }
 
     if (SR_ERR_OK != rc) {
-        np_free_subscriptions(subscriptions, subscription_cnt);
+        np_free_subscriptions_list(subscriptions_list);
+        np_free_subscription(subscription);
     }
 
     return rc;

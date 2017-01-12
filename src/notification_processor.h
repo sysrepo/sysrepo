@@ -55,6 +55,7 @@ typedef struct np_subscription_s {
     uint32_t priority;                 /**< Priority of the subscription by delivering notifications (0 is the lowest priority). */
     bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
     sr_api_variant_t api_variant;      /**< API variant -- values vs. trees (relevant for the callback type only). */
+    size_t copy_cnt;                   /**< Count of other references to the primary structure. 0 means no other copies exist. */
 } np_subscription_t;
 
 /**
@@ -208,13 +209,11 @@ int np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_a
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] module_name ame of the module where the subscription is active.
- * @param[out] subscriptions_arr Array of pointers to subscriptions matching the criteria.
- * @param[out] subscriptions_cnt Count of the matching subscriptions.
+ * @param[out] subscriptions List of pointers to subscriptions matching the criteria.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name,
-        np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
+int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, sr_list_t **subscriptions);
 
 /**
  * @brief Gets all operational data provider subscriptions in specified module
@@ -222,13 +221,11 @@ int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] module_name Name of the module where the subscription is active.
- * @param[out] subscriptions_arr Array of pointers to subscriptions matching the criteria.
- * @param[out] subscriptions_cnt Count of the matching subscriptions.
+ * @param[out] subscriptions List of pointers to subscriptions matching the criteria.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name,
-        np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
+int np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name, sr_list_t **subscriptions);
 
 /**
  * @brief Notify the subscriber about the change they are subscribed to.
@@ -314,6 +311,13 @@ void np_free_subscription_content(np_subscription_t *subscription);
  * @param[in] subscriptions_cnt Count of the subscriptions in the array.
  */
 void np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt);
+
+/**
+ * @brief Cleans up a list of subscription contexts (including all its content).
+ *
+ * @param[in] subscriptions_list List of subscription contexts to be freed.
+ */
+void np_free_subscriptions_list(sr_list_t *subscriptions_list);
 
 /**
  * @brief Stores an event notification in the notification datastore.

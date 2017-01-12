@@ -152,9 +152,8 @@ typedef struct dm_sess_op_s{
  */
 typedef struct dm_model_subscription_s {
     dm_schema_info_t *schema_info;      /**< schema info identifying the module to which the subscriptions are tied to */
-    np_subscription_t **subscriptions;  /**< array of struct received from np */
+    sr_list_t *subscriptions;           /**< list of struct received from np */
     struct lys_node **nodes;            /**< array of schema nodes corresponding to the subscription */
-    size_t subscription_cnt;            /**< number of subscriptions */
     struct lyd_difflist *difflist;      /**< diff list */
     sr_list_t *changes;                 /**< set of changes for the model */
     bool changes_generated;             /**< Flag signalizing that changes has been generated */
