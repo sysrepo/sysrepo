@@ -27,6 +27,27 @@
 #include <stdbool.h>
 
 /**
+ * @brief A custom implementation of ::popen that hopefully doesn't
+ * suffer from this glibc bug: https://bugzilla.redhat.com/show_bug.cgi?id=1275384.
+ * It also enables to communicate with the process through stdin, stdout, stderr.
+ */
+pid_t sr_popen(const char *command, int *stdin_p, int *stdout_p, int *stderr_p);
+
+/**
+ * @brief Print current backtrace to stderr.
+ */
+void print_backtrace();
+
+/**
+ * @brief Reads an entire line from a file, storing the address of the buffer
+ * containing the text into *line_p. The buffer is null-terminated and includes
+ * the newline character, if one was found.
+ * Same like ::getline but uses file descriptor. Furthermore, ::getline was standardized
+ * still quite recently and may not exist on many systems.
+ */
+size_t readline(int fd, char **line_p, size_t *len_p);
+
+/**
  * @brief Tests file (non)existence.
  */
 void test_file_exists(const char *path, bool exists);

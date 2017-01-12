@@ -858,7 +858,8 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 
     action = msg->request->rpc_req->action;
     op_name = action ? "Action" : "RPC";
-    SR_LOG_DBG("Received %s request for subscription id=%"PRIu32".", op_name, msg->request->rpc_req->subscription_id);
+    SR_LOG_DBG("Received %s request (%s) for subscription id=%"PRIu32".",
+            op_name, msg->request->rpc_req->xpath, msg->request->rpc_req->subscription_id);
 
     /* copy input values from GPB */
     if (msg->request->rpc_req->n_input) {
