@@ -1482,30 +1482,17 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
     int rc = SR_ERR_OK;
     int ret = 0;
     dm_data_info_t *di = NULL;
-    char *tmp = NULL;
-    struct lyd_node *tmp_node = NULL;
 
     rc = dm_get_data_info(dm_ctx, session, module_name, &di);
     CHECK_RC_LOG_RETURN(rc, "Get data info failed for module %s", module_name);
 
     /* transform data from one ctx to another */
     if (NULL != di->node) {
-        ret = lyd_print_mem(&tmp, di->node, LYD_XML, LYP_WITHSIBLINGS);
-        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Failed to print data of module %s into string", di->schema->module->name);
-        tmp_node = lyd_parse_mem(data_info->schema->ly_ctx, tmp, LYD_XML, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
-        if (NULL == tmp_node && LY_SUCCESS != ly_errno) {
-            SR_LOG_ERR("Parsing data tree from string failed for module %s failed: %s", module_name, ly_errmsg());
-            free(tmp);
-            return SR_ERR_INTERNAL;
-        }
-        free(tmp);
         if (NULL == data_info->node) {
-            data_info->node = tmp_node;
-        } else if (NULL != tmp_node) {
-            ret = lyd_merge(data_info->node, tmp_node, LYD_OPT_EXPLICIT);
-            lyd_free_withsiblings(tmp_node);
-            CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Failed to merge data of module %s into the data tree of module %s: %s",
-                    di->schema->module->name, data_info->schema->module->name, ly_errmsg());
+            data_info->node = lyd_dup_to_ctx(di->node, 1, data_info->schema->ly_ctx);
+        } else {
+            ret = lyd_merge_to_ctx(&data_info->node, di->node, LYD_OPT_EXPLICIT, data_info->schema->ly_ctx);
+            CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Failed to merge %s data tree", di->schema->module->name);
         }
     } else {
         SR_LOG_DBG("Dependant module %s is empty", di->schema->module->name);
