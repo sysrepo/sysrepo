@@ -142,8 +142,8 @@ int pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
  * @param[in] module_name Name of the module.
  * @param[in] notif_type Type of the notification.
- * @param[out] subscriptions List of the active subscriptions. May return NULL in case that no matching
- * subscriptions has been found.
+ * @param[out] subscriptions List of the pointers to active subscriptions. NULL can be returned in case that
+ * no matching subscriptions has been found.
  *
  * @return Error code (SR_ERR_OK on success).
  */

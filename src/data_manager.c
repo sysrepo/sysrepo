@@ -272,7 +272,7 @@ dm_model_subscription_free(void *sub)
 {
     dm_model_subscription_t *ms = (dm_model_subscription_t *) sub;
     if (NULL != ms) {
-        np_free_subscriptions_list(ms->subscriptions);
+        np_subscriptions_list_cleanup(ms->subscriptions);
         free(ms->nodes);
         lyd_free_diff(ms->difflist);
         if (NULL != ms->changes) {

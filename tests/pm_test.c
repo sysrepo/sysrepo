@@ -207,7 +207,7 @@ pm_subscription_test(void **state)
         assert_int_equal(subscription_p->priority, 53);
         printf("Found subscription: %s @ %"PRIu32"\n", subscription_p->dst_address, subscription_p->dst_id);
     }
-    np_free_subscriptions_list(subscriptions_list);
+    np_subscriptions_list_cleanup(subscriptions_list);
     subscriptions_list = NULL;
 
     /* retrieve module info */
@@ -319,7 +319,7 @@ pm_subscription_cache_test(void **state)
         assert_int_equal(subscription_p->priority, 53);
         printf("Found subscription: %s @ %"PRIu32"\n", subscription_p->dst_address, subscription_p->dst_id);
     }
-    np_free_subscriptions_list(subscriptions_list);
+    np_subscriptions_list_cleanup(subscriptions_list);
     subscriptions_list = NULL;
 
     /* retrieve active subscriptions - from cache */
@@ -333,7 +333,7 @@ pm_subscription_cache_test(void **state)
         assert_int_equal(subscription_p->priority, 53);
         printf("Found subscription: %s @ %"PRIu32"\n", subscription_p->dst_address, subscription_p->dst_id);
     }
-    np_free_subscriptions_list(subscriptions_list);
+    np_subscriptions_list_cleanup(subscriptions_list);
     subscriptions_list = NULL;
 
     /* remove subscriptions for destination 1 */
@@ -353,7 +353,7 @@ pm_subscription_cache_test(void **state)
         assert_int_equal(subscription_p->priority, 53);
         printf("Found subscription: %s @ %"PRIu32"\n", subscription_p->dst_address, subscription_p->dst_id);
     }
-    np_free_subscriptions_list(subscriptions_list);
+    np_subscriptions_list_cleanup(subscriptions_list);
     subscriptions_list = NULL;
 
     /* remove subscriptions for destination 2 */

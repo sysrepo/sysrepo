@@ -36,7 +36,7 @@ rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data)
 {
     if (NULL != state_data) {
         if (NULL != state_data->subscriptions) {
-            np_free_subscriptions_list(state_data->subscriptions);
+            np_subscriptions_list_cleanup(state_data->subscriptions);
             state_data->subscriptions = NULL;
         }
         if (NULL != state_data->subtrees) {

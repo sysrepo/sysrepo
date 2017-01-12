@@ -328,7 +328,7 @@ np_module_subscriptions_test(void **state)
     rc = np_commit_notifications_sent(np_ctx, 12345, true, subscriptions_list);
     assert_int_equal(rc, SR_ERR_OK);
 
-    np_free_subscriptions_list(subscriptions_list);
+    np_subscriptions_list_cleanup(subscriptions_list);
 
     /* unsubscribe */
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
@@ -391,7 +391,7 @@ np_dp_subscriptions_test(void **state)
     }
 
     /* release the subscriptions */
-    np_free_subscriptions_list(subscriptions_list);
+    np_subscriptions_list_cleanup(subscriptions_list);
 
     /* unsubscribe */
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,

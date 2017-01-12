@@ -2316,7 +2316,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
 finalize:
     /* free all the allocated data */
-    np_free_subscriptions_list(subscriptions_list);
+    np_subscriptions_list_cleanup(subscriptions_list);
     free(module_name);
     free(error_msg);
     free(nacm_rule);
@@ -3005,7 +3005,7 @@ finalize:
     sr_free_values(with_def, with_def_cnt);
     sr_free_trees(with_def_tree, with_def_tree_cnt);
     free(module_name);
-    np_free_subscriptions_list(subscriptions_list);
+    np_subscriptions_list_cleanup(subscriptions_list);
 
     if (!sub_match && SR_ERR_OK == rc) {
         /* no subscription for this event notification */

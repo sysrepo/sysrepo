@@ -811,7 +811,7 @@ np_cleanup(np_ctx_t *np_ctx)
 
     if (NULL != np_ctx) {
         for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
-            np_free_subscription(np_ctx->subscriptions[i]);
+            np_subscription_cleanup(np_ctx->subscriptions[i]);
         }
         free(np_ctx->subscriptions);
 
@@ -936,7 +936,7 @@ cleanup:
             np_dst_info_remove(np_ctx, dst_address, module_name);
             pthread_rwlock_unlock(&np_ctx->lock);
         }
-        np_free_subscription(subscription);
+        np_subscription_cleanup(subscription);
     }
     return rc;
 }
@@ -1002,7 +1002,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
         pthread_rwlock_unlock(&np_ctx->lock);
 
         /* release the subscription */
-        np_free_subscription(subscription);
+        np_subscription_cleanup(subscription);
     }
 
     return rc;
@@ -1214,9 +1214,9 @@ np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, sr
 
 cleanup:
 
-    np_free_subscriptions_list(subscriptions_list_1);
-    np_free_subscriptions_list(subscriptions_list_2);
-    np_free_subscriptions_list(*subscriptions_list);
+    np_subscriptions_list_cleanup(subscriptions_list_1);
+    np_subscriptions_list_cleanup(subscriptions_list_2);
+    np_subscriptions_list_cleanup(*subscriptions_list);
     *subscriptions_list = NULL;
 
     return rc;
@@ -1482,7 +1482,7 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
 }
 
 void
-np_free_subscription_content(np_subscription_t *subscription)
+np_subscription_content_cleanup(np_subscription_t *subscription)
 {
     if (NULL != subscription) {
         free((void*)subscription->dst_address);
@@ -1493,11 +1493,11 @@ np_free_subscription_content(np_subscription_t *subscription)
 }
 
 void
-np_free_subscription(np_subscription_t *subscription)
+np_subscription_cleanup(np_subscription_t *subscription)
 {
     if (NULL != subscription) {
         if (0 == subscription->copy_cnt) {
-            np_free_subscription_content(subscription);
+            np_subscription_content_cleanup(subscription);
             free(subscription);
         } else {
             subscription->copy_cnt -= 1;
@@ -1506,24 +1506,11 @@ np_free_subscription(np_subscription_t *subscription)
 }
 
 void
-np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt)
-{
-    for (size_t i = 0; i < subscriptions_cnt; i++) {
-        if (0 == subscriptions[i].copy_cnt) {
-            np_free_subscription_content(&subscriptions[i]);
-        } else {
-            subscriptions[i].copy_cnt -= 1;
-        }
-    }
-    free(subscriptions);
-}
-
-void
-np_free_subscriptions_list(sr_list_t *subscriptions_list)
+np_subscriptions_list_cleanup(sr_list_t *subscriptions_list)
 {
     if (NULL != subscriptions_list) {
         for (size_t i = 0; i < subscriptions_list->count; i++) {
-            np_free_subscription(subscriptions_list->data[i]);
+            np_subscription_cleanup(subscriptions_list->data[i]);
         }
         sr_list_cleanup(subscriptions_list);
     }

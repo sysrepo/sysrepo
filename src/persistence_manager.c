@@ -121,7 +121,7 @@ pm_free_module_data(void *module_data)
     for (size_t i = 0; i < md->cached_data->count; i++) {
         cd = md->cached_data->data[i];
         if (cd->valid) {
-            np_free_subscriptions_list(cd->subscriptions);
+            np_subscriptions_list_cleanup(cd->subscriptions);
         }
         free(cd);
     }
@@ -452,7 +452,7 @@ pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscript
     return SR_ERR_OK;
 
 cleanup:
-    np_free_subscription_content(subscription);
+    np_subscription_content_cleanup(subscription);
     return rc;
 }
 
@@ -524,7 +524,7 @@ pm_get_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subsc
 
 cleanup:
     if (NULL != res_subscriptions) {
-        np_free_subscriptions_list(res_subscriptions);
+        np_subscriptions_list_cleanup(res_subscriptions);
     }
     pthread_rwlock_unlock(&pm_ctx->module_data_lock);
 
@@ -618,7 +618,7 @@ pm_cache_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscripti
 
 cleanup:
     if (NULL != cached_subscriptions) {
-        np_free_subscriptions_list(cached_subscriptions);
+        np_subscriptions_list_cleanup(cached_subscriptions);
     }
     if (NULL != md_tmp) {
         sr_list_cleanup(md_tmp->cached_data);
@@ -663,7 +663,7 @@ pm_invalidate_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr
         if (cd->valid) {
             if (all_types || (cd->subscription_type == subscription_type)) {
                 cd->valid = false;
-                np_free_subscriptions_list(cd->subscriptions);
+                np_subscriptions_list_cleanup(cd->subscriptions);
                 cd->subscriptions = NULL;
                 if (!all_types) {
                     break;
@@ -903,7 +903,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, sr_mem_ctx_t *sr_m
                 /* send HELLO notifications to verify that these subscriptions are still alive */
                 rc = np_hello_notify(pm_ctx->rp_ctx->np_ctx, module_name, subscription.dst_address, subscription.dst_id);
             }
-            np_free_subscription_content(&subscription);
+            np_subscription_content_cleanup(&subscription);
         }
     }
 
@@ -1179,8 +1179,8 @@ cleanup:
     }
 
     if (SR_ERR_OK != rc) {
-        np_free_subscriptions_list(subscriptions_list);
-        np_free_subscription(subscription);
+        np_subscriptions_list_cleanup(subscriptions_list);
+        np_subscription_cleanup(subscription);
     }
 
     return rc;
