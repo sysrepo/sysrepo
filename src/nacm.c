@@ -22,11 +22,13 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <libyang/libyang.h>
 
 #include "nacm.h"
 #include "data_manager.h"
+#include "notification_processor.h"
 #include "sysrepo/xpath.h"
 
 #define NACM_MODULE_NAME    "ietf-netconf-acm"
@@ -1412,7 +1414,7 @@ nacm_free_data_val_ctx(nacm_data_val_ctx_t *nacm_data_val_ctx)
 }
 
 int
-nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, struct lyd_node *data_tree,
+nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, struct lys_node *dt_schema,
         bool cache, nacm_data_val_ctx_t **nacm_data_val_ctx_p)
 {
     int rc = SR_ERR_OK;
@@ -1428,12 +1430,12 @@ nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credenti
     nacm_rule_list_t *nacm_rule_list = NULL;
     nacm_data_val_ctx_t *nacm_data_val_ctx = NULL;
 
-    CHECK_NULL_ARG4(nacm_ctx, user_credentials, data_tree, nacm_data_val_ctx_p);
-    CHECK_NULL_ARG3(data_tree->schema, data_tree->schema->module, data_tree->schema->module->name);
+    CHECK_NULL_ARG4(nacm_ctx, user_credentials, dt_schema, nacm_data_val_ctx_p);
+    CHECK_NULL_ARG2(dt_schema->module, dt_schema->module->name);
 
-    if (data_tree->schema->module->type) {
+    if (dt_schema->module->type) {
         /* submodule */
-        sub = (struct lys_submodule *) data_tree->schema->module;
+        sub = (struct lys_submodule *) dt_schema->module;
         CHECK_NULL_ARG3(sub, sub->belongsto, sub->belongsto->name);
     }
 
@@ -1453,7 +1455,7 @@ nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credenti
     CHECK_NULL_NOMEM_GOTO(nacm_data_val_ctx, rc, cleanup);
 
     /* Lock schema info and NACM -- in this order! */
-    module_name = sub == NULL ? data_tree->schema->module->name : sub->belongsto->name;
+    module_name = sub == NULL ? dt_schema->module->name : sub->belongsto->name;
     rc = dm_get_module_and_lock(nacm_ctx->dm_ctx, module_name, &schema_info);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get schema info failed for %s", module_name);
     pthread_rwlock_rdlock(&nacm_ctx->lock);
@@ -1632,8 +1634,8 @@ nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t acces
         return rc;
     }
 
-    /* check parent node first */
-    if (NULL != node->parent) {
+    /* in case of reading, check the parent node first */
+    if (NACM_ACCESS_READ == access_type && NULL != node->parent) {
         nacm_check_data(nacm_data_val_ctx, access_type, node->parent, &action, &rule_name, &rule_info);
         if (NACM_ACTION_DENY == action) {
             goto cleanup;
@@ -1791,3 +1793,168 @@ nacm_get_stats(nacm_ctx_t *nacm_ctx, uint32_t *denied_rpc_p, uint32_t *denied_ev
     return SR_ERR_OK;
 }
 
+int
+nacm_report_exec_access_denied(const ac_ucred_t *user_credentials, dm_session_t *dm_session, const char *xpath,
+        const char *rule_name, const char *rule_info)
+{
+    int rc = SR_ERR_OK;
+    char *error_msg = NULL;
+    const char *username = NULL;
+    CHECK_NULL_ARG3(user_credentials, dm_session, xpath);
+
+    username = user_credentials->e_username ? user_credentials->e_username : user_credentials->r_username;
+    if (NULL == username) {
+        return SR_ERR_INVAL_ARG;
+    }
+
+    if (NULL != rule_name) {
+        if (NULL != rule_info) {
+            rc = sr_asprintf(&error_msg, "Access to execute the operation '%s' was blocked by the NACM rule '%s' (%s) for user '%s'.",
+                    xpath, rule_name, rule_info, username);
+        } else {
+            rc = sr_asprintf(&error_msg, "Access to execute the operation '%s' was blocked by the NACM rule '%s' for user '%s'.",
+                    xpath, rule_name, username);
+        }
+    } else {
+        rc = sr_asprintf(&error_msg, "Access to execute the operation '%s' was blocked by NACM for user '%s'.", xpath, username);
+    }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN_MSG("::sr_asprintf has failed");
+    } else {
+        SR_LOG_DBG("%s", error_msg);
+        dm_report_error(dm_session, error_msg, xpath, SR_ERR_UNAUTHORIZED);
+        free(error_msg);
+    }
+    return rc;
+}
+
+int
+nacm_report_delivery_blocked(np_subscription_t *subscription, const char *xpath, int nacm_rc,
+        const char *rule_name, const char *rule_info)
+{
+    int rc = SR_ERR_OK;
+    char *error_msg = NULL;
+    CHECK_NULL_ARG2(subscription, xpath);
+
+    if (SR_ERR_OK != nacm_rc) {
+        rc = sr_asprintf(&error_msg, "NETCONF access control verification failed for the notification '%s' and "
+                "subscription '%s' @ %"PRIu32". Delivery will be blocked.", xpath, subscription->dst_address,
+                subscription->dst_id);
+    } else if (NULL != rule_name) {
+        if (NULL != rule_info) {
+            rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %"PRIu32" "
+                    "was blocked by the NACM rule '%s' (%s).", xpath, subscription->dst_address, subscription->dst_id,
+                    rule_name, rule_info);
+        } else {
+            rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %"PRIu32" "
+                    "was blocked by the NACM rule '%s'.", xpath, subscription->dst_address, subscription->dst_id,
+                    rule_name);
+        }
+    } else {
+        rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %"PRIu32" "
+                "was blocked by NACM.", xpath, subscription->dst_address, subscription->dst_id);
+    }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN_MSG("::sr_asprintf has failed");
+    } else {
+        SR_LOG_DBG("%s", error_msg);
+        free(error_msg);
+    }
+    return rc;
+}
+
+int
+nacm_report_read_access_denied(const ac_ucred_t *user_credentials, const struct lyd_node *node,
+        const char *rule_name, const char *rule_info)
+{
+    char *xpath = NULL;
+    const char *username = NULL;
+    CHECK_NULL_ARG2(user_credentials, node);
+
+    username = user_credentials->e_username ? user_credentials->e_username : user_credentials->r_username;
+    if (NULL == username) {
+        return SR_ERR_INVAL_ARG;
+    }
+
+    xpath = lyd_path((struct lyd_node *)node);
+    if (NULL == xpath) {
+        SR_LOG_WRN_MSG("lyd_path has failed");
+        return SR_ERR_INTERNAL;
+    }
+
+    if (NULL != xpath) {
+        if (NULL != rule_name) {
+            if (NULL != rule_info) {
+                SR_LOG_DBG("User '%s' was blocked from reading the value of node '%s' by the NACM rule '%s' (%s).",
+                        username, xpath, rule_name, rule_info);
+            } else {
+                SR_LOG_DBG("User '%s' was blocked from reading the value of node '%s' by the NACM rule '%s'.",
+                        username, xpath, rule_name);
+            }
+        } else {
+            SR_LOG_DBG("User '%s' was blocked from reading the value of node '%s' by NACM.", username, xpath);
+        }
+        free(xpath);
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+nacm_report_edit_access_denied(const ac_ucred_t *user_credentials, dm_session_t *dm_session, const struct lyd_node *node,
+        nacm_access_flag_t access_type, const char *rule_name, const char *rule_info)
+{
+    int rc = SR_ERR_OK;
+    char *xpath = NULL;
+    char *error_msg = NULL;
+    const char *username = NULL, *op = NULL;
+    CHECK_NULL_ARG2(user_credentials, node);
+
+    switch (access_type) {
+        case NACM_ACCESS_CREATE:
+            op = "creating";
+            break;
+        case NACM_ACCESS_UPDATE:
+            op = "changing the value of";
+            break;
+        case NACM_ACCESS_DELETE:
+            op = "deleting";
+            break;
+        default:
+            return SR_ERR_INVAL_ARG;
+    }
+
+    username = user_credentials->e_username ? user_credentials->e_username : user_credentials->r_username;
+    if (NULL == username) {
+        return SR_ERR_INVAL_ARG;
+    }
+
+    xpath = lyd_path((struct lyd_node *)node);
+    if (NULL == xpath) {
+        SR_LOG_WRN_MSG("lyd_path has failed");
+        return SR_ERR_INTERNAL;
+    }
+
+    if (NULL != rule_name) {
+        if (NULL != rule_info) {
+            rc = sr_asprintf(&error_msg, "User '%s' was blocked from %s the node '%s' by the NACM rule '%s' (%s).",
+                    username, op, xpath, rule_name, rule_info);
+        } else {
+            rc = sr_asprintf(&error_msg, "User '%s' was blocked from %s the node '%s' by the NACM rule '%s'.",
+                    username, op, xpath, rule_name);
+        }
+    } else {
+        rc = sr_asprintf(&error_msg, "User '%s' was blocked from %s the node '%s' by NACM.", username, op, xpath);
+    }
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN_MSG("::sr_asprintf has failed");
+    } else {
+        SR_LOG_DBG("%s", error_msg);
+        dm_report_error(dm_session, error_msg, xpath, SR_ERR_UNAUTHORIZED);
+        free(error_msg);
+    }
+
+    free(xpath);
+    return SR_ERR_OK;
+}

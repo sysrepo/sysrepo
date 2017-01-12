@@ -204,6 +204,12 @@ static int
 nacm_tests_teardown(void **state)
 {
     int ret = 0;
+    test_nacm_cfg_t *nacm_config = NULL;
+
+    /* leave an empty NACM startup config */
+    new_nacm_config(&nacm_config);
+    save_nacm_config(nacm_config);
+    delete_nacm_config(nacm_config);
 
     /* restart the daemon if it was running before the test */
     if (daemon_run_before_test) {

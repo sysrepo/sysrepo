@@ -56,14 +56,20 @@
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
         assert_string_equal(XPATH, error_info->xpath); \
         if (strlen(RULE) && strlen(RULE_INFO)) { \
-            assert_string_equal("Execution of the operation '" XPATH "' was blocked by the NACM rule '" RULE "' (" RULE_INFO ").", \
-                                error_info->message); \
+            assert_int_equal(SR_ERR_OK, \
+                             sr_asprintf(&error_msg, "Access to execute the operation '%s' was blocked by the NACM rule '%s' "\
+                                "(%s) for user 'sysrepo-user%d'.", XPATH, RULE, RULE_INFO, SESSION+1)); \
         } else if (strlen(RULE)) { \
-            assert_string_equal("Execution of the operation '" XPATH "' was blocked by the NACM rule '" RULE "'.", \
-                                error_info->message); \
+            assert_int_equal(SR_ERR_OK, \
+                             sr_asprintf(&error_msg, "Access to execute the operation '%s' was blocked by the NACM rule '%s' "\
+                                "for user 'sysrepo-user%d'.", XPATH, RULE, SESSION+1)); \
         } else { \
-            assert_string_equal("Execution of the operation '" XPATH "' was blocked by NACM.", error_info->message); \
+            assert_int_equal(SR_ERR_OK, \
+                             sr_asprintf(&error_msg, "Access to execute the operation '%s' was blocked by NACM "\
+                                "for user 'sysrepo-user%d'.", XPATH, SESSION+1)); \
         } \
+        assert_string_equal(error_msg, error_info->message); \
+        free(error_msg); error_msg = NULL; \
     } while (0)
 
 #define CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO) \
@@ -681,6 +687,7 @@ sysrepo_teardown(void **state)
 {
     int ret = 0, status = 0;
     sr_conn_ctx_t *conn = *state;
+    test_nacm_cfg_t *nacm_config = NULL;
 
     if (!satisfied_requirements) {
         return 0;
@@ -689,6 +696,11 @@ sysrepo_teardown(void **state)
     /* disconnect from sysrepo */
     assert_non_null(conn);
     sr_disconnect(conn);
+
+    /* leave empty NACM startup config */
+    new_nacm_config(&nacm_config);
+    save_nacm_config(nacm_config);
+    delete_nacm_config(nacm_config);
 
 #ifndef DEBUG_MODE
     /* kill the daemon run as the child process */
@@ -821,6 +833,7 @@ nacm_cl_test_rpc_acl_with_empty_nacm_cfg(void **state)
     sr_val_t *input = NULL;
     sr_node_t *input_tree = NULL;
     const sr_error_info_t *error_info = NULL;
+    char *error_msg = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -952,6 +965,7 @@ nacm_cl_test_rpc_acl(void **state)
     sr_val_t *input = NULL;
     sr_node_t *input_tree = NULL;
     const sr_error_info_t *error_info = NULL;
+    char *error_msg = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1083,6 +1097,7 @@ nacm_cl_test_rpc_acl_with_denied_exec_by_dflt(void **state)
     sr_val_t *input = NULL;
     sr_node_t *input_tree = NULL;
     const sr_error_info_t *error_info = NULL;
+    char *error_msg = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1214,6 +1229,7 @@ nacm_cl_test_rpc_acl_with_ext_groups(void **state)
     sr_val_t *input = NULL;
     sr_node_t *input_tree = NULL;
     const sr_error_info_t *error_info = NULL;
+    char *error_msg = NULL;
 
     if (!satisfied_requirements) {
         skip();

@@ -36,6 +36,16 @@ typedef struct dm_ctx_s dm_ctx_t;
 typedef struct dm_schema_info_s dm_schema_info_t;
 
 /**
+ * @brief Forward declaration for dm_session_t.
+ */
+typedef struct dm_session_s dm_session_t;
+
+/**
+ * @brief Forward declaration for np_subscription_t.
+ */
+typedef struct np_subscription_s np_subscription_t;
+
+/**
  * @brief NACM decision for a given operation.
  */
 typedef enum nacm_action_e {
@@ -237,12 +247,12 @@ int nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const char *username, const cha
  *
  * @param [in] nacm_ctx NACM context.
  * @param [in] user_credentials User credentials.
- * @param [in] data_tree Data tree whose nodes will be validated.
+ * @param [in] dt_schema Schema of the data tree whose nodes will be validated.
  * @param [in] cache Use cache to remember sets of matching nodes for data-oriented rules and results
  *                   of past validation runs.
  * @param [out] nacm_data_val_ctx Returned context representing this request.
  */
-int nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, struct lyd_node *data_tree,
+int nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, struct lys_node *dt_schema,
         bool cache, nacm_data_val_ctx_t **nacm_data_val_ctx);
 
 /**
@@ -277,5 +287,53 @@ int nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t a
  * @param [out] denied_data_write Number of denied data modifications since the last restart.
  */
 int nacm_get_stats(nacm_ctx_t *nacm_ctx, uint32_t *denied_rpc, uint32_t *denied_event_notif, uint32_t *denied_data_write);
+
+/**
+ * @brief Report that access to execute a given operation was not allowed by NACM.
+ *
+ * @param [in] user_credentials Credentials of the user whom the access to execute the RPC was not granted.
+ * @param [in] dm_session Data manager session to store the error into.
+ * @param [in] xpath XPath of the RPC that was blocked.
+ * @param [in] rule_name Name of the NACM rule that blocked the access.
+ * @param [in] rule_info Description of the NACM rule that blocked the access.
+ */
+int nacm_report_exec_access_denied(const ac_ucred_t *user_credentials, dm_session_t *dm_session, const char *xpath,
+        const char *rule_name, const char *rule_info);
+
+/**
+ * @brief Report that delivery of an event notification was blocked for a given subscription by NACM.
+ *
+ * @param [in] subscription Subscription which was not allowed to receive the notification.
+ * @param [in] xpath XPath of the event notification.
+ * @param [in] nacm_rc Return code returned by nacm_check_event_notif .
+ * @param [in] rule_name Name of the NACM rule that blocked the delivery.
+ * @param [in] rule_info Description of the rule that blocked the delivery.
+ */
+int nacm_report_delivery_blocked(np_subscription_t *subscription, const char *xpath, int nacm_rc,
+        const char *rule_name, const char *rule_info);
+
+/**
+ * @brief Report that access to read the given node was not granted.
+ *
+ * @param [in] user_credentials Credentials of the user whom the access to read the node was not granted.
+ * @param [in] node Node which the user is not allowed to read.
+ * @param [in] rule_name Name of the nacm rule that blocked the access.
+ * @param [in] rule_info Description of the rule that blocked the access.
+ */
+int nacm_report_read_access_denied(const ac_ucred_t *user_credentials, const struct lyd_node *node,
+        const char *rule_name, const char *rule_info);
+
+/**
+ * @brief Report that access to edit (update, create, delete) the given node was not granted.
+ *
+ * @param [in] user_credentials Credentials of the user whom the access to edit the node was not granted.
+ * @param [in] dm_session Data manager session to store the error into.
+ * @param [in] node Node which the user is not allowed to edit.
+ * @param [in] access_tyoe Which type of access was not allowed.
+ * @param [in] rule_name Name of the nacm rule that blocked the access.
+ * @param [in] rule_info Description of the rule that blocked the access.
+ */
+int nacm_report_edit_access_denied(const ac_ucred_t *user_credentials, dm_session_t *dm_session,
+        const struct lyd_node *node, nacm_access_flag_t access_type, const char *rule_name, const char *rule_info);
 
 #endif /* NACM_H_ */
