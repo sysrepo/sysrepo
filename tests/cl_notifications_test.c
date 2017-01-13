@@ -2567,7 +2567,7 @@ cl_config_change_notif_test(void **state)
 
     SET_COND_WAIT_TIMED(&change.cv, &change.mutex, &ts);
 
-    assert_int_equal(4, change.val_cnt);
+    assert_int_equal(7, change.val_cnt);
     assert_string_equal("/ietf-netconf-notifications:netconf-config-change/changed-by", change.values[0].xpath);
 
     assert_string_equal("/ietf-netconf-notifications:netconf-config-change/changed-by/session-id", change.values[1].xpath);
@@ -2579,6 +2579,16 @@ cl_config_change_notif_test(void **state)
     assert_string_equal("/ietf-netconf-notifications:netconf-config-change/datastore", change.values[3].xpath);
     assert_int_equal(SR_ENUM_T, change.values[3].type);
     assert_string_equal("startup", change.values[3].data.string_val);
+
+    assert_string_equal("/ietf-netconf-notifications:netconf-config-change/edit[1]", change.values[4].xpath);
+    assert_int_equal(SR_LIST_T, change.values[4].type);
+
+    assert_string_equal("/ietf-netconf-notifications:netconf-config-change/edit[1]/target", change.values[5].xpath);
+    assert_int_equal(SR_INSTANCEID_T, change.values[5].type);
+    assert_string_equal(change.values[5].data.instanceid_val, "/example-module:container/example-module:list[example-module:key1='key1'][example-module:key2='key2']");
+
+    assert_string_equal("/ietf-netconf-notifications:netconf-config-change/edit[1]/operation", change.values[6].xpath);
+    assert_int_equal(SR_ENUM_T, change.values[6].type);
 
     sr_free_values(change.values, change.val_cnt);
     change.values = NULL;
