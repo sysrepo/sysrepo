@@ -689,6 +689,12 @@ sysrepo_teardown(void **state)
     sr_conn_ctx_t *conn = *state;
     test_nacm_cfg_t *nacm_config = NULL;
 
+    /* leave non-intrusive NACM startup config */
+    new_nacm_config(&nacm_config);
+    set_nacm_write_dflt(nacm_config, "permit");
+    save_nacm_config(nacm_config);
+    delete_nacm_config(nacm_config);
+
     if (!satisfied_requirements) {
         return 0;
     }
@@ -696,11 +702,6 @@ sysrepo_teardown(void **state)
     /* disconnect from sysrepo */
     assert_non_null(conn);
     sr_disconnect(conn);
-
-    /* leave empty NACM startup config */
-    new_nacm_config(&nacm_config);
-    save_nacm_config(nacm_config);
-    delete_nacm_config(nacm_config);
 
 #ifndef DEBUG_MODE
     /* kill the daemon run as the child process */

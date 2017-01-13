@@ -206,8 +206,9 @@ nacm_tests_teardown(void **state)
     int ret = 0;
     test_nacm_cfg_t *nacm_config = NULL;
 
-    /* leave an empty NACM startup config */
+    /* leave non-intrusive NACM startup config */
     new_nacm_config(&nacm_config);
+    set_nacm_write_dflt(nacm_config, "permit");
     save_nacm_config(nacm_config);
     delete_nacm_config(nacm_config);
 
