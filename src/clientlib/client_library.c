@@ -599,7 +599,7 @@ sr_session_refresh(sr_session_ctx_t *session)
 
     cl_session_clear_errors(session);
 
-    /* prepare session_stop message */
+    /* prepare session_refresh message */
     rc = sr_mem_new(0, &sr_mem);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
     rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__SESSION_REFRESH, session->id, &msg_req);
@@ -607,6 +607,44 @@ sr_session_refresh(sr_session_ctx_t *session)
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SESSION_REFRESH);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
+    }
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_session_check(sr_session_ctx_t *session)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, session->conn_ctx);
+
+    cl_session_clear_errors(session);
+
+    /* prepare session_check message */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__SESSION_CHECK, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SESSION_CHECK);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
