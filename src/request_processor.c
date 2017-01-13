@@ -70,6 +70,8 @@ typedef enum rp_capability_change_type_e {
 #define CONFIG_CHANGE_USERNAME_XPATH "/ietf-netconf-notifications:netconf-config-change/changed-by/username"
 #define CONFIG_CHANGE_SESSION_ID_XPATH "/ietf-netconf-notifications:netconf-config-change/changed-by/session-id"
 #define CONFIG_CHANGE_DATASTORE_XPATH "/ietf-netconf-notifications:netconf-config-change/datastore"
+#define CONFIG_CHANGE_TARGET_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%d]/target"
+#define CONFIG_CHANGE_OPERATION_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%d]/operation"
 
 /**
  * @brief Copy errors saved in the Data Manager session into the GPB response.
@@ -383,7 +385,9 @@ rp_count_changes_in_difflists(sr_list_t *diff_lists)
 
             while (LYD_DIFF_END != dl->type[diff_index]) {
                 diff_index++;
-                diff_cnt++;
+                if (LYD_DIFF_MOVEDAFTER2 != dl->type[diff_index]) {
+                    diff_cnt++;
+                }
             }
         }
     }
@@ -398,6 +402,12 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
     Sr__Msg *req = NULL;
     sr_val_t *values = NULL;
     size_t val_cnt = 3;
+
+    size_t diff_count = rp_count_changes_in_difflists(diff_lists);
+    SR_LOG_DBG("%zu instance of /ietf-netconf-notifications/netconf-config-change/edit list will be created", diff_count);
+
+    /* target + operation */
+    val_cnt += diff_count * 2;
 
     values = calloc(val_cnt, sizeof(*values));
     CHECK_NULL_NOMEM_RETURN(values);
@@ -431,12 +441,12 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
     rc = sr_mem_edit_string(NULL, &req->request->event_notif_req->xpath, CONFIG_CHANGE_NOTIFICATION_XPATH);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath in the message");
 
-    rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
+    /* index into values */
+    size_t index = 3; /* start inserting on the third position */
 
-    //TODO: currently the changes are only logged as debug waiting for libyang support to create lists without keys
-    size_t diff_count = rp_count_changes_in_difflists(diff_lists);
-    SR_LOG_DBG("%zu instance of /ietf-netconf-notifications/netconf-config-change/edit list will be created", diff_count);
+    /* index for edit list */
+    size_t list_cnt = 1;
+    char *operation = NULL;
 
     for (size_t i = 0; i < diff_lists->count; i++) {
         struct lyd_difflist *dl = (struct lyd_difflist *) diff_lists->data[i];
@@ -447,26 +457,41 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
             switch (dl->type[diff_index]) {
             case LYD_DIFF_CHANGED:
             case LYD_DIFF_MOVEDAFTER1:
-                path = lyd_path(dl->first[diff_index]);
-                SR_LOG_DBG("CONFIG CHANGE: merge %s", path);
+                path = lyd_qualified_path(dl->first[diff_index]);
+                operation = "merge";
                 break;
             case LYD_DIFF_DELETED:
-                path = lyd_path(dl->first[diff_index]);
-                SR_LOG_DBG("CONFIG CHANGE: delete %s", path);
+                path = lyd_qualified_path(dl->first[diff_index]);
+                operation = "delete";
                 break;
             case LYD_DIFF_CREATED:
-                path = lyd_path(dl->second[diff_index]);
-                SR_LOG_DBG("CONFIG CHANGE: create %s", path);
+                path = lyd_qualified_path(dl->second[diff_index]);
+                operation = "create";
                 break;
             case LYD_DIFF_MOVEDAFTER2:
             case LYD_DIFF_END:
                 /* do nothing*/
                 break;
             }
+
+            if (NULL != path) {
+                SR_LOG_DBG("CONFIG CHANGE: %s %s", operation, path);
+
+                sr_val_build_xpath(&values[index], CONFIG_CHANGE_TARGET_XPATH, list_cnt);
+                sr_val_set_str_data(&values[index], SR_INSTANCEID_T, path);
+
+                sr_val_build_xpath(&values[index+1], CONFIG_CHANGE_OPERATION_XPATH, list_cnt);
+                sr_val_set_str_data(&values[index+1], SR_ENUM_T, operation);
+                index += 2;
+                list_cnt++;
+            }
             free(path);
             diff_index++;
         }
     }
+
+    rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
 
     rc = rp_send_netconf_change_notification(rp_ctx, req);
     req = NULL;
