@@ -34,8 +34,7 @@ extern "C" {
 
 Tree::Tree() {
     _node = NULL;
-    S_Deleter deleter(new Deleter(_node));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(_node));
 }
 Tree::Tree(const char *root_name, const char *root_module_name) {
     sr_node_t *node;
@@ -43,8 +42,7 @@ Tree::Tree(const char *root_name, const char *root_module_name) {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Deleter deleter(new Deleter(node));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(node));
     _node = node;
 }
 Tree::Tree(sr_node_t *tree, S_Deleter deleter) {
@@ -259,8 +257,7 @@ void Tree::set(uint64_t uint64_val, sr_type_t type) {
 Trees::Trees() {
     _trees = NULL;
     _cnt = 0;
-    S_Deleter deleter(new Deleter(_trees, _cnt));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(_trees, _cnt));
 }
 Trees::Trees(size_t cnt) {
     int ret = sr_new_trees(cnt, &_trees);
@@ -268,8 +265,7 @@ Trees::Trees(size_t cnt) {
         throw_exception(ret);
 
     _cnt = cnt;
-    S_Deleter deleter(new Deleter(_trees, _cnt));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(_trees, _cnt));
 }
 Trees::Trees(sr_node_t **trees, size_t *cnt, S_Deleter deleter) {
     _trees = *trees;

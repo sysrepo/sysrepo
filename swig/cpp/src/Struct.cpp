@@ -112,8 +112,7 @@ Val::Val(sr_val_t *val, S_Deleter deleter) {
 }
 Val::Val() {
     _val = NULL;
-    S_Deleter deleter(new Deleter(_val));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::~Val() {return;}
 Val::Val(const char *value, sr_type_t type) {
@@ -138,8 +137,7 @@ Val::Val(const char *value, sr_type_t type) {
     }
 
     _val = val;
-    S_Deleter deleter(new Deleter(val));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(bool bool_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -155,8 +153,7 @@ Val::Val(bool bool_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Deleter deleter(new Deleter(val));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(double decimal64_val) {
     sr_val_t *val = NULL;
@@ -169,8 +166,7 @@ Val::Val(double decimal64_val) {
 
     val->type = SR_DECIMAL64_T;
     _val = val;
-    S_Deleter deleter(new Deleter(val));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(int8_t int8_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -186,8 +182,7 @@ Val::Val(int8_t int8_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Deleter deleter(new Deleter(val));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(int16_t int16_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -203,8 +198,7 @@ Val::Val(int16_t int16_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Deleter deleter(new Deleter(val));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(int32_t int32_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -220,8 +214,7 @@ Val::Val(int32_t int32_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Deleter deleter(new Deleter(val));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(int64_t int64_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -252,8 +245,7 @@ Val::Val(int64_t int64_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Deleter deleter(new Deleter(val));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(uint8_t uint8_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -269,8 +261,7 @@ Val::Val(uint8_t uint8_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Deleter deleter(new Deleter(val));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(uint16_t uint16_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -286,8 +277,7 @@ Val::Val(uint16_t uint16_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Deleter deleter(new Deleter(val));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(uint32_t uint32_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -303,8 +293,7 @@ Val::Val(uint32_t uint32_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Deleter deleter(new Deleter(val));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(uint64_t uint64_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -320,8 +309,7 @@ Val::Val(uint64_t uint64_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Deleter deleter(new Deleter(val));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(val));
 }
 void Val::set(const char *xpath, const char *value, sr_type_t type) {
     int ret = SR_ERR_OK;
@@ -666,8 +654,7 @@ char *Yang_Schema::enabled_features(size_t n) {
 Yang_Schemas::Yang_Schemas() {
     _sch = NULL;
     _cnt = 0;
-    S_Deleter deleter(new Deleter(_sch, _cnt));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(_sch, _cnt));
 }
 Yang_Schemas::~Yang_Schemas() {return;}
 S_Yang_Schema Yang_Schemas::schema(size_t n) {
@@ -708,11 +695,9 @@ Change::Change() {
     _oper = SR_OP_CREATED;
     _new = NULL;
     _old = NULL;
-    S_Deleter deleter_old(new Deleter(_old));
-    S_Deleter deleter_new(new Deleter(_new));
 
-    _deleter_old = deleter_old;
-    _deleter_new = deleter_new;
+    _deleter_old = S_Deleter(new Deleter(_old));
+    _deleter_new = S_Deleter(new Deleter(_new));
 }
 S_Val Change::new_val() {
     if (_new == NULL) return NULL;
