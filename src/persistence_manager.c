@@ -26,11 +26,16 @@
 #include <pthread.h>
 #include <fcntl.h>
 #include <libyang/libyang.h>
+#include <sys/types.h>
 
 #include "sr_common.h"
 #include "access_control.h"
 #include "rp_internal.h"
 #include "persistence_manager.h"
+
+#ifdef HAVE_FSETXATTR
+#include <sys/xattr.h>
+#endif
 
 #define PM_SCHEMA_FILE "sysrepo-persistent-data.yang"  /**< Schema of module's persistent data. */
 
@@ -55,6 +60,9 @@
 #define PM_XPATH_SUBSCRIPTIONS_BY_DST_ID      PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s'][destination-id='%"PRIu32"']"
 #define PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING PM_XPATH_SUBSCRIPTION_LIST "[enable-running=true()]"
 
+#define PM_XATTR_NAME "user.write_time" /**< Extended attribute used to store file timestamps. */
+#define PM_BILLION 1000000000L          /**< one billion, used for time calculations. */
+
 /**
  * @brief Persistence Manager context.
  */
@@ -74,6 +82,9 @@ typedef struct pm_ctx_s {
 typedef struct pm_module_data_s {
     const char *module_name;    /**< Name of the module. */
     sr_list_t *cached_data;     /**< Cached data of the module. */
+    uint64_t timestamp;         /**< Timestamp of the cached data file. */
+    bool use_xattr;             /**< Use file extended attributes to store timestamp. */
+
 } pm_module_data_t;
 
 /**
@@ -152,6 +163,15 @@ pm_save_data_tree(struct lyd_node *data_tree, int fd)
     /* flush in-core data to the disc */
     ret = fsync(fd);
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", sr_strerror_safe(errno));
+
+#ifdef HAVE_FSETXATTR
+    /* write precise commit time into the write_time extended attribute */
+    struct timespec ts = {0,};
+    uint64_t nanotime = 0;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    nanotime = (PM_BILLION * ts.tv_sec) + ts.tv_nsec;
+    fsetxattr(fd, PM_XATTR_NAME, &nanotime, sizeof(nanotime), 0);
+#endif
 
     SR_LOG_DBG_MSG("Persist data tree successfully saved.");
 
@@ -457,6 +477,151 @@ cleanup:
 }
 
 /**
+ * @brief Store persist data file version in the module_data context.
+ */
+static int
+pm_module_data_version_save(pm_ctx_t *pm_ctx, const char *module_name, pm_module_data_t *md)
+{
+    char file_name[PATH_MAX] = {0,};
+    struct stat file_stat = { 0, };
+    int ret = 0, rc = SR_ERR_OK;
+
+    rc = sr_get_persist_data_file_name_buf(pm_ctx->data_search_dir, module_name, file_name, PATH_MAX);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to get persist data file name.");
+
+#ifdef HAVE_FSETXATTR
+    /* xattr supported, try to read it */
+    ret = getxattr(file_name, PM_XATTR_NAME, &md->timestamp, sizeof(md->timestamp));
+    if (0 == ret) {
+        md->use_xattr = true;
+    } else {
+        /* xattr not present/supported, fallback to stat */
+        md->use_xattr = false;
+    }
+#else
+    /* xattr not supported */
+    md->use_xattr = false;
+#endif
+
+    if (!md->use_xattr) {
+        /* use stat to determine modification time */
+        ret = stat(file_name, &file_stat);
+        if (0 == ret) {
+#ifdef HAVE_STAT_ST_MTIM
+            md->timestamp = (PM_BILLION * file_stat.st_mtim.tv_sec) + file_stat.st_mtim.tv_nsec + file_stat.st_size;
+#else
+            md->timestamp = file_stat.st_mtime + file_stat.st_size;
+#endif
+        } else {
+            SR_LOG_ERR("Unable to stat file '%s': %s", file_name, sr_strerror_safe(errno));
+            rc = SR_ERR_INTERNAL;
+        }
+    }
+
+cleanup:
+    return rc;
+}
+
+/**
+ * @brief Check whether persist file version changed since storing its data in the module_data context.
+ */
+static int
+pm_module_data_version_changed(pm_ctx_t *pm_ctx, const char *module_name, pm_module_data_t *md, bool *changed)
+{
+    char file_name[PATH_MAX] = {0,};
+    struct stat file_stat = { 0, };
+    uint64_t timestamp = 0;
+    int ret = 0, rc = SR_ERR_OK;
+
+    *changed = true;
+
+    rc = sr_get_persist_data_file_name_buf(pm_ctx->data_search_dir, module_name, file_name, PATH_MAX);
+    CHECK_RC_MSG_RETURN(rc, "Unable to get persist data file name.");
+
+    if (md->use_xattr) {
+#ifdef HAVE_FSETXATTR
+        /* use xattr */
+        ret = getxattr(file_name, PM_XATTR_NAME, &timestamp, sizeof(timestamp));
+        if (0 == ret && timestamp == md->timestamp) {
+            SR_LOG_DBG("Module '%s' version matches with cached one(%"PRIu64")", module_name, timestamp);
+            *changed = false;
+        }
+#else
+        SR_LOG_ERR_MSG("use_xattr == true, but xattr not supported!");
+        return SR_ERR_INTERNAL;
+#endif
+    } else {
+        /* use stat */
+        ret = stat(file_name, &file_stat);
+        if (0 == ret) {
+#ifdef HAVE_STAT_ST_MTIM
+            timestamp = (PM_BILLION * file_stat.st_mtim.tv_sec) + file_stat.st_mtim.tv_nsec + file_stat.st_size;
+#else
+            timestamp = file_stat.st_mtime + file_stat.st_size;
+#endif
+            if (timestamp == md->timestamp) {
+                *changed = false;
+            }
+        } else {
+            SR_LOG_ERR("Unable to stat file '%s': %s", file_name, sr_strerror_safe(errno));
+            rc = SR_ERR_INTERNAL;
+        }
+    }
+
+    if (!changed) {
+        SR_LOG_DBG("Module '%s' persist file version matches with cached value (%"PRIu64").", module_name, timestamp);
+    } else {
+        SR_LOG_DBG("Module '%s' persist file version does not match with the last cached value (%"PRIu64").", module_name, timestamp);
+    }
+
+    return rc;
+}
+
+/**
+ * @brief Invalidates cache of subscriptions of given module.
+ */
+static int
+pm_invalidate_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType subscription_type,
+        bool all_types)
+{
+    pm_module_data_t *md = NULL, lookup_md = {0};
+    pm_cached_data_t *cd = NULL;
+
+    CHECK_NULL_ARG2(pm_ctx, module_name);
+
+    RWLOCK_WRLOCK_TIMED_CHECK_RETURN(&pm_ctx->module_data_lock);
+
+    /* find module data info */
+    lookup_md.module_name = module_name;
+    md = sr_btree_search(pm_ctx->module_data, &lookup_md);
+
+    if (NULL == md) {
+        /* module data does not exist */
+        pthread_rwlock_unlock(&pm_ctx->module_data_lock);
+        return SR_ERR_OK;
+    }
+
+    /* find cached info of given type */
+    for (size_t i = 0; i < md->cached_data->count; i++) {
+        cd = md->cached_data->data[i];
+        if (cd->valid) {
+            if (all_types || (cd->subscription_type == subscription_type)) {
+                cd->valid = false;
+                np_subscriptions_list_cleanup(cd->subscriptions);
+                cd->subscriptions = NULL;
+                if (!all_types) {
+                    break;
+                }
+            }
+        }
+    }
+
+    pthread_rwlock_unlock(&pm_ctx->module_data_lock);
+
+    return SR_ERR_OK;
+}
+
+/**
  * @brief Return cached subscriptions of requested module and type, if present in the cache.
  */
 static int
@@ -467,6 +632,7 @@ pm_get_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subsc
     pm_cached_data_t *cd = NULL, *lookup_cd = NULL;
     sr_list_t *res_subscriptions = NULL;
     np_subscription_t *subscription = NULL;
+    bool data_changed = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(pm_ctx, module_name, subscriptions_p, cache_hit);
@@ -481,6 +647,15 @@ pm_get_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subsc
 
     if (NULL == md) {
         /* module data does not exist */
+        goto cleanup;
+    }
+
+    /* check whether data hasn't changed in the meantime */
+    rc = pm_module_data_version_changed(pm_ctx, module_name, md, &data_changed);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cached module data version check failed.");
+
+    if (data_changed) {
+        /* data has changed */
         goto cleanup;
     }
 
@@ -528,6 +703,10 @@ cleanup:
     }
     pthread_rwlock_unlock(&pm_ctx->module_data_lock);
 
+    if (data_changed) {
+        pm_invalidate_cached_subscriptions(pm_ctx, module_name, subscription_type, true);
+    }
+
     return rc;
 }
 
@@ -569,6 +748,9 @@ pm_cache_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscripti
         md = md_tmp;
         md_tmp = NULL;
     }
+
+    /* save file version info */
+    pm_module_data_version_save(pm_ctx, module_name, md);
 
     /* find cached info of given type */
     for (size_t i = 0; i < md->cached_data->count; i++) {
@@ -631,50 +813,6 @@ cleanup:
     pthread_rwlock_unlock(&pm_ctx->module_data_lock);
 
     return rc;
-}
-
-/**
- * @brief Invalidates cache of subscriptions of given module.
- */
-static int
-pm_invalidate_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType subscription_type,
-        bool all_types)
-{
-    pm_module_data_t *md = NULL, lookup_md = {0};
-    pm_cached_data_t *cd = NULL;
-
-    CHECK_NULL_ARG2(pm_ctx, module_name);
-
-    RWLOCK_WRLOCK_TIMED_CHECK_RETURN(&pm_ctx->module_data_lock);
-
-    /* find module data info */
-    lookup_md.module_name = module_name;
-    md = sr_btree_search(pm_ctx->module_data, &lookup_md);
-
-    if (NULL == md) {
-        /* module data does not exist */
-        pthread_rwlock_unlock(&pm_ctx->module_data_lock);
-        return SR_ERR_OK;
-    }
-
-    /* find cached info of given type */
-    for (size_t i = 0; i < md->cached_data->count; i++) {
-        cd = md->cached_data->data[i];
-        if (cd->valid) {
-            if (all_types || (cd->subscription_type == subscription_type)) {
-                cd->valid = false;
-                np_subscriptions_list_cleanup(cd->subscriptions);
-                cd->subscriptions = NULL;
-                if (!all_types) {
-                    break;
-                }
-            }
-        }
-    }
-
-    pthread_rwlock_unlock(&pm_ctx->module_data_lock);
-
-    return SR_ERR_OK;
 }
 
 /**
