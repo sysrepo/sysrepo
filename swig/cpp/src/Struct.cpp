@@ -37,7 +37,7 @@ using namespace std;
 
 // Data
 Data::Data(sr_data_t data, sr_type_t type, S_Deleter deleter) {_d = data; _t = type; _deleter = deleter;}
-Data::~Data() {return;}
+Data::~Data() {}
 char *Data::get_binary() {
     if (_t != SR_BINARY_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.binary_val;
@@ -114,7 +114,7 @@ Val::Val() {
     _val = NULL;
     _deleter = S_Deleter(new Deleter(_val));
 }
-Val::~Val() {return;}
+Val::~Val() {}
 Val::Val(const char *value, sr_type_t type) {
     int ret = SR_ERR_OK;
     sr_val_t *val = NULL;
@@ -543,11 +543,8 @@ Vals::Vals(size_t cnt): Vals() {
         _deleter = S_Deleter(new Deleter(_vals, _cnt));
     }
 }
-Vals::Vals(): _cnt(0), _vals(nullptr)
-{
-}
-Vals::~Vals() {
-}
+Vals::Vals(): _cnt(0), _vals(nullptr) {}
+Vals::~Vals() {}
 S_Val Vals::val(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Vals::val: index out of range");
@@ -588,24 +585,24 @@ S_Vals Vals_Holder::allocate(size_t n) {
     S_Vals vals(new Vals(p_vals, p_cnt, NULL));
     return vals;
 }
-Vals_Holder::~Vals_Holder() {return;}
+Vals_Holder::~Vals_Holder() {}
 
 // Val_iter
 Val_Iter::Val_Iter(sr_val_iter_t *iter) {_iter = iter;}
-Val_Iter::~Val_Iter() {return;}
+Val_Iter::~Val_Iter() {}
 
 // Change_Iter
 Change_Iter::Change_Iter(sr_change_iter_t *iter) {_iter = iter;}
-Change_Iter::~Change_Iter() {return;}
+Change_Iter::~Change_Iter() {}
 
 // Error
 Error::Error() {_info = NULL;}
 Error::Error(const sr_error_info_t *info) {_info = info;}
-Error::~Error() {return;}
+Error::~Error() {}
 
 // Errors
 Errors::Errors() {_info = NULL; _cnt = 0;}
-Errors::~Errors() {return;}
+Errors::~Errors() {}
 S_Error Errors::error(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Errors:error: index out of range");
@@ -616,14 +613,14 @@ S_Error Errors::error(size_t n) {
 
 // Schema_Revision
 Schema_Revision::Schema_Revision(sr_sch_revision_t rev) {_rev = rev;}
-Schema_Revision::~Schema_Revision() {return;}
+Schema_Revision::~Schema_Revision() {}
 
 // Schema_Submodule
 Schema_Submodule::Schema_Submodule(sr_sch_submodule_t sub, S_Deleter deleter) {
     _sub = sub;
     _deleter = deleter;
 }
-Schema_Submodule::~Schema_Submodule() {return;}
+Schema_Submodule::~Schema_Submodule() {}
 S_Schema_Revision Schema_Submodule::revision() {
     S_Schema_Revision rev(new Schema_Revision(_sub.revision));
     return rev;
@@ -631,7 +628,7 @@ S_Schema_Revision Schema_Submodule::revision() {
 
 // Yang_Schema
 Yang_Schema::Yang_Schema(sr_schema_t *sch, S_Deleter deleter) {_sch = sch; _deleter = deleter;}
-Yang_Schema::~Yang_Schema() {return;}
+Yang_Schema::~Yang_Schema() {}
 S_Schema_Revision Yang_Schema::revision() {
     S_Schema_Revision rev(new Schema_Revision(_sch->revision));
     return rev;
@@ -656,7 +653,7 @@ Yang_Schemas::Yang_Schemas() {
     _cnt = 0;
     _deleter = S_Deleter(new Deleter(_sch, _cnt));
 }
-Yang_Schemas::~Yang_Schemas() {return;}
+Yang_Schemas::~Yang_Schemas() {}
 S_Yang_Schema Yang_Schemas::schema(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Yang_Schema::schema: index out of range");
@@ -667,11 +664,11 @@ S_Yang_Schema Yang_Schemas::schema(size_t n) {
 
 // Fd_Change
 Fd_Change::Fd_Change(sr_fd_change_t *ch) {_ch = ch;}
-Fd_Change::~Fd_Change() {return;}
+Fd_Change::~Fd_Change() {}
 
 // Fd_Changes
 Fd_Changes::Fd_Changes(sr_fd_change_t *ch, size_t cnt) {_ch = ch; _cnt = cnt;}
-Fd_Changes::~Fd_Changes() {return;}
+Fd_Changes::~Fd_Changes() {}
 S_Fd_Change Fd_Changes::fd_change(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Fd_Changes::fd_change: index out of range");

@@ -49,7 +49,7 @@ Tree::Tree(sr_node_t *tree, S_Deleter deleter) {
     _node = tree;
     _deleter = deleter;
 }
-Tree::~Tree() {return;}
+Tree::~Tree() {}
 S_Tree Tree::dup() {
     if (!_node)
         throw std::logic_error("Tree::dup: called on null Tree");
@@ -290,7 +290,7 @@ Trees::Trees(const sr_node_t *trees, const size_t n, S_Deleter deleter) {
 
     _deleter = deleter;
 }
-Trees::~Trees() {return;}
+Trees::~Trees() {}
 S_Tree Trees::tree(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Trees::tree: index out of range");
@@ -336,5 +336,5 @@ S_Trees Trees_Holder::allocate(size_t n) {
     S_Trees trees(new Trees(p_trees, p_cnt, NULL));
     return trees;
 }
-Trees_Holder::~Trees_Holder() {return;}
+Trees_Holder::~Trees_Holder() {}
 

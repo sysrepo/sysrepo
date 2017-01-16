@@ -463,8 +463,8 @@ Subscribe::~Subscribe()
     }
 }
 
-Callback::Callback() {return;}
-Callback::~Callback() {return;}
+Callback::Callback() {}
+Callback::~Callback() {}
 
 static int module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx) {
     S_Session sess(new Session(session));
