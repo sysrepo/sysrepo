@@ -608,7 +608,7 @@ Errors::Errors() {_info = NULL; _cnt = 0;}
 Errors::~Errors() {return;}
 S_Error Errors::error(size_t n) {
     if (n >= _cnt)
-        return NULL;
+        throw std::out_of_range("Errors:error: index out of range");
 
     S_Error error(new Error(&_info[n]));
     return error;
@@ -638,14 +638,14 @@ S_Schema_Revision Yang_Schema::revision() {
 }
 S_Schema_Submodule Yang_Schema::submodule(size_t n) {
     if (n >= _sch->submodule_count)
-        return NULL;
+        throw std::out_of_range("Schema_Submodule::submodule: index out of range");
 
     S_Schema_Submodule sub(new Schema_Submodule(_sch->submodules[n], _deleter));
     return sub;
 }
 char *Yang_Schema::enabled_features(size_t n) {
     if (n >= _sch->enabled_feature_cnt)
-        return NULL;
+        throw std::out_of_range("Yang_Schema::enabled_features: index out of range");
 
    return _sch->enabled_features[n];
 }
@@ -659,7 +659,7 @@ Yang_Schemas::Yang_Schemas() {
 Yang_Schemas::~Yang_Schemas() {return;}
 S_Yang_Schema Yang_Schemas::schema(size_t n) {
     if (n >= _cnt)
-        return NULL;
+        throw std::out_of_range("Yang_Schema::schema: index out of range");
 
     S_Yang_Schema rev(new Yang_Schema((sr_schema_t *) &_sch[n], _deleter));
     return rev;
@@ -674,7 +674,7 @@ Fd_Changes::Fd_Changes(sr_fd_change_t *ch, size_t cnt) {_ch = ch; _cnt = cnt;}
 Fd_Changes::~Fd_Changes() {return;}
 S_Fd_Change Fd_Changes::fd_change(size_t n) {
     if (n >= _cnt)
-        return NULL;
+        throw std::out_of_range("Fd_Changes::fd_change: index out of range");
 
     S_Fd_Change change(new Fd_Change(&_ch[n]));
     return change;
