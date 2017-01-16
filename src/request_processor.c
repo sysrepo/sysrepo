@@ -561,6 +561,7 @@ rp_module_install_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *
     if (SR_ERR_OK == oper_rc) {
         if (msg->request->module_install_req->installed) {
             oper_rc = dm_install_module(rp_ctx->dm_ctx,
+                        session->dm_session,
                         module_name,
                         msg->request->module_install_req->revision,
                         msg->request->module_install_req->file_name,

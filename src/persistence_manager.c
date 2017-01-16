@@ -818,8 +818,9 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
 }
 
 int
-pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, sr_mem_ctx_t *sr_mem_features, bool *module_enabled,
-        char ***subtrees_enabled_p, size_t *subtrees_enabled_cnt_p, char ***features_p, size_t *features_cnt_p)
+pm_get_module_info(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name, sr_mem_ctx_t *sr_mem_features,
+        bool *module_enabled, char ***subtrees_enabled_p, size_t *subtrees_enabled_cnt_p, char ***features_p,
+        size_t *features_cnt_p)
 {
     char xpath[PATH_MAX] = { 0, };
     struct lyd_node *data_tree = NULL;
@@ -845,7 +846,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, sr_mem_ctx_t *sr_m
     }
 
     /* load the data tree from persist file */
-    rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
+    rc = pm_load_data_tree(pm_ctx, user_cred, module_name, true, &data_tree, NULL);
     if (SR_ERR_DATA_MISSING != rc) {
         /* ignore data missing error */
         CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
@@ -1132,7 +1133,7 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *
     }
 
     /* load the data tree from persist file */
-    rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
+    rc = pm_load_data_tree(pm_ctx, user_cred, module_name, true, &data_tree, NULL);
     if (SR_ERR_DATA_MISSING != rc) {
         CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s' %s.", module_name, sr_strerror(rc));
     }

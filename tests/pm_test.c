@@ -109,7 +109,7 @@ pm_feature_test(void **state)
     rc = pm_save_feature_state(pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
-    rc = pm_get_module_info(pm_ctx, "example-module", NULL, &module_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
+    rc = pm_get_module_info(pm_ctx, &test_ctx->user_cred, "example-module", NULL, &module_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module_enabled);
     assert_int_equal(subtrees_cnt, 0);
@@ -212,7 +212,8 @@ pm_subscription_test(void **state)
     subscriptions_list = NULL;
 
     /* retrieve module info */
-    rc = pm_get_module_info(pm_ctx, "example-module", NULL, &running_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
+    rc = pm_get_module_info(pm_ctx, &test_ctx->user_cred, "example-module", NULL, &running_enabled, &subtrees,
+            &subtrees_cnt, &features, &feature_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(running_enabled);
     assert_int_equal(subtrees_cnt, 1);
@@ -249,7 +250,8 @@ pm_subscription_test(void **state)
     assert_false(disable_running);
 
     /* retrieve module info */
-    rc = pm_get_module_info(pm_ctx, "example-module", NULL, &running_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
+    rc = pm_get_module_info(pm_ctx, &test_ctx->user_cred, "example-module", NULL, &running_enabled, &subtrees, &subtrees_cnt,
+            &features, &feature_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(running_enabled);
     assert_int_equal(subtrees_cnt, 0);
