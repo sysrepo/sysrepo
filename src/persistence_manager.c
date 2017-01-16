@@ -1110,7 +1110,8 @@ pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_nam
 }
 
 int
-pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType type, sr_list_t **subscriptions_p)
+pm_get_subscriptions(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name, Sr__SubscriptionType type,
+        sr_list_t **subscriptions_p)
 {
     char xpath[PATH_MAX] = { 0, };
     struct lyd_node *data_tree = NULL;

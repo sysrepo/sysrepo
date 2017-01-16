@@ -305,7 +305,8 @@ np_module_subscriptions_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get all subscriptions */
-    rc = np_get_module_change_subscriptions(np_ctx, "example-module", &subscriptions_list);
+    rc = np_get_module_change_subscriptions(np_ctx, test_ctx->rp_session_ctx->user_credentials, "example-module",
+            &subscriptions_list);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(subscriptions_list);
     assert_int_equal(subscriptions_list->count, 3);
@@ -371,7 +372,7 @@ np_dp_subscriptions_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get subscriptions */
-    rc = np_get_data_provider_subscriptions(np_ctx, "example-module", &subscriptions_list);
+    rc = np_get_data_provider_subscriptions(np_ctx, test_ctx->rp_session_ctx, "example-module", &subscriptions_list);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(subscriptions_list);
     assert_int_not_equal(subscriptions_list->count, 0);

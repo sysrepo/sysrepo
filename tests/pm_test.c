@@ -197,7 +197,8 @@ pm_subscription_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* retrieve active subscriptions */
-    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, &subscriptions_list);
+    rc = pm_get_subscriptions(pm_ctx, &test_ctx->user_cred, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
+            &subscriptions_list);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(subscriptions_list);
     assert_true(subscriptions_list->count >= 1);
@@ -309,7 +310,8 @@ pm_subscription_cache_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* retrieve active subscriptions */
-    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, &subscriptions_list);
+    rc = pm_get_subscriptions(pm_ctx, &test_ctx->user_cred, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
+            &subscriptions_list);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(subscriptions_list);
     assert_int_equal(subscriptions_list->count, 2);
@@ -323,7 +325,8 @@ pm_subscription_cache_test(void **state)
     subscriptions_list = NULL;
 
     /* retrieve active subscriptions - from cache */
-    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, &subscriptions_list);
+    rc = pm_get_subscriptions(pm_ctx, &test_ctx->user_cred, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
+            &subscriptions_list);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(subscriptions_list);
     assert_int_equal(subscriptions_list->count, 2);
@@ -343,7 +346,8 @@ pm_subscription_cache_test(void **state)
     assert_true(disable_running);
 
     /* retrieve active subscriptions - from disk, cache should be invalidated */
-    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, &subscriptions_list);
+    rc = pm_get_subscriptions(pm_ctx, &test_ctx->user_cred, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
+            &subscriptions_list);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(subscriptions_list);
     assert_int_equal(subscriptions_list->count, 1);

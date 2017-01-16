@@ -204,30 +204,34 @@ int np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const ch
 int np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_address, uint32_t dst_id);
 
 /**
- * @brief Gets all subscriptions that subscibe for changes in specified module
+ * @brief Gets all subscriptions that subscribe for changes in specified module
  * or in a subtree within the specified module.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
- * @param[in] module_name ame of the module where the subscription is active.
- * @param[out] subscriptions List of pointers to subscriptions matching the criteria. NULL can be returned in case that
- * no matching subscriptions has been found.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, sr_list_t **subscriptions);
-
-/**
- * @brief Gets all operational data provider subscriptions in specified module
- * or in a subtree within the specified module.
- *
- * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] user_cred Credentials of the user requesting storing of the notification.
  * @param[in] module_name Name of the module where the subscription is active.
  * @param[out] subscriptions List of pointers to subscriptions matching the criteria. NULL can be returned in case that
  * no matching subscriptions has been found.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name, sr_list_t **subscriptions);
+int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        sr_list_t **subscriptions);
+
+/**
+ * @brief Gets all operational data provider subscriptions in specified module
+ * or in a subtree within the specified module.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] rp_session Request Processor session context.
+ * @param[in] module_name Name of the module where the subscription is active.
+ * @param[out] subscriptions List of pointers to subscriptions matching the criteria. NULL can be returned in case that
+ * no matching subscriptions has been found.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const rp_session_t *rp_session, const char *module_name,
+        sr_list_t **subscriptions);
 
 /**
  * @brief Notify the subscriber about the change they are subscribed to.

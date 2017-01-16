@@ -1161,7 +1161,8 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
 }
 
 int
-np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, sr_list_t **subscriptions_list)
+np_get_module_change_subscriptions(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        sr_list_t **subscriptions_list)
 {
     sr_list_t *subscriptions_list_1 = NULL, *subscriptions_list_2 = NULL;
     np_subscription_t *subscription = NULL;
@@ -1171,12 +1172,12 @@ np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, sr
     CHECK_NULL_ARG3(np_ctx, module_name, subscriptions_list);
 
     /* get subtree-change subscriptions */
-    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
             &subscriptions_list_1);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve subtree-change subscriptions");
 
     /* get module-change subscriptions */
-    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
             &subscriptions_list_2);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve module-change subscriptions");
 
@@ -1223,13 +1224,15 @@ cleanup:
 }
 
 int
-np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name, sr_list_t **subscriptions)
+np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const rp_session_t *rp_session, const char *module_name,
+        sr_list_t **subscriptions)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(np_ctx, module_name, subscriptions);
+    CHECK_NULL_ARG4(np_ctx, rp_session, module_name, subscriptions);
 
-    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS, subscriptions);
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, rp_session->user_credentials, module_name,
+            SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS, subscriptions);
 
     return rc;
 }

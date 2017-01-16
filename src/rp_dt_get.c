@@ -765,7 +765,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
             }
         }
 
-        rc = np_get_data_provider_subscriptions(rp_ctx->np_ctx, schema_info->module_name, &state_data_ctx->subscriptions);
+        rc = np_get_data_provider_subscriptions(rp_ctx->np_ctx, session, schema_info->module_name, &state_data_ctx->subscriptions);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data provider subscriptions failed");
 
         if (NULL == state_data_ctx->subscriptions || 0 == state_data_ctx->subscriptions->count) {

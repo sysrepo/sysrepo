@@ -2713,7 +2713,8 @@ dm_subs_cmp(const void *a, const void *b)
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info, dm_model_subscription_t **model_sub)
+dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *schema_info,
+        dm_model_subscription_t **model_sub)
 {
     CHECK_NULL_ARG3(dm_ctx, schema_info, model_sub);
     int rc = SR_ERR_OK;
@@ -2726,6 +2727,7 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info,
     pthread_rwlock_init(&ms->changes_lock, NULL);
 
     rc = np_get_module_change_subscriptions(dm_ctx->np_ctx,
+            session->user_credentials,
             schema_info->module_name,
             &ms->subscriptions);
 
@@ -2925,7 +2927,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
             c_ctx->modif_count++;
 
             if (SR_DS_STARTUP != session->datastore) {
-                rc = dm_prepare_module_subscriptions(dm_ctx, info->schema, &ms);
+                rc = dm_prepare_module_subscriptions(dm_ctx, session, info->schema, &ms);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Prepare module subscription failed %s", info->schema->module->name);
 
                 rc = sr_btree_insert(c_ctx->subscriptions, ms);
