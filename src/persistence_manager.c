@@ -164,11 +164,11 @@ pm_save_data_tree(struct lyd_node *data_tree, int fd)
     ret = fsync(fd);
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", sr_strerror_safe(errno));
 
-#ifdef HAVE_FSETXATTR
+#if defined(HAVE_FSETXATTR) && defined(__linux__)
     /* write precise commit time into the write_time extended attribute */
     struct timespec ts = {0,};
     uint64_t nanotime = 0;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+    sr_clock_get_time(CLOCK_MONOTONIC, &ts);
     nanotime = (PM_BILLION * ts.tv_sec) + ts.tv_nsec;
     fsetxattr(fd, PM_XATTR_NAME, &nanotime, sizeof(nanotime), 0);
 #endif
@@ -489,7 +489,7 @@ pm_module_data_version_save(pm_ctx_t *pm_ctx, const char *module_name, pm_module
     rc = sr_get_persist_data_file_name_buf(pm_ctx->data_search_dir, module_name, file_name, PATH_MAX);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to get persist data file name.");
 
-#ifdef HAVE_FSETXATTR
+#if defined(HAVE_FSETXATTR) && defined(__linux__)
     /* xattr supported, try to read it */
     ret = getxattr(file_name, PM_XATTR_NAME, &md->timestamp, sizeof(md->timestamp));
     if (0 == ret) {
@@ -539,7 +539,7 @@ pm_module_data_version_changed(pm_ctx_t *pm_ctx, const char *module_name, pm_mod
     CHECK_RC_MSG_RETURN(rc, "Unable to get persist data file name.");
 
     if (md->use_xattr) {
-#ifdef HAVE_FSETXATTR
+#if defined(HAVE_FSETXATTR) && defined(__linux__)
         /* use xattr */
         ret = getxattr(file_name, PM_XATTR_NAME, &timestamp, sizeof(timestamp));
         if (0 == ret && timestamp == md->timestamp) {
