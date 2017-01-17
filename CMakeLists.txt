@@ -157,7 +157,8 @@ set(LOG_THREAD_ID 0 CACHE BOOL
 set(ENABLE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
     "Generate config-change notifications (RFC 6470).")
 
-set(STORE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
+#TODO: enable storing config change once instance-id validation is done
+set(STORE_CONFIG_CHANGE_NOTIF 0 CACHE BOOL
     "Save config-change notifications (RFC 6470) in the notification store (slows down the commit process).")
 
 # timeouts
@@ -292,6 +293,7 @@ if(WITH_SYSTEMD)
 endif()
 
 INSTALL_YANG("ietf-netconf-notifications" "" "666")
+INSTALL_YANG("nc-notifications" "" "666")
 
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(swig)

@@ -70,6 +70,8 @@ typedef enum rp_capability_change_type_e {
 #define CONFIG_CHANGE_USERNAME_XPATH "/ietf-netconf-notifications:netconf-config-change/changed-by/username"
 #define CONFIG_CHANGE_SESSION_ID_XPATH "/ietf-netconf-notifications:netconf-config-change/changed-by/session-id"
 #define CONFIG_CHANGE_DATASTORE_XPATH "/ietf-netconf-notifications:netconf-config-change/datastore"
+#define CONFIG_CHANGE_TARGET_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%d]/target"
+#define CONFIG_CHANGE_OPERATION_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%d]/operation"
 
 /**
  * @brief Copy errors saved in the Data Manager session into the GPB response.
@@ -96,7 +98,7 @@ rp_resp_fill_errors(Sr__Msg *msg, dm_session_t *dm_session)
 }
 
 /**
- * @brief Report that access to execute a given operation was not allowed.
+ * @brief Report that access to execute a given operation was not allowed by NACM.
  */
 static int
 rp_report_exec_access_denied(dm_session_t *dm_session, const char *xpath, const char *rule_name,
@@ -122,6 +124,44 @@ rp_report_exec_access_denied(dm_session_t *dm_session, const char *xpath, const 
     } else {
         SR_LOG_DBG("%s", error_msg);
         dm_report_error(dm_session, error_msg, xpath, SR_ERR_UNAUTHORIZED);
+        free(error_msg);
+    }
+    return rc;
+}
+
+/**
+ * @brief Report that delivery of a notification was blocked for a given subscription by NACM.
+ */
+static int
+rp_report_delivery_blocked(np_subscription_t *subscription, const char *xpath,
+        int nacm_rc, const char *rule_name, const char *rule_info)
+{
+    int rc = SR_ERR_OK;
+    char *error_msg = NULL;
+    CHECK_NULL_ARG2(subscription, xpath);
+
+    if (SR_ERR_OK != nacm_rc) {
+        rc = sr_asprintf(&error_msg, "NETCONF access control verification failed for the notification '%s' and "
+                "subscription '%s' @ %"PRIu32". Delivery will be blocked.", xpath, subscription->dst_address,
+                subscription->dst_id);
+    } else if (NULL != rule_name) {
+        if (NULL != rule_info) {
+            rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %"PRIu32" "
+                    "was blocked by the NACM rule '%s' (%s).", xpath, subscription->dst_address, subscription->dst_id,
+                    rule_name, rule_info);
+        } else {
+            rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %"PRIu32" "
+                    "was blocked by the NACM rule '%s'.", xpath, subscription->dst_address, subscription->dst_id,
+                    rule_name);
+        }
+    } else {
+        rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %"PRIu32" "
+                "was blocked by NACM.", xpath, subscription->dst_address, subscription->dst_id);
+    }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN_MSG("::sr_asprintf has failed");
+    } else {
+        SR_LOG_DBG("%s", error_msg);
         free(error_msg);
     }
     return rc;
@@ -345,7 +385,9 @@ rp_count_changes_in_difflists(sr_list_t *diff_lists)
 
             while (LYD_DIFF_END != dl->type[diff_index]) {
                 diff_index++;
-                diff_cnt++;
+                if (LYD_DIFF_MOVEDAFTER2 != dl->type[diff_index]) {
+                    diff_cnt++;
+                }
             }
         }
     }
@@ -360,6 +402,12 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
     Sr__Msg *req = NULL;
     sr_val_t *values = NULL;
     size_t val_cnt = 3;
+
+    size_t diff_count = rp_count_changes_in_difflists(diff_lists);
+    SR_LOG_DBG("%zu instance of /ietf-netconf-notifications/netconf-config-change/edit list will be created", diff_count);
+
+    /* target + operation */
+    val_cnt += diff_count * 2;
 
     values = calloc(val_cnt, sizeof(*values));
     CHECK_NULL_NOMEM_RETURN(values);
@@ -393,12 +441,12 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
     rc = sr_mem_edit_string(NULL, &req->request->event_notif_req->xpath, CONFIG_CHANGE_NOTIFICATION_XPATH);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set xpath in the message");
 
-    rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
+    /* index into values */
+    size_t index = 3; /* start inserting on the third position */
 
-    //TODO: currently the changes are only logged as debug waiting for libyang support to create lists without keys
-    size_t diff_count = rp_count_changes_in_difflists(diff_lists);
-    SR_LOG_DBG("%zu instance of /ietf-netconf-notifications/netconf-config-change/edit list will be created", diff_count);
+    /* index for edit list */
+    size_t list_cnt = 1;
+    char *operation = NULL;
 
     for (size_t i = 0; i < diff_lists->count; i++) {
         struct lyd_difflist *dl = (struct lyd_difflist *) diff_lists->data[i];
@@ -409,26 +457,41 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
             switch (dl->type[diff_index]) {
             case LYD_DIFF_CHANGED:
             case LYD_DIFF_MOVEDAFTER1:
-                path = lyd_path(dl->first[diff_index]);
-                SR_LOG_DBG("CONFIG CHANGE: merge %s", path);
+                path = lyd_qualified_path(dl->first[diff_index]);
+                operation = "merge";
                 break;
             case LYD_DIFF_DELETED:
-                path = lyd_path(dl->first[diff_index]);
-                SR_LOG_DBG("CONFIG CHANGE: delete %s", path);
+                path = lyd_qualified_path(dl->first[diff_index]);
+                operation = "delete";
                 break;
             case LYD_DIFF_CREATED:
-                path = lyd_path(dl->second[diff_index]);
-                SR_LOG_DBG("CONFIG CHANGE: create %s", path);
+                path = lyd_qualified_path(dl->second[diff_index]);
+                operation = "create";
                 break;
             case LYD_DIFF_MOVEDAFTER2:
             case LYD_DIFF_END:
                 /* do nothing*/
                 break;
             }
+
+            if (NULL != path) {
+                SR_LOG_DBG("CONFIG CHANGE: %s %s", operation, path);
+
+                sr_val_build_xpath(&values[index], CONFIG_CHANGE_TARGET_XPATH, list_cnt);
+                sr_val_set_str_data(&values[index], SR_INSTANCEID_T, path);
+
+                sr_val_build_xpath(&values[index+1], CONFIG_CHANGE_OPERATION_XPATH, list_cnt);
+                sr_val_set_str_data(&values[index+1], SR_ENUM_T, operation);
+                index += 2;
+                list_cnt++;
+            }
             free(path);
             diff_index++;
         }
     }
+
+    rc = sr_values_sr_to_gpb(values, val_cnt, &req->request->event_notif_req->values, &req->request->event_notif_req->n_values);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform values to gpb");
 
     rc = rp_send_netconf_change_notification(rp_ctx, req);
     req = NULL;
@@ -2175,7 +2238,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     xpath = msg->request->rpc_req->xpath;
     action = msg->request->rpc_req->action;
     op_name = (action ? "Action" : "RPC");
-    SR_LOG_DBG("Processing %s request.", op_name);
+    SR_LOG_DBG("Processing %s request (%s).", op_name, xpath);
 
     /* reuse context from msg for req (or resp) */
     sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
@@ -2592,6 +2655,7 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     }
 
     action = msg->response->rpc_resp->action;
+    SR_LOG_DBG("Processing %s response (%s).", (action ? "Action" : "RPC"), msg->response->rpc_resp->xpath);
 
     /* reuse memory context from msg for resp */
     sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
@@ -2896,6 +2960,7 @@ cleanup:
 static int
 rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
+    const char *xpath = NULL;
     char *module_name = NULL;
     struct lyd_node *notif_data_tree = NULL;
     sr_api_variant_t msg_api_variant = SR_API_VALUES;
@@ -2907,6 +2972,9 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     bool sub_match = false;
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem_msg = NULL;
+    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
+    char *nacm_rule = NULL, *nacm_rule_info = NULL;
     dm_session_t *dm_session = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
@@ -2915,7 +2983,8 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         goto finalize;
     }
 
-    SR_LOG_DBG_MSG("Processing event notification request.");
+    xpath = msg->request->event_notif_req->xpath;
+    SR_LOG_DBG("Processing event notification request (%s).", xpath);
 
     if (NULL != session) {
         dm_session = session->dm_session;
@@ -2934,24 +3003,21 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         rc = sr_trees_gpb_to_sr(sr_mem_msg, msg->request->event_notif_req->trees,
                 msg->request->event_notif_req->n_trees, &trees, &tree_cnt);
     }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse event notification (%s) data trees from GPB message.",
-                      msg->request->event_notif_req->xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse event notification (%s) data trees from GPB message.", xpath);
 
     /* validate event-notification request */
     if (SR_API_VALUES == msg_api_variant) {
-        rc = dm_validate_event_notif(rp_ctx->dm_ctx, dm_session, msg->request->event_notif_req->xpath,
-                values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
+        rc = dm_validate_event_notif(rp_ctx->dm_ctx, dm_session, xpath, values, values_cnt, NULL,
+                &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
     } else {
-        rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, dm_session, msg->request->event_notif_req->xpath,
-                trees, tree_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
+        rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, dm_session, xpath, trees, tree_cnt, NULL,
+                &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
     }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.",
-                      msg->request->event_notif_req->xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.", xpath);
 
     /* get module name */
-    rc = sr_copy_first_ns(msg->request->event_notif_req->xpath, &module_name);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for event notification request (%s).",
-                      msg->request->event_notif_req->xpath);
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for event notification request (%s).", xpath);
 
     if (NULL != session) {
         /* authorize (write permissions are required to deliver the event-notification) */
@@ -2966,7 +3032,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     if (!(msg->request->event_notif_req->options & SR__EVENT_NOTIF_REQ__NOTIF_FLAGS__EPHEMERAL)) {
         /* store the notification in the datastore */
         rc = np_store_event_notification(rp_ctx->np_ctx, NULL != session ? session->user_credentials : NULL,
-                msg->request->event_notif_req->xpath, msg->request->event_notif_req->timestamp, &notif_data_tree);
+                xpath, msg->request->event_notif_req->timestamp, &notif_data_tree);
     }
 #ifndef STORE_CONFIG_CHANGE_NOTIF
     }
@@ -2976,8 +3042,13 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     /* get event-notification subscriptions */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, (NULL != session) ? session->user_credentials : NULL, module_name,
             SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS, &subscriptions_list);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for event notification request (%s).",
-                      msg->request->event_notif_req->xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for event notification request (%s).", xpath);
+
+#ifdef ENABLE_NACM
+    /* get NACM context */
+    rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
+    CHECK_RC_MSG_GOTO(rc, finalize, "Failed to get NACM context");
+#endif
 
     /* broadcast the notification to all subscribed processes */
     if (NULL != subscriptions_list) {
@@ -2987,8 +3058,24 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
                 /* duplicate msg into req with values and subscription details
                  * @note we are not using memory context for the *req* message because with so many
                  * duplications it would be actually less efficient than normally.
-                 * */
+                 */
                 sub_match = true;
+#ifdef ENABLE_NACM
+                /* NACM access control */
+                if (NULL != nacm_ctx) {
+                    free(nacm_rule);
+                    free(nacm_rule_info);
+                    nacm_rule = NULL;
+                    nacm_rule_info = NULL;
+                    /* check if the user is authorized to receive the notification */
+                    rc = nacm_check_event_notif(nacm_ctx, subscription->username, xpath, &nacm_action,
+                            &nacm_rule, &nacm_rule_info);
+                    if (SR_ERR_OK != rc || NACM_ACTION_DENY == nacm_action) {
+                        rp_report_delivery_blocked(subscription, xpath, rc, nacm_rule, nacm_rule_info);
+                        continue;
+                    }
+                }
+#endif
                 rc = rp_event_notif_send(rp_ctx, session, msg->request->event_notif_req->type, subscription->xpath,
                         msg->request->event_notif_req->timestamp, subscription->api_variant, with_def, with_def_cnt,
                         with_def_tree, with_def_tree_cnt, subscription->dst_address, subscription->dst_id, 0);
@@ -2999,6 +3086,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
 finalize:
+    /* free all the allocated data */
     if (SR_API_VALUES == msg_api_variant) {
         sr_free_values(values, values_cnt);
     } else {
@@ -3007,6 +3095,8 @@ finalize:
     sr_free_values(with_def, with_def_cnt);
     sr_free_trees(with_def_tree, with_def_tree_cnt);
     free(module_name);
+    free(nacm_rule);
+    free(nacm_rule_info);
     np_subscriptions_list_cleanup(subscriptions_list);
 
     if (!sub_match && SR_ERR_OK == rc) {

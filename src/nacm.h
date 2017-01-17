@@ -220,13 +220,13 @@ int nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, con
  * @brief Check if there is a permission to send the given event notification.
  *
  * @param [in] nacm_ctx NACM context.
- * @param [in] user_credentials User credentials.
+ * @param [in] username Name of the user that the notification is to be sent to.
  * @param [in] xpath XPath identifying the event notification.
  * @param [out] action Action to take based on the NACM rules.
  * @param [out] rule_name An allocated C-string with a name of the applied rule, if any.
  * @param [out] rule_info An allocated C-string with a textual description of the applied rule, if any.
  */
-int nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const char *xpath,
+int nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const char *username, const char *xpath,
         nacm_action_t *action, char **rule_name, char **rule_info);
 
 /**
