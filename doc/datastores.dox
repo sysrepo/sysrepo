@@ -1,6 +1,6 @@
 /**
 
-@page ds_page Datastores & Sessions
+@page ds_page Datastores
 
 Sysrepo supports \b startup, \b running and \b candidate configuration datastores. Each configuration
 session can perform operations on any of them. On session start the initial datastore
@@ -43,24 +43,5 @@ The candidate configuration is a full configuration data set that serves as a wo
 place for creating and manipulating configuration data. ::sr_commit operation sets
 running configuration to the value of the candidate content (overwrites the running
 datastore content with the content of candidate datastore).
-
-@section dscache Session Data Caching
-For faster processing, sysrepo caches configuration data within the session.
-Data is loaded from the filesystem only once, by the first request to specified
-data model within the session. After that, all requests within the session
-operate on that session-local view of the data. By commit operation,
-changes made within the session are merged with the actual state of the datastore
-at the time of commit. That implies, that commit operation may possibly fail if
-datastore has been changed by another session in the meantime and the two changes
-cannot be merged. To prevent this situation, the client should always use
-locking capabilities of sysrepo in multi-user environments.
-
-Cached data will be released and the session will start operate on fresh data
-after any of following requests: ::sr_commit, ::sr_discard_changes, ::sr_session_refresh.
-
-Due to the above, if you use sessions with long lifetime, you need to be
-sure that you call ::sr_session_refresh each time when you expect that the data
-in the datastore may have been changed by some other configuration channel
-in the meantime.
 
 */
