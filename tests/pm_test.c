@@ -262,7 +262,7 @@ pm_subscription_cache_test(void **state)
 {
     test_ctx_t *test_ctx = *state;
     pm_ctx_t *pm_ctx = test_ctx->rp_ctx->pm_ctx;
-    sr_list_t *subscriptions_list = NULL;
+    sr_list_t *subscriptions_list = NULL, *subscriptions_list2 = NULL;
     np_subscription_t *subscription_p = NULL;
     bool disable_running = false;
     int rc = SR_ERR_OK;
@@ -323,21 +323,25 @@ pm_subscription_cache_test(void **state)
         assert_int_equal(subscription_p->priority, 53);
         printf("Found subscription: %s @ %"PRIu32"\n", subscription_p->dst_address, subscription_p->dst_id);
     }
-    np_subscriptions_list_cleanup(subscriptions_list);
-    subscriptions_list = NULL;
 
     /* retrieve active subscriptions - from cache */
     rc = pm_get_subscriptions(pm_ctx, &test_ctx->user_cred, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            &subscriptions_list);
+            &subscriptions_list2);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_non_null(subscriptions_list);
-    assert_int_equal(subscriptions_list->count, 2);
-    for (size_t i = 0; i < subscriptions_list->count; i++) {
-        subscription_p = subscriptions_list->data[i];
+    assert_non_null(subscriptions_list2);
+    assert_int_equal(subscriptions_list2->count, 2);
+    for (size_t i = 0; i < subscriptions_list2->count; i++) {
+        subscription_p = subscriptions_list2->data[i];
         assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscription_p->notif_event);
         assert_int_equal(subscription_p->priority, 53);
         printf("Found subscription: %s @ %"PRIu32"\n", subscription_p->dst_address, subscription_p->dst_id);
     }
+
+    /* compare the subscription pointers - should match */
+    for (size_t i = 0; i < subscriptions_list->count; i++) {
+        assert_ptr_equal(subscriptions_list->data[i], subscriptions_list2->data[i]);
+    }
+
     np_subscriptions_list_cleanup(subscriptions_list);
     subscriptions_list = NULL;
 
@@ -359,8 +363,17 @@ pm_subscription_cache_test(void **state)
         assert_int_equal(subscription_p->priority, 53);
         printf("Found subscription: %s @ %"PRIu32"\n", subscription_p->dst_address, subscription_p->dst_id);
     }
+
+    /* compare the subscription pointers - should not match */
+    for (size_t i = 0; i < subscriptions_list->count; i++) {
+        assert_ptr_not_equal(subscriptions_list->data[i], subscriptions_list2->data[i]);
+    }
+
     np_subscriptions_list_cleanup(subscriptions_list);
     subscriptions_list = NULL;
+
+    np_subscriptions_list_cleanup(subscriptions_list2);
+    subscriptions_list2 = NULL;
 
     /* remove subscriptions for destination 2 */
     rc = pm_remove_subscriptions_for_destination(pm_ctx, "example-module", "/tmp/test-subscription-address2.sock",
