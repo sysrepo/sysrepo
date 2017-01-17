@@ -52,6 +52,7 @@ public:
     S_Tree first_child();
     S_Tree last_child();
     S_String to_string(int depth_limit);
+    S_String value_to_string();
     void set_name(const char *name);
     void set_module(const char *module_name);
     void set_str_data(sr_type_t type, const char *string_val);

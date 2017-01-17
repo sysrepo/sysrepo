@@ -30,6 +30,7 @@ using namespace std;
 extern "C" {
 #include "sysrepo.h"
 #include "sysrepo/trees.h"
+#include "sysrepo/values.h"
 }
 
 Tree::Tree() {
@@ -108,6 +109,27 @@ S_String Tree::to_string(int depth_limit) {
     char *mem = NULL;
 
     int ret = sr_print_tree_mem(&mem, _node, depth_limit);
+    if (SR_ERR_OK == ret) {
+        if (mem == NULL)
+            return NULL;
+        S_String string_val = mem;
+        free(mem);
+        return string_val;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
+        throw_exception(ret);
+        return NULL;
+    }
+}
+S_String Tree::value_to_string() {
+    char *mem = NULL;
+
+    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
+
+    sr_val_t *val = (sr_val_t *) _node;
+
+    int ret = sr_print_val_mem(&mem, val);
     if (SR_ERR_OK == ret) {
         if (mem == NULL)
             return NULL;
