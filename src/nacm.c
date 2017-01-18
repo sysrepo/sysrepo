@@ -1731,7 +1731,7 @@ nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t acces
 
     /* steps 9,10: YANG extensions */
     if ((LYS_NACM_DENYA & node->schema->nacm) ||
-        ((NACM_ACCESS_READ != access_type) && (LYS_NACM_DENYW & node->schema->nodetype))) {
+        ((NACM_ACCESS_READ != access_type) && (LYS_NACM_DENYW & node->schema->nacm))) {
         action = NACM_ACTION_DENY;
         goto cleanup;
     }

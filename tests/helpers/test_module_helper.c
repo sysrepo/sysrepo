@@ -144,6 +144,23 @@ createDataTreeTestModule()
     n = lyd_new_leaf(node, module, "union", "infinity");
     assert_non_null(n);
 
+    /* user-ordered leaf-list items */
+    node = lyd_new_leaf(NULL, module, "ordered-numbers", "45");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(r, node));
+
+    node = lyd_new_leaf(NULL, module, "ordered-numbers", "12");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(r, node));
+
+    node = lyd_new_leaf(NULL, module, "ordered-numbers", "57");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(r, node));
+
+    node = lyd_new_leaf(NULL, module, "ordered-numbers", "0");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(r, node));
+
     /* list + list of leafrefs */
     node = lyd_new(NULL, module, "university");
     assert_non_null(node);

@@ -825,7 +825,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             state = DM_COMMIT_NACM;
             break;
         case DM_COMMIT_NACM:
-            rc = dm_commit_netconf_access_control(rp_ctx->dm_ctx, session->dm_session, commit_ctx);
+            rc = dm_commit_netconf_access_control(rp_ctx->dm_ctx, session->dm_session, commit_ctx, errors, err_cnt);
             if (SR_ERR_OK != rc) {
                 if (SR_ERR_UNAUTHORIZED != rc) {
                     SR_LOG_ERR_MSG("Failed to evaluate write access for the commit operation");

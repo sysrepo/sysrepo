@@ -3283,19 +3283,86 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
     return rc;
 }
 
+/**
+ * @brief Perform NETCONF access control for a single node.
+ */
+static int
+dm_commit_nacm_single_node(dm_session_t *session, nacm_data_val_ctx_t *nacm_data_val_ctx, const struct lyd_node *node,
+        nacm_access_flag_t access_type, bool *denied, sr_error_info_t **errors, size_t *err_cnt)
+{
+    int rc = SR_ERR_OK;
+    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
+    const char *rule_name = NULL, *rule_info = NULL;
+
+    CHECK_NULL_ARG4(session, nacm_data_val_ctx, node, denied);
+    CHECK_NULL_ARG2(errors, err_cnt);
+
+    *denied = false;
+    rc = nacm_check_data(nacm_data_val_ctx, access_type, node, &nacm_action, &rule_name, &rule_info);
+    CHECK_RC_LOG_RETURN(rc, "NACM data validation failed for node: %s.", node->schema->name);
+
+    if (NACM_ACTION_DENY == nacm_action) {
+        nacm_report_edit_access_denied(session->user_credentials, session, node, access_type,
+                rule_name, rule_info);
+        if (SR_ERR_OK != sr_add_error(errors, err_cnt, session->error_xpath, "%s", session->error_msg)) {
+            SR_LOG_WRN_MSG("Failed to record authorization error");
+        }
+        *denied = true;
+    }
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Perform NETCONF access control for all nodes inside a subtree.
+ */
+static int
+dm_commit_nacm_subtree(dm_session_t *session, nacm_data_val_ctx_t *nacm_data_val_ctx, const struct lyd_node *root,
+        nacm_access_flag_t access_type, int *denied_cnt, sr_error_info_t **errors, size_t *err_cnt)
+{
+    int rc = SR_ERR_OK;
+    bool denied = false;
+    bool backtracking = false;
+    const struct lyd_node *node = NULL;
+
+    node = root;
+    while (!backtracking || node != root) {
+        if (false == backtracking) {
+            rc = dm_commit_nacm_single_node(session, nacm_data_val_ctx, node, access_type, &denied, errors, err_cnt);
+            *denied_cnt += denied;
+            if (SR_ERR_OK != rc) {
+                return rc;
+            }
+            if (!denied && !(node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) && node->child) {
+                node = node->child;
+            } else if (node->next && node != root) {
+                node = node->next;
+            } else {
+                backtracking = true;
+            }
+        } else {
+            if (node->next) {
+                node = node->next;
+                backtracking = false;
+            } else {
+                node = node->parent;
+            }
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
 int
-dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx)
+dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
+        sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG3(dm_ctx, session, c_ctx);
     int rc = SR_ERR_OK;
     size_t i = 0, d_cnt = 0;
-    bool saved_diff = false;
+    bool denied = false, saved_diff = false;
+    int denied_cnt = 0;
     nacm_ctx_t *nacm_ctx = NULL;
     nacm_data_val_ctx_t *nacm_data_val_ctx = NULL;
-    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
-    const char *rule_name = NULL, *rule_info = NULL;
-    const struct lyd_node *node = NULL;
-    nacm_access_flag_t access_type = NACM_ACCESS_CREATE;
     struct lyd_difflist *diff = NULL;
     dm_module_difflist_t *module_difflist = NULL;
     dm_data_info_t *info = NULL, *commit_info = NULL, *prev_info = NULL, lookup_info = {0};
@@ -3344,7 +3411,6 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
         module_difflist->schema_info = info->schema;
         module_difflist->difflist = diff;
         saved_diff = true;
-//        SR_LOG_DBG("Inserting difflist for module %s", info->schema->module->name);
         rc = sr_btree_insert(c_ctx->difflists, (void *)module_difflist);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to insert diff-list for module %s into the binary tree",
                 info->schema->module->name);
@@ -3360,25 +3426,23 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
                                     &nacm_data_val_ctx);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to start NACM data validation.");
 
-        /* perform access control for every change */
+        /* Iterate over all changes. Some changes may include whole subtrees. */
         for (d_cnt = 0; LYD_DIFF_END != diff->type[d_cnt]; d_cnt++) {
             /* get node, access_type */
             switch (diff->type[d_cnt]) {
                 case LYD_DIFF_CHANGED:
-                    node = diff->first[d_cnt];
-                    access_type = NACM_ACCESS_UPDATE;
+                case LYD_DIFF_MOVEDAFTER1:
+                    rc = dm_commit_nacm_single_node(session, nacm_data_val_ctx, diff->first[d_cnt],
+                            NACM_ACCESS_UPDATE, &denied, errors, err_cnt);
+                    denied_cnt += denied;
                     break;
                 case LYD_DIFF_DELETED:
-                    node = diff->first[d_cnt];
-                    access_type = NACM_ACCESS_DELETE;
-                    break;
-                case LYD_DIFF_MOVEDAFTER1:
-                    node = diff->first[d_cnt];
-                    access_type = NACM_ACCESS_UPDATE;
+                    rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->first[d_cnt],
+                            NACM_ACCESS_DELETE, &denied_cnt, errors, err_cnt);
                     break;
                 case LYD_DIFF_CREATED:
-                    node = diff->second[d_cnt];
-                    access_type = NACM_ACCESS_CREATE;
+                    rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->second[d_cnt],
+                            NACM_ACCESS_CREATE, &denied_cnt, errors, err_cnt);
                     break;
                 case LYD_DIFF_MOVEDAFTER2:
                     continue; /* access control performed already for LYD_DIFF_CREATED of this node */
@@ -3386,13 +3450,7 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
                 default:
                     assert(0 && "not reachable");
             }
-            rule_name = rule_info = NULL;
-            rc = nacm_check_data(nacm_data_val_ctx, access_type, node, &nacm_action, &rule_name, &rule_info);
-            CHECK_RC_LOG_GOTO(rc, cleanup, "NACM data validation failed for node: %s.", node->schema->name);
-            if (NACM_ACTION_DENY == nacm_action) {
-                nacm_report_edit_access_denied(session->user_credentials, session, node, access_type,
-                        rule_name, rule_info);
-                rc = SR_ERR_UNAUTHORIZED;
+            if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
         }
@@ -3402,6 +3460,9 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
     }
 
 cleanup:
+    if (SR_ERR_OK == rc && denied_cnt > 0) {
+        rc = SR_ERR_UNAUTHORIZED;
+    }
     if (!saved_diff && NULL != diff) {
         lyd_free_diff(diff);
     }
@@ -4791,7 +4852,7 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
             if (node->flags & (LYS_XPATH_DEP | LYS_LEAFREF_DEP)) {
                 ext_ref = true; /* reference outside the procedure subtree */
             }
-            if (node->child) {
+            if (!(node->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) && node->child) {
                 node = node->child;
             } else if (node->next && node != proc_node) {
                 node = node->next;

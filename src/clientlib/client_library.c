@@ -1978,13 +1978,14 @@ sr_commit(sr_session_ctx_t *session)
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__COMMIT);
-    if ((SR_ERR_OK != rc) && (SR_ERR_OPERATION_FAILED != rc)) {
+    if ((SR_ERR_OK != rc) && (SR_ERR_OPERATION_FAILED != rc) && (SR_ERR_VALIDATION_FAILED != rc) &&
+        (SR_ERR_UNAUTHORIZED != rc)) {
         SR_LOG_ERR_MSG("Error by processing of commit request.");
         goto cleanup;
     }
 
     commit_resp = msg_resp->response->commit_resp;
-    if (SR_ERR_OPERATION_FAILED == rc) {
+    if ((SR_ERR_OPERATION_FAILED == rc) || (SR_ERR_VALIDATION_FAILED == rc) || (SR_ERR_UNAUTHORIZED == rc)) {
         SR_LOG_ERR("Commit operation failed with %zu error(s).", commit_resp->n_errors);
 
         /* store commit errors within the session */

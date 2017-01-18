@@ -455,9 +455,12 @@ int dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx);
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] c_ctx
+ * @param [out] errors
+ * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED in case of insufficient access rights)
  */
-int dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx);
+int dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
+        sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Notifies about the changes made within the running commit. It is
