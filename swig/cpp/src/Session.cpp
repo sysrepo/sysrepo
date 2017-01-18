@@ -443,8 +443,6 @@ Subscribe::Subscribe(S_Session sess)
 {
     _sub = NULL;
     _sess = sess;
-    swig_sub = _sub;
-    swig_sess = _sess;
     sess_deleter = sess->_deleter;
 }
 
