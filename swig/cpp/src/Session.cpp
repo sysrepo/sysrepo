@@ -445,11 +445,12 @@ Subscribe::Subscribe(S_Session sess)
     _sess = sess;
     swig_sub = _sub;
     swig_sess = _sess;
+    sess_deleter = sess->_deleter;
 }
 
 Subscribe::~Subscribe()
 {
-    if (_sub && _sess->_sess) {
+    if (_sub && _sess) {
         int ret = sr_unsubscribe(_sess->_sess, _sub);
         if (ret != SR_ERR_OK) {
             //this exception can't be catched

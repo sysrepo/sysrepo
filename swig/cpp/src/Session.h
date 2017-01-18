@@ -151,6 +151,7 @@ public:
 private:
     sr_subscription_ctx_t *_sub;
     S_Session _sess;
+    S_Deleter sess_deleter;
 };
 
 #endif
