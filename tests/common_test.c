@@ -1498,6 +1498,38 @@ sr_free_list_of_strings_test(void **state)
     sr_free_list_of_strings(list);
 }
 
+static void
+sr_dup_data_tree_to_ctx_test(void **state)
+{
+    struct ly_ctx *ctx_A = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    struct ly_ctx *ctx_B = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    struct lyd_node *data_tree_A = NULL, *data_tree_B = NULL;
+
+    const struct lys_module *module = ly_ctx_load_module(ctx_A, "test-module", NULL);
+    ly_ctx_load_module(ctx_B, "test-module", NULL);
+
+    /* duplicate NULL data tree */
+    data_tree_B = sr_dup_datatree_to_ctx(data_tree_A, ctx_B);
+    assert_null(data_tree_B);
+
+    /* create data tree and duplicate it*/
+    data_tree_A = lyd_new_path(NULL, ctx_A, "/test-module:list[key='a']", NULL, 0, 0);
+    lyd_new_path(data_tree_A, ctx_A, "/test-module:list[key='b']", NULL, 0, 0);
+
+    assert_non_null(data_tree_A);
+    assert_non_null(data_tree_A->next);
+
+    data_tree_B = sr_dup_datatree_to_ctx(data_tree_A, ctx_B);
+    assert_non_null(data_tree_B);
+    assert_non_null(data_tree_B->next);
+
+    lyd_free_withsiblings(data_tree_A);
+    lyd_free_withsiblings(data_tree_B);
+
+    ly_ctx_destroy(ctx_A, NULL);
+    ly_ctx_destroy(ctx_B, NULL);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -1520,6 +1552,7 @@ main() {
             cmocka_unit_test_setup_teardown(sr_create_uri_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_get_system_groups_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_free_list_of_strings_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_dup_data_tree_to_ctx_test, logging_setup, logging_cleanup),
     };
 
     watchdog_start(300);

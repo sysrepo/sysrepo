@@ -374,6 +374,13 @@ struct lys_node *sr_lys_node_get_data_parent(struct lys_node *node, bool augment
 struct lyd_node* sr_dup_datatree(struct lyd_node *root);
 
 /**
+ * @brief Duplicates the date tree including its sibling into the provided context
+ * @param [in] root Data tree to be duplicated
+ * @param [in] ctx Destination context where the data tree should be duplicated to
+ */
+struct lyd_node* sr_dup_datatree_to_ctx(struct lyd_node *root, struct ly_ctx *ctx);
+
+/**
  * lyd_unlink wrapper handles the unlink of the root_node
  * @param data_info
  * @param node - must be stored under provided data_info

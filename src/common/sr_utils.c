@@ -702,6 +702,24 @@ sr_dup_datatree(struct lyd_node *root) {
     return dup;
 }
 
+struct lyd_node*
+sr_dup_datatree_to_ctx(struct lyd_node *root, struct ly_ctx *ctx) {
+    struct lyd_node *dup = NULL;
+
+    while (NULL != root) {
+        /* dup the first one, rest should be done by one merge */
+        if (NULL == dup){
+            dup = lyd_dup_to_ctx(root, 1, ctx);
+        } else {
+            lyd_merge_to_ctx(&dup, root, LYD_OPT_EXPLICIT, ctx);
+            break;
+        }
+
+        root = root->next;
+    }
+    return dup;
+}
+
 int
 sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node)
 {
