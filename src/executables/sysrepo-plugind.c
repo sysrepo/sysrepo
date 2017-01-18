@@ -140,7 +140,7 @@ sr_pd_load_plugin(sr_session_ctx_t *session, const char *plugin_filename, sr_pd_
 
     /* get cleanup function pointer */
     *(void **) (&plugin_ctx->cleanup_cb) = dlsym(plugin_ctx->dl_handle, SR_PLUGIN_CLEANUP_FN_NAME);
-    if (NULL == plugin_ctx->init_cb) {
+    if (NULL == plugin_ctx->cleanup_cb) {
         SR_LOG_WRN("Unable to find '%s' function: %s.", SR_PLUGIN_CLEANUP_FN_NAME, dlerror());
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
