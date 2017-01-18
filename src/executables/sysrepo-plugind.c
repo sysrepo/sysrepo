@@ -293,6 +293,38 @@ sr_pd_cleanup_plugins(sr_pd_ctx_t *ctx)
 }
 
 /**
+ * @brief Check the session and reconnect if it is needed.
+ */
+static void
+sr_pd_session_check(sr_pd_ctx_t *ctx)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG_VOID(ctx);
+
+    rc = sr_session_check(ctx->session);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_DBG_MSG("Reconnecting to Sysrepo Engine.");
+
+        /* disconnect */
+        sr_session_stop(ctx->session);
+        sr_disconnect(ctx->connection);
+        ctx->session = NULL;
+        ctx->connection = NULL;
+
+        /* reconnect */
+        rc = sr_connect("sysrepo-plugind", SR_CONN_DAEMON_REQUIRED | SR_CONN_DAEMON_START, &ctx->connection);
+        if (SR_ERR_OK == rc) {
+            rc = sr_session_start(ctx->connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &ctx->session);
+        }
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Error by reconnecting to Sysrepo Engine: %s", sr_strerror(rc));
+        }
+    }
+}
+
+/**
  * @brief Callback called by the event loop watcher when health check timer expires.
  */
 static void
@@ -468,6 +500,9 @@ main(int argc, char* argv[])
     ev_run(ctx.event_loop, 0);
 
     ev_loop_destroy(ctx.event_loop);
+
+    /* check whether the session is still valid & reconnect if needed */
+    sr_pd_session_check(&ctx);
 
 cleanup:
     sr_pd_cleanup_plugins(&ctx);

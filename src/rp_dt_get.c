@@ -36,12 +36,8 @@ rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data)
 {
     if (NULL != state_data) {
         if (NULL != state_data->subscriptions) {
-            for (size_t i = 0; i < state_data->subscription_cnt; i++) {
-                np_free_subscription(state_data->subscriptions[i]);
-            }
-            free(state_data->subscriptions);
+            np_subscriptions_list_cleanup(state_data->subscriptions);
             state_data->subscriptions = NULL;
-            state_data->subscription_cnt = 0;
         }
         if (NULL != state_data->subtrees) {
             for (size_t i = 0; i< state_data->subtrees->count; i++) {
@@ -603,13 +599,9 @@ rp_dt_get_tree_roots(dm_schema_info_t *schema_info, const char *xpath, struct ly
 }
 
 static int
-rp_dt_subscriptions_to_schema_nodes(dm_ctx_t *dm_ctx, np_subscription_t **subscriptions, size_t subscription_cnt, sr_list_t **subscr_nodes)
+rp_dt_subscriptions_to_schema_nodes(dm_ctx_t *dm_ctx, sr_list_t *subscriptions, sr_list_t **subscr_nodes)
 {
     CHECK_NULL_ARG2(dm_ctx, subscr_nodes);
-    if (subscription_cnt > 0) {
-        /* if there are only internally handled state data subscriptions might be NULL */
-        CHECK_NULL_ARG(subscriptions);
-    }
     int rc = SR_ERR_OK;
     struct lys_node *sub_node = NULL;
     sr_list_t *nodes = NULL;
@@ -618,13 +610,16 @@ rp_dt_subscriptions_to_schema_nodes(dm_ctx_t *dm_ctx, np_subscription_t **subscr
     CHECK_RC_MSG_RETURN(rc, "List init failed");
 
     /* find schema nodes corresponding to the subscriptions */
-    for (size_t i = 0; i < subscription_cnt; i++) {
-        rc = rp_dt_validate_node_xpath(dm_ctx, NULL, subscriptions[i]->xpath,
-                    NULL, &sub_node);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Node validation failed for xpath %s", subscriptions[i]->xpath);
+    if (NULL != subscriptions) {
+        for (size_t i = 0; i < subscriptions->count; i++) {
+            np_subscription_t *subscription = subscriptions->data[i];
+            rc = rp_dt_validate_node_xpath(dm_ctx, NULL, subscription->xpath,
+                        NULL, &sub_node);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Node validation failed for xpath %s", subscription->xpath);
 
-        rc = sr_list_add(nodes, sub_node);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+            rc = sr_list_add(nodes, sub_node);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+        }
     }
 
 cleanup:
@@ -770,14 +765,15 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
             }
         }
 
-        rc = np_get_data_provider_subscriptions(rp_ctx->np_ctx, schema_info->module_name, &state_data_ctx->subscriptions, &state_data_ctx->subscription_cnt);
+        rc = np_get_data_provider_subscriptions(rp_ctx->np_ctx, session, schema_info->module_name, &state_data_ctx->subscriptions);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data provider subscriptions failed");
 
-        if (0 == state_data_ctx->subscription_cnt) {
+        if (NULL == state_data_ctx->subscriptions || 0 == state_data_ctx->subscriptions->count) {
             goto cleanup;
         }
 
-        rc = rp_dt_subscriptions_to_schema_nodes(rp_ctx->dm_ctx, state_data_ctx->subscriptions, state_data_ctx->subscription_cnt, &session->state_data_ctx.subscription_nodes);
+        rc = rp_dt_subscriptions_to_schema_nodes(rp_ctx->dm_ctx, state_data_ctx->subscriptions,
+                &session->state_data_ctx.subscription_nodes);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Subscriptions to schema nodes failed");
     }
 
@@ -803,10 +799,12 @@ rp_dt_find_subscription_covering_subtree(rp_session_t *rp_session, struct lys_no
     }
 
     bool match = false;
-    size_t match_index = 0;
+    size_t cnt = 0, match_index = 0;
     int match_difference = -1;
 
-    for (size_t j = 0; j < rp_session->state_data_ctx.subscription_cnt; j++) {
+    cnt = (NULL != rp_session->state_data_ctx.subscriptions) ? rp_session->state_data_ctx.subscriptions->count : 0;
+
+    for (size_t j = 0; j < cnt; j++) {
         struct lys_node *subs = (struct lys_node *) rp_session->state_data_ctx.subscription_nodes->data[j];
         size_t depth = 0;
         if (rp_dt_depth_under_subtree(subs, subtree_node, &depth)) {
@@ -839,9 +837,11 @@ rp_dt_find_exact_match_subscription_for_node(rp_session_t *rp_session, struct ly
     }
 
     bool match = false;
-    size_t match_index = 0;
+    size_t cnt = 0, match_index = 0;
 
-    for (size_t j = 0; j < rp_session->state_data_ctx.subscription_cnt; j++) {
+    cnt = (NULL != rp_session->state_data_ctx.subscriptions) ? rp_session->state_data_ctx.subscriptions->count : 0;
+
+    for (size_t j = 0; j < cnt; j++) {
         struct lys_node *sub = (struct lys_node *) rp_session->state_data_ctx.subscription_nodes->data[j];
         if (sub->nodetype != node->nodetype) {
             continue;
@@ -947,7 +947,9 @@ rp_dt_send_request_to_dp_subscription(rp_ctx_t *rp_ctx, rp_session_t *rp_session
     struct lys_node *parent_list = NULL;
     size_t list_depth = 0;
     size_t xp_cnt = 0;
+    np_subscription_t *subscription = NULL;
 
+    subscription = rp_session->state_data_ctx.subscriptions->data[subscription_index];
 
     if (rp_dt_has_parent_list(sch_node, &parent_list, &list_depth)) {
         SR_LOG_DBG("State data is nested in configuration list %s", xp);
@@ -980,10 +982,10 @@ rp_dt_send_request_to_dp_subscription(rp_ctx_t *rp_ctx, rp_session_t *rp_session
 
             snprintf(request_xp, len, "%s/%s", xpaths[i], ptr);
 
-            rc = np_data_provider_request(rp_ctx->np_ctx, rp_session->state_data_ctx.subscriptions[subscription_index], rp_session, request_xp);
+            rc = np_data_provider_request(rp_ctx->np_ctx, subscription, rp_session, request_xp);
             SR_LOG_DBG("Sending request for state data: %s", request_xp);
             if (SR_ERR_OK != rc) {
-                SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", request_xp, rp_session->state_data_ctx.subscriptions[subscription_index]->xpath);
+                SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", request_xp, subscription->xpath);
                 free(request_xp);
             } else {
                 rp_session->dp_req_waiting += 1;
@@ -994,10 +996,10 @@ rp_dt_send_request_to_dp_subscription(rp_ctx_t *rp_ctx, rp_session_t *rp_session
         xp = NULL;
 
     } else {
-        rc = np_data_provider_request(rp_ctx->np_ctx, rp_session->state_data_ctx.subscriptions[subscription_index], rp_session, xp);
+        rc = np_data_provider_request(rp_ctx->np_ctx, subscription, rp_session, xp);
         SR_LOG_DBG("Sending request for state data: %s", xp);
         if (SR_ERR_OK != rc) {
-            SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", xp, rp_session->state_data_ctx.subscriptions[subscription_index]->xpath);
+            SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", xp, subscription->xpath);
         } else {
             rp_session->dp_req_waiting += 1;
             rc = sr_list_add(rp_session->state_data_ctx.requested_xpaths, xp);
@@ -1054,7 +1056,8 @@ rp_dt_send_first_set_of_dp_requests(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
 
         } else if (LYS_CONTAINER & subtree_node->nodetype) {
             SR_LOG_DBG("Subscription covering subtree not found, looking for a subscription covering at least part of subtree %s", subtree);
-            for (size_t j = 0; j < rp_session->state_data_ctx.subscription_cnt; j++) {
+            size_t cnt = (NULL != rp_session->state_data_ctx.subscriptions) ? rp_session->state_data_ctx.subscriptions->count : 0;
+            for (size_t j = 0; j < cnt; j++) {
                 struct lys_node *subs = (struct lys_node *) rp_session->state_data_ctx.subscription_nodes->data[j];
                 size_t depth = 0;
                 if (rp_dt_depth_under_subtree(subtree_node, subs, &depth)) {

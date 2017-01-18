@@ -766,6 +766,43 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
 }
 
 /**
+ * @brief Processes a session check request.
+ */
+static int
+cm_session_check_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg_in)
+{
+    Sr__Msg *msg = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(cm_ctx, session, msg_in, msg_in->request, msg_in->request->session_check_req);
+
+    SR_LOG_DBG("Processing session_check request (session id=%"PRIu32").", session->id);
+
+    /* prepare the response */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__SESSION_CHECK, 0, &msg);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot allocate the response for session_check request (session id=%"PRIu32").", session->id);
+        return SR_ERR_NOMEM;
+    }
+
+    msg->session_id = session->id;
+
+    /* send the response */
+    rc = cm_msg_send_connection(cm_ctx, session->connection, msg);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to send session_check response (session id=%"PRIu32").", session->id);
+    }
+
+    /* release the message */
+    sr_msg_free(msg);
+
+    return rc;
+}
+
+/**
  * @brief Processes a request from client.
  */
 static int
@@ -801,6 +838,10 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
             break;
         case SR__OPERATION__SESSION_STOP:
             rc = cm_session_stop_req_process(cm_ctx, session, msg);
+            sr_msg_free(msg);
+            break;
+        case SR__OPERATION__SESSION_CHECK:
+            rc = cm_session_check_req_process(cm_ctx, session, msg);
             sr_msg_free(msg);
             break;
         default:

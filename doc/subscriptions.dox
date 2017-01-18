@@ -1,6 +1,6 @@
 /**
 
-@page subscr Subscriptions
+@page subscribtions Subscriptions
 
 Sysrepo allows managed applications / plugins to subscribe for two types of asynchronous events:
 

@@ -1,6 +1,6 @@
 /**
 
-@page usage Using Sysrepo
+@page bin_page Sysrepo Binaries
 
 By installation, four main parts of sysrepo are installed on the system:
 the **sysrepo control tool** (`sysrepoctl`), the **sysrepo configuration tool** 

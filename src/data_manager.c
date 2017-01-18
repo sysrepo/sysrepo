@@ -272,10 +272,7 @@ dm_model_subscription_free(void *sub)
 {
     dm_model_subscription_t *ms = (dm_model_subscription_t *) sub;
     if (NULL != ms) {
-        for (size_t i = 0; i < ms->subscription_cnt; i++) {
-            np_free_subscription(ms->subscriptions[i]);
-        }
-        free(ms->subscriptions);
+        np_subscriptions_list_cleanup(ms->subscriptions);
         free(ms->nodes);
         lyd_free_diff(ms->difflist);
         if (NULL != ms->changes) {
@@ -537,7 +534,7 @@ dm_get_schema_info(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t *
 }
 
 static int
-dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t *si)
+dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, dm_schema_info_t *si)
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, si);
     char **enabled_subtrees = NULL, **features = NULL;
@@ -551,7 +548,8 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, const char *module_name, dm_sc
     }
 
     /* load module's persistent data */
-    rc = pm_get_module_info(dm_ctx->pm_ctx, module_name, NULL, &module_enabled,
+    rc = pm_get_module_info(dm_ctx->pm_ctx, (NULL != session) ? session->user_credentials : NULL, module_name, NULL,
+            &module_enabled,
             &enabled_subtrees, &enabled_subtrees_cnt, &features, &features_cnt);
     if (SR_ERR_OK == rc) {
         /* enable active features */
@@ -592,6 +590,7 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, const char *module_name, dm_sc
     }
     return rc;
 }
+
 /**
  * @brief Loads a schema file into the schema_info structure.
  *
@@ -714,7 +713,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
 
     /* apply persist data enable features, running datastore */
     if (module->has_persist) {
-        rc = dm_apply_persist_data_for_model(dm_ctx, module_name, si);
+        rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module_name, si); /* TODO: session should be known here */
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", module_name);
     }
 
@@ -722,7 +721,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     while (ll_node) {
         dep = (md_dep_t *) ll_node->data;
         if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) && dep->dest->has_persist) {
-            rc = dm_apply_persist_data_for_model(dm_ctx, dep->dest->name, si);
+            rc = dm_apply_persist_data_for_model(dm_ctx, NULL, dep->dest->name, si); /* TODO: session should be known here */
             CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", dep->dest->name);
         }
         ll_node = ll_node->next;
@@ -763,7 +762,6 @@ cleanup:
     md_ctx_unlock(dm_ctx->md_ctx);
     return rc;
 }
-
 
 /**
  * @brief Tries to load data tree from provided opened file.
@@ -2083,14 +2081,15 @@ cleanup:
 /**
  * @brief Fills the schema_t structure for one module all its revisions and submodules
  * @param [in] dm_ctx
+ * @param [in] dm_session
  * @param [in] module
  * @param [in] schs
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
+dm_list_module(dm_ctx_t *dm_ctx, dm_session_t *dm_session, md_module_t *module, sr_schema_t *schema)
 {
-    CHECK_NULL_ARG3(dm_ctx, module, schema);
+    CHECK_NULL_ARG4(dm_ctx, dm_session, module, schema);
     int rc = SR_ERR_OK;
     bool module_enabled = false;
     size_t enabled_subtrees_cnt = 0;
@@ -2147,7 +2146,7 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
         s++;
     }
 
-    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, sr_mem, &module_enabled,
+    rc = pm_get_module_info(dm_ctx->pm_ctx, dm_session->user_credentials, module->name, sr_mem, &module_enabled,
             &enabled_subtrees, &enabled_subtrees_cnt, &schema->enabled_features, &schema->enabled_feature_cnt);
     if (SR_ERR_OK == rc) {
         /* release memory */
@@ -2209,7 +2208,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
         }
 
         sch[i]._sr_mem = sr_mem;
-        rc = dm_list_module(dm_ctx, module, &sch[i]);
+        rc = dm_list_module(dm_ctx, dm_session, module, &sch[i]);
         CHECK_RC_LOG_GOTO(rc, cleanup, "List module %s failed", module->name);
 
         i++;
@@ -2703,11 +2702,13 @@ dm_subs_cmp(const void *a, const void *b)
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info, dm_model_subscription_t **model_sub)
+dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *schema_info,
+        dm_model_subscription_t **model_sub)
 {
     CHECK_NULL_ARG3(dm_ctx, schema_info, model_sub);
     int rc = SR_ERR_OK;
     dm_model_subscription_t *ms = NULL;
+    np_subscription_t *sub = NULL;
 
     ms = calloc(1, sizeof(*ms));
     CHECK_NULL_NOMEM_RETURN(ms);
@@ -2715,27 +2716,30 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info,
     pthread_rwlock_init(&ms->changes_lock, NULL);
 
     rc = np_get_module_change_subscriptions(dm_ctx->np_ctx,
+            session->user_credentials,
             schema_info->module_name,
-            &ms->subscriptions,
-            &ms->subscription_cnt);
+            &ms->subscriptions);
 
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module subscription failed for module %s", schema_info->module_name);
 
-    qsort(ms->subscriptions, ms->subscription_cnt, sizeof(*ms->subscriptions), dm_subs_cmp);
+    if (NULL != ms->subscriptions && ms->subscriptions->count > 0) {
+        qsort(ms->subscriptions->data, ms->subscriptions->count, sizeof(*ms->subscriptions->data), dm_subs_cmp);
 
-    ms->nodes = calloc(ms->subscription_cnt, sizeof(*ms->nodes));
-    CHECK_NULL_NOMEM_GOTO(ms->nodes, rc, cleanup);
+        ms->nodes = calloc(ms->subscriptions->count, sizeof(*ms->nodes));
+        CHECK_NULL_NOMEM_GOTO(ms->nodes, rc, cleanup);
 
-    for (size_t s = 0; s < ms->subscription_cnt; s++) {
-        if (NULL == ms->subscriptions[s]->xpath) {
-            ms->nodes[s] = NULL;
-        } else {
-            rc = rp_dt_validate_node_xpath(dm_ctx, NULL,
-                    ms->subscriptions[s]->xpath,
-                    NULL,
-                    &ms->nodes[s]);
-            if (SR_ERR_OK != rc || NULL == ms->nodes[s]) {
-                SR_LOG_WRN("Node for xpath %s has not been found", ms->subscriptions[s]->xpath);
+        for (size_t s = 0; s < ms->subscriptions->count; s++) {
+            sub = ms->subscriptions->data[s];
+            if (NULL == sub->xpath) {
+                ms->nodes[s] = NULL;
+            } else {
+                rc = rp_dt_validate_node_xpath(dm_ctx, NULL,
+                        sub->xpath,
+                        NULL,
+                        &ms->nodes[s]);
+                if (SR_ERR_OK != rc || NULL == ms->nodes[s]) {
+                    SR_LOG_WRN("Node for xpath %s has not been found", sub->xpath);
+                }
             }
         }
     }
@@ -2912,7 +2916,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
             c_ctx->modif_count++;
 
             if (SR_DS_STARTUP != session->datastore) {
-                rc = dm_prepare_module_subscriptions(dm_ctx, info->schema, &ms);
+                rc = dm_prepare_module_subscriptions(dm_ctx, session, info->schema, &ms);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Prepare module subscription failed %s", info->schema->module->name);
 
                 rc = sr_btree_insert(c_ctx->subscriptions, ms);
@@ -3355,37 +3359,40 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
         }
 
         /* loop through subscription test if they should be notified */
-        for (size_t s = 0; s < ms->subscription_cnt; s++) {
-            if (dm_should_skip_subscription(ms->subscriptions[s], c_ctx, ev)) {
-                continue;
-            }
-
-            for (d_cnt = 0; LYD_DIFF_END != ms->difflist->type[d_cnt]; d_cnt++) {
-                const struct lyd_node *cmp_node = dm_get_notification_match_node(ms->difflist, d_cnt);
-                rc = dm_match_subscription(ms->nodes[s], cmp_node, &match);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_WRN_MSG("Subscription match failed");
+        if (NULL != ms->subscriptions) {
+            for (size_t s = 0; s < ms->subscriptions->count; s++) {
+                np_subscription_t *sub = ms->subscriptions->data[s];
+                if (dm_should_skip_subscription(sub, c_ctx, ev)) {
                     continue;
                 }
-                if (match) {
-                    break;
-                }
-            }
 
-            if (match) {
-                /* something has been changed for this subscription, send notification */
-                rc = np_subscription_notify(dm_ctx->np_ctx, ms->subscriptions[s], ev, c_ctx->id);
-                if (SR_ERR_OK != rc) {
-                   SR_LOG_WRN("Unable to send notifications about the changes for the subscription in module %s xpath %s.",
-                           ms->subscriptions[s]->module_name,
-                           ms->subscriptions[s]->xpath);
+                for (d_cnt = 0; LYD_DIFF_END != ms->difflist->type[d_cnt]; d_cnt++) {
+                    const struct lyd_node *cmp_node = dm_get_notification_match_node(ms->difflist, d_cnt);
+                    rc = dm_match_subscription(ms->nodes[s], cmp_node, &match);
+                    if (SR_ERR_OK != rc) {
+                        SR_LOG_WRN_MSG("Subscription match failed");
+                        continue;
+                    }
+                    if (match) {
+                        break;
+                    }
                 }
-                rc = sr_list_add(notified_notif, ms->subscriptions[s]);
-                if (SR_ERR_OK != rc) {
-                   SR_LOG_WRN_MSG("List add failed");
+
+                if (match) {
+                    /* something has been changed for this subscription, send notification */
+                    rc = np_subscription_notify(dm_ctx->np_ctx, sub, ev, c_ctx->id);
+                    if (SR_ERR_OK != rc) {
+                       SR_LOG_WRN("Unable to send notifications about the changes for the subscription in module %s xpath %s.",
+                               sub->module_name,
+                               sub->xpath);
+                    }
+                    rc = sr_list_add(notified_notif, sub);
+                    if (SR_ERR_OK != rc) {
+                       SR_LOG_WRN_MSG("List add failed");
+                    }
                 }
             }
-        }
+            }
     }
 
     if (SR_EV_VERIFY == ev) {
@@ -3474,10 +3481,10 @@ cleanup:
 }
 
 int
-dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const char *file_name,
-        sr_list_t **implicitly_installed_p)
+dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name,
+        const char *revision, const char *file_name, sr_list_t **implicitly_installed_p)
 {
-    CHECK_NULL_ARG4(dm_ctx, module_name, file_name, implicitly_installed_p); /* revision can be NULL */
+    CHECK_NULL_ARG5(dm_ctx, session, module_name, file_name, implicitly_installed_p); /* revision can be NULL */
 
     int rc = 0;
     md_module_t *module = NULL;
@@ -3538,7 +3545,7 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
         CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", module->name);
 
         if (module->has_persist) {
-            rc = dm_apply_persist_data_for_model(dm_ctx, module->name, si);
+            rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si);
             CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
         }
 
@@ -3546,7 +3553,7 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
         while (ll_node) {
             dep = (md_dep_t *) ll_node->data;
             if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) && dep->dest->has_persist) {
-                rc = dm_apply_persist_data_for_model(dm_ctx, dep->dest->name, si);
+                rc = dm_apply_persist_data_for_model(dm_ctx, session, dep->dest->name, si);
                 CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", dep->dest->name);
             }
             ll_node = ll_node->next;
@@ -3571,7 +3578,7 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
                     CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", dep->dest->name);
 
                     if (module->has_persist) {
-                        rc = dm_apply_persist_data_for_model(dm_ctx, module->name, si_ext);
+                        rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si_ext);
                         CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
                     }
                 }

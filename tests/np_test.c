@@ -284,9 +284,7 @@ np_module_subscriptions_test(void **state)
     np_ctx_t *np_ctx = test_ctx->rp_ctx->np_ctx;
     assert_non_null(np_ctx);
     sr_list_t *subscriptions_list = NULL;
-
-    np_subscription_t **subscriptions_arr = NULL;
-    size_t subscriptions_cnt = 0;
+    np_subscription_t *subscription = NULL;
 
     /* delete old subscriptions, if any */
     np_unsubscribe_destination(np_ctx, "addr3");
@@ -307,34 +305,31 @@ np_module_subscriptions_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get all subscriptions */
-    rc = np_get_module_change_subscriptions(np_ctx, "example-module", &subscriptions_arr, &subscriptions_cnt);
+    rc = np_get_module_change_subscriptions(np_ctx, test_ctx->rp_session_ctx->user_credentials, "example-module",
+            &subscriptions_list);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_int_equal(subscriptions_cnt, 3);
+    assert_non_null(subscriptions_list);
+    assert_int_equal(subscriptions_list->count, 3);
 
-    rc = sr_list_init(&subscriptions_list);
-    assert_int_equal(rc, SR_ERR_OK);
+    for (size_t i = 0; i < subscriptions_list->count; i++) {
+        subscription = subscriptions_list->data[i];
+        assert_non_null(subscription);
+        assert_true((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type) ||
+                (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription->type));
+        assert_true(10 == subscription->priority || 20 == subscription->priority);
+        assert_true((SR__NOTIFICATION_EVENT__VERIFY_EV == subscription->notif_event) ||
+                (SR__NOTIFICATION_EVENT__APPLY_EV == subscription->notif_event));
 
-    for (size_t i = 0; i < subscriptions_cnt; i++) {
-        assert_non_null(subscriptions_arr[i]);
-        assert_true((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscriptions_arr[i]->type) ||
-                (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscriptions_arr[i]->type));
-        assert_true(10 == subscriptions_arr[i]->priority || 20 == subscriptions_arr[i]->priority);
-        assert_true((SR__NOTIFICATION_EVENT__VERIFY_EV == subscriptions_arr[i]->notif_event) ||
-                (SR__NOTIFICATION_EVENT__APPLY_EV == subscriptions_arr[i]->notif_event));
-        /* notify and add into list */
-        rc = np_subscription_notify(np_ctx, subscriptions_arr[i], SR_EV_APPLY, 0);
+        /* notify */
+        rc = np_subscription_notify(np_ctx, subscription, SR_EV_APPLY, 0);
         assert_int_equal(rc, SR_ERR_OK);
-        sr_list_add(subscriptions_list, subscriptions_arr[i]);
     }
-    free(subscriptions_arr);
 
     /* send commit_end notifications */
     rc = np_commit_notifications_sent(np_ctx, 12345, true, subscriptions_list);
     assert_int_equal(rc, SR_ERR_OK);
-    for (size_t i = 0; i < subscriptions_list->count; i++) {
-        np_free_subscription(subscriptions_list->data[i]);
-    }
-    sr_list_cleanup(subscriptions_list);
+
+    np_subscriptions_list_cleanup(subscriptions_list);
 
     /* unsubscribe */
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
@@ -359,9 +354,7 @@ np_dp_subscriptions_test(void **state)
     np_ctx_t *np_ctx = test_ctx->rp_ctx->np_ctx;
     assert_non_null(np_ctx);
     sr_list_t *subscriptions_list = NULL;
-
-    np_subscription_t **subscriptions_arr = NULL;
-    size_t subscriptions_cnt = 0;
+    np_subscription_t *subscription = NULL;
 
     /* delete old subscriptions, if any */
     np_unsubscribe_destination(np_ctx, "addr3");
@@ -379,35 +372,27 @@ np_dp_subscriptions_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get subscriptions */
-    rc = np_get_data_provider_subscriptions(np_ctx, "example-module", &subscriptions_arr, &subscriptions_cnt);
+    rc = np_get_data_provider_subscriptions(np_ctx, test_ctx->rp_session_ctx, "example-module", &subscriptions_list);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_int_not_equal(subscriptions_cnt, 0);
+    assert_non_null(subscriptions_list);
+    assert_int_not_equal(subscriptions_list->count, 0);
 
-    assert_int_equal(subscriptions_cnt, 2);
-
-    rc = sr_list_init(&subscriptions_list);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(subscriptions_list->count, 2);
 
     rc = sr_gpb_req_alloc(NULL, SR__OPERATION__GET_ITEM, test_ctx->rp_session_ctx->id, &test_ctx->rp_session_ctx->req);
     assert_int_equal(rc, SR_ERR_OK);
-    for (size_t i = 0; i < subscriptions_cnt; i++) {
-        assert_non_null(subscriptions_arr[i]);
-        assert_true(SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == subscriptions_arr[i]->type);
+    for (size_t i = 0; i < subscriptions_list->count; i++) {
+        subscription = subscriptions_list->data[i];
+        assert_non_null(subscription);
+        assert_true(SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == subscription->type);
 
         /* notify and add into list */
-        rc = np_data_provider_request(np_ctx, subscriptions_arr[i], test_ctx->rp_session_ctx, "/example-module:container");
+        rc = np_data_provider_request(np_ctx, subscription, test_ctx->rp_session_ctx, "/example-module:container");
         assert_int_equal(rc, SR_ERR_OK);
-
-        sr_list_add(subscriptions_list, subscriptions_arr[i]);
     }
-    free(subscriptions_arr);
 
     /* release the subscriptions */
-    assert_int_equal(rc, SR_ERR_OK);
-    for (size_t i = 0; i < subscriptions_list->count; i++) {
-        np_free_subscription(subscriptions_list->data[i]);
-    }
-    sr_list_cleanup(subscriptions_list);
+    np_subscriptions_list_cleanup(subscriptions_list);
 
     /* unsubscribe */
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,

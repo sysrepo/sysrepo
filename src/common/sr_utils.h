@@ -244,6 +244,18 @@ int sr_get_lock_data_file_name(const char *data_search_dir, const char *module_n
 int sr_get_persist_data_file_name(const char *data_search_dir, const char *module_name, char **file_name);
 
 /**
+ * @brief Creates the file name of the persistent data file into the provided buffer.
+ *
+ * @param [in] data_search_dir Path to the directory with data files.
+ * @param [in] module_name Name of the module.
+ * @param [in,out] buff Buffer where file name will be written.
+ * @param [in] buff_len Size of the buffer.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_get_persist_data_file_name_buf(const char *data_search_dir, const char *module_name, char *buff, size_t buff_len);
+
+/**
  * @brief Creates the data file name corresponding to the module_name (schema).
  *
  * Function does not check if the schema name is valid. The file name is

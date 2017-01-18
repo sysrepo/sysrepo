@@ -624,6 +624,7 @@ rp_module_install_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *
     if (SR_ERR_OK == oper_rc) {
         if (msg->request->module_install_req->installed) {
             oper_rc = dm_install_module(rp_ctx->dm_ctx,
+                        session->dm_session,
                         module_name,
                         msg->request->module_install_req->revision,
                         msg->request->module_install_req->file_name,
@@ -2218,8 +2219,8 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     sr_val_t *input = NULL, *with_def = NULL;
     sr_node_t *input_tree = NULL, *with_def_tree = NULL;
     size_t input_cnt = 0, with_def_cnt = 0, with_def_tree_cnt = 0;
-    np_subscription_t *subscriptions = NULL;
-    size_t subscription_cnt = 0;
+    sr_list_t *subscriptions_list = NULL;
+    np_subscription_t *subscription = NULL;
     Sr__Msg *req = NULL, *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
     const char *op_name = NULL;
@@ -2313,15 +2314,16 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     /* fill-in subscription details into the request */
     bool subscription_match = false;
     /* get RPC/Action subscription */
-    rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name,
-            action ? SR__SUBSCRIPTION_TYPE__ACTION_SUBS : SR__SUBSCRIPTION_TYPE__RPC_SUBS,
-            &subscriptions, &subscription_cnt);
+    rc = pm_get_subscriptions(rp_ctx->pm_ctx, (NULL != session) ? session->user_credentials : NULL, module_name,
+            action ? SR__SUBSCRIPTION_TYPE__ACTION_SUBS : SR__SUBSCRIPTION_TYPE__RPC_SUBS, &subscriptions_list);
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for %s request (%s).", op_name,
             msg->request->rpc_req->xpath);
 
-    for (size_t i = 0; i < subscription_cnt; i++) {
-        if (NULL != subscriptions[i].xpath) {
-            rc = rp_match_subscription_rpc(rp_ctx, &subscriptions[i], msg->request->rpc_req->xpath, &subscription_match);
+    if (NULL != subscriptions_list) {
+        for (size_t i = 0; i < subscriptions_list->count; i++) {
+            subscription = subscriptions_list->data[i];
+
+            rc = rp_match_subscription_rpc(rp_ctx, subscription, msg->request->rpc_req->xpath, &subscription_match);
             CHECK_RC_MSG_GOTO(rc, finalize, "Failed to match rpc xpath");
 
             if (!subscription_match) {
@@ -2345,7 +2347,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             /*  - api variant */
             req->request->rpc_req->orig_api_variant = msg->request->rpc_req->orig_api_variant;
             /*  - arguments */
-            switch (subscriptions[i].api_variant) {
+            switch (subscription->api_variant) {
                 case SR_API_VALUES:
                     rc = sr_values_sr_to_gpb(with_def, with_def_cnt, &req->request->rpc_req->input,
                                              &req->request->rpc_req->n_input);
@@ -2358,9 +2360,9 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate %s request (%s) input arguments.", op_name,
                     msg->request->rpc_req->xpath);
             /* subscription details */
-            sr_mem_edit_string(sr_mem, &req->request->rpc_req->subscriber_address, subscriptions[i].dst_address);
+            sr_mem_edit_string(sr_mem, &req->request->rpc_req->subscriber_address, subscription->dst_address);
             CHECK_NULL_NOMEM_GOTO(req->request->rpc_req->subscriber_address, rc, finalize);
-            req->request->rpc_req->subscription_id = subscriptions[i].dst_id;
+            req->request->rpc_req->subscription_id = subscription->dst_id;
             req->request->rpc_req->has_subscription_id = true;
             subscription_match = true;
             break;
@@ -2378,7 +2380,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
 finalize:
     /* free all the allocated data */
-    np_free_subscriptions(subscriptions, subscription_cnt);
+    np_subscriptions_list_cleanup(subscriptions_list);
     free(module_name);
     free(error_msg);
     free(nacm_rule);
@@ -2541,7 +2543,8 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
 
                 snprintf(request_xp, len, "%s/%s", xpaths[i], iter->name);
 
-                rc = np_data_provider_request(rp_ctx->np_ctx, session->state_data_ctx.subscriptions[subs_index], session, request_xp);
+                rc = np_data_provider_request(rp_ctx->np_ctx, session->state_data_ctx.subscriptions->data[subs_index],
+                        session, request_xp);
                 SR_LOG_DBG("Sending request for nested state data: %s using subs index %zu", request_xp, subs_index);
 
                 session->dp_req_waiting += 1;
@@ -2964,8 +2967,8 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     sr_val_t *values = NULL, *with_def = NULL;
     sr_node_t *trees = NULL, *with_def_tree = NULL;
     size_t values_cnt = 0, tree_cnt = 0, with_def_cnt = 0, with_def_tree_cnt = 0;
-    np_subscription_t *subscriptions = NULL;
-    size_t subscription_cnt = 0;
+    sr_list_t *subscriptions_list = NULL;
+    np_subscription_t *subscription = NULL;
     bool sub_match = false;
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem_msg = NULL;
@@ -3037,8 +3040,8 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 #endif /* ENABLE_NOTIF_STORE */
 
     /* get event-notification subscriptions */
-    rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS,
-            &subscriptions, &subscription_cnt);
+    rc = pm_get_subscriptions(rp_ctx->pm_ctx, (NULL != session) ? session->user_credentials : NULL, module_name,
+            SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS, &subscriptions_list);
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for event notification request (%s).", xpath);
 
 #ifdef ENABLE_NACM
@@ -3048,34 +3051,37 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 #endif
 
     /* broadcast the notification to all subscribed processes */
-    for (unsigned i = 0; SR_ERR_OK == rc && i < subscription_cnt; ++i) {
-        if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, xpath)) {
-            /* duplicate msg into req with values and subscription details
-             * @note we are not using memory context for the *req* message because with so many
-             * duplications it would be actually less efficient than normally.
-             */
-            sub_match = true;
+    if (NULL != subscriptions_list) {
+        for (size_t i = 0; i < subscriptions_list->count; i++) {
+            subscription = subscriptions_list->data[i];
+            if (NULL != subscription->xpath && 0 == strcmp(subscription->xpath, msg->request->event_notif_req->xpath)) {
+                /* duplicate msg into req with values and subscription details
+                 * @note we are not using memory context for the *req* message because with so many
+                 * duplications it would be actually less efficient than normally.
+                 */
+                sub_match = true;
 #ifdef ENABLE_NACM
-            /* NACM access control */
-            if (NULL != nacm_ctx) {
-                free(nacm_rule);
-                free(nacm_rule_info);
-                nacm_rule = NULL;
-                nacm_rule_info = NULL;
-                /* check if the user is authorized to receive the notification */
-                rc = nacm_check_event_notif(nacm_ctx, subscriptions[i].username, xpath, &nacm_action,
-                        &nacm_rule, &nacm_rule_info);
-                if (SR_ERR_OK != rc || NACM_ACTION_DENY == nacm_action) {
-                    rp_report_delivery_blocked(&subscriptions[i], xpath, rc, nacm_rule, nacm_rule_info);
-                    continue;
+                /* NACM access control */
+                if (NULL != nacm_ctx) {
+                    free(nacm_rule);
+                    free(nacm_rule_info);
+                    nacm_rule = NULL;
+                    nacm_rule_info = NULL;
+                    /* check if the user is authorized to receive the notification */
+                    rc = nacm_check_event_notif(nacm_ctx, subscription->username, xpath, &nacm_action,
+                            &nacm_rule, &nacm_rule_info);
+                    if (SR_ERR_OK != rc || NACM_ACTION_DENY == nacm_action) {
+                        rp_report_delivery_blocked(subscription, xpath, rc, nacm_rule, nacm_rule_info);
+                        continue;
+                    }
                 }
-            }
 #endif
-            rc = rp_event_notif_send(rp_ctx, session, msg->request->event_notif_req->type, subscriptions[i].xpath,
-                    msg->request->event_notif_req->timestamp, subscriptions[i].api_variant, with_def, with_def_cnt,
-                    with_def_tree, with_def_tree_cnt, subscriptions[i].dst_address, subscriptions[i].dst_id, 0);
-            CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the notification '%s' to the subscriber '%s'.",
-                    subscriptions[i].xpath, subscriptions[i].dst_address);
+                rc = rp_event_notif_send(rp_ctx, session, msg->request->event_notif_req->type, subscription->xpath,
+                        msg->request->event_notif_req->timestamp, subscription->api_variant, with_def, with_def_cnt,
+                        with_def_tree, with_def_tree_cnt, subscription->dst_address, subscription->dst_id, 0);
+                CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the notification '%s' to the subscriber '%s'.",
+                        subscription->xpath, subscription->dst_address);
+            }
         }
     }
 
@@ -3091,7 +3097,7 @@ finalize:
     free(module_name);
     free(nacm_rule);
     free(nacm_rule_info);
-    np_free_subscriptions(subscriptions, subscription_cnt);
+    np_subscriptions_list_cleanup(subscriptions_list);
 
     if (!sub_match && SR_ERR_OK == rc) {
         /* no subscription for this event notification */

@@ -276,7 +276,7 @@ perf_data_provide_test(void **state, int op_num, int *items) {
         for (size_t i = 0; i < op_num; i++){
             val_cnt = 0;
 
-            rc = sr_get_items_iter(dp_setup->session, "/ietf-interfaces:interfaces-state//*", &iter);
+            rc = sr_get_items_iter(dp_setup->session, "/ietf-interfaces:interfaces-state/interface/statistics//*", &iter);
             assert_int_equal(SR_ERR_OK, rc);
             while (SR_ERR_OK == sr_get_item_next(dp_setup->session, iter, &value)){
                 sr_free_val(value);
@@ -289,7 +289,7 @@ perf_data_provide_test(void **state, int op_num, int *items) {
             val_cnt = 0;
             value = NULL;
 
-            rc = sr_get_items(dp_setup->session, "/ietf-interfaces:interfaces-state//*", &value, &val_cnt);
+            rc = sr_get_items(dp_setup->session, "/ietf-interfaces:interfaces-state/interface/statistics//*", &value, &val_cnt);
             assert_int_equal(SR_ERR_OK, rc);
 
             sr_free_values(value, val_cnt);
@@ -957,7 +957,7 @@ main (int argc, char **argv)
         {perf_set_delete_test, "Set & delete one list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_set_delete_100_test, "Set & delete 100 lists", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_commit_test, "Commit one leaf change", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
-        {perf_data_provide_test, "Operational data provide", OP_COUNT, data_provide_setup, data_provide_teardown},
+        {perf_data_provide_test, "Operational data provide", OP_COUNT_COMMIT, data_provide_setup, data_provide_teardown},
         {perf_rpc_test, "RPC", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_ev_notification_ephemeral_test, "Event notification - ephemeral", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_ev_notification_store_test, "Event notification - store", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},

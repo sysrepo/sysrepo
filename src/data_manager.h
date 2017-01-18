@@ -152,9 +152,8 @@ typedef struct dm_sess_op_s{
  */
 typedef struct dm_model_subscription_s {
     dm_schema_info_t *schema_info;      /**< schema info identifying the module to which the subscriptions are tied to */
-    np_subscription_t **subscriptions;  /**< array of struct received from np */
+    sr_list_t *subscriptions;           /**< list of struct received from np */
     struct lys_node **nodes;            /**< array of schema nodes corresponding to the subscription */
-    size_t subscription_cnt;            /**< number of subscriptions */
     struct lyd_difflist *difflist;      /**< diff list */
     sr_list_t *changes;                 /**< set of changes for the model */
     bool changes_generated;             /**< Flag signalizing that changes has been generated */
@@ -661,6 +660,7 @@ int dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *fea
  * @note Function acquires and releases write lock for the schema info.
  *
  * @param [in] dm_ctx
+ * @param [in] session DM session.
  * @param [in] module_name
  * @param [in] revision
  * @param [in] file_name Name of the file that should be used for module installation
@@ -668,8 +668,8 @@ int dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *fea
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND if module
  * is not loaded successfully
  */
-int dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const char *file_name,
-        sr_list_t **implicitly_installed);
+int dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name,
+        const char *revision, const char *file_name, sr_list_t **implicitly_installed);
 
 /**
  * @brief Disables module

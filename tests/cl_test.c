@@ -247,6 +247,10 @@ cl_disconnect_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess);
 
+    /* check the session - should be OK */
+    rc = sr_session_check(sess);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* close the socket to the server and replace it with pipe */
     fd_to_close = ((test_sr_conn_ctx_t*)conn)->fd;
     printf("fd %d will be closed\n", fd_to_close);
@@ -261,6 +265,10 @@ cl_disconnect_test(void **state)
 
     /* try session_data_refresh - should fail with SR_ERR_DISCONNECT */
     rc = sr_session_refresh(sess);
+    assert_int_equal(rc, SR_ERR_DISCONNECT);
+
+    /* check the session - should be DISCONNECTED */
+    rc = sr_session_check(sess);
     assert_int_equal(rc, SR_ERR_DISCONNECT);
 
     /* reconnect */
