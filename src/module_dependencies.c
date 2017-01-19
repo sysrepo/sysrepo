@@ -308,6 +308,17 @@ md_compare_modules(const void *module1_ptr, const void *module2_ptr)
     return ret;
 }
 
+static int
+md_compare_modules_by_ns(const void *module1_ptr, const void *module2_ptr)
+{
+    if (NULL == module1_ptr || NULL == module2_ptr) {
+        return 0;
+    }
+
+    md_module_t *module1 = (md_module_t *)module1_ptr, *module2 = (md_module_t *)module2_ptr;
+    return strcmp(module1->ns, module2->ns);
+}
+
 /**
  * @brief Construct a sort of XPath referencing a given scheme node (exclude keys).
  * Returned xpath is allocated on the heap and should be eventually freed.
@@ -1023,6 +1034,9 @@ md_init(const char *schema_search_dir,
         goto fail;
     }
 
+    rc = sr_btree_init(md_compare_modules_by_ns, NULL, &ctx->modules_btree_by_ns);
+    CHECK_RC_MSG_GOTO(rc, fail, "Unable to initialize the list of modules.");
+
     /* get filepaths to internal schema and data files with dependencies */
     rc = md_get_schema_file_path(internal_schema_search_dir, &schema_filepath);
     CHECK_RC_MSG_GOTO(rc, fail, "Unable to get the filepath of " MD_SCHEMA_FILENAME " data file.");
@@ -1119,6 +1133,12 @@ md_init(const char *schema_search_dir,
                         }
                     }
                     node = node->next;
+                }
+                if (!module->submodule && module->latest_revision) {
+                    if (SR_ERR_OK != sr_btree_insert(ctx->modules_btree_by_ns, module)) {
+                        SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a balanced tree.");
+                        goto fail;
+                    }
                 }
                 if (SR_ERR_OK != sr_btree_insert(ctx->modules_btree, module)) {
                     SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a balanced tree.");
@@ -1225,6 +1245,9 @@ md_destroy(md_ctx_t *md_ctx)
         if (md_ctx->modules) {
             sr_llist_cleanup(md_ctx->modules);
         }
+        if (md_ctx->modules_btree_by_ns) {
+            sr_btree_cleanup(md_ctx->modules_btree_by_ns);
+        }
         if (md_ctx->modules_btree) {
             sr_btree_cleanup(md_ctx->modules_btree);
         }
@@ -1268,6 +1291,21 @@ md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revisio
     if (NULL == *module) {
         SR_LOG_ERR("Module '%s@%s' is not present in the dependency graph.",
                    name, revision ? revision : "<latest>");
+        return SR_ERR_NOT_FOUND;
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+md_get_module_info_by_ns(const md_ctx_t *md_ctx, const char *namespace, md_module_t **module)
+{
+    md_module_t module_lkp;
+    module_lkp.ns = (char *) namespace;
+
+    *module = (md_module_t *)sr_btree_search(md_ctx->modules_btree_by_ns, &module_lkp);
+    if (NULL == *module) {
+        SR_LOG_ERR("Module '%s' is not present in the dependency graph.", namespace);
         return SR_ERR_NOT_FOUND;
     }
 
