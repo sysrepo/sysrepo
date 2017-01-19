@@ -57,7 +57,7 @@ data_provider_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void 
         sr_val_set_str_data(&v[1], SR_ENUM_T, "down");
 
         sr_val_set_xpath(&v[2], "/ietf-interfaces:interfaces-state/interface[name='eth1']/type");
-        sr_val_set_str_data(&v[2], SR_IDENTITYREF_T, "ethernetCsmacd");
+        sr_val_set_str_data(&v[2], SR_IDENTITYREF_T, "iana-if-type:ethernetCsmacd");
 
         sr_val_set_xpath(&v[3], "/ietf-interfaces:interfaces-state/interface[name='eth1']/oper-status");
         sr_val_set_str_data(&v[3], SR_ENUM_T, "up");
