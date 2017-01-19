@@ -33,6 +33,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "session-stop";
     case SR__OPERATION__SESSION_REFRESH:
         return "session-refresh";
+    case SR__OPERATION__SESSION_CHECK:
+        return "session-check";
     case SR__OPERATION__SESSION_SWITCH_DS:
         return "session-switch-ds";
     case SR__OPERATION__SESSION_SET_OPTS:
@@ -161,6 +163,12 @@ sr_gpb_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uint
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__session_refresh_req__init((Sr__SessionRefreshReq*)sub_msg);
             req->session_refresh_req = (Sr__SessionRefreshReq*)sub_msg;
+            break;
+        case SR__OPERATION__SESSION_CHECK:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__SessionCheckReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__session_check_req__init((Sr__SessionCheckReq*)sub_msg);
+            req->session_check_req = (Sr__SessionCheckReq*)sub_msg;
             break;
         case SR__OPERATION__SESSION_SWITCH_DS:
             sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__SessionSwitchDsReq));
@@ -417,6 +425,12 @@ sr_gpb_resp_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uin
            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
            sr__session_refresh_resp__init((Sr__SessionRefreshResp*)sub_msg);
            resp->session_refresh_resp = (Sr__SessionRefreshResp*)sub_msg;
+           break;
+        case SR__OPERATION__SESSION_CHECK:
+           sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__SessionCheckResp));
+           CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+           sr__session_check_resp__init((Sr__SessionCheckResp*)sub_msg);
+           resp->session_check_resp = (Sr__SessionCheckResp*)sub_msg;
            break;
         case SR__OPERATION__SESSION_SWITCH_DS:
            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__SessionSwitchDsResp));
@@ -875,6 +889,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__SESSION_REFRESH:
                 CHECK_NULL_RETURN(msg->request->session_refresh_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__SESSION_CHECK:
+                CHECK_NULL_RETURN(msg->request->session_check_req, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__SESSION_SWITCH_DS:
                 CHECK_NULL_RETURN(msg->request->session_switch_ds_req, SR_ERR_MALFORMED_MSG);
                 break;
@@ -984,6 +1001,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__SESSION_REFRESH:
                 CHECK_NULL_RETURN(msg->response->session_refresh_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__SESSION_CHECK:
+                CHECK_NULL_RETURN(msg->response->session_check_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__SESSION_SWITCH_DS:
                 CHECK_NULL_RETURN(msg->response->session_switch_ds_resp, SR_ERR_MALFORMED_MSG);

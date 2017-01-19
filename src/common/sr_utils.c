@@ -356,6 +356,18 @@ sr_get_persist_data_file_name(const char *data_search_dir, const char *module_na
 }
 
 int
+sr_get_persist_data_file_name_buf(const char *data_search_dir, const char *module_name, char *buff, size_t buff_len)
+{
+    CHECK_NULL_ARG3(data_search_dir, module_name, buff);
+
+    strncpy(buff, data_search_dir, buff_len - 1);
+    strncat(buff, module_name, buff_len - strlen(buff) - 1);
+    strncat(buff, SR_PERSIST_FILE_EXT, buff_len - strlen(buff) - 1);
+
+    return SR_ERR_OK;
+}
+
+int
 sr_get_data_file_name(const char *data_search_dir, const char *module_name, const sr_datastore_t ds, char **file_name)
 {
     CHECK_NULL_ARG2(module_name, file_name);

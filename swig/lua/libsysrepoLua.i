@@ -352,8 +352,8 @@ static void global_loop() {
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_module_change_subscribe(self->swig_sess->get(), module_name, g_module_change_subscribe_cb, \
-                                             class_ctx, priority, opts, &self->swig_sub);
+        int ret = sr_module_change_subscribe(self->swig_sess(), module_name, g_module_change_subscribe_cb, \
+                                             class_ctx, priority, opts, self->swig_sub());
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
         }
@@ -369,8 +369,8 @@ static void global_loop() {
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_subtree_change_subscribe(self->swig_sess->get(), xpath, g_subtree_change_cb, class_ctx,\
-                                              priority, opts, &self->swig_sub);
+        int ret = sr_subtree_change_subscribe(self->swig_sess(), xpath, g_subtree_change_cb, class_ctx,\
+                                              priority, opts, self->swig_sub());
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
         }
@@ -386,8 +386,8 @@ static void global_loop() {
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret =  sr_module_install_subscribe(self->swig_sess->get(), g_module_install_cb, class_ctx,
-                                               opts, &self->swig_sub);
+        int ret =  sr_module_install_subscribe(self->swig_sess(), g_module_install_cb, class_ctx,
+                                               opts, self->swig_sub());
 
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
@@ -404,8 +404,8 @@ static void global_loop() {
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_feature_enable_subscribe(self->swig_sess->get(), g_feature_enable_cb, class_ctx,
-                                              opts, &self->swig_sub);
+        int ret = sr_feature_enable_subscribe(self->swig_sess(), g_feature_enable_cb, class_ctx,
+                                              opts, self->swig_sub());
 
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
@@ -421,8 +421,8 @@ static void global_loop() {
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_rpc_subscribe(self->swig_sess->get(), xpath, g_rpc_cb, class_ctx, opts,\
-                                   &self->swig_sub);
+        int ret = sr_rpc_subscribe(self->swig_sess(), xpath, g_rpc_cb, class_ctx, opts,\
+                                   self->swig_sub());
 
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
@@ -438,8 +438,8 @@ static void global_loop() {
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_action_subscribe(self->swig_sess->get(), xpath, g_action_cb, class_ctx, opts,\
-                                   &self->swig_sub);
+        int ret = sr_action_subscribe(self->swig_sess(), xpath, g_action_cb, class_ctx, opts,\
+                                   self->swig_sub());
 
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
@@ -455,8 +455,8 @@ static void global_loop() {
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_rpc_subscribe_tree(self->swig_sess->get(), xpath, g_rpc_tree_cb, class_ctx, opts,\
-                                   &self->swig_sub);
+        int ret = sr_rpc_subscribe_tree(self->swig_sess(), xpath, g_rpc_tree_cb, class_ctx, opts,\
+                                   self->swig_sub());
 
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
@@ -472,8 +472,8 @@ static void global_loop() {
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_action_subscribe_tree(self->swig_sess->get(), xpath, g_action_tree_cb, class_ctx, opts,\
-                                   &self->swig_sub);
+        int ret = sr_action_subscribe_tree(self->swig_sess(), xpath, g_action_tree_cb, class_ctx, opts,\
+                                   self->swig_sub());
 
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
@@ -489,8 +489,8 @@ static void global_loop() {
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_event_notif_subscribe(self->swig_sess->get(), xpath, g_event_notif_cb, class_ctx, opts,\
-                                   &self->swig_sub);
+        int ret = sr_event_notif_subscribe(self->swig_sess(), xpath, g_event_notif_cb, class_ctx, opts,\
+                                   self->swig_sub());
 
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
@@ -506,8 +506,8 @@ static void global_loop() {
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_event_notif_subscribe_tree(self->swig_sess->get(), xpath, g_event_notif_tree_cb,\
-                                                class_ctx, opts, &self->swig_sub);
+        int ret = sr_event_notif_subscribe_tree(self->swig_sess(), xpath, g_event_notif_tree_cb,\
+                                                class_ctx, opts, self->swig_sub());
 
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
@@ -523,8 +523,8 @@ static void global_loop() {
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_dp_get_items_subscribe(self->swig_sess->get(), xpath, g_dp_get_items_cb, class_ctx,\
-                                            opts, &self->swig_sub);
+        int ret = sr_dp_get_items_subscribe(self->swig_sess(), xpath, g_dp_get_items_cb, class_ctx,\
+                                            opts, self->swig_sub());
 
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));

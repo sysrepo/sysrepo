@@ -811,7 +811,7 @@ np_cleanup(np_ctx_t *np_ctx)
 
     if (NULL != np_ctx) {
         for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
-            np_free_subscription(np_ctx->subscriptions[i]);
+            np_subscription_cleanup(np_ctx->subscriptions[i]);
         }
         free(np_ctx->subscriptions);
 
@@ -936,7 +936,7 @@ cleanup:
             np_dst_info_remove(np_ctx, dst_address, module_name);
             pthread_rwlock_unlock(&np_ctx->lock);
         }
-        np_free_subscription(subscription);
+        np_subscription_cleanup(subscription);
     }
     return rc;
 }
@@ -1002,7 +1002,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
         pthread_rwlock_unlock(&np_ctx->lock);
 
         /* release the subscription */
-        np_free_subscription(subscription);
+        np_subscription_cleanup(subscription);
     }
 
     return rc;
@@ -1161,108 +1161,79 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
 }
 
 int
-np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name,
-        np_subscription_t ***subscriptions_arr_p, size_t *subscriptions_cnt_p)
+np_get_module_change_subscriptions(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        sr_list_t **subscriptions_list)
 {
-    np_subscription_t *subscriptions_1 = NULL, *subscriptions_2 = NULL, **subscriptions_arr = NULL;
-    size_t subscription_cnt_1 = 0, subscription_cnt_2 = 0, subscriptions_arr_cnt = 0;
+    sr_list_t *subscriptions_list_1 = NULL, *subscriptions_list_2 = NULL;
+    np_subscription_t *subscription = NULL;
+    size_t total_cnt = 0;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(np_ctx, module_name, subscriptions_arr_p, subscriptions_cnt_p);
+    CHECK_NULL_ARG3(np_ctx, module_name, subscriptions_list);
 
     /* get subtree-change subscriptions */
-    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
-            &subscriptions_1, &subscription_cnt_1);
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
+            &subscriptions_list_1);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve subtree-change subscriptions");
 
     /* get module-change subscriptions */
-    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            &subscriptions_2, &subscription_cnt_2);
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
+            &subscriptions_list_2);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve module-change subscriptions");
 
-    if ((subscription_cnt_1 + subscription_cnt_2) > 0) {
-        /* allocate array of pointers to be returned */
-        subscriptions_arr = calloc(subscription_cnt_1 + subscription_cnt_2, sizeof(*subscriptions_arr));
-        CHECK_NULL_NOMEM_GOTO(subscriptions_arr, rc, cleanup);
+    total_cnt += (NULL != subscriptions_list_1) ? subscriptions_list_1->count : 0;
+    total_cnt += (NULL != subscriptions_list_2) ? subscriptions_list_2->count : 0;
+
+    if (total_cnt > 0) {
+        rc = sr_list_init(subscriptions_list);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize subscriptions list.");
 
         /* copy subtree-change subscriptions */
-        for (size_t i = 0; i < subscription_cnt_1; i++) {
-            subscriptions_arr[subscriptions_arr_cnt] = calloc(1, sizeof(**subscriptions_arr));
-            CHECK_NULL_NOMEM_GOTO(subscriptions_arr[subscriptions_arr_cnt], rc, cleanup);
-            memcpy(subscriptions_arr[subscriptions_arr_cnt], &subscriptions_1[i], sizeof(subscriptions_1[i]));
-            subscriptions_arr_cnt++;
+        if (NULL != subscriptions_list_1) {
+            for (size_t i = 0; i < subscriptions_list_1->count; i++) {
+                subscription = subscriptions_list_1->data[i];
+                rc = sr_list_add(*subscriptions_list, subscription);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add a subscription to the subscription list.");
+            }
+            sr_list_cleanup(subscriptions_list_1);
+            subscriptions_list_1 = NULL;
         }
-        free(subscriptions_1);
-        subscriptions_1 = NULL;
 
         /* copy module-change subscriptions */
-        for (size_t i = 0; i < subscription_cnt_2; i++) {
-            subscriptions_arr[subscriptions_arr_cnt] = calloc(1, sizeof(**subscriptions_arr));
-            CHECK_NULL_NOMEM_GOTO(subscriptions_arr[subscriptions_arr_cnt], rc, cleanup);
-            memcpy(subscriptions_arr[subscriptions_arr_cnt], &subscriptions_2[i], sizeof(subscriptions_2[i]));
-            subscriptions_arr_cnt++;
+        if (NULL != subscriptions_list_2) {
+            for (size_t i = 0; i < subscriptions_list_2->count; i++) {
+                subscription = subscriptions_list_2->data[i];
+                rc = sr_list_add(*subscriptions_list, subscription);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add a subscription to the subscription list.");
+            }
+            sr_list_cleanup(subscriptions_list_2);
+            subscriptions_list_2 = NULL;
         }
-        free(subscriptions_2);
-        subscriptions_2 = NULL;
     }
-
-    *subscriptions_arr_p = subscriptions_arr;
-    *subscriptions_cnt_p = subscriptions_arr_cnt;
 
     return SR_ERR_OK;
 
 cleanup:
-    np_free_subscriptions(subscriptions_1, subscription_cnt_1);
-    np_free_subscriptions(subscriptions_2, subscription_cnt_2);
-    for (size_t i = 0; i < subscriptions_arr_cnt; i++) {
-        free(subscriptions_arr[i]);
-    }
-    free(subscriptions_arr);
+
+    np_subscriptions_list_cleanup(subscriptions_list_1);
+    np_subscriptions_list_cleanup(subscriptions_list_2);
+    np_subscriptions_list_cleanup(*subscriptions_list);
+    *subscriptions_list = NULL;
+
     return rc;
 }
 
 int
-np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name,
-        np_subscription_t ***subscriptions_arr_p, size_t *subscriptions_cnt_p)
+np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const rp_session_t *rp_session, const char *module_name,
+        sr_list_t **subscriptions)
 {
-    np_subscription_t *subscriptions = NULL, **subscriptions_arr = NULL;
-    size_t subscription_cnt = 0, subscriptions_arr_cnt = 0;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(np_ctx, module_name, subscriptions_arr_p, subscriptions_cnt_p);
+    CHECK_NULL_ARG4(np_ctx, rp_session, module_name, subscriptions);
 
-    /* get data provides subscriptions */
-    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
-            &subscriptions, &subscription_cnt);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve subtree-change subscriptions");
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, rp_session->user_credentials, module_name,
+            SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS, subscriptions);
 
-    if (subscription_cnt > 0) {
-        /* allocate array of pointers to be returned */
-        subscriptions_arr = calloc(subscription_cnt, sizeof(*subscriptions_arr));
-        CHECK_NULL_NOMEM_GOTO(subscriptions_arr, rc, cleanup);
-
-        /* copy the subscriptions */
-        for (size_t i = 0; i < subscription_cnt; i++) {
-            subscriptions_arr[subscriptions_arr_cnt] = calloc(1, sizeof(**subscriptions_arr));
-            CHECK_NULL_NOMEM_GOTO(subscriptions_arr[subscriptions_arr_cnt], rc, cleanup);
-            memcpy(subscriptions_arr[subscriptions_arr_cnt], &subscriptions[i], sizeof(subscriptions[i]));
-            subscriptions_arr_cnt++;
-        }
-        free(subscriptions);
-        subscriptions = NULL;
-    }
-
-    *subscriptions_arr_p = subscriptions_arr;
-    *subscriptions_cnt_p = subscriptions_arr_cnt;
-
-    return SR_ERR_OK;
-
-cleanup:
-    np_free_subscriptions(subscriptions, subscription_cnt);
-    for (size_t i = 0; i < subscriptions_arr_cnt; i++) {
-        free(subscriptions_arr[i]);
-    }
-    free(subscriptions_arr);
     return rc;
 }
 
@@ -1514,16 +1485,7 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
 }
 
 void
-np_free_subscription(np_subscription_t *subscription)
-{
-    if (NULL != subscription) {
-        np_free_subscription_content(subscription);
-        free(subscription);
-    }
-}
-
-void
-np_free_subscription_content(np_subscription_t *subscription)
+np_subscription_content_cleanup(np_subscription_t *subscription)
 {
     if (NULL != subscription) {
         free((void*)subscription->dst_address);
@@ -1534,12 +1496,27 @@ np_free_subscription_content(np_subscription_t *subscription)
 }
 
 void
-np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt)
+np_subscription_cleanup(np_subscription_t *subscription)
 {
-    for (size_t i = 0; i < subscriptions_cnt; i++) {
-        np_free_subscription_content(&subscriptions[i]);
+    if (NULL != subscription) {
+        if (0 == subscription->copy_cnt) {
+            np_subscription_content_cleanup(subscription);
+            free(subscription);
+        } else {
+            subscription->copy_cnt -= 1;
+        }
     }
-    free(subscriptions);
+}
+
+void
+np_subscriptions_list_cleanup(sr_list_t *subscriptions_list)
+{
+    if (NULL != subscriptions_list) {
+        for (size_t i = 0; i < subscriptions_list->count; i++) {
+            np_subscription_cleanup(subscriptions_list->data[i]);
+        }
+        sr_list_cleanup(subscriptions_list);
+    }
 }
 
 int

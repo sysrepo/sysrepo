@@ -77,6 +77,7 @@ int pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const c
  * @brief Returns the information about the module from module's persistent data storage.
  *
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
+ * @param[in] user_cred User credentials.
  * @param[in] module_name Name of the module.
  * @paran[in] sr_mem_features Memory context to use to store the array of features. Can be NULL.
  * @param[out] module_enabled TRUE if running datastore is enabled for whole module.
@@ -87,8 +88,8 @@ int pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const c
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, sr_mem_ctx_t *sr_mem_features,
-        bool *module_enabled, char ***subtrees_enabled, size_t *subtrees_enabled_cnt,
+int pm_get_module_info(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        sr_mem_ctx_t *sr_mem_features, bool *module_enabled, char ***subtrees_enabled, size_t *subtrees_enabled_cnt,
         char ***features, size_t *features_cnt);
 
 /**
@@ -140,15 +141,16 @@ int pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module
  * @brief Returns the array of active subscriptions of given type in module's persistent storage.
  *
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
+ * @param[in] user_cred User credentials.
  * @param[in] module_name Name of the module.
  * @param[in] notif_type Type of the notification.
- * @param[out] subscriptions Array of the active subscriptions.
- * @param[out] subscription_cnt Number of subscriptions in returned array.
+ * @param[out] subscriptions List of the pointers to active subscriptions. NULL can be returned in case that
+ * no matching subscriptions has been found.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType notif_type,
-        np_subscription_t **subscriptions, size_t *subscription_cnt);
+int pm_get_subscriptions(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        Sr__SubscriptionType notif_type, sr_list_t **subscriptions);
 
 /**@} pm */
 

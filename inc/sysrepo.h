@@ -377,7 +377,7 @@ typedef enum sr_datastore_e {
  *
  * @note If the client library loses connection to the Sysrepo Engine during
  * the lifetime of the application, all Sysrepo API calls will start returning
- * ::SR_ERR_DISCONNECT error. In this case, the application is supposed to reconnect
+ * ::SR_ERR_DISCONNECT error on active sessions. In this case, the application is supposed to reconnect
  * with another ::sr_connect call and restart all lost sessions.
  *
  * @param[in] app_name Name of the application connecting to the datastore
@@ -477,6 +477,26 @@ int sr_session_stop(sr_session_ctx_t *session);
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_refresh(sr_session_ctx_t *session);
+
+/**
+ * @brief Checks aliveness and validity of the session & connection tied to it.
+ *
+ * If the connection to the Sysrepo Engine has been lost in the meantime, returns SR_ERR_DICONNECT.
+ * In this case, the application is supposed to stop the session (::sr_session_stop), disconnect (::sr_disconnect)
+ * and then reconnect (::sr_connect) and start a new session (::sr_session_start).
+ *
+ * @note If the client library loses connection to the Sysrepo Engine during the lifetime of the application,
+ * all Sysrepo API calls will start returning SR_ERR_DISCONNECT error on active sessions. This is the primary
+ * mechanism that can be used to detect connection issues, ::sr_session_check is just an addition to it. Since
+ * ::sr_session_check sends a message to the Sysrepo Engine and waits for the response, it costs some extra overhead
+ * in contrast to catching SR_ERR_DISCONNECT error.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ *
+ * @return Error code (SR_ERR_OK in case that the session is healthy,
+ * SR_ERR_DICONNECT in case that connection to the Sysrepo Engine has been lost).
+ */
+int sr_session_check(sr_session_ctx_t *session);
 
 /**
  * @brief Changes datastore to which the session is tied to. All subsequent

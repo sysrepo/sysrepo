@@ -33,7 +33,7 @@ typedef struct ac_ucred_s ac_ucred_t;      /**< Forward-declaration of user cred
  * @{
  *
  * @brief Notification Processor tracks all active notification subscriptions
- * and generates notificion messages to be delivered to subscibers.
+ * and generates notification messages to be delivered to subscribers.
  */
 
 /**
@@ -55,6 +55,7 @@ typedef struct np_subscription_s {
     uint32_t priority;                 /**< Priority of the subscription by delivering notifications (0 is the lowest priority). */
     bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
     sr_api_variant_t api_variant;      /**< API variant -- values vs. trees (relevant for the callback type only). */
+    size_t copy_cnt;                   /**< Count of other references to the primary structure. 0 means no other copies exist. */
 } np_subscription_t;
 
 /**
@@ -203,32 +204,34 @@ int np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const ch
 int np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_address, uint32_t dst_id);
 
 /**
- * @brief Gets all subscriptions that subscibe for changes in specified module
+ * @brief Gets all subscriptions that subscribe for changes in specified module
  * or in a subtree within the specified module.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
- * @param[in] module_name ame of the module where the subscription is active.
- * @param[out] subscriptions_arr Array of pointers to subscriptions matching the criteria.
- * @param[out] subscriptions_cnt Count of the matching subscriptions.
+ * @param[in] user_cred Credentials of the user requesting storing of the notification.
+ * @param[in] module_name Name of the module where the subscription is active.
+ * @param[out] subscriptions List of pointers to subscriptions matching the criteria. NULL can be returned in case that
+ * no matching subscriptions has been found.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name,
-        np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
+int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        sr_list_t **subscriptions);
 
 /**
  * @brief Gets all operational data provider subscriptions in specified module
  * or in a subtree within the specified module.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] rp_session Request Processor session context.
  * @param[in] module_name Name of the module where the subscription is active.
- * @param[out] subscriptions_arr Array of pointers to subscriptions matching the criteria.
- * @param[out] subscriptions_cnt Count of the matching subscriptions.
+ * @param[out] subscriptions List of pointers to subscriptions matching the criteria. NULL can be returned in case that
+ * no matching subscriptions has been found.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name,
-        np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
+int np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const rp_session_t *rp_session, const char *module_name,
+        sr_list_t **subscriptions);
 
 /**
  * @brief Notify the subscriber about the change they are subscribed to.
@@ -260,7 +263,8 @@ int np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, 
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] commit_id Commit identifier.
  * @param[in] commit_finished TRUE if commit has finished and can be released, FALSE if it will continue with another phase.
- * @param[in] subscriptions List of subscriptions to be notified about commit end. Can be NULL if commit_finished != true.
+ * @param[in] subscriptions List of pointers to subscriptions to be notified about commit end.
+ * NULL can be passed in case that commit_finished != true.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -298,22 +302,21 @@ int np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, char *subs_
  *
  * @param[in] subscription Subscription context to be freed.
  */
-void np_free_subscription(np_subscription_t *subscription);
+void np_subscription_cleanup(np_subscription_t *subscription);
 
 /**
  * @brief Cleans up the content of a subscription context, does not free the context itself.
  *
  * @param[in] subscription Subscription context to be freed.
  */
-void np_free_subscription_content(np_subscription_t *subscription);
+void np_subscription_content_cleanup(np_subscription_t *subscription);
 
 /**
- * @brief Cleans up an array of subscription contexts (including all its content).
+ * @brief Cleans up a list of pointers to subscription contexts (including all the subscription contexts).
  *
- * @param[in] subscriptions Array of subscription contexts to be freed.
- * @param[in] subscriptions_cnt Count of the subscriptions in the array.
+ * @param[in] subscriptions_list List of subscription contexts to be freed.
  */
-void np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt);
+void np_subscriptions_list_cleanup(sr_list_t *subscriptions_list);
 
 /**
  * @brief Stores an event notification in the notification datastore.

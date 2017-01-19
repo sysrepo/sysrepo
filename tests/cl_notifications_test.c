@@ -1576,7 +1576,6 @@ cl_combined_subscribers(void **state)
         sr_free_val(changesA.new_values[i]);
         sr_free_val(changesA.old_values[i]);
     }
-    pthread_mutex_unlock(&changesA.mutex);
 
     pthread_mutex_destroy(&changesV.mutex);
     pthread_cond_destroy(&changesV.cv);
@@ -1695,7 +1694,6 @@ cl_successful_verifiers(void **state)
         sr_free_val(changesB.new_values[i]);
         sr_free_val(changesB.old_values[i]);
     }
-    pthread_mutex_unlock(&changesB.mutex);
 
     pthread_mutex_destroy(&changesA.mutex);
     pthread_cond_destroy(&changesA.cv);

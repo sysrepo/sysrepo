@@ -37,9 +37,7 @@ sysrepo_exception::sysrepo_exception(const sr_error_t error_code)
 {
 }
 
-sysrepo_exception::~sysrepo_exception()
-{
-}
+sysrepo_exception::~sysrepo_exception() {}
 
 sr_error_t sysrepo_exception::error_code() const
 {
@@ -86,8 +84,8 @@ void throw_exception(int error) {
 }
 
 // for consistent swig integration
-Logs::Logs() {return;}
-Logs::~Logs() {return;}
+Logs::Logs() {}
+Logs::~Logs() {}
 
 void Logs::set_stderr(sr_log_level_t log_level)
 {
