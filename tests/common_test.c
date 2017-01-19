@@ -1505,7 +1505,7 @@ sr_dup_data_tree_to_ctx_test(void **state)
     struct ly_ctx *ctx_B = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
     struct lyd_node *data_tree_A = NULL, *data_tree_B = NULL;
 
-    const struct lys_module *module = ly_ctx_load_module(ctx_A, "test-module", NULL);
+    ly_ctx_load_module(ctx_A, "test-module", NULL);
     ly_ctx_load_module(ctx_B, "test-module", NULL);
 
     /* duplicate NULL data tree */

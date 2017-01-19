@@ -30,6 +30,8 @@
 #include <libyang/libyang.h>
 #include <string.h>
 #include <inttypes.h>
+#include <libyang/libyang.h>
+#include <libyang/tree_data.h>
 
 #include "data_manager.h"
 #include "sr_common.h"
@@ -41,6 +43,16 @@
 #include "rp_dt_edit.h"
 #include "module_dependencies.h"
 #include "nacm.h"
+
+/**
+ * @brief Structure holding an instance of temporary libyang context that can be used
+ * for validation or parsing
+ */
+typedef struct dm_tmp_ly_ctx_s {
+    pthread_mutex_t mutex;
+    struct ly_ctx *ctx;
+    sr_list_t *loaded_modules;
+} dm_tmp_ly_ctx_t;
 
 /**
  * @brief Data manager context holding loaded schemas, data trees
@@ -62,6 +74,9 @@ typedef struct dm_ctx_s {
     pthread_rwlock_t schema_tree_lock;  /**< rwlock for access schema_info_tree */
     dm_commit_ctxs_t commit_ctxs; /**< Structure holding commit contexts and corresponding lock */
     struct timespec last_commit_time;  /**< Time of the last commit */
+    dm_tmp_ly_ctx_t *tmp_ly_ctx;  /**< Structure wrapping libyang context that is used to validate/print/parse date
+                                   * where the set of required yang module can vary */
+
 } dm_ctx_t;
 
 /**
@@ -258,6 +273,7 @@ dm_data_info_free(void *item)
     dm_data_info_t *info = (dm_data_info_t *) item;
     if (NULL != info && !info->rdonly_copy) {
         lyd_free_withsiblings(info->node);
+        sr_free_list_of_strings(info->required_modules);
         /* decrement the number of usage of the module */
         pthread_mutex_lock(&info->schema->usage_count_mutex);
         info->schema->usage_count--;
@@ -287,6 +303,213 @@ dm_model_subscription_free(void *sub)
         pthread_rwlock_destroy(&ms->changes_lock);
     }
     free(ms);
+}
+
+/**
+ * @brief Enables/disables the features in tmp_ctx to match the settings from persist file.
+ *
+ * @param [in] dm_ctx
+ * @param [in] md_module - corresponding record from md_ctx
+ * @param [in] module - module where the features should be modifier
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_enable_features_in_tmp_module(dm_ctx_t *dm_ctx, md_module_t *md_module, const struct lys_module *module)
+{
+    CHECK_NULL_ARG3(dm_ctx, md_module, module);
+
+    int rc = SR_ERR_OK;
+    int ret = 0;
+    dm_schema_info_t *si = NULL;
+    const char **features = NULL;
+    uint8_t *features_state = NULL;
+    const struct lys_module *module_to_read_from = NULL;
+    const char *main_module_name = NULL;
+    sr_llist_node_t *ll_node = NULL;
+    md_dep_t *md_dep = NULL;
+
+    if (!md_module->has_persist) {
+        return SR_ERR_OK;
+    }
+
+    if (!md_module->has_data) {
+        /* we have to find schema_info where the module is used */
+        ll_node = md_module->inv_deps->first;
+        while (ll_node) {
+            md_dep = (md_dep_t *) ll_node->data;
+            ll_node = ll_node->next;
+            if (md_dep->dest->has_data) {
+                main_module_name = md_dep->dest->name;
+                break;
+            }
+        }
+    } else {
+        main_module_name = module->name;
+    }
+
+    rc = dm_get_schema_info(dm_ctx, main_module_name, &si);
+    CHECK_RC_LOG_RETURN(rc, "Schema '%s' not found", main_module_name);
+
+    module_to_read_from = main_module_name == module->name ? si->module : ly_ctx_get_module(si->ly_ctx, module->name, NULL);
+    if (NULL == module_to_read_from) {
+        SR_LOG_ERR("Module %s not found", main_module_name);
+        return SR_ERR_INTERNAL;
+    }
+
+    features = lys_features_list(module_to_read_from, &features_state);
+
+    size_t f = 0;
+    while (NULL != features[f]) {
+        if (features_state[f]) {
+            ret = lys_features_enable(module, features[f]);
+        } else {
+            ret = lys_features_disable(module, features[f]);
+        }
+        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Failed to modify feature '%s' state in module '%s'", features[f], module->name);
+        f++;
+    }
+
+cleanup:
+    free(features_state);
+    free(features);
+
+    return rc;
+}
+
+/**
+ * @brief The function is called to load the requested module into the context.
+ */
+const struct lys_module *
+dm_module_clb (struct ly_ctx *ctx, const char *name, const char *ns, int options, void *user_data)
+{
+    SR_LOG_DBG("CALLBACK FOR MODULE %s %s", name, ns);
+    dm_ctx_t *dm_ctx = (dm_ctx_t *) user_data;
+    md_ctx_t *md_ctx = dm_ctx->md_ctx;
+    md_module_t *module = NULL;
+    const struct lys_module *ly_module = NULL;
+    int rc = SR_ERR_OK;
+
+    if (NULL != ns) {
+        rc = md_get_module_info_by_ns(md_ctx, ns, &module);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Module identified by ns '%s' was not found", ns);
+            return NULL;
+        }
+    } else if (NULL != name) {
+        rc = md_get_module_info(md_ctx, name, NULL, &module);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Module '%s' was not found", name);
+            return NULL;
+        }
+    }
+    LYS_INFORMAT fmt = sr_str_ends_with(module->filepath, SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG;
+
+    ly_module = lys_parse_path(ctx, module->filepath, fmt);
+
+    rc = dm_enable_features_in_tmp_module(dm_ctx, module, ly_module);
+
+    return SR_ERR_OK == rc ? ly_module : NULL;
+}
+
+/**
+ * @brief Releases the temporary libyang context.
+ * @param [in] ctx
+ */
+static void
+dm_free_tmp_ly_ctx(dm_tmp_ly_ctx_t *ctx)
+{
+    if (NULL != ctx) {
+        pthread_mutex_destroy(&ctx->mutex);
+        sr_free_list_of_strings(ctx->loaded_modules);
+        ly_ctx_destroy(ctx->ctx, NULL);
+        free(ctx);
+    }
+}
+
+
+/**
+ * @brief Acquires temporary libyang context, that can be used to parse/validate/print data that
+ * requires schemas different from installation time dependencies.
+ * @param [in] dm_ctx
+ * @param [in] models_to_be_loaded - list of modules that should be loaded into temporary context
+ * @param [out] tmp_ctx - acquired context. Once the context is no more needed it should be release
+ * using ::dm_release_tmp_ly_ctx
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_get_tmp_ly_ctx(dm_ctx_t *dm_ctx, sr_list_t *models_to_be_loaded, dm_tmp_ly_ctx_t **tmp_ctx)
+{
+    CHECK_NULL_ARG2(dm_ctx, tmp_ctx);
+    int rc = SR_ERR_OK;
+    dm_tmp_ly_ctx_t *t_ctx = NULL;
+    char *module_name = NULL;
+    md_module_t *module = NULL;
+    bool locked = false;
+    const struct lys_module *ly_module = NULL;
+
+    /* dequeue reusable structure */
+    //TODO: implement as queue that is capable to hold multiple tmp_ctx_s
+    t_ctx = dm_ctx->tmp_ly_ctx;
+
+    /* acquire mutex */
+    MUTEX_LOCK_TIMED_CHECK_RETURN(&t_ctx->mutex);
+
+    /* load requested modules */
+    if (NULL != models_to_be_loaded) {
+        md_ctx_lock(dm_ctx->md_ctx, false);
+        locked = true;
+        for (size_t i = 0; i < models_to_be_loaded->count; i++) {
+            module_name = (char *) models_to_be_loaded->data[i];
+            rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, &module);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get md_get_info for %s", module_name);
+
+            ly_module = lys_parse_path(t_ctx->ctx, module->filepath, LYS_IN_YANG);
+            if (NULL == ly_module) {
+                SR_LOG_ERR("Failed to load module %s", module_name);
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            /* enable requested features */
+            rc = dm_enable_features_in_tmp_module(dm_ctx, module, ly_module);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to enable features in module %s", module_name);
+        }
+
+    }
+cleanup:
+    if (locked) {
+        md_ctx_unlock(dm_ctx->md_ctx);
+    }
+    if (SR_ERR_OK == rc)  {
+        *tmp_ctx = t_ctx;
+    }
+
+    return rc;
+
+}
+
+/**
+ * @brief Releases the previously acquired tmp ly_ctx.
+ * @param [in] dm_ctx
+ * @param [in] tmp_ctx
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_release_tmp_ly_ctx(dm_ctx_t *dm_ctx, dm_tmp_ly_ctx_t *tmp_ctx)
+{
+    CHECK_NULL_ARG2(dm_ctx, tmp_ctx);
+    int rc = SR_ERR_OK;
+    uint32_t idx = 0;
+    const struct lys_module *module = NULL;
+
+    /* disable all modules */
+    while (NULL == (module = ly_ctx_get_module_iter(tmp_ctx->ctx, &idx))) {
+        lys_set_disabled(module);
+    }
+
+    ly_ctx_set_module_data_clb(tmp_ctx->ctx, NULL, NULL);
+    pthread_mutex_unlock(&tmp_ctx->mutex);
+
+    return rc;
 }
 
 static int
@@ -685,6 +908,8 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     rc = dm_load_schema_file(dm_ctx, module->filepath, false, &si);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load schema %s", module->filepath);
 
+    si->has_instance_id = module->inst_ids->first != NULL;
+
     ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *)ll_node->data;
@@ -764,6 +989,37 @@ cleanup:
     return rc;
 }
 
+static int
+dm_remove_added_data_trees_by_module_name(const char *module_name, struct lyd_node **root)
+{
+    CHECK_NULL_ARG(module_name);
+    int rc = SR_ERR_OK;
+    if (NULL != *root) {
+        struct ly_ctx *ctx = (*root)->schema->module->ctx;
+        const struct lys_module *module = ly_ctx_get_module(ctx, module_name, NULL);
+        if (NULL == module) {
+            SR_LOG_ERR("Module %s not found", module_name);
+            return SR_ERR_INTERNAL;
+        }
+        if (module != (*root)->schema->module) {
+            lyd_free_withsiblings(*root);
+            *root = NULL;
+            return SR_ERR_OK;
+        }
+        struct lyd_node *n = *root;
+        struct lyd_node *tmp = NULL;
+
+        while (n) {
+           tmp = n;
+           n = n->next;
+           if (module != tmp->schema->module) {
+              lyd_free(tmp);
+           }
+        }
+    }
+
+    return rc;
+}
 
 /**
  * @brief Tries to load data tree from provided opened file.
@@ -800,13 +1056,38 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
                 (long long) st.st_mtim.tv_sec,
                 (long long) st.st_mtim.tv_nsec);
 #endif
-        ly_errno = 0;
-        /* use LYD_OPT_TRUSTED, validation will be done later */
-        data_tree = lyd_parse_fd(schema_info->ly_ctx, fd, LYD_XML, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
-        if (NULL == data_tree && LY_SUCCESS != ly_errno) {
-            SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg());
-            free(data);
-            return SR_ERR_INTERNAL;
+        if (schema_info->has_instance_id) {
+            struct lyd_node *tmp_node = NULL;
+            dm_tmp_ly_ctx_t *tmp_ctx = NULL;
+
+            rc = dm_get_tmp_ly_ctx(dm_ctx, NULL, &tmp_ctx);
+            md_ctx_lock(dm_ctx->md_ctx, false);
+            ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
+            md_ctx_unlock(dm_ctx->md_ctx);
+
+            tmp_node = lyd_parse_fd(tmp_ctx->ctx, fd, LYD_XML, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+            if (NULL == tmp_node && LY_SUCCESS != ly_errno) {
+                SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg());
+                free(data);
+                return SR_ERR_INTERNAL;
+            }
+
+            dm_remove_added_data_trees_by_module_name(schema_info->module_name, &tmp_node);
+
+            if (NULL != tmp_node) {
+                data_tree = sr_dup_datatree_to_ctx(tmp_node, schema_info->ly_ctx);
+            }
+            lyd_free_withsiblings(tmp_node);
+            dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
+        } else {
+            ly_errno = 0;
+            /* use LYD_OPT_TRUSTED, validation will be done later */
+            data_tree = lyd_parse_fd(schema_info->ly_ctx, fd, LYD_XML, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+            if (NULL == data_tree && LY_SUCCESS != ly_errno) {
+                SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg());
+                free(data);
+                return SR_ERR_INTERNAL;
+            }
         }
     }
 
@@ -1489,7 +1770,7 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
     /* transform data from one ctx to another */
     if (NULL != di->node) {
         if (NULL == data_info->node) {
-            data_info->node = lyd_dup_to_ctx(di->node, 1, data_info->schema->ly_ctx);
+            data_info->node = sr_dup_datatree_to_ctx(di->node, data_info->schema->ly_ctx);
         } else {
             ret = lyd_merge_to_ctx(&data_info->node, di->node, LYD_OPT_EXPLICIT, data_info->schema->ly_ctx);
             CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Failed to merge %s data tree", di->schema->module->name);
@@ -1588,6 +1869,7 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     SR_LOG_INF("Initializing Data Manager, schema_search_dir=%s, data_search_dir=%s", schema_search_dir, data_search_dir);
 
     dm_ctx_t *ctx = NULL;
+    dm_tmp_ly_ctx_t *t_ctx = NULL;
     int rc = SR_ERR_OK;
     pthread_rwlockattr_t attr;
     pthread_rwlockattr_init(&attr);
@@ -1646,6 +1928,18 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
         SR_LOG_INF_MSG("Sysrepo is running in the local mode => NACM will be disabled.");
     }
 #endif
+    t_ctx = calloc(1, sizeof(*t_ctx));
+    CHECK_NULL_NOMEM_GOTO(t_ctx, rc, cleanup);
+
+    pthread_mutex_init(&t_ctx->mutex, NULL);
+    rc = sr_list_init(&t_ctx->loaded_modules);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize a list");
+
+    t_ctx->ctx = ly_ctx_new(ctx->schema_search_dir);
+    CHECK_NULL_NOMEM_GOTO(t_ctx->ctx, rc, cleanup);
+
+    ctx->tmp_ly_ctx = t_ctx;
+    t_ctx = NULL;
 
     *dm_ctx = ctx;
 
@@ -1655,6 +1949,7 @@ cleanup:
     pthread_rwlockattr_destroy(&attr);
     if (SR_ERR_OK != rc) {
         dm_cleanup(ctx);
+        dm_free_tmp_ly_ctx(t_ctx);
     }
     return rc;
 
@@ -1675,6 +1970,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
         sr_locking_set_cleanup(dm_ctx->locking_ctx);
         pthread_mutex_destroy(&dm_ctx->ds_lock_mutex);
         pthread_rwlock_destroy(&dm_ctx->commit_ctxs.lock);
+        dm_free_tmp_ly_ctx(dm_ctx->tmp_ly_ctx);
         free(dm_ctx);
     }
 }
@@ -2287,6 +2583,222 @@ cleanup:
 }
 
 int
+dm_string_cmp(void *a, void *b)
+{
+    assert(a);
+    assert(b);
+
+    int result = strcmp(a, b);
+    if (result < 0) {
+        return -1;
+    } else if (result > 0) {
+        return 1;
+    } else {
+        return 0;
+    }
+
+}
+
+/**
+ * @brief Tests if the data requires some schemas to pass the validation. If yes, it collects
+ * all required one into the list.
+ *
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] di
+ * @param [out] required_data - subset of modules that require also data to be loaded, the list contains the same strings as required_modules (do not free the content)
+ * @param [out] required_modules - if a module different from the installation-time dependencies is required to pass the validation
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *di, sr_list_t **required_data, sr_list_t **required_modules)
+{
+    CHECK_NULL_ARG5(dm_ctx, session, di, required_data, required_modules);
+
+    int rc = SR_ERR_OK;
+    md_module_t *module = NULL;
+    sr_llist_node_t *ll_node = NULL;
+    md_subtree_ref_t *id = NULL;
+    struct lys_node *sch_node = NULL;
+    struct ly_set *set = NULL;
+    const char *id_val = NULL;
+    sr_llist_node_t *ll_dep = NULL;
+    md_dep_t *dep = NULL;
+    char *namespace = NULL;
+    bool inserted = false;
+    char *module_name = NULL;
+    dm_data_info_t *recursive_info = NULL;
+
+    md_ctx_lock(dm_ctx->md_ctx, false);
+
+    if (!di->schema->has_instance_id) {
+        /* if there is no instance id all dependencies are known on schema installation time */
+
+        if (NULL != *required_modules) {
+            /* list is already initialized that means we'll use temp ctx, append install time deps */
+            rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, &module);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve md info for %s module", di->schema->module_name);
+
+            /* installation time dependencies */
+            ll_dep = module->deps->first;
+            while (ll_dep) {
+               dep = (md_dep_t *) ll_dep->data;
+               ll_dep = ll_dep->next;
+
+               module_name = strdup(dep->dest->name);
+               CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
+
+               rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
+               CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+
+               /* if dep has instanced id and it was inserted call recursively */
+               if (inserted && NULL != dep->dest->inst_ids->first) {
+                   rc = dm_get_data_info(dm_ctx, session, dep->dest->name, &recursive_info);
+                   CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
+
+                   rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
+                   CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
+
+               } else if (!inserted){
+                   free(module_name);
+               }
+            }
+
+        }
+        goto cleanup;
+    }
+
+
+    rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, &module);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve md info for %s module", di->schema->module_name);
+
+    /* loop through instance ids */
+    ll_node = module->inst_ids->first;
+
+    while (ll_node) {
+        id = (md_subtree_ref_t *) ll_node->data;
+        ll_node = ll_node->next;
+
+        sch_node = sr_find_schema_node(di->schema->module->data, id->xpath, 0);
+        if (NULL == sch_node) {
+            SR_LOG_ERR("Sch node not found for xpath %s", id->xpath);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+
+        /* find instance id nodes and check their content */
+        set = lyd_find_instance(di->node, sch_node);
+        if (NULL == set) {
+            continue;
+        }
+
+        /* loop through instance id nodes*/
+        for (unsigned int i = 0; i < set->number; i++) {
+            id_val = ((struct lyd_node_leaf_list *) set->set.d[i])->value_str;
+
+            rc = sr_copy_first_ns(id_val, &namespace);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve first namespace from %s", namespace);
+
+            /* Test if it is among known dependencies */
+            if (0 == strcmp(namespace, di->schema->module_name)) {
+                free(namespace);
+                continue;
+            }
+
+            ll_dep = module->deps->first;
+            bool found = false;
+
+            while (ll_dep) {
+               dep = (md_dep_t *) ll_dep->data;
+               ll_dep = ll_dep->next;
+
+               if (0 == strcmp(namespace, dep->dest->name)) {
+                   found = true;
+                   free(namespace);
+                   break;
+               }
+            }
+            /* else append to required modules */
+            if (!found) {
+                if (NULL == *required_modules) {
+                    rc = sr_list_init(required_modules);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "List initialization failed");
+
+                    rc = sr_list_init(required_data);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "List initialization failed");
+
+                    /* insert module itself */
+                    module_name = strdup(di->schema->module_name);
+                    CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
+
+                    rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+
+                    rc = sr_list_add(*required_data, module_name);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+
+                    /* add installation time dependencies */
+                    ll_dep = module->deps->first;
+                    while (ll_dep) {
+                       dep = (md_dep_t *) ll_dep->data;
+                       ll_dep = ll_dep->next;
+
+                       module_name = strdup(dep->dest->name);
+                       CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
+
+                       rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
+                       CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+
+                       if (inserted && dep->dest->has_data) {
+                           rc = sr_list_add(*required_data, module_name);
+                           CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into the list");
+                       }
+
+                       /* if dep has instanced id and it was inserted call recursively */
+                       if (inserted && NULL != dep->dest->inst_ids->first) {
+                           rc = dm_get_data_info(dm_ctx, session, dep->dest->name, &recursive_info);
+                           CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
+
+                           rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
+                           CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
+
+                       } else if (!inserted){
+                           free(module_name);
+                       }
+                    }
+                }
+                inserted = false;
+                rc = sr_list_insert_unique_ord(*required_modules, namespace, dm_string_cmp, &inserted);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+
+                if (inserted) {
+                    rc = sr_list_add(*required_data, namespace);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert an item into the list");
+
+                    /* call recursively */
+                    rc = dm_get_data_info(dm_ctx, session, namespace, &recursive_info);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", namespace);
+
+                    rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
+                }
+            }
+        }
+        ly_set_free(set);
+        set = NULL;
+    }
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        sr_free_list_of_strings(*required_modules);
+        *required_modules = NULL;
+    }
+    ly_set_free(set);
+    md_ctx_unlock(dm_ctx->md_ctx);
+    return rc;
+}
+
+int
 dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG4(dm_ctx, session, errors, err_cnt);
@@ -2298,9 +2810,17 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
     sr_llist_t *session_modules = NULL;
     sr_llist_node_t *node = NULL;
     bool validation_failed = false;
+    sr_list_t *required_data = NULL;
+    dm_tmp_ly_ctx_t *tmp_ctx = NULL;
+    dm_data_info_t *dep_di = NULL;
+    sr_list_t *data_for_validation = NULL;
+    struct lyd_node *data_tree = NULL;
 
     rc = sr_llist_init(&session_modules);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot initialize temporary linked-list for session modules.");
+
+    rc = sr_list_init(&data_for_validation);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     /* collect the list of modules first, it may change during the validation */
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], cnt))) {
@@ -2313,38 +2833,123 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
         info = (dm_data_info_t *)node->data;
         /* loaded data trees are valid, so check only the modified ones */
         if (info->modified) {
+            sr_free_list_of_strings(info->required_modules);
+            info->required_modules = NULL;
+
             if (NULL == info->schema->module || NULL == info->schema->module->name) {
                 SR_LOG_ERR_MSG("Missing schema information");
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
             /* attach data dependant modules */
-            if (info->schema->cross_module_data_dependency) {
-                rc = dm_load_dependant_data(dm_ctx, session, info);
-                CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", info->schema->module_name);
-            }
-            if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
-                SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
-                if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(), "%s", ly_errmsg())) {
-                    SR_LOG_WRN_MSG("Failed to record validation error");
+            if (info->schema->has_instance_id || info->schema->cross_module_data_dependency) {
+
+                rc = dm_requires_tmp_context(dm_ctx, session, info, &required_data, &info->required_modules);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Require tmp ctx check failed for module %s", info->schema->module_name);
+
+                if (NULL == info->required_modules) {
+                    /* only dependencies know since installation time are needed */
+                    rc = dm_load_dependant_data(dm_ctx, session, info);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", info->schema->module_name);
+
+                    if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
+                        SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
+                        if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(), "%s", ly_errmsg())) {
+                            SR_LOG_WRN_MSG("Failed to record validation error");
+                        }
+                        validation_failed = true;
+                    } else {
+                        SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
+                    }
+                    if (info->schema->cross_module_data_dependency) {
+                        /* remove data appended from other modules for the purpose of validation */
+                        rc = dm_remove_added_data_trees(session, info);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "Removing of added data trees failed");
+                    }
+                } else {
+                    /* validate using tmp ly_ctx */
+
+                    /* since the list hold only pointers, reseting the counter is enough,
+                     *  we don't have to free and calloc the list */
+                    data_for_validation->count = 0;
+
+                    /* retrieve all required data */
+                    for (size_t i = 0; i < required_data->count; i++) {
+                        SR_LOG_DBG("To pass the validation of '%s' data from module %s is needed", info->schema->module_name, (char *) required_data->data[i]);
+                        rc = dm_get_data_info(dm_ctx, session, (char *) required_data->data[i], &dep_di);
+                        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get data infor for module %s", (char *) required_data->data[i]);
+
+                        rc = sr_list_add(data_for_validation, dep_di);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "List insert failed");
+                    }
+
+                    /* prepare working context*/
+                    rc = dm_get_tmp_ly_ctx(dm_ctx, info->required_modules, &tmp_ctx);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to acquire tmp ctx");
+
+                    /* migrate data to working context */
+                    for (size_t i = 0; i < data_for_validation->count; i++) {
+                        dm_data_info_t *d = (dm_data_info_t *) data_for_validation->data[i];
+                        if (NULL != d->node) {
+                            if (NULL == data_tree) {
+                                data_tree = sr_dup_datatree_to_ctx(d->node, tmp_ctx->ctx);
+                            } else {
+                                int ret = lyd_merge_to_ctx(&data_tree, d->node, LYD_OPT_EXPLICIT, tmp_ctx->ctx);
+                                CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Failed to merge data tree '%s'", d->schema->module_name);
+                            }
+                        }
+                    }
+
+                    /* start validation */
+                    if (0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, tmp_ctx->ctx)) {
+                        SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
+                        if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(), "%s", ly_errmsg())) {
+                            SR_LOG_WRN_MSG("Failed to record validation error");
+                        }
+                        validation_failed = true;
+                    } else {
+                        SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
+                    }
+
+                    /* remove data from different modules and replace data in data_info to have default nodes in place */
+                    rc = dm_remove_added_data_trees_by_module_name(info->schema->module_name, &data_tree);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to remove added data trees");
+
+                    lyd_free_withsiblings(info->node);
+
+                    info->node = sr_dup_datatree_to_ctx(data_tree, info->schema->ly_ctx);
+
+                    /* free data tree */
+                    lyd_free_withsiblings(data_tree);
+
+                    /* release working context */
+                    dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
+
                 }
-                validation_failed = true;
             } else {
-                SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
+                if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
+                    SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
+                    if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(), "%s", ly_errmsg())) {
+                        SR_LOG_WRN_MSG("Failed to record validation error");
+                    }
+                    validation_failed = true;
+                } else {
+                    SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
+                }
             }
-            if (info->schema->cross_module_data_dependency) {
-                /* remove data appended from other modules for the purpose of validation */
-                rc = dm_remove_added_data_trees(session, info);
-                CHECK_RC_MSG_GOTO(rc, cleanup, "Removing of added data trees failed");
-            }
+
         }
         node = node->next;
+        sr_list_cleanup(required_data);
+        required_data = NULL;
     }
 
 cleanup:
     if (validation_failed) {
         rc = SR_ERR_VALIDATION_FAILED;
     }
+    sr_list_cleanup(required_data);
+    sr_list_cleanup(data_for_validation);
     sr_llist_cleanup(session_modules);
     return rc;
 }
@@ -3115,6 +3720,24 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             SR_LOG_DBG("Usage count %s incremented (value=%zu)", info->schema->module_name, info->schema->usage_count);
             pthread_mutex_unlock(&info->schema->usage_count_mutex);
             di->schema = info->schema;
+
+            /* duplicate also the list of required modules */
+            if (NULL != info->required_modules) {
+                rc = sr_list_init(&di->required_modules);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create list");
+
+                for (size_t r = 0; r < info->required_modules->count; r++) {
+                    char *tmp_module = strdup((char *)info->required_modules->data[r]);
+                    CHECK_NULL_NOMEM_GOTO(tmp_module, rc, cleanup);
+
+                    rc = sr_list_add(di->required_modules, tmp_module);
+                    if (SR_ERR_OK != rc) {
+                        free(tmp_module);
+                    }
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert into the list");
+                }
+            }
+
         } else {
             /* if the file existed pass FILE 'r+', otherwise pass -1 because there is 'w' fd already */
             rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->schema, &di);
@@ -3174,6 +3797,8 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
     size_t i = 0;
     size_t count = 0;
     dm_data_info_t *info = NULL;
+    dm_tmp_ly_ctx_t *tmp_ctx = NULL;
+    struct lyd_node *tmp_data_tree = NULL;
 
     /* write data trees */
     i = 0;
@@ -3190,13 +3815,34 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
             /* remove attached data trees */
             ret = dm_remove_added_data_trees(session, info);
 
+            /* print using tmp context if schemas different from installation time deps are needed */
+            if (NULL != merged_info->required_modules) {
+                SR_LOG_DBG("Additional schemas are needed to print data of modules %s", merged_info->schema->module_name);
+                rc = dm_get_tmp_ly_ctx(session->dm_ctx, merged_info->required_modules, &tmp_ctx);
+                if (SR_ERR_OK == rc) {
+                    tmp_data_tree = sr_dup_datatree_to_ctx(merged_info->node, tmp_ctx->ctx);
+                } else {
+                    SR_LOG_ERR_MSG("Failed to acquired tmp ly_ctx");
+                    continue;
+                }
+            }
+
             if (SR_ERR_OK == ret) {
                 ret = ftruncate(c_ctx->fds[count], 0);
             }
+
             if (0 == ret) {
                 ly_errno = LY_SUCCESS; /* needed to check if the error was in libyang or not below */
-                ret = lyd_print_fd(c_ctx->fds[count], merged_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+                ret = lyd_print_fd(c_ctx->fds[count], NULL == merged_info->required_modules ? merged_info->node : tmp_data_tree,
+                            LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
             }
+
+            if (NULL != merged_info->required_modules) {
+                lyd_free_withsiblings(tmp_data_tree);
+                tmp_data_tree = NULL;
+                dm_release_tmp_ly_ctx(session->dm_ctx, tmp_ctx);
+            }
+
             if (0 == ret) {
                 /* TODO: this is a workaround for https://github.com/CESNET/libyang/issues/213, remove after it is fixed */
                 long pagesize = sysconf(_SC_PAGE_SIZE);
