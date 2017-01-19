@@ -40,7 +40,6 @@ public:
     Tree(sr_node_t *tree, S_Deleter deleter);
     S_Tree dup();
     S_Tree node();
-    sr_node_t *tree() {return _node;};
     char *name() {return _node->name;};
     sr_type_t type() {return _node->type;};
     bool dflt() {return _node->dflt;};

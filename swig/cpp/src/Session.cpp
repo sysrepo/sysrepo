@@ -262,7 +262,7 @@ S_Trees Session::get_subtrees(const char *xpath, sr_get_subtree_options_t opts)
 
 S_Tree Session::get_child(S_Tree in_tree)
 {
-    sr_node_t *node = sr_node_get_child(_sess, in_tree->tree());
+    sr_node_t *node = sr_node_get_child(_sess, in_tree->_node);
     if (node == NULL) {
         return NULL;
     }
@@ -273,7 +273,7 @@ S_Tree Session::get_child(S_Tree in_tree)
 
 S_Tree Session::get_next_sibling(S_Tree in_tree)
 {
-    sr_node_t *node = sr_node_get_next_sibling(_sess, in_tree->tree());
+    sr_node_t *node = sr_node_get_next_sibling(_sess, in_tree->_node);
     if (node == NULL) {
         return NULL;
     }
@@ -284,7 +284,7 @@ S_Tree Session::get_next_sibling(S_Tree in_tree)
 
 S_Tree Session::get_parent(S_Tree in_tree)
 {
-    sr_node_t *node = sr_node_get_parent(_sess, in_tree->tree());
+    sr_node_t *node = sr_node_get_parent(_sess, in_tree->_node);
     if (node == NULL) {
         return NULL;
     }
@@ -462,8 +462,8 @@ Subscribe::~Subscribe()
     }
 }
 
-Callback::Callback() {return;}
-Callback::~Callback() {return;}
+Callback::Callback() {}
+Callback::~Callback() {}
 
 static int module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx) {
     S_Session sess(new Session(session));

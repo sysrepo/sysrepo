@@ -35,8 +35,7 @@ extern "C" {
 
 Tree::Tree() {
     _node = NULL;
-    S_Deleter deleter(new Deleter(_node));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(_node));
 }
 Tree::Tree(const char *root_name, const char *root_module_name) {
     sr_node_t *node;
@@ -44,19 +43,19 @@ Tree::Tree(const char *root_name, const char *root_module_name) {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Deleter deleter(new Deleter(node));
-    _deleter = deleter;
+    _deleter = S_Deleter(new Deleter(node));
     _node = node;
 }
 Tree::Tree(sr_node_t *tree, S_Deleter deleter) {
     _node = tree;
     _deleter = deleter;
 }
-Tree::~Tree() {return;}
+Tree::~Tree() {}
 S_Tree Tree::dup() {
-    sr_node_t *tree_dup = NULL;
-    if (_node == NULL) return NULL;
+    if (!_node)
+        throw std::logic_error("Tree::dup: called on null Tree");
 
+    sr_node_t *tree_dup = NULL;
     int ret = sr_dup_tree(_node, &tree_dup);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
@@ -65,41 +64,52 @@ S_Tree Tree::dup() {
     return dup;
 }
 S_Tree Tree::node() {
-    if (_node == NULL) return NULL;
+    if (!_node)
+        throw std::logic_error("Tree::node: called on null Tree");
 
     S_Tree node(new Tree(_node, _deleter));
     return node;
 }
 S_Tree Tree::parent() {
-    if (_node->parent == NULL)
+    if (!_node)
+        throw std::logic_error("Tree::parent: called on null Tree");
+    if (!_node->parent)
         return NULL;
 
     S_Tree node(new Tree(_node->parent, _deleter));
     return node;
 }
 S_Tree Tree::next() {
-    if (_node->next == NULL)
+    if (!_node)
+        throw std::logic_error("Tree::next: called on null Tree");
+    if (!_node->next)
         return NULL;
 
     S_Tree node(new Tree(_node->next, _deleter));
     return node;
 }
 S_Tree Tree::prev() {
-    if (_node->prev == NULL)
+    if (!_node)
+        throw std::logic_error("Tree::prev: called on null Tree");
+    if (!_node->prev)
         return NULL;
 
     S_Tree node(new Tree(_node->prev, _deleter));
     return node;
 }
 S_Tree Tree::first_child() {
-    if (_node->first_child == NULL)
+    if (!_node)
+        throw std::logic_error("Tree::first_child: called on null Tree");
+    if (!_node->first_child)
         return NULL;
 
     S_Tree node(new Tree(_node->first_child, _deleter));
     return node;
 }
 S_Tree Tree::last_child() {
-    if (_node->last_child == NULL)
+    if (!_node)
+        throw std::logic_error("Tree::last_child: called on null Tree");
+    if (!_node->last_child)
         return NULL;
 
     S_Tree node(new Tree(_node->last_child, _deleter));
@@ -278,20 +288,18 @@ void Tree::set(uint64_t uint64_val, sr_type_t type) {
     _node->type = type;
 }
 
-Trees::Trees() {
-    _trees = NULL;
-    _cnt = 0;
-    S_Deleter deleter(new Deleter(_trees, _cnt));
-    _deleter = deleter;
-}
-Trees::Trees(size_t cnt) {
-    int ret = sr_new_trees(cnt, &_trees);
-    if (ret != SR_ERR_OK)
-        throw_exception(ret);
+Trees::Trees(size_t cnt): Trees() {
+    if (cnt) {
+        int ret = sr_new_trees(cnt, &_trees);
+        if (ret != SR_ERR_OK)
+            throw_exception(ret);
 
-    _cnt = cnt;
-    S_Deleter deleter(new Deleter(_trees, _cnt));
-    _deleter = deleter;
+        _cnt = cnt;
+        _deleter = S_Deleter(new Deleter(_trees, _cnt));
+    }
+}
+Trees::Trees(): _cnt(0), _trees(nullptr)
+{
 }
 Trees::Trees(sr_node_t **trees, size_t *cnt, S_Deleter deleter) {
     _trees = *trees;
@@ -304,17 +312,24 @@ Trees::Trees(const sr_node_t *trees, const size_t n, S_Deleter deleter) {
 
     _deleter = deleter;
 }
-Trees::~Trees() {return;}
+Trees::~Trees() {}
 S_Tree Trees::tree(size_t n) {
-    if (_trees == NULL || n >= _cnt) return NULL;
+    if (n >= _cnt)
+        throw std::out_of_range("Trees::tree: index out of range");
+    if (!_trees)
+        throw std::logic_error("Trees::tree: called on null Trees");
+
 
     S_Tree tree(new Tree(&_trees[n], _deleter));
     return tree;
 }
 S_Trees Trees::dup() {
-    sr_node_t *tree_dup = NULL;
-    if (_trees == NULL || _cnt == 0) return NULL;
+    if (_cnt == 0)
+        throw std::out_of_range("Trees::tree: no elements to copy");
+    if (!_trees)
+        throw std::logic_error("Trees::tree: called on null Trees");
 
+    sr_node_t *tree_dup = NULL;
     int ret = sr_dup_trees(_trees, _cnt, &tree_dup);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
@@ -343,5 +358,5 @@ S_Trees Trees_Holder::allocate(size_t n) {
     S_Trees trees(new Trees(p_trees, p_cnt, NULL));
     return trees;
 }
-Trees_Holder::~Trees_Holder() {return;}
+Trees_Holder::~Trees_Holder() {}
 
