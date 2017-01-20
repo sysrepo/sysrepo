@@ -311,12 +311,18 @@ md_compare_modules(const void *module1_ptr, const void *module2_ptr)
 static int
 md_compare_modules_by_ns(const void *module1_ptr, const void *module2_ptr)
 {
-    if (NULL == module1_ptr || NULL == module2_ptr) {
-        return 0;
-    }
+    assert(module1_ptr);
+    assert(module2_ptr);
 
     md_module_t *module1 = (md_module_t *)module1_ptr, *module2 = (md_module_t *)module2_ptr;
-    return strcmp(module1->ns, module2->ns);
+    int ret = strcmp(module1->ns, module2->ns);
+    if (ret > 0) {
+        return 1;
+    } else if (ret < 0) {
+        return -1;
+    } else {
+        return 0;
+    }
 }
 
 /**
@@ -1134,20 +1140,21 @@ md_init(const char *schema_search_dir,
                     }
                     node = node->next;
                 }
-                if (!module->submodule && module->latest_revision) {
+                if (!module->submodule && module->latest_revision && module->ns) {
                     if (SR_ERR_OK != sr_btree_insert(ctx->modules_btree_by_ns, module)) {
                         SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a balanced tree.");
                         goto fail;
                     }
                 }
-                if (SR_ERR_OK != sr_btree_insert(ctx->modules_btree, module)) {
-                    SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a balanced tree.");
-                    goto fail;
-                }
                 if (SR_ERR_OK != sr_llist_add_new(ctx->modules, module)) {
                     SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a linked-list.");
                     goto fail;
                 }
+                if (SR_ERR_OK != sr_btree_insert(ctx->modules_btree, module)) {
+                    SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a balanced tree.");
+                    goto fail;
+                }
+
                 module->ll_node = ctx->modules->last;
                 module = NULL;
             }
@@ -2152,6 +2159,14 @@ dependencies:
         }
         module->ll_node = md_ctx->modules->last;
 
+        if (!module->submodule && module->latest_revision && module->ns) {
+            /* if we have a newer version remove the previous one */
+            sr_btree_delete(md_ctx->modules_btree_by_ns, module);
+
+            rc = sr_btree_insert(md_ctx->modules_btree_by_ns, module);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to insert instance of (md_module_t *) into a balanced tree. %s", module->ns);
+        }
+
         /* insert the new module into the balanced tree */
         rc = sr_btree_insert(md_ctx->modules_btree, module);
         if (SR_ERR_OK != rc) {
@@ -2606,6 +2621,7 @@ md_remove_module_internal(md_ctx_t *md_ctx, const char *name, const char *revisi
 
     /* finally remove the module itself */
     sr_llist_rm(md_ctx->modules, module->ll_node);
+    sr_btree_delete(md_ctx->modules_btree_by_ns, module);
     sr_btree_delete(md_ctx->modules_btree, module);
 
     /* execute transitive closure (unless this was only submodule) */
