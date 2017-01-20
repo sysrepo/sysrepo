@@ -162,7 +162,7 @@ int sr_list_rm_at(sr_list_t *list, size_t index);
  * @param [in] item Item to be inserted. (if not inserted it us up to the caller, to free it)
  * @param [in] cmp Function that is used to compare the items in array.
  * @param [out] inserted Signalizes whether the item was inserted or it is already present in the list
- * @return
+ * @return Error code (SR_ERR_OK on success)
  */
 int sr_list_insert_unique_ord(sr_list_t *list, void *item, int (*cmp) (void *, void*), bool *inserted);
 

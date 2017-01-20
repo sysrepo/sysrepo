@@ -387,8 +387,14 @@ struct lyd_node* sr_dup_datatree(struct lyd_node *root);
 
 /**
  * @brief Duplicates the date tree including its sibling into the provided context
+ *
+ * @note duplication might fails if the data tree contains a node that uses a schema
+ * not loaded in destination context (unresolved instance ids do not cause problem).
+ * consider calling ::dm_remove_added_data_trees_by_module_name or ::dm_remove_added_data_trees
+ *
  * @param [in] root Data tree to be duplicated
  * @param [in] ctx Destination context where the data tree should be duplicated to
+ * @return duplicated data tree using the provided context
  */
 struct lyd_node* sr_dup_datatree_to_ctx(struct lyd_node *root, struct ly_ctx *ctx);
 

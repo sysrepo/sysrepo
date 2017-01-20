@@ -409,7 +409,7 @@ dm_module_clb (struct ly_ctx *ctx, const char *name, const char *ns, int options
 }
 
 /**
- * @brief Releases the temporary libyang context.
+ * @brief Frees the temporary libyang context.
  * @param [in] ctx
  */
 static void
@@ -429,7 +429,7 @@ dm_free_tmp_ly_ctx(dm_tmp_ly_ctx_t *ctx)
  * requires schemas different from installation time dependencies.
  * @param [in] dm_ctx
  * @param [in] models_to_be_loaded - list of modules that should be loaded into temporary context
- * @param [out] tmp_ctx - acquired context. Once the context is no more needed it should be release
+ * @param [out] tmp_ctx - acquired context. Once the context is no more needed it should be released
  * using ::dm_release_tmp_ly_ctx
  * @return Error code (SR_ERR_OK on success)
  */
@@ -988,6 +988,9 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Function removes the subtrees that doesn't belong to the selected module.
+ */
 static int
 dm_remove_added_data_trees_by_module_name(const char *module_name, struct lyd_node **root)
 {
@@ -2601,7 +2604,7 @@ dm_string_cmp(void *a, void *b)
 
 /**
  * @brief Tests if the data requires some schemas to pass the validation. If yes, it collects
- * all required one into the list.
+ * all required ones into the list.
  *
  * @param [in] dm_ctx
  * @param [in] session
