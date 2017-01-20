@@ -132,9 +132,10 @@ include(CheckStructHasMember)
 CHECK_FUNCTION_EXISTS(pthread_rwlockattr_setkind_np HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
 CHECK_FUNCTION_EXISTS(getpeereid HAVE_GETPEEREID)
 CHECK_FUNCTION_EXISTS(getpeerucred HAVE_GETPEERUCRED)
-CHECK_FUNCTION_EXISTS(pthread_mutex_timedlock HAVE_TIMED_LOCK)
 CHECK_INCLUDE_FILES(ucred.h HAVE_UCRED_H)
+CHECK_FUNCTION_EXISTS(pthread_mutex_timedlock HAVE_TIMED_LOCK)
 CHECK_FUNCTION_EXISTS(setfsuid HAVE_SETFSUID)
+CHECK_FUNCTION_EXISTS(fsetxattr HAVE_FSETXATTR)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
 # user options
@@ -156,7 +157,8 @@ set(LOG_THREAD_ID 0 CACHE BOOL
 set(ENABLE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
     "Generate config-change notifications (RFC 6470).")
 
-set(STORE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
+#TODO: enable storing config change once instance-id validation is done
+set(STORE_CONFIG_CHANGE_NOTIF 0 CACHE BOOL
     "Save config-change notifications (RFC 6470) in the notification store (slows down the commit process).")
 
 # timeouts

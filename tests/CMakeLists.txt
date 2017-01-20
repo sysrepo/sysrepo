@@ -43,25 +43,18 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
 
     target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} sysrepo_a ${test_link_flags})
     add_test(${TEST_NAME} ${TEST_NAME})
-    if(valgrind_FOUND)
-       if(${USE_VALGRIND})
-           add_test(${TEST_NAME}_valgrind valgrind
-                --error-exitcode=1 --read-var-info=yes
-                --leak-check=full --show-leak-kinds=all
-                --suppressions=${TEST_HELPERS_DIR}valgrind.supp
-                ./${TEST_NAME})
-       endif(${USE_VALGRIND})
-    endif(valgrind_FOUND)
+    if(valgrind_FOUND AND ${USE_VALGRIND} AND NOT ${CMAKE_C_FLAGS} MATCHES "-fsanitize")
+        add_test(${TEST_NAME}_valgrind valgrind
+            --error-exitcode=1 --read-var-info=yes
+            --leak-check=full --show-leak-kinds=all
+            --suppressions=${TEST_HELPERS_DIR}valgrind.supp
+            ./${TEST_NAME})
+    endif()
 endmacro(ADD_UNIT_TEST_WITH_OPTS)
 
 # create default test target with valgrind is on
 macro(ADD_UNIT_TEST TEST_NAME USE_HELPERS)
-    if (${CMAKE_C_FLAGS} MATCHES "-fsanitize=")
-        set(tests_with_valgrind 0)
-    else()
-        set(tests_with_valgrind 1)
-    endif()
-    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} ${USE_HELPERS} ${tests_with_valgrind} "")
+    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} ${USE_HELPERS} "1" "")
 endmacro(ADD_UNIT_TEST)
 
 

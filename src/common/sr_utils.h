@@ -244,6 +244,18 @@ int sr_get_lock_data_file_name(const char *data_search_dir, const char *module_n
 int sr_get_persist_data_file_name(const char *data_search_dir, const char *module_name, char **file_name);
 
 /**
+ * @brief Creates the file name of the persistent data file into the provided buffer.
+ *
+ * @param [in] data_search_dir Path to the directory with data files.
+ * @param [in] module_name Name of the module.
+ * @param [in,out] buff Buffer where file name will be written.
+ * @param [in] buff_len Size of the buffer.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_get_persist_data_file_name_buf(const char *data_search_dir, const char *module_name, char *buff, size_t buff_len);
+
+/**
  * @brief Creates the data file name corresponding to the module_name (schema).
  *
  * Function does not check if the schema name is valid. The file name is
@@ -372,6 +384,19 @@ struct lys_node *sr_lys_node_get_data_parent(struct lys_node *node, bool augment
  * @return duplicated datatree or NULL in case of error
  */
 struct lyd_node* sr_dup_datatree(struct lyd_node *root);
+
+/**
+ * @brief Duplicates the date tree including its sibling into the provided context
+ *
+ * @note duplication might fails if the data tree contains a node that uses a schema
+ * not loaded in destination context (unresolved instance ids do not cause problem).
+ * consider calling ::dm_remove_added_data_trees_by_module_name or ::dm_remove_added_data_trees
+ *
+ * @param [in] root Data tree to be duplicated
+ * @param [in] ctx Destination context where the data tree should be duplicated to
+ * @return duplicated data tree using the provided context
+ */
+struct lyd_node* sr_dup_datatree_to_ctx(struct lyd_node *root, struct ly_ctx *ctx);
 
 /**
  * lyd_unlink wrapper handles the unlink of the root_node

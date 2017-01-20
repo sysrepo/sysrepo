@@ -40,7 +40,6 @@ public:
     Tree(sr_node_t *tree, S_Deleter deleter);
     S_Tree dup();
     S_Tree node();
-    sr_node_t *tree() {return _node;};
     char *name() {return _node->name;};
     sr_type_t type() {return _node->type;};
     bool dflt() {return _node->dflt;};
@@ -52,6 +51,7 @@ public:
     S_Tree first_child();
     S_Tree last_child();
     S_String to_string(int depth_limit);
+    S_String value_to_string();
     void set_name(const char *name);
     void set_module(const char *module_name);
     void set_str_data(sr_type_t type, const char *string_val);

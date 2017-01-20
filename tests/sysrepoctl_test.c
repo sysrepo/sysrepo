@@ -177,6 +177,17 @@ sysrepoctl_test_install(void **state)
     snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| %s:[[:alnum:]]*[[:space:]]*\\| 644[[:space:]]*\\|", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
+    exec_shell_command("../src/sysrepoctl --install --yang=../../tests/yang/inner/test-dep-installed.yang "
+            "--search-installed  --permissions=644", ".*", true, 0);
+    test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.startup", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.startup.lock", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.running", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.running.lock", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.candidate.lock", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.persist", true);
+    snprintf(buff, PATH_MAX, "test-dep-installed[[:space:]]*\\|[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 644[[:space:]]*\\|", user);
+    exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
+
     /* check the internal data file with module dependencies */
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
@@ -185,7 +196,14 @@ sysrepoctl_test_install(void **state)
     assert_int_equal(SR_ERR_OK, rc);
     rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
     assert_int_equal(SR_ERR_OK, rc);
+    rc = md_get_module_info(md_ctx, "test-dep-installed", NULL, &module);
+    assert_int_equal(SR_ERR_OK, rc);
     md_destroy(md_ctx);
+
+    /* uninstall test-dep-installed to clear environment */
+    exec_shell_command("../src/sysrepoctl --uninstall --module=test-dep-installed", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "test-dep-installed.yang", false);
+    exec_shell_command("../src/sysrepoctl -l", "!test-dep-installed", true, 0);
 }
 
 static void

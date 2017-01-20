@@ -1,0 +1,21 @@
+/**
+
+@page dev_guidelines Developer Guide
+
+This guide contains information intended for developers that are using Sysrepo in their applications.
+
+Before reading this guide, please read also:
+
+- @ref user_guidelines
+- @ref cl API
+
+The guide is divided in the following sections:
+
+- @subpage sessions_page
+- @subpage subscribtions
+- @subpage xp_page
+- @subpage plugins
+- @subpage security
+- @subpage mem_mgmt
+
+*/

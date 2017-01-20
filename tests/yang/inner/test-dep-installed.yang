@@ -1,0 +1,14 @@
+module test-dep-installed {
+   namespace "test:dep:installed";
+   prefix tdi;
+   
+   import ietf-ip {
+     prefix ip;
+   }
+   
+   container test-dep-installed {
+     leaf f1 {
+       type string;
+     }
+   }
+}

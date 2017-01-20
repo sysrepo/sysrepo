@@ -42,8 +42,11 @@ tasks. From sysrepo point of view it would mainly mean:
 - opening subscriptions to data modules of interest (e.g. ::sr_module_change_subscribe,
 ::sr_rpc_subscribe or similar).
 
-For all sysrepo API calls inside of the init function, the plugin can use the 
-session passed in as the first argument of the ::sr_plugin_init_cb.
+For all sysrepo API calls inside of the init function, the plugin can use the
+session passed in as the first argument of the ::sr_plugin_init_cb. Note that it is
+not recommended to use this session outside of the init function - if the plugin needs
+a session for its execution, it is supposed to open (and manage - e.g. reconnect after
+an unexpected disconnect) its own connection & session.
 
 The plugin can set any data into the private_ctx pointer. This data will be
 passed to ::sr_plugin_cleanup_cb when the plugin daemon is about to exit.

@@ -82,7 +82,6 @@ public:
     S_Iter_Change get_changes_iter(const char *xpath);
     S_Change get_change_next(S_Iter_Change iter);
     ~Session();
-    sr_session_ctx_t *get() {return _sess;};
 
     friend class Subscribe;
 
@@ -143,14 +142,15 @@ public:
     ~Subscribe();
 
     // SWIG specific
-    sr_subscription_ctx_t *swig_sub;
-    S_Session swig_sess;
+    sr_subscription_ctx_t **swig_sub() { return &_sub;};
+    sr_session_ctx_t *swig_sess() {return _sess->_sess;};
     std::vector<void*> wrap_cb_l;
     void additional_cleanup(void *private_ctx) {return;};
 
 private:
     sr_subscription_ctx_t *_sub;
     S_Session _sess;
+    S_Deleter sess_deleter;
 };
 
 #endif

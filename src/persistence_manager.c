@@ -26,11 +26,16 @@
 #include <pthread.h>
 #include <fcntl.h>
 #include <libyang/libyang.h>
+#include <sys/types.h>
 
 #include "sr_common.h"
 #include "access_control.h"
 #include "rp_internal.h"
 #include "persistence_manager.h"
+
+#ifdef HAVE_FSETXATTR
+#include <sys/xattr.h>
+#endif
 
 #define PM_SCHEMA_FILE "sysrepo-persistent-data.yang"  /**< Schema of module's persistent data. */
 
@@ -55,16 +60,87 @@
 #define PM_XPATH_SUBSCRIPTIONS_BY_DST_ID      PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s'][destination-id='%"PRIu32"']"
 #define PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING PM_XPATH_SUBSCRIPTION_LIST "[enable-running=true()]"
 
+#define PM_XATTR_NAME "user.write_time" /**< Extended attribute used to store file timestamps. */
+#define PM_BILLION 1000000000L          /**< one billion, used for time calculations. */
+
 /**
  * @brief Persistence Manager context.
  */
 typedef struct pm_ctx_s {
-    rp_ctx_t *rp_ctx;                 /**< Request Processor context. */
-    struct ly_ctx *ly_ctx;            /**< libyang context used locally in PM. */
-    const struct lys_module *schema;  /**< Schema tree of sysrepo-persistent-data YANG. */
-    const char *data_search_dir;      /**< Directory containing the data files. */
-    sr_locking_set_t *lock_ctx;        /**< Context for locking persist data files. */
+    rp_ctx_t *rp_ctx;                   /**< Request Processor context. */
+    struct ly_ctx *ly_ctx;              /**< libyang context used locally in PM. */
+    const struct lys_module *schema;    /**< Schema tree of sysrepo-persistent-data YANG. */
+    const char *data_search_dir;        /**< Directory containing the data files. */
+    sr_locking_set_t *lock_ctx;         /**< Context for locking persist data files. */
+    sr_btree_t *module_data;            /**< Binary tree holding cached data of a module. */
+    pthread_rwlock_t module_data_lock;  /**< RW lock for accessing ::module_data. */
 } pm_ctx_t;
+
+/**
+ * @brief PM module data info structure.
+ */
+typedef struct pm_module_data_s {
+    const char *module_name;    /**< Name of the module. */
+    sr_list_t *cached_data;     /**< Cached data of the module. */
+    uint64_t timestamp;         /**< Timestamp of the cached data file. */
+    bool use_xattr;             /**< Use file extended attributes to store timestamp. */
+
+} pm_module_data_t;
+
+/**
+ * @brief Structure used to store cached data of a module.
+ */
+typedef struct pm_cached_data_s {
+    Sr__SubscriptionType subscription_type;  /**< Type of the subscriptions that are cached in this entry. */
+    sr_list_t *subscriptions;                /**< List of the cached subscriptions. */
+    bool valid;                              /**< Flag that marks whether the cached data is valid or invalidated. */
+} pm_cached_data_t;
+
+/**
+ * @brief Compares two module data structures by module name.
+ */
+static int
+pm_module_data_cmp(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    pm_module_data_t *data_a = (pm_module_data_t *) a;
+    pm_module_data_t *data_b = (pm_module_data_t *) b;
+
+    int res = strcmp(data_a->module_name, data_b->module_name);
+    if (res == 0) {
+        return 0;
+    } else if (res < 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+/**
+ * @brief Cleans up the module data structure.
+ */
+static void
+pm_free_module_data(void *module_data)
+{
+    pm_module_data_t *md = (pm_module_data_t *) module_data;
+    pm_cached_data_t *cd = NULL;
+
+    CHECK_NULL_ARG_VOID(md);
+
+    /* cleanup cached_data */
+    for (size_t i = 0; i < md->cached_data->count; i++) {
+        cd = md->cached_data->data[i];
+        if (cd->valid) {
+            np_subscriptions_list_cleanup(cd->subscriptions);
+        }
+        free(cd);
+    }
+    sr_list_cleanup(md->cached_data);
+
+    free((void*)md->module_name);
+    free(md);
+}
 
 /**
  * @brief Saves the data tree into the file specified by file descriptor.
@@ -87,6 +163,15 @@ pm_save_data_tree(struct lyd_node *data_tree, int fd)
     /* flush in-core data to the disc */
     ret = fsync(fd);
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", sr_strerror_safe(errno));
+
+#if defined(HAVE_FSETXATTR) && defined(__linux__)
+    /* write precise commit time into the write_time extended attribute */
+    struct timespec ts = {0,};
+    uint64_t nanotime = 0;
+    sr_clock_get_time(CLOCK_MONOTONIC, &ts);
+    nanotime = (PM_BILLION * ts.tv_sec) + ts.tv_nsec;
+    fsetxattr(fd, PM_XATTR_NAME, &nanotime, sizeof(nanotime), 0);
+#endif
 
     SR_LOG_DBG_MSG("Persist data tree successfully saved.");
 
@@ -387,7 +472,346 @@ pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscript
     return SR_ERR_OK;
 
 cleanup:
-    np_free_subscription_content(subscription);
+    np_subscription_content_cleanup(subscription);
+    return rc;
+}
+
+/**
+ * @brief Store persist data file version in the module_data context.
+ */
+static int
+pm_module_data_version_save(pm_ctx_t *pm_ctx, const char *module_name, pm_module_data_t *md)
+{
+    char file_name[PATH_MAX] = {0,};
+    struct stat file_stat = { 0, };
+    int ret = 0, rc = SR_ERR_OK;
+
+    rc = sr_get_persist_data_file_name_buf(pm_ctx->data_search_dir, module_name, file_name, PATH_MAX);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to get persist data file name.");
+
+#if defined(HAVE_FSETXATTR) && defined(__linux__)
+    /* xattr supported, try to read it */
+    ret = getxattr(file_name, PM_XATTR_NAME, &md->timestamp, sizeof(md->timestamp));
+    if (0 == ret) {
+        md->use_xattr = true;
+    } else {
+        /* xattr not present/supported, fallback to stat */
+        md->use_xattr = false;
+    }
+#else
+    /* xattr not supported */
+    md->use_xattr = false;
+#endif
+
+    if (!md->use_xattr) {
+        /* use stat to determine modification time */
+        ret = stat(file_name, &file_stat);
+        if (0 == ret) {
+#ifdef HAVE_STAT_ST_MTIM
+            md->timestamp = (PM_BILLION * file_stat.st_mtim.tv_sec) + file_stat.st_mtim.tv_nsec + file_stat.st_size;
+#else
+            md->timestamp = file_stat.st_mtime + file_stat.st_size;
+#endif
+        } else {
+            SR_LOG_ERR("Unable to stat file '%s': %s", file_name, sr_strerror_safe(errno));
+            rc = SR_ERR_INTERNAL;
+        }
+    }
+
+cleanup:
+    return rc;
+}
+
+/**
+ * @brief Check whether persist file version changed since storing its data in the module_data context.
+ */
+static int
+pm_module_data_version_changed(pm_ctx_t *pm_ctx, const char *module_name, pm_module_data_t *md, bool *changed)
+{
+    char file_name[PATH_MAX] = {0,};
+    struct stat file_stat = { 0, };
+    uint64_t timestamp = 0;
+    int ret = 0, rc = SR_ERR_OK;
+
+    *changed = true;
+
+    rc = sr_get_persist_data_file_name_buf(pm_ctx->data_search_dir, module_name, file_name, PATH_MAX);
+    CHECK_RC_MSG_RETURN(rc, "Unable to get persist data file name.");
+
+    if (md->use_xattr) {
+#if defined(HAVE_FSETXATTR) && defined(__linux__)
+        /* use xattr */
+        ret = getxattr(file_name, PM_XATTR_NAME, &timestamp, sizeof(timestamp));
+        if (0 == ret && timestamp == md->timestamp) {
+            SR_LOG_DBG("Module '%s' version matches with cached one(%"PRIu64")", module_name, timestamp);
+            *changed = false;
+        }
+#else
+        SR_LOG_ERR_MSG("use_xattr == true, but xattr not supported!");
+        return SR_ERR_INTERNAL;
+#endif
+    } else {
+        /* use stat */
+        ret = stat(file_name, &file_stat);
+        if (0 == ret) {
+#ifdef HAVE_STAT_ST_MTIM
+            timestamp = (PM_BILLION * file_stat.st_mtim.tv_sec) + file_stat.st_mtim.tv_nsec + file_stat.st_size;
+#else
+            timestamp = file_stat.st_mtime + file_stat.st_size;
+#endif
+            if (timestamp == md->timestamp) {
+                *changed = false;
+            }
+        } else {
+            SR_LOG_ERR("Unable to stat file '%s': %s", file_name, sr_strerror_safe(errno));
+            rc = SR_ERR_INTERNAL;
+        }
+    }
+
+    if (!changed) {
+        SR_LOG_DBG("Module '%s' persist file version matches with cached value (%"PRIu64").", module_name, timestamp);
+    } else {
+        SR_LOG_DBG("Module '%s' persist file version does not match with the last cached value (%"PRIu64").", module_name, timestamp);
+    }
+
+    return rc;
+}
+
+/**
+ * @brief Invalidates cache of subscriptions of given module.
+ */
+static int
+pm_invalidate_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType subscription_type,
+        bool all_types)
+{
+    pm_module_data_t *md = NULL, lookup_md = {0};
+    pm_cached_data_t *cd = NULL;
+
+    CHECK_NULL_ARG2(pm_ctx, module_name);
+
+    RWLOCK_WRLOCK_TIMED_CHECK_RETURN(&pm_ctx->module_data_lock);
+
+    /* find module data info */
+    lookup_md.module_name = module_name;
+    md = sr_btree_search(pm_ctx->module_data, &lookup_md);
+
+    if (NULL == md) {
+        /* module data does not exist */
+        pthread_rwlock_unlock(&pm_ctx->module_data_lock);
+        return SR_ERR_OK;
+    }
+
+    /* find cached info of given type */
+    for (size_t i = 0; i < md->cached_data->count; i++) {
+        cd = md->cached_data->data[i];
+        if (cd->valid) {
+            if (all_types || (cd->subscription_type == subscription_type)) {
+                cd->valid = false;
+                np_subscriptions_list_cleanup(cd->subscriptions);
+                cd->subscriptions = NULL;
+                if (!all_types) {
+                    break;
+                }
+            }
+        }
+    }
+
+    pthread_rwlock_unlock(&pm_ctx->module_data_lock);
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Return cached subscriptions of requested module and type, if present in the cache.
+ */
+static int
+pm_get_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType subscription_type,
+        sr_list_t **subscriptions_p, bool *cache_hit)
+{
+    pm_module_data_t *md = NULL, lookup_md = {0};
+    pm_cached_data_t *cd = NULL, *lookup_cd = NULL;
+    sr_list_t *res_subscriptions = NULL;
+    np_subscription_t *subscription = NULL;
+    bool data_changed = false;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(pm_ctx, module_name, subscriptions_p, cache_hit);
+
+    *cache_hit = false;
+
+    RWLOCK_RDLOCK_TIMED_CHECK_RETURN(&pm_ctx->module_data_lock);
+
+    /* find module data info */
+    lookup_md.module_name = module_name;
+    md = sr_btree_search(pm_ctx->module_data, &lookup_md);
+
+    if (NULL == md) {
+        /* module data does not exist */
+        goto cleanup;
+    }
+
+    /* check whether data hasn't changed in the meantime */
+    rc = pm_module_data_version_changed(pm_ctx, module_name, md, &data_changed);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cached module data version check failed.");
+
+    if (data_changed) {
+        /* data has changed */
+        goto cleanup;
+    }
+
+    /* find cached info of given type */
+    for (size_t i = 0; i < md->cached_data->count; i++) {
+        lookup_cd = md->cached_data->data[i];
+        if (lookup_cd->subscription_type == subscription_type) {
+            cd = lookup_cd;
+            break;
+        }
+    }
+
+    if (NULL == cd) {
+        /* cached info of given type does not exist */
+        goto cleanup;
+    }
+
+    if (!cd->valid) {
+        /* cache is invalid */
+        goto cleanup;
+    }
+
+    if (NULL != cd->subscriptions) {
+        rc = sr_list_init(&res_subscriptions);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize subscriptions list.");
+
+        for (size_t i = 0; i < cd->subscriptions->count; i++) {
+            subscription = cd->subscriptions->data[i];
+
+            rc = sr_list_add(res_subscriptions, subscription);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add a subscription into the subscription list.");
+
+            /* increase copy refcount */
+            subscription->copy_cnt += 1;
+        }
+    }
+
+    *subscriptions_p = res_subscriptions;
+    res_subscriptions = NULL;
+    *cache_hit = true;
+
+cleanup:
+    if (NULL != res_subscriptions) {
+        np_subscriptions_list_cleanup(res_subscriptions);
+    }
+    pthread_rwlock_unlock(&pm_ctx->module_data_lock);
+
+    if (data_changed) {
+        pm_invalidate_cached_subscriptions(pm_ctx, module_name, subscription_type, true);
+    }
+
+    return rc;
+}
+
+/**
+ * @brief Store the subscriptions in the cache.
+ */
+static int
+pm_cache_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType subscription_type,
+        sr_list_t *orig_subscriptions)
+{
+    pm_module_data_t *md = NULL, *md_tmp = NULL, lookup_md = {0};
+    pm_cached_data_t *cd = NULL, *cd_tmp = NULL, *lookup_cd = NULL;
+    sr_list_t *cached_subscriptions = NULL;
+    np_subscription_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(pm_ctx, module_name);
+
+    RWLOCK_WRLOCK_TIMED_CHECK_RETURN(&pm_ctx->module_data_lock);
+
+    /* find module data info */
+    lookup_md.module_name = module_name;
+    md = sr_btree_search(pm_ctx->module_data, &lookup_md);
+
+    if (NULL == md) {
+        /* module data does not exist, create it */
+        md_tmp = calloc(1, sizeof(*md));
+        CHECK_NULL_NOMEM_GOTO(md_tmp, rc, cleanup);
+
+        md_tmp->module_name = strdup(module_name);
+        CHECK_NULL_NOMEM_GOTO(md_tmp->module_name, rc, cleanup);
+
+        rc = sr_list_init(&md_tmp->cached_data);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Cached data list init failed.");
+
+        rc = sr_btree_insert(pm_ctx->module_data, md_tmp);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Module data btree insert failed.");
+
+        md = md_tmp;
+        md_tmp = NULL;
+    }
+
+    /* save file version info */
+    pm_module_data_version_save(pm_ctx, module_name, md);
+
+    /* find cached info of given type */
+    for (size_t i = 0; i < md->cached_data->count; i++) {
+        lookup_cd = md->cached_data->data[i];
+        if (lookup_cd->subscription_type == subscription_type) {
+            cd = lookup_cd;
+            break;
+        }
+    }
+
+    if (NULL == cd) {
+        /* cached info of given type does not exist, create it */
+        cd_tmp = calloc(1, sizeof(*cd_tmp));
+        CHECK_NULL_NOMEM_GOTO(cd_tmp, rc, cleanup);
+
+        cd_tmp->subscription_type = subscription_type;
+
+        rc = sr_list_add(md->cached_data, cd_tmp);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Cached data add failed.");
+
+        cd = cd_tmp;
+        cd_tmp = NULL;
+    }
+
+    SR_LOG_DBG("Caching %zu subscriptions from '%s' persist file.",
+            (NULL != orig_subscriptions) ? orig_subscriptions->count : 0, module_name);
+
+    /* fill in the list of pointers to subscriptions & store it in the cache */
+    if (NULL != orig_subscriptions) {
+        rc = sr_list_init(&cached_subscriptions);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize cached subscriptions list.");
+
+        for (size_t i = 0; i < orig_subscriptions->count; i++) {
+            subscription = orig_subscriptions->data[i];
+
+            rc = sr_list_add(cached_subscriptions, subscription);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add a subscription into the cache list.");
+
+            /* increase copy refcount */
+            subscription->copy_cnt += 1;
+        }
+    }
+
+    cd->valid = true;
+    cd->subscriptions = cached_subscriptions;
+    cached_subscriptions = NULL;
+
+cleanup:
+    if (NULL != cached_subscriptions) {
+        np_subscriptions_list_cleanup(cached_subscriptions);
+    }
+    if (NULL != md_tmp) {
+        sr_list_cleanup(md_tmp->cached_data);
+        free((void*)md_tmp->module_name);
+        free(md_tmp);
+    }
+    if (NULL != cd_tmp) {
+        free(cd_tmp);
+    }
+    pthread_rwlock_unlock(&pm_ctx->module_data_lock);
+
     return rc;
 }
 
@@ -423,6 +847,7 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
 {
     pm_ctx_t *ctx = NULL;
     char *schema_filename = NULL;
+    pthread_rwlockattr_t attr;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(rp_ctx, schema_search_dir, data_search_dir, pm_ctx);
@@ -437,6 +862,17 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
 
     rc = sr_locking_set_init(&ctx->lock_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize locking set.");
+
+    pthread_rwlockattr_init(&attr);
+#if defined(HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+#endif
+
+    rc = pthread_rwlock_init(&ctx->module_data_lock, &attr);
+    CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "lyctx mutex initialization failed");
+
+    rc = sr_btree_init(pm_module_data_cmp, pm_free_module_data, &ctx->module_data);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Module data binary tree init failed.");
 
     /* initialize libyang */
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
@@ -463,10 +899,12 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     }
 
     *pm_ctx = ctx;
-    return SR_ERR_OK;
 
 cleanup:
-    pm_cleanup(ctx);
+    pthread_rwlockattr_destroy(&attr);
+    if (SR_ERR_OK != rc) {
+        pm_cleanup(ctx);
+    }
     return rc;
 }
 
@@ -477,6 +915,8 @@ pm_cleanup(pm_ctx_t *pm_ctx)
         if (NULL != pm_ctx->ly_ctx) {
             ly_ctx_destroy(pm_ctx->ly_ctx, NULL);
         }
+        pthread_rwlock_destroy(&pm_ctx->module_data_lock);
+        sr_btree_cleanup(pm_ctx->module_data);
         sr_locking_set_cleanup(pm_ctx->lock_ctx);
         free((void*)pm_ctx->data_search_dir);
         free(pm_ctx);
@@ -516,8 +956,9 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
 }
 
 int
-pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, sr_mem_ctx_t *sr_mem_features, bool *module_enabled,
-        char ***subtrees_enabled_p, size_t *subtrees_enabled_cnt_p, char ***features_p, size_t *features_cnt_p)
+pm_get_module_info(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name, sr_mem_ctx_t *sr_mem_features,
+        bool *module_enabled, char ***subtrees_enabled_p, size_t *subtrees_enabled_cnt_p, char ***features_p,
+        size_t *features_cnt_p)
 {
     char xpath[PATH_MAX] = { 0, };
     struct lyd_node *data_tree = NULL;
@@ -543,7 +984,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, sr_mem_ctx_t *sr_m
     }
 
     /* load the data tree from persist file */
-    rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
+    rc = pm_load_data_tree(pm_ctx, user_cred, module_name, true, &data_tree, NULL);
     if (SR_ERR_DATA_MISSING != rc) {
         /* ignore data missing error */
         CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
@@ -601,7 +1042,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, sr_mem_ctx_t *sr_m
                 /* send HELLO notifications to verify that these subscriptions are still alive */
                 rc = np_hello_notify(pm_ctx->rp_ctx->np_ctx, module_name, subscription.dst_address, subscription.dst_id);
             }
-            np_free_subscription_content(&subscription);
+            np_subscription_content_cleanup(&subscription);
         }
     }
 
@@ -740,6 +1181,9 @@ pm_remove_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char
 
     CHECK_NULL_ARG5(pm_ctx, user_cred, module_name, subscription, disable_running);
 
+    /* invalidate the subscription cache for this module and subscription type */
+    pm_invalidate_cached_subscriptions(pm_ctx, module_name, subscription->type, false);
+
     *disable_running = false;
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
@@ -775,6 +1219,9 @@ pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_nam
 
     CHECK_NULL_ARG4(pm_ctx, module_name, dst_address, disable_running);
 
+    /* invalidate the subscription cache for this module */
+    pm_invalidate_cached_subscriptions(pm_ctx, module_name, 0, true);
+
     *disable_running = false;
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR, module_name, dst_address);
@@ -802,20 +1249,29 @@ pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_nam
 }
 
 int
-pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType type,
-        np_subscription_t **subscriptions_p, size_t *subscription_cnt_p)
+pm_get_subscriptions(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name, Sr__SubscriptionType type,
+        sr_list_t **subscriptions_p)
 {
     char xpath[PATH_MAX] = { 0, };
     struct lyd_node *data_tree = NULL;
     struct ly_set *node_set = NULL;
-    np_subscription_t *subscriptions = NULL;
-    size_t subscription_cnt = 0;
+    sr_list_t *subscriptions_list = NULL;
+    np_subscription_t *subscription = NULL;
+    bool cache_hit = false;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(pm_ctx, module_name, subscriptions_p, subscription_cnt_p);
+    CHECK_NULL_ARG3(pm_ctx, module_name, subscriptions_p);
+
+    /* attempt to satisfy the request from cache */
+    rc = pm_get_cached_subscriptions(pm_ctx, module_name, type, subscriptions_p, &cache_hit);
+    if (cache_hit) {
+        SR_LOG_DBG("Returning %zu subscriptions from '%s' persist file cache.",
+                (NULL != *subscriptions_p) ? (*subscriptions_p)->count : 0, module_name);
+        return rc;
+    }
 
     /* load the data tree from persist file */
-    rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
+    rc = pm_load_data_tree(pm_ctx, user_cred, module_name, true, &data_tree, NULL);
     if (SR_ERR_DATA_MISSING != rc) {
         CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s' %s.", module_name, sr_strerror(rc));
     }
@@ -823,7 +1279,6 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscription
     if (NULL == data_tree) {
         /* empty data file */
         *subscriptions_p = NULL;
-        *subscription_cnt_p = 0;
         rc = SR_ERR_OK;
         goto cleanup;
     }
@@ -832,20 +1287,28 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscription
     node_set = lyd_find_xpath(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
-        subscriptions = calloc(node_set->number, sizeof(*subscriptions));
-        CHECK_NULL_NOMEM_GOTO(subscriptions, rc, cleanup);
+        rc = sr_list_init(&subscriptions_list);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to init subscription list.");
 
         for (size_t i = 0; i < node_set->number; i++) {
-            rc = pm_subscription_entry_fill(module_name, &subscriptions[subscription_cnt], node_set->set.d[i]->child);
+            subscription = calloc(1, sizeof(*subscription));
+            CHECK_NULL_NOMEM_GOTO(subscription, rc, cleanup);
+
+            rc = pm_subscription_entry_fill(module_name, subscription, node_set->set.d[i]->child);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to fill subscription details.");
-            subscription_cnt++;
+
+            rc = sr_list_add(subscriptions_list, subscription);
+            subscription = NULL;
         }
     }
 
-    SR_LOG_DBG("Returning %zu subscriptions found in '%s' persist file.", subscription_cnt, module_name);
+    /* store the result in the cache */
+    pm_cache_subscriptions(pm_ctx, module_name, type, subscriptions_list);
 
-    *subscriptions_p = subscriptions;
-    *subscription_cnt_p = subscription_cnt;
+    SR_LOG_DBG("Returning %zu subscriptions found in '%s' persist file.",
+            (NULL == subscriptions_list ? 0 : subscriptions_list->count), module_name);
+
+    *subscriptions_p = subscriptions_list;
 
 cleanup:
     if (NULL != node_set) {
@@ -856,7 +1319,8 @@ cleanup:
     }
 
     if (SR_ERR_OK != rc) {
-        np_free_subscriptions(subscriptions, subscription_cnt);
+        np_subscriptions_list_cleanup(subscriptions_list);
+        np_subscription_cleanup(subscription);
     }
 
     return rc;

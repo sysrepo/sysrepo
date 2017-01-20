@@ -90,8 +90,7 @@ typedef enum rp_request_state_e {
 } rp_request_state_t;
 
 typedef struct rp_state_data_ctx_s {
-    np_subscription_t **subscriptions; /**< Array of subscriptions from np for a module */
-    size_t subscription_cnt;           /**< Length of subscriptions array */
+    sr_list_t *subscriptions;          /**< List of subscriptions from np for a module */
     sr_list_t *subtrees;               /**< List of state data subtrees to be loaded*/
     sr_list_t *subtree_nodes;          /**< List of schema nodes corresponding to state data subtrees */
     sr_list_t *subscription_nodes;     /**< Schema node corresponding to the subscriptions */
