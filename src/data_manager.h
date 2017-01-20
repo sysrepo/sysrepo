@@ -75,6 +75,7 @@ typedef struct dm_schema_info_s {
                                          * during sysrepo-engine lifetime */
     const struct lys_module *module;    /**< Pointer to the module, might be NULL if module has been uninstalled*/
     bool cross_module_data_dependency;  /**< Flag whether data from different module is needed for validation */
+    bool has_instance_id;               /**< Flag whether the module contains a node of type instance identifier */
     bool can_not_be_locked;             /**< If true module contains no data and lock_module for the module is NOP */
 }dm_schema_info_t;
 
@@ -87,6 +88,7 @@ typedef struct dm_data_info_s{
     struct lyd_node *node;              /**< data tree */
     struct timespec timestamp;          /**< timestamp of this copy (used only if HAVE_ST_MTIM is defined) */
     bool modified;                      /**< flag denoting whether a change has been made*/
+    sr_list_t *required_modules;        /**< schemas that needs to be in context to print data */
 }dm_data_info_t;
 
 /**
@@ -534,15 +536,6 @@ bool dm_has_error(dm_session_t *session);
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_copy_errors(dm_session_t *session, sr_mem_ctx_t *sr_mem, char **error_msg, char **err_xpath);
-
-/**
- * @brief Looks up the schema info structure for the module specified by module name
- * @param [in] dm_ctx
- * @param [in] module_name
- * @param [out] schema_info - returned schema info is not locked
- * @return Error code (SR_ERR_OK on success)
-*/
-int dm_get_schema_info(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info);
 
 /**
  *

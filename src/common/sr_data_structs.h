@@ -154,6 +154,19 @@ int sr_list_rm(sr_list_t *list, void *item);
 int sr_list_rm_at(sr_list_t *list, size_t index);
 
 /**
+ * @brief Insert an element into the ordered list at the proper position. If the
+ * item to be inserted is already present in the list, it is not inserted again.
+ *
+ * @note To keep the order the items must be inserted only by this function
+ * @param [in] list Pointer to the list structure.
+ * @param [in] item Item to be inserted. (if not inserted it us up to the caller, to free it)
+ * @param [in] cmp Function that is used to compare the items in array.
+ * @param [out] inserted Signalizes whether the item was inserted or it is already present in the list
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_list_insert_unique_ord(sr_list_t *list, void *item, int (*cmp) (void *, void*), bool *inserted);
+
+/**
  * @brief Common context of balanced binary tree, independent of the library used.
  */
 typedef struct sr_btree_s sr_btree_t;

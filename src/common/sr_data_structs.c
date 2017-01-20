@@ -199,6 +199,61 @@ sr_list_rm_at(sr_list_t *list, size_t index)
     return SR_ERR_OK;
 }
 
+int
+sr_list_insert_unique_ord(sr_list_t *list, void *item, int (*cmp) (void *, void*), bool *inserted)
+{
+    CHECK_NULL_ARG3(list, item, cmp);
+    void **tmp = NULL;
+    int rc = SR_ERR_OK;
+    int res = 0;
+    size_t position = 0;
+    /* find position */
+    for (; position < list->count; position++) {
+        res = cmp(item, list->data[position]);
+        if (0 == res) {
+            if (NULL != inserted) {
+                *inserted = false;
+            }
+            return rc;
+        } else if (res < 0) {
+            break;
+        } else {
+            continue;
+        }
+    }
+
+    /* allocation */
+    if (0 == list->_size) {
+        /* allocate initial space */
+        list->data = calloc(SR_LIST_INIT_SIZE, sizeof(*list->data));
+        CHECK_NULL_NOMEM_RETURN(list->data);
+        list->_size = SR_LIST_INIT_SIZE;
+    } else if (list->_size == list->count) {
+        /* enlarge the space */
+        tmp = realloc(list->data,  (list->_size << 1) * sizeof(*list->data));
+        CHECK_NULL_NOMEM_RETURN(tmp);
+        list->data = tmp;
+        list->_size <<= 1;
+    }
+
+    /* memove */
+    if (position < list->count) {
+        memmove(&list->data[position+1],
+                &list->data[position],
+                (list->count-position) * sizeof(*list->data));
+    }
+
+    /* insert element*/
+    list->data[position] = item;
+    list->count++;
+
+    if (NULL != inserted) {
+        *inserted = true;
+    }
+
+    return rc;
+}
+
 /**
  * @brief Common context of balanced binary tree, independent of the library used.
  */

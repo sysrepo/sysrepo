@@ -100,7 +100,7 @@ module ietf-netconf-acm {
 
   typedef matchall-string-type {
     type string {
-      pattern "\*";
+      pattern '\*';
     }
     description
       "The string containing a single asterisk '*' is used
@@ -141,7 +141,7 @@ module ietf-netconf-acm {
   typedef group-name-type {
     type string {
       length "1..max";
-      pattern "[^\*].*";
+      pattern '[^\*].*';
     }
     description
       "Name of administrative group to which
