@@ -711,20 +711,7 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
     add_nacm_rule(nacm_config, "acl1", "allow-reordering", "test-module", NACM_RULE_DATA,
             "/test-module:ordered-numbers", "update", "permit", "Allow to re-order numbers.");
     add_nacm_rule(nacm_config, "acl1", "allow-presence-container-with-content", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container", "*", "permit", "Allow to edit presence container from test-module (top).");
-    add_nacm_rule(nacm_config, "acl1", "allow-presence-container-with-content2", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container/topleaf1", "*", "permit", "Allow to edit presence container from test-module (topleaf1).");
-    add_nacm_rule(nacm_config, "acl1", "allow-presence-container-with-content3", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container/child1", "*", "permit", "Allow to edit presence container from test-module (child1).");
-    add_nacm_rule(nacm_config, "acl1", "allow-presence-container-with-content4", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container/child2", "*", "permit", "Allow to edit presence container from test-module (child2).");
-    add_nacm_rule(nacm_config, "acl1", "allow-presence-container-with-content5", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container/child1/grandchild1", "*", "permit", "Allow to edit presence container from test-module (grandchild1).");
-    add_nacm_rule(nacm_config, "acl1", "allow-presence-container-with-content6", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container/child1/grandchild1/grandchild1-leaf", "*", "permit",
-            "Allow to edit presence container from test-module (grandchild1-leaf).");
-    add_nacm_rule(nacm_config, "acl1", "allow-presence-container-with-content7", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container/child2/grandchild2", "*", "permit", "Allow to edit presence container from test-module (grandchild2).");
+            "/test-module:presence-container", "*", "permit", "Allow to read/edit presence container from test-module.");
     /*    -> data, example-module: */
     add_nacm_rule(nacm_config, "acl1", "deny-specific-list-item", "example-module", NACM_RULE_DATA,
             "/example-module:container/list[key1='new-item-key1'][key2='new-item-key2']", "create", "deny",
@@ -732,22 +719,11 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
     add_nacm_rule(nacm_config, "acl1", "permit-specific-list-item", "example-module", NACM_RULE_DATA,
             "/example-module:container/list[key1='new-item2-key1'][key2='new-item2-key2']", "create", "permit",
             "Allowed to create this specific list item.");
-    add_nacm_rule(nacm_config, "acl1", "permit-specific-list-item2", "example-module", NACM_RULE_DATA,
-            "/example-module:container/list[key1='new-item2-key1'][key2='new-item2-key2']/key1", "create", "permit",
-            "Allowed to create this specific list item (key1).");
-    add_nacm_rule(nacm_config, "acl1", "permit-specific-list-item3", "example-module", NACM_RULE_DATA,
-            "/example-module:container/list[key1='new-item2-key1'][key2='new-item2-key2']/key2", "create", "permit",
-            "Allowed to create this specific list item (key2).");
-    add_nacm_rule(nacm_config, "acl1", "permit-specific-list-item4", "example-module", NACM_RULE_DATA,
-            "/example-module:container/list[key1='new-item2-key1'][key2='new-item2-key2']/leaf", "create", "permit",
-            "Allowed to create this specific list item (leaf).");
     /*    -> data, ietf-interfaces: */
+    add_nacm_rule(nacm_config, "acl1", "deny-interface-status-change", "ietf-interfaces", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/enabled", "update", "deny", "Not allowed to change status of interface");
     add_nacm_rule(nacm_config, "acl1", "allow-new-interfaces", "ietf-interfaces", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface", "create", "permit", "Allowed to create new interface (top, missing enabled)");
-    add_nacm_rule(nacm_config, "acl1", "allow-new-interfaces2", "ietf-interfaces", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/type", "create", "permit", "Allowed to create new interface (type)");
-    add_nacm_rule(nacm_config, "acl1", "allow-new-interfaces3", "ietf-interfaces", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/name", "create", "permit", "Allowed to create new interface (name)");
+            "/ietf-interfaces:interfaces/interface", "create", "permit", "Allowed to create new interface");
     /*  -> acl2: */
     /*    -> RPC: */
     add_nacm_rule(nacm_config, "acl2", "permit-kill-session", "ietf-netconf", NACM_RULE_RPC,
@@ -766,18 +742,24 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
             "/test-module:main/numbers[.<10]", "create delete", "deny", "Do not allow to create/delete low numbers.");
     add_nacm_rule(nacm_config, "acl2", "deny-everything-but-reordering", "test-module", NACM_RULE_DATA,
             "/test-module:ordered-numbers", "create delete read", "deny", "Disallow any operation with ordered-numbers but re-ordering (update).");
-    add_nacm_rule(nacm_config, "acl2", "allow-presence-container-with-subset-of-content", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container", "*", "permit", "Allow to edit presence container from test-module (top).");
-    add_nacm_rule(nacm_config, "acl2", "allow-presence-container-with-subset-of-content2", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container/topleaf1", "*", "permit", "Allow to edit presence container from test-module (topleaf1).");
-    add_nacm_rule(nacm_config, "acl2", "allow-presence-container-with-subset-of-content3", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container/child1", "*", "permit", "Allow to edit presence container from test-module (child1).");
-    add_nacm_rule(nacm_config, "acl2", "allow-presence-container-with-subset-of-content4", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container/child1/grandchild1", "*", "permit", "Allow to edit presence container from test-module (grandchild1).");
+    add_nacm_rule(nacm_config, "acl2", "deny-grandchild1-leaf", "test-module", NACM_RULE_DATA,
+            "/test-module:presence-container/child1/grandchild1/grandchild1-leaf", "create update delete", "deny",
+            "Do not allow to edit grandchild1-leaf.");
+    add_nacm_rule(nacm_config, "acl2", "deny-child2", "test-module", NACM_RULE_DATA,
+            "/test-module:presence-container/child2", "create", "deny", "Do not allow to create child2.");
     /*    -> data, example-module: */
-    add_nacm_rule(nacm_config, "acl2", "allow-list-items", "example-module", NACM_RULE_DATA,
-            "/example-module:container/list", "*", "permit",
-            "Allowed to edit list items (top-level only).");
+    add_nacm_rule(nacm_config, "acl2", "allow-list-item-key1", "example-module", NACM_RULE_DATA,
+            "/example-module:container/list/key1", "*", "permit",
+            "Allowed to edit key1 from list item.");
+    add_nacm_rule(nacm_config, "acl2", "allow-list-item-key2", "example-module", NACM_RULE_DATA,
+            "/example-module:container/list/key2", "*", "permit",
+            "Allowed to edit key2 from list item.");
+    add_nacm_rule(nacm_config, "acl2", "allow-list-item-leaf", "example-module", NACM_RULE_DATA,
+            "/example-module:container/list/leaf", "create", "permit",
+            "Allowed to create (not delete) leaf from list item.");
+    add_nacm_rule(nacm_config, "acl2", "disallow-to-delete-list-item-leaf", "example-module", NACM_RULE_DATA,
+            "/example-module:container/list/leaf", "delete", "deny",
+            "Do not allowed to delete leaf from list item.");
     /*    -> data, ietf-interfaces: */
     add_nacm_rule(nacm_config, "acl2", "deny-removing-interfaces", "ietf-interfaces", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface", "delete", "deny", "Not allowed to remove existing interface");
@@ -795,26 +777,14 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
     /*    -> data, test-module: */
     add_nacm_rule(nacm_config, "acl3", "permit-all-numbers", "test-module", NACM_RULE_DATA,
             "/test-module:main/numbers", "create delete", "permit", "Allow to create/delete all numbers.");
-    add_nacm_rule(nacm_config, "acl3", "allow-presence-container-with-subset-of-content", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container/child2", "*", "permit", "Allow to edit presence container from test-module (child2).");
-    add_nacm_rule(nacm_config, "acl3", "allow-presence-container-with-subset-of-content2", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container/child1/grandchild1/grandchild1-leaf", "*", "permit",
-            "Allow to edit presence container from test-module (grandchild1-leaf).");
-    add_nacm_rule(nacm_config, "acl3", "deny-grandchild2", "test-module", NACM_RULE_DATA,
-            "/test-module:presence-container/child2/grandchild2", "*", "deny", "Disallow to edit grandchild2 container from test-module.");
+    add_nacm_rule(nacm_config, "acl3", "allow-presence-container", "test-module", NACM_RULE_DATA,
+            "/test-module:presence-container", "*", "permit", "Allow to edit presence container from test-module.");
     /*    -> data, example-module: */
-    add_nacm_rule(nacm_config, "acl3", "allow-list-item-content1", "example-module", NACM_RULE_DATA,
-            "/example-module:container/list/key1", "*", "permit",
-            "Allowed to edit key1 from list item.");
-    add_nacm_rule(nacm_config, "acl3", "allow-list-item-content2", "example-module", NACM_RULE_DATA,
-            "/example-module:container/list/key2", "*", "permit",
-            "Allowed to edit key2 from list item.");
-    add_nacm_rule(nacm_config, "acl3", "allow-list-item-content3", "example-module", NACM_RULE_DATA,
-            "/example-module:container/list/leaf", "create", "permit",
-            "Allowed to create (not delete) leaf from list item.");
+    add_nacm_rule(nacm_config, "acl3", "allow-list-items", "example-module", NACM_RULE_DATA,
+            "/example-module:container/list", "create delete", "permit", "Allowed to create/delete list items.");
     /*    -> data, ietf-interfaces: */
-    add_nacm_rule(nacm_config, "acl3", "allow-enabling-interfaces", "ietf-interfaces", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/enabled", "*", "permit", "Allow to enable interface");
+    add_nacm_rule(nacm_config, "acl3", "allow-new-interfaces", "ietf-interfaces", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface", "create", "permit", "Allowed to create new interface");
     /*    -> any, test-module: */
     add_nacm_rule(nacm_config, "acl3", "deny-test-module", "test-module", NACM_RULE_NOTSET,
             NULL, "*", "deny", "Deny everything not explicitly permitted in test-module.");
@@ -2520,7 +2490,6 @@ nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_DELETE, "", "");
 
-#if 0
     /* try to move an existing leaf-list to the first position */
 #undef NODE_XPATH
 #define NODE_XPATH "/test-module:ordered-numbers[.='57']"
@@ -2536,7 +2505,6 @@ nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
     rc = sr_move_item(sessions[2], NODE_XPATH, SR_MOVE_LAST, NULL);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "");
-#endif
 
     /* try to create a new leaf together with its parent and some implicitly created nodes */
 #undef NODE_XPATH
@@ -2775,7 +2743,6 @@ nacm_cl_test_commit_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
 
-#if 0
     /* try to move an existing leaf-list to the first position */
 #undef NODE_XPATH
 #define NODE_XPATH "/test-module:ordered-numbers[.='57']"
@@ -2791,7 +2758,6 @@ nacm_cl_test_commit_nacm(void **state)
     rc = sr_move_item(sessions[2], NODE_XPATH, SR_MOVE_LAST, NULL);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
-#endif
 
     /* try to create a new leaf together with its parent and some implicitly created nodes */
 #undef NODE_XPATH
@@ -2805,14 +2771,13 @@ nacm_cl_test_commit_nacm(void **state)
     /*  -> sysrepo-user2 */
     rc = sr_set_item(sessions[1], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(1, NODE_XPATH "/child1/grandchild1/grandchild1-leaf", NACM_ACCESS_CREATE, "", "",
-                      NODE_XPATH "/child2", NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_CREATE, "", "");
     /*  -> sysrepo-user3 */
     rc = sr_set_item(sessions[2], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_PERMITTED(0);
+    COMMIT_PERMITTED(2);
 
-#if 0
+#if 0 /* TODO: report crash in lyd_diff */
     /* try to edit NACM configuration */
 #undef NODE_XPATH
 #define NODE_XPATH "/ietf-netconf-acm:nacm/write-default"
@@ -2861,7 +2826,9 @@ nacm_cl_test_commit_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_delete_item(sessions[1], NODE3_XPATH, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED_N(1, 9);
+    COMMIT_DENIED3(1, NODE3_XPATH, NACM_ACCESS_DELETE, "", "",
+                      NODE_XPATH, NACM_ACCESS_CREATE, "", "",
+                      NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
     /*  -> sysrepo-user3 */
     rc = sr_set_item_str(sessions[2], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -2869,7 +2836,7 @@ nacm_cl_test_commit_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_delete_item(sessions[2], NODE3_XPATH, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(2, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "", "",
+    COMMIT_DENIED2(2, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.",
                       NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
 
     /* try to edit ietf-interfaces */
@@ -2888,9 +2855,8 @@ nacm_cl_test_commit_nacm(void **state)
     value.data.bool_val = true;
     rc = sr_set_item(sessions[0], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED3(0, NODE3_XPATH, NACM_ACCESS_UPDATE, "", "",
-                      NODE_XPATH, NACM_ACCESS_DELETE, "", "",
-                      NODE2_XPATH "/enabled", NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED2(0, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "", "");
     /*  -> sysrepo-user2 */
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_delete_item(sessions[1], NODE_XPATH, SR_EDIT_STRICT);
@@ -2907,7 +2873,8 @@ nacm_cl_test_commit_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item(sessions[2], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
+    COMMIT_DENIED2(2, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
 
     /* stop sessions */
     for (int i = 0; i < NUM_OF_USERS; ++i) {
@@ -3026,7 +2993,6 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
 
-#if 0
     /* try to move an existing leaf-list to the first position */
 #undef NODE_XPATH
 #define NODE_XPATH "/test-module:ordered-numbers[.='57']"
@@ -3042,7 +3008,6 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     rc = sr_move_item(sessions[2], NODE_XPATH, SR_MOVE_LAST, NULL);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
-#endif
 
     /* try to create a new leaf together with its parent and some implicitly created nodes */
 #undef NODE_XPATH
@@ -3056,13 +3021,14 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     /*  -> sysrepo-user2 */
     rc = sr_set_item(sessions[1], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-//    COMMIT_PERMITTED(1);
+    COMMIT_DENIED2(1, NODE_XPATH "/child1/grandchild1/grandchild1-leaf", NACM_ACCESS_CREATE, "deny-grandchild1-leaf", "Do not allow to edit grandchild1-leaf.",
+                      NODE_XPATH "/child2", NACM_ACCESS_CREATE, "deny-child2", "Do not allow to create child2.");
     /*  -> sysrepo-user3 */
     rc = sr_set_item(sessions[2], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_PERMITTED(0);
+    COMMIT_PERMITTED(2);
 
-#if 0
+#if 0 /* TODO: report crash in lyd_diff */
     /* try to edit NACM configuration */
 #undef NODE_XPATH
 #define NODE_XPATH "/ietf-netconf-acm:nacm/write-default"
@@ -3110,7 +3076,7 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_delete_item(sessions[1], NODE3_XPATH, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_PERMITTED(1);
+    COMMIT_DENIED(1, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.");
     /*  -> sysrepo-user3 */
     rc = sr_set_item_str(sessions[2], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -3118,7 +3084,8 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_delete_item(sessions[2], NODE3_XPATH, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
+    COMMIT_DENIED2(2, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.",
+                      NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
 
     /* try to edit ietf-interfaces */
 #undef NODE_XPATH
@@ -3136,7 +3103,7 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     value.data.bool_val = true;
     rc = sr_set_item(sessions[0], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_PERMITTED(0);
+    COMMIT_DENIED(0, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface");
     /*  -> sysrepo-user2 */
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_delete_item(sessions[1], NODE_XPATH, SR_EDIT_STRICT);
@@ -3152,7 +3119,8 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item(sessions[2], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
+    COMMIT_DENIED2(2, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
 
     /* stop sessions */
     for (int i = 0; i < NUM_OF_USERS; ++i) {
@@ -3271,7 +3239,6 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
 
-#if 0
     /* try to move an existing leaf-list to the first position */
 #undef NODE_XPATH
 #define NODE_XPATH "/test-module:ordered-numbers[.='57']"
@@ -3282,12 +3249,11 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     /*  -> sysrepo-user2 */
     rc = sr_move_item(sessions[1], NODE_XPATH, SR_MOVE_LAST, NULL);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "");
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_UPDATE, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
     /*  -> sysrepo-user3 */
     rc = sr_move_item(sessions[2], NODE_XPATH, SR_MOVE_LAST, NULL);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
-#endif
 
     /* try to create a new leaf together with its parent and some implicitly created nodes */
 #undef NODE_XPATH
@@ -3301,14 +3267,14 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     /*  -> sysrepo-user2 */
     rc = sr_set_item(sessions[1], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED(1, NODE_XPATH "/child2/grandchild2", NACM_ACCESS_CREATE,
-            "deny-grandchild2", "Disallow to edit grandchild2 container from test-module.");
+    COMMIT_DENIED2(1, NODE_XPATH "/child1/grandchild1/grandchild1-leaf", NACM_ACCESS_CREATE, "deny-grandchild1-leaf", "Do not allow to edit grandchild1-leaf.",
+                      NODE_XPATH "/child2", NACM_ACCESS_CREATE, "deny-child2", "Do not allow to create child2.");
     /*  -> sysrepo-user3 */
     rc = sr_set_item(sessions[2], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_PERMITTED(0);
+    COMMIT_PERMITTED(2);
 
-#if 0
+#if 0 /* TODO: report crash in lyd_diff */
     /* try to edit NACM configuration */
 #undef NODE_XPATH
 #define NODE_XPATH "/ietf-netconf-acm:nacm/write-default"
@@ -3348,8 +3314,7 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_delete_item(sessions[0], NODE3_XPATH, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(0, NODE3_XPATH, NACM_ACCESS_DELETE, "", "",
-                      NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
+    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
     /*  -> sysrepo-user2 */
     rc = sr_set_item_str(sessions[1], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -3357,7 +3322,7 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_delete_item(sessions[1], NODE3_XPATH, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED(1, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "", "");
+    COMMIT_DENIED(1, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.");
     /*  -> sysrepo-user3 */
     rc = sr_set_item_str(sessions[2], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -3365,7 +3330,7 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_delete_item(sessions[2], NODE3_XPATH, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(2, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "", "",
+    COMMIT_DENIED2(2, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.",
                       NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
 
     /* try to edit ietf-interfaces */
@@ -3384,7 +3349,8 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     value.data.bool_val = true;
     rc = sr_set_item(sessions[0], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_DELETE, "", "");
+    COMMIT_DENIED2(0, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "", "");
     /*  -> sysrepo-user2 */
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_delete_item(sessions[1], NODE_XPATH, SR_EDIT_STRICT);
@@ -3392,8 +3358,7 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item(sessions[1], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(1, NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface",
-                      NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
     /*  -> sysrepo-user3 */
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
@@ -3401,7 +3366,8 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item(sessions[2], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
+    COMMIT_DENIED2(2, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
 
     /* stop sessions */
     for (int i = 0; i < NUM_OF_USERS; ++i) {
@@ -3412,7 +3378,6 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
 int
 main() {
     const struct CMUnitTest tests[] = {
-#if 0
         /* RPC */
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm, sysrepo_setup, sysrepo_teardown),
@@ -3423,7 +3388,6 @@ main() {
             cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm_with_denied_read_by_dflt, sysrepo_setup_with_denied_read_by_dflt, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
-#endif
         /* Commit */
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm, sysrepo_setup, sysrepo_teardown),

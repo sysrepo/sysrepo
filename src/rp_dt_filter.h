@@ -59,12 +59,11 @@ int rp_dt_nacm_filtering(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_
  * @param [in] root Root of the tree to prune.
  * @param [in] data_tree Data tree to which the root belongs to.
  * @param [in] check_enabled Prune away subtrees which are not enabled.
- * @param [in] cache Use cache to remember results of pruning for individual nodes.
  * @param [out] pruning_cb Pruning callback to use for ::sr_copy_node_to_tree and the like.
  * @param [out] pruning_ctx Pruning context to use with the callback.
  */
 int rp_dt_init_tree_pruning(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *root, struct lyd_node *data_tree,
-        bool check_enabled, bool cache, sr_tree_pruning_cb *pruning_cb, rp_tree_pruning_ctx_t **pruning_ctx);
+        bool check_enabled, sr_tree_pruning_cb *pruning_cb, rp_tree_pruning_ctx_t **pruning_ctx);
 
 /**
  * @brief Stop tree pruning and deallocate all memory associated with the context.

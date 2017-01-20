@@ -1016,6 +1016,13 @@ verify_xpath_hash(struct lyd_node *node, uint32_t expected)
     assert_int_equal(expected, dm_get_node_xpath_hash(node->schema));
 }
 
+static void
+verify_data_depth(struct lyd_node *node, uint16_t expected)
+{
+    assert_non_null(node);
+    assert_non_null(node->schema->priv);
+    assert_int_equal(expected, dm_get_node_data_depth(node->schema));
+}
 void
 dm_schema_node_xpath_hash(void **state)
 {
@@ -1035,55 +1042,66 @@ dm_schema_node_xpath_hash(void **state)
     node = get_single_node(data_tree, "/ietf-interfaces:interfaces");
     hash = sr_str_hash("ietf-interfaces:interfaces");
     verify_xpath_hash(node, hash);
+    verify_data_depth(node, 0);
 
     node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']");
     hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface");
     verify_xpath_hash(node, hash);
+    verify_data_depth(node, 1);
 
     node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4");
     hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface")
            + sr_str_hash("ietf-ip:ipv4");
     verify_xpath_hash(node, hash);
+    verify_data_depth(node, 2);
 
     node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled");
     hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface")
            + sr_str_hash("ietf-ip:ipv4") + sr_str_hash("ietf-ip:enabled");
     verify_xpath_hash(node, hash);
+    verify_data_depth(node, 3);
 
     node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/ip");
     hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface")
            + sr_str_hash("ietf-ip:ipv4") + sr_str_hash("ietf-ip:address") + sr_str_hash("ietf-ip:ip");
     verify_xpath_hash(node, hash);
+    verify_data_depth(node, 4);
 
     assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx, "test-module", &data_tree));
 
     node = get_single_node(data_tree, "/test-module:main/i32");
     hash = sr_str_hash("test-module:main") + sr_str_hash("test-module:i32");
     verify_xpath_hash(node, hash);
+    verify_data_depth(node, 1);
 
     node = get_single_node(data_tree, "/test-module:list[key='k1']/wireless");
     hash = sr_str_hash("test-module:list") + sr_str_hash("test-module:wireless");
     verify_xpath_hash(node, hash);
+    verify_data_depth(node, 1);
 
     node = get_single_node(data_tree, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age");
     hash = sr_str_hash("test-module:university") + sr_str_hash("test-module:classes")
            + sr_str_hash("test-module:class") + sr_str_hash("test-module:student") + sr_str_hash("test-module:age");
     verify_xpath_hash(node, hash);
+    verify_data_depth(node, 4);
 
     assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree));
 
     node = get_single_node(data_tree, "/example-module:container");
     hash = sr_str_hash("example-module:container");
     verify_xpath_hash(node, hash);
+    verify_data_depth(node, 0);
 
     node = get_single_node(data_tree, "/example-module:container/list[key1='key1'][key2='key2']");
     hash = sr_str_hash("example-module:container") + sr_str_hash("example-module:list");
     verify_xpath_hash(node, hash);
+    verify_data_depth(node, 1);
 
     node = get_single_node(data_tree, "/example-module:container/list[key1='key1'][key2='key2']/leaf");
     hash = sr_str_hash("example-module:container") + sr_str_hash("example-module:list")
            + sr_str_hash("example-module:leaf");
     verify_xpath_hash(node, hash);
+    verify_data_depth(node, 2);
 
     dm_session_stop(ctx, ses_ctx);
     dm_cleanup(ctx);

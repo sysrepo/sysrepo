@@ -599,6 +599,12 @@ bool dm_is_enabled_check_recursively(struct lys_node *node);
 uint32_t dm_get_node_xpath_hash(struct lys_node *node);
 
 /**
+ * @brief Returns the depth of any potential instance of this schema node in the data tree.
+ * If NULL is provided as the argument then 0 is returned.
+ */
+uint16_t dm_get_node_data_depth(struct lys_node *node);
+
+/**
  * @brief Sets the state of the node.
  *
  * @note Function expects that a schema info is locked for writing.

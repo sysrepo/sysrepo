@@ -82,13 +82,14 @@ typedef struct dm_session_s {
 } dm_session_t;
 
 /**
- * @brief Info structure for the node which holds its state in the running data store
- * and a hash of its xpath in the schema tree.
+ * @brief Info structure for the node which holds its state in the running data store,
+ * hash of its xpath in the schema tree and its depth in the data tree.
  * (It will hold information about notification subscriptions.)
  */
 typedef struct dm_node_info_s {
     dm_node_state_t state;
     uint32_t xpath_hash;
+    uint16_t data_depth;
 } dm_node_info_t;
 
 /**
@@ -245,6 +246,21 @@ dm_set_node_xpath_hash(struct lys_node *node, uint32_t hash)
         CHECK_NULL_NOMEM_RETURN(node->priv);
     }
     ((dm_node_info_t *) node->priv)->xpath_hash = hash;
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Sets the depth of any potential instance of the given schema node.
+ */
+static int
+dm_set_node_data_depth(struct lys_node *node, uint16_t depth)
+{
+    CHECK_NULL_ARG(node);
+    if (NULL == node->priv) {
+        node->priv = calloc(1, sizeof(dm_node_info_t));
+        CHECK_NULL_NOMEM_RETURN(node->priv);
+    }
+    ((dm_node_info_t *) node->priv)->data_depth = depth;
     return SR_ERR_OK;
 }
 
@@ -443,6 +459,7 @@ dm_init_missing_node_priv_data(dm_schema_info_t *schema_info)
     char *node_full_name = NULL;
     bool backtracking = false;
     uint32_t hash = 0;
+    uint16_t depth = 0;
     CHECK_NULL_ARG(schema_info);
 
     node = schema_info->module->data;
@@ -456,6 +473,9 @@ dm_init_missing_node_priv_data(dm_schema_info_t *schema_info)
                 node = node->parent;
                 if (NULL != node && LYS_AUGMENT == node->nodetype) {
                     node = ((struct lys_node_augment *)node)->target;
+                }
+                if (sr_lys_data_node(node)) {
+                    --depth;
                 }
             }
         } else {
@@ -471,11 +491,18 @@ dm_init_missing_node_priv_data(dm_schema_info_t *schema_info)
                 free(node_full_name);
                 node_full_name = NULL;
                 rc = dm_set_node_xpath_hash(node, hash);
-            }
-            if (SR_ERR_OK != rc) {
-                return rc;
+                if (SR_ERR_OK != rc) {
+                    return rc;
+                }
+                rc = dm_set_node_data_depth(node, depth);
+                if (SR_ERR_OK != rc) {
+                    return rc;
+                }
             }
             if (!(node->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) && node->child) {
+                if (sr_lys_data_node(node)) {
+                    ++depth;
+                }
                 node = node->child;
             } else {
                 backtracking = true;
@@ -1265,6 +1292,16 @@ dm_get_node_xpath_hash(struct lys_node *node)
     }
     dm_node_info_t *n_info = (dm_node_info_t *) node->priv;
     return n_info->xpath_hash;
+}
+
+uint16_t
+dm_get_node_data_depth(struct lys_node *node)
+{
+    if (NULL == node || NULL == node->priv) {
+        return 0;
+    }
+    dm_node_info_t *n_info = (dm_node_info_t *) node->priv;
+    return n_info->data_depth;
 }
 
 static int
@@ -3422,8 +3459,8 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
         }
 
         /* start NACM data access validation for this module */
-        rc = nacm_data_validation_start(nacm_ctx, session->user_credentials, commit_info->node->schema, false,
-                                    &nacm_data_val_ctx);
+        rc = nacm_data_validation_start(nacm_ctx, session->user_credentials, commit_info->node->schema,
+                &nacm_data_val_ctx);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to start NACM data validation.");
 
         /* Iterate over all changes. Some changes may include whole subtrees. */

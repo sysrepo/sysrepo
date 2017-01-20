@@ -815,6 +815,7 @@ nacm_test_rules(void **state)
     assert_int_equal(NACM_RULE_NOTSET, rule->type);
     assert_null(rule->data.path);
     assert_int_equal(0, rule->data_hash);
+    assert_int_equal(0, rule->data_depth);
     assert_int_equal(NACM_ACCESS_ALL, rule->access);
     assert_int_equal(NACM_ACTION_DENY, rule->action);
     assert_string_equal(RULE1_COMMENT, rule->comment);
@@ -841,6 +842,7 @@ nacm_test_rules(void **state)
     assert_int_equal(NACM_RULE_NOTSET, rule->type);
     assert_null(rule->data.path);
     assert_int_equal(0, rule->data_hash);
+    assert_int_equal(0, rule->data_depth);
     assert_int_equal(NACM_ACCESS_ALL, rule->access);
     assert_int_equal(NACM_ACTION_DENY, rule->action);
     assert_string_equal(RULE1_COMMENT, rule->comment);
@@ -852,6 +854,7 @@ nacm_test_rules(void **state)
     assert_int_equal(NACM_RULE_NOTSET, rule->type);
     assert_null(rule->data.path);
     assert_int_equal(0, rule->data_hash);
+    assert_int_equal(0, rule->data_depth);
     assert_int_equal(NACM_ACCESS_ALL, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_null(rule->comment);
@@ -890,6 +893,7 @@ nacm_test_rules(void **state)
     assert_int_equal(NACM_RULE_NOTSET, rule->type);
     assert_null(rule->data.path);
     assert_int_equal(0, rule->data_hash);
+    assert_int_equal(0, rule->data_depth);
     assert_int_equal(NACM_ACCESS_ALL, rule->access);
     assert_int_equal(NACM_ACTION_DENY, rule->action);
     assert_string_equal(RULE1_COMMENT, rule->comment);
@@ -901,6 +905,7 @@ nacm_test_rules(void **state)
     assert_int_equal(NACM_RULE_NOTSET, rule->type);
     assert_null(rule->data.path);
     assert_int_equal(0, rule->data_hash);
+    assert_int_equal(0, rule->data_depth);
     assert_int_equal(NACM_ACCESS_ALL, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_null(rule->comment);
@@ -917,6 +922,7 @@ nacm_test_rules(void **state)
     assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']", rule->data.path);
     hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface");
     assert_int_equal(hash, rule->data_hash);
+    assert_int_equal(1, rule->data_depth);
     assert_int_equal(NACM_ACCESS_UPDATE | NACM_ACCESS_DELETE, rule->access);
     assert_int_equal(NACM_ACTION_DENY, rule->action);
     assert_string_equal("This is rule1.", rule->comment);
@@ -928,6 +934,7 @@ nacm_test_rules(void **state)
     assert_int_equal(NACM_RULE_RPC, rule->type);
     assert_string_equal("/test-module:activate-software-image", rule->data.rpc_name);
     assert_int_equal(0, rule->data_hash);
+    assert_int_equal(0, rule->data_depth);
     assert_int_equal(NACM_ACCESS_EXEC, rule->access);
     assert_int_equal(NACM_ACTION_DENY, rule->action);
     assert_string_equal("This is rule2.", rule->comment);
@@ -939,6 +946,7 @@ nacm_test_rules(void **state)
     assert_int_equal(NACM_RULE_NOTIF, rule->type);
     assert_string_equal("/test-module:link-discovered", rule->data.event_notif_name);
     assert_int_equal(0, rule->data_hash);
+    assert_int_equal(0, rule->data_depth);
     assert_int_equal(NACM_ACCESS_EXEC, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_string_equal("This is rule3.", rule->comment);
@@ -950,6 +958,7 @@ nacm_test_rules(void **state)
     assert_int_equal(NACM_RULE_NOTSET, rule->type);
     assert_null(rule->data.path);
     assert_int_equal(0, rule->data_hash);
+    assert_int_equal(0, rule->data_depth);
     assert_int_equal(NACM_ACCESS_READ | NACM_ACCESS_CREATE | NACM_ACCESS_DELETE, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_string_equal("This is rule4.", rule->comment);
@@ -962,6 +971,7 @@ nacm_test_rules(void **state)
     assert_string_equal("/example-module:container", rule->data.path);
     hash = sr_str_hash("example-module:container");
     assert_int_equal(hash, rule->data_hash);
+    assert_int_equal(0, rule->data_depth);
     assert_int_equal(NACM_ACCESS_READ, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_string_equal("This is rule5.", rule->comment);
@@ -975,6 +985,7 @@ nacm_test_rules(void **state)
     hash = sr_str_hash("module1:container") + sr_str_hash("module2:list") + sr_str_hash("module2:container")
            + sr_str_hash("module3:leaf");
     assert_int_equal(hash, rule->data_hash);
+    assert_int_equal(3, rule->data_depth);
     assert_int_equal(NACM_ACCESS_READ, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_string_equal("This is rule6.", rule->comment);
@@ -1012,10 +1023,8 @@ nacm_config_for_basic_read_access_tests(bool disable_nacm, const char *read_dflt
             XP_TEST_MODULE_BOOL, "*", "deny", "Do not allow any access to the 'boolean' leaf.");
     add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
             "/test-module:main/numbers[.>10]", "*", "deny", NULL);
-    add_nacm_rule(nacm_config, "acl1", "permit-access-to-list", "test-module", NACM_RULE_DATA,
-            "/test-module:list", "*", "permit", NULL);
-    add_nacm_rule(nacm_config, "acl1", "permit-access-to-list-key", "test-module", NACM_RULE_DATA,
-            "/test-module:list/key", "*", "permit", NULL);
+    add_nacm_rule(nacm_config, "acl1", "permit-access-to-list-k1", "test-module", NACM_RULE_DATA,
+            "/test-module:list[key='k1']", "*", "permit", NULL);
     add_nacm_rule(nacm_config, "acl1", "deny-read-interface-status", "*", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface/enabled", "read update", "deny", NULL);
     /*  -> acl2: */
@@ -1093,7 +1102,8 @@ nacm_test_read_access_single_value(void **state)
     rc = rp_dt_get_value(dm_ctx, rp_session[1], data_tree[1], NULL, LIST_K1_UNION, false, &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
     rc = rp_dt_get_value(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_K1_UNION, false, &value);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied */
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
+    sr_free_val(value);
     rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_K1_UNION, false, &value);
     assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
     sr_free_val(value);
@@ -1262,7 +1272,6 @@ nacm_test_read_access_single_value(void **state)
     rc = rp_dt_get_value(dm_ctx, rp_session[3], data_tree[3], NULL, NACM_USER1, false, &value);
     assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
     sr_free_val(value);
-
     /* check stats */
     rc = nacm_get_stats(nacm_ctx, &denied_rpc, &denied_event_notif, &denied_data_write);
     assert_int_equal(0, rc);
@@ -1331,7 +1340,7 @@ nacm_test_read_access_multiple_values(void **state)
     sr_free_values(values, count);
     rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_K1, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(1, count);             /* key */
+    assert_int_equal(4, count);             /* access allowed to all instances */
     sr_free_values(values, count);
     rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_K1, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
@@ -1348,9 +1357,7 @@ nacm_test_read_access_multiple_values(void **state)
     assert_int_equal(3, count);             /* access allowed to all instances */
     sr_free_values(values, count);
     rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_K2, false, &values, &count);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(1, count);             /* key */
-    sr_free_values(values, count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc); /* access denied to all instances */
     rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_K2, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);             /* access allowed to all instances */
@@ -1583,7 +1590,12 @@ nacm_test_read_access_multiple_values_with_opts(void **state)
     rc = rp_dt_find_nodes_with_opts(dm_ctx, rp_session[2], &get_items_ctx, data_tree[2], LIST_K1,
             0, 2, &nodes);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(1, nodes->number);             /* key */
+    assert_int_equal(2, nodes->number);             /* access allowed to all instances (in the limit) */
+    ly_set_free(nodes);
+    rc = rp_dt_find_nodes_with_opts(dm_ctx, rp_session[2], &get_items_ctx, data_tree[2], LIST_K1,
+            2, 2, &nodes);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, nodes->number);             /* access allowed to all instances (in the limit) */
     ly_set_free(nodes);
     /*    -> session 3 */
     reset_get_items_ctx(&get_items_ctx);
@@ -1617,9 +1629,7 @@ nacm_test_read_access_multiple_values_with_opts(void **state)
     reset_get_items_ctx(&get_items_ctx);
     rc = rp_dt_find_nodes_with_opts(dm_ctx, rp_session[2], &get_items_ctx, data_tree[2], LIST_K2,
             0, 5, &nodes);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(1, nodes->number);             /* k2 */
-    ly_set_free(nodes);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);         /* access denied to all instances */
     /*    -> session3 */
     reset_get_items_ctx(&get_items_ctx);
     rc = rp_dt_find_nodes_with_opts(dm_ctx, rp_session[3], &get_items_ctx, data_tree[3], LIST_K2,
@@ -1942,7 +1952,7 @@ nacm_test_read_access_single_subtree(void **state)
     sr_free_tree(subtree);
     rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_K1, false, &subtree);
     assert_int_equal(SR_ERR_OK, rc);
-    verify_tree_size(subtree, 2);            /* list, k1 */
+    verify_tree_size(subtree, 5);            /* access allowed to all nodes */
     sr_free_tree(subtree);
     rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_K1, false, &subtree);
     assert_int_equal(SR_ERR_OK, rc);
@@ -1960,9 +1970,7 @@ nacm_test_read_access_single_subtree(void **state)
     verify_tree_size(subtree, 4);            /* access allowed to all nodes */
     sr_free_tree(subtree);
     rc = rp_dt_get_subtree(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_K2, false, &subtree);
-    assert_int_equal(SR_ERR_OK, rc);
-    verify_tree_size(subtree, 2);            /* list, k2 */
-    sr_free_tree(subtree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied */
     rc = rp_dt_get_subtree(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_K2, false, &subtree);
     assert_int_equal(SR_ERR_OK, rc);
     verify_tree_size(subtree, 4);            /* access allowed to all nodes */
@@ -2253,10 +2261,11 @@ nacm_test_read_access_multiple_subtrees(void **state)
     sr_free_trees(subtrees, count);
     /*     -> session 2 */
     rc = rp_dt_get_subtrees(dm_ctx, rp_session[2], data_tree[2], NULL, TEST_MODULE_LIST, false, &subtrees, &count);
-    assert_int_equal(SR_ERR_OK, rc);        /* lists with their keys only */
-    assert_int_equal(2, count);
-    verify_tree_size(subtrees, 2);
-    verify_tree_size(subtrees+1, 2);
+    assert_int_equal(SR_ERR_OK, rc);        /* access allowed to k1 */
+    assert_int_equal(1, count);
+    assert_non_null(node_get_child(subtrees, "key"));
+    assert_string_equal("k1", node_get_child(subtrees, "key")->data.string_val);
+    verify_tree_size(subtrees, 5);
     sr_free_trees(subtrees, count);
     /*     -> session 3 */
     rc = rp_dt_get_subtrees(dm_ctx, rp_session[3], data_tree[3], NULL, TEST_MODULE_LIST, false, &subtrees, &count);
@@ -2729,13 +2738,13 @@ nacm_test_read_access_denied_by_default(void **state)
 #define LIST_ITEMS "/test-module:list/*"
     rc = rp_dt_get_values(dm_ctx, rp_session[0], data_tree[0], NULL, LIST_ITEMS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(2, count);              /* k1, k2 */
+    assert_int_equal(4, count);              /* list[name='k1']/. */
     sr_free_values(values, count);
     rc = rp_dt_get_values(dm_ctx, rp_session[1], data_tree[1], NULL, LIST_ITEMS, false, &values, &count);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);  /* access denied for all instances */
     rc = rp_dt_get_values(dm_ctx, rp_session[2], data_tree[2], NULL, LIST_ITEMS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(2, count);              /* k1, k2 */
+    assert_int_equal(4, count);              /* list[name='k1']/. */
     sr_free_values(values, count);
     rc = rp_dt_get_values(dm_ctx, rp_session[3], data_tree[3], NULL, LIST_ITEMS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
@@ -2747,9 +2756,8 @@ nacm_test_read_access_denied_by_default(void **state)
     /*     -> session 0 */
     rc = rp_dt_get_subtrees(dm_ctx, rp_session[0], data_tree[0], NULL, TEST_MODULE_LIST, false, &subtrees, &count);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(2, count);              /* list/k1 + list/k2 */
-    verify_child_count(subtrees, 1);
-    verify_child_count(subtrees+1, 1);
+    assert_int_equal(1, count);              /* list/k1 */
+    verify_child_count(subtrees, 4);
     sr_free_trees(subtrees, count);
     /*     -> session 1 */
     rc = rp_dt_get_subtrees(dm_ctx, rp_session[1], data_tree[1], NULL, TEST_MODULE_LIST, false, &subtrees, &count);
@@ -2757,9 +2765,8 @@ nacm_test_read_access_denied_by_default(void **state)
     /*     -> session 2 */
     rc = rp_dt_get_subtrees(dm_ctx, rp_session[2], data_tree[2], NULL, TEST_MODULE_LIST, false, &subtrees, &count);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(2, count);              /* list/k1 + list/k2 */
-    verify_child_count(subtrees, 1);
-    verify_child_count(subtrees+1, 1);
+    assert_int_equal(1, count);              /* list/k1 */
+    verify_child_count(subtrees, 4);
     sr_free_trees(subtrees, count);
     /*     -> session 3 */
     rc = rp_dt_get_subtrees(dm_ctx, rp_session[3], data_tree[3], NULL, TEST_MODULE_LIST, false, &subtrees, &count);

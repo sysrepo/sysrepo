@@ -106,6 +106,8 @@ typedef struct nacm_rule_s {
     } data;
     uint32_t data_hash;          /**< Hash of the data node instance identifier's value (data.path).
                                       Used only if rule is of type NACM_RULE_DATA for quicker data validation. */
+    uint16_t data_depth;         /**< Tree depth of the data node referenced by the instance identifier (data.path).
+                                      Used only if rule is of type NACM_RULE_DATA for quicker data validation. */
     uint8_t access;              /**< Access operations associated with this rule (combination of ::nacm_access_flag_t). */
     nacm_action_t action;        /**< The access control action associated with the rule. */
     char *comment;               /**< Textual description of the access rule. */
@@ -153,12 +155,16 @@ typedef struct nacm_ctx_s {
 } nacm_ctx_t;
 
 /**
- * @brief Structure that stores the set of nodes that a particular rule (of type NACM_RULE_DATA) applies to.
+ * @brief Structure that for a given data-oriented NACM rule stores pointers to matching nodes in
+ * both the pre-commit data tree and the post-commit data tree.
  */
-typedef struct nacm_nodeset_s {
-    uint16_t rule_id;     /**< Rule ID. */
-    struct ly_set *set;   /**< Set of data nodes ordered by their memory locations from the lowest to the highest. */
-} nacm_nodeset_t;
+typedef struct nacm_data_targets_s {
+    uint16_t rule_id;           /**< Rule ID. */
+    struct ly_set *orig_dt;     /**< Set of matching data nodes from the pre-commit data tree,
+                                     ordered by their memory locations from the lowest to the highest. */
+    struct ly_set *new_dt;      /**< Set of matching data nodes from the post-commit data tree,
+                                     ordered by their memory locations from the lowest to the highest. */
+} nacm_data_targets_t;
 
 /**
  * @brief Structure that stores an outcome of a NACM data validation for re-use.
@@ -180,13 +186,8 @@ typedef struct nacm_data_val_ctx_s {
     dm_schema_info_t *schema_info;      /**< Schema info associated with the data tree whose nodes are being validated. */
     sr_bitset_t *rule_lists;            /**< Set of rule-lists that apply to this data validation request.
                                              (stored as bitset of their IDs). */
-    struct {
-        bool enabled;                   /**< Use cache to speed-up consecutive data access validations. */
-        sr_btree_t *nodesets;           /**< A set of data-oriented NACM rules with already evaluated path.
-                                             Items are of type nacm_nodeset_t. */
-        sr_btree_t *results;            /**< Outcomes of already executed data validations within this context.
-                                             Items are of type nacm_data_val_result_t. */
-    } cache;
+    sr_btree_t *data_targets;           /**< A binary tree of target nodes for data-oriented NACM rules with already evaluated
+                                             path. Items are of type nacm_data_targets_t. */
 } nacm_data_val_ctx_t;
 
 /**
@@ -248,12 +249,10 @@ int nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const char *username, const cha
  * @param [in] nacm_ctx NACM context.
  * @param [in] user_credentials User credentials.
  * @param [in] dt_schema Schema of the data tree whose nodes will be validated.
- * @param [in] cache Use cache to remember sets of matching nodes for data-oriented rules and results
- *                   of past validation runs.
  * @param [out] nacm_data_val_ctx Returned context representing this request.
  */
 int nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, struct lys_node *dt_schema,
-        bool cache, nacm_data_val_ctx_t **nacm_data_val_ctx);
+        nacm_data_val_ctx_t **nacm_data_val_ctx);
 
 /**
  * @brief Stop an on-going data validation request. The associated NACM context is unlocked and
