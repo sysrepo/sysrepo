@@ -1606,29 +1606,24 @@ nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t acces
             nacm_rule_list = (nacm_rule_list_t *)nacm_ctx->rule_lists->data[i];
             for (size_t j = 0; j < nacm_rule_list->rules->count; ++j) {
                 nacm_rule = (nacm_rule_t *)nacm_rule_list->rules->data[j];
-                SR_LOG_DBG("Processing rule %s (for %s)", nacm_rule->name, node->schema->name);
                 /* step 6: process all rules until a match is found */
                 if (false == (access_type & nacm_rule->access)) {
-                    SR_LOG_DBG("The rule %s doesn't match (1)!", nacm_rule->name);
                     /* this rule is for different access operation */
                     continue;
                 }
                 if (NACM_RULE_DATA != nacm_rule->type && NACM_RULE_NOTSET != nacm_rule->type) {
                     /* this rule is not defined for data access validation */
-                    SR_LOG_DBG("The rule %s doesn't match (2)!", nacm_rule->name);
                     continue;
                 }
                 if (0 != strcmp("*", nacm_rule->module) &&
                     0 != strcmp(node->schema->module->name, nacm_rule->module)) {
                     /* this rule doesn't apply to the module where the node is defined */
-                    SR_LOG_DBG("The rule %s doesn't match (3)!", nacm_rule->name);
                     continue;
                 }
                 if (NULL != nacm_rule->data.path && 0 != strcmp("/", nacm_rule->data.path)) {
                     /* check if the schema node matches - first by depth, then by hash */
                     if (node_data_depth < nacm_rule->data_depth) {
                         /* path doesn't apply to this schema node */
-                        SR_LOG_DBG("The rule %s doesn't match (4) (%" PRIu16 ", %" PRIu16 ")!", nacm_rule->name, node_data_depth, nacm_rule->data_depth);
                         continue;
                     }
                     parent = node;
@@ -1637,7 +1632,6 @@ nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t acces
                     }
                     if (NULL == parent || (parent_xpath_hash = dm_get_node_xpath_hash(parent->schema)) != nacm_rule->data_hash) {
                         /* path doesn't reference this schema node */
-                        SR_LOG_DBG("The rule %s doesn't match (5) (%" PRIu32 ", %" PRIu32 ")!", nacm_rule->name, parent_xpath_hash, nacm_rule->data_hash);
                         continue;
                     }
                     /* check the cache if the instance identifier has been already evaluated for this data tree */
@@ -1669,12 +1663,10 @@ nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t acces
                     /* check if the data node matches */
                     if (sr_ly_set_contains(*targets_p, (void *)parent, true) < 0) {
                        /* path doesn't apply to this data node */
-                        SR_LOG_DBG("The rule %s doesn't match (7)!", nacm_rule->name);
                         continue;
                     }
                 }
                 /* the rule matches! */
-                SR_LOG_DBG("The rule %s matches!", nacm_rule->name);
                 action = nacm_rule->action;
                 rule_name = nacm_rule->name;
                 rule_info = nacm_rule->comment;
