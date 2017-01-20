@@ -5725,7 +5725,7 @@ cl_inst_id_to_more_modules_test (void **state)
     rc = sr_set_item_str(session, "/test-module:main/instance_id", "/example-module:container/example-module:list[example-module:key1='key1'][example-module:key2='key2']", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = sr_set_item_str(session, "/referenced-data:magic_number", "42", SR_EDIT_DEFAULT);
+    rc = sr_set_item_str(session, "/referenced-data:magic_number", "1", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_set_item_str(session, "/ietf-interfaces:interfaces/interface[name='ifA']/type", "iana-if-type:ethernetCsmacd", SR_EDIT_DEFAULT);

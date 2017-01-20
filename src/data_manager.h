@@ -538,15 +538,6 @@ bool dm_has_error(dm_session_t *session);
 int dm_copy_errors(dm_session_t *session, sr_mem_ctx_t *sr_mem, char **error_msg, char **err_xpath);
 
 /**
- * @brief Looks up the schema info structure for the module specified by module name
- * @param [in] dm_ctx
- * @param [in] module_name
- * @param [out] schema_info - returned schema info is not locked
- * @return Error code (SR_ERR_OK on success)
-*/
-int dm_get_schema_info(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info);
-
-/**
  *
  * @param [in] node
  * @return True if state of the node is DM_NODE_ENABLED or DM_NODE_ENABLED_WITH_CHILDREN, false otherwise.

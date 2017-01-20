@@ -324,6 +324,7 @@ dm_enable_features_in_tmp_module(dm_ctx_t *dm_ctx, md_module_t *md_module, const
     const char *main_module_name = NULL;
     sr_llist_node_t *ll_node = NULL;
     md_dep_t *md_dep = NULL;
+    bool locked = false;
 
     if (!md_module->has_persist) {
         return SR_ERR_OK;
@@ -344,13 +345,15 @@ dm_enable_features_in_tmp_module(dm_ctx_t *dm_ctx, md_module_t *md_module, const
         main_module_name = module->name;
     }
 
-    rc = dm_get_schema_info(dm_ctx, main_module_name, &si);
+    rc = dm_get_module_and_lock(dm_ctx, main_module_name, &si);
     CHECK_RC_LOG_RETURN(rc, "Schema '%s' not found", main_module_name);
+    locked = true;
 
     module_to_read_from = main_module_name == module->name ? si->module : ly_ctx_get_module(si->ly_ctx, module->name, NULL);
     if (NULL == module_to_read_from) {
         SR_LOG_ERR("Module %s not found", main_module_name);
-        return SR_ERR_INTERNAL;
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
     }
 
     features = lys_features_list(module_to_read_from, &features_state);
@@ -367,6 +370,9 @@ dm_enable_features_in_tmp_module(dm_ctx_t *dm_ctx, md_module_t *md_module, const
     }
 
 cleanup:
+    if (locked) {
+        pthread_rwlock_unlock(&si->model_lock);
+    }
     free(features_state);
     free(features);
 
@@ -736,23 +742,6 @@ dm_enable_module_subtree_running_internal(dm_ctx_t *ctx, dm_session_t *session, 
     rc = rp_dt_enable_xpath(ctx, session, schema_info, xpath);
     CHECK_RC_LOG_RETURN(rc, "Enabling of xpath %s failed", xpath);
 
-    return rc;
-}
-
-int
-dm_get_schema_info(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info)
-{
-    CHECK_NULL_ARG3(dm_ctx, module_name, schema_info);
-    int rc = SR_ERR_OK;
-    dm_schema_info_t lookup_item = {0,};
-    lookup_item.module_name = (char *) module_name;
-    RWLOCK_RDLOCK_TIMED_CHECK_RETURN(&dm_ctx->schema_tree_lock);
-    *schema_info = sr_btree_search(dm_ctx->schema_info_tree, &lookup_item);
-    pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
-    if (NULL == *schema_info) {
-        SR_LOG_ERR("Schema info not found for model %s", module_name);
-        return SR_ERR_NOT_FOUND;
-    }
     return rc;
 }
 
