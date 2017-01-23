@@ -138,8 +138,6 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
     int rc = SR_ERR_OK;
 
     char *namespace = NULL;
-    char *xp_copy = NULL;
-    size_t xp_len = 0;
     const struct lys_module *module = NULL;
     rc = sr_copy_first_ns(xpath, &namespace);
     CHECK_RC_MSG_RETURN(rc, "Namespace copy failed");
@@ -160,19 +158,6 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
     }
     free(namespace);
 
-    rc = rp_dt_trim_xpath(dm_ctx, xpath, schema_info, &xp_copy);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Error while xpath trim %s", xpath);
-        return rc;
-    }
-
-    xp_len = strlen(xp_copy);
-    if (0 == xp_len) {
-        free(xp_copy);
-        return SR_ERR_OK;
-    }
-
-
     const struct lys_node *start_node = NULL;
     if (NULL != schema_info->module && NULL != schema_info->module->data) {
         start_node = schema_info->module->data;
@@ -187,11 +172,12 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
         }
     }
 
-    const struct lys_node *sch_node = sr_find_schema_node(start_node, xp_copy, 0);
-    if (NULL != sch_node) {
-        if (NULL != match) {
-            *match = (struct lys_node *) sch_node;
+    struct ly_set *set = lys_find_xpath(start_node, xpath, 0);
+    if (NULL != set) {
+        if(1 == set->number && NULL != match) {
+            *match = set->set.s[0];
         }
+        ly_set_free(set);
     } else {
         switch (ly_vecode) {
         case LYVE_PATH_INKEY:
@@ -210,7 +196,7 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
             break;
         case LYVE_XPATH_INSNODE:
             if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), xp_copy, SR_ERR_BAD_ELEMENT);
+                rc = dm_report_error(session, ly_errmsg(), xpath, SR_ERR_BAD_ELEMENT);
             } else {
                 rc = SR_ERR_BAD_ELEMENT;
             }
@@ -223,7 +209,6 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
             }
         }
     }
-    free(xp_copy);
     return rc;
 }
 
