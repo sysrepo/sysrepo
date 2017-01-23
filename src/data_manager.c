@@ -97,13 +97,14 @@ typedef struct dm_session_s {
 } dm_session_t;
 
 /**
- * @brief Info structure for the node which holds its state in the running data store
- * and a hash of its xpath in the schema tree.
+ * @brief Info structure for the node which holds its state in the running data store,
+ * hash of its xpath in the schema tree and its depth in the data tree.
  * (It will hold information about notification subscriptions.)
  */
 typedef struct dm_node_info_s {
     dm_node_state_t state;
     uint32_t xpath_hash;
+    uint16_t data_depth;
 } dm_node_info_t;
 
 /**
@@ -195,6 +196,27 @@ dm_module_subscription_cmp(const void *a, const void *b)
 }
 
 /**
+ * @brief Compares two module diff-lists by module name
+ */
+static int
+dm_module_difflist_cmp(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    dm_module_difflist_t *sub_a = (dm_module_difflist_t *) a;
+    dm_module_difflist_t *sub_b = (dm_module_difflist_t *) b;
+
+    int res = strcmp(sub_a->schema_info->module_name, sub_b->schema_info->module_name);
+    if (res == 0) {
+        return 0;
+    } else if (res < 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+/**
  * @brief Compares two commit context by id
  */
 static int
@@ -239,6 +261,21 @@ dm_set_node_xpath_hash(struct lys_node *node, uint32_t hash)
         CHECK_NULL_NOMEM_RETURN(node->priv);
     }
     ((dm_node_info_t *) node->priv)->xpath_hash = hash;
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Sets the depth of any potential instance of the given schema node.
+ */
+static int
+dm_set_node_data_depth(struct lys_node *node, uint16_t depth)
+{
+    CHECK_NULL_ARG(node);
+    if (NULL == node->priv) {
+        node->priv = calloc(1, sizeof(dm_node_info_t));
+        CHECK_NULL_NOMEM_RETURN(node->priv);
+    }
+    ((dm_node_info_t *) node->priv)->data_depth = depth;
     return SR_ERR_OK;
 }
 
@@ -300,6 +337,19 @@ dm_model_subscription_free(void *sub)
         pthread_rwlock_destroy(&ms->changes_lock);
     }
     free(ms);
+}
+
+/**
+ * @brief frees the dm_module_difflist stored in binary tree
+ */
+static void
+dm_module_difflist_free(void *item)
+{
+    dm_module_difflist_t *difflist = (dm_module_difflist_t *) item;
+    if (NULL != difflist && NULL != difflist->difflist) {
+        lyd_free_diff(difflist->difflist);
+    }
+    free(difflist);
 }
 
 /**
@@ -635,6 +685,7 @@ dm_init_missing_node_priv_data(dm_schema_info_t *schema_info)
     char *node_full_name = NULL;
     bool backtracking = false;
     uint32_t hash = 0;
+    uint16_t depth = 0;
     CHECK_NULL_ARG(schema_info);
 
     node = schema_info->module->data;
@@ -648,6 +699,9 @@ dm_init_missing_node_priv_data(dm_schema_info_t *schema_info)
                 node = node->parent;
                 if (NULL != node && LYS_AUGMENT == node->nodetype) {
                     node = ((struct lys_node_augment *)node)->target;
+                }
+                if (sr_lys_data_node(node)) {
+                    --depth;
                 }
             }
         } else {
@@ -663,11 +717,18 @@ dm_init_missing_node_priv_data(dm_schema_info_t *schema_info)
                 free(node_full_name);
                 node_full_name = NULL;
                 rc = dm_set_node_xpath_hash(node, hash);
-            }
-            if (SR_ERR_OK != rc) {
-                return rc;
+                if (SR_ERR_OK != rc) {
+                    return rc;
+                }
+                rc = dm_set_node_data_depth(node, depth);
+                if (SR_ERR_OK != rc) {
+                    return rc;
+                }
             }
             if (!(node->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) && node->child) {
+                if (sr_lys_data_node(node)) {
+                    ++depth;
+                }
                 node = node->child;
             } else {
                 backtracking = true;
@@ -1503,6 +1564,16 @@ dm_get_node_xpath_hash(struct lys_node *node)
     }
     dm_node_info_t *n_info = (dm_node_info_t *) node->priv;
     return n_info->xpath_hash;
+}
+
+uint16_t
+dm_get_node_data_depth(struct lys_node *node)
+{
+    if (NULL == node || NULL == node->priv) {
+        return 0;
+    }
+    dm_node_info_t *n_info = (dm_node_info_t *) node->priv;
+    return n_info->data_depth;
 }
 
 static int
@@ -3385,6 +3456,7 @@ dm_free_commit_context(void *commit_ctx)
             sr_free_errors(c_ctx->errors, c_ctx->err_cnt);
         }
         c_ctx->session = NULL;
+        sr_btree_cleanup(c_ctx->difflists);
         free(c_ctx);
     }
 }
@@ -3507,6 +3579,9 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &c_ctx->prev_data_trees);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
 
+    rc = sr_btree_init(dm_module_difflist_cmp, dm_module_difflist_free, &c_ctx->difflists);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
+
     c_ctx->modif_count = 0;
     /* count modified files */
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i))) {
@@ -3615,6 +3690,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     CHECK_NULL_ARG5(dm_ctx, session, c_ctx->session, c_ctx->fds, c_ctx->existed);
     CHECK_NULL_ARG(c_ctx->up_to_date_models);
     dm_data_info_t *info = NULL;
+    nacm_ctx_t *nacm_ctx = NULL;
     size_t i = 0;
     size_t count = 0;
     int rc = SR_ERR_OK;
@@ -3748,9 +3824,15 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             goto cleanup;
         }
 
-        if (SR_DS_STARTUP != session->datastore || !c_ctx->disabled_config_change) {
-            /* for candidate and running we save prev state, if config change notifications are generated
-             * we have to save prev state for startup as well */
+        rc = dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
+
+        if (SR_DS_STARTUP != session->datastore || !c_ctx->disabled_config_change || NULL != nacm_ctx) {
+            /**
+             * For candidate and running we save prev state.
+             * If config change notifications are generated we have to save prev state for startup as well.
+             * if NACM is enabled, we need to get the previous state in any case.
+             */
             if (SR_DS_CANDIDATE == session->datastore || copy_uptodate) {
                 /* load data tree from file system */
                 rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->schema, &di);
@@ -3868,6 +3950,194 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
 }
 
 /**
+ * @brief Perform NETCONF access control for a single node.
+ */
+static int
+dm_commit_nacm_single_node(dm_session_t *session, nacm_data_val_ctx_t *nacm_data_val_ctx, const struct lyd_node *node,
+        nacm_access_flag_t access_type, bool *denied, sr_error_info_t **errors, size_t *err_cnt)
+{
+    int rc = SR_ERR_OK;
+    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
+    const char *rule_name = NULL, *rule_info = NULL;
+
+    CHECK_NULL_ARG4(session, nacm_data_val_ctx, node, denied);
+    CHECK_NULL_ARG2(errors, err_cnt);
+
+    *denied = false;
+    rc = nacm_check_data(nacm_data_val_ctx, access_type, node, &nacm_action, &rule_name, &rule_info);
+    CHECK_RC_LOG_RETURN(rc, "NACM data validation failed for node: %s.", node->schema->name);
+
+    if (NACM_ACTION_DENY == nacm_action) {
+        nacm_report_edit_access_denied(session->user_credentials, session, node, access_type,
+                rule_name, rule_info);
+        if (SR_ERR_OK != sr_add_error(errors, err_cnt, session->error_xpath, "%s", session->error_msg)) {
+            SR_LOG_WRN_MSG("Failed to record authorization error");
+        }
+        *denied = true;
+    }
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Perform NETCONF access control for all nodes inside a subtree.
+ */
+static int
+dm_commit_nacm_subtree(dm_session_t *session, nacm_data_val_ctx_t *nacm_data_val_ctx, const struct lyd_node *root,
+        nacm_access_flag_t access_type, int *denied_cnt, sr_error_info_t **errors, size_t *err_cnt)
+{
+    int rc = SR_ERR_OK;
+    bool denied = false;
+    bool backtracking = false;
+    const struct lyd_node *node = NULL;
+
+    node = root;
+    while (!backtracking || node != root) {
+        if (false == backtracking) {
+            rc = dm_commit_nacm_single_node(session, nacm_data_val_ctx, node, access_type, &denied, errors, err_cnt);
+            *denied_cnt += denied;
+            if (SR_ERR_OK != rc) {
+                return rc;
+            }
+            if (!denied && !(node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) && node->child) {
+                node = node->child;
+            } else if (node->next && node != root) {
+                node = node->next;
+            } else {
+                backtracking = true;
+            }
+        } else {
+            if (node->next) {
+                node = node->next;
+                backtracking = false;
+            } else {
+                node = node->parent;
+            }
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
+        sr_error_info_t **errors, size_t *err_cnt)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, c_ctx);
+    int rc = SR_ERR_OK;
+    size_t i = 0, d_cnt = 0;
+    bool denied = false, saved_diff = false;
+    int denied_cnt = 0;
+    nacm_ctx_t *nacm_ctx = NULL;
+    nacm_data_val_ctx_t *nacm_data_val_ctx = NULL;
+    struct lyd_difflist *diff = NULL;
+    dm_module_difflist_t *module_difflist = NULL;
+    dm_data_info_t *info = NULL, *commit_info = NULL, *prev_info = NULL, lookup_info = {0};
+
+    rc = dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
+
+    if (NULL == nacm_ctx) {
+        goto cleanup;
+    }
+
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
+        lookup_info.schema = info->schema;
+        if (!info->modified) {
+            continue;
+        }
+
+        /* configuration before commit */
+        prev_info = sr_btree_search(c_ctx->prev_data_trees, &lookup_info);
+        if (NULL == prev_info) {
+            SR_LOG_ERR("Current data tree for module %s not found", info->schema->module->name);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+
+        /* configuration after commit */
+        commit_info = sr_btree_search(c_ctx->session->session_modules[c_ctx->session->datastore], &lookup_info);
+        if (NULL == commit_info) {
+            SR_LOG_ERR("Commit data tree for module %s not found", info->schema->module->name);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+
+        /* get the set of changes */
+        saved_diff = false;
+        diff = lyd_diff(prev_info->node, commit_info->node, LYD_DIFFOPT_WITHDEFAULTS);
+        if (NULL == diff) {
+            SR_LOG_ERR("Lyd diff failed for module %s", info->schema->module->name);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+
+        /* save diff for VERIFY notifications (even if the set is empty) */
+        module_difflist = calloc(1, sizeof *module_difflist);
+        CHECK_NULL_NOMEM_GOTO(module_difflist, rc, cleanup);
+        module_difflist->schema_info = info->schema;
+        module_difflist->difflist = diff;
+        saved_diff = true;
+        rc = sr_btree_insert(c_ctx->difflists, (void *)module_difflist);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to insert diff-list for module %s into the binary tree",
+                info->schema->module->name);
+        module_difflist = NULL;
+
+        if (diff->type[d_cnt] == LYD_DIFF_END) {
+            SR_LOG_DBG("No changes in module %s", info->schema->module->name);
+            continue;
+        }
+
+        /* start NACM data access validation for this module */
+        rc = nacm_data_validation_start(nacm_ctx, session->user_credentials, commit_info->node->schema,
+                &nacm_data_val_ctx);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to start NACM data validation.");
+
+        /* Iterate over all changes. Some changes may include whole subtrees. */
+        for (d_cnt = 0; LYD_DIFF_END != diff->type[d_cnt]; d_cnt++) {
+            /* get node, access_type */
+            switch (diff->type[d_cnt]) {
+                case LYD_DIFF_CHANGED:
+                case LYD_DIFF_MOVEDAFTER1:
+                    rc = dm_commit_nacm_single_node(session, nacm_data_val_ctx, diff->first[d_cnt],
+                            NACM_ACCESS_UPDATE, &denied, errors, err_cnt);
+                    denied_cnt += denied;
+                    break;
+                case LYD_DIFF_DELETED:
+                    rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->first[d_cnt],
+                            NACM_ACCESS_DELETE, &denied_cnt, errors, err_cnt);
+                    break;
+                case LYD_DIFF_CREATED:
+                    rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->second[d_cnt],
+                            NACM_ACCESS_CREATE, &denied_cnt, errors, err_cnt);
+                    break;
+                case LYD_DIFF_MOVEDAFTER2:
+                    continue; /* access control performed already for LYD_DIFF_CREATED of this node */
+                    break;
+                default:
+                    assert(0 && "not reachable");
+            }
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+        }
+
+        nacm_data_validation_stop(nacm_data_val_ctx);
+        nacm_data_val_ctx = NULL;
+    }
+
+cleanup:
+    if (SR_ERR_OK == rc && denied_cnt > 0) {
+        rc = SR_ERR_UNAUTHORIZED;
+    }
+    if (!saved_diff && NULL != diff) {
+        lyd_free_diff(diff);
+    }
+    dm_module_difflist_free(module_difflist);
+    nacm_data_validation_stop(nacm_data_val_ctx);
+    return rc;
+}
+
+/**
  * @brief Decides whether a subscription should be skipped or not. Takes into account:
  * SR_EV_VERIFY: skip SR_SUBSCR_APPLY_ONLY subscription
  * SR_EV_ABORT: skip subscription that returned an error and specified SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG flag
@@ -3910,6 +4180,9 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
     dm_model_subscription_t *ms = NULL;
     bool match = false;
     sr_list_t *notified_notif = NULL;
+    dm_module_difflist_t *module_difflist = NULL, lookup_difflist = {0};
+    nacm_ctx_t *nacm_ctx = NULL;
+
     /* notification are sent only when running or candidate is committed*/
     if (SR_DS_STARTUP == session->datastore) {
         c_ctx->state = DM_COMMIT_WRITE;
@@ -3954,13 +4227,32 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
             }
 
             /* for SR_EV_ABORT inverse changes are generated */
-            diff = SR_EV_VERIFY == ev ?
-                lyd_diff(prev_info->node, commit_info->node, LYD_DIFFOPT_WITHDEFAULTS) :
-                lyd_diff(commit_info->node, prev_info->node, LYD_DIFFOPT_WITHDEFAULTS) ;
+            if (SR_EV_VERIFY == ev) {
+                if (SR_ERR_OK != dm_get_nacm_ctx(dm_ctx, &nacm_ctx)) {
+                    SR_LOG_ERR_MSG("Failed to get NACM context.");
+                    continue;
+                }
+                if (NULL != nacm_ctx) {
+                    /* already obtained in the NACM phase */
+                    lookup_difflist.schema_info = info->schema;
+                    module_difflist = sr_btree_search(c_ctx->difflists, &lookup_difflist);
+                    if (NULL == module_difflist || NULL == module_difflist->difflist) {
+                        SR_LOG_ERR("Diff-list for module %s not found", info->schema->module->name);
+                        continue;
+                    }
+                    diff = module_difflist->difflist;
+                    module_difflist->difflist = NULL; /* remove diff from the binary tree */
+                } else {
+                    diff = lyd_diff(prev_info->node, commit_info->node, LYD_DIFFOPT_WITHDEFAULTS);
+                }
+            } else {
+                diff = lyd_diff(commit_info->node, prev_info->node, LYD_DIFFOPT_WITHDEFAULTS);
+            }
             if (NULL == diff) {
                 SR_LOG_ERR("Lyd diff failed for module %s", info->schema->module->name);
                 continue;
             }
+
             if (diff->type[d_cnt] == LYD_DIFF_END) {
                 SR_LOG_DBG("No changes in module %s", info->schema->module->name);
                 lyd_free_diff(diff);
@@ -5229,7 +5521,7 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
             if (node->flags & (LYS_XPATH_DEP | LYS_LEAFREF_DEP)) {
                 ext_ref = true; /* reference outside the procedure subtree */
             }
-            if (node->child) {
+            if (!(node->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) && node->child) {
                 node = node->child;
             } else if (node->next && node != proc_node) {
                 node = node->next;

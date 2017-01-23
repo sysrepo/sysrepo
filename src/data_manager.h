@@ -118,6 +118,7 @@ typedef enum dm_commit_state_e {
     DM_COMMIT_LOAD_MODIFIED_MODELS,
     DM_COMMIT_REPLAY_OPS,
     DM_COMMIT_VALIDATE_MERGED,
+    DM_COMMIT_NACM,
     DM_COMMIT_NOTIFY_VERIFY,
     DM_COMMIT_WAIT_FOR_NOTIFICATIONS,
     DM_COMMIT_WRITE,
@@ -163,6 +164,13 @@ typedef struct dm_model_subscription_s {
 }dm_model_subscription_t;
 
 /**
+ * @brief A set of changes to be commited (as seen by ::lyd_diff) */
+typedef struct dm_module_difflist_s {
+    dm_schema_info_t *schema_info;      /**< schema info identifying the module to which the difflist is tied to */
+    struct lyd_difflist *difflist;      /**< diff list */
+} dm_module_difflist_t;
+
+/**
  * @brief Structure holding information used during commit process
  */
 typedef struct dm_commit_context_s {
@@ -183,6 +191,7 @@ typedef struct dm_commit_context_s {
     size_t err_cnt;             /**< number of errors from verifiers */
     sr_list_t *err_subs_xpaths; /**< subscriptions that returned an error */
     bool disabled_config_change;/**< flag whether config change notification are disabled */
+    sr_btree_t *difflists;        /**< binary tree of diff-lists for each modified module */
 } dm_commit_context_t;
 
 /**
@@ -441,6 +450,20 @@ int dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session
 int dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx);
 
 /**
+ * @brief Execute NETCONF access control (NACM) to determine if the user is allowed
+ * to perform all the data modifications included in the commit.
+ *
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] c_ctx
+ * @param [out] errors
+ * @param [out] err_cnt
+ * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED in case of insufficient access rights)
+ */
+int dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
+        sr_error_info_t **errors, size_t *err_cnt);
+
+/**
  * @brief Notifies about the changes made within the running commit. It is
  * a post-commit notification - failure do not cause the commit to fail.
  * @param [in] dm_ctx
@@ -566,6 +589,12 @@ bool dm_is_enabled_check_recursively(struct lys_node *node);
  * If NULL is provided as the argument then 0 is returned.
  */
 uint32_t dm_get_node_xpath_hash(struct lys_node *node);
+
+/**
+ * @brief Returns the depth of any potential instance of this schema node in the data tree.
+ * If NULL is provided as the argument then 0 is returned.
+ */
+uint16_t dm_get_node_data_depth(struct lys_node *node);
 
 /**
  * @brief Sets the state of the node.

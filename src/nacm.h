@@ -36,6 +36,16 @@ typedef struct dm_ctx_s dm_ctx_t;
 typedef struct dm_schema_info_s dm_schema_info_t;
 
 /**
+ * @brief Forward declaration for dm_session_t.
+ */
+typedef struct dm_session_s dm_session_t;
+
+/**
+ * @brief Forward declaration for np_subscription_t.
+ */
+typedef struct np_subscription_s np_subscription_t;
+
+/**
  * @brief NACM decision for a given operation.
  */
 typedef enum nacm_action_e {
@@ -96,6 +106,8 @@ typedef struct nacm_rule_s {
     } data;
     uint32_t data_hash;          /**< Hash of the data node instance identifier's value (data.path).
                                       Used only if rule is of type NACM_RULE_DATA for quicker data validation. */
+    uint16_t data_depth;         /**< Tree depth of the data node referenced by the instance identifier (data.path).
+                                      Used only if rule is of type NACM_RULE_DATA for quicker data validation. */
     uint8_t access;              /**< Access operations associated with this rule (combination of ::nacm_access_flag_t). */
     nacm_action_t action;        /**< The access control action associated with the rule. */
     char *comment;               /**< Textual description of the access rule. */
@@ -143,12 +155,16 @@ typedef struct nacm_ctx_s {
 } nacm_ctx_t;
 
 /**
- * @brief Structure that stores the set of nodes that a particular rule (of type NACM_RULE_DATA) applies to.
+ * @brief Structure that for a given data-oriented NACM rule stores pointers to matching nodes in
+ * both the pre-commit data tree and the post-commit data tree.
  */
-typedef struct nacm_nodeset_s {
-    uint16_t rule_id;     /**< Rule ID. */
-    struct ly_set *set;   /**< Set of data nodes ordered by their memory locations from the lowest to the highest. */
-} nacm_nodeset_t;
+typedef struct nacm_data_targets_s {
+    uint16_t rule_id;           /**< Rule ID. */
+    struct ly_set *orig_dt;     /**< Set of matching data nodes from the pre-commit data tree,
+                                     ordered by their memory locations from the lowest to the highest. */
+    struct ly_set *new_dt;      /**< Set of matching data nodes from the post-commit data tree,
+                                     ordered by their memory locations from the lowest to the highest. */
+} nacm_data_targets_t;
 
 /**
  * @brief Structure that stores an outcome of a NACM data validation for re-use.
@@ -170,13 +186,8 @@ typedef struct nacm_data_val_ctx_s {
     dm_schema_info_t *schema_info;      /**< Schema info associated with the data tree whose nodes are being validated. */
     sr_bitset_t *rule_lists;            /**< Set of rule-lists that apply to this data validation request.
                                              (stored as bitset of their IDs). */
-    struct {
-        bool enabled;                   /**< Use cache to speed-up consecutive data access validations. */
-        sr_btree_t *nodesets;           /**< A set of data-oriented NACM rules with already evaluated path.
-                                             Items are of type nacm_nodeset_t. */
-        sr_btree_t *results;            /**< Outcomes of already executed data validations within this context.
-                                             Items are of type nacm_data_val_result_t. */
-    } cache;
+    sr_btree_t *data_targets;           /**< A binary tree of target nodes for data-oriented NACM rules with already evaluated
+                                             path. Items are of type nacm_data_targets_t. */
 } nacm_data_val_ctx_t;
 
 /**
@@ -237,13 +248,11 @@ int nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const char *username, const cha
  *
  * @param [in] nacm_ctx NACM context.
  * @param [in] user_credentials User credentials.
- * @param [in] data_tree Data tree whose nodes will be validated.
- * @param [in] cache Use cache to remember sets of matching nodes for data-oriented rules and results
- *                   of past validation runs.
+ * @param [in] dt_schema Schema of the data tree whose nodes will be validated.
  * @param [out] nacm_data_val_ctx Returned context representing this request.
  */
-int nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, struct lyd_node *data_tree,
-        bool cache, nacm_data_val_ctx_t **nacm_data_val_ctx);
+int nacm_data_validation_start(nacm_ctx_t* nacm_ctx, const ac_ucred_t *user_credentials, struct lys_node *dt_schema,
+        nacm_data_val_ctx_t **nacm_data_val_ctx);
 
 /**
  * @brief Stop an on-going data validation request. The associated NACM context is unlocked and
@@ -277,5 +286,53 @@ int nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t a
  * @param [out] denied_data_write Number of denied data modifications since the last restart.
  */
 int nacm_get_stats(nacm_ctx_t *nacm_ctx, uint32_t *denied_rpc, uint32_t *denied_event_notif, uint32_t *denied_data_write);
+
+/**
+ * @brief Report that access to execute a given operation was not allowed by NACM.
+ *
+ * @param [in] user_credentials Credentials of the user whom the access to execute the RPC was not granted.
+ * @param [in] dm_session Data manager session to store the error into.
+ * @param [in] xpath XPath of the RPC that was blocked.
+ * @param [in] rule_name Name of the NACM rule that blocked the access.
+ * @param [in] rule_info Description of the NACM rule that blocked the access.
+ */
+int nacm_report_exec_access_denied(const ac_ucred_t *user_credentials, dm_session_t *dm_session, const char *xpath,
+        const char *rule_name, const char *rule_info);
+
+/**
+ * @brief Report that delivery of an event notification was blocked for a given subscription by NACM.
+ *
+ * @param [in] subscription Subscription which was not allowed to receive the notification.
+ * @param [in] xpath XPath of the event notification.
+ * @param [in] nacm_rc Return code returned by nacm_check_event_notif .
+ * @param [in] rule_name Name of the NACM rule that blocked the delivery.
+ * @param [in] rule_info Description of the rule that blocked the delivery.
+ */
+int nacm_report_delivery_blocked(np_subscription_t *subscription, const char *xpath, int nacm_rc,
+        const char *rule_name, const char *rule_info);
+
+/**
+ * @brief Report that access to read the given node was not granted.
+ *
+ * @param [in] user_credentials Credentials of the user whom the access to read the node was not granted.
+ * @param [in] node Node which the user is not allowed to read.
+ * @param [in] rule_name Name of the nacm rule that blocked the access.
+ * @param [in] rule_info Description of the rule that blocked the access.
+ */
+int nacm_report_read_access_denied(const ac_ucred_t *user_credentials, const struct lyd_node *node,
+        const char *rule_name, const char *rule_info);
+
+/**
+ * @brief Report that access to edit (update, create, delete) the given node was not granted.
+ *
+ * @param [in] user_credentials Credentials of the user whom the access to edit the node was not granted.
+ * @param [in] dm_session Data manager session to store the error into.
+ * @param [in] node Node which the user is not allowed to edit.
+ * @param [in] access_tyoe Which type of access was not allowed.
+ * @param [in] rule_name Name of the nacm rule that blocked the access.
+ * @param [in] rule_info Description of the rule that blocked the access.
+ */
+int nacm_report_edit_access_denied(const ac_ucred_t *user_credentials, dm_session_t *dm_session,
+        const struct lyd_node *node, nacm_access_flag_t access_type, const char *rule_name, const char *rule_info);
 
 #endif /* NACM_H_ */

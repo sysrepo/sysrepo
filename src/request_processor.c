@@ -98,76 +98,6 @@ rp_resp_fill_errors(Sr__Msg *msg, dm_session_t *dm_session)
 }
 
 /**
- * @brief Report that access to execute a given operation was not allowed by NACM.
- */
-static int
-rp_report_exec_access_denied(dm_session_t *dm_session, const char *xpath, const char *rule_name,
-        const char *rule_info)
-{
-    int rc = SR_ERR_OK;
-    char *error_msg = NULL;
-    CHECK_NULL_ARG2(dm_session, xpath);
-
-    if (NULL != rule_name) {
-        if (NULL != rule_info) {
-            rc = sr_asprintf(&error_msg, "Execution of the operation '%s' was blocked by the NACM rule '%s' (%s).",
-                    xpath, rule_name, rule_info);
-        } else {
-            rc = sr_asprintf(&error_msg, "Execution of the operation '%s' was blocked by the NACM rule '%s'.",
-                    xpath, rule_name);
-        }
-    } else {
-        rc = sr_asprintf(&error_msg, "Execution of the operation '%s' was blocked by NACM.", xpath);
-    }
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN_MSG("::sr_asprintf has failed");
-    } else {
-        SR_LOG_DBG("%s", error_msg);
-        dm_report_error(dm_session, error_msg, xpath, SR_ERR_UNAUTHORIZED);
-        free(error_msg);
-    }
-    return rc;
-}
-
-/**
- * @brief Report that delivery of a notification was blocked for a given subscription by NACM.
- */
-static int
-rp_report_delivery_blocked(np_subscription_t *subscription, const char *xpath,
-        int nacm_rc, const char *rule_name, const char *rule_info)
-{
-    int rc = SR_ERR_OK;
-    char *error_msg = NULL;
-    CHECK_NULL_ARG2(subscription, xpath);
-
-    if (SR_ERR_OK != nacm_rc) {
-        rc = sr_asprintf(&error_msg, "NETCONF access control verification failed for the notification '%s' and "
-                "subscription '%s' @ %"PRIu32". Delivery will be blocked.", xpath, subscription->dst_address,
-                subscription->dst_id);
-    } else if (NULL != rule_name) {
-        if (NULL != rule_info) {
-            rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %"PRIu32" "
-                    "was blocked by the NACM rule '%s' (%s).", xpath, subscription->dst_address, subscription->dst_id,
-                    rule_name, rule_info);
-        } else {
-            rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %"PRIu32" "
-                    "was blocked by the NACM rule '%s'.", xpath, subscription->dst_address, subscription->dst_id,
-                    rule_name);
-        }
-    } else {
-        rc = sr_asprintf(&error_msg, "Delivery of the notification '%s' for subscription '%s' @ %"PRIu32" "
-                "was blocked by NACM.", xpath, subscription->dst_address, subscription->dst_id);
-    }
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN_MSG("::sr_asprintf has failed");
-    } else {
-        SR_LOG_DBG("%s", error_msg);
-        free(error_msg);
-    }
-    return rc;
-}
-
-/**
  * @brief Verifies that the requested commit context still exists. Copies data tree from commit context to the session if
  * needed.
  */
@@ -2187,7 +2117,8 @@ rp_check_exec_perm_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
         oper_rc = nacm_check_rpc(nacm_ctx, session->user_credentials, req->xpath,
                 &nacm_action, &nacm_rule, &nacm_rule_info);
         if (SR_ERR_OK == oper_rc && NACM_ACTION_DENY == nacm_action) {
-            rp_report_exec_access_denied(session->dm_session, req->xpath, nacm_rule, nacm_rule_info);
+            nacm_report_exec_access_denied(session->user_credentials, session->dm_session,
+                    req->xpath, nacm_rule, nacm_rule_info);
         }
         free(nacm_rule);
         free(nacm_rule_info);
@@ -2261,7 +2192,8 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
         rc = nacm_check_rpc(nacm_ctx, session->user_credentials, xpath, &nacm_action, &nacm_rule, &nacm_rule_info);
         CHECK_RC_LOG_GOTO(rc, finalize, "Failed to verify if the user is allowed to execute RPC: %s", xpath);
         if (NACM_ACTION_DENY == nacm_action) {
-            rp_report_exec_access_denied(session->dm_session, xpath, nacm_rule, nacm_rule_info);
+            nacm_report_exec_access_denied(session->user_credentials, session->dm_session, xpath, nacm_rule,
+                    nacm_rule_info);
             rc = SR_ERR_UNAUTHORIZED;
             goto finalize;
         }
@@ -3071,7 +3003,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
                     rc = nacm_check_event_notif(nacm_ctx, subscription->username, xpath, &nacm_action,
                             &nacm_rule, &nacm_rule_info);
                     if (SR_ERR_OK != rc || NACM_ACTION_DENY == nacm_action) {
-                        rp_report_delivery_blocked(subscription, xpath, rc, nacm_rule, nacm_rule_info);
+                        nacm_report_delivery_blocked(subscription, xpath, rc, nacm_rule, nacm_rule_info);
                         continue;
                     }
                 }

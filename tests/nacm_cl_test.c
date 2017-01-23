@@ -56,14 +56,20 @@
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
         assert_string_equal(XPATH, error_info->xpath); \
         if (strlen(RULE) && strlen(RULE_INFO)) { \
-            assert_string_equal("Execution of the operation '" XPATH "' was blocked by the NACM rule '" RULE "' (" RULE_INFO ").", \
-                                error_info->message); \
+            assert_int_equal(SR_ERR_OK, \
+                             sr_asprintf(&error_msg, "Access to execute the operation '%s' was blocked by the NACM rule '%s' "\
+                                "(%s) for user 'sysrepo-user%d'.", XPATH, RULE, RULE_INFO, SESSION+1)); \
         } else if (strlen(RULE)) { \
-            assert_string_equal("Execution of the operation '" XPATH "' was blocked by the NACM rule '" RULE "'.", \
-                                error_info->message); \
+            assert_int_equal(SR_ERR_OK, \
+                             sr_asprintf(&error_msg, "Access to execute the operation '%s' was blocked by the NACM rule '%s' "\
+                                "for user 'sysrepo-user%d'.", XPATH, RULE, SESSION+1)); \
         } else { \
-            assert_string_equal("Execution of the operation '" XPATH "' was blocked by NACM.", error_info->message); \
+            assert_int_equal(SR_ERR_OK, \
+                             sr_asprintf(&error_msg, "Access to execute the operation '%s' was blocked by NACM "\
+                                "for user 'sysrepo-user%d'.", XPATH, SESSION+1)); \
         } \
+        assert_string_equal(error_msg, error_info->message); \
+        free(error_msg); error_msg = NULL; \
     } while (0)
 
 #define CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO) \
@@ -85,6 +91,36 @@
         verify_existence_of_log_msg(regex, true); \
         free(regex); regex = NULL; \
         free(escaped_xpath); escaped_xpath = NULL; \
+    } while (0)
+
+#define CHECK_WRITE_UNAUTHORIZED_ERROR(SESSION, ERR_CNT, ERR_IDX, XPATH, ACCESS_TYPE, RULE, RULE_INFO) \
+    do { \
+        rc = sr_get_last_errors(sessions[SESSION], &error_info, &error_cnt); \
+        assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
+        if (ERR_IDX == 0) { \
+            for (int k = 0; k < error_cnt; ++k) { \
+                printf("Error: %s\n", error_info[k].message); \
+            } \
+        } \
+        assert_int_equal(ERR_CNT, error_cnt); \
+        assert_non_null(error_info[ERR_IDX].xpath); \
+        assert_string_equal(XPATH, error_info[ERR_IDX].xpath); \
+        if (strlen(RULE) && strlen(RULE_INFO)) { \
+            assert_int_equal(SR_ERR_OK, \
+                             sr_asprintf(&error_msg, "User 'sysrepo-user%d' was blocked from %s the node '%s' by the NACM rule '%s' (%s).", \
+                                         SESSION+1, write_access_type_to_str(ACCESS_TYPE), XPATH, RULE, RULE_INFO)); \
+        } else if (strlen(RULE)) { \
+            assert_int_equal(SR_ERR_OK, \
+                             sr_asprintf(&error_msg, "User 'sysrepo-user%d' was blocked from %s the node '%s' by the NACM rule '%s'.", \
+                                         SESSION+1, write_access_type_to_str(ACCESS_TYPE), XPATH, RULE)); \
+        } else { \
+            assert_int_equal(SR_ERR_OK, \
+                             sr_asprintf(&error_msg, "User 'sysrepo-user%d' was blocked from %s the node '%s' by NACM.", \
+                                         SESSION+1, write_access_type_to_str(ACCESS_TYPE), XPATH)); \
+        } \
+        assert_non_null(error_info[ERR_IDX].message); \
+        assert_string_equal(error_msg, error_info[ERR_IDX].message); \
+        free(error_msg); error_msg = NULL; \
     } while (0)
 
 #define RPC_DENIED(SESSION, XPATH, INPUT, INPUT_CNT, RULE, RULE_INFO) \
@@ -255,6 +291,63 @@
         clear_log_history(); \
     } while (0)
 
+#define COMMIT_PERMITTED(SESSION) \
+    do { \
+        rc = sr_commit(sessions[SESSION]); \
+        if (SR_ERR_OK != rc) { \
+            sr_get_last_errors(sessions[SESSION], &error_info, &error_cnt); \
+            for (int k = 0; k < error_cnt; ++k) { \
+                printf("Error: %s\n", error_info[k].message); \
+            } \
+        } \
+        assert_int_equal(rc, SR_ERR_OK); \
+        revert_changes(); \
+    } while(0);
+
+#define COMMIT_DENIED(SESSION, NODE_XPATH, ACCESS_TYPE, RULE, RULE_INFO) \
+    do { \
+        rc = sr_commit(sessions[SESSION]); \
+        assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
+        CHECK_WRITE_UNAUTHORIZED_ERROR(SESSION, 1, 0, NODE_XPATH, ACCESS_TYPE, RULE, RULE_INFO); \
+        rc = sr_discard_changes(sessions[SESSION]); \
+        assert_int_equal(SR_ERR_OK, rc); \
+    } while(0);
+
+#define COMMIT_DENIED2(SESSION, NODE1_XPATH, ACCESS1_TYPE, RULE1, RULE1_INFO,\
+                       NODE2_XPATH, ACCESS2_TYPE, RULE2, RULE2_INFO) \
+    do { \
+        rc = sr_commit(sessions[SESSION]); \
+        assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
+        CHECK_WRITE_UNAUTHORIZED_ERROR(SESSION, 2, 0, NODE1_XPATH, ACCESS1_TYPE, RULE1, RULE1_INFO); \
+        CHECK_WRITE_UNAUTHORIZED_ERROR(SESSION, 2, 1, NODE2_XPATH, ACCESS2_TYPE, RULE2, RULE2_INFO); \
+        rc = sr_discard_changes(sessions[SESSION]); \
+        assert_int_equal(SR_ERR_OK, rc); \
+    } while(0);
+
+#define COMMIT_DENIED3(SESSION, NODE1_XPATH, ACCESS1_TYPE, RULE1, RULE1_INFO,\
+                       NODE2_XPATH, ACCESS2_TYPE, RULE2, RULE2_INFO, \
+                       NODE3_XPATH, ACCESS3_TYPE, RULE3, RULE3_INFO) \
+    do { \
+        rc = sr_commit(sessions[SESSION]); \
+        assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
+        CHECK_WRITE_UNAUTHORIZED_ERROR(SESSION, 3, 0, NODE1_XPATH, ACCESS1_TYPE, RULE1, RULE1_INFO); \
+        CHECK_WRITE_UNAUTHORIZED_ERROR(SESSION, 3, 1, NODE2_XPATH, ACCESS2_TYPE, RULE2, RULE2_INFO); \
+        CHECK_WRITE_UNAUTHORIZED_ERROR(SESSION, 3, 2, NODE3_XPATH, ACCESS3_TYPE, RULE3, RULE3_INFO); \
+        rc = sr_discard_changes(sessions[SESSION]); \
+        assert_int_equal(SR_ERR_OK, rc); \
+    } while(0);
+
+#define COMMIT_DENIED_N(SESSION, ERR_CNT) \
+    do { \
+        rc = sr_commit(sessions[SESSION]); \
+        assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
+        rc = sr_get_last_errors(sessions[SESSION], &error_info, &error_cnt); \
+        assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
+        assert_int_equal(ERR_CNT, error_cnt); \
+        rc = sr_discard_changes(sessions[SESSION]); \
+        assert_int_equal(SR_ERR_OK, rc); \
+    } while(0);
+
 typedef sr_session_ctx_t *user_sessions_t[NUM_OF_USERS];
 
 /**
@@ -278,6 +371,21 @@ pthread_mutex_t cb_call_count_lock = PTHREAD_MUTEX_INITIALIZER; /* protecting cb
 
 /* TODO: Report the issue with failed validation when action reply is empty. Then reflect the fix. */
 
+
+const char *
+write_access_type_to_str(nacm_access_flag_t access_type)
+{
+    switch (access_type) {
+        case NACM_ACCESS_CREATE:
+            return "creating";
+        case NACM_ACCESS_UPDATE:
+            return "changing the value of";
+        case NACM_ACCESS_DELETE:
+            return "deleting";
+        default:
+            return "<not write-like access type>";
+    }
+}
 
 static void
 wait_ms(long int ms)
@@ -427,8 +535,10 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
         ++attempt;
     }
 
-    /* create initial datastore content */
+    /* initial datastore content */
     createDataTreeTestModule();
+    createDataTreeExampleModule();
+    createDataTreeIETFinterfacesModule();
 
     /* start sysrepo in the daemon debug mode as a child process */
     pthread_create(&stderr_reader, NULL, daemon_log_reader, NULL);
@@ -450,6 +560,14 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(conn_p);
     *conn_p = conn;
+}
+
+static void
+revert_changes()
+{
+    createDataTreeTestModule();
+    createDataTreeExampleModule();
+    createDataTreeIETFinterfacesModule();
 }
 
 static void
@@ -573,28 +691,101 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
     add_nacm_rule_list(nacm_config, "acl2", "group2", "group3", NULL);
     add_nacm_rule_list(nacm_config, "acl3", "group4", "sysrepo-users", NULL);
     /*  -> acl1: */
+    /*    -> RPC: */
     add_nacm_rule(nacm_config, "acl1", "deny-activate-software-image", "test-module", NACM_RULE_RPC,
             "activate-software-image", "exec", "deny", "Not allowed to run activate-software-image");
     add_nacm_rule(nacm_config, "acl1", "rule-with-no-effect", "ietf-netconf", NACM_RULE_RPC,
             "close-session", "*", "deny", "close-session NETCONF operation cannot be effectively denied");
+    /*    -> notification: */
     add_nacm_rule(nacm_config, "acl1", "deny-link-discovered", "test-module", NACM_RULE_NOTIF,
             "link-discovered", "read", "deny", "Not allowed to receive the link-discovered notification");
     add_nacm_rule(nacm_config, "acl1", "rule-with-no-effect2", "nc-notifications", NACM_RULE_NOTIF,
             "replayComplete", "*", "deny", "NETCONF replayComplete notification cannot be effectively denied");
+    /*    -> data, test-module: */
+    add_nacm_rule(nacm_config, "acl1", "allow-to-modify-i8", "test-module", NACM_RULE_DATA,
+            "/test-module:main/i8", "update", "permit", "Allow to modify 8-bit signed integer in the main container");
+    add_nacm_rule(nacm_config, "acl1", "permit-low-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers[.<10]", "create delete", "permit", "Allow to create/delete low numbers.");
+    add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers[.>10]", "create delete", "deny", "Do not allow to create/delete low numbers.");
+    add_nacm_rule(nacm_config, "acl1", "allow-reordering", "test-module", NACM_RULE_DATA,
+            "/test-module:ordered-numbers", "update", "permit", "Allow to re-order numbers.");
+    add_nacm_rule(nacm_config, "acl1", "allow-presence-container-with-content", "test-module", NACM_RULE_DATA,
+            "/test-module:presence-container", "*", "permit", "Allow to read/edit presence container from test-module.");
+    /*    -> data, example-module: */
+    add_nacm_rule(nacm_config, "acl1", "deny-specific-list-item", "example-module", NACM_RULE_DATA,
+            "/example-module:container/list[key1='new-item-key1'][key2='new-item-key2']", "create", "deny",
+            "Not allowed to create this specific list item.");
+    add_nacm_rule(nacm_config, "acl1", "permit-specific-list-item", "example-module", NACM_RULE_DATA,
+            "/example-module:container/list[key1='new-item2-key1'][key2='new-item2-key2']", "create", "permit",
+            "Allowed to create this specific list item.");
+    /*    -> data, ietf-interfaces: */
+    add_nacm_rule(nacm_config, "acl1", "deny-interface-status-change", "ietf-interfaces", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/enabled", "update", "deny", "Not allowed to change status of interface");
+    add_nacm_rule(nacm_config, "acl1", "allow-new-interfaces", "ietf-interfaces", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface", "create", "permit", "Allowed to create new interface");
     /*  -> acl2: */
+    /*    -> RPC: */
     add_nacm_rule(nacm_config, "acl2", "permit-kill-session", "ietf-netconf", NACM_RULE_RPC,
             "kill-session", "exec", "permit", "Permit execution of the kill-session NETCONF operation.");
     add_nacm_rule(nacm_config, "acl2", "deny-initialize", "*", NACM_RULE_RPC,
             "initialize", "*", "deny", "Not allowed to touch RPC 'initialize' in any module.");
+    /*    -> notification: */
     add_nacm_rule(nacm_config, "acl2", "deny-halted", "*", NACM_RULE_NOTIF,
             "halted", "*", "deny", "Not allowed to receive 'halted' notification from any module.");
+    /*    -> data, test-module: */
+    add_nacm_rule(nacm_config, "acl2", "disallow-to-modify-i8", "test-module", NACM_RULE_DATA,
+            "/test-module:main/i8", "update", "deny", "Disallow modification of 8-bit signed integer in the main container");
+    add_nacm_rule(nacm_config, "acl2", "permit-high-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers[.>10]", "create delete", "permit", "Allow to create/delete high numbers.");
+    add_nacm_rule(nacm_config, "acl2", "deny-low-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers[.<10]", "create delete", "deny", "Do not allow to create/delete low numbers.");
+    add_nacm_rule(nacm_config, "acl2", "deny-everything-but-reordering", "test-module", NACM_RULE_DATA,
+            "/test-module:ordered-numbers", "create delete read", "deny", "Disallow any operation with ordered-numbers but re-ordering (update).");
+    add_nacm_rule(nacm_config, "acl2", "deny-grandchild1-leaf", "test-module", NACM_RULE_DATA,
+            "/test-module:presence-container/child1/grandchild1/grandchild1-leaf", "create update delete", "deny",
+            "Do not allow to edit grandchild1-leaf.");
+    add_nacm_rule(nacm_config, "acl2", "deny-child2", "test-module", NACM_RULE_DATA,
+            "/test-module:presence-container/child2", "create", "deny", "Do not allow to create child2.");
+    /*    -> data, example-module: */
+    add_nacm_rule(nacm_config, "acl2", "allow-list-item-key1", "example-module", NACM_RULE_DATA,
+            "/example-module:container/list/key1", "*", "permit",
+            "Allowed to edit key1 from list item.");
+    add_nacm_rule(nacm_config, "acl2", "allow-list-item-key2", "example-module", NACM_RULE_DATA,
+            "/example-module:container/list/key2", "*", "permit",
+            "Allowed to edit key2 from list item.");
+    add_nacm_rule(nacm_config, "acl2", "allow-list-item-leaf", "example-module", NACM_RULE_DATA,
+            "/example-module:container/list/leaf", "create", "permit",
+            "Allowed to create (not delete) leaf from list item.");
+    add_nacm_rule(nacm_config, "acl2", "disallow-to-delete-list-item-leaf", "example-module", NACM_RULE_DATA,
+            "/example-module:container/list/leaf", "delete", "deny",
+            "Do not allowed to delete leaf from list item.");
+    /*    -> data, ietf-interfaces: */
+    add_nacm_rule(nacm_config, "acl2", "deny-removing-interfaces", "ietf-interfaces", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface", "delete", "deny", "Not allowed to remove existing interface");
+    add_nacm_rule(nacm_config, "acl2", "allow-enabling-interfaces", "ietf-interfaces", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/enabled", "update", "permit", "Allow to enable interface");
     /*  -> acl3: */
+    /*    -> RPC: */
     add_nacm_rule(nacm_config, "acl3", "permit-unload", "test-module", NACM_RULE_RPC,
             "unload", "exec", "permit", "Permit action unload");
+    /*    -> notification: */
     add_nacm_rule(nacm_config, "acl3", "permit-status-change", "test-module", NACM_RULE_NOTIF,
             "status-change", "*", "permit", "Permit notification 'status-change'.");
     add_nacm_rule(nacm_config, "acl3", "deny-netconf-capability-change", "ietf-netconf-notifications", NACM_RULE_NOTIF,
             "netconf-capability-change", "read", "deny", "Not allowed to receive the NETCONF capability change notification");
+    /*    -> data, test-module: */
+    add_nacm_rule(nacm_config, "acl3", "permit-all-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers", "create delete", "permit", "Allow to create/delete all numbers.");
+    add_nacm_rule(nacm_config, "acl3", "allow-presence-container", "test-module", NACM_RULE_DATA,
+            "/test-module:presence-container", "*", "permit", "Allow to edit presence container from test-module.");
+    /*    -> data, example-module: */
+    add_nacm_rule(nacm_config, "acl3", "allow-list-items", "example-module", NACM_RULE_DATA,
+            "/example-module:container/list", "create delete", "permit", "Allowed to create/delete list items.");
+    /*    -> data, ietf-interfaces: */
+    add_nacm_rule(nacm_config, "acl3", "allow-new-interfaces", "ietf-interfaces", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface", "create", "permit", "Allowed to create new interface");
+    /*    -> any, test-module: */
     add_nacm_rule(nacm_config, "acl3", "deny-test-module", "test-module", NACM_RULE_NOTSET,
             NULL, "*", "deny", "Deny everything not explicitly permitted in test-module.");
 }
@@ -628,6 +819,31 @@ sysrepo_setup_with_denied_read_by_dflt(void **state)
     /* NACM startup config */
     new_nacm_config(&nacm_config);
     set_nacm_read_dflt(nacm_config, "deny");
+    enable_nacm_ext_groups(nacm_config, false);
+    common_nacm_config(nacm_config);
+    save_nacm_config(nacm_config);
+    delete_nacm_config(nacm_config);
+
+    start_sysrepo_daemon(&conn);
+
+    *state = (void*)conn;
+    return 0;
+}
+
+static int
+sysrepo_setup_with_permitted_write_by_dflt(void **state)
+{
+    sr_conn_ctx_t *conn = NULL;
+    test_nacm_cfg_t *nacm_config = NULL;
+
+    /* initial datastore content */
+    createDataTreeTestModule();
+    createDataTreeExampleModule();
+    createDataTreeIETFinterfacesModule();
+
+    /* NACM startup config */
+    new_nacm_config(&nacm_config);
+    set_nacm_write_dflt(nacm_config, "permit");
     enable_nacm_ext_groups(nacm_config, false);
     common_nacm_config(nacm_config);
     save_nacm_config(nacm_config);
@@ -681,6 +897,13 @@ sysrepo_teardown(void **state)
 {
     int ret = 0, status = 0;
     sr_conn_ctx_t *conn = *state;
+    test_nacm_cfg_t *nacm_config = NULL;
+
+    /* leave non-intrusive NACM startup config */
+    new_nacm_config(&nacm_config);
+    set_nacm_write_dflt(nacm_config, "permit");
+    save_nacm_config(nacm_config);
+    delete_nacm_config(nacm_config);
 
     if (!satisfied_requirements) {
         return 0;
@@ -732,8 +955,10 @@ start_user_sessions(sr_conn_ctx_t *conn, sr_session_ctx_t **handler_session, use
 {
     int rc = SR_ERR_OK;
     assert_non_null(conn);
-    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, handler_session);
-    assert_int_equal(rc, SR_ERR_OK);
+    if (NULL != handler_session) {
+        rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, handler_session);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
     for (int i = 0; i < NUM_OF_USERS; ++i) {
         char *username = NULL;
         assert_int_equal(SR_ERR_OK, sr_asprintf(&username, "sysrepo-user%d", i+1));
@@ -807,7 +1032,7 @@ subscribe_dummy_event_notif_callback(sr_session_ctx_t *user_session, void *priva
 }
 
 static void
-nacm_cl_test_rpc_acl_with_empty_nacm_cfg(void **state)
+nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
 {
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
@@ -821,6 +1046,7 @@ nacm_cl_test_rpc_acl_with_empty_nacm_cfg(void **state)
     sr_val_t *input = NULL;
     sr_node_t *input_tree = NULL;
     const sr_error_info_t *error_info = NULL;
+    char *error_msg = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -938,7 +1164,7 @@ nacm_cl_test_rpc_acl_with_empty_nacm_cfg(void **state)
 }
 
 static void
-nacm_cl_test_rpc_acl(void **state)
+nacm_cl_test_rpc_nacm(void **state)
 {
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
@@ -952,6 +1178,7 @@ nacm_cl_test_rpc_acl(void **state)
     sr_val_t *input = NULL;
     sr_node_t *input_tree = NULL;
     const sr_error_info_t *error_info = NULL;
+    char *error_msg = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1069,7 +1296,7 @@ nacm_cl_test_rpc_acl(void **state)
 }
 
 static void
-nacm_cl_test_rpc_acl_with_denied_exec_by_dflt(void **state)
+nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
 {
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
@@ -1083,6 +1310,7 @@ nacm_cl_test_rpc_acl_with_denied_exec_by_dflt(void **state)
     sr_val_t *input = NULL;
     sr_node_t *input_tree = NULL;
     const sr_error_info_t *error_info = NULL;
+    char *error_msg = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1200,7 +1428,7 @@ nacm_cl_test_rpc_acl_with_denied_exec_by_dflt(void **state)
 }
 
 static void
-nacm_cl_test_rpc_acl_with_ext_groups(void **state)
+nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
 {
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
@@ -1214,6 +1442,7 @@ nacm_cl_test_rpc_acl_with_ext_groups(void **state)
     sr_val_t *input = NULL;
     sr_node_t *input_tree = NULL;
     const sr_error_info_t *error_info = NULL;
+    char *error_msg = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1331,7 +1560,7 @@ nacm_cl_test_rpc_acl_with_ext_groups(void **state)
 }
 
 static void
-nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
+nacm_cl_test_event_notif_nacm_with_empty_nacm_cfg(void **state)
 {
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
@@ -1536,7 +1765,7 @@ nacm_cl_test_event_notif_acl_with_empty_nacm_cfg(void **state)
 }
 
 static void
-nacm_cl_test_event_notif_acl(void **state)
+nacm_cl_test_event_notif_nacm(void **state)
 {
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
@@ -1743,7 +1972,7 @@ nacm_cl_test_event_notif_acl(void **state)
 }
 
 static void
-nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
+nacm_cl_test_event_notif_nacm_with_denied_read_by_dflt(void **state)
 {
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
@@ -1948,7 +2177,7 @@ nacm_cl_test_event_notif_acl_with_denied_read_by_dflt(void **state)
 }
 
 static void
-nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
+nacm_cl_test_event_notif_nacm_with_ext_groups(void **state)
 {
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
@@ -2152,17 +2381,1018 @@ nacm_cl_test_event_notif_acl_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
+{
+    int rc = SR_ERR_OK;
+    sr_conn_ctx_t *conn = *state;
+    user_sessions_t sessions = {NULL};
+    sr_val_t value = { 0 };
+    const sr_error_info_t *error_info = NULL;
+    size_t error_cnt = 0;
+    char *error_msg = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* start a session for each user */
+    start_user_sessions(conn, NULL, &sessions);
+
+    /* test "empty" commit */
+    /*  -> sysrepo-user1 */
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    COMMIT_PERMITTED(2);
+
+    /* try to set single integer value */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/i8"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "");
+
+    /* change value of a leaf, but then set the original value back => no effect */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/i8"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* try to create a new leaf-list */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/numbers[.='88']"
+    /*  -> sysrepo-user1 */
+    value.type = SR_UINT8_T;
+    value.data.uint8_val = 88;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_CREATE, "", "");
+
+    /* try to delete an existing leaf-list */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/numbers[.='2']"
+    /*  -> sysrepo-user1 */
+    rc = sr_delete_item(sessions[0], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_DELETE, "", "");
+    /*  -> sysrepo-user2 */
+    rc = sr_delete_item(sessions[1], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_DELETE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_DELETE, "", "");
+
+    /* try to move an existing leaf-list to the first position */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:ordered-numbers[.='57']"
+    /*  -> sysrepo-user1 */
+    rc = sr_move_item(sessions[0], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "");
+    /*  -> sysrepo-user2 */
+    rc = sr_move_item(sessions[1], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_move_item(sessions[2], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "");
+
+    /* try to create a new leaf together with its parent and some implicitly created nodes */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:presence-container"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = 99;
+    rc = sr_set_item(sessions[0], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_CREATE, "", "");
+
+    /* try to edit NACM configuration */
+#undef NODE_XPATH
+#define NODE_XPATH "/ietf-netconf-acm:nacm/write-default"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/ietf-netconf-acm:nacm/groups/group[name='new-group']"
+    /*  -> sysrepo-user1 */
+    rc = sr_set_item_str(sessions[0], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[0], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item_str(sessions[1], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[1], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item_str(sessions[2], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+
+    /* try to edit container in the example-module */
+#undef NODE_XPATH
+#define NODE_XPATH "/example-module:container/list[key1='new-item-key1'][key2='new-item-key2']"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/example-module:container/list[key1='new-item2-key1'][key2='new-item2-key2']"
+#undef NODE3_XPATH
+#define NODE3_XPATH "/example-module:container/list[key1='key1'][key2='key2']"
+    /*  -> sysrepo-user1 */
+    rc = sr_set_item_str(sessions[0], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[0], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[0], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED3(0, NODE3_XPATH, NACM_ACCESS_DELETE, "", "",
+                      NODE_XPATH, NACM_ACCESS_CREATE, "", "",
+                      NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item_str(sessions[1], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[1], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[1], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED3(1, NODE3_XPATH, NACM_ACCESS_DELETE, "", "",
+                      NODE_XPATH, NACM_ACCESS_CREATE, "", "",
+                      NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item_str(sessions[2], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[2], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[2], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED3(2, NODE3_XPATH, NACM_ACCESS_DELETE, "", "",
+                      NODE_XPATH, NACM_ACCESS_CREATE, "", "",
+                      NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+
+    /* try to edit ietf-interfaces */
+#undef NODE_XPATH
+#define NODE_XPATH  "/ietf-interfaces:interfaces/interface[name='eth0']"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/ietf-interfaces:interfaces/interface[name='eth2']"
+#undef NODE3_XPATH
+#define NODE3_XPATH "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled"
+    /*  -> sysrepo-user1 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[0], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[0], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.type = SR_BOOL_T;
+    value.data.bool_val = true;
+    rc = sr_set_item(sessions[0], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED3(0, NODE3_XPATH, NACM_ACCESS_UPDATE, "", "",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "", "",
+                      NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user2 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[1], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[1], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessions[1], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED3(1, NODE3_XPATH, NACM_ACCESS_UPDATE, "", "",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "", "",
+                      NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user3 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[2], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessions[2], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED3(2, NODE3_XPATH, NACM_ACCESS_UPDATE, "", "",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "", "",
+                      NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+
+    /* stop sessions */
+    for (int i = 0; i < NUM_OF_USERS; ++i) {
+        rc = sr_session_stop(sessions[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+}
+
+static void
+nacm_cl_test_commit_nacm(void **state)
+{
+    int rc = SR_ERR_OK;
+    sr_conn_ctx_t *conn = *state;
+    user_sessions_t sessions = {NULL};
+    sr_val_t value = { 0 };
+    const sr_error_info_t *error_info = NULL;
+    size_t error_cnt = 0;
+    char *error_msg = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* start a session for each user */
+    start_user_sessions(conn, NULL, &sessions);
+
+    /* test "empty" commit */
+    /*  -> sysrepo-user1 */
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    COMMIT_PERMITTED(2);
+
+    /* try to set single integer value */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/i8"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_UPDATE, "disallow-to-modify-i8",
+            "Disallow modification of 8-bit signed integer in the main container");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* change value of a leaf, but then set the original value back => no effect */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/i8"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* try to create a new leaf-list */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/numbers[.='88']"
+    /*  -> sysrepo-user1 */
+    value.type = SR_UINT8_T;
+    value.data.uint8_val = 88;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_CREATE, "deny-high-numbers", "Do not allow to create/delete low numbers.");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_CREATE, "deny-high-numbers", "Do not allow to create/delete low numbers.");
+
+    /* try to delete an existing leaf-list */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/numbers[.='2']"
+    /*  -> sysrepo-user1 */
+    rc = sr_delete_item(sessions[0], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_delete_item(sessions[1], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_DELETE, "deny-low-numbers", "Do not allow to create/delete low numbers.");
+    /*  -> sysrepo-user3 */
+    rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* try to move an existing leaf-list to the first position */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:ordered-numbers[.='57']"
+    /*  -> sysrepo-user1 */
+    rc = sr_move_item(sessions[0], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_move_item(sessions[1], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_move_item(sessions[2], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* try to create a new leaf together with its parent and some implicitly created nodes */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:presence-container"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = 99;
+    rc = sr_set_item(sessions[0], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+#if 0 /* TODO: report crash in lyd_diff */
+    /* try to edit NACM configuration */
+#undef NODE_XPATH
+#define NODE_XPATH "/ietf-netconf-acm:nacm/write-default"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/ietf-netconf-acm:nacm/groups/group[name='new-group']"
+    /*  -> sysrepo-user1 */
+    rc = sr_set_item_str(sessions[0], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[0], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item_str(sessions[1], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[1], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item_str(sessions[2], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+#endif
+
+    /* try to edit container in the example-module */
+#undef NODE_XPATH
+#define NODE_XPATH "/example-module:container/list[key1='new-item-key1'][key2='new-item-key2']"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/example-module:container/list[key1='new-item2-key1'][key2='new-item2-key2']"
+#undef NODE3_XPATH
+#define NODE3_XPATH "/example-module:container/list[key1='key1'][key2='key2']"
+    /*  -> sysrepo-user1 */
+    rc = sr_set_item_str(sessions[0], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[0], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[0], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(0, NODE3_XPATH, NACM_ACCESS_DELETE, "", "",
+                      NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item_str(sessions[1], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[1], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[1], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED3(1, NODE3_XPATH, NACM_ACCESS_DELETE, "", "",
+                      NODE_XPATH, NACM_ACCESS_CREATE, "", "",
+                      NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item_str(sessions[2], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[2], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[2], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(2, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.",
+                      NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
+
+    /* try to edit ietf-interfaces */
+#undef NODE_XPATH
+#define NODE_XPATH  "/ietf-interfaces:interfaces/interface[name='eth0']"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/ietf-interfaces:interfaces/interface[name='eth2']"
+#undef NODE3_XPATH
+#define NODE3_XPATH "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled"
+    /*  -> sysrepo-user1 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[0], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[0], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.type = SR_BOOL_T;
+    value.data.bool_val = true;
+    rc = sr_set_item(sessions[0], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(0, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "", "");
+    /*  -> sysrepo-user2 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[1], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[1], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessions[1], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(1, NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface",
+                      NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user3 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[2], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessions[2], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(2, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
+
+    /* stop sessions */
+    for (int i = 0; i < NUM_OF_USERS; ++i) {
+        rc = sr_session_stop(sessions[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+}
+
+static void
+nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
+{
+    int rc = SR_ERR_OK;
+    sr_conn_ctx_t *conn = *state;
+    user_sessions_t sessions = {NULL};
+    sr_val_t value = { 0 };
+    const sr_error_info_t *error_info = NULL;
+    size_t error_cnt = 0;
+    char *error_msg = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* start a session for each user */
+    start_user_sessions(conn, NULL, &sessions);
+
+    /* test "empty" commit */
+    /*  -> sysrepo-user1 */
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    COMMIT_PERMITTED(2);
+
+    /* try to set single integer value */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/i8"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_UPDATE, "disallow-to-modify-i8",
+            "Disallow modification of 8-bit signed integer in the main container");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* change value of a leaf, but then set the original value back => no effect */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/i8"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* try to create a new leaf-list */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/numbers[.='88']"
+    /*  -> sysrepo-user1 */
+    value.type = SR_UINT8_T;
+    value.data.uint8_val = 88;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_CREATE, "deny-high-numbers", "Do not allow to create/delete low numbers.");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_CREATE, "deny-high-numbers", "Do not allow to create/delete low numbers.");
+
+    /* try to delete an existing leaf-list */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/numbers[.='2']"
+    /*  -> sysrepo-user1 */
+    rc = sr_delete_item(sessions[0], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_delete_item(sessions[1], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_DELETE, "deny-low-numbers", "Do not allow to create/delete low numbers.");
+    /*  -> sysrepo-user3 */
+    rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* try to move an existing leaf-list to the first position */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:ordered-numbers[.='57']"
+    /*  -> sysrepo-user1 */
+    rc = sr_move_item(sessions[0], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_move_item(sessions[1], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    rc = sr_move_item(sessions[2], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* try to create a new leaf together with its parent and some implicitly created nodes */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:presence-container"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = 99;
+    rc = sr_set_item(sessions[0], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(1, NODE_XPATH "/child1/grandchild1/grandchild1-leaf", NACM_ACCESS_CREATE, "deny-grandchild1-leaf", "Do not allow to edit grandchild1-leaf.",
+                      NODE_XPATH "/child2", NACM_ACCESS_CREATE, "deny-child2", "Do not allow to create child2.");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+#if 0 /* TODO: report crash in lyd_diff */
+    /* try to edit NACM configuration */
+#undef NODE_XPATH
+#define NODE_XPATH "/ietf-netconf-acm:nacm/write-default"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/ietf-netconf-acm:nacm/groups/group[name='new-group']"
+    /*  -> sysrepo-user1 */
+    rc = sr_set_item_str(sessions[0], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[0], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item_str(sessions[1], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[1], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item_str(sessions[2], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+#endif
+
+    /* try to edit container in the example-module */
+#undef NODE_XPATH
+#define NODE_XPATH "/example-module:container/list[key1='new-item-key1'][key2='new-item-key2']"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/example-module:container/list[key1='new-item2-key1'][key2='new-item2-key2']"
+#undef NODE3_XPATH
+#define NODE3_XPATH "/example-module:container/list[key1='key1'][key2='key2']"
+    /*  -> sysrepo-user1 */
+    rc = sr_set_item_str(sessions[0], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[0], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[0], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item_str(sessions[1], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[1], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[1], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item_str(sessions[2], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[2], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[2], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(2, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.",
+                      NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
+
+    /* try to edit ietf-interfaces */
+#undef NODE_XPATH
+#define NODE_XPATH  "/ietf-interfaces:interfaces/interface[name='eth0']"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/ietf-interfaces:interfaces/interface[name='eth2']"
+#undef NODE3_XPATH
+#define NODE3_XPATH "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled"
+    /*  -> sysrepo-user1 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[0], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[0], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.type = SR_BOOL_T;
+    value.data.bool_val = true;
+    rc = sr_set_item(sessions[0], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(0, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface");
+    /*  -> sysrepo-user2 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[1], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[1], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessions[1], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
+    /*  -> sysrepo-user3 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[2], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessions[2], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(2, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
+
+    /* stop sessions */
+    for (int i = 0; i < NUM_OF_USERS; ++i) {
+        rc = sr_session_stop(sessions[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+}
+
+static void
+nacm_cl_test_commit_nacm_with_ext_groups(void **state)
+{
+    int rc = SR_ERR_OK;
+    sr_conn_ctx_t *conn = *state;
+    user_sessions_t sessions = {NULL};
+    sr_val_t value = { 0 };
+    const sr_error_info_t *error_info = NULL;
+    size_t error_cnt = 0;
+    char *error_msg = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* start a session for each user */
+    start_user_sessions(conn, NULL, &sessions);
+
+    /* test "empty" commit */
+    /*  -> sysrepo-user1 */
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    COMMIT_PERMITTED(2);
+
+    /* try to set single integer value */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/i8"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_UPDATE, "disallow-to-modify-i8",
+            "Disallow modification of 8-bit signed integer in the main container");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* change value of a leaf, but then set the original value back => no effect */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/i8"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* try to create a new leaf-list */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/numbers[.='88']"
+    /*  -> sysrepo-user1 */
+    value.type = SR_UINT8_T;
+    value.data.uint8_val = 88;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_CREATE, "deny-high-numbers", "Do not allow to create/delete low numbers.");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_CREATE, "deny-high-numbers", "Do not allow to create/delete low numbers.");
+
+    /* try to delete an existing leaf-list */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/numbers[.='2']"
+    /*  -> sysrepo-user1 */
+    rc = sr_delete_item(sessions[0], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_delete_item(sessions[1], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_DELETE, "deny-low-numbers", "Do not allow to create/delete low numbers.");
+    /*  -> sysrepo-user3 */
+    rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* try to move an existing leaf-list to the first position */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:ordered-numbers[.='57']"
+    /*  -> sysrepo-user1 */
+    rc = sr_move_item(sessions[0], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_move_item(sessions[1], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_UPDATE, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    /*  -> sysrepo-user3 */
+    rc = sr_move_item(sessions[2], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+    /* try to create a new leaf together with its parent and some implicitly created nodes */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:presence-container"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = 99;
+    rc = sr_set_item(sessions[0], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(1, NODE_XPATH "/child1/grandchild1/grandchild1-leaf", NACM_ACCESS_CREATE, "deny-grandchild1-leaf", "Do not allow to edit grandchild1-leaf.",
+                      NODE_XPATH "/child2", NACM_ACCESS_CREATE, "deny-child2", "Do not allow to create child2.");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+
+#if 0 /* TODO: report crash in lyd_diff */
+    /* try to edit NACM configuration */
+#undef NODE_XPATH
+#define NODE_XPATH "/ietf-netconf-acm:nacm/write-default"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/ietf-netconf-acm:nacm/groups/group[name='new-group']"
+    /*  -> sysrepo-user1 */
+    rc = sr_set_item_str(sessions[0], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[0], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item_str(sessions[1], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[1], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item_str(sessions[2], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+#endif
+
+    /* try to edit container in the example-module */
+#undef NODE_XPATH
+#define NODE_XPATH "/example-module:container/list[key1='new-item-key1'][key2='new-item-key2']"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/example-module:container/list[key1='new-item2-key1'][key2='new-item2-key2']"
+#undef NODE3_XPATH
+#define NODE3_XPATH "/example-module:container/list[key1='key1'][key2='key2']"
+    /*  -> sysrepo-user1 */
+    rc = sr_set_item_str(sessions[0], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[0], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[0], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item_str(sessions[1], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[1], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[1], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item_str(sessions[2], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[2], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[2], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(2, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.",
+                      NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
+
+    /* try to edit ietf-interfaces */
+#undef NODE_XPATH
+#define NODE_XPATH  "/ietf-interfaces:interfaces/interface[name='eth0']"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/ietf-interfaces:interfaces/interface[name='eth2']"
+#undef NODE3_XPATH
+#define NODE3_XPATH "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled"
+    /*  -> sysrepo-user1 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[0], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[0], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.type = SR_BOOL_T;
+    value.data.bool_val = true;
+    rc = sr_set_item(sessions[0], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(0, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "", "");
+    /*  -> sysrepo-user2 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[1], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[1], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessions[1], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
+    /*  -> sysrepo-user3 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[2], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessions[2], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED2(2, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
+                      NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
+
+    /* stop sessions */
+    for (int i = 0; i < NUM_OF_USERS; ++i) {
+        rc = sr_session_stop(sessions[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+}
 int
 main() {
     const struct CMUnitTest tests[] = {
-            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl, sysrepo_setup, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_denied_exec_by_dflt, sysrepo_setup_with_denied_exec_by_dflt, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_acl_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl, sysrepo_setup, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl_with_denied_read_by_dflt, sysrepo_setup_with_denied_read_by_dflt, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_acl_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
+        /* RPC */
+            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt, sysrepo_setup_with_denied_exec_by_dflt, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
+        /* Event notification */
+            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm_with_denied_read_by_dflt, sysrepo_setup_with_denied_read_by_dflt, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
+        /* Commit */
+            cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_permitted_write_by_dflt, sysrepo_setup_with_permitted_write_by_dflt, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
     };
 
     if (0 != getuid()) {

@@ -273,8 +273,7 @@ rp_dt_get_subtree(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *d
         return rc;
     }
 
-    rc = rp_dt_init_tree_pruning(dm_ctx, rp_session, node, data_tree, check_enabled, NULL != node->child,
-            &pruning_cb, &pruning_ctx);
+    rc = rp_dt_init_tree_pruning(dm_ctx, rp_session, node, data_tree, check_enabled, &pruning_cb, &pruning_ctx);
     if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
         goto cleanup;
@@ -324,8 +323,7 @@ rp_dt_get_subtree_chunk(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
         return rc;
     }
 
-    rc = rp_dt_init_tree_pruning(dm_ctx, rp_session, node, data_tree, check_enabled, NULL != node->child,
-            &pruning_cb, &pruning_ctx);
+    rc = rp_dt_init_tree_pruning(dm_ctx, rp_session, node, data_tree, check_enabled, &pruning_cb, &pruning_ctx);
     if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
         goto cleanup;
@@ -385,8 +383,7 @@ rp_dt_get_subtrees(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *
         return rc;
     }
 
-    rc = rp_dt_init_tree_pruning(dm_ctx, rp_session, NULL, data_tree, check_enable,
-            nodes->number > 1 || NULL != nodes->set.d[0]->child, &pruning_cb, &pruning_ctx);
+    rc = rp_dt_init_tree_pruning(dm_ctx, rp_session, NULL, data_tree, check_enable, &pruning_cb, &pruning_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize sysrepo tree pruning.");
 
     rc = sr_nodes_to_trees(nodes, sr_mem, pruning_cb, (void *)pruning_ctx, subtrees, count);
@@ -429,8 +426,7 @@ rp_dt_get_subtrees_chunks(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd
         return rc;
     }
 
-    rc = rp_dt_init_tree_pruning(dm_ctx, rp_session, NULL, data_tree, check_enable,
-            nodes->number > 1 || NULL != nodes->set.d[0]->child, &pruning_cb, &pruning_ctx);
+    rc = rp_dt_init_tree_pruning(dm_ctx, rp_session, NULL, data_tree, check_enable, &pruning_cb, &pruning_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize sysrepo tree pruning.");
 
     rc = sr_nodes_to_tree_chunks(nodes, slice_offset, slice_width, child_limit, depth_limit, sr_mem,
