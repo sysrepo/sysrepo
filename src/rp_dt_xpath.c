@@ -51,73 +51,6 @@ rp_dt_create_xpath_for_node(sr_mem_ctx_t *sr_mem, const struct lyd_node *node, c
 }
 
 /**
- * @brief Removes trailing characters from xpath to make it validateable by ly_ctx_get_node
- * @param [in] dm_ctx
- * @param [in] xpath
- * @param [in] schema_info
- * @param [out] trimmed
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, dm_schema_info_t *schema_info, char **trimmed)
-{
-    CHECK_NULL_ARG3(dm_ctx, xpath, trimmed);
-    int rc = SR_ERR_OK;
-    char *xp_copy = NULL;
-    char *namespace = NULL;
-    size_t xp_len = 0;
-
-    xp_copy = strdup(xpath);
-    CHECK_NULL_NOMEM_RETURN(xp_copy);
-
-    /* remove trailing '*:/.' */
-    bool change = false;
-    while (0 < (xp_len = strlen(xp_copy))) {
-        change = false;
-        if ('.' == xp_copy[xp_len - 1]) {
-            xp_copy[xp_len - 1] = 0;
-            xp_len--;
-            change = true;
-        }
-        if ('*' == xp_copy[xp_len - 1]) {
-            xp_copy[xp_len - 1] = 0;
-            xp_len--;
-            change = true;
-        }
-        if ('/' == xp_copy[xp_len - 1]) {
-            xp_copy[xp_len - 1] = 0;
-            xp_len--;
-            change = true;
-        }
-        if (':' == xp_copy[xp_len - 1]) {
-            xp_copy[xp_len - 1] = 0;
-            xp_len--;
-            char *last_slash = rindex(xp_copy, '/');
-            if (NULL == last_slash || xp_len < 1) {
-                free(xp_copy);
-                return SR_ERR_INVAL_ARG;
-            }
-
-            namespace = strdup(last_slash + 1); /* do not copy leading slash */
-            if (NULL == ly_ctx_get_module(schema_info->ly_ctx, namespace, NULL)) {
-                SR_LOG_ERR("Module %s not found", namespace);
-                free(namespace);
-                free(xp_copy);
-                return rc;
-            }
-            free(namespace);
-            *last_slash = 0;
-            change = true;
-        }
-        if (!change) {
-            break;
-        }
-    }
-    *trimmed = xp_copy;
-    return rc;
-}
-
-/**
  *
  * @brief Function tries to validate the xpath and to find the corresponding
  * node in schema if possible.
@@ -138,8 +71,6 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
     int rc = SR_ERR_OK;
 
     char *namespace = NULL;
-    char *xp_copy = NULL;
-    size_t xp_len = 0;
     const struct lys_module *module = NULL;
     rc = sr_copy_first_ns(xpath, &namespace);
     CHECK_RC_MSG_RETURN(rc, "Namespace copy failed");
@@ -160,19 +91,6 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
     }
     free(namespace);
 
-    rc = rp_dt_trim_xpath(dm_ctx, xpath, schema_info, &xp_copy);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Error while xpath trim %s", xpath);
-        return rc;
-    }
-
-    xp_len = strlen(xp_copy);
-    if (0 == xp_len) {
-        free(xp_copy);
-        return SR_ERR_OK;
-    }
-
-
     const struct lys_node *start_node = NULL;
     if (NULL != schema_info->module && NULL != schema_info->module->data) {
         start_node = schema_info->module->data;
@@ -187,11 +105,12 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
         }
     }
 
-    const struct lys_node *sch_node = sr_find_schema_node(start_node, xp_copy, 0);
-    if (NULL != sch_node) {
-        if (NULL != match) {
-            *match = (struct lys_node *) sch_node;
+    struct ly_set *set = lys_find_xpath(start_node, xpath, 0);
+    if (NULL != set) {
+        if(1 == set->number && NULL != match) {
+            *match = set->set.s[0];
         }
+        ly_set_free(set);
     } else {
         switch (ly_vecode) {
         case LYVE_PATH_INKEY:
@@ -210,7 +129,7 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
             break;
         case LYVE_XPATH_INSNODE:
             if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), xp_copy, SR_ERR_BAD_ELEMENT);
+                rc = dm_report_error(session, ly_errmsg(), xpath, SR_ERR_BAD_ELEMENT);
             } else {
                 rc = SR_ERR_BAD_ELEMENT;
             }
@@ -223,7 +142,6 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
             }
         }
     }
-    free(xp_copy);
     return rc;
 }
 
