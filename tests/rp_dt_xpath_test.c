@@ -33,9 +33,9 @@
 
 int validate_node_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, struct lys_node **match){
     int rc = SR_ERR_OK;
-    
+
     rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, NULL, match);
-    
+
     return rc;
 }
 
@@ -84,7 +84,7 @@ void rp_dt_validate_fail(void **state)
     rc = validate_node_wrapper(ctx, session, "/example-module:container/list[key1='a'][asf='sf']", NULL);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
 
-    
+
     /* key count does not match */
     rc = validate_node_wrapper(ctx, session, "/example-module:container/list[key1='a'][key2='b'][unkn='as']", NULL);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
@@ -126,7 +126,7 @@ void rp_dt_validate_ok(void **state)
 
     rc = validate_node_wrapper(ctx, session, "/test-module:list[key='faaasdfsd']", NULL);
     assert_int_equal(SR_ERR_OK, rc);
-    
+
     /* only one key specified */
     rc = validate_node_wrapper(ctx, session, "/example-module:container/list[key1='a']", NULL);
     assert_int_equal(SR_ERR_OK, rc);
@@ -195,13 +195,13 @@ check_error_reporting(void **state)
 
     /* unknown augment*/
     rc = validate_node_wrapper(ctx, session, "/example-module:container/unknown-augment:unknown", NULL);
-#if 0
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
-#endif
+
     err_msg = NULL;
     err_xpath = NULL;
     rc = dm_copy_errors(session, NULL, &err_msg, &err_xpath);
     assert_int_equal(SR_ERR_OK, rc);
+
     assert_string_equal("/example-module:container", err_xpath);
 
     assert_true(dm_has_error(session));

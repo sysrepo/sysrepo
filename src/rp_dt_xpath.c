@@ -91,21 +91,7 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
     }
     free(namespace);
 
-    const struct lys_node *start_node = NULL;
-    if (NULL != schema_info->module && NULL != schema_info->module->data) {
-        start_node = schema_info->module->data;
-    } else {
-        const struct lys_module *m = NULL;
-        uint32_t index = 0;
-        while(NULL != (m = ly_ctx_get_module_iter(schema_info->ly_ctx, &index))) {
-            if (NULL != m->data) {
-                start_node = m->data;
-                break;
-            }
-        }
-    }
-
-    struct ly_set *set = lys_find_xpath(start_node, xpath, 0);
+    struct ly_set *set = lys_find_xpath(schema_info->ly_ctx, NULL, xpath, 0);
     if (NULL != set) {
         if(1 == set->number && NULL != match) {
             *match = set->set.s[0];
@@ -120,6 +106,7 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
                 rc = SR_ERR_BAD_ELEMENT;
             }
             break;
+        case LYVE_XPATH_INMOD:
         case LYVE_PATH_INMOD:
             if (NULL != session) {
                 rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_UNKNOWN_MODEL);
