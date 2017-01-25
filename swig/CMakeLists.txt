@@ -56,6 +56,8 @@ if(GEN_PYTHON_BINDINGS AND SWIG_FOUND)
         if(NOT PYTHONLIBS_FOUND)
             message(WARNING "Did not found Python version 3.x")
             message("-- Sysrepo supports Python 2.x and Python 3.x")
+        else()
+            set(GEN_PYTHON3_TESTS 1 CACHE BOOL "Enable Python3 tests.")
         endif()
     else()
         message(WARNING "Sysrepo supports Python 2.x and Python 3.x")
@@ -184,6 +186,39 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "3
 
         install( FILES "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_3}.so" DESTINATION ${PYTHON_MODULE_PATH} )
         install( FILES "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_3}.py" DESTINATION ${PYTHON_MODULE_PATH} )
+
+        if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS AND GEN_PYTHON3_TESTS)
+          set(PY3_SWIG_DIR ${CMAKE_BINARY_DIR}/swig/python3)
+
+          file(COPY "python3/tests" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python3")
+          file(COPY "python3/run_python_test.sh" DESTINATION "${PY3_SWIG_DIR}")
+
+          macro(ADD_PYTHON_TEST TEST_NAME)
+            add_test(NAME python_${TEST_NAME}
+              COMMAND sh ${PY3_SWIG_DIR}/run_python_test.sh
+              "${CMAKE_BINARY_DIR}/src:${CMAKE_BINARY_DIR}/tests:${CMAKE_BINARY_DIR}/repository"
+              "${PY3_SWIG_DIR}:${PROJECT_SOURCE_DIR}/swig/python3:${PYTHON_BUILD_DIR}"
+              "${PYTHON_EXECUTABLE}"
+              "${PY3_SWIG_DIR}/tests/${TEST_NAME}.py"
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+              )
+          endmacro(ADD_PYTHON_TEST)
+
+          ADD_PYTHON_TEST(SysrepoBasicTest)
+          ADD_PYTHON_TEST(SchemasManagementTest)
+          ADD_PYTHON_TEST(LockingTest)
+          ADD_PYTHON_TEST(CommitTest)
+          ADD_PYTHON_TEST(MoveTest)
+          ADD_PYTHON_TEST(SubscriptionTest)
+          ADD_PYTHON_TEST(NotificationTest) # note: needs notifications_test_app to work
+
+          add_custom_command(TARGET ${SWIG_MODULE_${PYTHON_SWIG_BINDING_3}_REAL_NAME} POST_BUILD
+            COMMAND cp "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_3}.so" ${PY3_SWIG_DIR}/tests
+            COMMAND cp "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_3}.py" ${PY3_SWIG_DIR}/tests
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            )
+        endif()
+
 endif()
 
 if(JAVA_FOUND)
