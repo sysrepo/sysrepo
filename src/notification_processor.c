@@ -898,7 +898,8 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
             predicate = strchr(xpath, '[');
             if (NULL != predicate) {
                 SR_LOG_ERR("Xpath %s contains predicate, it can't be used for subscribe call.", xpath);
-                return SR_ERR_UNSUPPORTED;
+                rc = SR_ERR_UNSUPPORTED;
+                goto cleanup;
             }
         }
     }
