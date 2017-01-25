@@ -4358,7 +4358,7 @@ cl_event_notif_test(void **state)
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
-    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS] = {0, };
+    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS] = {{0}, };
     sr_session_ctx_t *notif_session = NULL;
     cl_test_en_cb_status_t cb_status;
     sr_val_t values[4];
@@ -4700,7 +4700,7 @@ cl_event_notif_tree_test(void **state)
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
-    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS] = {0, };
+    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS] = {{0}, };
     sr_session_ctx_t *notif_session = NULL;
     cl_test_en_cb_status_t cb_status;
     sr_node_t *trees = NULL;
@@ -4903,7 +4903,7 @@ cl_event_notif_combo_test(void **state)
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
-    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS] = {0,};
+    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS] = {{0},};
     sr_session_ctx_t *notif_session = NULL;
     cl_test_en_cb_status_t cb_status;
     sr_node_t *trees = NULL;
