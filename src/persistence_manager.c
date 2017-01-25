@@ -473,6 +473,7 @@ pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscript
 
 cleanup:
     np_subscription_content_cleanup(subscription);
+    memset(subscription, 0, sizeof(*subscription));
     return rc;
 }
 
@@ -568,7 +569,7 @@ pm_module_data_version_changed(pm_ctx_t *pm_ctx, const char *module_name, pm_mod
         }
     }
 
-    if (!changed) {
+    if (!(*changed)) {
         SR_LOG_DBG("Module '%s' persist file version matches with cached value (%"PRIu64").", module_name, timestamp);
     } else {
         SR_LOG_DBG("Module '%s' persist file version does not match with the last cached value (%"PRIu64").", module_name, timestamp);
