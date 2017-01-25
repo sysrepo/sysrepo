@@ -840,6 +840,71 @@ np_cleanup(np_ctx_t *np_ctx)
     }
 }
 
+/**
+ * @brief Function checks whether xpath can be used for the particular subscribe call.
+ */
+static int
+np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, const char *xpath)
+{
+    CHECK_NULL_ARG2(np_ctx, xpath);
+    int rc = SR_ERR_OK;
+    char *module_name = NULL;
+    dm_schema_info_t *si = NULL;
+    struct lys_node *sch_node;
+
+    if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == type) {
+        /* we do no check for module and subtree subscription at this level */
+        return rc;
+    } else if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type) {
+        char *predicate = strchr(xpath, '[');
+        if (NULL != predicate) {
+            SR_LOG_ERR("Xpath %s contains predicate, it can't be used for subscribe call.", xpath);
+            return SR_ERR_UNSUPPORTED;
+        }
+        return rc;
+    } else {
+        rc = sr_copy_first_ns(xpath, &module_name);
+        CHECK_RC_LOG_RETURN(rc, "Copying module name failed for xpath '%s'", xpath);
+
+        rc = dm_get_module_and_lock(np_ctx->rp_ctx->dm_ctx, module_name, &si);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to find module %s", module_name);
+
+        sch_node = sr_find_schema_node(si->module->data, xpath, 0);
+        if (NULL == sch_node) {
+            SR_LOG_ERR("Node identified by xpath %s was not found", xpath);
+            rc = SR_ERR_BAD_ELEMENT;
+            goto cleanup;
+        }
+
+        if (SR__SUBSCRIPTION_TYPE__RPC_SUBS == type && !(LYS_RPC & sch_node->nodetype)) {
+            SR_LOG_ERR("Xpath %s doesn't identify RPC.", xpath);
+            rc = SR_ERR_UNSUPPORTED;
+            goto cleanup;
+        } else if (SR__SUBSCRIPTION_TYPE__ACTION_SUBS == type && !(LYS_ACTION & sch_node->nodetype)) {
+            SR_LOG_ERR("Xpath %s doesn't identify action.", xpath);
+            rc = SR_ERR_UNSUPPORTED;
+            goto cleanup;
+        } else if (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == type && !(LYS_NOTIF & sch_node->nodetype)) {
+            SR_LOG_ERR("Xpath %s doesn't identify event notification.", xpath);
+            rc = SR_ERR_UNSUPPORTED;
+            goto cleanup;
+        } else if (SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == type && ((LYS_NOTIF | LYS_RPC | LYS_ACTION) & sch_node->nodetype)) {
+            SR_LOG_ERR("Xpath %s doesn't identify node containing state date.", xpath);
+            rc = SR_ERR_UNSUPPORTED;
+            goto cleanup;
+        }
+    }
+
+
+cleanup:
+    free(module_name);
+    if (NULL != si) {
+        pthread_rwlock_unlock(&si->model_lock);
+    }
+
+    return rc;
+}
+
 int
 np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__SubscriptionType type,
         const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const char *username,
@@ -879,6 +944,11 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
     subscription->priority = priority;
     subscription->enable_running = (opts & NP_SUBSCR_ENABLE_RUNNING);
     subscription->api_variant = api_variant;
+
+    if (NULL != xpath) {
+        rc = np_validate_subscription_xpath(np_ctx, type, xpath);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Unsupported xpath %s for the subscribe call", xpath);
+    }
 
     /* save the new subscription */
     if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == type) ||
