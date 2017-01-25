@@ -2348,7 +2348,7 @@ sr_set_data_file_permissions(const char *target_file, bool target_is_dir, const 
     ret = stat(data_file_name, &data_file_stat);
     free(data_file_name);
 
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to stat data file for '%s': %s.", module_name, sr_strerror_safe(errno));
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_UNKNOWN_MODEL, "Unable to stat data file for '%s': %s.", module_name, sr_strerror_safe(errno));
 
     mode = data_file_stat.st_mode;
     /* for directory, set the execute permissions to be the same as write permissions */

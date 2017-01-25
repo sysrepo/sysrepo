@@ -4358,7 +4358,7 @@ cl_event_notif_test(void **state)
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
-    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS];
+    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS] = {{0}, };
     sr_session_ctx_t *notif_session = NULL;
     cl_test_en_cb_status_t cb_status;
     sr_val_t values[4];
@@ -4399,7 +4399,7 @@ cl_event_notif_test(void **state)
     for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
         rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-overutilized", test_event_notif_link_overutilized_cb,
                     &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
-        assert_int_equal(rc, SR_ERR_OK); /**< not verified at this stage */
+        assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     }
 
     /* subscribe for status-change in every session */
@@ -4491,7 +4491,7 @@ cl_event_notif_test(void **state)
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_lr);
         assert_int_equal(rc, SR_ERR_OK);
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_lo);
-        assert_int_equal(rc, SR_ERR_OK);
+        assert_int_equal(rc, SR_ERR_INVAL_ARG); /* subscribe was unsuccessful NULL arg */
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_st);
         assert_int_equal(rc, SR_ERR_OK);
     }
@@ -4700,7 +4700,7 @@ cl_event_notif_tree_test(void **state)
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
-    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS];
+    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS] = {{0}, };
     sr_session_ctx_t *notif_session = NULL;
     cl_test_en_cb_status_t cb_status;
     sr_node_t *trees = NULL;
@@ -4745,7 +4745,7 @@ cl_event_notif_tree_test(void **state)
         rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-overutilized",
                 test_event_notif_link_overutilized_tree_cb,
                 &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
-        assert_int_equal(rc, SR_ERR_OK); /**< not verified at this stage */
+        assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     }
 
     /* subscribe for status change in every session */
@@ -4878,7 +4878,7 @@ cl_event_notif_tree_test(void **state)
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_lr);
         assert_int_equal(rc, SR_ERR_OK);
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_lo);
-        assert_int_equal(rc, SR_ERR_OK);
+        assert_int_equal(rc, SR_ERR_INVAL_ARG); /* subscription is NULL */
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_st);
         assert_int_equal(rc, SR_ERR_OK);
     }
@@ -4903,7 +4903,7 @@ cl_event_notif_combo_test(void **state)
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
-    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS];
+    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS] = {{0},};
     sr_session_ctx_t *notif_session = NULL;
     cl_test_en_cb_status_t cb_status;
     sr_node_t *trees = NULL;
@@ -4968,7 +4968,7 @@ cl_event_notif_combo_test(void **state)
                     test_event_notif_link_overutilized_tree_cb,
                     &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
         }
-        assert_int_equal(rc, SR_ERR_OK); /**< not verified at this stage */
+        assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     }
 
     /* subscribe for status-change in every session (mix of values and nodes) */
@@ -5110,7 +5110,7 @@ cl_event_notif_combo_test(void **state)
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_lr);
         assert_int_equal(rc, SR_ERR_OK);
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_lo);
-        assert_int_equal(rc, SR_ERR_OK);
+        assert_int_equal(rc, SR_ERR_INVAL_ARG); /* subscription is NULL */
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_st);
         assert_int_equal(rc, SR_ERR_OK);
     }
@@ -5772,6 +5772,107 @@ cl_inst_id_to_more_modules_test (void **state)
     sr_session_stop(session);
 }
 
+static void
+cl_neg_subscribe_test (void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    int rc = SR_ERR_OK;
+    sr_subscription_ctx_t *subs = NULL;
+
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_module_change_subscribe(session, "Unknown-module", empty_module_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+    assert_null(subs);
+
+    /*** subtree change */
+    rc = sr_subtree_change_subscribe(session, "/unknown-module:something", empty_module_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+    assert_null(subs);
+
+    /* non-existing module */
+    rc = sr_subtree_change_subscribe(session, "/example-module:something", empty_module_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_null(subs);
+
+    /* unsupported xpath for subscription */
+    rc = sr_subtree_change_subscribe(session, "/example-module:container//*", empty_module_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(SR_ERR_UNSUPPORTED, rc);
+    assert_null(subs);
+
+    /* list key should be omitted when subscribing */
+    rc = sr_subtree_change_subscribe(session, "/example-module:container/list[key1='abc'][key2='def']", empty_module_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(SR_ERR_UNSUPPORTED, rc);
+    assert_null(subs);
+
+    /*** RPC */
+    rc = sr_rpc_subscribe(session, "/test-module:non-existing-rpc", test_rpc_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
+    assert_null(subs);
+
+    /* xpath identifies a container */
+    rc = sr_rpc_subscribe(session, "/test-module:main", test_rpc_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+    assert_null(subs);
+
+    rc = sr_rpc_subscribe(session, "/unknown-module:non-existing-rpc", test_rpc_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
+    assert_null(subs);
+
+    /*** actions */
+    rc = sr_action_subscribe(session, "/test-module:non-existing-rpc", test_action_cb1, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
+    assert_null(subs);
+
+    /* xpath identifies a container */
+    rc = sr_action_subscribe(session, "/test-module:main", test_action_cb1, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+    assert_null(subs);
+
+    rc = sr_action_subscribe(session, "/unknown-module:non-existing-rpc", test_action_cb1, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
+    assert_null(subs);
+
+    /*** event notifications */
+    rc = sr_event_notif_subscribe(session, "/test-module:non-existing-rpc", test_event_notif_status_change_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
+    assert_null(subs);
+
+    /* xpath identifies a container */
+    rc = sr_event_notif_subscribe(session, "/test-module:main", test_event_notif_status_change_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+    assert_null(subs);
+
+    rc = sr_event_notif_subscribe(session, "/unknown-module:non-existing-rpc", test_event_notif_status_change_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
+    assert_null(subs);
+
+    /*** data providers */
+    rc = sr_dp_get_items_subscribe(session, "/unknown-module:non-existing-rpc", dp_get_items_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
+    assert_null(subs);
+
+    rc = sr_dp_get_items_subscribe(session, "/test-module:activate-software-image", dp_get_items_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+    assert_null(subs);
+
+    rc = sr_dp_get_items_subscribe(session, "/example-module:unknown", dp_get_items_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
+    assert_null(subs);
+
+    rc = sr_dp_get_items_subscribe(session, "/example-module:container/list[key1='abc'][key2='def']", dp_get_items_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+    assert_null(subs);
+
+
+    sr_unsubscribe(session, subs);
+    sr_session_stop(session);
+}
+
+
 int
 main()
 {
@@ -5832,6 +5933,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_inst_id_to_known_deps_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_inst_id_to_one_module_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_inst_id_to_more_modules_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_neg_subscribe_test, sysrepo_setup, sysrepo_teardown),
     };
 
     watchdog_start(300);
