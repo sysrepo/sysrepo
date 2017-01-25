@@ -5863,7 +5863,7 @@ cl_neg_subscribe_test (void **state)
     assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     assert_null(subs);
 
-    rc = sr_dp_get_items_subscribe(session, "/example-module:list[key1='abc'][key2='def']", dp_get_items_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
+    rc = sr_dp_get_items_subscribe(session, "/example-module:container/list[key1='abc'][key2='def']", dp_get_items_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
     assert_int_equal(rc, SR_ERR_UNSUPPORTED);
     assert_null(subs);
 

@@ -851,12 +851,13 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
     char *module_name = NULL;
     dm_schema_info_t *si = NULL;
     struct lys_node *sch_node;
+    char *predicate = NULL;
 
     if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == type) {
         /* we do no check for module and subtree subscription at this level */
         return rc;
     } else if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type) {
-        char *predicate = strchr(xpath, '[');
+        predicate = strchr(xpath, '[');
         if (NULL != predicate) {
             SR_LOG_ERR("Xpath %s contains predicate, it can't be used for subscribe call.", xpath);
             return SR_ERR_UNSUPPORTED;
@@ -888,10 +889,17 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
             SR_LOG_ERR("Xpath %s doesn't identify event notification.", xpath);
             rc = SR_ERR_UNSUPPORTED;
             goto cleanup;
-        } else if (SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == type && ((LYS_NOTIF | LYS_RPC | LYS_ACTION) & sch_node->nodetype)) {
-            SR_LOG_ERR("Xpath %s doesn't identify node containing state date.", xpath);
-            rc = SR_ERR_UNSUPPORTED;
-            goto cleanup;
+        } else if (SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == type) {
+            if ((LYS_NOTIF | LYS_RPC | LYS_ACTION) & sch_node->nodetype) {
+                SR_LOG_ERR("Xpath %s doesn't identify node containing state date.", xpath);
+                rc = SR_ERR_UNSUPPORTED;
+                goto cleanup;
+            }
+            predicate = strchr(xpath, '[');
+            if (NULL != predicate) {
+                SR_LOG_ERR("Xpath %s contains predicate, it can't be used for subscribe call.", xpath);
+                return SR_ERR_UNSUPPORTED;
+            }
         }
     }
 
