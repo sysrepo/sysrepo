@@ -878,6 +878,7 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
     subscription->notif_event = notif_event;
     subscription->priority = priority;
     subscription->enable_running = (opts & NP_SUBSCR_ENABLE_RUNNING);
+    subscription->enable_nacm = (rp_session->options & SR_SESS_ENABLE_NACM);
     subscription->api_variant = api_variant;
 
     /* save the new subscription */

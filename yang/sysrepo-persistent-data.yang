@@ -159,6 +159,12 @@ module sysrepo-persistent-data {
             the running datastore.";
         }
 
+        leaf enable-nacm {
+          when "../type = 'event-notification'";
+          type empty;
+          description "If present, the NETCONF Access Control is enabled for this subscription.";
+        }
+
         leaf api-variant {
           when "../type = 'rpc' or ../type = 'event-notification' or ../type = 'action'";
           type enumeration {

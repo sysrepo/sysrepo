@@ -341,9 +341,13 @@ typedef uint32_t sr_conn_options_t;
  * and ::sr_session_start_user calls).
  */
 typedef enum sr_session_flag_e {
-    SR_SESS_DEFAULT = 0,      /**< Default (normal) session behavior. */
-    SR_SESS_CONFIG_ONLY = 1,  /**< Session will process only configuration data (e.g. sysrepo won't
-                                   return any state data by ::sr_get_items / ::sr_get_items_iter calls). */
+    SR_SESS_DEFAULT = 0,       /**< Default (normal) session behavior. */
+    SR_SESS_CONFIG_ONLY = 1,   /**< Session will process only configuration data (e.g. sysrepo won't
+                                    return any state data by ::sr_get_items / ::sr_get_items_iter calls). */
+    SR_SESS_ENABLE_NACM = 2,   /**< Enable NETCONF access control for this session (disabled by default). */
+
+    SR_SESS_MUTABLE_OPTS = 3   /**< Bit-mask of options that can be set by the user
+                                    (immutable flags are defined in sysrepo.proto file). */
 } sr_session_flag_t;
 
 /**

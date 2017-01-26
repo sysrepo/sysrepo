@@ -1700,9 +1700,7 @@ rp_session_set_opts(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     }
 
     /* white list options that can be set */
-    uint32_t mutable_opts = SR_SESS_CONFIG_ONLY;
-
-    session->options = msg->request->session_set_opts_req->options & mutable_opts;
+    session->options = msg->request->session_set_opts_req->options & SR_SESS_MUTABLE_OPTS;
 
     /* set response code */
     resp->response->result = rc;
@@ -2113,7 +2111,7 @@ rp_check_exec_perm_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
     Sr__CheckExecPermReq *req = msg->request->check_exec_perm_req;
 
     oper_rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
-    if (SR_ERR_OK == oper_rc && NULL != nacm_ctx) {
+    if (SR_ERR_OK == oper_rc && NULL != nacm_ctx && (session->options & SR_SESS_ENABLE_NACM)) {
         oper_rc = nacm_check_rpc(nacm_ctx, session->user_credentials, req->xpath,
                 &nacm_action, &nacm_rule, &nacm_rule_info);
         if (SR_ERR_OK == oper_rc && NACM_ACTION_DENY == nacm_action) {
@@ -2187,7 +2185,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     /* NACM access control */
     rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
     CHECK_RC_MSG_GOTO(rc, finalize, "Failed to get NACM context");
-    if (NULL != nacm_ctx) {
+    if (NULL != nacm_ctx && (session->options & SR_SESS_ENABLE_NACM)) {
         /* check if the user is authorized to execute the RPC */
         rc = nacm_check_rpc(nacm_ctx, session->user_credentials, xpath, &nacm_action, &nacm_rule, &nacm_rule_info);
         CHECK_RC_LOG_GOTO(rc, finalize, "Failed to verify if the user is allowed to execute RPC: %s", xpath);
@@ -2994,7 +2992,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
                 sub_match = true;
 #ifdef ENABLE_NACM
                 /* NACM access control */
-                if (NULL != nacm_ctx) {
+                if (NULL != nacm_ctx && subscription->enable_nacm) {
                     free(nacm_rule);
                     free(nacm_rule_info);
                     nacm_rule = NULL;
