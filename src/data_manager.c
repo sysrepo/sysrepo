@@ -3857,7 +3857,8 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         rc = dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
 
-        if (SR_DS_STARTUP != session->datastore || !c_ctx->disabled_config_change || NULL != nacm_ctx) {
+        if (SR_DS_STARTUP != session->datastore || !c_ctx->disabled_config_change ||
+                (NULL != nacm_ctx && (c_ctx->init_session->options & SR_SESS_ENABLE_NACM))) {
             /**
              * For candidate and running we save prev state.
              * If config change notifications are generated we have to save prev state for startup as well.
@@ -4066,7 +4067,7 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
     rc = dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
 
-    if (NULL == nacm_ctx) {
+    if (NULL == nacm_ctx || !(c_ctx->init_session->options & SR_SESS_ENABLE_NACM)) {
         goto cleanup;
     }
 
@@ -4262,7 +4263,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
                     SR_LOG_ERR_MSG("Failed to get NACM context.");
                     continue;
                 }
-                if (NULL != nacm_ctx) {
+                if (NULL != nacm_ctx && (c_ctx->init_session->options & SR_SESS_ENABLE_NACM)) {
                     /* already obtained in the NACM phase */
                     lookup_difflist.schema_info = info->schema;
                     module_difflist = sr_btree_search(c_ctx->difflists, &lookup_difflist);

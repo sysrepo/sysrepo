@@ -43,7 +43,7 @@ rp_dt_nacm_filtering(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node
     dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
 
-    if (NULL == nacm_ctx) {
+    if (NULL == nacm_ctx || !(rp_session->options & SR_SESS_ENABLE_NACM)) {
         goto cleanup;
     }
 
@@ -153,7 +153,7 @@ rp_dt_init_tree_pruning(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
 
     dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
-    if (NULL != nacm_ctx) {
+    if (NULL != nacm_ctx && (rp_session->options & SR_SESS_ENABLE_NACM)) {
         rc = nacm_data_validation_start(nacm_ctx, rp_session->user_credentials, data_tree->schema,
                 &pruning_ctx->nacm_data_val_ctx);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to start NACM data validation.");

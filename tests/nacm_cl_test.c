@@ -42,7 +42,7 @@
 #include "nacm_module_helper.h"
 #include "system_helper.h"
 
-#define NUM_OF_USERS  3
+#define NUM_OF_USERS  4
 
 #define MAX_ATTEMPTS         10
 #define DELAY_DURATION       10
@@ -962,7 +962,8 @@ start_user_sessions(sr_conn_ctx_t *conn, sr_session_ctx_t **handler_session, use
     for (int i = 0; i < NUM_OF_USERS; ++i) {
         char *username = NULL;
         assert_int_equal(SR_ERR_OK, sr_asprintf(&username, "sysrepo-user%d", i+1));
-        rc = sr_session_start_user(conn, username, SR_DS_STARTUP, SR_SESS_DEFAULT, (*sessions)+i);
+        rc = sr_session_start_user(conn, username, SR_DS_STARTUP,
+                i == NUM_OF_USERS-1 ? SR_SESS_DEFAULT : SR_SESS_ENABLE_NACM, (*sessions)+i);
         assert_int_equal(rc, SR_ERR_OK);
         free(username);
     }
@@ -1068,6 +1069,9 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
     /*  -> sysrepo-user3 */
     RPC_PERMITED(2, RPC_XPATH, NULL, 0, 2);
     RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 2);
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 2);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 2);
 
     /* test NETCONF operation "close-session" */
 #undef RPC_XPATH
@@ -1081,6 +1085,9 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
     /*  -> sysrepo-user3 */
     RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
     RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
 
     /* test NETCONF operation "kill-session" */
 #undef RPC_XPATH
@@ -1098,8 +1105,11 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
     RPC_DENIED(1, RPC_XPATH, input, 1, "", "");
     RPC_DENIED_TREE(1, RPC_XPATH, input_tree, 1, "", "");
     /*  -> sysrepo-user3 */
-    RPC_DENIED(1, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(1, RPC_XPATH, input_tree, 1, "", "");
+    RPC_DENIED(2, RPC_XPATH, input, 1, "", "");
+    RPC_DENIED_TREE(2, RPC_XPATH, input_tree, 1, "", "");
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, input, 1, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, input_tree, 1, 0);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1115,6 +1125,9 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
     /*  -> sysrepo-user3 */
     RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
     RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
 
     /* test Action "unload" from test-model */
 #undef ACTION_XPATH
@@ -1128,6 +1141,9 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
     /*  -> sysrepo-user3 */
     ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
     ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+    /*  -> sysrepo-user4 */
+    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, -1);
 
     /* test Action "load" from test-model */
 #undef ACTION_XPATH
@@ -1147,6 +1163,9 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
     /*  -> sysrepo-user3 */
     ACTION_PERMITED(2, ACTION_XPATH, input, 1, -1);
     ACTION_PERMITED_TREE(2, ACTION_XPATH, input_tree, 1, -1);
+    /*  -> sysrepo-user4 */
+    ACTION_PERMITED(3, ACTION_XPATH, input, 1, -1);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, -1);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1200,6 +1219,9 @@ nacm_cl_test_rpc_nacm(void **state)
     /*  -> sysrepo-user3 */
     RPC_DENIED(2, RPC_XPATH, NULL, 0, "deny-activate-software-image", "Not allowed to run activate-software-image");
     RPC_DENIED_TREE(2, RPC_XPATH, NULL, 0, "deny-activate-software-image", "Not allowed to run activate-software-image");
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 2);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 2);
 
     /* test NETCONF operation "close-session" */
 #undef RPC_XPATH
@@ -1213,6 +1235,9 @@ nacm_cl_test_rpc_nacm(void **state)
     /*  -> sysrepo-user3 */
     RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
     RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
 
     /* test NETCONF operation "kill-session" */
 #undef RPC_XPATH
@@ -1232,6 +1257,9 @@ nacm_cl_test_rpc_nacm(void **state)
     /*  -> sysrepo-user3 */
     RPC_PERMITED(2, RPC_XPATH, input, 1, 0);
     RPC_PERMITED_TREE(2, RPC_XPATH, input_tree, 1, 0);
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, input, 1, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, input_tree, 1, 0);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1247,6 +1275,9 @@ nacm_cl_test_rpc_nacm(void **state)
     /*  -> sysrepo-user3 */
     RPC_DENIED(2, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
     RPC_DENIED_TREE(2, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
 
     /* test Action "unload" from test-model */
 #undef ACTION_XPATH
@@ -1260,6 +1291,9 @@ nacm_cl_test_rpc_nacm(void **state)
     /*  -> sysrepo-user3 */
     ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
     ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+    /*  -> sysrepo-user4 */
+    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, -1);
 
     /* test Action "load" from test-model */
 #undef ACTION_XPATH
@@ -1279,6 +1313,9 @@ nacm_cl_test_rpc_nacm(void **state)
     /*  -> sysrepo-user3 */
     ACTION_DENIED(2, ACTION_XPATH, input, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
     ACTION_DENIED_TREE(2, ACTION_XPATH, input_tree, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module." );
+    /*  -> sysrepo-user4 */
+    ACTION_PERMITED(3, ACTION_XPATH, input, 1, -1);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, -1);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1332,6 +1369,9 @@ nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
     /*  -> sysrepo-user3 */
     RPC_DENIED(2, RPC_XPATH, NULL, 0, "deny-activate-software-image", "Not allowed to run activate-software-image");
     RPC_DENIED_TREE(2, RPC_XPATH, NULL, 0, "deny-activate-software-image", "Not allowed to run activate-software-image");
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 2);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 2);
 
     /* test NETCONF operation "close-session" */
 #undef RPC_XPATH
@@ -1345,6 +1385,9 @@ nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
     /*  -> sysrepo-user3 */
     RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
     RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
 
     /* test NETCONF operation "kill-session" */
 #undef RPC_XPATH
@@ -1364,6 +1407,9 @@ nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
     /*  -> sysrepo-user3 */
     RPC_PERMITED(2, RPC_XPATH, input, 1, 0);
     RPC_PERMITED_TREE(2, RPC_XPATH, input_tree, 1, 0);
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, input, 1, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, input_tree, 1, 0);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1379,6 +1425,9 @@ nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
     /*  -> sysrepo-user3 */
     RPC_DENIED(2, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
     RPC_DENIED_TREE(2, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
 
     /* test Action "unload" from test-model */
 #undef ACTION_XPATH
@@ -1392,6 +1441,9 @@ nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
     /*  -> sysrepo-user3 */
     ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
     ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+    /*  -> sysrepo-user4 */
+    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, -1);
 
     /* test Action "load" from test-model */
 #undef ACTION_XPATH
@@ -1411,6 +1463,9 @@ nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
     /*  -> sysrepo-user3 */
     ACTION_DENIED(2, ACTION_XPATH, input, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
     ACTION_DENIED_TREE(2, ACTION_XPATH, input_tree, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module." );
+    /*  -> sysrepo-user4 */
+    ACTION_PERMITED(3, ACTION_XPATH, input, 1, -1);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, -1);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1464,6 +1519,9 @@ nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
     /*  -> sysrepo-user3 */
     RPC_DENIED(2, RPC_XPATH, NULL, 0, "deny-activate-software-image", "Not allowed to run activate-software-image");
     RPC_DENIED_TREE(2, RPC_XPATH, NULL, 0, "deny-activate-software-image", "Not allowed to run activate-software-image");
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 2);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 2);
 
     /* test NETCONF operation "close-session" */
 #undef RPC_XPATH
@@ -1477,6 +1535,9 @@ nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
     /*  -> sysrepo-user3 */
     RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
     RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
 
     /* test NETCONF operation "kill-session" */
 #undef RPC_XPATH
@@ -1496,6 +1557,9 @@ nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
     /*  -> sysrepo-user3 */
     RPC_PERMITED(2, RPC_XPATH, input, 1, 0);
     RPC_PERMITED_TREE(2, RPC_XPATH, input_tree, 1, 0);
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, input, 1, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, input_tree, 1, 0);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1511,6 +1575,9 @@ nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
     /*  -> sysrepo-user3 */
     RPC_DENIED(2, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
     RPC_DENIED_TREE(2, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
 
     /* test Action "unload" from test-model */
 #undef ACTION_XPATH
@@ -1524,6 +1591,9 @@ nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
     /*  -> sysrepo-user3 */
     ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
     ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+    /*  -> sysrepo-user4 */
+    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, -1);
 
     /* test Action "load" from test-model */
 #undef ACTION_XPATH
@@ -1543,6 +1613,9 @@ nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
     /*  -> sysrepo-user3 */
     ACTION_DENIED(2, ACTION_XPATH, input, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
     ACTION_DENIED_TREE(2, ACTION_XPATH, input_tree, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module." );
+    /*  -> sysrepo-user4 */
+    ACTION_PERMITED(3, ACTION_XPATH, input, 1, -1);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, -1);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1755,6 +1828,65 @@ nacm_cl_test_event_notif_nacm_with_empty_nacm_cfg(void **state)
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /***** subscribe for notifications with sysrepo-user4 *****/
+    subscribe_dummy_event_notif_callback(sessions[3], NULL, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user4 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop sessions */
     for (int i = 0; i < NUM_OF_USERS; ++i) {
         rc = sr_session_stop(sessions[i]);
@@ -1959,6 +2091,65 @@ nacm_cl_test_event_notif_nacm(void **state)
     EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* unsubscribe sysrepo-user3 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /***** subscribe for notifications with sysrepo-user4 *****/
+    subscribe_dummy_event_notif_callback(sessions[3], NULL, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user4 */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -2167,6 +2358,65 @@ nacm_cl_test_event_notif_nacm_with_denied_read_by_dflt(void **state)
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /***** subscribe for notifications with sysrepo-user4 *****/
+    subscribe_dummy_event_notif_callback(sessions[3], NULL, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user4 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop sessions */
     for (int i = 0; i < NUM_OF_USERS; ++i) {
         rc = sr_session_stop(sessions[i]);
@@ -2372,6 +2622,65 @@ nacm_cl_test_event_notif_nacm_with_ext_groups(void **state)
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /***** subscribe for notifications with sysrepo-user4 *****/
+    subscribe_dummy_event_notif_callback(sessions[3], NULL, &subscription);
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "link-removed" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-removed"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "status-change" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* test Event notification "halted" from turing-machine */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/turing-machine:halted"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/state", &values));
+    values[0].type = SR_UINT16_T;
+    values[0].data.uint16_val = 13;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("state", "turing-machine", &trees));
+    trees[0].type = SR_UINT16_T;
+    trees[0].data.uint16_val = 13;
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "netconf-capability-change" from ietf-netconf-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/ietf-netconf-notifications:netconf-capability-change"
+    assert_int_equal(SR_ERR_OK, sr_new_val(EVENT_NOTIF_XPATH "/changed-by/server", &values));
+    values[0].type = SR_LEAF_EMPTY_T;
+    assert_int_equal(SR_ERR_OK, sr_new_tree("changed-by", "turing-machine", &trees));
+    trees[0].type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(&trees[0], "server", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, values, 1);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
+    sr_free_val(values);
+    sr_free_tree(trees);
+
+    /* test Event notification "replayComplete" from nc-notifications */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+
+    /* unsubscribe sysrepo-user4 */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop sessions */
     for (int i = 0; i < NUM_OF_USERS; ++i) {
         rc = sr_session_stop(sessions[i]);
@@ -2406,6 +2715,8 @@ nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
     COMMIT_PERMITTED(1);
     /*  -> sysrepo-user3 */
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    COMMIT_PERMITTED(3);
 
     /* try to set single integer value */
 #undef NODE_XPATH
@@ -2424,6 +2735,10 @@ nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* change value of a leaf, but then set the original value back => no effect */
 #undef NODE_XPATH
@@ -2455,6 +2770,15 @@ nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to create a new leaf-list */
 #undef NODE_XPATH
@@ -2473,6 +2797,10 @@ nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to delete an existing leaf-list */
 #undef NODE_XPATH
@@ -2489,6 +2817,10 @@ nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
     rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_DELETE, "", "");
+    /*  -> sysrepo-user4 */
+    rc = sr_delete_item(sessions[3], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to move an existing leaf-list to the first position */
 #undef NODE_XPATH
@@ -2505,6 +2837,10 @@ nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
     rc = sr_move_item(sessions[2], NODE_XPATH, SR_MOVE_LAST, NULL);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "");
+    /*  -> sysrepo-user4 */
+    rc = sr_move_item(sessions[3], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to create a new leaf together with its parent and some implicitly created nodes */
 #undef NODE_XPATH
@@ -2523,6 +2859,10 @@ nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to edit NACM configuration */
 #undef NODE_XPATH
@@ -2547,6 +2887,12 @@ nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
     rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item_str(sessions[3], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[3], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to edit container in the example-module */
 #undef NODE_XPATH
@@ -2585,6 +2931,14 @@ nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
     COMMIT_DENIED3(2, NODE3_XPATH, NACM_ACCESS_DELETE, "", "",
                       NODE_XPATH, NACM_ACCESS_CREATE, "", "",
                       NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item_str(sessions[3], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[3], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[3], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to edit ietf-interfaces */
 #undef NODE_XPATH
@@ -2625,6 +2979,14 @@ nacm_cl_test_commit_nacm_with_empty_nacm_cfg(void **state)
     COMMIT_DENIED3(2, NODE3_XPATH, NACM_ACCESS_UPDATE, "", "",
                       NODE_XPATH, NACM_ACCESS_DELETE, "", "",
                       NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user4 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[3], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[3], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessions[3], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* stop sessions */
     for (int i = 0; i < NUM_OF_USERS; ++i) {
@@ -2658,6 +3020,8 @@ nacm_cl_test_commit_nacm(void **state)
     COMMIT_PERMITTED(1);
     /*  -> sysrepo-user3 */
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    COMMIT_PERMITTED(3);
 
     /* try to set single integer value */
 #undef NODE_XPATH
@@ -2677,6 +3041,10 @@ nacm_cl_test_commit_nacm(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* change value of a leaf, but then set the original value back => no effect */
 #undef NODE_XPATH
@@ -2708,6 +3076,15 @@ nacm_cl_test_commit_nacm(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to create a new leaf-list */
 #undef NODE_XPATH
@@ -2726,6 +3103,10 @@ nacm_cl_test_commit_nacm(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_CREATE, "deny-high-numbers", "Do not allow to create/delete low numbers.");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to delete an existing leaf-list */
 #undef NODE_XPATH
@@ -2742,6 +3123,10 @@ nacm_cl_test_commit_nacm(void **state)
     rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_delete_item(sessions[3], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to move an existing leaf-list to the first position */
 #undef NODE_XPATH
@@ -2758,6 +3143,10 @@ nacm_cl_test_commit_nacm(void **state)
     rc = sr_move_item(sessions[2], NODE_XPATH, SR_MOVE_LAST, NULL);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_move_item(sessions[3], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to create a new leaf together with its parent and some implicitly created nodes */
 #undef NODE_XPATH
@@ -2776,6 +3165,10 @@ nacm_cl_test_commit_nacm(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
 #if 0 /* TODO: report crash in lyd_diff */
     /* try to edit NACM configuration */
@@ -2801,6 +3194,12 @@ nacm_cl_test_commit_nacm(void **state)
     rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item_str(sessions[3], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[3], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 #endif
 
     /* try to edit container in the example-module */
@@ -2838,6 +3237,14 @@ nacm_cl_test_commit_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED2(2, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.",
                       NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item_str(sessions[3], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[3], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[3], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to edit ietf-interfaces */
 #undef NODE_XPATH
@@ -2875,6 +3282,14 @@ nacm_cl_test_commit_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED2(2, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
                       NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
+    /*  -> sysrepo-user4 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[3], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[3], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessions[3], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* stop sessions */
     for (int i = 0; i < NUM_OF_USERS; ++i) {
@@ -2908,6 +3323,8 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     COMMIT_PERMITTED(1);
     /*  -> sysrepo-user3 */
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    COMMIT_PERMITTED(3);
 
     /* try to set single integer value */
 #undef NODE_XPATH
@@ -2927,6 +3344,10 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* change value of a leaf, but then set the original value back => no effect */
 #undef NODE_XPATH
@@ -2958,6 +3379,15 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to create a new leaf-list */
 #undef NODE_XPATH
@@ -2976,6 +3406,10 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_CREATE, "deny-high-numbers", "Do not allow to create/delete low numbers.");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to delete an existing leaf-list */
 #undef NODE_XPATH
@@ -2992,6 +3426,10 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_delete_item(sessions[3], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to move an existing leaf-list to the first position */
 #undef NODE_XPATH
@@ -3008,6 +3446,10 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     rc = sr_move_item(sessions[2], NODE_XPATH, SR_MOVE_LAST, NULL);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_move_item(sessions[3], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to create a new leaf together with its parent and some implicitly created nodes */
 #undef NODE_XPATH
@@ -3027,6 +3469,10 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
 #if 0 /* TODO: report crash in lyd_diff */
     /* try to edit NACM configuration */
@@ -3052,6 +3498,12 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item_str(sessions[3], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[3], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 #endif
 
     /* try to edit container in the example-module */
@@ -3086,6 +3538,14 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED2(2, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.",
                       NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item_str(sessions[3], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[3], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[3], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to edit ietf-interfaces */
 #undef NODE_XPATH
@@ -3121,6 +3581,14 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED2(2, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
                       NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
+    /*  -> sysrepo-user4 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[3], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[3], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessions[3], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* stop sessions */
     for (int i = 0; i < NUM_OF_USERS; ++i) {
@@ -3154,6 +3622,8 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     COMMIT_PERMITTED(1);
     /*  -> sysrepo-user3 */
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    COMMIT_PERMITTED(3);
 
     /* try to set single integer value */
 #undef NODE_XPATH
@@ -3173,6 +3643,10 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* change value of a leaf, but then set the original value back => no effect */
 #undef NODE_XPATH
@@ -3204,6 +3678,15 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T;
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to create a new leaf-list */
 #undef NODE_XPATH
@@ -3222,6 +3705,10 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED(2, NODE_XPATH, NACM_ACCESS_CREATE, "deny-high-numbers", "Do not allow to create/delete low numbers.");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to delete an existing leaf-list */
 #undef NODE_XPATH
@@ -3238,6 +3725,10 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     rc = sr_delete_item(sessions[2], NODE_XPATH, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_delete_item(sessions[3], NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to move an existing leaf-list to the first position */
 #undef NODE_XPATH
@@ -3254,6 +3745,10 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     rc = sr_move_item(sessions[2], NODE_XPATH, SR_MOVE_LAST, NULL);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_move_item(sessions[3], NODE_XPATH, SR_MOVE_LAST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to create a new leaf together with its parent and some implicitly created nodes */
 #undef NODE_XPATH
@@ -3273,6 +3768,10 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     rc = sr_set_item(sessions[2], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH "/topleaf1", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
 #if 0 /* TODO: report crash in lyd_diff */
     /* try to edit NACM configuration */
@@ -3298,6 +3797,12 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item_str(sessions[3], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[3], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 #endif
 
     /* try to edit container in the example-module */
@@ -3332,6 +3837,14 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED2(2, NODE3_XPATH "/leaf", NACM_ACCESS_DELETE, "disallow-to-delete-list-item-leaf", "Do not allowed to delete leaf from list item.",
                       NODE_XPATH, NACM_ACCESS_CREATE, "deny-specific-list-item", "Not allowed to create this specific list item.");
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item_str(sessions[3], NODE_XPATH "/leaf", "new-item-leaf", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(sessions[3], NODE2_XPATH "/leaf", "new-item-leaf2", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[3], NODE3_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* try to edit ietf-interfaces */
 #undef NODE_XPATH
@@ -3368,6 +3881,14 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_DENIED2(2, NODE3_XPATH, NACM_ACCESS_UPDATE, "deny-interface-status-change", "Not allowed to change status of interface",
                       NODE_XPATH, NACM_ACCESS_DELETE, "deny-removing-interfaces", "Not allowed to remove existing interface");
+    /*  -> sysrepo-user4 */
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(sessions[3], NODE_XPATH, SR_EDIT_STRICT);
+    rc = sr_set_item_str(sessions[3], NODE2_XPATH "/type", "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessions[3], NODE3_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
 
     /* stop sessions */
     for (int i = 0; i < NUM_OF_USERS; ++i) {

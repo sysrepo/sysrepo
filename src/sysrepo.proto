@@ -126,6 +126,7 @@ enum SessionFlags {
   SESS_DEFAULT      = 0x00;   /**< Default (normal) session behavior. */
   SESS_CONFIG_ONLY  = 0x01;   /**< Session will process only configuration data (e.g. sysrepo won't
                                    return any state data by ::sr_get_items / ::sr_get_items_iter calls). */
+  SESS_ENABLE_NACM  = 0x02;   /**< Enable NETCONF access control for this session. */
   SESS_NOTIFICATION = 0x400;  /**< Notification session (internal type of session). */
 }
 

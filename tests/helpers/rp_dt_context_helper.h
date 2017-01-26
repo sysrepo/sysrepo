@@ -41,7 +41,7 @@ void test_rp_session_create(rp_ctx_t *rp_ctx, sr_datastore_t datastore, rp_sessi
  * @brief Creates testing RP session for a given (virtual) user.
  */
 void test_rp_session_create_user(rp_ctx_t *rp_ctx, sr_datastore_t datastore, const ac_ucred_t user_credentials,
-        rp_session_t **rp_session_p);
+        uint32_t options, rp_session_t **rp_session_p);
 
 /**
  * @brief Cleans up testing RP context.
