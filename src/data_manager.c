@@ -2623,7 +2623,11 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
                     dep_node = dep_node->next;
                 }
             }
-            md_module = NULL != dep_node ? dependency->dest : NULL;
+            if (NULL != dep_node) {
+                md_module = dependency->dest;
+            } else {
+                break;
+            }
         }
         if (NULL != md_module) {
             main_module = md_module->name;
