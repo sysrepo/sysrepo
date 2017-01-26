@@ -2615,8 +2615,15 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
         /* find the top main module */
         while ((NULL != md_module) && (NULL != md_module->inv_deps->first)) {
             dep_node = md_module->inv_deps->first;
-            dependency = dep_node->data;
-            md_module = dependency->dest;
+            while (NULL != dep_node) {
+                dependency = dep_node->data;
+                if (MD_DEP_INCLUDE == dependency->type || MD_DEP_IMPORT == dependency->type) {
+                    break;
+                } else {
+                    dep_node = dep_node->next;
+                }
+            }
+            md_module = NULL != dep_node ? dependency->dest : NULL;
         }
         if (NULL != md_module) {
             main_module = md_module->name;
