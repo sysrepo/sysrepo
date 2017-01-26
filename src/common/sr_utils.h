@@ -292,9 +292,10 @@ int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tr
 /**
  * @brief Copies the datatree pointed by root including its siblings.
  * @param [in] root Root of the datatree to be duped.
+ * @param [in] ly_ctx libyang context
  * @return duplicated datatree or NULL in case of error
  */
-struct lyd_node* sr_dup_datatree(struct lyd_node *root);
+struct lyd_node* sr_dup_datatree(struct lyd_node *root, struct ly_ctx *ly_ctx);
 
 /**
  * lyd_unlink wrapper handles the unlink of the root_node
