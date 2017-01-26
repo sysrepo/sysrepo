@@ -1705,6 +1705,18 @@ cleanup:
 }
 
 int
+nacm_stats_add_denied_data_write(nacm_ctx_t *nacm_ctx)
+{
+    CHECK_NULL_ARG(nacm_ctx);
+
+    /* just update statistics */
+    pthread_rwlock_wrlock(&nacm_ctx->stats.lock);
+    ++nacm_ctx->stats.denied_data_write;
+    pthread_rwlock_unlock(&nacm_ctx->stats.lock);
+    return SR_ERR_OK;
+}
+
+int
 nacm_get_stats(nacm_ctx_t *nacm_ctx, uint32_t *denied_rpc_p, uint32_t *denied_event_notif_p,
         uint32_t *denied_data_write_p)
 {

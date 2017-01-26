@@ -278,6 +278,13 @@ int nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t a
         nacm_action_t *action, const char **rule_name, const char **rule_info);
 
 /**
+ * @brief Update NACM statistics to include another unauthorized attempt to execute operation with write effect.
+ *
+ * @param [in] nacm_ctx NACM context.
+ */
+int nacm_stats_add_denied_data_write(nacm_ctx_t *nacm_ctx);
+
+/**
  * @brief Get current NACM statistics.
  *
  * @param [in] nacm_ctx NACM context.

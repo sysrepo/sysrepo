@@ -4159,6 +4159,8 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
 cleanup:
     if (SR_ERR_OK == rc && denied_cnt > 0) {
         rc = SR_ERR_UNAUTHORIZED;
+        /* update NACM stats */
+        (void)nacm_stats_add_denied_data_write(nacm_ctx);
     }
     if (!saved_diff && NULL != diff) {
         lyd_free_diff(diff);

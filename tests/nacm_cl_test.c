@@ -128,10 +128,14 @@
         rc = sr_check_exec_permission(sessions[SESSION], XPATH, &permitted); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_false(permitted); \
+        ++nacm_stats.denied_operations; \
+        verify_nacm_stats(); \
         reset_cb_call_count(); \
         rc = sr_rpc_send(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
         verify_cb_call_count(false, 0); \
+        ++nacm_stats.denied_operations; \
+        verify_nacm_stats(); \
         CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
@@ -140,10 +144,14 @@
         rc = sr_check_exec_permission(sessions[SESSION], XPATH, &permitted); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_false(permitted); \
+        ++nacm_stats.denied_operations; \
+        verify_nacm_stats(); \
         reset_cb_call_count(); \
         rc = sr_rpc_send_tree(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output_tree, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
         verify_cb_call_count(false, 0); \
+        ++nacm_stats.denied_operations; \
+        verify_nacm_stats(); \
         CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
@@ -186,10 +194,14 @@
         rc = sr_check_exec_permission(sessions[SESSION], XPATH, &permitted); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_false(permitted); \
+        ++nacm_stats.denied_operations; \
+        verify_nacm_stats(); \
         reset_cb_call_count(); \
         rc = sr_action_send(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
         verify_cb_call_count(false, 0); \
+        ++nacm_stats.denied_operations; \
+        verify_nacm_stats(); \
         CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
@@ -198,10 +210,14 @@
         rc = sr_check_exec_permission(sessions[SESSION], XPATH, &permitted); \
         assert_int_equal(rc, SR_ERR_OK); \
         assert_false(permitted); \
+        ++nacm_stats.denied_operations; \
+        verify_nacm_stats(); \
         reset_cb_call_count(); \
         rc = sr_action_send_tree(sessions[SESSION], XPATH, INPUT, INPUT_CNT, &output_tree, &output_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
         verify_cb_call_count(false, 0); \
+        ++nacm_stats.denied_operations; \
+        verify_nacm_stats(); \
         CHECK_EXEC_UNAUTHORIZED_ERROR(SESSION, XPATH, RULE, RULE_INFO); \
     } while (0)
 
@@ -279,6 +295,8 @@
         verify_cb_call_count(true, 0); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
         clear_log_history(); \
+        ++nacm_stats.denied_notifications; \
+        verify_nacm_stats(); \
     } while (0)
 
 #define EVENT_NOTIF_DENIED_TREE(XPATH, TREES, TREE_CNT, RULE, RULE_INFO) \
@@ -289,6 +307,8 @@
         verify_cb_call_count(true, 0); \
         CHECK_NOTIF_UNAUTHORIZED_LOG(XPATH, RULE, RULE_INFO); \
         clear_log_history(); \
+        ++nacm_stats.denied_notifications; \
+        verify_nacm_stats(); \
     } while (0)
 
 #define COMMIT_PERMITTED(SESSION) \
@@ -311,6 +331,8 @@
         CHECK_WRITE_UNAUTHORIZED_ERROR(SESSION, 1, 0, NODE_XPATH, ACCESS_TYPE, RULE, RULE_INFO); \
         rc = sr_discard_changes(sessions[SESSION]); \
         assert_int_equal(SR_ERR_OK, rc); \
+        ++nacm_stats.denied_data_writes; \
+        verify_nacm_stats(); \
     } while(0);
 
 #define COMMIT_DENIED2(SESSION, NODE1_XPATH, ACCESS1_TYPE, RULE1, RULE1_INFO,\
@@ -322,6 +344,8 @@
         CHECK_WRITE_UNAUTHORIZED_ERROR(SESSION, 2, 1, NODE2_XPATH, ACCESS2_TYPE, RULE2, RULE2_INFO); \
         rc = sr_discard_changes(sessions[SESSION]); \
         assert_int_equal(SR_ERR_OK, rc); \
+        ++nacm_stats.denied_data_writes; \
+        verify_nacm_stats(); \
     } while(0);
 
 #define COMMIT_DENIED3(SESSION, NODE1_XPATH, ACCESS1_TYPE, RULE1, RULE1_INFO,\
@@ -335,6 +359,8 @@
         CHECK_WRITE_UNAUTHORIZED_ERROR(SESSION, 3, 2, NODE3_XPATH, ACCESS3_TYPE, RULE3, RULE3_INFO); \
         rc = sr_discard_changes(sessions[SESSION]); \
         assert_int_equal(SR_ERR_OK, rc); \
+        ++nacm_stats.denied_data_writes; \
+        verify_nacm_stats(); \
     } while(0);
 
 #define COMMIT_DENIED_N(SESSION, ERR_CNT) \
@@ -346,18 +372,30 @@
         assert_int_equal(ERR_CNT, error_cnt); \
         rc = sr_discard_changes(sessions[SESSION]); \
         assert_int_equal(SR_ERR_OK, rc); \
+        ++nacm_stats.denied_data_writes; \
+        verify_nacm_stats(); \
     } while(0);
 
 typedef sr_session_ctx_t *user_sessions_t[NUM_OF_USERS];
 
 /**
-+ * @brief Recent log history.
-+ */
+  * @brief Recent log history.
+  */
 typedef struct log_history_s {
     pthread_mutex_t lock;
     sr_list_t *logs; /**< items are of type (char *) */
     bool running;
 } log_history_t;
+
+/**
+ * @brief NACM statistics.
+ */
+typedef struct nacm_stats_s {
+    uint32_t denied_operations;
+    uint32_t denied_data_writes;
+    uint32_t denied_notifications;
+    sr_session_ctx_t *session; /**< Session used to get the current NACM statistics of the daemon. */
+} nacm_stats_t;
 
 static bool satisfied_requirements = true;  /**< Indices if the test can be actually run with the current system configuration */
 static bool daemon_run_before_test = false; /**< Indices if the daemon was running before executing the test. */
@@ -367,7 +405,7 @@ static log_history_t log_history = { .lock = PTHREAD_MUTEX_INITIALIZER, .logs = 
 static pthread_t stderr_reader = {0}; /* log-reader thread's control structure */
 static int cb_call_count; /* how many times a callback was called */
 pthread_mutex_t cb_call_count_lock = PTHREAD_MUTEX_INITIALIZER; /* protecting cb_call_count */
-
+static nacm_stats_t nacm_stats = {0};
 
 /* TODO: Report the issue with failed validation when action reply is empty. Then reflect the fix. */
 
@@ -435,6 +473,41 @@ reset_cb_call_count()
     pthread_mutex_lock(&cb_call_count_lock);
     cb_call_count = 0;
     pthread_mutex_unlock(&cb_call_count_lock);
+}
+
+static void
+verify_nacm_stats()
+{
+    int rc = SR_ERR_OK;
+    sr_val_t *value = NULL;
+
+    /* check the number of denied RPCs */
+    rc = sr_get_item(nacm_stats.session, "/ietf-netconf-acm:nacm/denied-operations", &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_UINT32_T, value->type);
+    assert_int_equal(nacm_stats.denied_operations, value->data.uint32_val);
+    sr_free_val(value);
+    value = NULL;
+
+    /* check the number of denied Event notifications */
+    rc = sr_get_item(nacm_stats.session, "/ietf-netconf-acm:nacm/denied-notifications", &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_UINT32_T, value->type);
+    assert_int_equal(nacm_stats.denied_notifications, value->data.uint32_val);
+    sr_free_val(value);
+    value = NULL;
+
+    /* check the number of denied operations with write effect */
+    rc = sr_get_item(nacm_stats.session, "/ietf-netconf-acm:nacm/denied-data-writes", &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_UINT32_T, value->type);
+    assert_int_equal(nacm_stats.denied_data_writes, value->data.uint32_val);
+    sr_free_val(value);
+    value = NULL;
+
 }
 
 #ifndef DEBUG_MODE
@@ -540,6 +613,9 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     createDataTreeExampleModule();
     createDataTreeIETFinterfacesModule();
 
+    /* initial NACM statistics */
+    memset(&nacm_stats, 0, sizeof nacm_stats);
+
     /* start sysrepo in the daemon debug mode as a child process */
     pthread_create(&stderr_reader, NULL, daemon_log_reader, NULL);
     daemon_pid = sr_popen("../src/sysrepod -l4 -d", NULL, NULL, &daemon_stderr);
@@ -560,6 +636,10 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(conn_p);
     *conn_p = conn;
+
+    /* start a session that will be used to obtain the NACM statistics */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_ENABLE_NACM, &nacm_stats.session);
+    assert_int_equal(rc, SR_ERR_OK);
 }
 
 static void
@@ -634,7 +714,7 @@ verify_existence_of_log_msg(const char *msg_re, bool should_exist)
             if (0 == regexec(&re, message, 0, NULL, 0)) {
                 exists = true;
             }
-#ifdef DEBUG
+#if 0
             printf("REGEX TEST BEGIN -------------\n");
             printf("Regex: %s\n", msg_re);
             printf("Message: %s\n", message);
@@ -895,7 +975,10 @@ sysrepo_setup(void **state)
 static int
 sysrepo_teardown(void **state)
 {
+#ifndef DEBUG_MODE
     int ret = 0, status = 0;
+#endif
+    int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
     test_nacm_cfg_t *nacm_config = NULL;
 
@@ -908,6 +991,10 @@ sysrepo_teardown(void **state)
     if (!satisfied_requirements) {
         return 0;
     }
+
+    /* stop the session used to get the NACM statistics */
+    rc = sr_session_stop(nacm_stats.session);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* disconnect from sysrepo */
     assert_non_null(conn);

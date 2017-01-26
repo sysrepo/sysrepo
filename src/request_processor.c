@@ -2737,8 +2737,11 @@ static int
 rp_internal_state_data_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg * msg)
 {
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->internal_request, msg->internal_request->internal_state_data_req);
+    nacm_ctx_t *nacm_ctx = NULL;
+    sr_val_t nacm_stats = {0};
     int rc = SR_ERR_OK;
     const char *xpath = msg->internal_request->internal_state_data_req->xpath;
+    nacm_stats.type = SR_UINT32_T;
 
     SR_LOG_INF("Internal request for state data at xpath %s", xpath);
 
@@ -2751,20 +2754,41 @@ rp_internal_state_data_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__
     session->dp_req_waiting -= 1;
     SR_LOG_DBG("Data provide response received, waiting for %zu more data providers.", session->dp_req_waiting);
 
+    if (sr_str_begins_with(xpath, "/ietf-netconf-acm:nacm/")) {
+        rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN_MSG("Failed to get NACM context.");
+        }
+    }
 
     /**
      * Set internal state data - only one request come for each subtree, nested data has to be filled as well
-     * TODO:
+     */
     if (0 == strcmp(xpath, "/ietf-netconf-acm:nacm/denied-operations")) {
-        sr_val_t val = {0};
-        val.type = SR_UINT32_T;
-        val.data.uint32_val = 42;
-
-        rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, &val);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_WRN("Failed to set operational data for xpath '%s'.", xpath);
+        if (NULL != nacm_ctx) {
+            (void)nacm_get_stats(nacm_ctx, &nacm_stats.data.uint32_val, NULL, NULL);
+            rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, &nacm_stats, NULL);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN("Failed to set operational data for xpath '%s'.", xpath);
+            }
         }
-    } else*/ {
+    } else if (0 == strcmp(xpath, "/ietf-netconf-acm:nacm/denied-data-writes")) {
+        if (NULL != nacm_ctx) {
+            (void)nacm_get_stats(nacm_ctx, NULL, NULL, &nacm_stats.data.uint32_val);
+            rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, &nacm_stats, NULL);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN("Failed to set operational data for xpath '%s'.", xpath);
+            }
+        }
+    } else if (0 == strcmp(xpath, "/ietf-netconf-acm:nacm/denied-notifications")) {
+        if (NULL != nacm_ctx) {
+            (void)nacm_get_stats(nacm_ctx, NULL, &nacm_stats.data.uint32_val, NULL);
+            rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, &nacm_stats, NULL);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN("Failed to set operational data for xpath '%s'.", xpath);
+            }
+        }
+    } else {
         SR_LOG_WRN("Request for not supported internal state data %s received ", xpath);
     }
 
@@ -3672,7 +3696,12 @@ static int
 rp_setup_internal_state_data(rp_ctx_t *rp_ctx)
 {
     CHECK_NULL_ARG(rp_ctx);
+    nacm_ctx_t *nacm_ctx = NULL;
+    sr_list_t *ietf_netconf_acm = NULL;
     int rc = SR_ERR_OK;
+
+    rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
 
     rc = sr_list_init(&rp_ctx->modules_incl_intern_op_data);
     CHECK_RC_MSG_RETURN(rc, "List init failed");
@@ -3681,34 +3710,32 @@ rp_setup_internal_state_data(rp_ctx_t *rp_ctx)
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     /* setup here modules and subtrees of state data that will be handled internally */
-    /** TODO:
-     * sr_list_t *ietf_netconf_acm = NULL;
-    rc = sr_list_init(&ietf_netconf_acm);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
+    if (NULL != nacm_ctx) {
+        rc = sr_list_init(&ietf_netconf_acm);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
-    rc = sr_list_add(ietf_netconf_acm, strdup("/ietf-netconf-acm:nacm/denied-operations"));
-    CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+        rc = sr_list_add(ietf_netconf_acm, strdup("/ietf-netconf-acm:nacm/denied-operations"));
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
 
-    rc = sr_list_add(ietf_netconf_acm, strdup("/ietf-netconf-acm:nacm/denied-data-writes"));
-    CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+        rc = sr_list_add(ietf_netconf_acm, strdup("/ietf-netconf-acm:nacm/denied-data-writes"));
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
 
-    rc = sr_list_add(ietf_netconf_acm, strdup("/ietf-netconf-acm:nacm/denied-notifications"));
-    CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+        rc = sr_list_add(ietf_netconf_acm, strdup("/ietf-netconf-acm:nacm/denied-notifications"));
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
 
+        rc = sr_list_add(rp_ctx->modules_incl_intern_op_data, strdup("ietf-netconf-acm"));
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
 
-    rc = sr_list_add(rp_ctx->modules_incl_intern_op_data, strdup("ietf-netconf-acm"));
-    CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
-
-    rc = sr_list_add(rp_ctx->inter_op_data_xpath, ietf_netconf_acm);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
-    ietf_netconf_acm = NULL;*/
-
+        rc = sr_list_add(rp_ctx->inter_op_data_xpath, ietf_netconf_acm);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+        ietf_netconf_acm = NULL;
+    }
     rc = rp_enable_xps_for_internal_state_data(rp_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to enable xpaths for internal state data");
 
 cleanup:
     if (SR_ERR_OK != rc) {
-        //sr_free_list_of_strings(ietf_netconf_acm);
+        sr_free_list_of_strings(ietf_netconf_acm);
         rp_cleanup_internal_state_data_records(rp_ctx);
     }
     return rc;
