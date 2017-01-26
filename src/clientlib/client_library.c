@@ -859,6 +859,60 @@ cleanup:
 }
 
 int
+sr_get_submodule_schema(sr_session_ctx_t *session, const char *submodule_name, const char *submodule_revision,
+                        sr_schema_format_t format, char **schema_content)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, submodule_name, schema_content);
+
+    cl_session_clear_errors(session);
+
+    /* prepare get_schema message */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__GET_SCHEMA, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* set arguments */
+    sr_mem_edit_string(sr_mem, &msg_req->request->get_schema_req->submodule_name, submodule_name);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->get_schema_req->submodule_name, rc, cleanup);
+    if (NULL != submodule_revision) {
+        sr_mem_edit_string(sr_mem, &msg_req->request->get_schema_req->submodule_revision, submodule_revision);
+        CHECK_NULL_NOMEM_GOTO(msg_req->request->get_schema_req->submodule_revision, rc, cleanup);
+    }
+    msg_req->request->get_schema_req->yang_format = (format == SR_SCHEMA_YANG);
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__GET_SCHEMA);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    /* copy schema content */
+    if (NULL != msg_resp->response->get_schema_resp->schema_content) {
+        *schema_content = strdup(msg_resp->response->get_schema_resp->schema_content);
+        CHECK_NULL_NOMEM_GOTO(*schema_content, rc, cleanup);
+    }
+
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
+    }
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
 sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
