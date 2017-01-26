@@ -586,7 +586,7 @@ rp_dt_get_tree_roots(dm_schema_info_t *schema_info, const char *xpath, struct ly
     rc = rp_dt_get_start_node(schema_info, xpath, &start_node);
     CHECK_RC_LOG_RETURN(rc, "Failed to get the start node for xpath %s", xpath);
 
-    *roots = lys_find_xpath(start_node, xpath, 0);
+    *roots = lys_find_xpath(NULL, start_node, xpath, 0);
     if (NULL == *roots) {
         SR_LOG_ERR("Failed to get the set of tree roots for xpath %s", xpath);
         rc = SR_ERR_INVAL_ARG;
@@ -1272,10 +1272,10 @@ cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && NULL == data_tree)) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         if (SR_ERR_OK != rc) {
-            /* Print warning only, because we are not able to validate all xpath */
-            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
+        } else {
+            rc = SR_ERR_NOT_FOUND;
         }
-        rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
@@ -1319,11 +1319,12 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_
 
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
-        if (SR_ERR_OK != rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL)) {
-            /* Print warning only, because we are not able to validate all xpath */
-            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
+        } else {
+            rc = SR_ERR_NOT_FOUND;
         }
-        rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     }
@@ -1376,10 +1377,10 @@ cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         if (SR_ERR_OK != rc) {
-            /* Print warning only, because we are not able to validate all xpath */
-            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
+        } else {
+            rc = SR_ERR_NOT_FOUND;
         }
-        rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
@@ -1419,10 +1420,10 @@ cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && NULL == data_tree)) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         if (SR_ERR_OK != rc) {
-            /* Print warning only, because we are not able to validate all xpath */
-            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
+        } else {
+            rc = SR_ERR_NOT_FOUND;
         }
-        rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
@@ -1464,10 +1465,10 @@ cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && NULL == data_tree)) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         if (SR_ERR_OK != rc) {
-            /* Print warning only, because we are not able to validate all xpath */
-            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
+        } else {
+            rc = SR_ERR_NOT_FOUND;
         }
-        rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
@@ -1510,11 +1511,12 @@ rp_dt_get_subtrees_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ct
 
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
-        if (SR_ERR_OK != rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL)) {
-            /* Print warning only, because we are not able to validate all xpath */
-            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
+        } else {
+            rc = SR_ERR_NOT_FOUND;
         }
-        rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     }
@@ -1556,11 +1558,12 @@ rp_dt_get_subtrees_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session,
 
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
-        if (SR_ERR_OK != rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL)) {
-            /* Print warning only, because we are not able to validate all xpath */
-            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
+        } else {
+            rc = SR_ERR_NOT_FOUND;
         }
-        rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     }

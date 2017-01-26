@@ -2069,15 +2069,15 @@ cl_unsuccessfull_subscription(void **state)
 
     rc = sr_module_change_subscribe(session, "invalid-module", list_changes_cb, &changes,
             0, SR_SUBSCR_CTX_REUSE, &subscription);
-    assert_int_equal(rc, SR_ERR_INTERNAL);
+    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
     rc = sr_module_change_subscribe(session, "invalid-module", list_changes_cb, &changes,
             0, SR_SUBSCR_CTX_REUSE, &subscription);
-    assert_int_equal(rc, SR_ERR_INTERNAL);
+    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
     rc = sr_subtree_change_subscribe(session, "/invalid-module:container", list_changes_cb, &changes,
             0, SR_SUBSCR_CTX_REUSE, &subscription);
-    assert_int_equal(rc, SR_ERR_INTERNAL);
+    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);

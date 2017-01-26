@@ -454,6 +454,9 @@ dm_module_clb (struct ly_ctx *ctx, const char *name, const char *ns, int options
             SR_LOG_ERR("Module '%s' was not found", name);
             return NULL;
         }
+    } else {
+        SR_LOG_ERR_MSG("Neither namespace nor module name provided.");
+        return NULL;
     }
     LYS_INFORMAT fmt = sr_str_ends_with(module->filepath, SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG;
 
@@ -534,6 +537,8 @@ cleanup:
     }
     if (SR_ERR_OK == rc)  {
         *tmp_ctx = t_ctx;
+    } else {
+        pthread_mutex_unlock(&t_ctx->mutex);
     }
 
     return rc;
@@ -2688,6 +2693,7 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
     sr_llist_node_t *ll_dep = NULL;
     md_dep_t *dep = NULL;
     char *namespace = NULL;
+    char *inserted_namespace = NULL;
     bool inserted = false;
     char *module_name = NULL;
     dm_data_info_t *recursive_info = NULL;
@@ -2760,11 +2766,12 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
             id_val = ((struct lyd_node_leaf_list *) set->set.d[i])->value_str;
 
             rc = sr_copy_first_ns(id_val, &namespace);
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve first namespace from %s", namespace);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve first namespace from %s", id_val);
 
             /* Test if it is among known dependencies */
             if (0 == strcmp(namespace, di->schema->module_name)) {
                 free(namespace);
+                namespace = NULL;
                 continue;
             }
 
@@ -2778,6 +2785,7 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
                if (0 == strcmp(namespace, dep->dest->name)) {
                    found = true;
                    free(namespace);
+                   namespace = NULL;
                    break;
                }
             }
@@ -2833,14 +2841,16 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
                 inserted = false;
                 rc = sr_list_insert_unique_ord(*required_modules, namespace, dm_string_cmp, &inserted);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+                inserted_namespace = namespace;
+                namespace = NULL; /* do not free namespace in this function case of cleanup */
 
                 if (inserted) {
-                    rc = sr_list_add(*required_data, namespace);
+                    rc = sr_list_add(*required_data, inserted_namespace);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert an item into the list");
 
                     /* call recursively */
-                    rc = dm_get_data_info(dm_ctx, session, namespace, &recursive_info);
-                    CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", namespace);
+                    rc = dm_get_data_info(dm_ctx, session, inserted_namespace, &recursive_info);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", inserted_namespace);
 
                     rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
                     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
@@ -2856,6 +2866,7 @@ cleanup:
         sr_free_list_of_strings(*required_modules);
         *required_modules = NULL;
     }
+    free(namespace);
     ly_set_free(set);
     md_ctx_unlock(dm_ctx->md_ctx);
     return rc;
@@ -3682,6 +3693,34 @@ dm_commit_lock_model(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_
     return rc;
 }
 
+static int
+dm_dup_required_models_list(dm_data_info_t *src, dm_data_info_t *dest)
+{
+    CHECK_NULL_ARG2(src, dest);
+    int rc = SR_ERR_OK;
+    if (NULL != src->required_modules) {
+        rc = sr_list_init(&dest->required_modules);
+        CHECK_RC_MSG_RETURN(rc, "Failed to create list");
+
+        for (size_t r = 0; r < src->required_modules->count; r++) {
+            char *tmp_module = strdup((char *) src->required_modules->data[r]);
+            CHECK_NULL_NOMEM_GOTO(tmp_module, rc, cleanup);
+
+            rc = sr_list_add(dest->required_modules, tmp_module);
+            if (SR_ERR_OK != rc) {
+                free(tmp_module);
+            }
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert into the list");
+        }
+    }
+cleanup:
+    if (SR_ERR_OK != rc) {
+        sr_free_list_of_strings(dest->required_modules);
+        dest->required_modules = NULL;
+    }
+    return rc;
+}
+
 int
 dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx,
         sr_error_info_t **errors, size_t *err_cnt)
@@ -3795,20 +3834,11 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             di->schema = info->schema;
 
             /* duplicate also the list of required modules */
-            if (NULL != info->required_modules) {
-                rc = sr_list_init(&di->required_modules);
-                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create list");
-
-                for (size_t r = 0; r < info->required_modules->count; r++) {
-                    char *tmp_module = strdup((char *)info->required_modules->data[r]);
-                    CHECK_NULL_NOMEM_GOTO(tmp_module, rc, cleanup);
-
-                    rc = sr_list_add(di->required_modules, tmp_module);
-                    if (SR_ERR_OK != rc) {
-                        free(tmp_module);
-                    }
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert into the list");
-                }
+            rc = dm_dup_required_models_list(info, di);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR_MSG("Duplication of required models list failed");
+                dm_data_info_free(di);
+                goto cleanup;
             }
 
         } else {

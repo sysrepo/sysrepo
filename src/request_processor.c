@@ -2244,7 +2244,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     /* fill-in subscription details into the request */
     bool subscription_match = false;
     /* get RPC/Action subscription */
-    rc = pm_get_subscriptions(rp_ctx->pm_ctx, (NULL != session) ? session->user_credentials : NULL, module_name,
+    rc = pm_get_subscriptions(rp_ctx->pm_ctx, session->user_credentials, module_name,
             action ? SR__SUBSCRIPTION_TYPE__ACTION_SUBS : SR__SUBSCRIPTION_TYPE__RPC_SUBS, &subscriptions_list);
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for %s request (%s).", op_name,
             msg->request->rpc_req->xpath);
@@ -2963,6 +2963,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         /* store the notification in the datastore */
         rc = np_store_event_notification(rp_ctx->np_ctx, NULL != session ? session->user_credentials : NULL,
                 xpath, msg->request->event_notif_req->timestamp, &notif_data_tree);
+        CHECK_RC_MSG_GOTO(rc, finalize, "Failed to save event notification");
     }
 #ifndef STORE_CONFIG_CHANGE_NOTIF
     }
