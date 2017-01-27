@@ -2594,9 +2594,9 @@ cleanup:
 }
 
 int
-dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, bool yang_format, char **schema)
+dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, const char *submodule_revision, bool yang_format, char **schema)
 {
-    CHECK_NULL_ARG3(dm_ctx, module_name, schema);
+    CHECK_NULL_ARG2(dm_ctx, schema);
     int rc = SR_ERR_OK;
     int ret = 0;
     dm_schema_info_t *si = NULL;
@@ -2606,39 +2606,67 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
     md_dep_t *dependency = NULL;
     const char *main_module = module_name;
 
-    SR_LOG_INF("Get schema '%s', revision: '%s', submodule: '%s'", module_name, module_revision, submodule_name);
+    SR_LOG_INF("Get schema '%s', revision: '%s', submodule: '%s', submodule revision: '%s'", module_name, module_revision, submodule_name, submodule_revision);
 
     md_ctx_lock(dm_ctx->md_ctx, false);
-    rc = md_get_module_info(dm_ctx->md_ctx, module_name, module_revision, &md_module);
+    if (submodule_revision || !module_name) {
+        rc = md_get_module_info(dm_ctx->md_ctx, submodule_name, submodule_revision, &md_module);
 
-    if (NULL != md_module && !md_module->latest_revision) {
-        /* find a module in latest revision that includes the requested module
-         * this handles the case that requested module is included in older revision by other module */
-        dep_node = md_module->inv_deps->first;
-        while (NULL != dep_node) {
-            dependency = dep_node->data;
-            dep_node = dep_node->next;
-            if (!dependency->dest->submodule && dependency->dest->latest_revision) {
-                main_module = dependency->dest->name;
+        /* find the top main module */
+        while ((NULL != md_module) && (NULL != md_module->inv_deps->first)) {
+            dep_node = md_module->inv_deps->first;
+            while (NULL != dep_node) {
+                dependency = dep_node->data;
+                if (MD_DEP_INCLUDE == dependency->type || MD_DEP_IMPORT == dependency->type) {
+                    break;
+                } else {
+                    dep_node = dep_node->next;
+                }
+            }
+            if (NULL != dep_node) {
+                md_module = dependency->dest;
+            } else {
                 break;
             }
         }
+        if (NULL != md_module) {
+            main_module = md_module->name;
+        }
+
+        md_ctx_unlock(dm_ctx->md_ctx);
+        CHECK_RC_LOG_RETURN(rc, "Submodule %s in revision %s not found", submodule_name, submodule_revision);
+    } else {
+        rc = md_get_module_info(dm_ctx->md_ctx, module_name, module_revision, &md_module);
+
+        if (NULL != md_module && !md_module->latest_revision) {
+            /* find a module in latest revision that includes the requested module
+             * this handles the case that requested module is included in older revision by other module */
+            dep_node = md_module->inv_deps->first;
+            while (NULL != dep_node) {
+                dependency = dep_node->data;
+                dep_node = dep_node->next;
+                if (!dependency->dest->submodule && dependency->dest->latest_revision) {
+                    main_module = dependency->dest->name;
+                    break;
+                }
+            }
+        }
+
+        md_ctx_unlock(dm_ctx->md_ctx);
+        CHECK_RC_LOG_RETURN(rc, "Module %s in revision %s not found", module_name, module_revision);
     }
 
-    md_ctx_unlock(dm_ctx->md_ctx);
-    CHECK_RC_LOG_RETURN(rc, "Module %s in revision %s not found", module_name, module_revision);
-
     rc = dm_get_module_and_lock(dm_ctx, main_module, &si);
-    CHECK_RC_LOG_RETURN(rc, "Get module failed for %s", module_name);
+    CHECK_RC_LOG_RETURN(rc, "Get module failed for %s", main_module);
 
     if (NULL != submodule_name) {
-        module = (const struct lys_module *) ly_ctx_get_submodule(si->ly_ctx, module_name, module_revision, submodule_name, NULL);
+        module = (const struct lys_module *) ly_ctx_get_submodule(si->ly_ctx, module_name, module_revision, submodule_name, submodule_revision);
     } else {
         module = ly_ctx_get_module(si->ly_ctx, module_name, module_revision);
     }
 
     if (NULL == module) {
-        SR_LOG_ERR("Not found module %s submodule %s revision %s", module_name, submodule_name, module_revision);
+        SR_LOG_ERR("Not found module %s (revision %s) submodule %s (revision %s)", module_name, module_revision, submodule_name, submodule_revision);
         rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }

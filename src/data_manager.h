@@ -360,11 +360,13 @@ int dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **sc
  * @param [in] module_revision if NULL is passed the latest revision is returned
  * @param [in] submodule_name To retrieve the content of module NULL can be passed,
  * corresponding revision is selected according to the module revision.
+ * @param [in] submodule_revision if submodule name is set, the exact submodule revision
+ * can be set and then module information does not have to be filled at all
  * @param [in] yang_format
  * @param [out] schema
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND if the module/submodule or corresponding revision can not be found
  */
-int dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, bool yang_format, char **schema);
+int dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, const char *submodule_revision, bool yang_format, char **schema);
 
 /**
  * @brief Validates the data_trees in session.
