@@ -471,6 +471,7 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
         connections_cnt--;
         if ((0 == connections_cnt) && (NULL != local_cm_ctx)) {
             /* destroy local sysrepo engine */
+            cm_before_cleanup(local_cm_ctx);
             cm_stop(local_cm_ctx);
             cm_cleanup(local_cm_ctx);
             local_cm_ctx = NULL;
