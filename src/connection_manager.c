@@ -2034,3 +2034,9 @@ cm_get_connection_mode(cm_ctx_t *cm_ctx)
     }
 }
 
+int
+cm_before_cleanup(cm_ctx_t *cm_ctx)
+{
+   return rp_wait_for_commits_to_finish(cm_ctx->rp_ctx);
+}
+

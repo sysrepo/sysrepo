@@ -167,6 +167,14 @@ int cm_watch_signal(cm_ctx_t *cm_ctx, int signum, cm_signal_cb callback);
  */
 cm_connection_mode_t cm_get_connection_mode(cm_ctx_t *cm_ctx);
 
+/**
+ * @brief Function blocks further commit request and wait for ongoing commits to finish.
+ * @param [in] cm_ctx
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int cm_before_cleanup(cm_ctx_t *cm_ctx);
+
 /**@} cm */
 
 #endif /* SRC_CONNECTION_MANAGER_H_ */
