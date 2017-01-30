@@ -1995,6 +1995,7 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
         SR_LOG_INF_MSG("Sysrepo is running in the local mode => NACM will be disabled.");
     }
 #endif
+
     t_ctx = calloc(1, sizeof(*t_ctx));
     CHECK_NULL_NOMEM_GOTO(t_ctx, rc, cleanup);
 
@@ -3729,7 +3730,6 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     CHECK_NULL_ARG5(dm_ctx, session, c_ctx->session, c_ctx->fds, c_ctx->existed);
     CHECK_NULL_ARG(c_ctx->up_to_date_models);
     dm_data_info_t *info = NULL;
-    nacm_ctx_t *nacm_ctx = NULL;
     size_t i = 0;
     size_t count = 0;
     int rc = SR_ERR_OK;
@@ -3854,11 +3854,8 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             goto cleanup;
         }
 
-        rc = dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
-
         if (SR_DS_STARTUP != session->datastore || !c_ctx->disabled_config_change ||
-                (NULL != nacm_ctx && (c_ctx->init_session->options & SR_SESS_ENABLE_NACM))) {
+                (NULL != dm_ctx->nacm_ctx && (c_ctx->init_session->options & SR_SESS_ENABLE_NACM))) {
             /**
              * For candidate and running we save prev state.
              * If config change notifications are generated we have to save prev state for startup as well.
@@ -3971,6 +3968,11 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
             } else {
                 SR_LOG_DBG("Data successfully written for module '%s'", info->schema->module->name);
             }
+            if (0 == ret && SR_DS_RUNNING == c_ctx->session->datastore) {
+                if (0 == strcmp("ietf-netconf-acm", info->schema->module_name)) {
+                    c_ctx->nacm_edited = true;
+                }
+            }
             count++;
         }
     }
@@ -4058,16 +4060,12 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
     size_t i = 0, d_cnt = 0;
     bool denied = false, saved_diff = false;
     int denied_cnt = 0;
-    nacm_ctx_t *nacm_ctx = NULL;
     nacm_data_val_ctx_t *nacm_data_val_ctx = NULL;
     struct lyd_difflist *diff = NULL;
     dm_module_difflist_t *module_difflist = NULL;
     dm_data_info_t *info = NULL, *commit_info = NULL, *prev_info = NULL, lookup_info = {0};
 
-    rc = dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
-
-    if (NULL == nacm_ctx || !(c_ctx->init_session->options & SR_SESS_ENABLE_NACM)) {
+    if (NULL == dm_ctx->nacm_ctx || !(c_ctx->init_session->options & SR_SESS_ENABLE_NACM)) {
         goto cleanup;
     }
 
@@ -4119,7 +4117,7 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
         }
 
         /* start NACM data access validation for this module */
-        rc = nacm_data_validation_start(nacm_ctx, session->user_credentials, commit_info->node->schema,
+        rc = nacm_data_validation_start(dm_ctx->nacm_ctx, session->user_credentials, commit_info->node->schema,
                 &nacm_data_val_ctx);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to start NACM data validation.");
 
@@ -4160,7 +4158,7 @@ cleanup:
     if (SR_ERR_OK == rc && denied_cnt > 0) {
         rc = SR_ERR_UNAUTHORIZED;
         /* update NACM stats */
-        (void)nacm_stats_add_denied_data_write(nacm_ctx);
+        (void)nacm_stats_add_denied_data_write(dm_ctx->nacm_ctx);
     }
     if (!saved_diff && NULL != diff) {
         lyd_free_diff(diff);
@@ -4214,7 +4212,6 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
     bool match = false;
     sr_list_t *notified_notif = NULL;
     dm_module_difflist_t *module_difflist = NULL, lookup_difflist = {0};
-    nacm_ctx_t *nacm_ctx = NULL;
 
     /* notification are sent only when running or candidate is committed*/
     if (SR_DS_STARTUP == session->datastore) {
@@ -4261,11 +4258,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
 
             /* for SR_EV_ABORT inverse changes are generated */
             if (SR_EV_VERIFY == ev) {
-                if (SR_ERR_OK != dm_get_nacm_ctx(dm_ctx, &nacm_ctx)) {
-                    SR_LOG_ERR_MSG("Failed to get NACM context.");
-                    continue;
-                }
-                if (NULL != nacm_ctx && (c_ctx->init_session->options & SR_SESS_ENABLE_NACM)) {
+                if (NULL != dm_ctx->nacm_ctx && (c_ctx->init_session->options & SR_SESS_ENABLE_NACM)) {
                     /* already obtained in the NACM phase */
                     lookup_difflist.schema_info = info->schema;
                     module_difflist = sr_btree_search(c_ctx->difflists, &lookup_difflist);
@@ -6276,7 +6269,8 @@ dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const str
 }
 
 int
-dm_get_nacm_ctx(dm_ctx_t *dm_ctx, nacm_ctx_t **nacm_ctx){
+dm_get_nacm_ctx(dm_ctx_t *dm_ctx, nacm_ctx_t **nacm_ctx)
+{
     CHECK_NULL_ARG2(dm_ctx, nacm_ctx);
     *nacm_ctx = dm_ctx->nacm_ctx;
     return SR_ERR_OK;

@@ -299,7 +299,7 @@ nacm_test_empty_config(void **state)
     delete_nacm_config(nacm_config);
 
     /* Init NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     assert_non_null(nacm_ctx->schema_info);
     assert_string_equal("ietf-netconf-acm", nacm_ctx->schema_info->module_name);
     assert_string_equal(TEST_DATA_SEARCH_DIR, nacm_ctx->data_search_dir);
@@ -332,7 +332,7 @@ nacm_test_global_config_params(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     assert_false(nacm_ctx->enabled);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.read);
     assert_int_equal(NACM_ACTION_DENY, nacm_ctx->dflt.write);
@@ -344,7 +344,7 @@ nacm_test_global_config_params(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     assert_true(nacm_ctx->enabled);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.read);
     assert_int_equal(NACM_ACTION_DENY, nacm_ctx->dflt.write);
@@ -357,7 +357,7 @@ nacm_test_global_config_params(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     assert_true(nacm_ctx->enabled);
     assert_int_equal(NACM_ACTION_DENY, nacm_ctx->dflt.read);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.write);
@@ -370,7 +370,7 @@ nacm_test_global_config_params(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     assert_true(nacm_ctx->enabled);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.read);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.write);
@@ -382,7 +382,7 @@ nacm_test_global_config_params(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     assert_true(nacm_ctx->enabled);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.read);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.write);
@@ -394,7 +394,7 @@ nacm_test_global_config_params(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     assert_true(nacm_ctx->enabled);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.read);
     assert_int_equal(NACM_ACTION_PERMIT, nacm_ctx->dflt.write);
@@ -419,7 +419,7 @@ nacm_test_users(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     verify_sr_btree_size(nacm_ctx->groups, 1);
     verify_sr_btree_size(nacm_ctx->users, 1);
     verify_sr_list_size(nacm_ctx->rule_lists, 0);
@@ -434,7 +434,7 @@ nacm_test_users(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     verify_sr_btree_size(nacm_ctx->groups, 2);
     verify_sr_btree_size(nacm_ctx->users, 2);
     verify_sr_list_size(nacm_ctx->rule_lists, 0);
@@ -456,7 +456,7 @@ nacm_test_users(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     verify_sr_btree_size(nacm_ctx->groups, 3);
     verify_sr_btree_size(nacm_ctx->users, 2);
     verify_sr_list_size(nacm_ctx->rule_lists, 0);
@@ -483,7 +483,7 @@ nacm_test_users(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     verify_sr_btree_size(nacm_ctx->groups, 4);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 0);
@@ -521,7 +521,7 @@ nacm_test_users(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     verify_sr_btree_size(nacm_ctx->groups, 4);
     verify_sr_btree_size(nacm_ctx->users, 4);
     verify_sr_list_size(nacm_ctx->rule_lists, 0);
@@ -583,7 +583,7 @@ nacm_test_rule_lists(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     verify_sr_btree_size(nacm_ctx->groups, 5);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 1);
@@ -633,7 +633,7 @@ nacm_test_rule_lists(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     verify_sr_btree_size(nacm_ctx->groups, 7);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 2);
@@ -706,7 +706,7 @@ nacm_test_rule_lists(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     verify_sr_btree_size(nacm_ctx->groups, 7);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 3);
@@ -808,7 +808,7 @@ nacm_test_rules(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     verify_sr_btree_size(nacm_ctx->groups, 5);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 1);
@@ -835,7 +835,7 @@ nacm_test_rules(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     verify_sr_btree_size(nacm_ctx->groups, 5);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 1);
@@ -886,7 +886,7 @@ nacm_test_rules(void **state)
     save_nacm_config(nacm_config);
 
     /* test NACM context */
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     verify_sr_btree_size(nacm_ctx->groups, 7);
     verify_sr_btree_size(nacm_ctx->users, 3);
     verify_sr_list_size(nacm_ctx->rule_lists, 2);
@@ -1057,7 +1057,7 @@ nacm_config_for_basic_read_access_tests(bool disable_nacm, const char *read_dflt
 
     /* apply NACM config */
     save_nacm_config(nacm_config);
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
 
     /* cleanup */
     delete_nacm_config(nacm_config);
@@ -3161,7 +3161,7 @@ nacm_test_read_access_with_empty_config(void **state)
     new_nacm_config(&nacm_config);
     enable_nacm_config(nacm_config, true);
     save_nacm_config(nacm_config);
-    nacm_reload(nacm_ctx);
+    nacm_reload(nacm_ctx, SR_DS_STARTUP);
     delete_nacm_config(nacm_config);
 
     /* datastore content */

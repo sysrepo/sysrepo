@@ -2095,7 +2095,9 @@ rp_check_exec_perm_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
     int rc = SR_ERR_OK, oper_rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->check_exec_perm_req);
+
     SR_LOG_DBG_MSG("Processing check-exec-permission request.");
+    Sr__CheckExecPermReq *req = msg->request->check_exec_perm_req;
 
     /* allocate the response */
     rc = sr_mem_new(0, &sr_mem);
@@ -2106,9 +2108,6 @@ rp_check_exec_perm_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
         SR_LOG_ERR_MSG("Cannot allocate check-exec-permission response.");
         return SR_ERR_NOMEM;
     }
-
-#ifdef ENABLE_NACM
-    Sr__CheckExecPermReq *req = msg->request->check_exec_perm_req;
 
     oper_rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
     if (SR_ERR_OK == oper_rc && NULL != nacm_ctx && (session->options & SR_SESS_ENABLE_NACM)) {
@@ -2124,7 +2123,6 @@ rp_check_exec_perm_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
     if (SR_ERR_OK != oper_rc) {
         SR_LOG_WRN("Failed to verify if the user is allowed to execute operation: %s", req->xpath);
     }
-#endif
 
     /* set response data */
     resp->response->result = oper_rc;
@@ -2181,10 +2179,10 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
     CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
 
-#ifdef ENABLE_NACM
     /* NACM access control */
     rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
     CHECK_RC_MSG_GOTO(rc, finalize, "Failed to get NACM context");
+
     if (NULL != nacm_ctx && (session->options & SR_SESS_ENABLE_NACM)) {
         /* check if the user is authorized to execute the RPC */
         rc = nacm_check_rpc(nacm_ctx, session->user_credentials, xpath, &nacm_action, &nacm_rule, &nacm_rule_info);
@@ -2196,7 +2194,6 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             goto finalize;
         }
     }
-#endif
 
     /* parse input arguments */
     msg_api_variant = sr_api_variant_gpb_to_sr(msg->request->rpc_req->orig_api_variant);
@@ -2842,6 +2839,30 @@ rp_delayed_msg_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg * ms
 }
 
 /**
+ * @brief Processes a nacm-reload internal request.
+ */
+static int
+rp_nacm_reload_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg * msg)
+{
+    int rc = SR_ERR_OK;
+    nacm_ctx_t *nacm_ctx = NULL;
+    CHECK_NULL_ARG(rp_ctx);
+
+    SR_LOG_DBG_MSG("Processing nacm-reload request.");
+
+    /* get NACM context */
+    rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
+    CHECK_RC_MSG_RETURN(rc, "Failed to get NACM context");
+
+    if (NULL != nacm_ctx) {
+        rc = nacm_reload(nacm_ctx, SR_DS_RUNNING);
+        CHECK_RC_MSG_RETURN(rc, "Failed to reload NACM configuration");
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
  * @brief Sends an event notification to specified notification subscriber.
  */
 static int
@@ -2999,11 +3020,9 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
             SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS, &subscriptions_list);
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for event notification request (%s).", xpath);
 
-#ifdef ENABLE_NACM
     /* get NACM context */
     rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
     CHECK_RC_MSG_GOTO(rc, finalize, "Failed to get NACM context");
-#endif
 
     /* broadcast the notification to all subscribed processes */
     if (NULL != subscriptions_list) {
@@ -3015,7 +3034,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
                  * duplications it would be actually less efficient than normally.
                  */
                 sub_match = true;
-#ifdef ENABLE_NACM
+
                 /* NACM access control */
                 if (NULL != nacm_ctx && subscription->enable_nacm) {
                     free(nacm_rule);
@@ -3030,7 +3049,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
                         continue;
                     }
                 }
-#endif
+
                 rc = rp_event_notif_send(rp_ctx, session, msg->request->event_notif_req->type, subscription->xpath,
                         msg->request->event_notif_req->timestamp, subscription->api_variant, with_def, with_def_cnt,
                         with_def_tree, with_def_tree_cnt, subscription->dst_address, subscription->dst_id, 0);
@@ -3417,6 +3436,9 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             break;
         case SR__OPERATION__DELAYED_MSG:
             rc = rp_delayed_msg_req_process(rp_ctx, session, msg);
+            break;
+        case SR__OPERATION__NACM_RELOAD:
+            rc = rp_nacm_reload_req_process(rp_ctx, session, msg);
             break;
         default:
             SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->internal_request->operation);
