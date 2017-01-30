@@ -3977,20 +3977,28 @@ nacm_cl_test_reload_nacm(void **state)
     sr_conn_ctx_t *conn = *state;
     user_sessions_t sessions = {NULL};
     sr_val_t value = { 0 };
+    sr_val_t *output = NULL;
+    sr_node_t *output_tree = NULL;
+    size_t output_cnt = 0;
+    bool permitted = true;
     const sr_error_info_t *error_info = NULL;
     size_t error_cnt = 0;
     char *error_msg = NULL;
-    sr_session_ctx_t *nacm_edit_session = NULL;
+    sr_session_ctx_t *nacm_edit_session = NULL, *handler_session = NULL;
+    sr_subscription_ctx_t *rpc_subscription = NULL, *en_subscription = NULL;
+    char *escaped_xpath = NULL, *regex = NULL;
 
     if (!satisfied_requirements) {
         skip();
     }
 
-    /* start a session for each user */
-    start_user_sessions(conn, NULL, &sessions);
-    /* start session that will be used to modify running NACM configuration */
+    /* start a session for each user + handler session */
+    start_user_sessions(conn, &handler_session, &sessions);
+    /* start session that will be used to modify *running* NACM configuration */
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &nacm_edit_session);
     assert_int_equal(rc, SR_ERR_OK);
+
+    /***** test NACM reloading with the Commit operation *****/
 
     /* try to set single integer value */
 #undef NODE_XPATH
@@ -4020,14 +4028,17 @@ nacm_cl_test_reload_nacm(void **state)
 #define NODE_XPATH "/ietf-netconf-acm:nacm/rule-list[name='acl1']/rule[name='allow-to-modify-i8']"
 #undef NODE2_XPATH
 #define NODE2_XPATH "/ietf-netconf-acm:nacm/rule-list[name='acl2']/rule[name='allow-to-modify-i8']"
+    /*  -> delete permission from ACL1 */
     rc = sr_delete_item(nacm_edit_session, NODE_XPATH, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
+    /*  -> add permission to ACL2 and make it the first match */
     rc = sr_set_item_str(nacm_edit_session, NODE2_XPATH "/action", "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(nacm_edit_session, NODE2_XPATH "/path", "/test-module:main/i8", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_move_item(nacm_edit_session, NODE2_XPATH, SR_MOVE_FIRST, NULL);
     assert_int_equal(rc, SR_ERR_OK);
+    /*  -> apply changes to NACM configuration */
     rc = sr_commit(nacm_edit_session);
     assert_int_equal(rc, SR_ERR_OK);
     wait_ms(NACM_RELOAD_DELAY);
@@ -4054,6 +4065,177 @@ nacm_cl_test_reload_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(3);
 
+    /***** test NACM reloading with RPCs *****/
+    subscribe_dummy_rpc_callback(handler_session, NULL, &rpc_subscription);
+
+    /* test RPC "initialize" from turing-machine */
+#undef RPC_XPATH
+#define RPC_XPATH "/turing-machine:initialize"
+    /*  -> sysrepo-user1 */
+    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user2 */
+    RPC_DENIED(1, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
+    RPC_DENIED_TREE(1, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
+    /*  -> sysrepo-user3 */
+    RPC_DENIED(2, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
+    RPC_DENIED_TREE(2, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
+
+    /* Edit NACM configuration */
+#undef NODE_XPATH
+#define NODE_XPATH "/ietf-netconf-acm:nacm/rule-list[name='acl1']/rule[name='deny-initialize']"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/ietf-netconf-acm:nacm/rule-list[name='acl2']/rule[name='deny-initialize']"
+    /*  -> deny RPC "initialize" from turing machine in ACL1 */
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/module-name", "turing-machine", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/rpc-name", "initialize", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/access-operation", "exec", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/action", "deny", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/comment", "NACM rule added at the run-time.", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> in ACL2, limit restriction to execute "initialize" to module ietf-interfaces only */
+    rc = sr_set_item_str(nacm_edit_session, NODE2_XPATH "/module-name", "ietf-interfaces", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> apply changes to NACM configuration */
+    rc = sr_commit(nacm_edit_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    wait_ms(NACM_RELOAD_DELAY);
+
+    /* test RPC "initialize" from turing-machine, again */
+#undef RPC_XPATH
+#define RPC_XPATH "/turing-machine:initialize"
+    /*  -> sysrepo-user1 */
+    RPC_DENIED(0, RPC_XPATH, NULL, 0, "deny-initialize", "NACM rule added at the run-time.");
+    RPC_DENIED_TREE(0, RPC_XPATH, NULL, 0, "deny-initialize", "NACM rule added at the run-time.");
+    /*  -> sysrepo-user2 */
+    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user3 */
+    RPC_DENIED(0, RPC_XPATH, NULL, 0, "deny-initialize", "NACM rule added at the run-time.");
+    RPC_DENIED_TREE(0, RPC_XPATH, NULL, 0, "deny-initialize", "NACM rule added at the run-time.");
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
+
+    /* unsubscribe RPCs */
+    rc = sr_unsubscribe(NULL, rpc_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /***** test NACM reloading with Event notifications *****/
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    /*  -> sysrepo-user1 */
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &en_subscription);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user2 */
+    subscribe_dummy_event_notif_callback(sessions[1], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user3 */
+    subscribe_dummy_event_notif_callback(sessions[2], NULL, &en_subscription);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user4 */
+    subscribe_dummy_event_notif_callback(sessions[3], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* Edit NACM configuration */
+#undef NODE_XPATH
+#define NODE_XPATH "/ietf-netconf-acm:nacm/rule-list[name='acl1']/rule[name='deny-link-discovered']"
+    /*  -> delete rule that restricts delivery of this event notification from ACL1 */
+    rc = sr_delete_item(nacm_edit_session, NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> apply changes to NACM configuration */
+    rc = sr_commit(nacm_edit_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    wait_ms(NACM_RELOAD_DELAY);
+
+    /* test Event notification "link-discovered", again */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    /*  -> sysrepo-user1 */
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user2 */
+    subscribe_dummy_event_notif_callback(sessions[1], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user3 */
+    subscribe_dummy_event_notif_callback(sessions[2], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user4 */
+    subscribe_dummy_event_notif_callback(sessions[3], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* Edit NACM configuration */
+#undef NODE_XPATH
+#define NODE_XPATH "/ietf-netconf-acm:nacm/read-default"
+    /*  -> deny read operation by default */
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH, "deny", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> apply changes to NACM configuration */
+    rc = sr_commit(nacm_edit_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    wait_ms(NACM_RELOAD_DELAY);
+
+    /* test Event notification "link-discovered", for the third time */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    /*  -> sysrepo-user1 */
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &en_subscription);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user2 */
+    subscribe_dummy_event_notif_callback(sessions[1], NULL, &en_subscription);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user3 */
+    subscribe_dummy_event_notif_callback(sessions[2], NULL, &en_subscription);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user4 */
+    subscribe_dummy_event_notif_callback(sessions[3], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop sessions */
     for (int i = 0; i < NUM_OF_USERS; ++i) {
         rc = sr_session_stop(sessions[i]);
@@ -4061,26 +4243,28 @@ nacm_cl_test_reload_nacm(void **state)
     }
     rc = sr_session_stop(nacm_edit_session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
 }
 
 int
 main() {
     const struct CMUnitTest tests[] = {
         /* RPC */
-//            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt, sysrepo_setup_with_denied_exec_by_dflt, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt, sysrepo_setup_with_denied_exec_by_dflt, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_rpc_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
         /* Event notification */
-//            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm_with_denied_read_by_dflt, sysrepo_setup_with_denied_read_by_dflt, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm_with_denied_read_by_dflt, sysrepo_setup_with_denied_read_by_dflt, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_event_notif_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
         /* Commit */
-//            cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm, sysrepo_setup, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_permitted_write_by_dflt, sysrepo_setup_with_permitted_write_by_dflt, sysrepo_teardown),
-//            cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_empty_nacm_cfg, sysrepo_setup_with_empty_nacm_cfg, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_permitted_write_by_dflt, sysrepo_setup_with_permitted_write_by_dflt, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
         /* NACM reload */
             cmocka_unit_test_setup_teardown(nacm_cl_test_reload_nacm, sysrepo_setup, sysrepo_teardown),
     };
