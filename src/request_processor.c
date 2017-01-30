@@ -3226,6 +3226,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             locked = true;
             break;
         case SR__OPERATION__COMMIT:
+        case SR__OPERATION__COPY_CONFIG:
             MUTEX_LOCK_TIMED_CHECK_RETURN(&rp_ctx->commit_block_mutex);
             if (!rp_ctx->block_further_commits) {
                 pthread_rwlock_wrlock(&rp_ctx->commit_lock);
