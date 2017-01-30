@@ -191,8 +191,10 @@ typedef struct dm_commit_context_s {
     size_t err_cnt;             /**< number of errors from verifiers */
     sr_list_t *err_subs_xpaths; /**< subscriptions that returned an error */
     bool disabled_config_change;/**< flag whether config change notification are disabled */
-    sr_btree_t *difflists;        /**< binary tree of diff-lists for each modified module */
+    sr_btree_t *difflists;      /**< binary tree of diff-lists for each modified module */
     bool nacm_edited;           /**< flag whether the running NACM configuration was edited. */
+    bool in_btree;              /**< set to tree if the context was inserted into btree */
+    bool should_be_removed;     /**< flag denoting whether c_ctx can be removed from btree */
 } dm_commit_context_t;
 
 /**
@@ -202,6 +204,10 @@ typedef struct dm_commit_context_s {
 typedef struct dm_c_ctxs_s {
     sr_btree_t *tree;      /**< Tree of commit context used for notifications */
     pthread_rwlock_t lock; /**< rwlock to access c_ctxs */
+    pthread_mutex_t empty_mutex; /**< guards empty and commits_blocked */
+    pthread_cond_t empty_cond;   /**< can be used to wait for empty to be true */
+    bool empty;                  /**< flag that is set to true if there is no commit ctx stored */
+    bool commits_blocked;        /**< flag that decides whether a new commit context cane be inserted into the tree */
 } dm_commit_ctxs_t;
 
 /**
@@ -361,11 +367,13 @@ int dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **sc
  * @param [in] module_revision if NULL is passed the latest revision is returned
  * @param [in] submodule_name To retrieve the content of module NULL can be passed,
  * corresponding revision is selected according to the module revision.
+ * @param [in] submodule_revision if submodule name is set, the exact submodule revision
+ * can be set and then module information does not have to be filled at all
  * @param [in] yang_format
  * @param [out] schema
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND if the module/submodule or corresponding revision can not be found
  */
-int dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, bool yang_format, char **schema);
+int dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, const char *submodule_revision, bool yang_format, char **schema);
 
 /**
  * @brief Validates the data_trees in session.
@@ -1109,5 +1117,11 @@ int dm_get_nacm_ctx(dm_ctx_t *dm_ctx, nacm_ctx_t **nacm_ctx);
  */
 int dm_get_session_datatrees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_btree_t **session_models);
 
+/**
+ * @brief Function blocks until all commit ctxs are freed or timeout expires.
+ * @param [in] dm_ctx
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_wait_for_commit_context_to_be_empty(dm_ctx_t *dm_ctx);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

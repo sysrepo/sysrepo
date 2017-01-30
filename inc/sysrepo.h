@@ -674,6 +674,23 @@ int sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char
          const char *submodule_name, sr_schema_format_t format, char **schema_content);
 
 /**
+ * @brief Retrieves the content of the specified submodule schema file. If the submodule
+ * cannot be found, SR_ERR_NOT_FOUND is returned.
+ *
+ * @param[in] session Session context acquired from ::sr_session_start call.
+ * @param[in] submodule_name Name of the requested submodule.
+ * @param[in] submodule_revision Requested revision of the submodule. If NULL
+ * is passed, the latest revision will be returned.
+ * @param[in] format of the returned schema.
+ * @param[out] schema_content Content of the specified schema file. Automatically
+ * allocated by the function, should be freed by the caller.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_get_submodule_schema(sr_session_ctx_t *session, const char *submodule_name, const char *submodule_revision,
+                            sr_schema_format_t format, char **schema_content);
+
+/**
  * @brief Retrieves a single data element stored under provided XPath. If multiple
  * nodes matches the xpath SR_ERR_INVAL_ARG is returned.
  *

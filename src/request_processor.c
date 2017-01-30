@@ -508,6 +508,7 @@ rp_get_schema_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, S
             msg->request->get_schema_req->module_name,
             msg->request->get_schema_req->revision,
             msg->request->get_schema_req->submodule_name,
+            msg->request->get_schema_req->submodule_revision,
             msg->request->get_schema_req->yang_format,
             &resp->response->get_schema_resp->schema_content);
 
@@ -1466,6 +1467,13 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
         SR_LOG_ERR_MSG("Allocation of commit response failed.");
         return SR_ERR_NOMEM;
     }
+
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&rp_ctx->commit_block_mutex, rc, cleanup);
+    if (rp_ctx->block_further_commits) {
+        rc = SR_ERR_OPERATION_FAILED;
+    }
+    pthread_mutex_unlock(&rp_ctx->commit_block_mutex);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Stop requested, commits are blocked.");
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
     locked = true;
@@ -3261,8 +3269,13 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             locked = true;
             break;
         case SR__OPERATION__COMMIT:
-            pthread_rwlock_wrlock(&rp_ctx->commit_lock);
-            locked = true;
+        case SR__OPERATION__COPY_CONFIG:
+            MUTEX_LOCK_TIMED_CHECK_RETURN(&rp_ctx->commit_block_mutex);
+            if (!rp_ctx->block_further_commits) {
+                pthread_rwlock_wrlock(&rp_ctx->commit_lock);
+                locked = true;
+            }
+            pthread_mutex_unlock(&rp_ctx->commit_block_mutex);
             break;
         default:
             break;
@@ -3835,6 +3848,8 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     rc = rp_setup_internal_state_data(ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Set up of internal state data failed");
 
+    pthread_mutex_init(&ctx->commit_block_mutex, NULL);
+
     /* run worker threads */
     pthread_mutex_init(&ctx->request_queue_mutex, NULL);
     pthread_cond_init(&ctx->request_queue_cv, NULL);
@@ -3896,6 +3911,7 @@ rp_cleanup(rp_ctx_t *rp_ctx)
             }
         }
         pthread_rwlock_destroy(&rp_ctx->commit_lock);
+        pthread_mutex_destroy(&rp_ctx->commit_block_mutex);
         dm_cleanup(rp_ctx->dm_ctx);
         np_cleanup(rp_ctx->np_ctx);
         pm_cleanup(rp_ctx->pm_ctx);
@@ -4060,7 +4076,7 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 }
 
 int
-rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
+rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finished, int result,
         sr_list_t *err_subs_xpaths, sr_list_t *errors)
 {
     CHECK_NULL_ARG(rp_ctx);
@@ -4080,7 +4096,7 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
     pthread_mutex_lock(&c_ctx->mutex);
     SR_LOG_DBG("Commit context in state %d", c_ctx->state);
 
-    if (DM_COMMIT_WAIT_FOR_NOTIFICATIONS == c_ctx->state &&
+    if (!finished && DM_COMMIT_WAIT_FOR_NOTIFICATIONS == c_ctx->state &&
         NULL != c_ctx->init_session) {
 
         SR_LOG_INF("Resuming commit with id %"PRIu32" continue with %s", commit_id, SR_ERR_OK == result ? "write" : "abort");
@@ -4111,7 +4127,7 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
         c_ctx->init_session->req = NULL;
         pthread_mutex_unlock(&c_ctx->mutex);
         pthread_rwlock_unlock(&dm_ctxs->lock);
-    } else if (DM_COMMIT_FINISHED == c_ctx->state){
+    } else if (finished && DM_COMMIT_FINISHED == c_ctx->state){
         pthread_mutex_unlock(&c_ctx->mutex);
         pthread_rwlock_unlock(&dm_ctxs->lock);
         locked = false;
@@ -4120,7 +4136,8 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
         rc = dm_commit_notifications_complete(rp_ctx->dm_ctx, commit_id);
         goto cleanup;
     } else {
-        SR_LOG_WRN("Commit id %"PRIu32" is unexpected state failed to resume", commit_id);
+        /* this might occurs when verify timeout expires and commit has already moved forward */
+        SR_LOG_DBG("Commit id %"PRIu32" is in an unexpected state.", commit_id);
         pthread_mutex_unlock(&c_ctx->mutex);
         pthread_rwlock_unlock(&dm_ctxs->lock);
     }
@@ -4146,5 +4163,30 @@ cleanup:
         }
         sr_list_cleanup(errors);
     }
+    return rc;
+}
+
+int
+rp_wait_for_commits_to_finish(rp_ctx_t *rp_ctx)
+{
+    CHECK_NULL_ARG(rp_ctx);
+    dm_commit_ctxs_t *commit_ctxs = NULL;
+    int rc = SR_ERR_OK;
+
+    /* block commits in request processor */
+    MUTEX_LOCK_TIMED_CHECK_RETURN(&rp_ctx->commit_block_mutex);
+    rp_ctx->block_further_commits = true;
+    pthread_mutex_unlock(&rp_ctx->commit_block_mutex);
+
+    /* block commits in data manager */
+    rc = dm_get_commit_ctxs(rp_ctx->dm_ctx, &commit_ctxs);
+    CHECK_RC_MSG_RETURN(rc, "Failed to retrieve commit contexts");
+
+    MUTEX_LOCK_TIMED_CHECK_RETURN(&commit_ctxs->empty_mutex);
+    commit_ctxs->commits_blocked = true;
+    pthread_mutex_unlock(&commit_ctxs->empty_mutex);
+
+    /* wait until all commit context are freed or timeout expires */
+    rc = dm_wait_for_commit_context_to_be_empty(rp_ctx->dm_ctx);
     return rc;
 }

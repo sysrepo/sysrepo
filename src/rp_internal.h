@@ -46,6 +46,9 @@ typedef struct rp_ctx_s {
     size_t thread_spin_limit;                /**< Current limit of thread spinning before going to sleep. */
     bool stop_requested;                     /**< Stopping of all threads has been requested. */
 
+    bool block_further_commits;              /**< Flag that allows commit to be processed */
+    pthread_mutex_t commit_block_mutex;      /**< Mutex guarding block_further_commits flag */
+
     sr_cbuff_t *request_queue;               /**< Input request queue. */
     pthread_mutex_t request_queue_mutex;     /**< Request queue mutex. */
     pthread_cond_t request_queue_cv;         /**< Request queue condition variable. */
