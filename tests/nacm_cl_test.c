@@ -397,8 +397,6 @@ static int cb_call_count; /* how many times a callback was called */
 pthread_mutex_t cb_call_count_lock = PTHREAD_MUTEX_INITIALIZER; /* protecting cb_call_count */
 static nacm_stats_t nacm_stats = {0};
 
-/* TODO: Report the issue with failed validation when action reply is empty. Then reflect the fix. */
-
 
 const char *
 write_access_type_to_str(nacm_access_flag_t access_type)
@@ -1212,17 +1210,17 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
 #undef ACTION_XPATH
 #define ACTION_XPATH "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/unload"
     /*  -> sysrepo-user1 */
-    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user2 */
-    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user3 */
-    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, 0);
 
     /* test Action "load" from test-model */
 #undef ACTION_XPATH
@@ -1234,17 +1232,17 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
     input_tree->type = SR_STRING_T;
     sr_node_set_str_data(input_tree, SR_STRING_T, "--force");
     /*  -> sysrepo-user1 */
-    ACTION_PERMITED(0, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(0, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(0, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(0, ACTION_XPATH, input_tree, 1, 0);
     /*  -> sysrepo-user2 */
-    ACTION_PERMITED(1, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(1, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(1, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(1, ACTION_XPATH, input_tree, 1, 0);
     /*  -> sysrepo-user3 */
-    ACTION_PERMITED(2, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(2, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(2, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(2, ACTION_XPATH, input_tree, 1, 0);
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, 0);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1362,17 +1360,17 @@ nacm_cl_test_rpc_nacm(void **state)
 #undef ACTION_XPATH
 #define ACTION_XPATH "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/unload"
     /*  -> sysrepo-user1 */
-    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user2 */
-    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user3 */
-    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, 0);
 
     /* test Action "load" from test-model */
 #undef ACTION_XPATH
@@ -1384,17 +1382,17 @@ nacm_cl_test_rpc_nacm(void **state)
     input_tree->type = SR_STRING_T;
     sr_node_set_str_data(input_tree, SR_STRING_T, "--force");
     /*  -> sysrepo-user1 */
-    ACTION_PERMITED(0, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(0, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(0, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(0, ACTION_XPATH, input_tree, 1, 0);
     /*  -> sysrepo-user2 */
-    ACTION_PERMITED(1, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(1, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(1, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(1, ACTION_XPATH, input_tree, 1, 0);
     /*  -> sysrepo-user3 */
     ACTION_DENIED(2, ACTION_XPATH, input, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
     ACTION_DENIED_TREE(2, ACTION_XPATH, input_tree, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module." );
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, 0);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1518,11 +1516,11 @@ nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
     ACTION_DENIED(1, ACTION_XPATH, NULL, 0, "", "");
     ACTION_DENIED_TREE(1, ACTION_XPATH, NULL, 0, "", "");
     /*  -> sysrepo-user3 */
-    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, 0);
 
     /* test Action "load" from test-model */
 #undef ACTION_XPATH
@@ -1543,8 +1541,8 @@ nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
     ACTION_DENIED(2, ACTION_XPATH, input, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
     ACTION_DENIED_TREE(2, ACTION_XPATH, input_tree, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module." );
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, 0);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1662,17 +1660,17 @@ nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
 #undef ACTION_XPATH
 #define ACTION_XPATH "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/unload"
     /*  -> sysrepo-user1 */
-    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user2 */
-    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user3 */
-    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, 0);
 
     /* test Action "load" from test-model */
 #undef ACTION_XPATH
@@ -1693,8 +1691,8 @@ nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
     ACTION_DENIED(2, ACTION_XPATH, input, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
     ACTION_DENIED_TREE(2, ACTION_XPATH, input_tree, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module." );
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, 0);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
