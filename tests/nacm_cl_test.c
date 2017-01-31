@@ -3561,19 +3561,19 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[0], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED(0, NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
     /*  -> sysrepo-user2 */
     rc = sr_set_item_str(sessions[1], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[1], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED(1, NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
     /*  -> sysrepo-user3 */
     rc = sr_set_item_str(sessions[2], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED(2, NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
     /*  -> sysrepo-user4 */
     rc = sr_set_item_str(sessions[3], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -4094,7 +4094,7 @@ nacm_cl_test_reload_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/rpc-name", "initialize", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/access-operation", "exec", SR_EDIT_DEFAULT);
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/access-operations", "exec", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/action", "deny", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -4186,8 +4186,8 @@ nacm_cl_test_reload_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     /*  -> sysrepo-user3 */
     subscribe_dummy_event_notif_callback(sessions[2], NULL, &en_subscription);
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
     rc = sr_unsubscribe(NULL, en_subscription);
     assert_int_equal(rc, SR_ERR_OK);
     /*  -> sysrepo-user4 */
@@ -4225,8 +4225,8 @@ nacm_cl_test_reload_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     /*  -> sysrepo-user3 */
     subscribe_dummy_event_notif_callback(sessions[2], NULL, &en_subscription);
-    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
-    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
     rc = sr_unsubscribe(NULL, en_subscription);
     assert_int_equal(rc, SR_ERR_OK);
     /*  -> sysrepo-user4 */
