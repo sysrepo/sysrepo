@@ -30,8 +30,6 @@ add_custom_command(
    COMMENT "Running C protocol buffer compiler on ${PROTO_FILE}"
    VERBATIM )
 
-add_custom_target(proto DEPENDS "${GENERATED_PROTO_C}" "${GENERATED_PROTO_H}")
-
 configure_file("${COMMON_DIR}/sr_constants.h.in" "${COMMON_BIN_DIR}/sr_constants.h" ESCAPE_QUOTES @ONLY)
 
 # common sources
@@ -84,7 +82,6 @@ set_property(TARGET SR_SRC PROPERTY COMPILE_FLAGS "-fPIC")
 add_library(SR_ENGINE OBJECT  ${SYSREPO_ENGINE_SOURCES})
 set_property(TARGET SR_ENGINE PROPERTY COMPILE_FLAGS "-fPIC")
 
-add_dependencies(COMMON proto)
 add_dependencies(SR_SRC COMMON)
 add_dependencies(SR_ENGINE COMMON)
 

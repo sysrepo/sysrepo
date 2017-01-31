@@ -87,6 +87,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     # global procject's repository location
 
     ADD_UNIT_TEST(cm_test 1)
+    add_dependencies(cm_test COMMON)
     ADD_UNIT_TEST(rp_test 1)
     if(ENABLE_NACM)
         ADD_UNIT_TEST(nacm_test 1)
