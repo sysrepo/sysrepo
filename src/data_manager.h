@@ -449,6 +449,14 @@ int dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session
         sr_error_info_t **errors, size_t *err_cnt);
 
 /**
+ * @brief Tries to acquire write locks on opened fds
+ * @param [in] session
+ * @param [in] commit_ctx
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_commit_writelock_fds(dm_session_t *session, dm_commit_context_t *commit_ctx);
+
+/**
  * @brief Writes the data trees from commit session stored in commit context into the files.
  * In case of error tries to continue. Does not do a cleanup.
  * @param [in] session to be committed

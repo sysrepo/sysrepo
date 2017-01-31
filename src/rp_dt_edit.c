@@ -852,9 +852,12 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             pthread_mutex_unlock(&commit_ctx->mutex);
             return rc;
         case DM_COMMIT_WRITE:
-            rc = dm_commit_write_files(session->dm_session, commit_ctx);
-            if (SR_ERR_OK == rc) {
-                SR_LOG_DBG_MSG("Commit (8/10): data write succeeded");
+            rc = dm_commit_writelock_fds(session->dm_session, commit_ctx);
+            if (SR_ERR_OK == rc ) {
+                rc = dm_commit_write_files(session->dm_session, commit_ctx);
+                if (SR_ERR_OK == rc) {
+                    SR_LOG_DBG_MSG("Commit (8/10): data write succeeded");
+                }
             }
             state = DM_COMMIT_NOTIFY_APPLY;
             break;

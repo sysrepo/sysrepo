@@ -2605,6 +2605,107 @@ cl_config_change_notif_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+
+typedef struct old_cfg_s{
+    pthread_mutex_t mutex;
+    pthread_cond_t cv;
+    size_t cnt;
+    sr_val_t *old_values[MAX_CHANGE];
+}old_cfg_t;
+
+static int
+read_old_config_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
+{
+    old_cfg_t *old_cfg = (old_cfg_t *) private_ctx;
+    int rc = SR_ERR_OK;
+    sr_session_ctx_t *tmpSess = NULL;
+    sr_conn_ctx_t *conn;
+
+
+    if (SR_EV_VERIFY == ev ) {
+        /* start new session to read the old config (if session passed as argument was used, we would read the state after the commit) */
+        sr_connect("test", SR_CONN_DEFAULT, &conn);
+        sr_session_start(conn, SR_DS_RUNNING, SR_SESS_CONFIG_ONLY, &tmpSess);
+
+        rc = sr_get_item(tmpSess, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &old_cfg->old_values[0]);
+        if (SR_ERR_OK == rc) {
+            old_cfg->cnt = 1;
+        }
+
+        sr_session_stop(tmpSess);
+        sr_disconnect(conn);
+    } else {
+        pthread_mutex_lock(&old_cfg->mutex);
+        pthread_cond_signal(&old_cfg->cv);
+        pthread_mutex_unlock(&old_cfg->mutex);
+    }
+
+    return SR_ERR_OK;
+}
+
+static void
+cl_read_old_config_in_verify_test(void **state)
+{
+    /** Test verifies that it is possible to start a new session in verify callback and use
+     it to read the config before commit for the sitations, where sr_get_changes is inconvinient */
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    old_cfg_t old_cfg = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
+
+    sr_val_t *val = NULL;
+    const char *xpath = NULL;
+    int rc = SR_ERR_OK;
+    xpath = "/example-module:container/list[key1='key1'][key2='key2']/leaf";
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "example-module", read_old_config_cb, &old_cfg,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check the leaf presence in candidate */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_free_val(val);
+
+    /* delete the leaf */
+    rc = sr_delete_item(session, xpath,SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* save changes to running */
+    pthread_mutex_lock(&old_cfg.mutex);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&old_cfg.cv, &old_cfg.mutex, &ts);
+
+    assert_int_equal(old_cfg.cnt, 1);
+    assert_non_null(old_cfg.old_values[0]);
+    assert_string_equal(xpath, old_cfg.old_values[0]->xpath);
+
+    for (size_t i = 0; i < old_cfg.cnt; i++) {
+        sr_free_val(old_cfg.old_values[i]);
+    }
+    pthread_mutex_unlock(&old_cfg.mutex);
+
+    pthread_mutex_destroy(&old_cfg.mutex);
+    pthread_cond_destroy(&old_cfg.cv);
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -2637,6 +2738,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_auto_enable_manadatory_nodes, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_capability_changed_notif_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_config_change_notif_test, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_read_old_config_in_verify_test, sysrepo_setup, sysrepo_teardown),
     };
 
     watchdog_start(300);

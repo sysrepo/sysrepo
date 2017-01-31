@@ -3855,8 +3855,8 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         }
         /* file was opened successfully increment the number of files to be closed */
         c_ctx->modif_count++;
-        /* try to lock for write, non-blocking */
-        rc = sr_lock_fd(c_ctx->fds[count], true, false);
+        /* try to lock for read, non-blocking */
+        rc = sr_lock_fd(c_ctx->fds[count], false, false);
         if (SR_ERR_OK != rc) {
 #define ERR_FMT "Locking of file '%s' failed: %s."
             if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name, sr_strerror(rc))) {
@@ -3956,6 +3956,27 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 cleanup:
     ac_unset_user_identity(dm_ctx->ac_ctx);
     free(file_name);
+    return rc;
+}
+
+int
+dm_commit_writelock_fds(dm_session_t *session, dm_commit_context_t *commit_ctx)
+{
+    CHECK_NULL_ARG2(session, commit_ctx);
+    int rc = SR_ERR_OK;
+    int cnt = 0;
+    size_t i = 0;
+    dm_data_info_t *info = NULL;
+
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
+        if (!info->modified) {
+            continue;
+        }
+        /* try to lock for write, non-blocking */
+        rc = sr_lock_fd(commit_ctx->fds[cnt], true, false);
+        CHECK_RC_LOG_RETURN(rc, "Locking of file for module '%s' failed: %s.", info->schema->module_name, sr_strerror(rc));
+        cnt++;
+    }
     return rc;
 }
 
