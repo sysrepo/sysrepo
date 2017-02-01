@@ -801,6 +801,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
     }
 
     bool remove_ctx = false;
+    bool free_ctx = false;
     uint32_t c_id = 0;
     dm_commit_context_t *commit_ctx = c_ctx;
     dm_commit_state_t state = NULL != commit_ctx ? commit_ctx->state : DM_COMMIT_STARTED;
@@ -881,9 +882,12 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             pthread_mutex_unlock(&commit_ctx->mutex);
             return rc;
         case DM_COMMIT_WRITE:
-            rc = dm_commit_write_files(session->dm_session, commit_ctx);
-            if (SR_ERR_OK == rc) {
-                SR_LOG_DBG_MSG("Commit (8/10): data write succeeded");
+            rc = dm_commit_writelock_fds(session->dm_session, commit_ctx);
+            if (SR_ERR_OK == rc ) {
+                rc = dm_commit_write_files(session->dm_session, commit_ctx);
+                if (SR_ERR_OK == rc) {
+                    SR_LOG_DBG_MSG("Commit (8/10): data write succeeded");
+                }
             }
             if (SR_ERR_OK == rc && commit_ctx->nacm_edited) {
                 /* request to reload NACM configuration if it was edited */
@@ -922,6 +926,10 @@ cleanup:
     if (NULL != commit_ctx) {
         remove_ctx = commit_ctx->should_be_removed;
         c_id = commit_ctx->id;
+
+        if (!commit_ctx->in_btree) {
+            free_ctx = true;
+        }
     }
     pthread_mutex_unlock(&commit_ctx->mutex);
 
@@ -933,8 +941,10 @@ cleanup:
 
     /* In case of running datastore, commit context will be freed when
      * all notifications session are closed.
+     *
+     * Commit context was not inserted into the btree can be freed
      */
-    if (NULL != commit_ctx && !commit_ctx->in_btree) {
+    if (NULL != commit_ctx && free_ctx) {
         dm_free_commit_context(commit_ctx);
     }
 
