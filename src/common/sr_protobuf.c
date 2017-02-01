@@ -109,6 +109,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "notif-store-cleanup";
     case SR__OPERATION__DELAYED_MSG:
         return "delayed-msg";
+    case SR__OPERATION__NACM_RELOAD:
+        return "nacm-reload";
     case _SR__OPERATION_IS_INT_SIZE:
         return "unknown";
     }
@@ -844,6 +846,13 @@ sr_gpb_internal_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, S
             sr__delayed_msg_req__init((Sr__DelayedMsgReq*)sub_msg);
             req->delayed_msg_req = (Sr__DelayedMsgReq*) sub_msg;
             break;
+        case SR__OPERATION__NACM_RELOAD:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__NacmReloadReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__nacm_reload_req__init((Sr__NacmReloadReq*)sub_msg);
+            req->nacm_reload_req = (Sr__NacmReloadReq*)sub_msg;
+            break;
+
         default:
             break;
     }

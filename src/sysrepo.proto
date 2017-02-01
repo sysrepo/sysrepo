@@ -918,6 +918,12 @@ message DelayedMsgReq {
   required Msg message = 1;
 }
 
+/**
+ * @brief Internal request to reload NACM configuration from the running datastore.
+ */
+message NacmReloadReq {
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine API umbrella messages
@@ -977,6 +983,7 @@ enum Operation {
   INTERNAL_STATE_DATA = 104;
   NOTIF_STORE_CLEANUP = 105;
   DELAYED_MSG = 106;
+  NACM_RELOAD = 107;
 }
 
 /**
@@ -1123,6 +1130,7 @@ message InternalRequest {
   optional InternalStateDataReq internal_state_data_req = 13;
   optional NotifStoreCleanupReq notif_store_cleanup_req = 14;
   optional DelayedMsgReq delayed_msg_req = 15;
+  optional NacmReloadReq nacm_reload_req = 16;
 }
 
 /**
