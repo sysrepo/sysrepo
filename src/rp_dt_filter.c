@@ -31,7 +31,6 @@ rp_dt_nacm_filtering(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node
         struct lyd_node **nodes, unsigned int *node_cnt)
 {
     int rc = SR_ERR_OK;
-#ifdef ENABLE_NACM
     unsigned int i = 0, j = 0;
     nacm_ctx_t *nacm_ctx = NULL;
     nacm_data_val_ctx_t *nacm_data_val_ctx = NULL;
@@ -40,7 +39,7 @@ rp_dt_nacm_filtering(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node
     struct lyd_node *node = NULL;
     CHECK_NULL_ARG4(dm_ctx, rp_session, nodes, node_cnt);
 
-    dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
+    rc = dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
 
     if (NULL == nacm_ctx || !(rp_session->options & SR_SESS_ENABLE_NACM)) {
@@ -84,7 +83,6 @@ rp_dt_nacm_filtering(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node
 
 cleanup:
     nacm_data_validation_stop(nacm_data_val_ctx);
-#endif
     return rc;
 }
 
@@ -146,13 +144,13 @@ rp_dt_init_tree_pruning(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
     CHECK_NULL_NOMEM_RETURN(pruning_ctx);
     pruning_ctx->check_enabled = check_enabled;
 
-#ifdef ENABLE_NACM
     nacm_ctx_t *nacm_ctx = NULL;
     nacm_action_t nacm_action = NACM_ACTION_PERMIT;
     const char *rule_name = NULL, *rule_info;
 
-    dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
+    rc = dm_get_nacm_ctx(dm_ctx, &nacm_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get NACM context.");
+
     if (NULL != nacm_ctx && (rp_session->options & SR_SESS_ENABLE_NACM)) {
         rc = nacm_data_validation_start(nacm_ctx, rp_session->user_credentials, data_tree->schema,
                 &pruning_ctx->nacm_data_val_ctx);
@@ -170,7 +168,6 @@ rp_dt_init_tree_pruning(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
     }
 
 cleanup:
-#endif
     if (SR_ERR_OK == rc) {
         *pruning_ctx_p = pruning_ctx;
         *pruning_cb = rp_dt_tree_pruning;

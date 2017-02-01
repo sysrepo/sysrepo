@@ -192,6 +192,7 @@ typedef struct dm_commit_context_s {
     sr_list_t *err_subs_xpaths; /**< subscriptions that returned an error */
     bool disabled_config_change;/**< flag whether config change notification are disabled */
     sr_btree_t *difflists;      /**< binary tree of diff-lists for each modified module */
+    bool nacm_edited;           /**< flag whether the running NACM configuration was edited. */
     bool in_btree;              /**< set to tree if the context was inserted into btree */
     bool should_be_removed;     /**< flag denoting whether c_ctx can be removed from btree */
 } dm_commit_context_t;

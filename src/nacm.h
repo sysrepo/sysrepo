@@ -201,11 +201,12 @@ typedef struct nacm_data_val_ctx_s {
 int nacm_init(dm_ctx_t *dm_ctx, const char *data_search_dir, nacm_ctx_t **nacm_ctx);
 
 /**
- * @brief Reload the NACM configuration from the running datastore.
+ * @brief Reload the NACM configuration from startup or running datastore.
  *
  * @param [in] nacm_ctx NACM context to reload.
+ * @param [in] ds Datastore to reload from.
  */
-int nacm_reload(nacm_ctx_t *nacm_ctx);
+int nacm_reload(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds);
 
 /**
  * @brief Free all internal resources associated with the provided NACM context.

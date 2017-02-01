@@ -47,6 +47,7 @@
 #define MAX_ATTEMPTS         10
 #define DELAY_DURATION       10
 #define DAEMON_WAIT_DURATION 500
+#define NACM_RELOAD_DELAY    300
 
 //#define DEBUG_MODE /* Note: in debug mode we are not able to read logs from sysrepo daemon! */
 
@@ -97,11 +98,6 @@
     do { \
         rc = sr_get_last_errors(sessions[SESSION], &error_info, &error_cnt); \
         assert_int_equal(rc, SR_ERR_UNAUTHORIZED); \
-        if (ERR_IDX == 0) { \
-            for (int k = 0; k < error_cnt; ++k) { \
-                printf("Error: %s\n", error_info[k].message); \
-            } \
-        } \
         assert_int_equal(ERR_CNT, error_cnt); \
         assert_non_null(error_info[ERR_IDX].xpath); \
         assert_string_equal(XPATH, error_info[ERR_IDX].xpath); \
@@ -314,12 +310,6 @@
 #define COMMIT_PERMITTED(SESSION) \
     do { \
         rc = sr_commit(sessions[SESSION]); \
-        if (SR_ERR_OK != rc) { \
-            sr_get_last_errors(sessions[SESSION], &error_info, &error_cnt); \
-            for (int k = 0; k < error_cnt; ++k) { \
-                printf("Error: %s\n", error_info[k].message); \
-            } \
-        } \
         assert_int_equal(rc, SR_ERR_OK); \
         revert_changes(); \
     } while(0);
@@ -406,8 +396,6 @@ static pthread_t stderr_reader = {0}; /* log-reader thread's control structure *
 static int cb_call_count; /* how many times a callback was called */
 pthread_mutex_t cb_call_count_lock = PTHREAD_MUTEX_INITIALIZER; /* protecting cb_call_count */
 static nacm_stats_t nacm_stats = {0};
-
-/* TODO: Report the issue with failed validation when action reply is empty. Then reflect the fix. */
 
 
 const char *
@@ -980,6 +968,7 @@ sysrepo_teardown(void **state)
 #endif
     int rc = SR_ERR_OK;
     sr_conn_ctx_t *conn = *state;
+#ifndef DEBUG_MODE
     test_nacm_cfg_t *nacm_config = NULL;
 
     /* leave non-intrusive NACM startup config */
@@ -987,6 +976,7 @@ sysrepo_teardown(void **state)
     set_nacm_write_dflt(nacm_config, "permit");
     save_nacm_config(nacm_config);
     delete_nacm_config(nacm_config);
+#endif
 
     if (!satisfied_requirements) {
         return 0;
@@ -1220,17 +1210,17 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
 #undef ACTION_XPATH
 #define ACTION_XPATH "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/unload"
     /*  -> sysrepo-user1 */
-    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user2 */
-    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user3 */
-    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, 0);
 
     /* test Action "load" from test-model */
 #undef ACTION_XPATH
@@ -1242,17 +1232,17 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
     input_tree->type = SR_STRING_T;
     sr_node_set_str_data(input_tree, SR_STRING_T, "--force");
     /*  -> sysrepo-user1 */
-    ACTION_PERMITED(0, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(0, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(0, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(0, ACTION_XPATH, input_tree, 1, 0);
     /*  -> sysrepo-user2 */
-    ACTION_PERMITED(1, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(1, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(1, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(1, ACTION_XPATH, input_tree, 1, 0);
     /*  -> sysrepo-user3 */
-    ACTION_PERMITED(2, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(2, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(2, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(2, ACTION_XPATH, input_tree, 1, 0);
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, 0);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1370,17 +1360,17 @@ nacm_cl_test_rpc_nacm(void **state)
 #undef ACTION_XPATH
 #define ACTION_XPATH "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/unload"
     /*  -> sysrepo-user1 */
-    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user2 */
-    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user3 */
-    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, 0);
 
     /* test Action "load" from test-model */
 #undef ACTION_XPATH
@@ -1392,17 +1382,17 @@ nacm_cl_test_rpc_nacm(void **state)
     input_tree->type = SR_STRING_T;
     sr_node_set_str_data(input_tree, SR_STRING_T, "--force");
     /*  -> sysrepo-user1 */
-    ACTION_PERMITED(0, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(0, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(0, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(0, ACTION_XPATH, input_tree, 1, 0);
     /*  -> sysrepo-user2 */
-    ACTION_PERMITED(1, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(1, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(1, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(1, ACTION_XPATH, input_tree, 1, 0);
     /*  -> sysrepo-user3 */
     ACTION_DENIED(2, ACTION_XPATH, input, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
     ACTION_DENIED_TREE(2, ACTION_XPATH, input_tree, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module." );
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, 0);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1526,11 +1516,11 @@ nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
     ACTION_DENIED(1, ACTION_XPATH, NULL, 0, "", "");
     ACTION_DENIED_TREE(1, ACTION_XPATH, NULL, 0, "", "");
     /*  -> sysrepo-user3 */
-    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, 0);
 
     /* test Action "load" from test-model */
 #undef ACTION_XPATH
@@ -1551,8 +1541,8 @@ nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
     ACTION_DENIED(2, ACTION_XPATH, input, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
     ACTION_DENIED_TREE(2, ACTION_XPATH, input_tree, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module." );
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, 0);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -1670,17 +1660,17 @@ nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
 #undef ACTION_XPATH
 #define ACTION_XPATH "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/unload"
     /*  -> sysrepo-user1 */
-    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(0, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(0, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user2 */
-    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(1, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(1, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user3 */
-    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(2, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(2, ACTION_XPATH, NULL, 0, 0);
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, NULL, 0, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, NULL, 0, 0);
 
     /* test Action "load" from test-model */
 #undef ACTION_XPATH
@@ -1701,8 +1691,8 @@ nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
     ACTION_DENIED(2, ACTION_XPATH, input, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
     ACTION_DENIED_TREE(2, ACTION_XPATH, input_tree, 1, "deny-test-module", "Deny everything not explicitly permitted in test-module." );
     /*  -> sysrepo-user4 */
-    ACTION_PERMITED(3, ACTION_XPATH, input, 1, -1);
-    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, -1);
+    ACTION_PERMITED(3, ACTION_XPATH, input, 1, 0);
+    ACTION_PERMITED_TREE(3, ACTION_XPATH, input_tree, 1, 0);
     sr_free_val(input);
     sr_free_tree(input_tree);
 
@@ -3257,7 +3247,6 @@ nacm_cl_test_commit_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(3);
 
-#if 0 /* TODO: report crash in lyd_diff */
     /* try to edit NACM configuration */
 #undef NODE_XPATH
 #define NODE_XPATH "/ietf-netconf-acm:nacm/write-default"
@@ -3287,7 +3276,6 @@ nacm_cl_test_commit_nacm(void **state)
     rc = sr_set_item_str(sessions[3], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(3);
-#endif
 
     /* try to edit container in the example-module */
 #undef NODE_XPATH
@@ -3561,7 +3549,6 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(3);
 
-#if 0 /* TODO: report crash in lyd_diff */
     /* try to edit NACM configuration */
 #undef NODE_XPATH
 #define NODE_XPATH "/ietf-netconf-acm:nacm/write-default"
@@ -3572,26 +3559,25 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[0], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED(0, NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
     /*  -> sysrepo-user2 */
     rc = sr_set_item_str(sessions[1], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[1], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED(1, NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
     /*  -> sysrepo-user3 */
     rc = sr_set_item_str(sessions[2], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED(2, NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
     /*  -> sysrepo-user4 */
     rc = sr_set_item_str(sessions[3], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[3], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(3);
-#endif
 
     /* try to edit container in the example-module */
 #undef NODE_XPATH
@@ -3860,7 +3846,6 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(3);
 
-#if 0 /* TODO: report crash in lyd_diff */
     /* try to edit NACM configuration */
 #undef NODE_XPATH
 #define NODE_XPATH "/ietf-netconf-acm:nacm/write-default"
@@ -3890,7 +3875,6 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     rc = sr_set_item_str(sessions[3], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
     COMMIT_PERMITTED(3);
-#endif
 
     /* try to edit container in the example-module */
 #undef NODE_XPATH
@@ -3983,6 +3967,284 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
         assert_int_equal(rc, SR_ERR_OK);
     }
 }
+
+static void
+nacm_cl_test_reload_nacm(void **state)
+{
+    int rc = SR_ERR_OK;
+    sr_conn_ctx_t *conn = *state;
+    user_sessions_t sessions = {NULL};
+    sr_val_t value = { 0 };
+    sr_val_t *output = NULL;
+    sr_node_t *output_tree = NULL;
+    size_t output_cnt = 0;
+    bool permitted = true;
+    const sr_error_info_t *error_info = NULL;
+    size_t error_cnt = 0;
+    char *error_msg = NULL;
+    sr_session_ctx_t *nacm_edit_session = NULL, *handler_session = NULL;
+    sr_subscription_ctx_t *rpc_subscription = NULL, *en_subscription = NULL;
+    char *escaped_xpath = NULL, *regex = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* start a session for each user + handler session */
+    start_user_sessions(conn, &handler_session, &sessions);
+    /* start session that will be used to modify *running* NACM configuration */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &nacm_edit_session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /***** test NACM reloading with the Commit operation *****/
+
+    /* try to set single integer value */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/i8"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 1;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(0);
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(1, NODE_XPATH, NACM_ACCESS_UPDATE, "disallow-to-modify-i8",
+            "Disallow modification of 8-bit signed integer in the main container");
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
+
+    /* Edit NACM configuration */
+#undef NODE_XPATH
+#define NODE_XPATH "/ietf-netconf-acm:nacm/rule-list[name='acl1']/rule[name='allow-to-modify-i8']"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/ietf-netconf-acm:nacm/rule-list[name='acl2']/rule[name='allow-to-modify-i8']"
+    /*  -> delete permission from ACL1 */
+    rc = sr_delete_item(nacm_edit_session, NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> add permission to ACL2 and make it the first match */
+    rc = sr_set_item_str(nacm_edit_session, NODE2_XPATH "/action", "permit", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(nacm_edit_session, NODE2_XPATH "/path", "/test-module:main/i8", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_move_item(nacm_edit_session, NODE2_XPATH, SR_MOVE_FIRST, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> apply changes to NACM configuration */
+    rc = sr_commit(nacm_edit_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    wait_ms(NACM_RELOAD_DELAY);
+
+    /* try to set the single integer value again */
+#undef NODE_XPATH
+#define NODE_XPATH "/test-module:main/i8"
+    /*  -> sysrepo-user1 */
+    value.type = SR_INT8_T;
+    value.data.int8_val = XP_TEST_MODULE_INT8_VALUE_T + 2;
+    rc = sr_set_item(sessions[0], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_DENIED(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "");
+    /*  -> sysrepo-user2 */
+    rc = sr_set_item(sessions[1], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(1);
+    /*  -> sysrepo-user3 */
+    rc = sr_set_item(sessions[2], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(2);
+    /*  -> sysrepo-user4 */
+    rc = sr_set_item(sessions[3], NODE_XPATH, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    COMMIT_PERMITTED(3);
+
+    /***** test NACM reloading with RPCs *****/
+    subscribe_dummy_rpc_callback(handler_session, NULL, &rpc_subscription);
+
+    /* test RPC "initialize" from turing-machine */
+#undef RPC_XPATH
+#define RPC_XPATH "/turing-machine:initialize"
+    /*  -> sysrepo-user1 */
+    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user2 */
+    RPC_DENIED(1, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
+    RPC_DENIED_TREE(1, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
+    /*  -> sysrepo-user3 */
+    RPC_DENIED(2, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
+    RPC_DENIED_TREE(2, RPC_XPATH, NULL, 0, "deny-initialize", "Not allowed to touch RPC 'initialize' in any module.");
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
+
+    /* Edit NACM configuration */
+#undef NODE_XPATH
+#define NODE_XPATH "/ietf-netconf-acm:nacm/rule-list[name='acl1']/rule[name='deny-initialize']"
+#undef NODE2_XPATH
+#define NODE2_XPATH "/ietf-netconf-acm:nacm/rule-list[name='acl2']/rule[name='deny-initialize']"
+    /*  -> deny RPC "initialize" from turing machine in ACL1 */
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/module-name", "turing-machine", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/rpc-name", "initialize", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/access-operations", "exec", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/action", "deny", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH "/comment", "NACM rule added at the run-time.", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> in ACL2, limit restriction to execute "initialize" to module ietf-interfaces only */
+    rc = sr_set_item_str(nacm_edit_session, NODE2_XPATH "/module-name", "ietf-interfaces", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> apply changes to NACM configuration */
+    rc = sr_commit(nacm_edit_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    wait_ms(NACM_RELOAD_DELAY);
+
+    /* test RPC "initialize" from turing-machine, again */
+#undef RPC_XPATH
+#define RPC_XPATH "/turing-machine:initialize"
+    /*  -> sysrepo-user1 */
+    RPC_DENIED(0, RPC_XPATH, NULL, 0, "deny-initialize", "NACM rule added at the run-time.");
+    RPC_DENIED_TREE(0, RPC_XPATH, NULL, 0, "deny-initialize", "NACM rule added at the run-time.");
+    /*  -> sysrepo-user2 */
+    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
+    /*  -> sysrepo-user3 */
+    RPC_DENIED(0, RPC_XPATH, NULL, 0, "deny-initialize", "NACM rule added at the run-time.");
+    RPC_DENIED_TREE(0, RPC_XPATH, NULL, 0, "deny-initialize", "NACM rule added at the run-time.");
+    /*  -> sysrepo-user4 */
+    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
+    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
+
+    /* unsubscribe RPCs */
+    rc = sr_unsubscribe(NULL, rpc_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /***** test NACM reloading with Event notifications *****/
+
+    /* test Event notification "link-discovered" */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    /*  -> sysrepo-user1 */
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &en_subscription);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user2 */
+    subscribe_dummy_event_notif_callback(sessions[1], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user3 */
+    subscribe_dummy_event_notif_callback(sessions[2], NULL, &en_subscription);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-link-discovered", "Not allowed to receive the link-discovered notification");
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user4 */
+    subscribe_dummy_event_notif_callback(sessions[3], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* Edit NACM configuration */
+#undef NODE_XPATH
+#define NODE_XPATH "/ietf-netconf-acm:nacm/rule-list[name='acl1']/rule[name='deny-link-discovered']"
+    /*  -> delete rule that restricts delivery of this event notification from ACL1 */
+    rc = sr_delete_item(nacm_edit_session, NODE_XPATH, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> apply changes to NACM configuration */
+    rc = sr_commit(nacm_edit_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    wait_ms(NACM_RELOAD_DELAY);
+
+    /* test Event notification "link-discovered", again */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    /*  -> sysrepo-user1 */
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user2 */
+    subscribe_dummy_event_notif_callback(sessions[1], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user3 */
+    subscribe_dummy_event_notif_callback(sessions[2], NULL, &en_subscription);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user4 */
+    subscribe_dummy_event_notif_callback(sessions[3], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* Edit NACM configuration */
+#undef NODE_XPATH
+#define NODE_XPATH "/ietf-netconf-acm:nacm/read-default"
+    /*  -> deny read operation by default */
+    rc = sr_set_item_str(nacm_edit_session, NODE_XPATH, "deny", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> apply changes to NACM configuration */
+    rc = sr_commit(nacm_edit_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    wait_ms(NACM_RELOAD_DELAY);
+
+    /* test Event notification "link-discovered", for the third time */
+#undef EVENT_NOTIF_XPATH
+#define EVENT_NOTIF_XPATH "/test-module:link-discovered"
+    /*  -> sysrepo-user1 */
+    subscribe_dummy_event_notif_callback(sessions[0], NULL, &en_subscription);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user2 */
+    subscribe_dummy_event_notif_callback(sessions[1], NULL, &en_subscription);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "", "");
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user3 */
+    subscribe_dummy_event_notif_callback(sessions[2], NULL, &en_subscription);
+    EVENT_NOTIF_DENIED(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, NULL, 0, "deny-test-module", "Deny everything not explicitly permitted in test-module.");
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    /*  -> sysrepo-user4 */
+    subscribe_dummy_event_notif_callback(sessions[3], NULL, &en_subscription);
+    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
+    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
+    rc = sr_unsubscribe(NULL, en_subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop sessions */
+    for (int i = 0; i < NUM_OF_USERS; ++i) {
+        rc = sr_session_stop(sessions[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+    rc = sr_session_stop(nacm_edit_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -4001,6 +4263,8 @@ main() {
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_permitted_write_by_dflt, sysrepo_setup_with_permitted_write_by_dflt, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
+        /* NACM reload */
+            cmocka_unit_test_setup_teardown(nacm_cl_test_reload_nacm, sysrepo_setup, sysrepo_teardown),
     };
 
     if (0 != getuid()) {

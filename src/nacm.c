@@ -463,7 +463,7 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
     rc = sr_list_init(&nacm_ctx->rule_lists);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize list with NACM rule-lists.");
 
-    rc = sr_get_data_file_name(nacm_ctx->data_search_dir, NACM_MODULE_NAME, SR_DS_STARTUP, &ds_filepath);
+    rc = sr_get_data_file_name(nacm_ctx->data_search_dir, NACM_MODULE_NAME, ds, &ds_filepath);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get the file-path of NACM startup datastore.");
     fd = open(ds_filepath, O_RDONLY);
     CHECK_NOT_MINUS1_LOG_GOTO(fd, rc, SR_ERR_IO, cleanup, "Unable to open the NACM startup datastore ('%s'): %s.",
@@ -836,7 +836,7 @@ nacm_init(dm_ctx_t *dm_ctx, const char *data_search_dir, nacm_ctx_t **nacm_ctx)
     ctx->schema_info->usage_count++;
     pthread_mutex_unlock(&ctx->schema_info->usage_count_mutex);
 
-    /* load the NACM configuration from startup datastore */
+    /* load the NACM configuration from the startup datastore */
     rc = nacm_load_config(ctx, SR_DS_STARTUP);
     if (SR_ERR_OK != rc) {
         goto unlock;
@@ -864,7 +864,7 @@ cleanup:
 }
 
 int
-nacm_reload(nacm_ctx_t *nacm_ctx)
+nacm_reload(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
 {
     int rc = SR_ERR_OK;
     CHECK_NULL_ARG(nacm_ctx);
@@ -874,8 +874,9 @@ nacm_reload(nacm_ctx_t *nacm_ctx)
     rc = nacm_cleanup_internal(nacm_ctx, true);
     CHECK_RC_MSG_GOTO(rc, unlock, "Failed to clean the outdated NACM configuration.");
 
-    rc = nacm_load_config(nacm_ctx, SR_DS_RUNNING);
-    CHECK_RC_MSG_GOTO(rc, unlock, "Failed to load NACM configuration from the running datastore.");
+    rc = nacm_load_config(nacm_ctx, ds);
+    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to load NACM configuration from the %s datastore.",
+            sr_ds_to_str(ds));
 
 unlock:
     pthread_rwlock_unlock(&nacm_ctx->lock);

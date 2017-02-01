@@ -457,7 +457,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
 {
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
     int rc = SR_ERR_OK;
-    struct lyd_node *node = NULL;
+    struct lyd_node *node = NULL, *node2 = NULL;
     struct lyd_node *sibling = NULL;
     dm_schema_info_t *schema_info = NULL;
     dm_data_info_t *info = NULL;
@@ -500,18 +500,23 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
             return rc;
         }
     } else {
-        struct ly_set *siblings = lyd_find_instance(info->node, node->schema);
+        node2 = sibling = node;
 
-        if (NULL == siblings || 0 == siblings->number) {
-            SR_LOG_ERR_MSG("No siblings found");
-            return SR_ERR_INVAL_ARG;
-        }
         if (SR_MOVE_FIRST == position) {
-            sibling = siblings->set.d[0];
+            while (node2->prev->next) {
+                node2 = node2->prev;
+                if (node2->schema == node->schema) {
+                    sibling = node2;
+                }
+            }
         } else if (SR_MOVE_LAST == position) {
-            sibling = siblings->set.d[siblings->number - 1];
+            while (node2->next) {
+                node2 = node2->next;
+                if (node2->schema == node->schema) {
+                    sibling = node2;
+                }
+            }
         }
-        ly_set_free(siblings);
     }
 
     if (NULL == sibling || !((LYS_LIST | LYS_LEAFLIST) & sibling->schema->nodetype) || (!(LYS_USERORDERED & sibling->schema->flags)) || (node->schema != sibling->schema)) {
@@ -760,6 +765,29 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Reload NACM configuration (asynchronous, sends a request to the request processor).
+ */
+static int
+rp_dt_reload_nacm(rp_ctx_t *rp_ctx)
+{
+    Sr__Msg *req = NULL;
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG(rp_ctx);
+
+    /* setup the timer */
+    rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__NACM_RELOAD, &req);
+    if (SR_ERR_OK == rc) {
+        /* enqueue the message */
+        rc = cm_msg_send(rp_ctx->cm_ctx, req);
+    }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Unable to send a request to reload the running NACM configuration.");
+    }
+
+    return rc;
+}
+
 int
 rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, sr_error_info_t **errors, size_t *err_cnt)
 {
@@ -776,6 +804,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
     uint32_t c_id = 0;
     dm_commit_context_t *commit_ctx = c_ctx;
     dm_commit_state_t state = NULL != commit_ctx ? commit_ctx->state : DM_COMMIT_STARTED;
+    nacm_ctx_t *nacm_ctx = NULL;
 
     while (state != DM_COMMIT_FINISHED) {
         switch (state) {
@@ -855,6 +884,15 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             rc = dm_commit_write_files(session->dm_session, commit_ctx);
             if (SR_ERR_OK == rc) {
                 SR_LOG_DBG_MSG("Commit (8/10): data write succeeded");
+            }
+            if (SR_ERR_OK == rc && commit_ctx->nacm_edited) {
+                /* request to reload NACM configuration if it was edited */
+                rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_WRN_MSG("Failed to get NACM context");
+                } else if (NULL != nacm_ctx) {
+                    rc = rp_dt_reload_nacm(rp_ctx);
+                }
             }
             state = DM_COMMIT_NOTIFY_APPLY;
             break;
