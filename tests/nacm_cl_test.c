@@ -417,7 +417,8 @@ static void
 wait_ms(long int ms)
 {
     struct timespec ts = { 0 };
-    ts.tv_nsec = ms * 1000000L;
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000L;
     nanosleep(&ts, NULL);
 }
 
