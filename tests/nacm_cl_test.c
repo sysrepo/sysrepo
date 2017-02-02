@@ -510,6 +510,7 @@ daemon_kill(bool last_attempt)
     assert_non_null(pidfile);
     ret = fscanf(pidfile, "%d", &pid);
     assert_int_equal(ret, 1);
+    assert_int_equal(0, fclose(pidfile));
 
     /* send SIGTERM/SIGKILL to the daemon process */
     SR_LOG_DBG("Sending %s signal to PID=%d.", (last_attempt ? "SIGKILL" : "SIGTERM"), pid);
