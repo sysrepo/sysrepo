@@ -2254,6 +2254,9 @@ sr_daemonize(bool debug_mode, int log_level, const char *pid_file, int *pid_file
     if ((-1 != log_level) && (log_level >= SR_LL_NONE) && (log_level <= SR_LL_DBG)) {
         if (debug_mode) {
             sr_log_stderr(log_level);
+            if (SR_LL_DBG == log_level) {
+                sr_log_syslog(log_level);
+            }
         } else {
             sr_log_syslog(log_level);
         }
