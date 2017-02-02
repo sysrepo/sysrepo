@@ -1563,7 +1563,7 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
 }
 
 /**
- * @brief Processes a discard_changes request.
+ * @brief Processes a copy-config request.
  */
 static int
 rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
@@ -2554,8 +2554,11 @@ finish:
         SR_LOG_DBG("All data from data providers has been received session id = %u, reenque the request", session->id);
         //TODO validate data
         rp_dt_free_state_data_ctx_content(&session->state_data_ctx);
-        session->state = RP_REQ_DATA_LOADED;
-        rp_msg_process(rp_ctx, session, session->req);
+        if (RP_REQ_WAITING_FOR_DATA == session->state) {
+            session->state = RP_REQ_DATA_LOADED;
+            rp_msg_process(rp_ctx, session, session->req);
+            session->req = NULL;
+        }
     }
 
 error:
@@ -2727,10 +2730,14 @@ rp_oper_data_timeout_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
 
     SR_LOG_DBG_MSG("Processing oper-data-timeout request.");
 
-    if (((intptr_t)session->req) == msg->internal_request->oper_data_timeout_req->request_id) {
+    MUTEX_LOCK_TIMED_CHECK_RETURN(&session->cur_req_mutex);
+    if (RP_REQ_WAITING_FOR_DATA == session->state &&
+        ((intptr_t)session->req) == msg->internal_request->oper_data_timeout_req->request_id) {
         SR_LOG_DBG("Time out expired for operational data to be loaded. Request processing continue, session id = %u", session->id);
         rp_msg_process(rp_ctx, session, session->req);
+        session->state = RP_REQ_DATA_LOADED;
     }
+    pthread_mutex_unlock(&session->cur_req_mutex);
 
     return rc;
 }
@@ -2802,8 +2809,11 @@ cleanup:
     if (0 == session->dp_req_waiting) {
         SR_LOG_DBG("All data from data providers has been received session id = %u, reenque the request", session->id);
         rp_dt_free_state_data_ctx_content(&session->state_data_ctx);
-        session->state = RP_REQ_DATA_LOADED;
-        rp_msg_process(rp_ctx, session, session->req);
+        if (RP_REQ_WAITING_FOR_DATA == session->state) {
+            session->state = RP_REQ_DATA_LOADED;
+            rp_msg_process(rp_ctx, session, session->req);
+            session->req = NULL;
+        }
     }
     pthread_mutex_unlock(&session->cur_req_mutex);
     return rc;

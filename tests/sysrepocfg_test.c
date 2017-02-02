@@ -505,19 +505,19 @@ srcfg_test_import(void **state)
 static void
 srcfg_test_prepare_config(const char *config)
 {
-    FILE *fp = fopen(FILENAME_NEW_CONFIG, "w");
-    assert_non_null(fp);
-    fprintf(fp, "%s", config);
-    fclose(fp);
+    int fd = open(FILENAME_NEW_CONFIG, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+    assert_true(fd >= 0);
+    write(fd, config, strlen(config) * (sizeof *config));
+    close(fd);
 }
 
 static void
 srcfg_test_prepare_user_input(const char *input)
 {
-    FILE *fp = fopen(FILENAME_USER_INPUT, "w");
-    assert_non_null(fp);
-    fprintf(fp, "%s", input);
-    fclose(fp);
+    int fd = open(FILENAME_USER_INPUT, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+    assert_true(fd >= 0);
+    write(fd, input, strlen(input) * (sizeof *input));
+    close(fd);
 }
 
 static void
