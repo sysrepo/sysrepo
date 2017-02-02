@@ -16,8 +16,8 @@ matrix:
             dist: trusty
             sudo: required
             compiler: clang
-#        -   os: osx
-#            compiler: gcc
+        -   os: osx
+            compiler: gcc
 
 cache:
   pip: true
