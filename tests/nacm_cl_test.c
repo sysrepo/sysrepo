@@ -502,20 +502,26 @@ verify_nacm_stats()
 static void
 daemon_kill(bool last_attempt)
 {
-    FILE *pidfile = NULL;
-    int pid = 0, ret = 0;
+    int pidfile = 0;
+    char *line = NULL;
+    size_t len = 0;
+    int pid = -1, ret = 0;
 
     /* read PID of the daemon from sysrepo PID file */
-    pidfile = fopen(SR_DAEMON_PID_FILE, "r");
-    assert_non_null(pidfile);
-    ret = fscanf(pidfile, "%d", &pid);
-    assert_int_equal(ret, 1);
-    assert_int_equal(0, fclose(pidfile));
+    pidfile = open(SR_DAEMON_PID_FILE, O_RDONLY);
+    assert_int_not_equal(-1, pidfile);
+    if (readline(pidfile, &line, &len)) {
+        pid = atoi(line);
+    }
+    free(line);
+    assert_int_equal(0, close(pidfile));
 
-    /* send SIGTERM/SIGKILL to the daemon process */
-    SR_LOG_DBG("Sending %s signal to PID=%d.", (last_attempt ? "SIGKILL" : "SIGTERM"), pid);
-    ret = kill(pid, last_attempt ? SIGKILL : SIGTERM);
-    assert_int_not_equal(ret, -1);
+    if (-1 != pid) {
+        /* send SIGTERM/SIGKILL to the daemon process */
+        SR_LOG_DBG("Sending %s signal to PID=%d.", (last_attempt ? "SIGKILL" : "SIGTERM"), pid);
+        ret = kill(pid, last_attempt ? SIGKILL : SIGTERM);
+        assert_int_not_equal(-1, ret);
+    }
 }
 #endif
 
