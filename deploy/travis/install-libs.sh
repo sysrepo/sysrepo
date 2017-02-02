@@ -4,6 +4,7 @@ set -e
 INSTALL_PREFIX_DIR=$HOME/local
 export PKG_CONFIG_PATH=$INSTALL_PREFIX_DIR/lib/pkgconfig:$PKG_CONFIG_PATH
 
+sudo apt-get install --reinstall ca-certificates
 sudo apt-get install software-properties-common # add-apt-repository tool
 sudo add-apt-repository --yes ppa:stefanklug/swig
 sudo apt-get update -qq
