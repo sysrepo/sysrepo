@@ -171,7 +171,7 @@ rp_set_oper_request_timeout(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *re
     }
     if (SR_ERR_OK == rc) {
         msg->session_id = session->id;
-        msg->internal_request->oper_data_timeout_req->request_id = (intptr_t)request;
+        msg->internal_request->oper_data_timeout_req->request_id = request->request->_id;
         msg->internal_request->postpone_timeout = timeout;
         msg->internal_request->has_postpone_timeout = true;
         rc = cm_msg_send(rp_ctx->cm_ctx, msg);
@@ -680,7 +680,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->get_item_req);
 
-    SR_LOG_DBG("Processing get_item request (%lu).", (intptr_t)msg);
+    SR_LOG_DBG("Processing get_item request (id=%lu).", msg->request->_id);
 
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
@@ -706,13 +706,13 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
     if (RP_REQ_FINISHED == session->state) {
         session->state = RP_REQ_NEW;
     } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
-        if (msg == session->req) {
+        if (msg->request->_id == session->req->request->_id) {
             SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u, req = %lu",
-                    session->id, (intptr_t)session->req);
+                    session->id, session->req->request->_id);
             session->state = RP_REQ_DATA_LOADED;
         } else {
             SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u, req = %lu",
-                    session->id, (intptr_t)session->req);
+                    session->id, session->req->request->_id);
             sr_msg_free(session->req);
             session->state = RP_REQ_NEW;
         }
@@ -800,7 +800,7 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
     if (RP_REQ_FINISHED == session->state) {
         session->state = RP_REQ_NEW;
     } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
-        if (msg == session->req) {
+        if (msg->request->_id == session->req->request->_id) {
             SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
             session->state = RP_REQ_DATA_LOADED;
         } else {
@@ -903,7 +903,7 @@ rp_get_subtree_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     if (RP_REQ_FINISHED == session->state) {
         session->state = RP_REQ_NEW;
     } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
-        if (msg == session->req) {
+        if (msg->request->_id == session->req->request->_id) {
             SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
             session->state = RP_REQ_DATA_LOADED;
         } else {
@@ -995,7 +995,7 @@ rp_get_subtrees_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *ms
     if (RP_REQ_FINISHED == session->state) {
         session->state = RP_REQ_NEW;
     } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
-        if (msg == session->req) {
+        if (msg->request->_id == session->req->request->_id) {
             SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
             session->state = RP_REQ_DATA_LOADED;
         } else {
@@ -1097,7 +1097,7 @@ rp_get_subtree_chunk_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
     if (RP_REQ_FINISHED == session->state) {
         session->state = RP_REQ_NEW;
     } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
-        if (msg == session->req) {
+        if (msg->request->_id == session->req->request->_id) {
             SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
             session->state = RP_REQ_DATA_LOADED;
         } else {
@@ -2520,9 +2520,10 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform gpb to sr_val_t");
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
-    if (RP_REQ_WAITING_FOR_DATA != session->state || NULL == session->req ||  msg->response->data_provide_resp->request_id != (intptr_t)session->req ) {
+    if (RP_REQ_WAITING_FOR_DATA != session->state || NULL == session->req
+            ||  msg->response->data_provide_resp->request_id != session->req->request->_id ) {
         SR_LOG_ERR("State data arrived after timeout expiration or session id=%u is invalid (msg=%lu, session->req=%lu).",
-                session->id, msg->response->data_provide_resp->request_id, (intptr_t)session->req);
+                session->id, msg->response->data_provide_resp->request_id, session->req ? session->req->request->_id : 0);
         goto error;
     }
 
@@ -2558,7 +2559,7 @@ finish:
         rp_dt_free_state_data_ctx_content(&session->state_data_ctx);
         if (RP_REQ_WAITING_FOR_DATA == session->state) {
             SR_LOG_DBG("All data from data providers has been received session id = %u, reenque the request id = %lu",
-                    session->id, (intptr_t)session->req);
+                    session->id, session->req->request->_id);
             session->state = RP_REQ_DATA_LOADED;
             rp_msg_process(rp_ctx, session, session->req);
             session->req = NULL;
@@ -2736,9 +2737,9 @@ rp_oper_data_timeout_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
 
     MUTEX_LOCK_TIMED_CHECK_RETURN(&session->cur_req_mutex);
     if (RP_REQ_WAITING_FOR_DATA == session->state &&
-        ((intptr_t)session->req) == msg->internal_request->oper_data_timeout_req->request_id) {
+        session->req && session->req->request->_id == msg->internal_request->oper_data_timeout_req->request_id) {
         SR_LOG_DBG("Time out expired for operational data to be loaded. Request (id=%lu) processing continue, session id = %u",
-                (intptr_t)session->req, session->id);
+                session->req->request->_id, session->id);
         rp_msg_process(rp_ctx, session, session->req);
         session->state = RP_REQ_DATA_LOADED;
     }
@@ -2764,7 +2765,7 @@ rp_internal_state_data_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__
     SR_LOG_INF("Internal request for state data at xpath %s, orig-req id = %lu", xpath, orig_req_id);
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
-    if (RP_REQ_WAITING_FOR_DATA != session->state || NULL == session->req || orig_req_id != (intptr_t)session->req ) {
+    if (RP_REQ_WAITING_FOR_DATA != session->state || NULL == session->req || orig_req_id != session->req->request->_id) {
         SR_LOG_ERR("State data arrived after timeout expiration or session id=%u is invalid.", session->id);
         goto cleanup;
     }
@@ -2816,7 +2817,7 @@ cleanup:
         rp_dt_free_state_data_ctx_content(&session->state_data_ctx);
         if (RP_REQ_WAITING_FOR_DATA == session->state) {
             SR_LOG_DBG("All data from data providers has been received session id = %u, reenque the request (id=%lu)",
-                    session->id, (intptr_t)session->req);
+                    session->id, session->req->request->_id);
             session->state = RP_REQ_DATA_LOADED;
             rp_msg_process(rp_ctx, session, session->req);
             session->req = NULL;
@@ -3270,6 +3271,14 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
         dm_clear_session_errors(session->dm_session);
     }
 
+    if (NULL != session && 0 == msg->request->_id) {
+        /* generate new request id */
+        pthread_mutex_lock(&session->total_req_cnt_mutex);
+        ++session->total_req_cnt;
+        msg->request->_id = session->total_req_cnt;
+        pthread_mutex_unlock(&session->total_req_cnt_mutex);
+    }
+
     /* acquire lock for operation accessing data */
     switch (msg->request->operation) {
         case SR__OPERATION__GET_ITEM:
@@ -3579,6 +3588,7 @@ rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
     ly_set_free(session->get_items_ctx.nodes);
     free(session->get_items_ctx.xpath);
     pthread_mutex_destroy(&session->msg_count_mutex);
+    pthread_mutex_destroy(&session->total_req_cnt_mutex);
     pthread_mutex_destroy(&session->cur_req_mutex);
     free(session->change_ctx.xpath);
     free(session->module_name);
@@ -3959,6 +3969,7 @@ rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucr
     }
 
     pthread_mutex_init(&session->msg_count_mutex, NULL);
+    pthread_mutex_init(&session->total_req_cnt_mutex, NULL);
     session->user_credentials = user_credentials;
     session->id = session_id;
     session->datastore = datastore;

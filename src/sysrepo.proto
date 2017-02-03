@@ -990,7 +990,8 @@ enum Operation {
  * @brief Request for an operation.
  */
 message Request {
-  required Operation operation = 1;
+  required uint64 _id = 1; /* Request ID used internally by sysrepo */
+  required Operation operation = 2;
 
   optional SessionStartReq session_start_req = 10;
   optional SessionStopReq session_stop_req = 11;
