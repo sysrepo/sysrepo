@@ -71,23 +71,23 @@ srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, 
     size_t count = 0, skip_differences = 0;
 
     fd = open(file_path, O_RDONLY);
-    assert_true(fd >= 0);
+    assert_true_bt(fd >= 0);
 
     file_data = lyd_parse_fd(srcfg_test_libyang_ctx, fd, file_format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
     if (!file_data && LY_SUCCESS != ly_errno) {
         fprintf(stderr, "lyd_parse_fd error: %s (%s)", ly_errmsg(), ly_errpath());
     }
-    assert_true(file_data || LY_SUCCESS == ly_errno);
+    assert_true_bt(file_data || LY_SUCCESS == ly_errno);
     if (NULL != exp) {
         exp_data = lyd_parse_mem(srcfg_test_libyang_ctx, exp, exp_format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
         if (!exp_data && LY_SUCCESS != ly_errno) {
             fprintf(stderr, "lyd_parse_mem error: %s (%s)", ly_errmsg(), ly_errpath());
         }
-        assert_true(exp_data || LY_SUCCESS == ly_errno);
+        assert_true_bt(exp_data || LY_SUCCESS == ly_errno);
     }
 
     diff = lyd_diff(file_data, exp_data, LYD_DIFFOPT_WITHDEFAULTS);
-    assert_non_null(diff);
+    assert_non_null_bt(diff);
 
     while (diff->type && LYD_DIFF_END != diff->type[count]) {
         if (NULL != diff->first[count] && LYS_ANYDATA == diff->first[count]->schema->nodetype) {
@@ -129,18 +129,18 @@ srcfg_test_cmp_data_files(const char *file1_path, LYD_FORMAT file1_format, const
     char *file2_content = NULL;
 
     fd = open(file2_path, O_RDONLY);
-    assert_true(fd >= 0);
+    assert_true_bt(fd >= 0);
 
-    assert_int_equal(0, fstat(fd, &file_info));
+    assert_int_equal_bt(0, fstat(fd, &file_info));
     if (0 < file_info.st_size) {
         file2_content = mmap(0, file_info.st_size, PROT_READ, MAP_SHARED, fd, 0);
-        assert_true(file2_content && MAP_FAILED != file2_content);
+        assert_true_bt(file2_content && MAP_FAILED != file2_content);
     }
 
     rc = srcfg_test_cmp_data_file_content(file1_path, file1_format, file2_content, file2_format);
 
     if (0 < file_info.st_size) {
-        assert_int_equal(0, munmap(file2_content, file_info.st_size));
+        assert_int_equal_bt(0, munmap(file2_content, file_info.st_size));
     }
     close(fd);
     return rc;
@@ -213,7 +213,7 @@ srcfg_test_set_startup_datastore(void **state)
 {
     createDataTreeIETFinterfacesModule();
     srcfg_test_datastore = strdup("startup");
-    assert_non_null(srcfg_test_datastore);
+    assert_non_null_bt(srcfg_test_datastore);
     return 0;
 }
 
@@ -222,7 +222,7 @@ srcfg_test_set_running_datastore(void **state)
 {
     createDataTreeIETFinterfacesModule();
     srcfg_test_datastore = strdup("running");
-    assert_non_null(srcfg_test_datastore);
+    assert_non_null_bt(srcfg_test_datastore);
     return 0;
 }
 

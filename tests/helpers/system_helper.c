@@ -209,7 +209,7 @@ print_backtrace()
 #endif
 }
 
-static void
+void
 assert_non_null_bt(void *arg)
 {
     if (NULL == arg) {
@@ -218,7 +218,16 @@ assert_non_null_bt(void *arg)
     assert_non_null(arg);
 }
 
-static void
+void
+assert_null_bt(void *arg)
+{
+    if (NULL != arg) {
+        print_backtrace();
+    }
+    assert_null(arg);
+}
+
+void
 assert_true_bt(bool arg)
 {
     if (!arg) {
@@ -227,7 +236,16 @@ assert_true_bt(bool arg)
     assert_true(arg);
 }
 
-static void
+void
+assert_false_bt(bool arg)
+{
+    if (arg) {
+        print_backtrace();
+    }
+    assert_false(arg);
+}
+
+void
 assert_string_equal_bt(const char *a, const char *b)
 {
     if (!a || !b || 0 != strcmp(a, b)) {
@@ -236,8 +254,17 @@ assert_string_equal_bt(const char *a, const char *b)
     assert_string_equal(a, b);
 }
 
-static void
+void
 assert_int_equal_bt(int a, int b)
+{
+    if (a != b) {
+        print_backtrace();
+    }
+    assert_int_equal(a, b);
+}
+
+void
+assert_int_not_equal_bt(int a, int b)
 {
     if (a != b) {
         print_backtrace();

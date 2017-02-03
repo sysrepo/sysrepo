@@ -39,6 +39,48 @@ pid_t sr_popen(const char *command, int *stdin_p, int *stdout_p, int *stderr_p);
 void print_backtrace();
 
 /**
+ * @brief Assert that the given pointer is non-NULL.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_non_null_bt(void *arg);
+
+/**
+ * @brief Assert that the given pointer is NULL.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_null_bt(void *arg);
+
+/**
+ * @brief Assert that the given argument is true.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_true_bt(bool arg);
+
+/**
+ * @brief Assert that the given argument is false.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_false_bt(bool arg);
+
+/**
+ * @brief Assert that the two given strings are equal.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_string_equal_bt(const char *a, const char *b);
+
+/**
+ * @brief Assert that the two given integers are equal.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_int_equal_bt(int a, int b);
+
+/**
+ * @brief Assert that the two given integers are not equal.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_int_not_equal_bt(int a, int b);
+
+/**
  * @brief Reads an entire line from a file, storing the address of the buffer
  * containing the text into *line_p. The buffer is null-terminated and includes
  * the newline character, if one was found.

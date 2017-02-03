@@ -38,12 +38,12 @@
 static sr_node_t *
 get_child_by_index(sr_node_t *parent, int index)
 {
-    assert_non_null(parent->first_child);
+    assert_non_null_bt(parent->first_child);
     sr_node_t *child = parent->first_child;
 
     while (index) {
         child = child->next;
-        assert_non_null(child);
+        assert_non_null_bt(child);
         --index;
     }
     return child;
