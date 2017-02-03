@@ -1114,6 +1114,7 @@ rp_dt_send_first_set_of_dp_requests(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set string");
 
                     rc = rp_msg_process(rp_ctx, rp_session, req);
+                    SR_LOG_DBG("Enqueued an internal message to obtain state data for request: %lu", (intptr_t)rp_session->req);
                     req = NULL;
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to enqueue message");
 
