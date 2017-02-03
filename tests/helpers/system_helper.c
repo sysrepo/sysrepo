@@ -266,10 +266,10 @@ assert_int_equal_bt(int a, int b)
 void
 assert_int_not_equal_bt(int a, int b)
 {
-    if (a != b) {
+    if (a == b) {
         print_backtrace();
     }
-    assert_int_equal(a, b);
+    assert_int_not_equal(a, b);
 }
 
 void
