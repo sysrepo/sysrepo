@@ -450,10 +450,7 @@ verify_cb_call_count(bool async_cb, int exp_count)
         }
     } while (async_cb && count < exp_count && attempt < MAX_ATTEMPTS);
 
-    if (exp_count != count) {
-        print_backtrace();
-    }
-    assert_int_equal(exp_count, count);
+    assert_int_equal_bt(exp_count, count);
 }
 
 static void
@@ -472,28 +469,28 @@ verify_nacm_stats()
 
     /* check the number of denied RPCs */
     rc = sr_get_item(nacm_stats.session, "/ietf-netconf-acm:nacm/denied-operations", &value);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_non_null(value);
-    assert_int_equal(SR_UINT32_T, value->type);
-    assert_int_equal(nacm_stats.denied_operations, value->data.uint32_val);
+    assert_int_equal_bt(SR_ERR_OK, rc);
+    assert_non_null_bt(value);
+    assert_int_equal_bt(SR_UINT32_T, value->type);
+    assert_int_equal_bt(nacm_stats.denied_operations, value->data.uint32_val);
     sr_free_val(value);
     value = NULL;
 
     /* check the number of denied Event notifications */
     rc = sr_get_item(nacm_stats.session, "/ietf-netconf-acm:nacm/denied-notifications", &value);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_non_null(value);
-    assert_int_equal(SR_UINT32_T, value->type);
-    assert_int_equal(nacm_stats.denied_notifications, value->data.uint32_val);
+    assert_int_equal_bt(SR_ERR_OK, rc);
+    assert_non_null_bt(value);
+    assert_int_equal_bt(SR_UINT32_T, value->type);
+    assert_int_equal_bt(nacm_stats.denied_notifications, value->data.uint32_val);
     sr_free_val(value);
     value = NULL;
 
     /* check the number of denied operations with write effect */
     rc = sr_get_item(nacm_stats.session, "/ietf-netconf-acm:nacm/denied-data-writes", &value);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_non_null(value);
-    assert_int_equal(SR_UINT32_T, value->type);
-    assert_int_equal(nacm_stats.denied_data_writes, value->data.uint32_val);
+    assert_int_equal_bt(SR_ERR_OK, rc);
+    assert_non_null_bt(value);
+    assert_int_equal_bt(SR_UINT32_T, value->type);
+    assert_int_equal_bt(nacm_stats.denied_data_writes, value->data.uint32_val);
     sr_free_val(value);
     value = NULL;
 
@@ -510,18 +507,18 @@ daemon_kill(bool last_attempt)
 
     /* read PID of the daemon from sysrepo PID file */
     pidfile = open(SR_DAEMON_PID_FILE, O_RDONLY);
-    assert_int_not_equal(-1, pidfile);
+    assert_int_not_equal_bt(-1, pidfile);
     if (readline(pidfile, &line, &len)) {
         pid = atoi(line);
     }
     free(line);
-    assert_int_equal(0, close(pidfile));
+    assert_int_equal_bt(0, close(pidfile));
 
     if (-1 != pid) {
         /* send SIGTERM/SIGKILL to the daemon process */
         SR_LOG_DBG("Sending %s signal to PID=%d.", (last_attempt ? "SIGKILL" : "SIGTERM"), pid);
         ret = kill(pid, last_attempt ? SIGKILL : SIGTERM);
-        assert_int_not_equal(-1, ret);
+        assert_int_not_equal_bt(-1, ret);
     }
 }
 #endif
@@ -542,15 +539,15 @@ daemon_log_reader(void *arg)
             wait_ms(DELAY_DURATION);
         }
     } while (!running);
-    assert_true(daemon_stderr >= 0);
+    assert_true_bt(daemon_stderr >= 0);
 
     while (running) {
         pthread_mutex_lock(&log_history.lock);
         while (readline(daemon_stderr, &line, &len)) {
             msg = strdup(line);
-            assert_non_null(msg);
-//            SR_LOG_DBG("Appending message: %s", msg);
-            assert_int_equal(SR_ERR_OK, sr_list_add(log_history.logs, msg));
+            assert_non_null_bt(msg);
+            SR_LOG_DBG("DAEMON: %s", msg);
+            assert_int_equal_bt(SR_ERR_OK, sr_list_add(log_history.logs, msg));
         }
         running = log_history.running;
         pthread_mutex_unlock(&log_history.lock);
@@ -585,7 +582,7 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
         rc = sr_connect("nacm_cl_test", SR_CONN_DAEMON_REQUIRED, &conn);
         sr_disconnect(conn);
         conn = NULL;
-        assert_true(SR_ERR_OK == rc || SR_ERR_DISCONNECT == rc);
+        assert_true_bt(SR_ERR_OK == rc || SR_ERR_DISCONNECT == rc);
 
         /* kill the daemon if it was running */
         if (SR_ERR_OK == rc) {
@@ -615,8 +612,9 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     /* start sysrepo in the daemon debug mode as a child process */
     pthread_create(&stderr_reader, NULL, daemon_log_reader, NULL);
     daemon_pid = sr_popen("../src/sysrepod -l4 -d", NULL, NULL, &daemon_stderr);
-    assert_int_not_equal(-1, daemon_pid);
-    assert_true(daemon_stderr >= 0);
+    SR_LOG_INF("Started Sysrepo daemon with PID=%d", daemon_pid);
+    assert_int_not_equal_bt(-1, daemon_pid);
+    assert_true_bt(daemon_stderr >= 0);
 
     /* start log reader */
     flags = fcntl(daemon_stderr, F_GETFL, 0);
@@ -629,13 +627,13 @@ start_sysrepo_daemon(sr_conn_ctx_t **conn_p)
     wait_ms(DAEMON_WAIT_DURATION);
 #endif
     rc = sr_connect("nacm_cl_test", SR_CONN_DAEMON_REQUIRED, &conn);
-    assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(conn_p);
+    assert_int_equal_bt(rc, SR_ERR_OK);
+    assert_non_null_bt(conn_p);
     *conn_p = conn;
 
     /* start a session that will be used to obtain the NACM statistics */
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_ENABLE_NACM, &nacm_stats.session);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
 }
 
 static void
@@ -660,7 +658,7 @@ clear_log_history()
 static char *
 escape(const char *regex)
 {
-    assert_non_null(regex);
+    assert_non_null_bt((void *)regex);
     static char *special_chars = ".^$*+?()[{\\|^-]";
     char *escaped = NULL;
     size_t new_size = strlen(regex);
@@ -673,7 +671,7 @@ escape(const char *regex)
     }
 
     escaped = calloc(new_size+1, sizeof *escaped);
-    assert_non_null(escaped);
+    assert_non_null_bt(escaped);
 
     for (size_t i = 0; i < strlen(regex); ++i) {
         if (strchr(special_chars, regex[i])) {
@@ -706,7 +704,7 @@ verify_existence_of_log_msg(const char *msg_re, bool should_exist)
             char *message = (char *)log_history.logs->data[i];
             regex_t re;
             /* Compile regular expression */
-            assert_int_equal(0, regcomp(&re, msg_re, REG_NOSUB | REG_EXTENDED));
+            assert_int_equal_bt(0, regcomp(&re, msg_re, REG_NOSUB | REG_EXTENDED));
             if (0 == regexec(&re, message, 0, NULL, 0)) {
                 exists = true;
             }
@@ -728,10 +726,7 @@ verify_existence_of_log_msg(const char *msg_re, bool should_exist)
         }
     } while (should_exist && !exists && attempt < MAX_ATTEMPTS);
 
-    if (should_exist != exists) {
-        print_backtrace();
-    }
-    assert_true(should_exist == exists);
+    assert_true_bt(should_exist == exists);
 #endif
 }
 
@@ -1039,17 +1034,17 @@ static void
 start_user_sessions(sr_conn_ctx_t *conn, sr_session_ctx_t **handler_session, user_sessions_t *sessions)
 {
     int rc = SR_ERR_OK;
-    assert_non_null(conn);
+    assert_non_null_bt(conn);
     if (NULL != handler_session) {
         rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, handler_session);
-        assert_int_equal(rc, SR_ERR_OK);
+        assert_int_equal_bt(rc, SR_ERR_OK);
     }
     for (int i = 0; i < NUM_OF_USERS; ++i) {
         char *username = NULL;
-        assert_int_equal(SR_ERR_OK, sr_asprintf(&username, "sysrepo-user%d", i+1));
+        assert_int_equal_bt(SR_ERR_OK, sr_asprintf(&username, "sysrepo-user%d", i+1));
         rc = sr_session_start_user(conn, username, SR_DS_STARTUP,
                 i == NUM_OF_USERS-1 ? SR_SESS_DEFAULT : SR_SESS_ENABLE_NACM, (*sessions)+i);
-        assert_int_equal(rc, SR_ERR_OK);
+        assert_int_equal_bt(rc, SR_ERR_OK);
         free(username);
     }
 }
@@ -1062,24 +1057,24 @@ subscribe_dummy_rpc_callback(sr_session_ctx_t *handler_session, void *private_ct
     /* subscribe for RPCs with dummy callback */
     rc = sr_rpc_subscribe(handler_session, "/test-module:activate-software-image", dummy_rpc_cb, private_ctx,
             SR_SUBSCR_DEFAULT, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
     rc = sr_rpc_subscribe(handler_session, "/ietf-netconf:close-session", dummy_rpc_cb, private_ctx,
             SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
     rc = sr_rpc_subscribe(handler_session, "/ietf-netconf:kill-session", dummy_rpc_cb, private_ctx,
             SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
     rc = sr_rpc_subscribe(handler_session, "/turing-machine:initialize", dummy_rpc_cb, private_ctx,
             SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
 
     /* subscribe for Actions with dummy callback */
     rc = sr_action_subscribe(handler_session, "/test-module:kernel-modules/kernel-module/unload",
             dummy_rpc_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
     rc = sr_action_subscribe(handler_session, "/test-module:kernel-modules/kernel-module/load",
             dummy_rpc_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
 }
 
 static void
@@ -1098,22 +1093,22 @@ subscribe_dummy_event_notif_callback(sr_session_ctx_t *user_session, void *priva
     /* subscribe for Event notifications with dummy callback */
     rc = sr_event_notif_subscribe(user_session, "/test-module:link-discovered",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_DEFAULT, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
     rc = sr_event_notif_subscribe(user_session, "/test-module:link-removed",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
     rc = sr_event_notif_subscribe(user_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
     rc = sr_event_notif_subscribe(user_session, "/turing-machine:halted",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
     rc = sr_event_notif_subscribe(user_session, "/ietf-netconf-notifications:netconf-capability-change",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
     rc = sr_event_notif_subscribe(user_session, "/nc-notifications:replayComplete",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal_bt(rc, SR_ERR_OK);
 
 }
 
