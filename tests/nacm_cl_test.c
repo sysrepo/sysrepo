@@ -549,7 +549,7 @@ daemon_log_reader(void *arg)
         while (readline(daemon_stderr, &line, &len)) {
             msg = strdup(line);
             assert_non_null(msg);
-//            SR_LOG_DBG("Appending message: %s", msg);
+            SR_LOG_DBG("DAEMON: %s", msg);
             assert_int_equal(SR_ERR_OK, sr_list_add(log_history.logs, msg));
         }
         running = log_history.running;
