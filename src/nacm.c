@@ -1127,6 +1127,7 @@ unlock_all:
         /* update stats */
         pthread_rwlock_wrlock(&nacm_ctx->stats.lock);
         ++nacm_ctx->stats.denied_rpc;
+        SR_LOG_DBG("Increasing NACM counter denied-rpc to: %d", nacm_ctx->stats.denied_rpc);
         pthread_rwlock_unlock(&nacm_ctx->stats.lock);
     }
     pthread_rwlock_unlock(&nacm_ctx->lock);
@@ -1316,6 +1317,7 @@ unlock_all:
         /* update stats */
         pthread_rwlock_wrlock(&nacm_ctx->stats.lock);
         ++nacm_ctx->stats.denied_event_notif;
+        SR_LOG_DBG("Increasing NACM counter denied-event-notif to: %d", nacm_ctx->stats.denied_event_notif);
         pthread_rwlock_unlock(&nacm_ctx->stats.lock);
     }
     pthread_rwlock_unlock(&nacm_ctx->lock);
@@ -1712,6 +1714,7 @@ nacm_stats_add_denied_data_write(nacm_ctx_t *nacm_ctx)
 
     pthread_rwlock_wrlock(&nacm_ctx->stats.lock);
     ++nacm_ctx->stats.denied_data_write;
+    SR_LOG_DBG("Increasing NACM counter denied-data-write to: %d", nacm_ctx->stats.denied_data_write);
     pthread_rwlock_unlock(&nacm_ctx->stats.lock);
     return SR_ERR_OK;
 }
