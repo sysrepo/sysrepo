@@ -8,7 +8,7 @@ sudo apt-get install --reinstall ca-certificates
 sudo apt-get install software-properties-common # add-apt-repository tool
 sudo add-apt-repository --yes ppa:stefanklug/swig
 sudo apt-get update -qq
-sudo apt-get install -y --force-yes libavl-dev libev-dev valgrind timeout swig3.0 python-dev gdb
+sudo apt-get install -y --force-yes libavl-dev libev-dev valgrind coreutils swig3.0 python-dev gdb
 pip install --user codecov
 echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-certificates.crt
 
