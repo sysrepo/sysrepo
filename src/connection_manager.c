@@ -983,8 +983,13 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
         rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Unable to find session context for session id=%"PRIu32" (conn=%p).",
-                    msg->session_id, (void*)conn);
-            rc = SR_ERR_INVAL_ARG;
+                    msg->session_id, (void*) conn);
+            if (SR__MSG__MSG_TYPE__RESPONSE == msg->type && SR__OPERATION__DATA_PROVIDE == msg->response->operation) {
+                SR_LOG_DBG_MSG("Ignoring not found session for data provide response");
+                rc = SR_ERR_OK;
+            } else {
+                rc = SR_ERR_INVAL_ARG;
+            }
             goto cleanup;
         }
         if (CM_AF_UNIX_SERVER != conn->type && conn != session->connection) {
