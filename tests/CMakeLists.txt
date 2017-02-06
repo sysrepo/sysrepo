@@ -22,6 +22,7 @@ include_directories (
 )
 
 find_program(valgrind_FOUND valgrind)
+find_program(timeout_FOUND timeout)
 
 add_library(HELPERS OBJECT ${TEST_HELPERS_DIR}rp_dt_context_helper.c
             ${TEST_HELPERS_DIR}test_module_helper.c
@@ -42,7 +43,13 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
     endif()
 
     target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} sysrepo_a ${test_link_flags})
-    add_test(${TEST_NAME} ${TEST_NAME})
+    if(timeout_FOUND AND NOT ${CMAKE_C_FLAGS} MATCHES "-fsanitize")
+        add_test(${TEST_NAME} timeout
+            --signal=6 360
+            ./${TEST_NAME})
+    else()
+        add_test(${TEST_NAME} ${TEST_NAME})
+    endif()
     if(valgrind_FOUND AND ${USE_VALGRIND} AND NOT ${CMAKE_C_FLAGS} MATCHES "-fsanitize")
         add_test(${TEST_NAME}_valgrind valgrind
             --error-exitcode=1 --read-var-info=yes

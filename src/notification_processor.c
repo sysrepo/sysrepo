@@ -1375,7 +1375,7 @@ np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_s
             req->request->data_provide_req->subscriber_address = strdup(subscription->dst_address);
             CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->subscriber_address, rc);
             /* identification of the request that asked for data */
-            req->request->data_provide_req->request_id = (uint64_t) session->req;
+            req->request->data_provide_req->request_id = session->req->request->_id;
         }
     }
 

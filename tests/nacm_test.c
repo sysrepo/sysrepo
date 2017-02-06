@@ -61,13 +61,13 @@ daemon_kill()
 
     /* read PID of the daemon from sysrepo PID file */
     pidfile = fopen(SR_DAEMON_PID_FILE, "r");
-    assert_non_null(pidfile);
+    assert_non_null_bt(pidfile);
     ret = fscanf(pidfile, "%d", &pid);
-    assert_int_equal(ret, 1);
+    assert_int_equal_bt(ret, 1);
 
     /* send SIGTERM to the daemon process */
     ret = kill(pid, SIGTERM);
-    assert_int_not_equal(ret, -1);
+    assert_int_not_equal_bt(ret, -1);
 }
 
 static void
@@ -75,20 +75,20 @@ verify_sr_btree_size(sr_btree_t* btree, size_t expected)
 {
     size_t i = 0;
 
-    assert_non_null(btree);
+    assert_non_null_bt(btree);
 
     while (sr_btree_get_at(btree, i)) {
         ++i;
     }
 
-    assert_int_equal(expected, i);
+    assert_int_equal_bt(expected, i);
 }
 
 static void
 verify_sr_list_size(sr_list_t *list, size_t expected)
 {
-    assert_non_null(list);
-    assert_int_equal(expected, list->count);
+    assert_non_null_bt(list);
+    assert_int_equal_bt(expected, list->count);
 }
 
 static void
@@ -96,7 +96,7 @@ verify_child_count(sr_node_t *parent, size_t expected)
 {
     sr_node_t *child = NULL;
     size_t child_cnt = 0;
-    assert_non_null(parent);
+    assert_non_null_bt(parent);
 
     child = parent->first_child;
     while (NULL != child) {
@@ -104,14 +104,14 @@ verify_child_count(sr_node_t *parent, size_t expected)
         child = child->next;
     }
 
-    assert_int_equal(expected, child_cnt);
+    assert_int_equal_bt(expected, child_cnt);
 }
 
 static sr_node_t *
 node_get_child(sr_node_t *parent, const char *child_name)
 {
     sr_node_t *child = NULL;
-    assert_non_null(parent);
+    assert_non_null_bt(parent);
 
     child = parent->first_child;
     while (NULL != child) {
@@ -132,7 +132,7 @@ verify_tree_size(sr_node_t *root, size_t expected)
     bool backtrack = false;
 
     if (NULL == root) {
-        assert_int_equal(0, expected);
+        assert_int_equal_bt(0, expected);
     }
 
     node = root;
@@ -152,28 +152,28 @@ verify_tree_size(sr_node_t *root, size_t expected)
                 backtrack = false;
             } else {
                 node = node->parent;
-                assert_non_null(node);
+                assert_non_null_bt(node);
             }
         }
     } while (node != root);
 
-    assert_int_equal(expected, node_cnt);
+    assert_int_equal_bt(expected, node_cnt);
 }
 
 void
 check_bit_value(sr_bitset_t *bitset, size_t pos, bool expected)
 {
-    assert_non_null(bitset);
+    assert_non_null_bt(bitset);
     bool value = false;
 
-    assert_int_equal(SR_ERR_OK, sr_bitset_get(bitset, pos, &value));
-    assert_true(expected == value);
+    assert_int_equal_bt(SR_ERR_OK, sr_bitset_get(bitset, pos, &value));
+    assert_true_bt(expected == value);
 }
 
 static void
 reset_get_items_ctx(rp_dt_get_items_ctx_t *get_items_ctx)
 {
-    assert_non_null(get_items_ctx);
+    assert_non_null_bt(get_items_ctx);
     get_items_ctx->offset = 0;
     ly_set_free(get_items_ctx->nodes);
     get_items_ctx->nodes = NULL;
@@ -191,7 +191,7 @@ nacm_tests_setup(void **state)
     /* connect to sysrepo, force daemon connection */
     rc = sr_connect("daemon_test", SR_CONN_DAEMON_REQUIRED, &conn);
     sr_disconnect(conn);
-    assert_true(SR_ERR_OK == rc || SR_ERR_DISCONNECT == rc);
+    assert_true_bt(SR_ERR_OK == rc || SR_ERR_DISCONNECT == rc);
 
     /* kill the daemon if it was running */
     if (SR_ERR_OK == rc) {
@@ -224,7 +224,7 @@ nacm_tests_teardown(void **state)
     /* restart the daemon if it was running before the test */
     if (daemon_run_before_test) {
         ret = system("../src/sysrepod -l 4");
-        assert_int_equal(0, ret);
+        assert_int_equal_bt(0, ret);
     }
 
     test_rp_ctx_cleanup(rp_ctx);
@@ -240,8 +240,8 @@ get_nacm_ctx()
 {
     nacm_ctx_t *nacm_ctx;
 
-    assert_non_null(rp_ctx);
-    assert_int_equal(SR_ERR_OK, dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx));
+    assert_non_null_bt(rp_ctx);
+    assert_int_equal_bt(SR_ERR_OK, dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx));
     return nacm_ctx;
 }
 
@@ -251,7 +251,7 @@ nacm_get_group(nacm_ctx_t *nacm_ctx, const char *name)
     nacm_group_t group_lookup = { (char *)name, 0 }, *group = NULL;
 
     group = sr_btree_search(nacm_ctx->groups, &group_lookup);
-    assert_non_null(group);
+    assert_non_null_bt(group);
 
     return group;
 }
@@ -262,7 +262,7 @@ nacm_get_user(nacm_ctx_t *nacm_ctx, const char *name)
     nacm_user_t user_lookup = { (char *)name, NULL }, *user = NULL;
 
     user = sr_btree_search(nacm_ctx->users, &user_lookup);
-    assert_non_null(user);
+    assert_non_null_bt(user);
 
     return user;
 }
@@ -270,20 +270,20 @@ nacm_get_user(nacm_ctx_t *nacm_ctx, const char *name)
 static nacm_rule_list_t *
 nacm_get_rule_list(nacm_ctx_t *nacm_ctx, size_t index)
 {
-    assert_non_null(nacm_ctx);
-    assert_non_null(nacm_ctx->rule_lists);
-    assert_true(index < nacm_ctx->rule_lists->count);
-    assert_non_null(nacm_ctx->rule_lists->data[index]);
+    assert_non_null_bt(nacm_ctx);
+    assert_non_null_bt(nacm_ctx->rule_lists);
+    assert_true_bt(index < nacm_ctx->rule_lists->count);
+    assert_non_null_bt(nacm_ctx->rule_lists->data[index]);
     return (nacm_rule_list_t *)nacm_ctx->rule_lists->data[index];
 }
 
 static nacm_rule_t *
 nacm_get_rule(nacm_rule_list_t *rule_list, size_t index)
 {
-    assert_non_null(rule_list);
-    assert_non_null(rule_list->rules);
-    assert_true(index < rule_list->rules->count);
-    assert_non_null(rule_list->rules->data[index]);
+    assert_non_null_bt(rule_list);
+    assert_non_null_bt(rule_list->rules);
+    assert_true_bt(index < rule_list->rules->count);
+    assert_non_null_bt(rule_list->rules->data[index]);
     return (nacm_rule_t *)rule_list->rules->data[index];
 }
 

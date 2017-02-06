@@ -21,6 +21,7 @@
 
 #include <libyang/libyang.h>
 #include <pthread.h>
+#include <inttypes.h>
 #include "sysrepo.h"
 #include "sr_common.h"
 
@@ -1108,12 +1109,15 @@ rp_dt_send_first_set_of_dp_requests(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
                     rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__INTERNAL_STATE_DATA, &req);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to allocate internal message");
 
-                    req->internal_request->internal_state_data_req->request_id = (intptr_t) rp_session->req;
+                    req->internal_request->internal_state_data_req->request_id = rp_session->req->request->_id;
 
-                    rc = sr_mem_edit_string((sr_mem_ctx_t *)req->_sysrepo_mem_ctx, &req->internal_request->internal_state_data_req->xpath, subtree);
+                    rc = sr_mem_edit_string((sr_mem_ctx_t *)req->_sysrepo_mem_ctx,
+                            &req->internal_request->internal_state_data_req->xpath, subtree);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set string");
 
                     rc = rp_msg_process(rp_ctx, rp_session, req);
+                    SR_LOG_DBG("Enqueued an internal message to obtain state data for request: %" PRIu64,
+                            rp_session->req->request->_id);
                     req = NULL;
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to enqueue message");
 

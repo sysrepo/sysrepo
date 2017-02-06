@@ -121,6 +121,10 @@ typedef struct rp_session_s {
     rp_dt_get_items_ctx_t get_items_ctx; /**< Context for get_items_iter calls. */
     rp_dt_change_ctx_t change_ctx;       /**< Context for iteration over the changes */
 
+    /* request ID generator */
+    uint64_t total_req_cnt;              /**< Total number of received requests for this session. */
+    pthread_mutex_t total_req_cnt_mutex; /**< Mutex protecting total_req_cnt. */
+
     /* current request - used for data retrieval calls which may need state data */
     rp_request_state_t state;            /**< the state of the request processing used if the operational data are requested */
     size_t dp_req_waiting;               /**< number of waiting request to operational data providers */
