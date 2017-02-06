@@ -670,6 +670,21 @@ rp_feature_enable_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *
     return rc;
 }
 
+static void
+rp_handle_get_call_state(rp_session_t *session)
+{
+    if (NULL != session) {
+        if (RP_REQ_FINISHED == session->state) {
+            session->state = RP_REQ_NEW;
+        } else if (RP_REQ_TIMED_OUT == session->state) {
+            SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, "
+                    "session id = %u, req = %" PRIu64, session->id, session->req->request->_id);
+            session->state = RP_REQ_DATA_LOADED;
+            /* log an error and continue processing with the data we have */
+        }
+    }
+}
+
 /**
  * @brief Processes a get_item request.
  */
@@ -703,20 +718,8 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
     }
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
-    if (RP_REQ_FINISHED == session->state) {
-        session->state = RP_REQ_NEW;
-    } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
-        if (msg->request->_id == session->req->request->_id) {
-            SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, "
-                    "session id = %u, req = %" PRIu64, session->id, session->req->request->_id);
-            session->state = RP_REQ_DATA_LOADED;
-        } else {
-            SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u, req = %" PRIu64,
-                    session->id, session->req->request->_id);
-            sr_msg_free(session->req);
-            session->state = RP_REQ_NEW;
-        }
-    }
+    rp_handle_get_call_state(session);
+
     /* store current request to session */
     session->req = msg;
 
@@ -797,18 +800,8 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
     }
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
-    if (RP_REQ_FINISHED == session->state) {
-        session->state = RP_REQ_NEW;
-    } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
-        if (msg->request->_id == session->req->request->_id) {
-            SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
-            session->state = RP_REQ_DATA_LOADED;
-        } else {
-            SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u", session->id);
-            sr_msg_free(session->req);
-            session->state = RP_REQ_NEW;
-        }
-    }
+    rp_handle_get_call_state(session);
+
     /* store current request to session */
     session->req = msg;
 
@@ -900,18 +893,8 @@ rp_get_subtree_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     }
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
-    if (RP_REQ_FINISHED == session->state) {
-        session->state = RP_REQ_NEW;
-    } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
-        if (msg->request->_id == session->req->request->_id) {
-            SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
-            session->state = RP_REQ_DATA_LOADED;
-        } else {
-            SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u", session->id);
-            sr_msg_free(session->req);
-            session->state = RP_REQ_NEW;
-        }
-    }
+    rp_handle_get_call_state(session);
+
     /* store current request to session */
     session->req = msg;
 
@@ -992,18 +975,8 @@ rp_get_subtrees_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *ms
     }
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
-    if (RP_REQ_FINISHED == session->state) {
-        session->state = RP_REQ_NEW;
-    } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
-        if (msg->request->_id == session->req->request->_id) {
-            SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
-            session->state = RP_REQ_DATA_LOADED;
-        } else {
-            SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u", session->id);
-            sr_msg_free(session->req);
-            session->state = RP_REQ_NEW;
-        }
-    }
+    rp_handle_get_call_state(session);
+
     /* store current request to session */
     session->req = msg;
 
@@ -1094,18 +1067,8 @@ rp_get_subtree_chunk_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
     }
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
-    if (RP_REQ_FINISHED == session->state) {
-        session->state = RP_REQ_NEW;
-    } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
-        if (msg->request->_id == session->req->request->_id) {
-            SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
-            session->state = RP_REQ_DATA_LOADED;
-        } else {
-            SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u", session->id);
-            sr_msg_free(session->req);
-            session->state = RP_REQ_NEW;
-        }
-    }
+    rp_handle_get_call_state(session);
+
     /* store current request to session */
     session->req = msg;
 
@@ -2742,7 +2705,7 @@ rp_oper_data_timeout_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
         SR_LOG_DBG("Time out expired for operational data to be loaded. Request (id=%" PRIu64 ") processing continue, "
                 "session id = %u", session->req->request->_id, session->id);
         rp_msg_process(rp_ctx, session, session->req);
-        session->state = RP_REQ_DATA_LOADED;
+        session->state = RP_REQ_TIMED_OUT;
     }
     pthread_mutex_unlock(&session->cur_req_mutex);
 

@@ -86,6 +86,7 @@ typedef struct rp_dt_change_ctx_s {
 typedef enum rp_request_state_e {
     RP_REQ_NEW,                         /**< New request received in RP */
     RP_REQ_WAITING_FOR_DATA,            /**< Request is waiting for state data from providers */
+    RP_REQ_TIMED_OUT,                   /**< Time out has expired */
     RP_REQ_DATA_LOADED,                 /**< Respones for all state data request were received */
     RP_REQ_WAITING_FOR_VERIFIERS,       /**< Request is waiting for replies from verifiers */
     RP_REQ_RESUMED,                     /**< Replies from verifiers were received or timeout expired */

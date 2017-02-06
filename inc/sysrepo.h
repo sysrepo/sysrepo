@@ -1412,6 +1412,10 @@ int sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_
  * @brief Returns the next change from the changeset of provided iterator created
  * by ::sr_get_changes_iter call. If there is no item left, SR_ERR_NOT_FOUND is returned.
  *
+ * @note If the operation is ::SR_OP_MOVED the meaning of new_value and old value argument is
+ * as follows - the value pointed by new_value was moved after the old_value. If the
+ * old value is NULL it was moved to the first position.
+ *
  * @param[in] session Session context as passed to notication the callbacks (e.g.
  * ::sr_module_change_cb or ::sr_subtree_change_cb). Will not work with any other sessions.
  * @param[in,out] iter Iterator acquired with ::sr_get_changes_iter call.
