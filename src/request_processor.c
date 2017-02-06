@@ -2523,7 +2523,7 @@ finish:
         rp_dt_free_state_data_ctx_content(&session->state_data_ctx);
         if (RP_REQ_WAITING_FOR_DATA == session->state) {
             SR_LOG_DBG("All data from data providers has been received session id = %u, "
-                    "reenque the request id = %" PRIu64, session->id, session->req->request->_id);
+                    "re-enqueue the request id = %" PRIu64, session->id, session->req->request->_id);
             session->state = RP_REQ_DATA_LOADED;
             rp_msg_process(rp_ctx, session, session->req);
             session->req = NULL;
@@ -2781,7 +2781,7 @@ cleanup:
         rp_dt_free_state_data_ctx_content(&session->state_data_ctx);
         if (RP_REQ_WAITING_FOR_DATA == session->state) {
             SR_LOG_DBG("All data from data providers has been received session id = %u, "
-                    "reenque the request (id=%" PRIu64 ")", session->id, session->req->request->_id);
+                    "re-enqueue the request (id=%" PRIu64 ")", session->id, session->req->request->_id);
             session->state = RP_REQ_DATA_LOADED;
             rp_msg_process(rp_ctx, session, session->req);
             session->req = NULL;
