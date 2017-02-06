@@ -680,7 +680,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->get_item_req);
 
-    SR_LOG_DBG("Processing get_item request (id=%lu).", msg->request->_id);
+    SR_LOG_DBG("Processing get_item request (id=%" PRIu64 ").", msg->request->_id);
 
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
@@ -707,11 +707,11 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
         session->state = RP_REQ_NEW;
     } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
         if (msg->request->_id == session->req->request->_id) {
-            SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u, req = %lu",
-                    session->id, session->req->request->_id);
+            SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, "
+                    "session id = %u, req = %" PRIu64, session->id, session->req->request->_id);
             session->state = RP_REQ_DATA_LOADED;
         } else {
-            SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u, req = %lu",
+            SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u, req = %" PRIu64,
                     session->id, session->req->request->_id);
             sr_msg_free(session->req);
             session->state = RP_REQ_NEW;
@@ -2522,7 +2522,8 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
     if (RP_REQ_WAITING_FOR_DATA != session->state || NULL == session->req
             ||  msg->response->data_provide_resp->request_id != session->req->request->_id ) {
-        SR_LOG_ERR("State data arrived after timeout expiration or session id=%u is invalid (msg=%lu, session->req=%lu).",
+        SR_LOG_ERR("State data arrived after timeout expiration or session id=%u is invalid "
+                "(msg=%" PRIu64 ", session->req=%" PRIu64 ").",
                 session->id, msg->response->data_provide_resp->request_id, session->req ? session->req->request->_id : 0);
         goto error;
     }
@@ -2558,8 +2559,8 @@ finish:
         //TODO validate data
         rp_dt_free_state_data_ctx_content(&session->state_data_ctx);
         if (RP_REQ_WAITING_FOR_DATA == session->state) {
-            SR_LOG_DBG("All data from data providers has been received session id = %u, reenque the request id = %lu",
-                    session->id, session->req->request->_id);
+            SR_LOG_DBG("All data from data providers has been received session id = %u, "
+                    "reenque the request id = %" PRIu64, session->id, session->req->request->_id);
             session->state = RP_REQ_DATA_LOADED;
             rp_msg_process(rp_ctx, session, session->req);
             session->req = NULL;
@@ -2738,8 +2739,8 @@ rp_oper_data_timeout_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
     MUTEX_LOCK_TIMED_CHECK_RETURN(&session->cur_req_mutex);
     if (RP_REQ_WAITING_FOR_DATA == session->state &&
         session->req && session->req->request->_id == msg->internal_request->oper_data_timeout_req->request_id) {
-        SR_LOG_DBG("Time out expired for operational data to be loaded. Request (id=%lu) processing continue, session id = %u",
-                session->req->request->_id, session->id);
+        SR_LOG_DBG("Time out expired for operational data to be loaded. Request (id=%" PRIu64 ") processing continue, "
+                "session id = %u", session->req->request->_id, session->id);
         rp_msg_process(rp_ctx, session, session->req);
         session->state = RP_REQ_DATA_LOADED;
     }
@@ -2762,7 +2763,7 @@ rp_internal_state_data_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__
     uint64_t orig_req_id = msg->internal_request->internal_state_data_req->request_id;
     nacm_stats.type = SR_UINT32_T;
 
-    SR_LOG_INF("Internal request for state data at xpath %s, orig-req id = %lu", xpath, orig_req_id);
+    SR_LOG_INF("Internal request for state data at xpath %s, orig-req id = %" PRIu64, xpath, orig_req_id);
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
     if (RP_REQ_WAITING_FOR_DATA != session->state || NULL == session->req || orig_req_id != session->req->request->_id) {
@@ -2816,8 +2817,8 @@ cleanup:
     if (0 == session->dp_req_waiting) {
         rp_dt_free_state_data_ctx_content(&session->state_data_ctx);
         if (RP_REQ_WAITING_FOR_DATA == session->state) {
-            SR_LOG_DBG("All data from data providers has been received session id = %u, reenque the request (id=%lu)",
-                    session->id, session->req->request->_id);
+            SR_LOG_DBG("All data from data providers has been received session id = %u, "
+                    "reenque the request (id=%" PRIu64 ")", session->id, session->req->request->_id);
             session->state = RP_REQ_DATA_LOADED;
             rp_msg_process(rp_ctx, session, session->req);
             session->req = NULL;
