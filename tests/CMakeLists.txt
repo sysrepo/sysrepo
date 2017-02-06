@@ -28,6 +28,7 @@ add_library(HELPERS OBJECT ${TEST_HELPERS_DIR}rp_dt_context_helper.c
             ${TEST_HELPERS_DIR}test_module_helper.c
             ${TEST_HELPERS_DIR}system_helper.c
             ${TEST_HELPERS_DIR}nacm_module_helper.c)
+add_dependencies(HELPERS COMMON)
 
 # create test target with specified options
 macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
@@ -57,6 +58,7 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
             --suppressions=${TEST_HELPERS_DIR}valgrind.supp
             ./${TEST_NAME})
     endif()
+    add_dependencies(${TEST_NAME} COMMON)
 endmacro(ADD_UNIT_TEST_WITH_OPTS)
 
 # create default test target with valgrind is on
@@ -94,7 +96,6 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     # global procject's repository location
 
     ADD_UNIT_TEST(cm_test 1)
-    add_dependencies(cm_test COMMON)
     ADD_UNIT_TEST(rp_test 1)
     if(ENABLE_NACM)
         ADD_UNIT_TEST(nacm_test 1)
