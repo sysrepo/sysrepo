@@ -21,6 +21,7 @@
 
 #include <libyang/libyang.h>
 #include <pthread.h>
+#include <inttypes.h>
 #include "sysrepo.h"
 #include "sr_common.h"
 
