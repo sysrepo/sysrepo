@@ -2667,9 +2667,12 @@ dm_get_data_info_internal(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const 
     if (!skip_validation) {
         if (di->schema->cross_module_data_dependency || di->schema->has_instance_id) {
             /* do the validation that was skipped, mainly to add default nodes */
-            dm_validate_data_info(dm_ctx, dm_session_ctx, di);
+            rc = dm_validate_data_info(dm_ctx, dm_session_ctx, di);
             /* validation might fails on rare occasion - working copy of dependant module was
              * already modified i.e.: referenced node was deleted. Thus errors are ignored. */
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN("Validation of module with instance_id or cross-module deps %s failed", di->schema->module_name);
+            }
         }
         /* we do not insert data_info_t if it was loaded only as auxiliary cause of validation */
         rc = sr_btree_insert(dm_session_ctx->session_modules[dm_session_ctx->datastore], (void *) di);
