@@ -1832,10 +1832,14 @@ default_nodes_toplevel_test(void **state)
     rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* top-level default value with empty data tree is not present #333, will be added during commit or validate */
     ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:top-level-default", &val);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(val->type, SR_STRING_T);
+    assert_string_equal(val->data.string_val, "default value");
+
+    sr_free_val(val);
 
     test_rp_session_cleanup(ctx, ses_ctx);
 }

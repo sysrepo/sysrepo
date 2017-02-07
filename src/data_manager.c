@@ -138,6 +138,8 @@ typedef enum dm_procedure_e {
  */
 #define DM_COMMIT_MAX_WAIT_TIME 30
 
+static int dm_get_data_info_internal(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, bool skip_validation, bool *should_be_freed, dm_data_info_t **info);
+
 /**
  * @brief Compares two data trees by module name
  */
@@ -1126,9 +1128,10 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
             rc = dm_get_tmp_ly_ctx(dm_ctx, NULL, &tmp_ctx);
             md_ctx_lock(dm_ctx->md_ctx, false);
             ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
-            md_ctx_unlock(dm_ctx->md_ctx);
 
             tmp_node = lyd_parse_fd(tmp_ctx->ctx, fd, LYD_XML, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+            md_ctx_unlock(dm_ctx->md_ctx);
+
             if (NULL == tmp_node && LY_SUCCESS != ly_errno) {
                 SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg());
                 free(data);
@@ -1155,7 +1158,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
     }
 
     /* if there is no data dependency validate it with of LYD_OPT_STRICT, validate it (only non-empty data trees are validated)*/
-    if (!schema_info->cross_module_data_dependency) {
+    if (!schema_info->cross_module_data_dependency && !schema_info->has_instance_id) {
         if (NULL != data_tree) {
             rc = lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx);
             if (rc) {
@@ -1169,7 +1172,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
             if (rc) {
                 SR_LOG_INF("lyd_validate failed, maybe empty data is illegal but no initial data? data_file: %s",
                         data_filename);
-                rc = 0;
+                rc = SR_ERR_OK;
                 lyd_free_withsiblings(data_tree);
                 data_tree = NULL;
             }
@@ -2263,9 +2266,366 @@ cleanup:
 }
 
 int
-dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, dm_data_info_t **info)
+dm_string_cmp(void *a, void *b)
 {
-    CHECK_NULL_ARG4(dm_ctx, dm_session_ctx, module_name, info);
+    assert(a);
+    assert(b);
+
+    int result = strcmp(a, b);
+    if (result < 0) {
+        return -1;
+    } else if (result > 0) {
+        return 1;
+    } else {
+        return 0;
+    }
+
+}
+
+/**
+ * @brief Tests if the data requires some schemas to pass the validation. If yes, it collects
+ * all required ones into the list.
+ *
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] di
+ * @param [out] required_data - subset of modules that require also data to be loaded, the list contains the same strings as required_modules (do not free the content)
+ * @param [out] required_modules - if a module different from the installation-time dependencies is required to pass the validation
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *di, sr_list_t **required_data, sr_list_t **required_modules)
+{
+    CHECK_NULL_ARG5(dm_ctx, session, di, required_data, required_modules);
+
+    int rc = SR_ERR_OK;
+    md_module_t *module = NULL;
+    sr_llist_node_t *ll_node = NULL;
+    md_subtree_ref_t *id = NULL;
+    struct lys_node *sch_node = NULL;
+    struct ly_set *set = NULL;
+    const char *id_val = NULL;
+    sr_llist_node_t *ll_dep = NULL;
+    md_dep_t *dep = NULL;
+    char *namespace = NULL;
+    char *inserted_namespace = NULL;
+    bool inserted = false;
+    char *module_name = NULL;
+    dm_data_info_t *recursive_info = NULL;
+
+    md_ctx_lock(dm_ctx->md_ctx, false);
+
+    if (!di->schema->has_instance_id) {
+        /* if there is no instance id all dependencies are known on schema installation time */
+
+        if (NULL != *required_modules) {
+            /* list is already initialized that means we'll use temp ctx, append install time deps */
+            rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, &module);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve md info for %s module", di->schema->module_name);
+
+            /* installation time dependencies */
+            ll_dep = module->deps->first;
+            while (ll_dep) {
+               dep = (md_dep_t *) ll_dep->data;
+               ll_dep = ll_dep->next;
+
+               module_name = strdup(dep->dest->name);
+               CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
+
+               rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
+               CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+
+               /* if dep has instanced id and it was inserted call recursively */
+               if (inserted && NULL != dep->dest->inst_ids->first) {
+                   rc = dm_get_data_info(dm_ctx, session, dep->dest->name, &recursive_info);
+                   CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
+
+                   rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
+                   CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
+
+               } else if (!inserted){
+                   free(module_name);
+               }
+            }
+
+        }
+        goto cleanup;
+    }
+
+
+    rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, &module);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve md info for %s module", di->schema->module_name);
+
+    /* loop through instance ids */
+    ll_node = module->inst_ids->first;
+
+    while (ll_node) {
+        id = (md_subtree_ref_t *) ll_node->data;
+        ll_node = ll_node->next;
+
+        sch_node = sr_find_schema_node(di->schema->module->data, id->xpath, 0);
+        if (NULL == sch_node) {
+            SR_LOG_ERR("Sch node not found for xpath %s", id->xpath);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+
+        /* find instance id nodes and check their content */
+        set = lyd_find_instance(di->node, sch_node);
+        if (NULL == set) {
+            continue;
+        }
+
+        /* loop through instance id nodes*/
+        for (unsigned int i = 0; i < set->number; i++) {
+            id_val = ((struct lyd_node_leaf_list *) set->set.d[i])->value_str;
+
+            rc = sr_copy_first_ns(id_val, &namespace);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve first namespace from %s", id_val);
+
+            /* Test if it is among known dependencies */
+            if (0 == strcmp(namespace, di->schema->module_name)) {
+                free(namespace);
+                namespace = NULL;
+                continue;
+            }
+
+            ll_dep = module->deps->first;
+            bool found = false;
+
+            while (ll_dep) {
+               dep = (md_dep_t *) ll_dep->data;
+               ll_dep = ll_dep->next;
+
+               if (0 == strcmp(namespace, dep->dest->name)) {
+                   found = true;
+                   free(namespace);
+                   namespace = NULL;
+                   break;
+               }
+            }
+            /* else append to required modules */
+            if (!found) {
+                if (NULL == *required_modules) {
+                    rc = sr_list_init(required_modules);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "List initialization failed");
+
+                    rc = sr_list_init(required_data);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "List initialization failed");
+
+                    /* insert module itself */
+                    module_name = strdup(di->schema->module_name);
+                    CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
+
+                    rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+
+                    rc = sr_list_add(*required_data, module_name);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+
+                    /* add installation time dependencies */
+                    ll_dep = module->deps->first;
+                    while (ll_dep) {
+                       dep = (md_dep_t *) ll_dep->data;
+                       ll_dep = ll_dep->next;
+
+                       module_name = strdup(dep->dest->name);
+                       CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
+
+                       rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
+                       CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+
+                       if (inserted && dep->dest->has_data) {
+                           rc = sr_list_add(*required_data, module_name);
+                           CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into the list");
+                       }
+
+                       /* if dep has instanced id and it was inserted call recursively */
+                       if (inserted && NULL != dep->dest->inst_ids->first) {
+                           rc = dm_get_data_info(dm_ctx, session, dep->dest->name, &recursive_info);
+                           CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
+
+                           rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
+                           CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
+
+                       } else if (!inserted){
+                           free(module_name);
+                       }
+                    }
+                }
+                inserted = false;
+                rc = sr_list_insert_unique_ord(*required_modules, namespace, dm_string_cmp, &inserted);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+                inserted_namespace = namespace;
+                namespace = NULL; /* do not free namespace in this function case of cleanup */
+
+                if (inserted) {
+                    rc = sr_list_add(*required_data, inserted_namespace);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert an item into the list");
+
+                    /* call recursively */
+                    rc = dm_get_data_info(dm_ctx, session, inserted_namespace, &recursive_info);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", inserted_namespace);
+
+                    rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
+                }
+            }
+        }
+        ly_set_free(set);
+        set = NULL;
+    }
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        sr_free_list_of_strings(*required_modules);
+        *required_modules = NULL;
+    }
+    free(namespace);
+    ly_set_free(set);
+    md_ctx_unlock(dm_ctx->md_ctx);
+    return rc;
+}
+
+/**
+ * @brief Validates one data_info_t record. It might temporarily load also different data
+ * if there is cross_module dependency or instance id.
+ */
+static int
+dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *info)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, info);
+    int rc = SR_ERR_OK;
+    sr_list_t *required_data = NULL;
+    sr_list_t *data_for_validation = NULL;
+    dm_tmp_ly_ctx_t *tmp_ctx = NULL;
+    dm_data_info_t *dep_di = NULL;
+    struct lyd_node *data_tree = NULL;
+    bool validation_failed = false;
+    bool *should_be_freed = NULL;
+
+    /* cleanup the list of dependant modules */
+    sr_free_list_of_strings(info->required_modules);
+    info->required_modules = NULL;
+
+    if (NULL == info->schema->module || NULL == info->schema->module->name) {
+        SR_LOG_ERR_MSG("Missing schema information");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    /* attach data dependant modules */
+    if (info->schema->has_instance_id || info->schema->cross_module_data_dependency) {
+
+        rc = dm_requires_tmp_context(dm_ctx, session, info, &required_data, &info->required_modules);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Require tmp ctx check failed for module %s", info->schema->module_name);
+
+        if (NULL == info->required_modules) {
+            /* only dependencies know since installation time are needed */
+            rc = dm_load_dependant_data(dm_ctx, session, info);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", info->schema->module_name);
+
+            if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
+                SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
+                validation_failed = true;
+            } else {
+                SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
+            }
+            if (info->schema->cross_module_data_dependency) {
+                /* remove data appended from other modules for the purpose of validation */
+                rc = dm_remove_added_data_trees(session, info);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Removing of added data trees failed");
+            }
+        } else {
+            /* validate using tmp ly_ctx */
+
+            rc = sr_list_init(&data_for_validation);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
+
+            /* if requested data has not be loaded into the session yet, the validation is skipped
+             * it is only appended to the validated data_info and removed afterwards. we have to track
+             * which data should be freed and which not */
+            should_be_freed = calloc(required_data->count, sizeof(*should_be_freed));
+            CHECK_NULL_NOMEM_GOTO(should_be_freed, rc, cleanup);
+
+            /* retrieve all required data */
+            for (size_t i = 0; i < required_data->count; i++) {
+                SR_LOG_DBG("To pass the validation of '%s' data from module %s is needed", info->schema->module_name, (char *) required_data->data[i]);
+                rc = dm_get_data_info_internal(dm_ctx, session, (char *) required_data->data[i], true, &should_be_freed[i], &dep_di);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get data infor for module %s", (char *) required_data->data[i]);
+
+                rc = sr_list_add(data_for_validation, dep_di);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "List insert failed");
+            }
+
+            /* prepare working context*/
+            rc = dm_get_tmp_ly_ctx(dm_ctx, info->required_modules, &tmp_ctx);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to acquire tmp ctx");
+
+            /* migrate data to working context */
+            for (size_t i = 0; i < data_for_validation->count; i++) {
+                dm_data_info_t *d = (dm_data_info_t *) data_for_validation->data[i];
+                if (NULL != d->node) {
+                    if (NULL == data_tree) {
+                        data_tree = sr_dup_datatree_to_ctx(d->node, tmp_ctx->ctx);
+                    } else {
+                        int ret = lyd_merge_to_ctx(&data_tree, d->node, LYD_OPT_EXPLICIT, tmp_ctx->ctx);
+                        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Failed to merge data tree '%s'", d->schema->module_name);
+                    }
+                }
+                if (should_be_freed[i]) {
+                    dm_data_info_free(d);
+                }
+            }
+
+            /* start validation */
+            if (0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, tmp_ctx->ctx)) {
+                SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
+                validation_failed = true;
+            } else {
+                SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
+            }
+
+            /* remove data from different modules and replace data in data_info to have default nodes in place */
+            rc = dm_remove_added_data_trees_by_module_name(info->schema->module_name, &data_tree);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to remove added data trees");
+
+            lyd_free_withsiblings(info->node);
+
+            info->node = sr_dup_datatree_to_ctx(data_tree, info->schema->ly_ctx);
+
+            /* free data tree */
+            lyd_free_withsiblings(data_tree);
+
+            /* release working context */
+            dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
+
+        }
+    } else {
+        if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
+            SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
+            validation_failed = true;
+        } else {
+            SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
+        }
+    }
+
+cleanup:
+    sr_list_cleanup(required_data);
+    sr_list_cleanup(data_for_validation);
+    free(should_be_freed);
+    if (validation_failed) {
+        rc = SR_ERR_VALIDATION_FAILED;
+    }
+    return rc;
+}
+
+/**
+ * @note if skip_validation is false, must_be_freed will not be set to true
+ */
+static int
+dm_get_data_info_internal(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, bool skip_validation, bool *must_be_freed, dm_data_info_t **info)
+{
     int rc = SR_ERR_OK;
     dm_data_info_t *exisiting_data_info = NULL;
     dm_schema_info_t *schema_info = NULL;
@@ -2276,6 +2636,10 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
     dm_data_info_t lookup_data = {0};
     lookup_data.schema = schema_info;
     exisiting_data_info = sr_btree_search(dm_session_ctx->session_modules[dm_session_ctx->datastore], &lookup_data);
+
+    if (NULL != must_be_freed) {
+        *must_be_freed = false;
+    }
 
     if (NULL != exisiting_data_info) {
         *info = exisiting_data_info;
@@ -2300,12 +2664,31 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
         CHECK_RC_LOG_GOTO(rc, cleanup, "Getting data tree for %s failed.", module_name);
     }
 
-    rc = sr_btree_insert(dm_session_ctx->session_modules[dm_session_ctx->datastore], (void *) di);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Insert into session avl failed module %s", module_name);
-        dm_data_info_free(di);
-        goto cleanup;
+    if (!skip_validation) {
+        if (di->schema->cross_module_data_dependency || di->schema->has_instance_id) {
+            /* do the validation that was skipped, mainly to add default nodes */
+            rc = dm_validate_data_info(dm_ctx, dm_session_ctx, di);
+            /* validation might fails on rare occasion - working copy of dependant module was
+             * already modified i.e.: referenced node was deleted. Thus errors are ignored. */
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN("Validation of module with instance_id or cross-module deps %s failed", di->schema->module_name);
+            }
+        }
+        /* we do not insert data_info_t if it was loaded only as auxiliary cause of validation */
+        rc = sr_btree_insert(dm_session_ctx->session_modules[dm_session_ctx->datastore], (void *) di);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Insert into session avl failed module %s", module_name);
+            dm_data_info_free(di);
+            goto cleanup;
+        }
+
+    } else {
+        if (NULL != must_be_freed) {
+            /* let the caller know that he has to free the content */
+            *must_be_freed = true;
+        }
     }
+
 
     SR_LOG_DBG("Module %s has been loaded", module_name);
     *info = di;
@@ -2313,6 +2696,13 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
 cleanup:
     pthread_rwlock_unlock(&schema_info->model_lock);
     return rc;
+}
+
+int
+dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, dm_data_info_t **info)
+{
+    CHECK_NULL_ARG4(dm_ctx, dm_session_ctx, module_name, info);
+    return dm_get_data_info_internal(dm_ctx, dm_session_ctx, module_name, false, NULL, info);
 }
 
 int
@@ -2696,228 +3086,6 @@ cleanup:
 }
 
 int
-dm_string_cmp(void *a, void *b)
-{
-    assert(a);
-    assert(b);
-
-    int result = strcmp(a, b);
-    if (result < 0) {
-        return -1;
-    } else if (result > 0) {
-        return 1;
-    } else {
-        return 0;
-    }
-
-}
-
-/**
- * @brief Tests if the data requires some schemas to pass the validation. If yes, it collects
- * all required ones into the list.
- *
- * @param [in] dm_ctx
- * @param [in] session
- * @param [in] di
- * @param [out] required_data - subset of modules that require also data to be loaded, the list contains the same strings as required_modules (do not free the content)
- * @param [out] required_modules - if a module different from the installation-time dependencies is required to pass the validation
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *di, sr_list_t **required_data, sr_list_t **required_modules)
-{
-    CHECK_NULL_ARG5(dm_ctx, session, di, required_data, required_modules);
-
-    int rc = SR_ERR_OK;
-    md_module_t *module = NULL;
-    sr_llist_node_t *ll_node = NULL;
-    md_subtree_ref_t *id = NULL;
-    struct lys_node *sch_node = NULL;
-    struct ly_set *set = NULL;
-    const char *id_val = NULL;
-    sr_llist_node_t *ll_dep = NULL;
-    md_dep_t *dep = NULL;
-    char *namespace = NULL;
-    char *inserted_namespace = NULL;
-    bool inserted = false;
-    char *module_name = NULL;
-    dm_data_info_t *recursive_info = NULL;
-
-    md_ctx_lock(dm_ctx->md_ctx, false);
-
-    if (!di->schema->has_instance_id) {
-        /* if there is no instance id all dependencies are known on schema installation time */
-
-        if (NULL != *required_modules) {
-            /* list is already initialized that means we'll use temp ctx, append install time deps */
-            rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, &module);
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve md info for %s module", di->schema->module_name);
-
-            /* installation time dependencies */
-            ll_dep = module->deps->first;
-            while (ll_dep) {
-               dep = (md_dep_t *) ll_dep->data;
-               ll_dep = ll_dep->next;
-
-               module_name = strdup(dep->dest->name);
-               CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
-
-               rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
-               CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
-
-               /* if dep has instanced id and it was inserted call recursively */
-               if (inserted && NULL != dep->dest->inst_ids->first) {
-                   rc = dm_get_data_info(dm_ctx, session, dep->dest->name, &recursive_info);
-                   CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
-
-                   rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
-                   CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
-
-               } else if (!inserted){
-                   free(module_name);
-               }
-            }
-
-        }
-        goto cleanup;
-    }
-
-
-    rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, &module);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve md info for %s module", di->schema->module_name);
-
-    /* loop through instance ids */
-    ll_node = module->inst_ids->first;
-
-    while (ll_node) {
-        id = (md_subtree_ref_t *) ll_node->data;
-        ll_node = ll_node->next;
-
-        sch_node = sr_find_schema_node(di->schema->module->data, id->xpath, 0);
-        if (NULL == sch_node) {
-            SR_LOG_ERR("Sch node not found for xpath %s", id->xpath);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-
-        /* find instance id nodes and check their content */
-        set = lyd_find_instance(di->node, sch_node);
-        if (NULL == set) {
-            continue;
-        }
-
-        /* loop through instance id nodes*/
-        for (unsigned int i = 0; i < set->number; i++) {
-            id_val = ((struct lyd_node_leaf_list *) set->set.d[i])->value_str;
-
-            rc = sr_copy_first_ns(id_val, &namespace);
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve first namespace from %s", id_val);
-
-            /* Test if it is among known dependencies */
-            if (0 == strcmp(namespace, di->schema->module_name)) {
-                free(namespace);
-                namespace = NULL;
-                continue;
-            }
-
-            ll_dep = module->deps->first;
-            bool found = false;
-
-            while (ll_dep) {
-               dep = (md_dep_t *) ll_dep->data;
-               ll_dep = ll_dep->next;
-
-               if (0 == strcmp(namespace, dep->dest->name)) {
-                   found = true;
-                   free(namespace);
-                   namespace = NULL;
-                   break;
-               }
-            }
-            /* else append to required modules */
-            if (!found) {
-                if (NULL == *required_modules) {
-                    rc = sr_list_init(required_modules);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "List initialization failed");
-
-                    rc = sr_list_init(required_data);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "List initialization failed");
-
-                    /* insert module itself */
-                    module_name = strdup(di->schema->module_name);
-                    CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
-
-                    rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
-
-                    rc = sr_list_add(*required_data, module_name);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
-
-                    /* add installation time dependencies */
-                    ll_dep = module->deps->first;
-                    while (ll_dep) {
-                       dep = (md_dep_t *) ll_dep->data;
-                       ll_dep = ll_dep->next;
-
-                       module_name = strdup(dep->dest->name);
-                       CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
-
-                       rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
-                       CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
-
-                       if (inserted && dep->dest->has_data) {
-                           rc = sr_list_add(*required_data, module_name);
-                           CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into the list");
-                       }
-
-                       /* if dep has instanced id and it was inserted call recursively */
-                       if (inserted && NULL != dep->dest->inst_ids->first) {
-                           rc = dm_get_data_info(dm_ctx, session, dep->dest->name, &recursive_info);
-                           CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
-
-                           rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
-                           CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
-
-                       } else if (!inserted){
-                           free(module_name);
-                       }
-                    }
-                }
-                inserted = false;
-                rc = sr_list_insert_unique_ord(*required_modules, namespace, dm_string_cmp, &inserted);
-                CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
-                inserted_namespace = namespace;
-                namespace = NULL; /* do not free namespace in this function case of cleanup */
-
-                if (inserted) {
-                    rc = sr_list_add(*required_data, inserted_namespace);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert an item into the list");
-
-                    /* call recursively */
-                    rc = dm_get_data_info(dm_ctx, session, inserted_namespace, &recursive_info);
-                    CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", inserted_namespace);
-
-                    rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
-                    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
-                }
-            }
-        }
-        ly_set_free(set);
-        set = NULL;
-    }
-
-cleanup:
-    if (SR_ERR_OK != rc) {
-        sr_free_list_of_strings(*required_modules);
-        *required_modules = NULL;
-    }
-    free(namespace);
-    ly_set_free(set);
-    md_ctx_unlock(dm_ctx->md_ctx);
-    return rc;
-}
-
-int
 dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG4(dm_ctx, session, errors, err_cnt);
@@ -2929,17 +3097,9 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
     sr_llist_t *session_modules = NULL;
     sr_llist_node_t *node = NULL;
     bool validation_failed = false;
-    sr_list_t *required_data = NULL;
-    dm_tmp_ly_ctx_t *tmp_ctx = NULL;
-    dm_data_info_t *dep_di = NULL;
-    sr_list_t *data_for_validation = NULL;
-    struct lyd_node *data_tree = NULL;
 
     rc = sr_llist_init(&session_modules);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot initialize temporary linked-list for session modules.");
-
-    rc = sr_list_init(&data_for_validation);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     /* collect the list of modules first, it may change during the validation */
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], cnt))) {
@@ -2952,123 +3112,22 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
         info = (dm_data_info_t *)node->data;
         /* loaded data trees are valid, so check only the modified ones */
         if (info->modified) {
-            sr_free_list_of_strings(info->required_modules);
-            info->required_modules = NULL;
-
-            if (NULL == info->schema->module || NULL == info->schema->module->name) {
-                SR_LOG_ERR_MSG("Missing schema information");
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            }
-            /* attach data dependant modules */
-            if (info->schema->has_instance_id || info->schema->cross_module_data_dependency) {
-
-                rc = dm_requires_tmp_context(dm_ctx, session, info, &required_data, &info->required_modules);
-                CHECK_RC_LOG_GOTO(rc, cleanup, "Require tmp ctx check failed for module %s", info->schema->module_name);
-
-                if (NULL == info->required_modules) {
-                    /* only dependencies know since installation time are needed */
-                    rc = dm_load_dependant_data(dm_ctx, session, info);
-                    CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", info->schema->module_name);
-
-                    if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
-                        SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
-                        if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(), "%s", ly_errmsg())) {
-                            SR_LOG_WRN_MSG("Failed to record validation error");
-                        }
-                        validation_failed = true;
-                    } else {
-                        SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
-                    }
-                    if (info->schema->cross_module_data_dependency) {
-                        /* remove data appended from other modules for the purpose of validation */
-                        rc = dm_remove_added_data_trees(session, info);
-                        CHECK_RC_MSG_GOTO(rc, cleanup, "Removing of added data trees failed");
-                    }
-                } else {
-                    /* validate using tmp ly_ctx */
-
-                    /* since the list hold only pointers, reseting the counter is enough,
-                     *  we don't have to free and calloc the list */
-                    data_for_validation->count = 0;
-
-                    /* retrieve all required data */
-                    for (size_t i = 0; i < required_data->count; i++) {
-                        SR_LOG_DBG("To pass the validation of '%s' data from module %s is needed", info->schema->module_name, (char *) required_data->data[i]);
-                        rc = dm_get_data_info(dm_ctx, session, (char *) required_data->data[i], &dep_di);
-                        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get data infor for module %s", (char *) required_data->data[i]);
-
-                        rc = sr_list_add(data_for_validation, dep_di);
-                        CHECK_RC_MSG_GOTO(rc, cleanup, "List insert failed");
-                    }
-
-                    /* prepare working context*/
-                    rc = dm_get_tmp_ly_ctx(dm_ctx, info->required_modules, &tmp_ctx);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to acquire tmp ctx");
-
-                    /* migrate data to working context */
-                    for (size_t i = 0; i < data_for_validation->count; i++) {
-                        dm_data_info_t *d = (dm_data_info_t *) data_for_validation->data[i];
-                        if (NULL != d->node) {
-                            if (NULL == data_tree) {
-                                data_tree = sr_dup_datatree_to_ctx(d->node, tmp_ctx->ctx);
-                            } else {
-                                int ret = lyd_merge_to_ctx(&data_tree, d->node, LYD_OPT_EXPLICIT, tmp_ctx->ctx);
-                                CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Failed to merge data tree '%s'", d->schema->module_name);
-                            }
-                        }
-                    }
-
-                    /* start validation */
-                    if (0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, tmp_ctx->ctx)) {
-                        SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
-                        if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(), "%s", ly_errmsg())) {
-                            SR_LOG_WRN_MSG("Failed to record validation error");
-                        }
-                        validation_failed = true;
-                    } else {
-                        SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
-                    }
-
-                    /* remove data from different modules and replace data in data_info to have default nodes in place */
-                    rc = dm_remove_added_data_trees_by_module_name(info->schema->module_name, &data_tree);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to remove added data trees");
-
-                    lyd_free_withsiblings(info->node);
-
-                    info->node = sr_dup_datatree_to_ctx(data_tree, info->schema->ly_ctx);
-
-                    /* free data tree */
-                    lyd_free_withsiblings(data_tree);
-
-                    /* release working context */
-                    dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
-
+            rc = dm_validate_data_info(dm_ctx, session, info);
+            if (SR_ERR_VALIDATION_FAILED == rc) {
+                if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(), "%s", ly_errmsg())) {
+                    SR_LOG_WRN_MSG("Failed to record validation error");
                 }
-            } else {
-                if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
-                    SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
-                    if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(), "%s", ly_errmsg())) {
-                        SR_LOG_WRN_MSG("Failed to record validation error");
-                    }
-                    validation_failed = true;
-                } else {
-                    SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
-                }
+                validation_failed = true;
+                rc = SR_ERR_OK;
             }
-
         }
         node = node->next;
-        sr_list_cleanup(required_data);
-        required_data = NULL;
     }
 
 cleanup:
     if (validation_failed) {
         rc = SR_ERR_VALIDATION_FAILED;
     }
-    sr_list_cleanup(required_data);
-    sr_list_cleanup(data_for_validation);
     sr_llist_cleanup(session_modules);
     return rc;
 }
