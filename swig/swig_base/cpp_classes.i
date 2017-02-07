@@ -56,6 +56,7 @@
 %newobject Session::get_change_next;
 %newobject Session::rpc_send;
 %newobject Session::action_send;
+%newobject Session::send_event;
 
 #ifndef SWIGLUA
 %shared_ptr(Callback);
