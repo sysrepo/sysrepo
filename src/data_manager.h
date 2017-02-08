@@ -1131,5 +1131,16 @@ int dm_get_session_datatrees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_btree_t
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_wait_for_commit_context_to_be_empty(dm_ctx_t *dm_ctx);
+
+/**
+ * @brief Functions prints netconf-config-change-notification into string using tmp_ctx.
+ * This approach allows to save the notification to the file even using a context that don't have
+ * all schemas used by instance id loaded.
+ * @param [in] dm_ctx
+ * @param [in] notif
+ * @param [out] string
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, char **string);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

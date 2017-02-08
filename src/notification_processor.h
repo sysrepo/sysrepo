@@ -65,6 +65,7 @@ typedef struct np_subscription_s {
 typedef enum np_ev_notif_data_type_s {
     NP_EV_NOTIF_DATA_NONE,             /**< No data. */
     NP_EV_NOTIF_DATA_XML,              /**< Data in XML format. */
+    NP_EV_NOTIF_DATA_STRING,           /**< Data in string xml format */
     NP_EV_NOTIF_DATA_VALUES,           /**< Data in st_val_t format. */
     NP_EV_NOTIF_DATA_TREES,            /**< Data in sr_node_t format. */
 } np_ev_notif_data_type_t;
@@ -78,6 +79,7 @@ typedef struct np_ev_notification_s {
     np_ev_notif_data_type_t data_type;  /**< type of the notification data, if available. */
     union {
         struct lyxml_elem *xml;         /**< XML of the data as parsed by libyang. */
+        const char *string;             /**< XML in string format */
         sr_val_t *values;               /**< Values with the notification data. */
         sr_node_t *trees;               /**< Trees with the notification data. */
     } data;
