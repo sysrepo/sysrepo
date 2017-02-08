@@ -83,6 +83,11 @@ public:
     S_Change get_change_next(S_Iter_Change iter);
     ~Session();
 
+    S_Vals rpc_send(const char *xpath, S_Vals input);
+    S_Vals action_send(const char *xpath, S_Vals input);
+    S_Trees rpc_send_tree(const char *xpath, S_Trees input);
+    S_Trees action_send_tree(const char *xpath, S_Trees input);
+
     friend class Subscribe;
 
 private:
@@ -135,10 +140,6 @@ public:
     std::vector<S_Callback > cb_list;
 
     void unsubscribe();
-    S_Vals rpc_send(const char *xpath, S_Vals input);
-    S_Vals action_send(const char *xpath, S_Vals input);
-    S_Trees rpc_send_tree(const char *xpath, S_Trees input);
-    S_Trees action_send_tree(const char *xpath, S_Trees input);
     ~Subscribe();
 
     // SWIG specific

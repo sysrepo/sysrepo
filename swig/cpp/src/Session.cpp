@@ -658,11 +658,11 @@ void Subscribe::unsubscribe()
     _sub = NULL;
 }
 
-S_Vals Subscribe::rpc_send(const char *xpath, S_Vals input)
+S_Vals Session::rpc_send(const char *xpath, S_Vals input)
 {
     S_Vals output(new Vals());
 
-    int ret = sr_rpc_send(_sess->_sess, xpath, input->_vals, input->_cnt, &output->_vals, &output->_cnt);
+    int ret = sr_rpc_send(_sess, xpath, input->_vals, input->_cnt, &output->_vals, &output->_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -676,11 +676,11 @@ S_Vals Subscribe::rpc_send(const char *xpath, S_Vals input)
     return output;
 }
 
-S_Vals Subscribe::action_send(const char *xpath, S_Vals input)
+S_Vals Session::action_send(const char *xpath, S_Vals input)
 {
     S_Vals output(new Vals());
 
-    int ret = sr_action_send(_sess->_sess, xpath, input->_vals, input->_cnt, &output->_vals, &output->_cnt);
+    int ret = sr_action_send(_sess, xpath, input->_vals, input->_cnt, &output->_vals, &output->_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -694,11 +694,11 @@ S_Vals Subscribe::action_send(const char *xpath, S_Vals input)
     return output;
 }
 
-S_Trees Subscribe::rpc_send_tree(const char *xpath, S_Trees input)
+S_Trees Session::rpc_send_tree(const char *xpath, S_Trees input)
 {
     S_Trees output(new Trees());
 
-    int ret = sr_rpc_send_tree(_sess->_sess, xpath, input->_trees, input->_cnt, &output->_trees, &output->_cnt);
+    int ret = sr_rpc_send_tree(_sess, xpath, input->_trees, input->_cnt, &output->_trees, &output->_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -712,11 +712,11 @@ S_Trees Subscribe::rpc_send_tree(const char *xpath, S_Trees input)
     return output;
 }
 
-S_Trees Subscribe::action_send_tree(const char *xpath, S_Trees input)
+S_Trees Session::action_send_tree(const char *xpath, S_Trees input)
 {
     S_Trees output(new Trees());
 
-    int ret = sr_action_send_tree(_sess->_sess, xpath, input->_trees, input->_cnt, &output->_trees, &output->_cnt);
+    int ret = sr_action_send_tree(_sess, xpath, input->_trees, input->_cnt, &output->_trees, &output->_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
