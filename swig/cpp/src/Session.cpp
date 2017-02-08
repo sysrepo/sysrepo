@@ -669,7 +669,7 @@ S_Vals Subscribe::rpc_send(const char *xpath, S_Vals input)
 
     // ensure that the class is not freed before
     if (input->_vals == NULL) {
-	throw_exception(SR_ERR_INTERNAL);
+        throw_exception(SR_ERR_INTERNAL);
     }
 
     output->_deleter = std::make_shared<Deleter>(output->_vals, output->_cnt);
@@ -687,7 +687,7 @@ S_Vals Subscribe::action_send(const char *xpath, S_Vals input)
 
     // ensure that the class is not freed before
     if (input->_vals == NULL) {
-	throw_exception(SR_ERR_INTERNAL);
+        throw_exception(SR_ERR_INTERNAL);
     }
 
     output->_deleter = std::make_shared<Deleter>(output->_vals, output->_cnt);
@@ -705,7 +705,7 @@ S_Trees Subscribe::rpc_send_tree(const char *xpath, S_Trees input)
 
     // ensure that the class is not freed before
     if (input == NULL) {
-	throw_exception(SR_ERR_INTERNAL);
+        throw_exception(SR_ERR_INTERNAL);
     }
 
     output->_deleter = std::make_shared<Deleter>(output->_trees, output->_cnt);
@@ -723,7 +723,7 @@ S_Trees Subscribe::action_send_tree(const char *xpath, S_Trees input)
 
     // ensure that the class is not freed before
     if (input == NULL) {
-	throw_exception(SR_ERR_INTERNAL);
+        throw_exception(SR_ERR_INTERNAL);
     }
 
     output->_deleter = std::make_shared<Deleter>(output->_trees, output->_cnt);
