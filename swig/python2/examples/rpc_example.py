@@ -140,7 +140,7 @@ try:
     in_trees.tree(0).set("acmefw-2.3", sr.SR_STRING_T);
 
     print "\n ========== START RPC TREE CALL ==========\n"
-    out_trees = sess.rpc_send_tree("/test-module:activate-software-image", in_trees)
+    out_trees = sess.rpc_send("/test-module:activate-software-image", in_trees)
 
     print "\n ========== PRINT RETURN VALUE ==========\n"
     for n in range (out_trees.tree_cnt()):

@@ -84,9 +84,9 @@ public:
     ~Session();
 
     S_Vals rpc_send(const char *xpath, S_Vals input);
+    S_Trees rpc_send(const char *xpath, S_Trees input);
     S_Vals action_send(const char *xpath, S_Vals input);
-    S_Trees rpc_send_tree(const char *xpath, S_Trees input);
-    S_Trees action_send_tree(const char *xpath, S_Trees input);
+    S_Trees action_send(const char *xpath, S_Trees input);
 
     friend class Subscribe;
 

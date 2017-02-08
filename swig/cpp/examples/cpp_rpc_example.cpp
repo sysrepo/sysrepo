@@ -247,7 +247,7 @@ main(int argc, char **argv)
         in_trees->tree(0)->set("acmefw-2.3", SR_STRING_T);
 
         cout << "\n ========== START RPC TREE CALL ==========\n" << endl;
-        auto out_trees = sess->rpc_send_tree("/test-module:activate-software-image", in_trees);
+        auto out_trees = sess->rpc_send("/test-module:activate-software-image", in_trees);
 
         cout << "\n ========== PRINT RETURN VALUE ==========\n" << endl;
         for(size_t n=0; n < out_trees->tree_cnt(); ++n)
