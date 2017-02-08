@@ -2808,7 +2808,7 @@ cl_config_change_replay_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     pthread_mutex_lock(&replay.mutex);
-    rc = sr_event_notif_replay(session, subscription, start_time, time(NULL)+1);
+    rc = sr_event_notif_replay(session, subscription, start_time, 0);
     assert_int_equal(SR_ERR_OK, rc);
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
