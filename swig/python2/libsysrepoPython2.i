@@ -66,15 +66,14 @@ public:
     }
 
     int module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, \
-                                 void *private_ctx) {
+                                 PyObject *private_ctx) {
         PyObject *arglist;
 
         Session *sess = (Session *)new Session(session);
         S_Session *shared_sess = sess ? new S_Session(sess) : 0;
         PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_Session_t, SWIG_POINTER_DISOWN);
 
-        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(OsiO)", s, module_name, event, p);
+        arglist = Py_BuildValue("(OsiO)", s, module_name, event, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL) {
@@ -92,15 +91,14 @@ public:
     }
 
     int subtree_change(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
-                       void *private_ctx) {
+                       PyObject *private_ctx) {
         PyObject *arglist;
 
         Session *sess = (Session *)new Session(session);
         S_Session *shared_sess = sess ? new S_Session(sess) : 0;
         PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_Session_t, SWIG_POINTER_DISOWN);
 
-        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(OsiO)", s, xpath, event, p);
+        arglist = Py_BuildValue("(OsiO)", s, xpath, event, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL) {
@@ -117,10 +115,9 @@ public:
         }
     }
 
-    void module_install(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx) {
+    void module_install(const char *module_name, const char *revision, sr_module_state_t state, PyObject *private_ctx) {
         PyObject *arglist;
-        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(ssOO)", module_name, revision, state, p);
+        arglist = Py_BuildValue("(ssOO)", module_name, revision, state, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL)
@@ -129,10 +126,9 @@ public:
             Py_DECREF(result);
     }
 
-    void feature_enable(const char *module_name, const char *feature_name, bool enabled, void *private_ctx) {
+    void feature_enable(const char *module_name, const char *feature_name, bool enabled, PyObject *private_ctx) {
         PyObject *arglist;
-        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(ssOO)", module_name, feature_name, enabled ? Py_True: Py_False, p);
+        arglist = Py_BuildValue("(ssOO)", module_name, feature_name, enabled ? Py_True: Py_False, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL)
@@ -142,7 +138,7 @@ public:
     }
 
     int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
-               size_t *output_cnt, void *private_ctx) {
+               size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
 
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
@@ -154,8 +150,7 @@ public:
         shared_ptr<Vals_Holder> *shared_out_vals = out_vals ? new shared_ptr<Vals_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Vals_Holder_t, SWIG_POINTER_DISOWN);
 
-        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(sOOO)", xpath, in, out, p);
+        arglist = Py_BuildValue("(sOOO)", xpath, in, out, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL) {
@@ -175,7 +170,7 @@ public:
      }
 
     int action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
-               size_t *output_cnt, void *private_ctx) {
+               size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
 
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
@@ -187,8 +182,7 @@ public:
         shared_ptr<Vals_Holder> *shared_out_vals = out_vals ? new shared_ptr<Vals_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Vals_Holder_t, SWIG_POINTER_DISOWN);
 
-        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(sOOO)", xpath, in, out, p);
+        arglist = Py_BuildValue("(sOOO)", xpath, in, out, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL) {
@@ -208,7 +202,7 @@ public:
      }
 
     int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
-                         sr_node_t **output, size_t *output_cnt, void *private_ctx) {
+                         sr_node_t **output, size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
 
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
@@ -219,8 +213,7 @@ public:
         shared_ptr<Trees_Holder> *shared_out_vals = out_vals ? new shared_ptr<Trees_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Trees_Holder_t, SWIG_POINTER_DISOWN);
 
-        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(sOOO)", xpath, in, out, p);
+        arglist = Py_BuildValue("(sOOO)", xpath, in, out, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL) {
@@ -240,7 +233,7 @@ public:
     }
 
     int action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
-                         sr_node_t **output, size_t *output_cnt, void *private_ctx) {
+                         sr_node_t **output, size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
 
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
@@ -251,8 +244,7 @@ public:
         shared_ptr<Trees_Holder> *shared_out_vals = out_vals ? new shared_ptr<Trees_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Trees_Holder_t, SWIG_POINTER_DISOWN);
 
-        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(sOOO)", xpath, in, out, p);
+        arglist = Py_BuildValue("(sOOO)", xpath, in, out, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL) {
@@ -272,15 +264,14 @@ public:
     }
 
 
-    int dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
+    int dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, PyObject *private_ctx) {
         PyObject *arglist;
 
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(values, values_cnt);
         shared_ptr<Vals_Holder> *shared_out_vals = out_vals ? new shared_ptr<Vals_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Vals_Holder_t, SWIG_POINTER_DISOWN);
 
-        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(sOO)", xpath, out, p);
+        arglist = Py_BuildValue("(sOO)", xpath, out, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL) {
@@ -297,15 +288,14 @@ public:
         }
     }
 
-    void event_notif(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
+    void event_notif(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, PyObject *private_ctx) {
         PyObject *arglist;
 
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
         shared_ptr<Vals> *shared_in_vals = in_vals ? new shared_ptr<Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Vals_t, SWIG_POINTER_DISOWN);
 
-        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(sOO)", xpath, in, timestamp, p);
+        arglist = Py_BuildValue("(sOO)", xpath, in, timestamp, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL) {
@@ -317,15 +307,14 @@ public:
         }
     }
 
-    void event_notif_tree(const sr_ev_notif_type_t, const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
+    void event_notif_tree(const sr_ev_notif_type_t, const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, PyObject *private_ctx) {
         PyObject *arglist;
 
         Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, NULL);
         shared_ptr<Trees> *shared_in_vals = in_vals ? new shared_ptr<Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Trees_t, SWIG_POINTER_DISOWN);
 
-        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(sOO)", xpath, in, timestamp, p);
+        arglist = Py_BuildValue("(sOO)", xpath, in, timestamp, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL) {
@@ -337,7 +326,7 @@ public:
         }
     }
 
-    void *private_ctx;
+    PyObject *private_ctx;
 
 private:
     PyObject *_callback;
@@ -420,7 +409,7 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
 
 %extend Subscribe {
 
-    void module_change_subscribe(const char *module_name, PyObject *callback, void *private_ctx = NULL, \
+    void module_change_subscribe(const char *module_name, PyObject *callback, PyObject *private_ctx = NULL, \
                                  uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         Wrap_cb *class_ctx = NULL;
@@ -436,7 +425,7 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         }
     };
 
-    void subtree_change_subscribe(const char *xpath, PyObject *callback, void *private_ctx = NULL,\
+    void subtree_change_subscribe(const char *xpath, PyObject *callback, PyObject *private_ctx = NULL,\
                                  uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         Wrap_cb *class_ctx = NULL;
@@ -452,7 +441,7 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         }
     }
 
-    void module_install_subscribe(PyObject *callback, void *private_ctx = NULL,\
+    void module_install_subscribe(PyObject *callback, PyObject *private_ctx = NULL,\
                                   sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         Wrap_cb *class_ctx = NULL;
@@ -469,7 +458,7 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         }
     }
 
-    void feature_enable_subscribe(PyObject *callback, void *private_ctx = NULL,\
+    void feature_enable_subscribe(PyObject *callback, PyObject *private_ctx = NULL,\
                                   sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         Wrap_cb *class_ctx = NULL;
@@ -486,7 +475,7 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         }
     }
 
-    void rpc_subscribe(const char *xpath, PyObject *callback, void *private_ctx = NULL,\
+    void rpc_subscribe(const char *xpath, PyObject *callback, PyObject *private_ctx = NULL,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -502,7 +491,7 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         }
     }
 
-    void action_subscribe(const char *xpath, PyObject *callback, void *private_ctx = NULL,\
+    void action_subscribe(const char *xpath, PyObject *callback, PyObject *private_ctx = NULL,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -518,7 +507,7 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         }
     }
 
-    void rpc_subscribe_tree(const char *xpath, PyObject *callback, void *private_ctx = NULL,\
+    void rpc_subscribe_tree(const char *xpath, PyObject *callback, PyObject *private_ctx = NULL,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -534,7 +523,7 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         }
     }
 
-    void action_subscribe_tree(const char *xpath, PyObject *callback, void *private_ctx = NULL,\
+    void action_subscribe_tree(const char *xpath, PyObject *callback, PyObject *private_ctx = NULL,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -550,7 +539,7 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         }
     }
 
-    void event_notif_subscribe(const char *xpath, PyObject *callback, void *private_ctx,\
+    void event_notif_subscribe(const char *xpath, PyObject *callback, PyObject *private_ctx = NULL,\
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -566,7 +555,7 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         }
     }
 
-    void event_notif_subscribe_tree(const char *xpath, PyObject *callback, void *private_ctx,\
+    void event_notif_subscribe_tree(const char *xpath, PyObject *callback, PyObject *private_ctx = NULL,\
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -582,7 +571,7 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         }
     }
 
-    void dp_get_items_subscribe(const char *xpath, PyObject *callback, void *private_ctx, \
+    void dp_get_items_subscribe(const char *xpath, PyObject *callback, PyObject *private_ctx = NULL, \
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
