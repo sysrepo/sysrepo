@@ -658,74 +658,89 @@ void Subscribe::unsubscribe()
     _sub = NULL;
 }
 
-S_Vals Subscribe::rpc_send(const char *xpath, S_Vals input)
+S_Vals Session::rpc_send(const char *xpath, S_Vals input)
 {
     S_Vals output(new Vals());
 
-    int ret = sr_rpc_send(_sess->_sess, xpath, input->_vals, input->_cnt, &output->_vals, &output->_cnt);
+    int ret = sr_rpc_send(_sess, xpath, input->_vals, input->_cnt, &output->_vals, &output->_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
 
     // ensure that the class is not freed before
     if (input->_vals == NULL) {
-	throw_exception(SR_ERR_INTERNAL);
+        throw_exception(SR_ERR_INTERNAL);
     }
 
     output->_deleter = std::make_shared<Deleter>(output->_vals, output->_cnt);
     return output;
 }
 
-S_Vals Subscribe::action_send(const char *xpath, S_Vals input)
+S_Trees Session::rpc_send(const char *xpath, S_Trees input)
+{
+    S_Trees output(new Trees());
+
+    int ret = sr_rpc_send_tree(_sess, xpath, input->_trees, input->_cnt, &output->_trees, &output->_cnt);
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+
+    // ensure that the class is not freed before
+    if (input == NULL) {
+        throw_exception(SR_ERR_INTERNAL);
+    }
+
+    output->_deleter = std::make_shared<Deleter>(output->_trees, output->_cnt);
+    return output;
+}
+
+
+S_Vals Session::action_send(const char *xpath, S_Vals input)
 {
     S_Vals output(new Vals());
 
-    int ret = sr_action_send(_sess->_sess, xpath, input->_vals, input->_cnt, &output->_vals, &output->_cnt);
+    int ret = sr_action_send(_sess, xpath, input->_vals, input->_cnt, &output->_vals, &output->_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
 
     // ensure that the class is not freed before
     if (input->_vals == NULL) {
-	throw_exception(SR_ERR_INTERNAL);
+        throw_exception(SR_ERR_INTERNAL);
     }
 
     output->_deleter = std::make_shared<Deleter>(output->_vals, output->_cnt);
     return output;
 }
 
-S_Trees Subscribe::rpc_send_tree(const char *xpath, S_Trees input)
+S_Trees Session::action_send(const char *xpath, S_Trees input)
 {
     S_Trees output(new Trees());
 
-    int ret = sr_rpc_send_tree(_sess->_sess, xpath, input->_trees, input->_cnt, &output->_trees, &output->_cnt);
+    int ret = sr_action_send_tree(_sess, xpath, input->_trees, input->_cnt, &output->_trees, &output->_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
 
     // ensure that the class is not freed before
     if (input == NULL) {
-	throw_exception(SR_ERR_INTERNAL);
+        throw_exception(SR_ERR_INTERNAL);
     }
 
     output->_deleter = std::make_shared<Deleter>(output->_trees, output->_cnt);
     return output;
 }
 
-S_Trees Subscribe::action_send_tree(const char *xpath, S_Trees input)
+void Session::send_event(const char *xpath, S_Vals values, const sr_ev_notif_flag_t options)
 {
-    S_Trees output(new Trees());
-
-    int ret = sr_action_send_tree(_sess->_sess, xpath, input->_trees, input->_cnt, &output->_trees, &output->_cnt);
-    if (SR_ERR_OK != ret) {
+    int ret = sr_event_notif_send(_sess, xpath, values->_vals, values->val_cnt(), options);
+    if (ret != SR_ERR_OK)
         throw_exception(ret);
-    }
+}
 
-    // ensure that the class is not freed before
-    if (input == NULL) {
-	throw_exception(SR_ERR_INTERNAL);
-    }
-
-    output->_deleter = std::make_shared<Deleter>(output->_trees, output->_cnt);
-    return output;
+void Session::send_event(const char *xpath, S_Trees trees, const sr_ev_notif_flag_t options)
+{
+    int ret = sr_event_notif_send_tree(_sess, xpath, trees->_trees, trees->tree_cnt(), options);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
 }

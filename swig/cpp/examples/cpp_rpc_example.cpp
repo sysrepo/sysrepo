@@ -232,7 +232,7 @@ main(int argc, char **argv)
                            SR_STRING_T);
 
         cout << "\n ========== START RPC CALL ==========\n" << endl;
-        auto out_vals = subscribe->rpc_send("/test-module:activate-software-image", in_vals);
+        auto out_vals = sess->rpc_send("/test-module:activate-software-image", in_vals);
 
         cout << "\n ========== PRINT RETURN VALUE ==========\n" << endl;
         for(size_t n=0; n < out_vals->val_cnt(); ++n)
@@ -247,7 +247,7 @@ main(int argc, char **argv)
         in_trees->tree(0)->set("acmefw-2.3", SR_STRING_T);
 
         cout << "\n ========== START RPC TREE CALL ==========\n" << endl;
-        auto out_trees = subscribe->rpc_send_tree("/test-module:activate-software-image", in_trees);
+        auto out_trees = sess->rpc_send("/test-module:activate-software-image", in_trees);
 
         cout << "\n ========== PRINT RETURN VALUE ==========\n" << endl;
         for(size_t n=0; n < out_trees->tree_cnt(); ++n)

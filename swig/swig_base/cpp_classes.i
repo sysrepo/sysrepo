@@ -54,6 +54,9 @@
 %newobject Session::get_subtrees;
 %newobject Session::get_changes_iter;
 %newobject Session::get_change_next;
+%newobject Session::rpc_send;
+%newobject Session::action_send;
+%newobject Session::send_event;
 
 #ifndef SWIGLUA
 %shared_ptr(Callback);
@@ -67,8 +70,6 @@
 %ignore Subscribe::swig_sess;
 %ignore Subscribe::wrap_cb_l;
 %ignore Subscribe::additional_cleanup(void *);
-%newobject Subscribe::rpc_send;
-%newobject Subscribe::rpc_send_tree;
 
 #ifndef SWIGLUA
 %shared_ptr(Data);
