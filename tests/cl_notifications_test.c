@@ -2706,6 +2706,136 @@ cl_read_old_config_in_verify_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+typedef struct replay_notif_s {
+    pthread_mutex_t mutex;
+    pthread_cond_t cv;
+    sr_val_t *values;
+    size_t val_cnt;
+}replay_notif_t;
+
+void
+test_replay_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values,
+        const size_t values_cnt, time_t timestamp, void *private_ctx)
+{
+    replay_notif_t *rep = (replay_notif_t *) private_ctx;
+    pthread_mutex_lock(&rep->mutex);
+
+    /* store the last notification */
+    if (SR_EV_NOTIF_T_REPLAY == notif_type) {
+        sr_free_values(rep->values, rep->val_cnt);
+        rep->values = NULL;
+        rep->val_cnt = 0;
+
+        sr_dup_values(values, values_cnt, &rep->values);
+        rep->val_cnt = values_cnt;
+    }
+
+    if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
+        pthread_cond_signal(&rep->cv);
+    }
+    pthread_mutex_unlock(&rep->mutex);
+}
+
+static void
+cl_config_change_replay_test(void **state)
+{
+#if defined(DISABLE_CONFIG_CHANGE_NOTIF)
+    skip();
+#endif
+
+#ifndef STORE_CONFIG_CHANGE_NOTIF
+    skip();
+#endif
+
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    replay_notif_t replay = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
+
+    sr_val_t *val = NULL;
+    const char *xpath = NULL;
+    int rc = SR_ERR_OK;
+    xpath = "/example-module:container/list[key1='key1'][key2='key2']/leaf";
+
+    time_t start_time = time(NULL);
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check the leaf presence in candidate */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_free_val(val);
+
+    /* delete the leaf */
+    rc = sr_delete_item(session, xpath,SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
+
+    assert_int_equal(changes.cnt, 1);
+    assert_int_equal(SR_OP_DELETED, changes.oper[0]);
+    assert_null(changes.new_values[0]);
+    assert_non_null(changes.old_values[0]);
+    assert_string_equal(xpath, changes.old_values[0]->xpath);
+
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+    pthread_mutex_unlock(&changes.mutex);
+
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
+
+    rc = sr_event_notif_subscribe(session, "/ietf-netconf-notifications:netconf-config-change", test_replay_cb,
+            &replay, SR_SUBSCR_NOTIF_REPLAY_FIRST | SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    pthread_mutex_lock(&replay.mutex);
+    rc = sr_event_notif_replay(session, subscription, start_time, 0);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&replay.cv, &replay.mutex, &ts);
+
+    assert_int_equal(7, replay.val_cnt);
+
+    assert_string_equal(replay.values[0].xpath, "/ietf-netconf-notifications:netconf-config-change/changed-by");
+    assert_string_equal(replay.values[1].xpath, "/ietf-netconf-notifications:netconf-config-change/changed-by/session-id");
+    assert_string_equal(replay.values[2].xpath, "/ietf-netconf-notifications:netconf-config-change/changed-by/username");
+    assert_string_equal(replay.values[3].xpath, "/ietf-netconf-notifications:netconf-config-change/datastore");
+    assert_string_equal(replay.values[4].xpath, "/ietf-netconf-notifications:netconf-config-change/edit[1]");
+    assert_string_equal(replay.values[5].xpath, "/ietf-netconf-notifications:netconf-config-change/edit[1]/target");
+    assert_string_equal(replay.values[6].xpath, "/ietf-netconf-notifications:netconf-config-change/edit[1]/operation");
+
+    sr_free_values(replay.values, replay.val_cnt);
+
+    pthread_mutex_destroy(&replay.mutex);
+    pthread_cond_destroy(&replay.cv);
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -2739,6 +2869,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_capability_changed_notif_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_config_change_notif_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_read_old_config_in_verify_test, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_config_change_replay_test, sysrepo_setup, sysrepo_teardown),
     };
 
     watchdog_start(300);

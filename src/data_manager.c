@@ -5935,11 +5935,14 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     struct lyd_node *data_tree = NULL;
     struct lyxml_elem *xml = NULL;
     int rc = SR_ERR_OK;
+    dm_tmp_ly_ctx_t *tmp_ctx = NULL;
+    struct ly_ctx *ly_ctx = NULL;
+    bool locked = false;
 
-    CHECK_NULL_ARG5(dm_ctx, session, notification, notification->xpath, notification->data.xml);
+    CHECK_NULL_ARG4(dm_ctx, session, notification, notification->xpath);
 
-    if (NP_EV_NOTIF_DATA_XML != notification->data_type) {
-        SR_LOG_ERR_MSG("Invalid notification data type (should be XML).");
+    if (NP_EV_NOTIF_DATA_XML != notification->data_type && NP_EV_NOTIF_DATA_STRING != notification->data_type) {
+        SR_LOG_ERR_MSG("Invalid notification data type (should be XML or STRING).");
         return SR_ERR_INVAL_ARG;
     }
 
@@ -5948,6 +5951,9 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
 
     rc = dm_get_data_info(dm_ctx, session, module_name, &di);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Dm_get_dat_info failed for module %s", module_name);
+
+    free(module_name);
+    module_name = NULL;
 
     /* test for the presence of the procedure in the schema tree */
     proc_node = sr_find_schema_node(di->schema->module->data, notification->xpath, 0);
@@ -5958,25 +5964,50 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
         goto cleanup;
     }
 
-    /* duplicate the xml tree for use in the dm_ctx */
-    xml = lyxml_dup(di->schema->ly_ctx, notification->data.xml);
-    if (NULL == xml) {
-        SR_LOG_ERR("Error by duplicating of the notification XML tree: %s", ly_errmsg());
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
+    if (0 == strcmp("/ietf-netconf-notifications:netconf-config-change", notification->xpath)) {
+        CHECK_NULL_ARG(notification->data.string);
+        rc = dm_get_tmp_ly_ctx(dm_ctx, NULL, &tmp_ctx);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to acquire tmp ly_ctx");
+
+        md_ctx_lock(dm_ctx->md_ctx, false);
+        locked = true;
+        ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
+
+        xml = lyxml_parse_mem(tmp_ctx->ctx, notification->data.string, 0);
+        if (NULL == xml) {
+            SR_LOG_ERR("Error by parsing of the notification XML tree: %s", ly_errmsg());
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+
+        ly_ctx = tmp_ctx->ctx;
+
+    } else {
+        CHECK_NULL_ARG(notification->data.xml);
+        /* duplicate the xml tree for use in the dm_ctx */
+        xml = lyxml_dup(di->schema->ly_ctx, notification->data.xml);
+        if (NULL == xml) {
+            SR_LOG_ERR("Error by duplicating of the notification XML tree: %s", ly_errmsg());
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+
+        ly_ctx = di->schema->ly_ctx;
     }
 
     /* parse the XML into the data tree */
-    data_tree = lyd_parse_xml(di->schema->ly_ctx, &xml /* &notification->data.xml */, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
+    data_tree = lyd_parse_xml(ly_ctx, &xml, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
     if (NULL == data_tree) {
         SR_LOG_ERR("Error by parsing notification data: %s", ly_errmsg());
         rc = dm_report_error(session, ly_errmsg(), notification->xpath, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
 
-    /* validate the data tree & add default nodes */
-    rc = dm_validate_procedure_content(dm_ctx, session, di, DM_PROCEDURE_EVENT_NOTIF, true, data_tree, proc_node);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Procedure validation failed.");
+    if (!dm_skip_procedure_content_validation(notification->xpath)) {
+        /* validate the data tree & add default nodes */
+        rc = dm_validate_procedure_content(dm_ctx, session, di, DM_PROCEDURE_EVENT_NOTIF, true, data_tree, proc_node);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Procedure validation failed.");
+    }
 
     /* convert data tree into desired format */
     rc = dm_ly_datatree_to_sr_val_node(sr_mem, notification->xpath, data_tree, api_variant, false,
@@ -5988,9 +6019,13 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
 
 cleanup:
     if (NULL != xml) {
-        lyxml_free(di->schema->ly_ctx, xml);
+        lyxml_free(ly_ctx, xml);
     }
     lyd_free_withsiblings(data_tree);
+    if (locked) {
+        md_ctx_unlock(dm_ctx->md_ctx);
+        dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
+    }
     free(module_name);
 
     return rc;
@@ -6446,4 +6481,68 @@ dm_wait_for_commit_context_to_be_empty(dm_ctx_t *dm_ctx)
     pthread_mutex_unlock(&dm_ctx->commit_ctxs.empty_mutex);
 
     return SR_ERR_OK;
+}
+
+int
+dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, char **out)
+{
+    CHECK_NULL_ARG3(dm_ctx, notif, out);
+    int rc = SR_ERR_OK;
+    dm_tmp_ly_ctx_t *tmp_ctx = NULL;
+    struct lyd_node *tmp_notif = NULL;
+    sr_list_t *models = NULL;
+    bool locked = false;
+    struct ly_set *set = NULL;
+    char *module_name = NULL;
+    bool inserted = false;
+
+    rc = sr_list_init(&models);
+    CHECK_RC_MSG_RETURN(rc, "List init failed");
+
+    module_name = strdup("ietf-netconf-notifications");
+    CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
+
+    rc = sr_list_add(models, module_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+
+    module_name = NULL;
+
+    /* loop through instance ids */
+    set = lyd_find_xpath(notif, "/ietf-netconf-notifications:netconf-config-change/edit/target");
+    for (unsigned int i = 0; i < set->number; i++) {
+        rc = sr_copy_first_ns(((struct lyd_node_leaf_list *) set->set.d[i])->value_str, &module_name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to copy first ns");
+
+        rc = sr_list_insert_unique_ord(models, module_name, dm_string_cmp, &inserted);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into the list");
+
+        if (!inserted) {
+            free(module_name);
+        }
+        module_name = NULL;
+    }
+
+    rc = dm_get_tmp_ly_ctx(dm_ctx, models, &tmp_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to acquire tmp ly_ctx");
+
+    md_ctx_lock(dm_ctx->md_ctx, false);
+    locked = true;
+    ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
+
+    tmp_notif = sr_dup_datatree_to_ctx(notif, tmp_ctx->ctx);
+    lyd_print_mem(out, tmp_notif, LYD_XML, 0);
+
+cleanup:
+    free(module_name);
+    ly_set_free(set);
+    sr_free_list_of_strings(models);
+    lyd_free_withsiblings(tmp_notif);
+    if (locked) {
+        md_ctx_unlock(dm_ctx->md_ctx);
+    }
+    if (NULL != tmp_ctx) {
+        dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
+    }
+
+    return rc;
 }

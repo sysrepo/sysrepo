@@ -3127,16 +3127,18 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
     CHECK_RC_LOG_GOTO(rc, finalize, "Error by loading event notifications for xpath '%s'.", replay_req->xpath);
 
     /* send each notification to the subscriber */
-    for (size_t i = 0; i < notif_list->count; i++) {
-        np_ev_notification_t *notification = notif_list->data[i];
+    if (NULL != notif_list) {
+        for (size_t i = 0; i < notif_list->count; i++) {
+            np_ev_notification_t *notification = notif_list->data[i];
 
-        /* send the notification */
-        rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY, notification->xpath,
-                notification->timestamp, sr_api_variant_gpb_to_sr(replay_req->api_variant),
-                notification->data.values, notification->data_cnt, notification->data.trees, notification->data_cnt,
-                replay_req->subscriber_address, replay_req->subscription_id, 0);
-        CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the replay of notification '%s' to the subscriber '%s'.",
-                notification->xpath, replay_req->subscriber_address);
+            /* send the notification */
+            rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY, notification->xpath,
+                    notification->timestamp, sr_api_variant_gpb_to_sr(replay_req->api_variant),
+                    notification->data.values, notification->data_cnt, notification->data.trees, notification->data_cnt,
+                    replay_req->subscriber_address, replay_req->subscription_id, 0);
+            CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the replay of notification '%s' to the subscriber '%s'.",
+                    notification->xpath, replay_req->subscriber_address);
+        }
     }
 
     /* send replay-complete notification */
@@ -3147,8 +3149,10 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
             replay_req->subscriber_address);
 
 finalize:
-    for (size_t i = 0; i < notif_list->count; i++) {
-        np_event_notification_cleanup(notif_list->data[i]);
+    if (NULL != notif_list) {
+        for (size_t i = 0; i < notif_list->count; i++) {
+            np_event_notification_cleanup(notif_list->data[i]);
+        }
     }
     sr_list_cleanup(notif_list);
 #endif

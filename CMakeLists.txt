@@ -157,8 +157,7 @@ set(LOG_THREAD_ID 0 CACHE BOOL
 set(ENABLE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
     "Generate config-change notifications (RFC 6470).")
 
-#TODO: enable storing config change once instance-id validation is done
-set(STORE_CONFIG_CHANGE_NOTIF 0 CACHE BOOL
+set(STORE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
     "Save config-change notifications (RFC 6470) in the notification store (slows down the commit process).")
 
 # timeouts

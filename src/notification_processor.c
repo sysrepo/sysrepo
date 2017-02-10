@@ -668,6 +668,9 @@ np_event_notification_entry_fill(np_ev_notification_t *notification, struct lyd_
                 if (LYD_ANYDATA_XML == node_anydata->value_type) {
                     notification->data.xml = node_anydata->value.xml;
                     notification->data_type = NP_EV_NOTIF_DATA_XML;
+                } else if (LYD_ANYDATA_CONSTSTRING == node_anydata->value_type) {
+                    notification->data.string = node_anydata->value.str;
+                    notification->data_type = NP_EV_NOTIF_DATA_STRING;
                 }
             }
         }
@@ -1641,8 +1644,17 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
         new_node = new_node->child; /* new_node is 'notifications' container */
     }
 
-    /* store notification data as anydata */
-    new_node = lyd_new_anydata(new_node, NULL, "data", (void*)*notif_data_tree, LYD_ANYDATA_DATATREE);
+    if (0 == strcmp("/ietf-netconf-notifications:netconf-config-change", xpath)) {
+        char *string_notif = NULL;
+        rc = dm_netconf_config_change_to_string(np_ctx->rp_ctx->dm_ctx, *notif_data_tree, &string_notif);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed print config-change notif to string");
+        new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_STRING);
+        lyd_free_withsiblings(*notif_data_tree);
+        *notif_data_tree = NULL;
+    } else {
+        /* store notification data as anydata */
+        new_node = lyd_new_anydata(new_node, NULL, "data", (void*)*notif_data_tree, LYD_ANYDATA_DATATREE);
+    }
     if (NULL == new_node) {
         SR_LOG_ERR("Error by adding notification content into notification store: %s.", ly_errmsg());
         rc = SR_ERR_INTERNAL;
