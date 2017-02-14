@@ -29,7 +29,7 @@ import unittest
 class SubscriptionTester(SysrepoTester):
 
     def subscribeStep(self):
-        self.process = subprocess.Popen("subscription_test_app")
+        self.process = subprocess.Popen("SubscriptionTestApp.py")
         self.report_pid(self.process.pid)
         # wait for running data file to be copied
         time.sleep(0.1)
