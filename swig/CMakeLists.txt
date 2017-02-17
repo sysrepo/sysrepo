@@ -73,7 +73,6 @@ if(GEN_JAVA_BINDINGS AND SWIG_FOUND)
     endif()
 endif()
 
-
 project(Sysrepo-cpp)
 set(SYSREPO_CPP_SOURCES
 	${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.cpp
@@ -102,6 +101,7 @@ include_directories(${CMAKE_SOURCE_DIR})
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/cpp/src")
 target_link_libraries(Sysrepo-cpp sysrepo)
 
+<<<<<<< HEAD
 if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "2")
         set(PYTHON_SWIG_BINDING_2 libsysrepoPython2)
         include_directories(${PYTHON_INCLUDE_PATH})
@@ -259,6 +259,18 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src/" DESTINATION ${CMAKE_INS
 # Examples
 if(GEN_CPP_BINDINGS AND BUILD_CPP_EXAMPLES)
 	add_subdirectory(cpp/examples)
+endif()
+
+if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "2")
+    add_subdirectory(python2)
+endif()
+
+if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "3")
+    add_subdirectory(python3)
+endif()
+
+if(JAVA_FOUND)
+    add_subdirectory(java)
 endif()
 
 # build Lua bindings
