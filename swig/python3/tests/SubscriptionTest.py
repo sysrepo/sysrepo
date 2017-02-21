@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 __author__ = "Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>"
 __copyright__ = "Copyright 2016, Cisco Systems, Inc."
@@ -29,7 +29,8 @@ import unittest
 class SubscriptionTester(SysrepoTester):
 
     def subscribeStep(self):
-        self.process = subprocess.Popen("subscription_test_app")
+        self.process = subprocess.Popen("SubscriptionTestApp.py")
+
         self.report_pid(self.process.pid)
         # wait for running data file to be copied
         time.sleep(0.1)

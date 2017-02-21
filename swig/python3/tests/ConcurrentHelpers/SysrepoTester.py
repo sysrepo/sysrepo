@@ -83,9 +83,9 @@ class SysrepoTester(Tester):
         self.tc.assertEqual(items.val_cnt(), count)
 
     def getItemsFailStep(self, xpath):
-        with self.tc.assertRaisesRegexp(RuntimeError, ".* found"):
+        with self.tc.assertRaisesRegex(RuntimeError, ".* found"):
             vs = self.session.get_items(xpath)
-            if vs is None: raise (RuntimeError(".* found")) # likely a hack!
+            if vs is None: raise (RuntimeError(".* found"))
 
     def deleteItemStep(self, xpath):
         self.session.delete_item(xpath)
