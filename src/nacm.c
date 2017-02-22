@@ -405,6 +405,34 @@ nacm_get_data_targets(nacm_data_val_ctx_t *nacm_data_val_ctx, uint16_t rule_id)
 }
 
 /**
+ * @brief Get NACM flag from schema node.
+ */
+static nacm_flag_t
+nacm_get_schema(struct lys_node *sch_node)
+{
+    const struct lys_module *mod;
+    int i;
+    nacm_flag_t ret = NACM_NOT_DEFINED;
+
+    mod = ly_ctx_load_module(sch_node->module->ctx, "ietf-netconf-acm", "2012-02-22");
+    if (!mod) {
+        return 0;
+    }
+    for(i = 0; i < mod->extensions_size; ++i) {
+        if (0 == strcmp(mod->extensions[i].name, "default-deny-all")) {
+            if (-1 != lys_ext_instance_presence(&mod->extensions[i], sch_node->ext, sch_node->ext_size)) {
+                ret |= NACM_DENY_ALL;
+            }
+        } else if (0 == strcmp(mod->extensions[i].name, "default-deny-write")) {
+            if (-1 != lys_ext_instance_presence(&mod->extensions[i], sch_node->ext, sch_node->ext_size)) {
+                ret |= NACM_DENY_WRITE;
+            }
+        }
+    }
+    return ret;
+}
+
+/**
  * @brief Load NACM configuration from datastore.
  */
 static int
@@ -1106,7 +1134,7 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
 
 step10:
     /* steps 10: YANG extensions */
-    if (LYS_NACM_DENYA & sch_node->nacm) {
+    if (NACM_DENY_ALL & nacm_get_schema(sch_node)) {
         action = NACM_ACTION_DENY;
         goto unlock_all;
     }
@@ -1304,7 +1332,7 @@ nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const char *username, const char *x
 
 step10:
     /* steps 10: YANG extensions */
-    if (LYS_NACM_DENYA & sch_node->nacm) {
+    if (NACM_DENY_ALL & nacm_get_schema(sch_node)) {
         action = NACM_ACTION_DENY;
         goto unlock_all;
     }
@@ -1527,9 +1555,12 @@ nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx)
 static bool
 nacm_default_deny_read(const struct lyd_node *node)
 {
+    int nacm;
+
     while (node) {
-        if (node->schema->nacm) {
-            if (node->schema->nacm & LYS_NACM_DENYA) {
+        nacm = nacm_get_schema(node->schema);
+        if (nacm) {
+            if (NACM_DENY_ALL & nacm) {
                 return true;
             } else {
                 return false;
@@ -1545,7 +1576,7 @@ static bool
 nacm_default_deny_write(const struct lyd_node *node)
 {
     while (node) {
-        if (node->schema->nacm & (LYS_NACM_DENYW | LYS_NACM_DENYA)) {
+        if (nacm_get_schema(node->schema)) {
             return true;
         }
         node = node->parent;

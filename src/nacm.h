@@ -54,6 +54,15 @@ typedef enum nacm_action_e {
 } nacm_action_t;
 
 /**
+ * @brief NACM flag from schema node.
+ */
+typedef enum nacm_flag_e {
+    NACM_NOT_DEFINED = 0x00, /**< Not defined nacm */
+    NACM_DENY_ALL = 0x01,    /**< Nacm-deny-all. */
+    NACM_DENY_WRITE =0x02    /**< Nacm-deny-write. */
+} nacm_flag_t;
+
+/**
  * @brief Flags representing all types of NETCONF access operations.
  */
 typedef enum nacm_access_flag_e {
