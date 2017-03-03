@@ -408,7 +408,7 @@ nacm_get_data_targets(nacm_data_val_ctx_t *nacm_data_val_ctx, uint16_t rule_id)
  * @brief Get NACM flag from schema node.
  */
 static nacm_flag_t
-nacm_get_schema(const struct lys_module *mod, const struct lys_node *sch_node, nacm_flag_t opt)
+nacm_check_extension(const struct lys_module *mod, const struct lys_node *sch_node, nacm_flag_t opt)
 {
     nacm_flag_t ret = NACM_NOT_DEFINED;
 
@@ -1140,7 +1140,7 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
 
 step10:
     /* steps 10: YANG extensions */
-    if (nacm_get_schema(nacm_ctx->schema_info->module, sch_node, NACM_DENY_ALL)) {
+    if (nacm_check_extension(nacm_ctx->schema_info->module, sch_node, NACM_DENY_ALL)) {
         action = NACM_ACTION_DENY;
         goto unlock_all;
     }
@@ -1338,7 +1338,7 @@ nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const char *username, const char *x
 
 step10:
     /* steps 10: YANG extensions */
-    if (nacm_get_schema(nacm_ctx->schema_info->module, sch_node, NACM_DENY_ALL)) {
+    if (nacm_check_extension(nacm_ctx->schema_info->module, sch_node, NACM_DENY_ALL)) {
         action = NACM_ACTION_DENY;
         goto unlock_all;
     }
@@ -1564,7 +1564,7 @@ nacm_default_deny_read(const struct lys_module *mod, const struct lyd_node *node
     int nacm;
 
     while (node) {
-        nacm = nacm_get_schema(mod, node->schema, NACM_DENY_ALL | NACM_DENY_WRITE);
+        nacm = nacm_check_extension(mod, node->schema, NACM_DENY_ALL | NACM_DENY_WRITE);
         if (nacm) {
             if (NACM_DENY_ALL & nacm) {
                 return true;
@@ -1582,7 +1582,7 @@ static bool
 nacm_default_deny_write(const struct lys_module *mod, const struct lyd_node *node)
 {
     while (node) {
-        if (nacm_get_schema(mod, node->schema, NACM_DENY_ALL | NACM_DENY_WRITE)) {
+        if (nacm_check_extension(mod, node->schema, NACM_DENY_ALL | NACM_DENY_WRITE)) {
             return true;
         }
         node = node->parent;
