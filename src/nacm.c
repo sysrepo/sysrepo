@@ -405,6 +405,24 @@ nacm_get_data_targets(nacm_data_val_ctx_t *nacm_data_val_ctx, uint16_t rule_id)
 }
 
 /**
+ * @brief Get NACM flag from schema node.
+ */
+static nacm_flag_t
+nacm_check_extension(const struct lys_module *mod, const struct lys_node *sch_node, nacm_flag_t opt)
+{
+    nacm_flag_t ret = NACM_NOT_DEFINED;
+
+    if ((NACM_DENY_ALL & opt) && -1 != lys_ext_instance_presence(&mod->extensions[1], sch_node->ext, sch_node->ext_size)) {
+        ret |= NACM_DENY_ALL;
+    }
+    if ((NACM_DENY_WRITE & opt) && -1 != lys_ext_instance_presence(&mod->extensions[0], sch_node->ext, sch_node->ext_size)) {
+        ret |= NACM_DENY_WRITE;
+    }
+
+    return ret;
+}
+
+/**
  * @brief Load NACM configuration from datastore.
  */
 static int
@@ -799,8 +817,10 @@ cleanup:
 int
 nacm_init(dm_ctx_t *dm_ctx, const char *data_search_dir, nacm_ctx_t **nacm_ctx)
 {
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, i;
     nacm_ctx_t *ctx = NULL;
+    const struct lys_module *mod; /* shortcut */
+    struct lys_ext tmp_ext;
 
     CHECK_NULL_ARG3(dm_ctx, data_search_dir, nacm_ctx);
 
@@ -829,6 +849,20 @@ nacm_init(dm_ctx_t *dm_ctx, const char *data_search_dir, nacm_ctx_t **nacm_ctx)
         ctx->schema_info = NULL;
         SR_LOG_ERR_MSG("Failed to load NACM module schema.");
         goto cleanup;
+    }
+
+    /* check extension deny-all and deny-write in module schema is the right place */
+    mod = ctx->schema_info->module;
+    for (i = 0; i < mod->extensions_size; ++i) {
+        if (0 == strcmp(mod->extensions[i].name, "default-deny-all") && 1 != i) {
+            memcpy(&tmp_ext, &mod->extensions[1], sizeof tmp_ext);
+            memcpy(&mod->extensions[1], &mod->extensions[i], sizeof tmp_ext);
+            memcpy(&mod->extensions[i], &tmp_ext, sizeof tmp_ext);
+        } else if (0 == strcmp(mod->extensions[i].name, "default-deny-write") && 0 != i) {
+            memcpy(&tmp_ext, &mod->extensions[0], sizeof tmp_ext);
+            memcpy(&mod->extensions[0], &mod->extensions[i], sizeof tmp_ext);
+            memcpy(&mod->extensions[i], &tmp_ext, sizeof tmp_ext);
+        }
     }
 
     /* increase the schema usage count to prevent the uninstallation */
@@ -1106,7 +1140,7 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
 
 step10:
     /* steps 10: YANG extensions */
-    if (LYS_NACM_DENYA & sch_node->nacm) {
+    if (nacm_check_extension(nacm_ctx->schema_info->module, sch_node, NACM_DENY_ALL)) {
         action = NACM_ACTION_DENY;
         goto unlock_all;
     }
@@ -1304,7 +1338,7 @@ nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const char *username, const char *x
 
 step10:
     /* steps 10: YANG extensions */
-    if (LYS_NACM_DENYA & sch_node->nacm) {
+    if (nacm_check_extension(nacm_ctx->schema_info->module, sch_node, NACM_DENY_ALL)) {
         action = NACM_ACTION_DENY;
         goto unlock_all;
     }
@@ -1525,11 +1559,14 @@ nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx)
 }
 
 static bool
-nacm_default_deny_read(const struct lyd_node *node)
+nacm_default_deny_read(const struct lys_module *mod, const struct lyd_node *node)
 {
+    int nacm;
+
     while (node) {
-        if (node->schema->nacm) {
-            if (node->schema->nacm & LYS_NACM_DENYA) {
+        nacm = nacm_check_extension(mod, node->schema, NACM_DENY_ALL | NACM_DENY_WRITE);
+        if (nacm) {
+            if (NACM_DENY_ALL & nacm) {
                 return true;
             } else {
                 return false;
@@ -1542,10 +1579,10 @@ nacm_default_deny_read(const struct lyd_node *node)
 }
 
 static bool
-nacm_default_deny_write(const struct lyd_node *node)
+nacm_default_deny_write(const struct lys_module *mod, const struct lyd_node *node)
 {
     while (node) {
-        if (node->schema->nacm & (LYS_NACM_DENYW | LYS_NACM_DENYA)) {
+        if (nacm_check_extension(mod, node->schema, NACM_DENY_ALL | NACM_DENY_WRITE)) {
             return true;
         }
         node = node->parent;
@@ -1681,8 +1718,8 @@ nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t acces
     /* step 8: no matching rule was found */
 
     /* steps 9,10: YANG extensions */
-    if ((NACM_ACCESS_READ == access_type && nacm_default_deny_read(node)) ||
-        (NACM_ACCESS_READ != access_type && nacm_default_deny_write(node))) {
+    if ((NACM_ACCESS_READ == access_type && nacm_default_deny_read(nacm_ctx->schema_info->module, node)) ||
+        (NACM_ACCESS_READ != access_type && nacm_default_deny_write(nacm_ctx->schema_info->module, node))) {
         action = NACM_ACTION_DENY;
         goto cleanup;
     }
