@@ -37,6 +37,7 @@
 #include <string.h>
 #include <errno.h>
 #include <limits.h>
+#include <signal.h>
 #ifdef HAVE_REGEX_H
 #include <regex.h>
 #endif
@@ -63,6 +64,20 @@ typedef struct watchgod_ctx_s {
 static watchdog_ctx_t watchdog_ctx = {0, false, false};
 
 /**
+ * @brief Signal handler for sr_popen()
+ *
+ * To avoid issues connected with glibc bug
+ * (https://bugzilla.redhat.com/show_bug.cgi?id=1275384) when the process is
+ * watched by another process (like valgrind or ctest), it is necessary to
+ * cover SIGSEGV signal in child processes and hide it.
+ */
+static void
+sr_popen_fork_handler(int sig)
+{
+	exit(1);
+}
+
+/**
  * @brief A custom implementation of ::popen that hopefully doesn't
  * suffer from this glibc bug: https://bugzilla.redhat.com/show_bug.cgi?id=1275384
  */
@@ -73,13 +88,23 @@ sr_popen(const char *command, int *stdin_p, int *stdout_p, int *stderr_p)
 #define WRITE 1
     int p_stdin[2], p_stdout[2], p_stderr[2];
     pid_t pid;
+    struct sigaction action, action_old;
 
     if ((stdin_p && 0 != pipe(p_stdin)) || (stdout_p && 0 != pipe(p_stdout)) ||
         (stderr_p && 0 != pipe(p_stderr))) {
         return -1;
     }
 
+    /* use signal handler for SIGSEGV to hide the glibc bug */
+    action.sa_flags = 0;
+    sigemptyset(&action.sa_mask);
+    action.sa_handler = sr_popen_fork_handler;
+    sigaction(SIGSEGV, &action, &action_old);
+
     pid = fork();
+
+    /* put back the previous handler */
+    sigaction(SIGSEGV, &action_old, NULL);
 
     if (pid < 0) {
         return pid;
