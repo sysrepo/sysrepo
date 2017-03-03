@@ -50,6 +50,11 @@ daemon_kill(const char *pid_filename)
     /* send SIGTERM to the daemon process */
     ret = kill(pid, SIGTERM);
     assert_int_not_equal(ret, -1);
+
+    /* wait for real termination */
+    while (-1 != access(pid_filename, F_OK)) {
+        usleep(100);
+    }
 }
 
 static int

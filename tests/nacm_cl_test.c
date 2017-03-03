@@ -519,6 +519,11 @@ daemon_kill(bool last_attempt)
         SR_LOG_DBG("Sending %s signal to PID=%d.", (last_attempt ? "SIGKILL" : "SIGTERM"), pid);
         ret = kill(pid, last_attempt ? SIGKILL : SIGTERM);
         assert_int_not_equal_bt(-1, ret);
+
+        /* wait for real termination */
+        while (-1 != access(SR_DAEMON_PID_FILE, F_OK)) {
+            usleep(100);
+        }
     }
 }
 #endif
