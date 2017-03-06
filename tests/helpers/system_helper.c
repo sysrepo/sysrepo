@@ -82,6 +82,7 @@ sr_popen(const char *command, int *stdin_p, int *stdout_p, int *stderr_p)
     pid = fork();
 
     if (pid < 0) {
+        fprintf(stderr, "fork() failed: %s\n", strerror(errno));
         return pid;
     } else if (pid == 0) {
         if (stdin_p) {
@@ -191,6 +192,7 @@ print_backtrace()
     messages = backtrace_symbols(callstack, frames);
 
     for (int i = 2; i < frames; i++) {
+        fd = -1;
         parenthesis = strchr(messages[i], '(');
         if (NULL != parenthesis) {
             *parenthesis = '\0';
@@ -198,6 +200,7 @@ print_backtrace()
             child = sr_popen(cmd, NULL, &fd, NULL);
             assert_int_not_equal(-1, child);
             assert_true(fd >= 0);
+            buff[0] = '\n'; buff[1] = '\0'; /* no data from addr2line */
             read(fd, buff, sizeof(buff)-1);
             close(fd);
             assert_int_equal(child, waitpid(child, &status, 0));
@@ -316,6 +319,7 @@ read_file_content(int fd)
 
     for (;;) {
         size_t n = read(fd, buffer + cur, size - cur - 1);
+        assert_int_not_equal_bt(n, -1);
         cur += n;
         if (0 == n) { break; }
         if (cur + 1 == size) {
@@ -427,26 +431,29 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
     do {
         /* if needed, retry to workaround the fork bug in glibc: https://bugzilla.redhat.com/show_bug.cgi?id=1275384 */
         retry = false;
+        fd = -1;
 
         child = sr_popen(cmd, NULL, &fd, NULL);
         assert_int_not_equal(-1, child);
         assert_true(fd >= 0);
 
         buffer = read_file_content(fd);
-        if ('\0' == buffer[0] && 0 != strcmp(exp_content, ".*")) {
+
+        assert_int_equal(child, waitpid(child, &ret, 0));
+        if (WIFEXITED(ret)) {
+            assert_int_equal_bt(exp_ret, WEXITSTATUS(ret));
+
+            test_file_content_str(buffer, exp_content, regex);
+        } else {
+            /* child was terminated by signal */
             retry = true;
             cnt++;
-        } else {
-            test_file_content_str(buffer, exp_content, regex);
         }
 
         free(buffer);
         close(fd);
-        assert_int_equal(child, waitpid(child, &ret, 0));
-        if (!retry) {
-            assert_int_equal_bt(exp_ret, WEXITSTATUS(ret));
-        }
     } while (retry && cnt < 10);
+
 }
 
 static void *
