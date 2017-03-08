@@ -148,8 +148,8 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "2
           ADD_PYTHON_TEST(LockingTest)
           ADD_PYTHON_TEST(CommitTest)
           ADD_PYTHON_TEST(MoveTest)
-          ADD_PYTHON_TEST(SubscriptionTest)
-          ADD_PYTHON_TEST(NotificationTest) # note: needs notifications_test_app to work
+          # ADD_PYTHON_TEST(SubscriptionTest)
+          # ADD_PYTHON_TEST(NotificationTest) # note: needs notifications_test_app to work
 
           add_custom_command(TARGET ${SWIG_MODULE_${PYTHON_SWIG_BINDING_2}_REAL_NAME} POST_BUILD
             COMMAND cp "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_2}.so" ${PY2_SWIG_DIR}/tests
