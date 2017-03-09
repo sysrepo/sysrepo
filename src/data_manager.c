@@ -4457,6 +4457,20 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
                 }
 
                 for (d_cnt = 0; LYD_DIFF_END != ms->difflist->type[d_cnt]; d_cnt++) {
+                    if ((ms->difflist->type[d_cnt] == LYD_DIFF_CHANGED)
+                            && ((ms->difflist->first[d_cnt]->schema->nodetype == LYS_LEAF)
+                            || (ms->difflist->first[d_cnt]->schema->nodetype == LYS_LEAFLIST))
+                            && !strcmp(((struct lyd_node_leaf_list *)ms->difflist->first[d_cnt])->value_str,
+                                       ((struct lyd_node_leaf_list *)ms->difflist->second[d_cnt])->value_str)) {
+                        /* skip implicit default changed to explicit or vice versa */
+                        if (((struct lyd_node_leaf_list *)ms->difflist->first[d_cnt])->dflt
+                                == ((struct lyd_node_leaf_list *)ms->difflist->second[d_cnt])->dflt) {
+                            SR_LOG_ERR_MSG("Invalid lyd_diff() return value");
+                            continue;
+                        }
+                        continue;
+                    }
+
                     const struct lyd_node *cmp_node = dm_get_notification_match_node(ms->difflist, d_cnt);
                     rc = dm_match_subscription(ms->nodes[s], cmp_node, &match);
                     if (SR_ERR_OK != rc) {
