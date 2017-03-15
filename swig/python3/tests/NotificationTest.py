@@ -24,7 +24,7 @@ import signal
 import os
 import subprocess
 import TestModule
-import libsysrepoPython2 as sr
+import libsysrepoPython3 as sr
 
 
 class NotificationTester(SysrepoTester):
@@ -35,10 +35,11 @@ class NotificationTester(SysrepoTester):
 
     def subscribeStep(self, xpath):
         self.filename = "notifications_test_" + str(randint(0, 9999))
-        self.process = subprocess.Popen(['NotificationTestApp.py', xpath, self.filename])
+        # self.process = subprocess.Popen(["notifications_test_app.", xpath, self.filename])
+        self.process = subprocess.Popen(["NotificationTestApp.py", xpath, self.filename])
         self.report_pid(self.process.pid)
         # wait for running data file to be copied
-        time.sleep(0.1)
+        time.sleep(0.5)
 
     def cancelSubscriptionStep(self):
         os.kill(self.process.pid, signal.SIGINT)
@@ -46,15 +47,28 @@ class NotificationTester(SysrepoTester):
 
     def checkNotificationStep(self, expected):
         with open(self.filename, "r") as f:
-            self.notifications = []
-            for line in f:
-                self.notifications.append(line.split("|"))
+            self.notifications = [line.strip().split('|') for line in f]
 
-        self.tc.assertEqual(len(expected), len(self.notifications))
 
         ex_sorted = sorted(expected, key=lambda e: e[1])
         notif_sorted = sorted(self.notifications, key=lambda e: e[1])
+        # if True:
+        #     for i in range(max(len(notif_sorted), len(ex_sorted))):
+        #         if i < len(notif_sorted):
+        #             print('notif: ',file=sys.stderr,  end='')
+        #             print(str(notif_sorted[i]), file=sys.stderr, flush=True)
+        #         else:
+        #             print('<no notif>', file=sys.stderr, flush=True)
+        #         if i < len(ex_sorted):
+        #             print('expec: ',file=sys.stderr,  end='')
+        #             print(str(ex_sorted[i]), file=sys.stderr, flush=True)
+        #         else:
+        #             print('<no ex_sorted>', file=sys.stderr, flush=True)
+
+        self.tc.assertEqual(len(expected), len(self.notifications))
         for i in range(len(expected)):
+            print(ex_sorted[i][0], notif_sorted[i][0],ex_sorted[i][0]==notif_sorted[i][0], file=sys.stderr, flush=True)
+            print(ex_sorted[i][1], notif_sorted[i][1],ex_sorted[i][1]==notif_sorted[i][1], file=sys.stderr, flush=True)
             self.tc.assertEqual(ex_sorted[i][0], notif_sorted[i][0])
             self.tc.assertEqual(ex_sorted[i][1], notif_sorted[i][1])
 
@@ -159,7 +173,6 @@ class NotificationTest(unittest.TestCase):
         tm.add_tester(subscriber2)
         tm.add_tester(subscriber3)
         tm.run()
-
 
     def test_notify_modify(self):
         tm = TestManager()
