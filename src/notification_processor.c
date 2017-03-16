@@ -552,7 +552,9 @@ np_get_notification_files(np_ctx_t *np_ctx, const char *module_name, time_t time
     /* scan files in the directory with the data files (in alphabetical order) */
     dir_elem_cnt = scandir(dirname, &entries, NULL, alphasort);
     if (dir_elem_cnt < 0) {
-        SR_LOG_ERR("Error by scanning directory: %s.", sr_strerror_safe(errno));
+        if (errno != ENOENT) {
+            SR_LOG_ERR("Error by scanning directory: %s.", sr_strerror_safe(errno));
+        }
     } else {
         for (size_t i = 0; i < dir_elem_cnt; i++) {
             if ((DT_DIR != entries[i]->d_type) &&
