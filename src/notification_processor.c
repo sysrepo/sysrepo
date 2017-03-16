@@ -891,7 +891,7 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
 
             /* subscription for the whole module */
             for (i = 0; i < set->number; ++i) {
-                if (set->set.s[0]->nodetype == LYS_NOTIF) {
+                if (set->set.s[i]->nodetype == LYS_NOTIF) {
                     break;
                 }
             }
