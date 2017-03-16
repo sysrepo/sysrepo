@@ -2720,8 +2720,10 @@ test_replay_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_
     replay_notif_t *rep = (replay_notif_t *) private_ctx;
     pthread_mutex_lock(&rep->mutex);
 
-    /* store the last notification */
-    if (SR_EV_NOTIF_T_REPLAY == notif_type) {
+    if (0 == strcmp(xpath, "/nc-notifications:replayComplete")) {
+        pthread_cond_signal(&rep->cv);
+    } else if (SR_EV_NOTIF_T_REPLAY == notif_type) {
+        /* store the last notification */
         sr_free_values(rep->values, rep->val_cnt);
         rep->values = NULL;
         rep->val_cnt = 0;
@@ -2730,9 +2732,6 @@ test_replay_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_
         rep->val_cnt = values_cnt;
     }
 
-    if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
-        pthread_cond_signal(&rep->cv);
-    }
     pthread_mutex_unlock(&rep->mutex);
 }
 
@@ -2803,7 +2802,7 @@ cl_config_change_replay_test(void **state)
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
 
-    rc = sr_event_notif_subscribe(session, "/ietf-netconf-notifications:netconf-config-change", test_replay_cb,
+    rc = sr_event_notif_subscribe(session, "/ietf-netconf-notifications:*//.", test_replay_cb,
             &replay, SR_SUBSCR_NOTIF_REPLAY_FIRST | SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(SR_ERR_OK, rc);
 

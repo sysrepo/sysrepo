@@ -2315,10 +2315,6 @@ sr_ev_notification_type_gpb_to_sr(Sr__EventNotifReq__NotifType ev_notif_type)
             return SR_EV_NOTIF_T_REALTIME;
         case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY:
             return SR_EV_NOTIF_T_REPLAY;
-        case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_COMPLETE:
-            return SR_EV_NOTIF_T_REPLAY_COMPLETE;
-        case SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_STOP:
-            return SR_EV_NOTIF_T_REPLAY_STOP;
         default:
             return SR_EV_NOTIF_T_REALTIME;
     }

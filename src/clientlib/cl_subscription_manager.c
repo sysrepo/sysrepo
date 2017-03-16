@@ -986,7 +986,7 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
 
     /* handle SR_SUBSCR_NOTIF_REPLAY_FIRST flag */
     if (subscription->opts & SR_SUBSCR_NOTIF_REPLAY_FIRST) {
-        if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
+        if (0 == strcmp(msg->request->event_notif_req->xpath, "/nc-notifications:replayComplete")) {
             subscription->replay_completed = true;
         }
         if (SR_EV_NOTIF_T_REALTIME == notif_type && !subscription->replay_completed) {

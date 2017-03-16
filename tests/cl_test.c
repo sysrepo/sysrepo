@@ -5135,11 +5135,9 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
-    assert_string_equal("/test-module:link-discovered", xpath);
-
     assert_false(SR_EV_NOTIF_T_REALTIME == notif_type);
 
-    if (SR_EV_NOTIF_T_REPLAY == notif_type) {
+    if (0 == strcmp("/test-module:link-discovered", xpath)) {
         assert_int_equal(values_cnt, 7);
         assert_string_equal("/test-module:link-discovered/source", values[0].xpath);
         assert_int_equal(SR_CONTAINER_T, values[0].type);
@@ -5164,18 +5162,14 @@ test_event_notif_link_discovery_replay_cb(const sr_ev_notif_type_t notif_type, c
         assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
         cb_status->link_discovered += 1;
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
-    }
-
-    if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
+    } else if (0 == strcmp("/nc-notifications:replayComplete", xpath)) {
         assert_int_equal(values_cnt, 0);
         assert_null(values);
 
         assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
         cb_status->link_discovered += 1;
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
-    }
-
-    if (SR_EV_NOTIF_T_REPLAY_STOP == notif_type) {
+    } else if (0 == strcmp("/nc-notifications:notificationComplete", xpath)) {
         assert_int_equal(values_cnt, 0);
         assert_null(values);
 
@@ -5201,9 +5195,8 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
 
     assert_false(SR_EV_NOTIF_T_REALTIME == notif_type);
 
-    if (SR_EV_NOTIF_T_REPLAY == notif_type) {
+    if (0 == strcmp("/test-module:link-removed", xpath)) {
         assert_int_equal(values_cnt, 7);
-        assert_string_equal("/test-module:link-removed", xpath);
         assert_string_equal("/test-module:link-removed/source", values[0].xpath);
         assert_int_equal(SR_CONTAINER_T, values[0].type);
         assert_string_equal("/test-module:link-removed/source/address", values[1].xpath);
@@ -5227,18 +5220,14 @@ test_event_notif_link_removed_replay_cb(const sr_ev_notif_type_t notif_type, con
         assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
         cb_status->link_removed += 1;
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
-    }
-
-    if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
+    } else if (0 == strcmp("/nc-notifications:replayComplete", xpath)) {
         assert_int_equal(values_cnt, 0);
         assert_null(values);
 
         assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
         cb_status->link_removed += 1;
         assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
-    }
-
-    if (SR_EV_NOTIF_T_REPLAY_STOP == notif_type) {
+    } else if (0 == strcmp("/nc-notifications:notificationComplete", xpath)) {
         assert_int_equal(values_cnt, 0);
         assert_null(values);
 
@@ -5843,7 +5832,7 @@ cl_neg_subscribe_test (void **state)
 
     /* xpath identifies a container */
     rc = sr_event_notif_subscribe(session, "/test-module:main", test_event_notif_status_change_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
-    assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     assert_null(subs);
 
     rc = sr_event_notif_subscribe(session, "/unknown-module:non-existing-rpc", test_event_notif_status_change_cb, NULL, SR_SUBSCR_DEFAULT, &subs);

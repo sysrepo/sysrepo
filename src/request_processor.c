@@ -3142,9 +3142,9 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
     }
 
     /* send replay-complete notification */
-    rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_COMPLETE, replay_req->xpath,
-            time(NULL), sr_api_variant_gpb_to_sr(replay_req->api_variant), NULL, 0, NULL, 0,
-            replay_req->subscriber_address, replay_req->subscription_id, 0);
+    rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY,
+            "/nc-notifications:replayComplete", time(NULL), sr_api_variant_gpb_to_sr(replay_req->api_variant),
+            NULL, 0, NULL, 0, replay_req->subscriber_address, replay_req->subscription_id, 0);
     CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the replay-complete notification to the subscriber '%s'.",
             replay_req->subscriber_address);
 
@@ -3157,13 +3157,14 @@ finalize:
     sr_list_cleanup(notif_list);
 #endif
 
-    /* schedule replay-stop notification */
+    /* schedule notification-complete notification */
     if ((0 != replay_req->stop_time) && (time(NULL) <= replay_req->stop_time)) {
-        rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_STOP, replay_req->xpath,
-                replay_req->stop_time, sr_api_variant_gpb_to_sr(replay_req->api_variant), NULL, 0, NULL, 0,
+        rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REALTIME,
+                "/nc-notifications:notificationComplete", replay_req->stop_time,
+                sr_api_variant_gpb_to_sr(replay_req->api_variant), NULL, 0, NULL, 0,
                 replay_req->subscriber_address, replay_req->subscription_id, replay_req->stop_time);
         if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Error by scheduling the replay-stop notification to the subscriber '%s'.",
+            SR_LOG_ERR("Error by scheduling the notification-complete notification to the subscriber '%s'.",
                     replay_req->subscriber_address);
         }
     }
