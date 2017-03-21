@@ -1795,14 +1795,14 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath, const
  * @brief Replays already generated notifications stored in the notification store related to
  * the provided notification subscription (or subscriptions, in case that ::SR_SUBSCR_CTX_REUSE
  * was used). Notification callbacks of the given susbscriptions will be called with the type set to
- * ::SR_EV_NOTIF_REPLAY, ::SR_EV_NOTIF_REPLAY_COMPLETE or ::SR_EV_NOTIF_REPLAY_STOP.
+ * ::SR_EV_NOTIF_REPLAY.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] subscription Session context acquired with ::sr_session_start call.
  * @param[in] start_time Starting time of the desired time window for notification replay.
  * @param[in] stop_time End time of the desired time window for notification replay. If set to 0,
  * no stop time will be applied (all notifications up to the current time will be delivered,
- * ::SR_EV_NOTIF_REPLAY_STOP notification won't be delivered.).
+ * replayComplete notification won't be delivered.).
  *
  * @return Error code (SR_ERR_OK on success).
  */
