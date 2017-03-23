@@ -1179,6 +1179,7 @@ srcfg_print_help()
     printf("                                 2 = log error and warning messages\n");
     printf("                                 3 = log error, warning and informational messages\n");
     printf("                                 4 = log everything, including development debug messages\n");
+    printf("  -o, --state-data             Flag used to override default session handling; if present state data will be displayed\n");
     printf("\n");
     printf("Examples:\n");
     printf("  1) Edit *ietf-interfaces* module's *running config* in *xml format* in *default editor*:\n");
@@ -1215,6 +1216,7 @@ main(int argc, char* argv[])
     md_dep_t *dep = NULL;
     sr_llist_node_t *ll_node = NULL;
     int rc = SR_ERR_OK;
+    int sflag = SR_SESS_CONFIG_ONLY;
 
     struct option longopts[] = {
        { "help",      no_argument,       NULL, 'h' },
@@ -1227,12 +1229,13 @@ main(int argc, char* argv[])
        { "keep",      no_argument,       NULL, 'k' },
        { "permanent", no_argument,       NULL, 'p' },
        { "level",     required_argument, NULL, 'l' },
+       { "state-data",no_argument,       NULL, 'o' },
        { 0, 0, 0, 0 }
     };
 
     /* parse options */
     int curind = optind;
-    while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpl:0:", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpol:0:", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srcfg_print_help();
@@ -1275,6 +1278,9 @@ main(int argc, char* argv[])
                 break;
             case 'l':
                 log_level = atoi(optarg);
+                break;
+            case 'o':
+                sflag = SR_SESS_DEFAULT;
                 break;
             case '0':
                 /* 'hidden' option - custom repository location */
@@ -1396,7 +1402,7 @@ main(int argc, char* argv[])
     rc = sr_connect("sysrepocfg", SR_CONN_DEFAULT, &srcfg_connection);
     if (SR_ERR_OK == rc) {
         rc = sr_session_start(srcfg_connection, datastore == SRCFG_STORE_RUNNING ? SR_DS_RUNNING : SR_DS_STARTUP,
-                              SR_SESS_CONFIG_ONLY, &srcfg_session);
+                              sflag, &srcfg_session);
     }
     if (SR_ERR_OK != rc) {
         srcfg_report_error(rc);
@@ -1461,3 +1467,4 @@ terminate:
 
     return (SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
+
