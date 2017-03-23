@@ -1174,7 +1174,7 @@ typedef enum sr_subscr_flag_e {
 
     /**
      * @brief No real-time notifications will be delivered until ::sr_event_notif_replay is called
-     * and replay has finished (nc-notifications:replayComplete is delivered).
+     * and replay has finished (::SR_EV_NOTIF_REPLAY_COMPLETE is delivered).
      */
     SR_SUBSCR_NOTIF_REPLAY_FIRST = 32,
 } sr_subscr_flag_t;
@@ -1668,6 +1668,10 @@ int sr_action_send_tree(sr_session_ctx_t *session, const char *xpath,
 typedef enum sr_ev_notif_type_e {
     SR_EV_NOTIF_T_REALTIME,         /**< Real-time notification. The only possible type if you don't use ::sr_event_notif_replay. */
     SR_EV_NOTIF_T_REPLAY,           /**< Replayed notification. */
+    SR_EV_NOTIF_T_REPLAY_COMPLETE,  /**< Not a real notification, just a signal that the notification replay has completed
+                                         (all the stored notifications from the given time interval have been delivered). */
+    SR_EV_NOTIF_T_REPLAY_STOP,      /**< Not a real notification, just a signal that replay stop time has been reached
+                                         (delivered only if stop_time was specified to ::sr_event_notif_replay). */
 } sr_ev_notif_type_t;
 
 /**
@@ -1795,14 +1799,14 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath, const
  * @brief Replays already generated notifications stored in the notification store related to
  * the provided notification subscription (or subscriptions, in case that ::SR_SUBSCR_CTX_REUSE
  * was used). Notification callbacks of the given susbscriptions will be called with the type set to
- * ::SR_EV_NOTIF_REPLAY.
+ * ::SR_EV_NOTIF_REPLAY, ::SR_EV_NOTIF_REPLAY_COMPLETE or ::SR_EV_NOTIF_REPLAY_STOP.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] subscription Session context acquired with ::sr_session_start call.
  * @param[in] start_time Starting time of the desired time window for notification replay.
  * @param[in] stop_time End time of the desired time window for notification replay. If set to 0,
  * no stop time will be applied (all notifications up to the current time will be delivered,
- * replayComplete notification won't be delivered.).
+ * ::SR_EV_NOTIF_REPLAY_STOP notification won't be delivered).
  *
  * @return Error code (SR_ERR_OK on success).
  */

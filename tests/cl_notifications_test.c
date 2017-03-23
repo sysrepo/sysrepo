@@ -2720,10 +2720,8 @@ test_replay_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_
     replay_notif_t *rep = (replay_notif_t *) private_ctx;
     pthread_mutex_lock(&rep->mutex);
 
-    if (0 == strcmp(xpath, "/nc-notifications:replayComplete")) {
-        pthread_cond_signal(&rep->cv);
-    } else if (SR_EV_NOTIF_T_REPLAY == notif_type) {
-        /* store the last notification */
+    /* store the last notification */
+    if (SR_EV_NOTIF_T_REPLAY == notif_type) {
         sr_free_values(rep->values, rep->val_cnt);
         rep->values = NULL;
         rep->val_cnt = 0;
@@ -2732,6 +2730,9 @@ test_replay_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_
         rep->val_cnt = values_cnt;
     }
 
+    if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
+        pthread_cond_signal(&rep->cv);
+    }
     pthread_mutex_unlock(&rep->mutex);
 }
 
