@@ -1001,7 +1001,7 @@ cleanup:
 }
 
 /**
- * @brief Import the specified xpath for the given module
+ * @brief Import the specified xpath
  */
 static int
 srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathvalue, md_module_t *module, srcfg_datastore_t datastore, bool permanent)
@@ -1189,7 +1189,7 @@ cleanup:
 }
 
 /**
- * @brief Performs the --import operation from an XPATH.
+ * @brief Performs the --import operation from an xpath.
  */
 static int
 srcfg_import_xpath_operation(md_module_t *module, srcfg_datastore_t datastore, const char *xpath, const char *xpathvalue, bool permanent)
@@ -1256,8 +1256,7 @@ cleanup:
 }
 
 /**
- * @brief Export content of the specified datastore for the given module into a file
- * referenced by the descriptor 'fd_out'
+ * @brief Export content of the specified datastore for the given xpath
  */
 static int
 srcfg_export_xpath(struct ly_ctx *ly_ctx, int fd_out, md_module_t *module, const char *xpath, LYD_FORMAT format)
