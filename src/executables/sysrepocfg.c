@@ -1080,7 +1080,6 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
 	}
 
     if (0 == j) {
-        SR_LOG_DBG_MSG("Node already exists.");
 		lyset = lyd_find_xpath(current_dt, xpath);
 		if (lyset && (lyset->number)) {
 			for (j=0; j < lyset->number; j++) {
