@@ -36,6 +36,9 @@ endif()
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
 
+set(CALL_TARGET_BINS_DIRECTLY ON CACHE BOOL "Enable calling sysrepoctl/sysrepocfg directly at install time")
+set(INDIRECT_YANG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/yang/" CACHE PATH "Where to store YANG files when not executing sysrepoctl directly")
+
 if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
@@ -192,8 +195,13 @@ macro(EXEC_AT_INSTALL_TIME CMD)
         )
 endmacro(EXEC_AT_INSTALL_TIME)
 
+set(SH_INSTALL_YANG_CMDS "#!/bin/bash\n\nset -eux -o pipefail\nshopt -s failglob\n\nSYSREPOCTL=sysrepoctl\n\n")
 macro(INSTALL_YANG MODULE_NAME REVISION PERMISSIONS)
-    EXEC_AT_INSTALL_TIME("${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=${PERMISSIONS}")
+    if(CALL_TARGET_BINS_DIRECTLY)
+        EXEC_AT_INSTALL_TIME("${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=${PERMISSIONS}")
+    else()
+        set(SH_INSTALL_YANG_CMDS "${SH_INSTALL_YANG_CMDS}\\\${SYSREPOCTL} --install --yang=${INDIRECT_YANG_INSTALL_DIR}/${MODULE_NAME}${REVISION}.yang --permissions=${PERMISSIONS}\n")
+    endif()
 endmacro(INSTALL_YANG)
 
 # Examples
@@ -296,4 +304,13 @@ INSTALL_YANG("nc-notifications" "" "666")
 
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(swig)
+endif()
+
+if(NOT CALL_TARGET_BINS_DIRECTLY)
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/yang/"
+            DESTINATION "${INDIRECT_YANG_INSTALL_DIR}"
+            FILES_MATCHING PATTERN "*.yang")
+    set(install_yang_file_name "${CMAKE_CURRENT_BINARY_DIR}/install-yang.sh")
+    install(CODE "file(WRITE \"${install_yang_file_name}\" \"${SH_INSTALL_YANG_CMDS}\")")
+    install(CODE "message(STATUS \"Installation commands were written to ${install_yang_file_name}\")")
 endif()
