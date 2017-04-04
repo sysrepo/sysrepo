@@ -367,7 +367,7 @@ srctl_update_socket_dir_permissions(const char *module_name)
     }
 
     /* set the permissions on module's socket directory */
-    rc = sr_set_socket_dir_permissions(path, srctl_data_search_dir, module_name, true);
+    rc = sr_set_data_file_permissions(path, true, srctl_data_search_dir, module_name, true);
     CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
 
     return rc;

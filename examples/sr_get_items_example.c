@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include "sysrepo.h"
+#include "sysrepo/values.h"
 
 int
 main(int argc, char **argv)
@@ -52,7 +53,7 @@ main(int argc, char **argv)
     }
 
     for (size_t i = 0; i<count; i++){
-        puts(values[i].xpath);
+        sr_print_val(values+i);
     }
     
     sr_free_values(values, count);

@@ -30,6 +30,7 @@
 
 #include "sysrepo.h"
 #include "sr_common.h"
+#include "system_helper.h"
 
 bool daemon_run_before_test = false; /**< Indices if the daemon was running before executing the test. */
 
@@ -48,6 +49,11 @@ daemon_kill()
     /* send SIGTERM to the daemon process */
     ret = kill(pid, SIGTERM);
     assert_int_not_equal(ret, -1);
+
+    /* wait for real termination */
+    while (-1 != access(SR_DAEMON_PID_FILE, F_OK)) {
+        usleep(100);
+    }
 }
 
 static int
@@ -124,5 +130,8 @@ main() {
             cmocka_unit_test_setup_teardown(sysrepo_daemon_test, test_setup, test_teardown),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

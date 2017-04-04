@@ -5,6 +5,7 @@
 
 %include <typemaps.i>
 %include <stdint.i>
+%include "std_string.i"
 
 #ifndef SWIGLUA
 %include "std_shared_ptr.i"
@@ -34,20 +35,6 @@
 #ifndef SWIGLUA
 %shared_ptr(Connection);
 #endif
-%ignore Connection::get_conn();
-
-#ifndef SWIGLUA
-%shared_ptr(Schemas);
-#endif
-%ignore Schemas::p_sch();
-%ignore Schemas::p_cnt();
-%ignore Schemas::p_val();
-
-#ifndef SWIGLUA
-%shared_ptr(Schema_Content);
-#endif
-%ignore Schema_Content::p_get();
-
 
 #ifndef SWIGLUA
 %shared_ptr(Session);
@@ -65,11 +52,15 @@
 %newobject Session::get_item_next;
 %newobject Session::get_subtree;
 %newobject Session::get_subtrees;
+%newobject Session::get_changes_iter;
+%newobject Session::get_change_next;
+%newobject Session::rpc_send;
+%newobject Session::action_send;
+%newobject Session::send_event;
 
 #ifndef SWIGLUA
 %shared_ptr(Callback);
 #endif
-%ignore Callback::get();
 %ignore Callback::private_ctx;
 
 #ifndef SWIGLUA
@@ -79,10 +70,6 @@
 %ignore Subscribe::swig_sess;
 %ignore Subscribe::wrap_cb_l;
 %ignore Subscribe::additional_cleanup(void *);
-%newobject Subscribe::get_changes_iter;
-%newobject Subscribe::get_change_next;
-%newobject Subscribe::rpc_send;
-%newobject Subscribe::rpc_send_tree;
 
 #ifndef SWIGLUA
 %shared_ptr(Data);
@@ -95,10 +82,10 @@
 #endif
 %ignore Val::Val(sr_val_t *, S_Deleter);
 %ignore Val::Val(sr_val_t *);
-%ignore Val::get();
-%ignore Val::p_get();
 %newobject Val::data;
 %newobject Val::dup;
+%newobject Val::to_string;
+%newobject Val::val_to_string;
 
 #ifndef SWIGLUA
 %shared_ptr(Vals);
@@ -109,9 +96,7 @@
 %ignore Vals::Vals(sr_val_t **, size_t *, S_Deleter);
 %ignore Vals::Vals(sr_val_t **, size_t *);
 %ignore Vals::Vals(sr_val_t **);
-%ignore Vals::p_val();
 %ignore Vals::val();
-%ignore Vals::p_val_cnt();
 %newobject Vals::val;
 %newobject Vals::dup;
 
@@ -142,8 +127,6 @@
 #ifndef SWIGLUA
 %shared_ptr(Errors);
 #endif
-%ignore Errors::Errors(const sr_error_info_t *, size_t);
-%ignore Errors::Errors(const sr_error_info_t *);
 %newobject Errors::error;
 
 #ifndef SWIGLUA
@@ -167,8 +150,6 @@
 #ifndef SWIGLUA
 %shared_ptr(Yang_Schemas);
 #endif
-%ignore Yang_Schemas::Yang_Schemas(sr_schema_t *, size_t);
-%ignore Yang_Schemas::Yang_Schemas(sr_schema_t *);
 %newobject Yang_Schemas::schema;
 
 #ifndef SWIGLUA
@@ -187,8 +168,6 @@
 %shared_ptr(Iter_Value);
 #endif
 %ignore Iter_Value::Iter_Value(sr_val_iter_t *);
-%ignore Iter_Value::get();
-%ignore Iter_Value::p_get();
 
 #ifndef SWIGLUA
 %shared_ptr(Iter_Change);
@@ -198,9 +177,6 @@
 #ifndef SWIGLUA
 %shared_ptr(Change);
 #endif
-%ignore Change::p_oper();
-%ignore Change::p_old();
-%ignore Change::p_new();
 %newobject new_val;
 %newobject old_val;
 
@@ -212,7 +188,6 @@
 %ignore Tree::Tree(sr_node_t *, S_Deleter);
 %ignore Tree::Tree(sr_node_t *);
 %ignore Tree::tree();
-%ignore Tree::get();
 %newobject Tree::dup;
 %newobject Tree::node;
 %newobject Tree::data;
@@ -221,6 +196,7 @@
 %newobject Tree::prev;
 %newobject Tree::first_child;
 %newobject Tree::last_child;
+%newobject Tree::to_string;
 
 #ifndef SWIGLUA
 %shared_ptr(Trees);
@@ -232,8 +208,6 @@
 %ignore Trees::Trees(const sr_node_t *, const size_t);
 %ignore Trees::Trees(const sr_node_t *);
 %ignore Trees::trees();
-%ignore Trees::p_trees();
-%ignore Trees::p_trees_cnt();
 %newobject Trees::tree;
 %newobject Trees::dup;
 

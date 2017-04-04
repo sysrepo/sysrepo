@@ -68,33 +68,38 @@ srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, 
     int fd = -1;
     struct lyd_node *file_data = NULL, *exp_data = NULL;
     struct lyd_difflist *diff = NULL;
-    size_t count = 0;
+    size_t count = 0, skip_differences = 0;
 
     fd = open(file_path, O_RDONLY);
-    assert_true(fd >= 0);
+    assert_true_bt(fd >= 0);
 
     file_data = lyd_parse_fd(srcfg_test_libyang_ctx, fd, file_format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
     if (!file_data && LY_SUCCESS != ly_errno) {
         fprintf(stderr, "lyd_parse_fd error: %s (%s)", ly_errmsg(), ly_errpath());
     }
-    assert_true(file_data || LY_SUCCESS == ly_errno);
+    assert_true_bt(file_data || LY_SUCCESS == ly_errno);
     if (NULL != exp) {
         exp_data = lyd_parse_mem(srcfg_test_libyang_ctx, exp, exp_format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
         if (!exp_data && LY_SUCCESS != ly_errno) {
             fprintf(stderr, "lyd_parse_mem error: %s (%s)", ly_errmsg(), ly_errpath());
         }
-        assert_true(exp_data || LY_SUCCESS == ly_errno);
+        assert_true_bt(exp_data || LY_SUCCESS == ly_errno);
     }
 
     diff = lyd_diff(file_data, exp_data, LYD_DIFFOPT_WITHDEFAULTS);
-    assert_non_null(diff);
+    assert_non_null_bt(diff);
 
     while (diff->type && LYD_DIFF_END != diff->type[count]) {
-        printf("first: %s; second: %s\n", lyd_path(diff->first[count]), lyd_path(diff->second[count]));
+        if (NULL != diff->first[count] && LYS_ANYDATA == diff->first[count]->schema->nodetype) {
+            /* LYS_ANYDATA not supported by libyang JSON printer */
+            ++skip_differences;
+        } else {
+            printf("first: %s; second: %s\n", lyd_path(diff->first[count]), lyd_path(diff->second[count]));
+        }
         ++count;
     }
 
-    if (count > 0) {
+    if ((count - skip_differences) > 0) {
         fprintf(stderr, "file data:\n");
         lyd_print_fd(STDERR_FILENO, file_data, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
         fprintf(stderr, "exp data:\n");
@@ -110,7 +115,7 @@ srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, 
     }
 
     close(fd);
-    return count;
+    return (count - skip_differences);
 }
 
 /**
@@ -124,18 +129,18 @@ srcfg_test_cmp_data_files(const char *file1_path, LYD_FORMAT file1_format, const
     char *file2_content = NULL;
 
     fd = open(file2_path, O_RDONLY);
-    assert_true(fd >= 0);
+    assert_true_bt(fd >= 0);
 
-    assert_int_equal(0, fstat(fd, &file_info));
+    assert_int_equal_bt(0, fstat(fd, &file_info));
     if (0 < file_info.st_size) {
         file2_content = mmap(0, file_info.st_size, PROT_READ, MAP_SHARED, fd, 0);
-        assert_true(file2_content && MAP_FAILED != file2_content);
+        assert_true_bt(file2_content && MAP_FAILED != file2_content);
     }
 
     rc = srcfg_test_cmp_data_file_content(file1_path, file1_format, file2_content, file2_format);
 
     if (0 < file_info.st_size) {
-        assert_int_equal(0, munmap(file2_content, file_info.st_size));
+        assert_int_equal_bt(0, munmap(file2_content, file_info.st_size));
     }
     close(fd);
     return rc;
@@ -208,7 +213,7 @@ srcfg_test_set_startup_datastore(void **state)
 {
     createDataTreeIETFinterfacesModule();
     srcfg_test_datastore = strdup("startup");
-    assert_non_null(srcfg_test_datastore);
+    assert_non_null_bt(srcfg_test_datastore);
     return 0;
 }
 
@@ -217,7 +222,7 @@ srcfg_test_set_running_datastore(void **state)
 {
     createDataTreeIETFinterfacesModule();
     srcfg_test_datastore = strdup("running");
-    assert_non_null(srcfg_test_datastore);
+    assert_non_null_bt(srcfg_test_datastore);
     return 0;
 }
 
@@ -500,19 +505,19 @@ srcfg_test_import(void **state)
 static void
 srcfg_test_prepare_config(const char *config)
 {
-    FILE *fp = fopen(FILENAME_NEW_CONFIG, "w");
-    assert_non_null(fp);
-    fprintf(fp, "%s", config);
-    fclose(fp);
+    int fd = open(FILENAME_NEW_CONFIG, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+    assert_true(fd >= 0);
+    write(fd, config, strlen(config) * (sizeof *config));
+    close(fd);
 }
 
 static void
 srcfg_test_prepare_user_input(const char *input)
 {
-    FILE *fp = fopen(FILENAME_USER_INPUT, "w");
-    assert_non_null(fp);
-    fprintf(fp, "%s", input);
-    fclose(fp);
+    int fd = open(FILENAME_USER_INPUT, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+    assert_true(fd >= 0);
+    write(fd, input, strlen(input) * (sizeof *input));
+    close(fd);
 }
 
 static void
@@ -1085,7 +1090,9 @@ main() {
     truncate(TEST_DATA_SEARCH_DIR "referenced-data.persist", 0);
     truncate(TEST_DATA_SEARCH_DIR "cross-module.persist", 0);
 
+    watchdog_start(300);
     ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
 
 terminate:
     if (NULL != srcfg_test_session) {

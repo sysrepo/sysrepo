@@ -1,0 +1,344 @@
+/**
+
+@page mem_mgmt Memory Management (datastore developers)
+
+
+@section intro Introduction
+
+Sysrepo uses Google Protocol Buffers as the interface between the datastore and client library.
+This makes it easy to write a native client library for any language that
+supports GPB. Compared to XML, the amount of transfered data is 3 to 10 times smaller
+and the de(serialization) of messages is 20 to 100 times faster as claimed by Google.
+
+For sysrepo we use a C implementation of GPB called `protobuf-c`. It includes a code generator
+that converts Protocol Buffer `.proto` file directly to C descriptor code.
+The main drawback of this approach is that the generated data definitions are message-oriented
+and not particularly suitable for a public interface of a data-oriented application.
+
+We therefore decided to define our own structures for data-items that users should interact with.
+The use of GPB is actually completely hidden from the public interface. This approach, however, requires
+conversion methods between GPB data and sysrepo's own structures.
+A basic implementation of a conversion procedure would just allocate the target data
+type with all its members and deep-copy values of all attributes. This was also our
+original solution. Later we introduced our own memory management that aims
+to limit the number of allocations and copying of data for the conversion purposes.
+
+The basic idea is to perform shallow copies rather than deep copies, since GPB messages are always
+allocated only temporarily and released straight after a message is constructed and send or received
+and converted back to sysrepo data type. Furthermore, the number of allocations
+is also decreased by grouping all data fields of the same object together with its shallow copies
+and storing them jointly into larger, pre-allocated, memory blocks.
+This is possible to implement only because `protobuf-c` accept a pointer to a custom memory allocator
+denoted as `ProtobufCAllocator` and defined with the following data fields:
+
+~~~~~~~~~~~~~~~{.c}
+void *(* alloc )(void *allocator_data, size_t size)
+    Function to allocate memory.
+
+void (* free )(void *allocator_data, void *pointer)
+    Function to free memory.
+
+void * allocator_data
+    Opaque pointer passed to alloc and free functions.
+~~~~~~~~~~~~~~~
+
+We implement constructors, destructors and conversion methods for all objects that
+may carry larger amount of data between the client library and the engine.
+Currently, the list of objects that fall into this category is the following:
+ - value (::sr_val_t)
+ - list of values (array of ::sr_val_t)
+ - tree (recursive structure composed of ::sr_node_t)
+ - list of trees (array of tree roots of type ::sr_node_t)
+ - list of changes (array of ::sr_change_t)
+ - list of schemas (array of ::sr_schema_t)
+ - sysrepo GPB message (Sr__Msg)
+
+
+@section design Design
+
+As outlined in the previous section, the main purpose of the custom memory management
+was to decrease and smooth out the memory footprint of sysrepo as well as to improve the overall
+performance by decreasing the cost of conversion between GPB and sysrepo data types.
+At the same time, however, we intended to make the implementation as simple as possible
+and keep the original code the least intact.
+
+@subsection alloc Memory Allocation
+
+All memory used to store a single object and all its shallow copies is allocated from
+a single so called *memory context* (defined by ::sr_mem_ctx_t). Each managed object carries
+its underlying memory context with itself in the internal attribute `_sr_mem`.
+
+Memory context consists of a linked-list of larger, possibly pre-allocated, memory blocks.
+Each memory block is defined by its size and current usage (i.e. the number of bytes already
+allocated). To simplify the implementation and avoid internal fragmentation inside individual
+memory blocks, the memory is always allocated sequentially, continuing after the highest
+used byte (i.e. never from between allocated sections). The drawback is that section
+of a memory block is never really deallocated (i.e. reused) on its own, only the entire block
+may be freed. Even deallocation at the end of memory block has no effect for the simplicity purposes.
+
+A newly allocated context will have just one memory block of sufficient size (if known in advance).
+Over the time, the list may be getting longer as new blocks are allocated and added when needed,
+but sysrepo will always look only into the last `MAX_BLOCKS_AVAIL_FOR_ALLOC` blocks in the list to handle
+an allocation request (so that the complexity of allocation is constant).
+Whenever none of the trailing memory blocks offers empty space large enough to satisfy an allocation
+request, a new memory block is allocated and added to the end of the list. Its size is a multiple
+of the previously last block's size so that the total number of allocation is asymptotically logarithmic
+for a constant-size allocations.
+
+@subsection dealloc Memory Deallocation
+
+Memory context maintains a counter of all objects that it stores.
+Once a new object is (copy-)constructed, the object counter of the underlying memory
+context is incremented by one (even for list of values, trees etc.).
+Conversely, when it's deallocated, the counter is decreased by the same amount.
+Only when the counter drops to zero, some actual memory deallocation may take its place.
+Rather than deallocating the context immediately, sysrepo will keep a pool of unused memory
+contexts for a later re-use. The size of the pool is bounded by the constant `MAX_FREE_MEM_CONTEXTS`.
+If the pool has reached its configured capacity, newly freed contexts will be immediately destroyed,
+i.e. all the allocated memory will be returned back to the system. But even before an unused context
+is put into the pool, it may get stripped of some trailing memory blocks
+such that its size doesn't exceed the recent maximum peak usage by much.
+
+To compute the maximum recent peak usage is a problem of its own.
+While a single thread may easily maintain recent history of peak usages for contexts
+that it has deallocated (and it does so), it is not enough. In Sysrepo we use request-response
+communication pattern. One special thread, called _Connection manager_, receives all
+the requests and passes them further for load-balancing across multiple worker threads.
+Workers then process the requests that they were assign to and build responses
+which they send back to _Connection manager_. Objects with request data are therefore
+allocated only by _Connection Manager_ and deallocated by workers, whereas responses are allocated
+only by workers and deallocated by _Connection manager_. What workers see as they keep deallocating
+requests is a very small memory usage -- requests usually carry very little data.
+On the other hand, they often require lot of memory from the system for responses which may carry
+large chunks of data from the datastore.
+A locally computed peak usage in the deallocation phase would therefore lead to overly bounded
+memory pool on the side of workers and minimum memory re-use.
+In order to solve this issue, we incorporated the basic idea from Piggybacking into the design.
+Threads attach their view of recent average peak memory usage into each newly allocated memory
+context, which in its lifetime may travel between multiple threads.
+This information is then taken into the account in the deallocation phase.
+In the scenario above, without introducing any extra communication, _Connection manager_ gives
+feedback about the recent average size of responses that is has processed to workers,
+that will in turn keep more free memory in the pool for upcoming allocations.
+
+The picture below schematically depicts the sysrepo memory context:
+@image html mem_mgmt.png
+
+@section impl Implementation
+
+The core of the memory management is implemented in `src/common/sr_mem_mgmt.c`.
+Functions for converting between GPB and sysrepo data types have been extended
+for support and can be found in `src/common/sr_protobuf.c`.
+Constructors for objects are available in the `utils` sub-directory: `src/utils/values.c`
+and `src/utils/trees.c`. Destructors have been also updated, but kept in their original
+location: `src/common/sr_common.c`.
+
+The implementation maintains backward compatibility -- objects can be created the old
+way (using system's malloc, strdup, ...) and destroyed using the same sysrepo methods
+(::sr_free_val, ::sr_free_tree, ...), which will behave as before in this case
+(this is why they have been kept in `sr_common.c`). Sysrepo's own memory management will not
+be used for their storage. On the side of sysrepo engine (version 0.4.0+), however, the custom
+memory management will be used nonetheless, so even older applications should benefit.
+
+
+@section config Configuration
+
+Sysrepo memory management can be disabled (suitable for debugging purposes, see @ref pitfalls) using CMake
+option `USE_SR_MEM_MGMT`. It is the only configuration parameter exposed through CMake.
+The rest of the configuration is defined by macros at the top of the header file `src/common/sr_mem_mgmt.h`:
+
+ - `MEM_BLOCK_MIN_SIZE`: Minimal size of a memory block -- every new block will have at least this size,
+ even if you have requested just one byte.
+ - `MAX_BLOCKS_AVAIL_FOR_ALLOC`: Maximum number of non-empty trailing memory blocks that sysrepo will go through
+ in a context to search for a large enough free space.
+ - `MAX_FREE_MEM_CONTEXTS`: Maximum size of the pool for unused memory contexts.
+ - `MEM_PEAK_USAGE_HISTORY_LENGTH`: The length of the history of peak memory usage that each thread
+ maintains.
+
+
+@section pitfalls Pitfalls
+
+Here we list a few pitfalls that a developer should be aware of when interacting with the memory
+management of sysrepo:
+1. It is harder to track down the source of memory bugs related to managed objects. In most cases
+valgrind will just point to the place where a memory context was initially allocated.
+It may have been in different thread or even during processing of an older request due to memory
+context re-use.
+Some of the memory bugs may not even be detected at all. A memory access beyond an allocated
+data may still fall into the same memory block. For valgrind our memory management is transparent
+and has no chance of detecting this. For debugging we recommend to disable memory management,
+see @ref config.
+
+2. Sysrepo memory management is NOT thread-safe. The same memory context should not be used
+by more than one thread at the same time. The real pitfall here is that shallow copy is obviously
+stored in the same context as the original object (e.g. converting GPB value into sysrepo value
+will create a shallow copy of value attributes in the same context). You cannot therefore pass
+an object into another thread before deallocating (i.e. decreasing usage count) all its
+shallow copies (or not using them for the time being). If you need to create a copy of an object
+that will be used by different thread, use deep copy methods: ::sr_dup_val, ::sr_dup_values,
+::sr_dup_tree, ::sr_dup_trees.
+
+3. It is very important that destructors match constructors, i.e. ::sr_new_values should be
+paired with ::sr_free_values etc. Never deallocate individual items of a list (of values, trees, ...),
+even though it would be type safe from the language point of view. The reason is that the list
+is seen as a separate object type, which therefore increments the usage counter of memory context
+only by one. Deallocating each member individually would decrease the counter incorrectly
+multiple times and lead to a potential SIGSEGV.
+@note sr_free_values(value, 1) would incidentally work for a single value, similarly sr_free_trees(tree, 1).
+
+4. A memory context may realistically get deallocated only after the usage counter dropped
+to zero. This means that if you create a shallow copy of an object, the memory usage will
+remain increased even after the object or its copy was deleted.
+For example, in sysrepo when we send a content of a value, we convert it first to GPB (= shallow copy),
+let `protobuf-c` to serialize it and send the string through a socket. After the message
+is sent, the GPB representation is no longer needed and thus gets deallocated.
+But with the custom memory management its footprint would just remain uncleaned.
+Therefore we introduced a concept of snapshotting: ::sr_mem_snapshot creates a snapshot of
+a memory context (stores cursors, not the actual data, it has very low constant complexity),
+which we can restore using ::sr_mem_restore. In the scenario describe above we create
+snapshot just before the GBP copy is created and restore the context to that state
+after the message was sent.
+
+5. Memory context re-use works efficiently only if the frequency of allocations and deallocations
+is not too different. The worst-case is a producer-consumer scenario, where one thread allocates
+data for requests and passes them to another thread for processing and deallocation.
+Producer's memory pool is always empty, while consumer's pool is full but never really
+used. Fortunately, in sysrepo we use request-reponse communication pattern: memory blocks
+are evenly exchanged between _Connection manager_ and worker threads.
+
+
+@section example Example
+
+Here we outline a typical workflow of preparing data on the side of a sender and parsing
+them on the side of a receiver, with the focus on interaction with the sysrepo memory management:
+
+~~~~~~~~~~~~~~~{.c}
+int client() {
+    int rc = SR_ERR_OK;
+    sr_val_t *value = NULL;
+
+    /* create new sysrepo value -- will use memory management behind the scenes (if enabled by config) */
+    rc = sr_new_val("/ietf-interfaces:interfaces-state/interface[name='eth0']/type", &value);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "sr_new_val failed");
+
+    /* set string-like attribute -- do not use strdup! */
+    rc = sr_val_set_str_data(value, SR_IDENTITYREF_T, "ethernetCsmacd");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "sr_val_set_str_data failed");
+
+    send(value);
+
+cleanup:
+    /* sr_free_val will make the context available for reuse */
+    sr_free_val(value);
+    return rc;
+}
+
+int send(sr_val_t *value) {
+    int rc = SR_ERR_OK;
+    sr_mem_snapshot_t snapshot = { 0, };
+    sr_mem_ctx_t *sr_mem = NULL;
+    Sr__Msg *msg = NULL;
+
+    /* get context used to store the value (may be NULL if disabled) */
+    sr_mem = value->_sr_mem;
+
+    /* create a snapshot before making temporary shallow copies (NOOP for NULL) */
+    sr_mem_snapshot(sr_mem, &snapshot);
+
+    /* allocate GPB skeleton over the same memory context */
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__SET_ITEM, 0, &msg);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    if (NULL != sr_mem) {
+        /* attributes can be shallow-copied */
+        msg->request->set_item_req->xpath = value->xpath;
+    } else {
+        /* disabled sysrepo memory management */
+        msg->request->set_item_req->xpath = strdup(value->xpath);
+    }
+
+    /* convert value to GPB representation, attributes are shallow-copied */
+    rc = sr_dup_val_t_to_gpb(value, &msg->request->set_item_req->value);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "value duplication failed.");
+
+    /*
+     * ABBREVIATED
+     * Here we would serialize the data and send the message over a socket.
+     */
+
+cleanup:
+    /* restore original state of the context,
+       i.e. GPB message will get effectivelly deallocated */
+    if (NULL != sr_mem) {
+        sr_mem_restore(&snapshot);
+    } else {
+        /* disabled sysrepo memory management */
+        sr_msg_free(msg);
+    }
+    return rc;
+}
+
+int server() {
+    int rc = SR_ERR_OK;
+    sr_mem_ctx_t *sr_mem = NULL;
+    Sr__Msg *msg = NULL;
+    sr_val_t *value = NULL;
+    uint8_t *data = NULL;
+    size_t size = 0;
+
+    /*
+     * ABBREVIATED
+     * Here we would receive the message data from a socket.
+     */
+    rc = receive(&data, &size);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to receive message data.");
+
+    /* create new memory context */
+    if (NULL == sr_mem) {
+        rc = sr_mem_new(size, &sr_mem);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    }
+
+    /* deserialize message into the context */
+    ProtobufCAllocator allocator = sr_get_protobuf_allocator(sr_mem);
+    msg = sr__msg__unpack(&allocator, size, data);
+    if (NULL == msg) {
+        SR_LOG_ERR_MSG("Malformed message received.");
+        /*
+         * Need to explicitly deallocate the memory context as it contains no objects
+         * that would do it in their destructor.
+         */
+        sr_mem_free(sr_mem);
+        goto cleanup;
+    }
+
+    /* associate message with the context */
+    if (NULL != sr_mem) {
+        msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
+        ++sr_mem->obj_count;
+    }
+
+    if (NULL != msg->request->set_item_req->value) {
+        /* (shallow) copy the value from gpb */
+        rc = sr_dup_gpb_to_val_t(sr_mem, msg->request->set_item_req->value, &value);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Copying gpb value to sr_val_t failed");
+    }
+
+    /*
+     * ABBREVIATED
+     * Here we would process the value.
+     */
+     sr_print_val(value);
+
+cleanup:
+    sr_msg_free(msg);
+    sr_print_val(value);
+    /* now the context is available for reuse */
+
+    free(data);
+    return rc;
+}
+
+~~~~~~~~~~~~~~~
+
+*/

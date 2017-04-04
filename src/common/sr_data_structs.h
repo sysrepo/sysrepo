@@ -30,6 +30,10 @@
  * @brief Data structures used in sysrepo (list, linked-list, self-balanced binary tree, circular buffer).
  */
 
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+
 /**
  * @brief Doubly linked list node structure.
  */
@@ -150,6 +154,19 @@ int sr_list_rm(sr_list_t *list, void *item);
 int sr_list_rm_at(sr_list_t *list, size_t index);
 
 /**
+ * @brief Insert an element into the ordered list at the proper position. If the
+ * item to be inserted is already present in the list, it is not inserted again.
+ *
+ * @note To keep the order the items must be inserted only by this function
+ * @param [in] list Pointer to the list structure.
+ * @param [in] item Item to be inserted. (if not inserted it us up to the caller, to free it)
+ * @param [in] cmp Function that is used to compare the items in array.
+ * @param [out] inserted Signalizes whether the item was inserted or it is already present in the list
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_list_insert_unique_ord(sr_list_t *list, void *item, int (*cmp) (void *, void*), bool *inserted);
+
+/**
  * @brief Common context of balanced binary tree, independent of the library used.
  */
 typedef struct sr_btree_s sr_btree_t;
@@ -188,14 +205,14 @@ void sr_btree_cleanup(sr_btree_t* tree);
  * @brief Inserts a new item into the tree.
  *
  * A matching item to the inserted one (according to the compare function) must
- * not already exist in the tree, otherwise SR_ERR_EXISTS error is returned.
+ * not already exist in the tree, otherwise SR_ERR_DATA_EXISTS error is returned.
  *
  * @note O(log n).
  *
  * @param[in] tree Binary tree context acquired with ::sr_btree_init.
  * @param[in] item Item to be inserted.
  *
- * @return Error code (SR_ERR_OK on success, SR_ERR_EXISTS if the item already
+ * @return Error code (SR_ERR_OK on success, SR_ERR_DATA_EXISTS if the item already
  * exists in the tree, SR_ERR_NOMEM by memory allocation error).
  */
 int sr_btree_insert(sr_btree_t *tree, void *item);
@@ -359,7 +376,7 @@ int sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bo
  * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the file is already locked,
  * SR_ERR_UNATHORIZED if the file can not be locked because of the permission.
  */
-int sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, int fd, char *filename, bool write, bool blocking);
+int sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, int fd, const char *filename, bool write, bool blocking);
 
 /**
  * @brief Looks up the file based on the filename in locking set. Then the file is unlocked and fd is closed.
@@ -382,6 +399,82 @@ int sr_locking_set_unlock_close_file(sr_locking_set_t *lock_ctx, char *filename)
  * SR_ERR_INVAL_ARG if the file had not been locked in provided context.
  */
 int sr_locking_set_unlock_close_fd(sr_locking_set_t *lock_ctx, int fd);
+
+/**
+ * @brief A fixed-size sequence of N bits identified by their position (0..N-1).
+ */
+typedef struct sr_bitset_s {
+    uint32_t *bits;    /**< Array of bits split into groups of 32. */
+    size_t bit_count;  /**< The number of bits that the bitset can hold. */
+} sr_bitset_t;
+
+/**
+ * @brief Allocates and initializes a new bitset instance.
+ *
+ * @param[in] bit_count The number of bits to allocate storage for.
+ * @param[out] bitset Pointer to the bitset structure, it is supposed to be freed by ::sr_bitset_cleanup.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_bitset_init(size_t bit_count, sr_bitset_t **bitset);
+
+/**
+ * @brief Cleans up the bitset structure.
+ *
+ * @param[in] bitset Pointer to the bitset structure.
+ */
+void sr_bitset_cleanup(sr_bitset_t *bitset);
+
+/**
+ * @brief Set the value of a specified bit.
+ *
+ * @param[in] bitset Pointer to the bitset structure.
+ * @param[in] pos The position of the bit to set.
+ * @param[in] value The value to set the bit to.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_bitset_set(sr_bitset_t *bitset, size_t pos, bool value);
+
+/**
+ * @brief Get the value of a specified bit.
+ *
+ * @param[in] bitset Pointer to the bitset structure.
+ * @param[in] pos The position of the bit to get.
+ * @param[out] value The value of the bit as returned by this function.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_bitset_get(sr_bitset_t *bitset, size_t pos, bool *value);
+
+/**
+ * @brief Set all bits to *false*.
+ *
+ * @param[in] bitset Pointer to the bitset structure.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_bitset_reset(sr_bitset_t *bitset);
+
+/**
+ * @brief Check if the given bitset is empty (all bits are set to *false*).
+ *
+ * @param [in] bitset Bitset to test for emptiness.
+ *
+ * @return Returns *true* if the given bitset is empty, *false* otherwise.
+ */
+bool sr_bitset_empty(sr_bitset_t *bitset);
+
+/**
+ * @brief Check if two bitsets are disjoint (wrt. bits set to *true*).
+ *
+ * @param[in] bitset1 Pointer to the first bitset structure.
+ * @param[in] bitset2 Pointer to the second bitset structure.
+ * @param[out] disjoint *true* if sets are disjoint, *false* otherwise.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_bitset_disjoint(sr_bitset_t *bitset1, sr_bitset_t *bitset2, bool *disjoint);
 
 /**@} data_structs */
 

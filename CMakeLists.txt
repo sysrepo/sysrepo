@@ -36,14 +36,23 @@ endif()
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
 
+set(CALL_TARGET_BINS_DIRECTLY ON CACHE BOOL "Enable calling sysrepoctl/sysrepocfg directly at install time")
+set(INDIRECT_YANG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/yang/" CACHE PATH "Where to store YANG files when not executing sysrepoctl directly")
+
 if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
 
 set(PLUGINS_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
 
+if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug" AND NOT CMAKE_BUILD_TYPE_LOWER MATCHES "^rel")
+    set(IS_DEBUG_BUILD true)
+else()
+    set(IS_DEBUG_BUILD false)
+endif()
+
 # set build-type specific settings
-if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
+if(${IS_DEBUG_BUILD})
     MESSAGE(STATUS "Preparing debug build of sysrepo v. ${SYSREPO_VERSION}")
     set(DAEMON_PID_FILE "/tmp/sysrepod.pid" CACHE PATH "Sysrepo daemon PID file.")
     set(DAEMON_SOCKET "/tmp/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
@@ -58,7 +67,7 @@ else()
 endif()
 
 # location of system repository
-if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
+if(${IS_DEBUG_BUILD})
     set(REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository" CACHE PATH "System repository location, contains configuration schema and data files.")
 else()
     set(REPOSITORY_LOC "/etc/sysrepo" CACHE PATH "System repository location, contains configuration schema and data files.")
@@ -67,6 +76,7 @@ set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/internal/")
 set(INTERNAL_DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/internal/")
+set(NOTIF_DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/notifications/")
 MESSAGE(STATUS "sysrepo repository location: ${REPOSITORY_LOC}")
 
 # include custom Modules
@@ -125,24 +135,74 @@ include(CheckStructHasMember)
 CHECK_FUNCTION_EXISTS(pthread_rwlockattr_setkind_np HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
 CHECK_FUNCTION_EXISTS(getpeereid HAVE_GETPEEREID)
 CHECK_FUNCTION_EXISTS(getpeerucred HAVE_GETPEERUCRED)
-CHECK_FUNCTION_EXISTS(pthread_mutex_timedlock HAVE_TIMED_LOCK)
 CHECK_INCLUDE_FILES(ucred.h HAVE_UCRED_H)
+CHECK_FUNCTION_EXISTS(pthread_mutex_timedlock HAVE_TIMED_LOCK)
 CHECK_FUNCTION_EXISTS(setfsuid HAVE_SETFSUID)
+CHECK_FUNCTION_EXISTS(fsetxattr HAVE_FSETXATTR)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
 # user options
-option (USE_SR_MEM_MGMT
-        "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs)."
-        ON)
+set(ENABLE_NACM 1 CACHE BOOL
+    "Enable NETCONF Access Control Model (RFC 6536).")
 
-set(COMMIT_TIMEOUT 10 CACHE INTEGER "Commit operation timeout (in seconds).")
+set(NACM_RECOVERY_UID 0 CACHE INTEGER
+    "UID to be used to identify NACM recovery session, default value is 0.")
 
-option (LOG_THREAD_ID
-        "If enabled, sysrepo logger will append thread ID (as well as function name) to each printed message."
-        OFF)
+set(ENABLE_NOTIF_STORE 1 CACHE BOOL
+    "Enable event notifications store & notifications replay.")
+
+set(USE_SR_MEM_MGMT 1 CACHE BOOL
+    "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs).")
+
+set(LOG_THREAD_ID 0 CACHE BOOL
+    "If enabled, sysrepo logger will append thread ID (as well as function name) to each printed message.")
+
+set(ENABLE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
+    "Generate config-change notifications (RFC 6470).")
+
+set(STORE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
+    "Save config-change notifications (RFC 6470) in the notification store (slows down the commit process).")
+
+# timeouts
+set(REQUEST_TIMEOUT 3 CACHE INTEGER
+    "Timeout (in seconds) for standard Sysrepo API requests.")
+
+set(LONG_REQUEST_TIMEOUT 15 CACHE INTEGER
+    "Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action).")
+
+set(COMMIT_VERIFY_TIMEOUT 10 CACHE INTEGER
+    "Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers.")
+
+set(OPER_DATA_PROVIDE_TIMEOUT 2 CACHE INTEGER
+    "Timeout (in seconds) that a request can wait for operational data from data providers.")
+
+set(NOTIF_AGE_TIMEOUT 60 CACHE INTEGER
+    "Timeout (in minutes) after which stored notifications will be aged out and erased from notification store.")
+
+set(NOTIF_TIME_WINDOW 10 CACHE INTEGER
+    "Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files).")
 
 # add subdirectories
 add_subdirectory(src)
+
+# execute command at the install time
+macro(EXEC_AT_INSTALL_TIME CMD)
+    install(CODE "message(STATUS \"Exec: ${CMD}\")
+        execute_process(COMMAND ${CMD} OUTPUT_QUIET RESULT_VARIABLE ret)
+        if (NOT \${ret} EQUAL 0)
+          message(FATAL_ERROR \"Error: \${ret}\")
+        endif()"
+        )
+endmacro(EXEC_AT_INSTALL_TIME)
+
+set(SH_INSTALL_YANG_CMDS "#!/bin/bash\n\nset -eux -o pipefail\nshopt -s failglob\n\nSYSREPOCTL=sysrepoctl\n\n")
+macro(INSTALL_YANG MODULE_NAME REVISION PERMISSIONS)
+    if(CALL_TARGET_BINS_DIRECTLY)
+        EXEC_AT_INSTALL_TIME("${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=${PERMISSIONS}")
+    else()
+        set(SH_INSTALL_YANG_CMDS "${SH_INSTALL_YANG_CMDS}\\\${SYSREPOCTL} --install --yang=${INDIRECT_YANG_INSTALL_DIR}/${MODULE_NAME}${REVISION}.yang --permissions=${PERMISSIONS}\n")
+    endif()
+endmacro(INSTALL_YANG)
 
 # Examples
 SET(BUILD_EXAMPLES 1 CACHE BOOL "Build examples and install example YANG models.")
@@ -206,8 +266,17 @@ install (DIRECTORY DESTINATION ${SUBSCRIPTIONS_SOCKET_DIR} DIRECTORY_PERMISSIONS
 install(DIRECTORY DESTINATION ${PLUGINS_DIR})
 
 # install internal YANGs
-install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
-install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
+set(INTERNAL_YANGS
+    ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang
+    ${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang
+    ${PROJECT_SOURCE_DIR}/yang/sysrepo-notification-store.yang
+)
+install (FILES ${INTERNAL_YANGS} DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
+
+# install NACM YANG module
+if(ENABLE_NACM)
+    INSTALL_YANG("ietf-netconf-acm" "@2012-02-22" "644")
+endif(ENABLE_NACM)
 
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
@@ -230,6 +299,18 @@ if(WITH_SYSTEMD)
         FILES_MATCHING PATTERN "*.service")
 endif()
 
+INSTALL_YANG("ietf-netconf-notifications" "" "666")
+INSTALL_YANG("nc-notifications" "" "666")
+
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(swig)
+endif()
+
+if(NOT CALL_TARGET_BINS_DIRECTLY)
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/yang/"
+            DESTINATION "${INDIRECT_YANG_INSTALL_DIR}"
+            FILES_MATCHING PATTERN "*.yang")
+    set(install_yang_file_name "${CMAKE_CURRENT_BINARY_DIR}/install-yang.sh")
+    install(CODE "file(WRITE \"${install_yang_file_name}\" \"${SH_INSTALL_YANG_CMDS}\")")
+    install(CODE "message(STATUS \"Installation commands were written to ${install_yang_file_name}\")")
 endif()

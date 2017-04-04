@@ -24,64 +24,20 @@ import java.util.Scanner;
 
 /* Function for printing out values depending on their type. */
 class Print {
-	public void print_value(Val value) {
-		System.out.print(value.xpath() + " ");
-
-		if (value.type() == sr_type_t.SR_CONTAINER_T)
-			System.out.println( "(container)" );
-		else if (value.type() == sr_type_t.SR_CONTAINER_PRESENCE_T)
-			System.out.println( "(container)" );
-		else if (value.type() == sr_type_t.SR_LIST_T)
-			System.out.println( "(list instance)" );
-		else if (value.type() == sr_type_t.SR_STRING_T)
-			System.out.println( "= " + value.data().get_string() );
-		else if (value.type() == sr_type_t.SR_BOOL_T)
-			if (value.data().get_bool())
-				System.out.println( "= true" );
-			else
-				System.out.println( "= false" );
-		else if (value.type() == sr_type_t.SR_ENUM_T)
-			System.out.println( "= " + value.data().get_enum() );
-		else if (value.type() == sr_type_t.SR_UINT8_T)
-			System.out.println( "= " + value.data().get_uint8() );
-		else if (value.type() == sr_type_t.SR_UINT16_T)
-			System.out.println( "= " + value.data().get_uint16() );
-		else if (value.type() == sr_type_t.SR_UINT32_T)
-			System.out.println( "= " + value.data().get_uint32() );
-		else if (value.type() == sr_type_t.SR_UINT64_T)
-			System.out.println( "= " + value.data().get_uint64() );
-		else if (value.type() == sr_type_t.SR_INT8_T)
-			System.out.println( "= " + value.data().get_int8() );
-		else if (value.type() == sr_type_t.SR_INT16_T)
-			System.out.println( "= " + value.data().get_int16() );
-		else if (value.type() == sr_type_t.SR_INT32_T)
-			System.out.println( "= " + value.data().get_int32() );
-		else if (value.type() == sr_type_t.SR_INT64_T)
-			System.out.println( "= " + value.data().get_int64() );
-		else if (value.type() == sr_type_t.SR_IDENTITYREF_T)
-			System.out.println( "= " + value.data().get_identityref() );
-		else if (value.type() == sr_type_t.SR_BITS_T)
-			System.out.println( "= " + value.data().get_bits() );
-		else if (value.type() == sr_type_t.SR_BINARY_T)
-			System.out.println( "= " + value.data().get_binary() );
-		else
-			System.out.println( "(unprintable)");
-	}
-
 	/* Helper function for printing changes given operation, old and new value. */
 	public void change(sr_change_oper_t op, Val old_val, Val new_val) {
 		if (op == sr_change_oper_t.SR_OP_CREATED) {
 			System.out.print("CREATED: ");
-			print_value(new_val);
+			System.out.print(new_val.to_string());
 		} else if (op == sr_change_oper_t.SR_OP_DELETED) {
 			System.out.print("DELETED: ");
-			print_value(old_val);
+			System.out.print(old_val.to_string());
 		} else if (op == sr_change_oper_t.SR_OP_MODIFIED) {
 			System.out.print("MODIFIED: ");
 			System.out.print("old value");
-			print_value(old_val);
+			System.out.print(old_val.to_string());
 			System.out.print("new value");
-			print_value(new_val);
+			System.out.print(new_val.to_string());
 		} else if (op == sr_change_oper_t.SR_OP_MOVED) {
 			System.out.print( "MOVED: " + new_val.xpath() + " after " + old_val.xpath());
 		}
@@ -108,14 +64,14 @@ class Print {
 		Vals values = session.get_items(select_xpath);
 
 		for (int i = 0; i < values.val_cnt(); i++) {
-			print_value(values.val(i));
+			System.out.print(values.val(i).to_string());
 		}
 	}
 }
 
 class My_Callback extends Callback {
 	/* Function to be called for subscribed client of given session whenever configuration changes. */
-	public void module_change(Session sess, String module_name, sr_notif_event_t event, SWIGTYPE_p_void private_ctx) {
+	public int module_change(Session sess, String module_name, sr_notif_event_t event, SWIGTYPE_p_void private_ctx) {
 		System.out.println("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n");
 
 		try {
@@ -131,11 +87,10 @@ class My_Callback extends Callback {
 
 			String change_path = "/" + module_name + ":*";
 
-			Subscribe subscribe = new Subscribe(sess);
-			Iter_Change it = subscribe.get_changes_iter(change_path);
+			Iter_Change it = sess.get_changes_iter(change_path);
 
 			while (true) {
-				Change change = subscribe.get_change_next(it);
+				Change change = sess.get_change_next(it);
 				if (change == null)
 					break;
 				print.change(change.oper(), change.old_val(), change.new_val());
@@ -145,6 +100,7 @@ class My_Callback extends Callback {
 		} catch (Exception e) {
 			System.out.println(e);
 		}
+                return sr_error_t.SR_ERR_OK.swigValue();
 	}
 }
 

@@ -153,7 +153,9 @@ rp_dt_contains_non_default_node(struct ly_set *nodes)
         if ((LYS_LEAFLIST | LYS_LIST) & nodes->set.d[i]->schema->nodetype ||
             (LYS_CONTAINER == nodes->set.d[i]->schema->nodetype &&
                  NULL != ((struct lys_node_container *) nodes->set.d[i]->schema)->presence) ||
-            (LYS_LEAF == nodes->set.d[i]->schema->nodetype && !nodes->set.d[i]->dflt)) {
+            (LYS_LEAF == nodes->set.d[i]->schema->nodetype && !nodes->set.d[i]->dflt) ||
+            (LYS_ANYXML == nodes->set.d[i]->schema->nodetype && !nodes->set.d[i]->dflt) ||
+            (LYS_ANYDATA == nodes->set.d[i]->schema->nodetype && !nodes->set.d[i]->dflt)) {
             return true;
         } else if (LYS_CONTAINER == nodes->set.d[i]->schema->nodetype) {
             struct lyd_node *next = NULL, *iter = NULL;
@@ -304,7 +306,7 @@ cleanup:
 }
 
 int
-rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value)
+rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value, const char *str_val)
 {
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
     /* value can be NULL if the list is created */
@@ -316,6 +318,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     dm_data_info_t *info = NULL;
     dm_schema_info_t *schema_info = NULL;
     struct lyd_node *node = NULL;
+    char *module_name = NULL;
 
     /* validate xpath */
     rc = rp_dt_validate_node_xpath_lock(dm_ctx, session, xpath, &schema_info, &sch_node);
@@ -329,25 +332,24 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         pthread_rwlock_unlock(&schema_info->model_lock);
         return SR_ERR_INVAL_ARG;
     }
+    module_name = strdup(module->name);
+    pthread_rwlock_unlock(&schema_info->model_lock);
+    CHECK_NULL_NOMEM_RETURN(module_name);
+
 
     /* get data tree to be update */
-    rc = dm_get_data_info(dm_ctx, session, module->name, &info);
-    if (SR_ERR_OK != rc) {
-        pthread_rwlock_unlock(&schema_info->model_lock);
-    }
-
+    rc = dm_get_data_info(dm_ctx, session, module_name, &info);
+    free(module_name);
+    module_name = NULL;
     CHECK_RC_LOG_RETURN(rc, "Getting data tree failed for xpath '%s'", xpath);
 
     /* check if node is enabled */
     if (dm_is_running_ds_session(session)) {
         if (!dm_is_enabled_check_recursively(sch_node)) {
             SR_LOG_ERR("The node is not enabled in running datastore %s", xpath);
-            pthread_rwlock_unlock(&schema_info->model_lock);
             return SR_ERR_INVAL_ARG;
         }
     }
-
-    pthread_rwlock_unlock(&schema_info->model_lock);
 
     /* non-presence container can not be created */
     if (LYS_CONTAINER == sch_node->nodetype && NULL == ((struct lys_node_container *) sch_node)->presence) {
@@ -369,10 +371,13 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
 
     /* transform new value from sr_val_t to string */
     if (NULL != value) {
-        rc = sr_val_to_str(value, sch_node, &new_value);
+        rc = sr_val_to_str_with_schema(value, sch_node, &new_value);
         CHECK_RC_MSG_RETURN(rc, "Copy new value to string failed");
+    } else if (NULL != str_val) {
+        new_value = strdup(str_val);
+        CHECK_NULL_NOMEM_RETURN(new_value);
     } else if (!((LYS_CONTAINER | LYS_LIST) & sch_node->nodetype) &&
-            !(LYS_LEAFLIST == sch_node->nodetype && NULL != strstr(xpath, "[.='") && ']' == xpath[strlen(xpath)-1])) {
+            !(LYS_LEAFLIST == sch_node->nodetype && (NULL != strstr(xpath, "[.='") || NULL != strstr(xpath, "[.=\"")) && ']' == xpath[strlen(xpath)-1])) {
         /* value can be NULL only if a presence container, list or leaf-list with predicated is being created */
         SR_LOG_ERR_MSG("Argument value not passed");
         return SR_ERR_INVAL_ARG;
@@ -452,16 +457,22 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
 {
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
     int rc = SR_ERR_OK;
-    struct lyd_node *node = NULL;
+    struct lyd_node *node = NULL, *node2 = NULL;
     struct lyd_node *sibling = NULL;
     dm_schema_info_t *schema_info = NULL;
     dm_data_info_t *info = NULL;
+    char *module_name = NULL;
 
     rc = rp_dt_validate_node_xpath_lock(dm_ctx, session, xpath, &schema_info, NULL);
     CHECK_RC_LOG_RETURN(rc, "Requested node is not valid %s", xpath);
 
-    rc = dm_get_data_info(dm_ctx, session, schema_info->module_name, &info);
+    module_name = strdup(schema_info->module_name);
     pthread_rwlock_unlock(&schema_info->model_lock);
+    CHECK_NULL_NOMEM_RETURN(module_name);
+
+    rc = dm_get_data_info(dm_ctx, session, module_name, &info);
+    free(module_name);
+    module_name = NULL;
     CHECK_RC_LOG_RETURN(rc, "Getting data tree failed for xpath '%s'", xpath);
 
 
@@ -489,18 +500,23 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
             return rc;
         }
     } else {
-        struct ly_set *siblings = lyd_find_instance(info->node, node->schema);
+        node2 = sibling = node;
 
-        if (NULL == siblings || 0 == siblings->number) {
-            SR_LOG_ERR_MSG("No siblings found");
-            return SR_ERR_INVAL_ARG;
-        }
         if (SR_MOVE_FIRST == position) {
-            sibling = siblings->set.d[0];
+            while (node2->prev->next) {
+                node2 = node2->prev;
+                if (node2->schema == node->schema) {
+                    sibling = node2;
+                }
+            }
         } else if (SR_MOVE_LAST == position) {
-            sibling = siblings->set.d[siblings->number - 1];
+            while (node2->next) {
+                node2 = node2->next;
+                if (node2->schema == node->schema) {
+                    sibling = node2;
+                }
+            }
         }
-        ly_set_free(siblings);
     }
 
     if (NULL == sibling || !((LYS_LIST | LYS_LEAFLIST) & sibling->schema->nodetype) || (!(LYS_USERORDERED & sibling->schema->flags)) || (node->schema != sibling->schema)) {
@@ -537,7 +553,7 @@ rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpa
     rc = ac_check_node_permissions(session->ac_session, xpath, AC_OPER_READ_WRITE);
     CHECK_RC_LOG_RETURN(rc, "Access control check failed for xpath '%s'", xpath);
 
-    rc = dm_add_operation(session->dm_session, DM_MOVE_OP, xpath, NULL, 0, position, relative_item);
+    rc = dm_add_move_operation(session->dm_session, xpath, position, relative_item);
     CHECK_RC_MSG_RETURN(rc, "Adding operation to session op list failed");
 
     rc = rp_dt_move_list(rp_ctx->dm_ctx, session->dm_session, xpath, position, relative_item);
@@ -550,7 +566,7 @@ rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpa
 }
 
 int
-rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_val_t *val, sr_edit_options_t opt)
+rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_val_t *val, char *str_val, sr_edit_options_t opt)
 {
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, session, session->dm_session, xpath);
 
@@ -562,14 +578,15 @@ rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpat
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
         sr_free_val(val);
+        free(str_val);
         return rc;
     }
 
-    rc = dm_add_operation(session->dm_session, DM_SET_OP, xpath, val, opt, 0, NULL);
-    /* val is freed by dm_add_operation */
+    rc = dm_add_set_operation(session->dm_session, xpath, val, str_val, opt);
+    /* val and str_val is freed by dm_add_operation */
     CHECK_RC_MSG_RETURN(rc, "Adding operation to session op list failed");
 
-    rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, opt, val);
+    rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, opt, val, str_val);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Set item failed");
         dm_remove_last_operation(session->dm_session);
@@ -588,7 +605,7 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
     rc = ac_check_node_permissions(session->ac_session, xpath, AC_OPER_READ_WRITE);
     CHECK_RC_LOG_RETURN(rc, "Access control check failed for xpath '%s'", xpath);
 
-    rc = dm_add_operation(session->dm_session, DM_DELETE_OP, xpath, NULL, opts, 0, NULL);
+    rc = dm_add_del_operation(session->dm_session, xpath, opts);
     CHECK_RC_MSG_RETURN(rc, "Adding operation to session op list failed");
 
     rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session, xpath, opts);
@@ -640,7 +657,7 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
 
         switch (op->op) {
         case DM_SET_OP:
-            rc = rp_dt_set_item(ctx, session, op->xpath, op->detail.set.options, op->detail.set.val);
+            rc = rp_dt_set_item(ctx, session, op->xpath, op->detail.set.options, op->detail.set.val, op->detail.set.str_val);
             break;
         case DM_DELETE_OP:
             rc = rp_dt_delete_item(ctx, session, op->xpath, op->detail.del.options);
@@ -667,6 +684,110 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
     }
 }
 
+static int
+rp_dt_generate_config_change_notification (rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx)
+{
+    int rc = SR_ERR_OK;
+    sr_list_t *diff_lists = NULL;
+    dm_model_subscription_t *ms = NULL;
+    dm_data_info_t lookup_info = {0};
+    dm_data_info_t *prev_info = NULL, *commit_info = NULL;
+    struct lyd_difflist *diff = NULL;
+
+    rc = sr_list_init(&diff_lists);
+    CHECK_RC_MSG_RETURN(rc, "Failed to allocate list");
+
+    if (SR_DS_STARTUP == session->datastore) {
+
+        dm_data_info_t *info = NULL;
+        size_t i = 0;
+        sr_btree_t *session_models = NULL, *commit_session_models = NULL;
+
+        rc = dm_get_session_datatrees(rp_ctx->dm_ctx, session->dm_session, &session_models);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed get session datatrees");
+
+        rc = dm_get_session_datatrees(rp_ctx->dm_ctx, c_ctx->session, &commit_session_models);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed get session datatrees");
+
+        while (NULL != (info = sr_btree_get_at(session_models, i++))) {
+            if (!info->modified) {
+                continue;
+            }
+
+            lookup_info.schema = info->schema;
+            /* configuration before commit */
+            prev_info = sr_btree_search(c_ctx->prev_data_trees, &lookup_info);
+            if (NULL == prev_info) {
+                SR_LOG_ERR("Current data tree for module %s not found", info->schema->module->name);
+                continue;
+            }
+            /* configuration after commit */
+            commit_info = sr_btree_search(commit_session_models, &lookup_info);
+            if (NULL == commit_info) {
+                SR_LOG_ERR("Commit data tree for module %s not found", info->schema->module->name);
+                continue;
+            }
+
+            diff = lyd_diff(prev_info->node, commit_info->node, LYD_DIFFOPT_WITHDEFAULTS);
+            if (NULL == diff) {
+                continue;
+            }
+
+            rc = sr_list_add(diff_lists, diff);
+            if (SR_ERR_OK != rc) {
+                lyd_free_diff(diff);
+            }
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into the list");
+        }
+    } else {
+        size_t index = 0;
+        while (NULL != (ms = sr_btree_get_at(c_ctx->subscriptions, index))) {
+            SR_LOG_DBG("Config changes for module %s", ms->schema_info->module_name);
+            if (NULL != ms->difflist) {
+                rc = sr_list_add(diff_lists, ms->difflist);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+            }
+            index++;
+        }
+    }
+
+    rc = rp_generate_config_change_notification(rp_ctx, session, diff_lists);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create config-change notification");
+
+cleanup:
+    if (SR_DS_STARTUP == session->datastore) {
+        for (size_t i = 0; i < diff_lists->count; i++) {
+            lyd_free_diff(diff_lists->data[i]);
+        }
+    }
+    sr_list_cleanup(diff_lists);
+
+    return rc;
+}
+
+/**
+ * @brief Reload NACM configuration (asynchronous, sends a request to the request processor).
+ */
+static int
+rp_dt_reload_nacm(rp_ctx_t *rp_ctx)
+{
+    Sr__Msg *req = NULL;
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG(rp_ctx);
+
+    /* setup the timer */
+    rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__NACM_RELOAD, &req);
+    if (SR_ERR_OK == rc) {
+        /* enqueue the message */
+        rc = cm_msg_send(rp_ctx->cm_ctx, req);
+    }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Unable to send a request to reload the running NACM configuration.");
+    }
+
+    return rc;
+}
+
 int
 rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, sr_error_info_t **errors, size_t *err_cnt)
 {
@@ -679,13 +800,17 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
         return rc;
     }
 
+    bool remove_ctx = false;
+    bool free_ctx = false;
+    uint32_t c_id = 0;
     dm_commit_context_t *commit_ctx = c_ctx;
     dm_commit_state_t state = NULL != commit_ctx ? commit_ctx->state : DM_COMMIT_STARTED;
+    nacm_ctx_t *nacm_ctx = NULL;
 
     while (state != DM_COMMIT_FINISHED) {
         switch (state) {
         case DM_COMMIT_STARTED:
-            SR_LOG_DBG_MSG("Commit (1/9): process started");
+            SR_LOG_DBG_MSG("Commit (1/10): process started");
             state = DM_COMMIT_VALIDATION;
             break;
         case DM_COMMIT_VALIDATION:
@@ -694,30 +819,32 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 SR_LOG_ERR("Data validation failed: %s", *err_cnt > 0 ? errors[0]->message : "(no error)");
                 return SR_ERR_VALIDATION_FAILED;
             }
-            SR_LOG_DBG_MSG("Commit (2/9): validation succeeded");
+            SR_LOG_DBG_MSG("Commit (2/10): validation succeeded");
             state = DM_COMMIT_LOAD_MODIFIED_MODELS;
             break;
         case DM_COMMIT_LOAD_MODIFIED_MODELS:
             rc = dm_commit_prepare_context(rp_ctx->dm_ctx, session->dm_session, &commit_ctx);
             CHECK_RC_MSG_RETURN(rc, "commit prepare context failed");
+            commit_ctx->init_session = session;
             if (0 == commit_ctx->modif_count) {
                 SR_LOG_DBG_MSG("Commit: Finished - no model modified");
                 dm_free_commit_context(commit_ctx);
                 return SR_ERR_OK;
             }
             pthread_mutex_lock(&commit_ctx->mutex);
+            commit_ctx->disabled_config_change = rp_ctx->do_not_generate_config_change;
             /* open all files */
             rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx,
                     errors, err_cnt);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Loading of modified models failed");
-            SR_LOG_DBG_MSG("Commit (3/9): all modified models loaded successfully");
+            SR_LOG_DBG_MSG("Commit (3/10): all modified models loaded successfully");
             state = DM_COMMIT_REPLAY_OPS;
             break;
         case DM_COMMIT_REPLAY_OPS:
             rc = rp_dt_replay_operations(rp_ctx->dm_ctx, commit_ctx->session, commit_ctx->operations,
                 commit_ctx->oper_count, false, commit_ctx->up_to_date_models);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Replay of operations failed");
-            SR_LOG_DBG_MSG("Commit (4/9): replay of operation succeeded");
+            SR_LOG_DBG_MSG("Commit (4/10): replay of operation succeeded");
             state = DM_COMMIT_VALIDATE_MERGED;
             break;
         case DM_COMMIT_VALIDATE_MERGED:
@@ -727,15 +854,27 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 rc = SR_ERR_VALIDATION_FAILED;
                 goto cleanup;
             }
-            SR_LOG_DBG_MSG("Commit (5/9): merged models validation succeeded");
+            SR_LOG_DBG_MSG("Commit (5/10): merged models validation succeeded");
+            state = DM_COMMIT_NACM;
+            break;
+        case DM_COMMIT_NACM:
+            rc = dm_commit_netconf_access_control(rp_ctx->dm_ctx, session->dm_session, commit_ctx, errors, err_cnt);
+            if (SR_ERR_OK != rc) {
+                if (SR_ERR_UNAUTHORIZED != rc) {
+                    SR_LOG_ERR_MSG("Failed to evaluate write access for the commit operation");
+                } else {
+                    SR_LOG_ERR_MSG("Commit was aborted due to insufficient access rights");
+                }
+                goto cleanup;
+            }
+            SR_LOG_DBG_MSG("Commit (6/10): write access granted by NACM");
             state = DM_COMMIT_NOTIFY_VERIFY;
             break;
         case DM_COMMIT_NOTIFY_VERIFY:
-            commit_ctx->init_session = session;
             rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_VERIFY, commit_ctx);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Sending of verify notifications failed");
             state = commit_ctx->state;
-            SR_LOG_DBG_MSG("Commit (6/9): verify phase done");
+            SR_LOG_DBG_MSG("Commit (7/10): verify phase done");
             break;
         case DM_COMMIT_WAIT_FOR_NOTIFICATIONS:
             SR_LOG_DBG("Commit %"PRIu32" processing paused waiting for replies from verifiers", commit_ctx->id);
@@ -743,16 +882,31 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             pthread_mutex_unlock(&commit_ctx->mutex);
             return rc;
         case DM_COMMIT_WRITE:
-            rc = dm_commit_write_files(session->dm_session, commit_ctx);
-            if (SR_ERR_OK == rc) {
-                SR_LOG_DBG_MSG("Commit (7/9): data write succeeded");
+            rc = dm_commit_writelock_fds(session->dm_session, commit_ctx);
+            if (SR_ERR_OK == rc ) {
+                rc = dm_commit_write_files(session->dm_session, commit_ctx);
+                if (SR_ERR_OK == rc) {
+                    SR_LOG_DBG_MSG("Commit (8/10): data write succeeded");
+                }
+            }
+            if (SR_ERR_OK == rc && commit_ctx->nacm_edited) {
+                /* request to reload NACM configuration if it was edited */
+                rc = dm_get_nacm_ctx(rp_ctx->dm_ctx, &nacm_ctx);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_WRN_MSG("Failed to get NACM context");
+                } else if (NULL != nacm_ctx) {
+                    rc = rp_dt_reload_nacm(rp_ctx);
+                }
             }
             state = DM_COMMIT_NOTIFY_APPLY;
             break;
         case DM_COMMIT_NOTIFY_APPLY:
             rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_APPLY, commit_ctx);
+            if (SR_ERR_OK == rc && !rp_ctx->do_not_generate_config_change) {
+                rc = rp_dt_generate_config_change_notification(rp_ctx, session, commit_ctx);
+            }
             state = DM_COMMIT_FINISHED;
-            SR_LOG_DBG_MSG("Commit (8/9): apply notifications sent");
+            SR_LOG_DBG_MSG("Commit (9/10): apply notifications sent");
             break;
         case DM_COMMIT_NOTIFY_ABORT:
             rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_ABORT, commit_ctx);
@@ -761,19 +915,36 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             *err_cnt = c_ctx->err_cnt;
             c_ctx->errors = NULL;
             c_ctx->err_cnt = 0;
-            pthread_mutex_unlock(&commit_ctx->mutex);
-            SR_LOG_DBG_MSG("Commit (8/9): abort notifications sent");
-            return SR_ERR_OPERATION_FAILED;
+            SR_LOG_DBG_MSG("Commit (9/10): abort notifications sent");
+            rc = SR_ERR_OPERATION_FAILED;
+            goto cleanup;
         default:
             break;
         }
     }
 cleanup:
+    if (NULL != commit_ctx) {
+        remove_ctx = commit_ctx->should_be_removed;
+        c_id = commit_ctx->id;
+
+        if (!commit_ctx->in_btree) {
+            free_ctx = true;
+        }
+    }
     pthread_mutex_unlock(&commit_ctx->mutex);
+
+    /* cleanup commit context that was already inserted into btree */
+    if (remove_ctx) {
+        dm_commit_notifications_complete(rp_ctx->dm_ctx, c_id);
+        commit_ctx = NULL;
+    }
+
     /* In case of running datastore, commit context will be freed when
      * all notifications session are closed.
+     *
+     * Commit context was not inserted into the btree can be freed
      */
-    if (SR_ERR_OK != rc || SR_DS_STARTUP == session->datastore) {
+    if (NULL != commit_ctx && free_ctx) {
         dm_free_commit_context(commit_ctx);
     }
 
@@ -785,7 +956,7 @@ cleanup:
             dm_remove_session_operations(session->dm_session);
             rc = dm_remove_modified_flag(session->dm_session);
         }
-        SR_LOG_DBG_MSG("Commit (9/9): finished successfully");
+        SR_LOG_DBG_MSG("Commit (10/10): finished successfully");
     }
     return rc;
 }

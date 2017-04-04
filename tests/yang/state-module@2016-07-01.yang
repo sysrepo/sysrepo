@@ -1,7 +1,7 @@
 module state-module {
    namespace "ns:yang:state-module";
    prefix sm;
-   
+
    organization "example-organization";
    description "Test module with a state data";
    contact "example@example.org";
@@ -32,12 +32,12 @@ module state-module {
              type boolean;
           }
        }
-       
+
        leaf vendor_name {
           type string;
        }
 
-       leaf gps_located { 
+       leaf gps_located {
           config false;
           type boolean;
        }
@@ -46,22 +46,22 @@ module state-module {
           config false;
           type uint32;
        }
-       
+
    }
-   
+
   container weather {
      config false;
      leaf temperature {
         type decimal64 {
            fraction-digits 2;
-        }        
+        }
      }
 
      leaf humidity {
         type uint8 {
             range "0..100";
         }
-      
+
      }
 
      leaf sky {
@@ -80,9 +80,18 @@ module state-module {
            }
         }
      }
+
+     container wind {
+        leaf speed {
+          type uint8;
+        }
+        leaf direction {
+           type string;
+        }
+     }
   }
 
-  
+
   container traffic_stats {
      config false;
 
@@ -93,7 +102,7 @@ module state-module {
      leaf cross_roads_offline_count {
         type uint8;
      }
-     
+
      list cross_road {
 
        key id;
@@ -101,7 +110,7 @@ module state-module {
           type uint32;
        }
 
-       leaf status { 
+       leaf status {
           type enumeration {
              enum "automatic" {
                 value 0;
@@ -156,5 +165,26 @@ module state-module {
      }
 
   }
+
+  grouping  card-g {
+     container state {
+        config false;
+        leaf c_state {
+           type string;
+        }
+     }
+  }
+
+  container cards {
+      list card {
+          key "dn";
+
+          leaf dn {
+              type string;
+          }
+          uses card-g;
+      }
+  }
+
 
 }

@@ -27,6 +27,69 @@
 #include <stdbool.h>
 
 /**
+ * @brief A custom implementation of ::popen that hopefully doesn't
+ * suffer from this glibc bug: https://bugzilla.redhat.com/show_bug.cgi?id=1275384.
+ * It also enables to communicate with the process through stdin, stdout, stderr.
+ */
+pid_t sr_popen(const char *command, int *stdin_p, int *stdout_p, int *stderr_p);
+
+/**
+ * @brief Print current backtrace to stderr.
+ */
+void print_backtrace();
+
+/**
+ * @brief Assert that the given pointer is non-NULL.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_non_null_bt(void *arg);
+
+/**
+ * @brief Assert that the given pointer is NULL.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_null_bt(void *arg);
+
+/**
+ * @brief Assert that the given argument is true.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_true_bt(bool arg);
+
+/**
+ * @brief Assert that the given argument is false.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_false_bt(bool arg);
+
+/**
+ * @brief Assert that the two given strings are equal.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_string_equal_bt(const char *a, const char *b);
+
+/**
+ * @brief Assert that the two given integers are equal.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_int_equal_bt(int a, int b);
+
+/**
+ * @brief Assert that the two given integers are not equal.
+ * In case of failed assertion, print current backtrace to stderr.
+ */
+void assert_int_not_equal_bt(int a, int b);
+
+/**
+ * @brief Reads an entire line from a file, storing the address of the buffer
+ * containing the text into *line_p. The buffer is null-terminated and includes
+ * the newline character, if one was found.
+ * Same like ::getline but uses file descriptor. Furthermore, ::getline was standardized
+ * still quite recently and may not exist on many systems.
+ */
+size_t readline(int fd, char **line_p, size_t *len_p);
+
+/**
  * @brief Tests file (non)existence.
  */
 void test_file_exists(const char *path, bool exists);
@@ -58,6 +121,17 @@ int compare_files(const char *path1, const char *path2);
  * against the given string / regular expression.
  */
 void exec_shell_command(const char *cmd, const char *exp_out, bool regex, int exp_ret);
+
+/**
+ * @brief Spawns a new thread that will abort the process if the runtime limit (in seconds)
+ * has exceeded.
+ */
+void watchdog_start(int runtime_limit);
+
+/**
+ * @brief Stop watchdog thread.
+ */
+void watchdog_stop();
 
 #endif /* SYSTEM_HELPER_H */
 

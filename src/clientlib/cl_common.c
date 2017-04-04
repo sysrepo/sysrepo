@@ -395,7 +395,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     }
 
     /* set timeout for receive operation */
-    tv.tv_sec = CL_REQUEST_TIMEOUT;
+    tv.tv_sec = SR_REQUEST_TIMEOUT;
     tv.tv_usec = 0;
     rc = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
     if (-1 == rc) {
@@ -421,8 +421,9 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
 
     pthread_mutex_lock(&session->conn_ctx->lock);
     /* some operation may take more time, raise the timeout */
-    if (SR__OPERATION__COMMIT == expected_response_op) {
-        tv.tv_sec = CL_REQUEST_LONG_TIMEOUT;
+    if (SR__OPERATION__COMMIT == expected_response_op || SR__OPERATION__COPY_CONFIG == expected_response_op ||
+            SR__OPERATION__RPC == expected_response_op || SR__OPERATION__ACTION == expected_response_op) {
+        tv.tv_sec = SR_LONG_REQUEST_TIMEOUT;
         tv.tv_usec = 0;
         rc = setsockopt(session->conn_ctx->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
         if (-1 == rc) {
@@ -450,9 +451,10 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
         return rc;
     }
 
-    /* change socket timeout to the standard value*/
-    if (SR__OPERATION__COMMIT == expected_response_op) {
-        tv.tv_sec = CL_REQUEST_TIMEOUT;
+    /* change socket timeout to the standard value */
+    if (SR__OPERATION__COMMIT == expected_response_op || SR__OPERATION__COPY_CONFIG == expected_response_op ||
+            SR__OPERATION__RPC == expected_response_op || SR__OPERATION__ACTION == expected_response_op) {
+        tv.tv_sec = SR_REQUEST_TIMEOUT;
         rc = setsockopt(session->conn_ctx->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
         if (-1 == rc) {
             SR_LOG_WRN("Unable to set timeout for socket operations: %s", sr_strerror_safe(errno));
@@ -480,6 +482,7 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
         /* log the error (except expected ones) */
         if (SR_ERR_NOT_FOUND != (*msg_resp)->response->result &&
                 SR_ERR_VALIDATION_FAILED != (*msg_resp)->response->result &&
+                SR_ERR_UNAUTHORIZED != (*msg_resp)->response->result &&
                 SR_ERR_OPERATION_FAILED != (*msg_resp)->response->result) {
             SR_LOG_ERR("Error by processing of the %s request (session id=%"PRIu32"): %s.",
                     sr_gpb_operation_name(msg_req->request->operation), session->id,

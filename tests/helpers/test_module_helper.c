@@ -22,6 +22,8 @@
 #include "test_module_helper.h"
 #include "sr_common.h"
 #include "test_data.h"
+#include <stdio.h>
+#include <unistd.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <setjmp.h>
@@ -91,6 +93,15 @@ createDataTreeTestModule()
     node = lyd_new_leaf(r, module, "id_ref", XP_TEST_MODULE_IDREF_VALUE);
     assert_non_null(node);
 
+    node = lyd_new_anydata(r, module, "xml-data", XP_TEST_MODULE_ANYXML_VALUE, LYD_ANYDATA_CONSTSTRING);
+    assert_non_null(node);
+
+    node = lyd_new_anydata(r, module, "any-data", XP_TEST_MODULE_ANYDATA_VALUE, LYD_ANYDATA_CONSTSTRING);
+    assert_non_null(node);
+
+    node = lyd_new_leaf(r, module, "instance_id", XP_TEST_MODULE_INSTANCE_ID_VALUE);
+    assert_non_null(node);
+
     /* leaf -list*/
     n = lyd_new_leaf(r, module, "numbers", "1");
     assert_non_null(n);
@@ -132,6 +143,23 @@ createDataTreeTestModule()
 
     n = lyd_new_leaf(node, module, "union", "infinity");
     assert_non_null(n);
+
+    /* user-ordered leaf-list items */
+    node = lyd_new_leaf(NULL, module, "ordered-numbers", "45");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(r, node));
+
+    node = lyd_new_leaf(NULL, module, "ordered-numbers", "12");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(r, node));
+
+    node = lyd_new_leaf(NULL, module, "ordered-numbers", "57");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(r, node));
+
+    node = lyd_new_leaf(NULL, module, "ordered-numbers", "0");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(r, node));
 
     /* list + list of leafrefs */
     node = lyd_new(NULL, module, "university");
@@ -485,5 +513,13 @@ createDataTreeStateModule()
     lyd_free_withsiblings(r1);
 
     ly_ctx_destroy(ctx, NULL);
+}
 
+void
+skip_if_daemon_running()
+{
+    if (-1 != access(SR_DAEMON_PID_FILE, F_OK)) {
+        printf("Skipping the testcase since sysrepod is running.");
+        skip();
+    }
 }

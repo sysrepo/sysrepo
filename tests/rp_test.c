@@ -29,6 +29,7 @@
 #include "sr_common.h"
 #include "access_control.h"
 #include "request_processor.h"
+#include "system_helper.h"
 
 static int
 rp_setup(void **state)
@@ -148,5 +149,8 @@ main() {
             cmocka_unit_test_setup_teardown(rp_msg_neg_test, rp_setup, rp_teardown),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

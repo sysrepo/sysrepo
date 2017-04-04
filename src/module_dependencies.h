@@ -128,6 +128,8 @@ typedef struct md_ctx_s {
 
     sr_llist_t *modules;             /**< List of all installed modules and submodules with their dependencies.
                                           Items are of type (md_module_t *) */
+    sr_btree_t *modules_btree_by_ns; /**< Pointers to all modules and submodules stored in a balanced tree for a quicker lookup.
+                                          The tree is ordered by namespace. Items are of type  (md_module_t *) */
     sr_btree_t *modules_btree;       /**< Pointers to all modules and submodules stored in a balanced tree for a quicker lookup.
                                           Items are of type (md_module_t *)
                                           Note: The tree also frees memory allocated for all the items.  */
@@ -202,6 +204,18 @@ void md_free_module_key_list(sr_list_t *module_key_list);
  */
 int md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision,
                        md_module_t **module);
+
+/**
+ * @brief Get dependency-related information for a given (sub)module.
+ *        "revision" set to NULL represents the latest revision.
+ *
+ * @note O(log |V|) where V is a set of all modules.
+ *
+ * @param [in] md_ctx Module Dependencies context
+ * @param [in] namespace Namespace of the module
+ * @param [out] module Output location for the pointer referencing the module info.
+ */
+int md_get_module_info_by_ns(const md_ctx_t *md_ctx, const char *namespace, md_module_t **module);
 
 /**
  * @brief Create and return fullname of a (sub)module. Afterwards can be accessed using only module->fullname.

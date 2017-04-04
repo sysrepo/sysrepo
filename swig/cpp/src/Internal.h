@@ -36,7 +36,23 @@ typedef enum free_type_e {
     TREE,
     TREES,
     TREES_POINTER,
+    SCHEMAS,
+    SESSION,
 } free_type_t;
+
+typedef union value_e {
+    sr_val_t *_val;
+    sr_val_t **p_vals;
+    sr_node_t *_tree;
+    sr_node_t **p_trees;
+    sr_schema_t *_sch;
+    sr_session_ctx_t *_sess;
+} value_t;
+
+typedef union count_e {
+    size_t _cnt;
+    size_t *p_cnt;
+} count_t;
 
 class Deleter
 {
@@ -47,19 +63,13 @@ public:
     Deleter(sr_node_t *tree);
     Deleter(sr_node_t *trees, size_t cnt);
     Deleter(sr_node_t **trees, size_t *cnt);
+    Deleter(sr_schema_t *sch, size_t cnt);
+    Deleter(sr_session_ctx_t *sess);
     ~Deleter();
 
 private:
-    void init_all();
-    size_t _cnt;
-    size_t *p_cnt;
-
-    sr_val_t *_val;
-    sr_val_t **p_vals;
-
-    sr_node_t *_tree;
-    sr_node_t **p_trees;
-
+    count_t c;
+    value_t v;
     free_type_t _t;
 };
 

@@ -44,6 +44,9 @@ class SysrepoTester(Tester):
                 raise r
         self.session = sr.Session(self.sr, self.ds)
 
+    def stopSession(self):
+        self.session.session_stop()
+
     def lockStep(self):
         self.session.lock_datastore()
 
@@ -103,4 +106,4 @@ class SysrepoTester(Tester):
     def getSchemaToFileStep(self, module_name, file_name):
         content = self.session.get_schema(module_name, None, None, sr.SR_SCHEMA_YANG)
         with open(file_name, 'w') as f:
-            f.write(content.get())
+            f.write(content)

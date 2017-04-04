@@ -34,6 +34,7 @@
 #include "sysrepo.h"
 #include "sr_common.h"
 #include "test_data.h"
+#include "test_module_helper.h"
 #include "system_helper.h"
 #include "module_dependencies.h"
 
@@ -60,7 +61,7 @@ sysrepoctl_test_list(void **state)
                         "Module Name[[:space:]]*\\| Revision[[:space:]]*\\| Data Owner[[:space:]]*\\| Permissions[[:space:]]*\\| Submodules[[:space:]]*\\| Enabled Features[[:space:]]*\n"
                         "--*[[:space:]]*\n"
                         ".*"
-                        "test-module[[:space:]]*\\|[[:space:]]*\\| [[:alpha:]]*:[[:alpha:]]*[[:space:]]*\\| [0-9]*[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n",
+                        "test-module[[:space:]]*\\|[[:space:]]*\\| [-[:alpha:]]*:[-[:alpha:]]*[[:space:]]*\\| [0-9]*[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n",
                        true, 0);
 }
 
@@ -70,6 +71,8 @@ sysrepoctl_test_uninstall(void **state)
     int rc = 0;
     md_ctx_t *md_ctx = NULL;
     md_module_t *module = NULL;
+
+    skip_if_daemon_running(); /* module uninstall & install requires restart of the Sysrepo Engine */
 
     /* invalid arguments */
     exec_shell_command("../src/sysrepoctl --uninstall --revision=2014-06-16", ".*", true, 1);
@@ -141,6 +144,8 @@ sysrepoctl_test_install(void **state)
     md_module_t *module = NULL;
     char buff[PATH_MAX] = { 0, };
     char *user = getenv("USER");
+
+    skip_if_daemon_running(); /* module uninstall & install requires restart of the Sysrepo Engine */
 
     /* invalid arguments */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --owner=%s --permissions=644", user);
@@ -254,6 +259,14 @@ sysrepoctl_test_feature(void **state)
     snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\| if-mib[[:space:]]*\n", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
+    /* already enabled, shouldn't throw an error */
+    exec_shell_command("../src/sysrepoctl --feature-enable=if-mib --module=ietf-interfaces",
+                       "Enabling feature 'if-mib' in the module 'ietf-interfaces'.\n"
+                       "Operation completed successfully.", true, 0);
+    test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
+                      "<enabled-features>.*<feature-name>if-mib</feature-name>.*</enabled-features>", true);
+    exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
+
     /* disable */
     exec_shell_command("../src/sysrepoctl --feature-disable=if-mib --module=ietf-interfaces",
                        "Disabling feature 'if-mib' in the module 'ietf-interfaces'.\n"
@@ -261,6 +274,14 @@ sysrepoctl_test_feature(void **state)
     test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
                       "!<enabled-features>.*<feature-name>if-mib</feature-name>.*</enabled-features>", true);
     snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n", user);
+    exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
+
+    /* already disabled, shouldn't throw an error */
+    exec_shell_command("../src/sysrepoctl --feature-disable=if-mib --module=ietf-interfaces",
+                       "Disabling feature 'if-mib' in the module 'ietf-interfaces'.\n"
+                       "Operation completed successfully.", true, 0);
+    test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
+                      "!<enabled-features>.*<feature-name>if-mib</feature-name>.*</enabled-features>", true);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 }
 
@@ -272,6 +293,8 @@ sysrepoctl_test_init(void **state)
     md_module_t *module = NULL;
     char buff[PATH_MAX] = { 0, };
     char *user = getenv("USER");
+
+    skip_if_daemon_running(); /* module uninstall & install requires restart of the Sysrepo Engine */
 
     /* invalid arguments */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --owner=%s --permissions=644", user);
@@ -379,5 +402,8 @@ main() {
             cmocka_unit_test_setup_teardown(sysrepoctl_test_init, NULL, NULL),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

@@ -273,7 +273,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_nod
         }
 
         /* convert value to string */
-        rc = sr_val_to_str(value, schema, &string_val);
+        rc = sr_val_to_str_with_schema(value, schema, &string_val);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Error by sr_val_to_str: %s", sr_strerror(rc));
             goto fail;
@@ -403,6 +403,7 @@ srcfg_convert_lydiff_changed(const char *xpath, struct lyd_node *node)
     int rc = SR_ERR_INTERNAL;
     sr_val_t value = { 0, 0, SR_UNKNOWN_T };
     struct lyd_node_leaf_list *data_leaf = NULL;
+    struct lyd_node_anydata *sch_any = NULL;
 
     CHECK_NULL_ARG2(xpath, node);
 
@@ -418,8 +419,17 @@ srcfg_convert_lydiff_changed(const char *xpath, struct lyd_node *node)
             }
             break;
         case LYS_ANYXML:
-            SR_LOG_ERR_MSG("The anyxml statement is not yet supported by Sysrepo.");
-            goto cleanup;
+        case LYS_ANYDATA:
+            sch_any = (struct lyd_node_anydata *) node;
+            if (NULL == sch_any->value.str) {
+                /* skip empty anydata / anyxml */
+                rc = SR_ERR_OK;
+                goto cleanup;
+            }
+            value.type = (LYS_ANYXML == node->schema->nodetype) ? SR_ANYXML_T : SR_ANYDATA_T;
+            rc = sr_libyang_anydata_copy_value(sch_any, &value);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Error returned from sr_libyang_anydata_copy_value: %s.", sr_strerror(rc));
+            break;
         default:
             SR_LOG_ERR_MSG("Unexpected node type for LYD_DIFF_CHANGED.");
             goto cleanup;
@@ -460,6 +470,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
     sr_val_t value = { 0, 0, SR_UNKNOWN_T };
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_list *slist = NULL;
+    struct lyd_node_anydata *sch_any = NULL;
     char *xpath = NULL, *delim = NULL;
 
     CHECK_NULL_ARG(node);
@@ -549,8 +560,18 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
                 break;
 
             case LYS_ANYXML:
-                SR_LOG_ERR_MSG("The anyxml statement is not yet supported by Sysrepo.");
-                goto cleanup;
+            case LYS_ANYDATA:
+                sch_any = (struct lyd_node_anydata *) elem;
+                value.type = (LYS_ANYXML == node->schema->nodetype) ? SR_ANYXML_T : SR_ANYDATA_T;
+                rc = sr_libyang_anydata_copy_value(sch_any, &value);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Error returned from sr_libyang_anydata_copy_value: %s.", sr_strerror(rc));
+                /* get xpath */
+                xpath = lyd_path(elem);
+                if (NULL == xpath) {
+                    SR_LOG_ERR("Error returned from lyd_path: %s.", ly_errmsg());
+                    goto cleanup;
+                }
+                break;
 
             case LYS_CONTAINER:
                 /* explicitly create only presence containers */
@@ -1158,6 +1179,7 @@ srcfg_print_help()
     printf("                                 2 = log error and warning messages\n");
     printf("                                 3 = log error, warning and informational messages\n");
     printf("                                 4 = log everything, including development debug messages\n");
+    printf("  -o, --state-data             Flag used to override default session handling; if present state data will be displayed\n");
     printf("\n");
     printf("Examples:\n");
     printf("  1) Edit *ietf-interfaces* module's *running config* in *xml format* in *default editor*:\n");
@@ -1194,6 +1216,7 @@ main(int argc, char* argv[])
     md_dep_t *dep = NULL;
     sr_llist_node_t *ll_node = NULL;
     int rc = SR_ERR_OK;
+    int sflag = SR_SESS_CONFIG_ONLY;
 
     struct option longopts[] = {
        { "help",      no_argument,       NULL, 'h' },
@@ -1206,12 +1229,13 @@ main(int argc, char* argv[])
        { "keep",      no_argument,       NULL, 'k' },
        { "permanent", no_argument,       NULL, 'p' },
        { "level",     required_argument, NULL, 'l' },
+       { "state-data",no_argument,       NULL, 'o' },
        { 0, 0, 0, 0 }
     };
 
     /* parse options */
     int curind = optind;
-    while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpl:0:", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpol:0:", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srcfg_print_help();
@@ -1254,6 +1278,9 @@ main(int argc, char* argv[])
                 break;
             case 'l':
                 log_level = atoi(optarg);
+                break;
+            case 'o':
+                sflag = SR_SESS_DEFAULT;
                 break;
             case '0':
                 /* 'hidden' option - custom repository location */
@@ -1375,7 +1402,7 @@ main(int argc, char* argv[])
     rc = sr_connect("sysrepocfg", SR_CONN_DEFAULT, &srcfg_connection);
     if (SR_ERR_OK == rc) {
         rc = sr_session_start(srcfg_connection, datastore == SRCFG_STORE_RUNNING ? SR_DS_RUNNING : SR_DS_STARTUP,
-                              SR_SESS_CONFIG_ONLY, &srcfg_session);
+                              sflag, &srcfg_session);
     }
     if (SR_ERR_OK != rc) {
         srcfg_report_error(rc);
@@ -1440,3 +1467,4 @@ terminate:
 
     return (SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
+
