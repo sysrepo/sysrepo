@@ -5,7 +5,6 @@ project(Sysrepo_Lua)
 
 add_library(Sysrepo_Lua SHARED ${SYSREPO_CPP_SOURCES})
 
-# include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include_directories(${CMAKE_SOURCE_DIR})
@@ -24,11 +23,9 @@ set(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR})
 
 set_source_files_properties(${LUA_SWIG_BINDING}.i PROPERTIES CPLUSPLUS ON)
 
-
 swig_add_module(${LUA_SWIG_BINDING} lua ${LUA_SWIG_BINDING}.i)
 set_target_properties(${SWIG_MODULE_${LUA_SWIG_BINDING}_REAL_NAME} PROPERTIES PREFIX "")
 swig_link_libraries(${LUA_SWIG_BINDING} ${LUA_LIBRARIES} Sysrepo_Lua)
-
 
 # tests
 if (ENABLE_TESTS AND GEN_LUA_BINDINGS)
