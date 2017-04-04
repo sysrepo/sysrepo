@@ -36,6 +36,7 @@
 #include "sr_common.h"
 #include "client_library.h"
 #include "module_dependencies.h"
+#include "sysrepo/xpath.h"
 
 #define EXPECTED_MAX_INPUT_FILE_SIZE  4096
 
@@ -929,30 +930,82 @@ cleanup:
     return rc;
 }
 
-static int
-srcfg_write_xpath_value(struct lyd_node *lydnode, const char *xpath, const char *xpathvalue)
+/**-----------------------------------------------------------------------------
+ *	@Function: srcfg_get_format
+ *	@Brief:    return a sysrepo type from a string
+ */
+sr_type_t srcfg_convert_format(struct lys_node_leaf* leaf)
 {
-	sr_type_t  	type = SR_UNKNOWN_T;
+    if (NULL == leaf || !((LYS_LEAF | LYS_LEAFLIST) & leaf->nodetype)) {
+        return SR_UNKNOWN_T;
+    }
+
+    switch(leaf->type.base) {
+        case LY_TYPE_BINARY:
+            return SR_BINARY_T;
+        case LY_TYPE_BITS:
+            return SR_BITS_T;
+        case LY_TYPE_BOOL:
+            return SR_BOOL_T;
+        case LY_TYPE_DEC64:
+            return SR_DECIMAL64_T;
+        case LY_TYPE_EMPTY:
+            return SR_LEAF_EMPTY_T;
+        case LY_TYPE_ENUM:
+            return SR_ENUM_T;
+        case LY_TYPE_IDENT:
+            return SR_IDENTITYREF_T;
+        case LY_TYPE_INST:
+            return SR_INSTANCEID_T;
+        case LY_TYPE_LEAFREF:
+            return srcfg_convert_format(leaf->type.info.lref.target);
+        case LY_TYPE_STRING:
+            return SR_STRING_T;
+        case LY_TYPE_INT8:
+            return SR_INT8_T;
+        case LY_TYPE_UINT8:
+            return SR_UINT8_T;
+        case LY_TYPE_INT16:
+            return SR_INT16_T;
+        case LY_TYPE_UINT16:
+            return SR_UINT16_T;
+        case LY_TYPE_INT32:
+            return SR_INT32_T;
+        case LY_TYPE_UINT32:
+            return SR_UINT32_T;
+        case LY_TYPE_INT64:
+            return SR_INT64_T;
+        case LY_TYPE_UINT64:
+            return SR_UINT64_T;
+        default:
+            return SR_UNKNOWN_T;
+            //LY_DERIVED
+        }
+}
+/** @END srcfg_convert_format */
+
+static int
+srcfg_write_xpath_value(sr_type_t srtype, const char *xpath, const char *xpathvalue)
+{
 	int rc = SR_ERR_INTERNAL;
 	sr_val_t value = { 0 };
 
-	if (lydnode) {
-		type = sr_libyang_leaf_get_type((struct lyd_node_leaf_list *) lydnode);
-		value.type = type;
+	if (srtype != SR_LIST_T) {
+		value.type = srtype;
 		rc = sr_val_set_xpath(&value, xpath);
 		if (SR_ERR_OK != rc) {
 			printf("Error by sr_val_set_xpath: %s for %s\n", strerror(rc), xpath);
 			goto cleanup;
 		}
 
-		switch(type) {
+		switch(srtype) {
 			case SR_BINARY_T:
 			case SR_BITS_T:
 			case SR_ENUM_T:
 			case SR_IDENTITYREF_T:
 			case SR_INSTANCEID_T:
 			case SR_STRING_T:
-				rc = sr_val_set_str_data(&value, type, xpathvalue);
+				rc = sr_val_set_str_data(&value, srtype, xpathvalue);
 				if (SR_ERR_OK != rc) {
 					printf("Error by sr_val_set_str_data: %s for %s\n", strerror(rc), xpath);
 					goto cleanup;
@@ -986,11 +1039,20 @@ srcfg_write_xpath_value(struct lyd_node *lydnode, const char *xpath, const char 
 				value.data.int64_val = atoll(xpathvalue);
 				break;
 			default:
-				printf("type %d not supported\n", type);
+				printf("%s type %d not supported\n", __FUNCTION__, srtype);
+				goto cleanup;
 				break;
 		}
-
-		rc = sr_set_item(srcfg_session, xpath, &value, SR_EDIT_DEFAULT);
+		if (xpathvalue) {
+			rc = sr_set_item(srcfg_session, xpath, &value, SR_EDIT_DEFAULT);
+			if (SR_ERR_OK != rc) {
+				printf("Error by sr_set_item: %s for %s\n", strerror(rc), xpath);
+				goto cleanup;
+			}
+		}
+	}
+	else {
+		rc = sr_set_item(srcfg_session, xpath, NULL, SR_EDIT_DEFAULT);
 		if (SR_ERR_OK != rc) {
 			printf("Error by sr_set_item: %s for %s\n", strerror(rc), xpath);
 			goto cleanup;
@@ -1007,7 +1069,7 @@ static int
 srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathvalue, md_module_t *module, srcfg_datastore_t datastore, bool permanent)
 {
     int rc = SR_ERR_INTERNAL;
-    struct lyd_node *new_dt = NULL;
+    //struct lyd_node *new_dt = NULL;
     struct lyd_node *current_dt = NULL;
     struct lyd_node *deps_dt = NULL;
     int ret = 0;
@@ -1045,33 +1107,58 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
 	lyset = lys_find_xpath(ly_ctx, current_dt->schema, xpath, 0);
 	if (lyset && lyset->number) {
 		for (j=0; j < lyset->number; j++) {
+			//printf("node name %s,%s,%d nodetype %d\n", lyset->set.s[j]->name, lys_path(lyset->set.s[j]), lyset->number, lyset->set.s[j]->nodetype);
 			if (lyset->set.s[j]) {
+				sr_type_t srtype = SR_UNKNOWN_T;
 				switch(lyset->set.s[j]->nodetype) {
 					case LYS_LEAF:
-					{
-						new_dt = lyd_new_path(current_dt, ly_ctx, xpath, (void *) xpathvalue, LYD_ANYDATA_STRING, 0);
-						break;
-					}
 					case LYS_LEAFLIST:
 					{
-						new_dt = lyd_new_path(current_dt, ly_ctx, xpath, (void *) xpathvalue, LYD_ANYDATA_STRING, 0);
+						srtype = srcfg_convert_format((struct lys_node_leaf*) lyset->set.s[j]);
+						if (xpathvalue) {
+							
+							rc = srcfg_write_xpath_value(srtype, xpath, xpathvalue);
+						}
+						else if (!xpathvalue && (lyset->set.s[j]->nodetype == LYS_LEAFLIST)) {
+							sr_xpath_ctx_t state = {0};
+							char *lastnode = NULL;		
+							char *lastnodeval = NULL;
+							unsigned int len;
+							char *valindex = NULL;
+
+							lastnode = sr_xpath_last_node((char *) xpath, &state); 
+							if ((valindex = (strstr(lastnode, ".="))) != NULL) {
+								valindex = valindex + 3; 
+								len = (valindex  - lastnode - 2);
+								lastnodeval = malloc(len * sizeof(char));
+								snprintf(lastnodeval, len, "%s", valindex);
+								sr_xpath_recover(&state);
+								rc = srcfg_write_xpath_value(srtype, xpath, lastnodeval);
+								free(lastnodeval);
+							}
+							else {
+								rc = SR_ERR_DATA_MISSING;
+							}
+						}
+						else if (!xpathvalue && (lyset->set.s[j]->nodetype == LYS_LEAF)) {
+							rc = SR_ERR_DATA_MISSING;
+						}
+						break;
+					}
+					case LYS_LIST:
+					{
+						srtype = SR_LIST_T;
+						rc = srcfg_write_xpath_value(srtype, xpath, NULL);
 						break;
 					}
 					default:
 						printf("type %d not supported\n", lyset->set.s[j]->nodetype);
+						rc = SR_ERR_UNSUPPORTED;
 						break;
 				}
-				if (NULL == new_dt && LY_SUCCESS != ly_errno) {
-					SR_LOG_ERR("Unable to parse the input data: %s (%s)", ly_errmsg(), ly_errpath());
-					break;
-				} else {
-					rc = srcfg_write_xpath_value(new_dt, xpath, xpathvalue);
-					if (SR_ERR_OK != rc) {
-						printf("Error by srcfg_write_xpath_value: %s for %s\n", strerror(rc), xpath);
-						goto cleanup;
-					}
-					lyd_free(new_dt);
-					new_dt = NULL;
+				if (SR_ERR_OK != rc) {
+					printf("Error by srcfg_write_xpath_value: %s for %s\n", strerror(rc), xpath);
+					goto cleanup;
 				}
 			}
 		}
@@ -1079,27 +1166,7 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
 			ly_set_free(lyset);
 	}
 
-    if (0 == j) {
-		lyset = lyd_find_xpath(current_dt, xpath);
-		if (lyset && (lyset->number)) {
-			for (j=0; j < lyset->number; j++) {
-				if (lyset->set.d[j]) {
-					rc = sr_delete_item(srcfg_session, xpath, SR_EDIT_DEFAULT);
-					if (SR_ERR_OK != rc) {
-						printf("Error by sr_delete_item: %s for %s\n", strerror(rc), xpath);
-						goto cleanup;
-					}
-					rc = srcfg_write_xpath_value(lyset->set.d[j], xpath, xpathvalue);
-					if (SR_ERR_OK != rc) {
-						printf("Error by srcfg_write_xpath_value: %s for %s\n", strerror(rc), xpath);
-						goto cleanup;
-					}
-				}
-			}
-		}
-    }
-
-    if (j) {
+    if (SR_ERR_OK == rc) {
 		/* commit the changes */
 		rc = sr_commit(srcfg_session);
 		if (SR_ERR_OK != rc) {
@@ -1121,7 +1188,6 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
 		    }
 		}
 	}
-    rc = SR_ERR_OK;
 
 cleanup:
     if (NULL != deps_dt) {
@@ -1129,9 +1195,6 @@ cleanup:
     }
     if (NULL != current_dt) {
         lyd_free_withsiblings(current_dt);
-    }
-    if (NULL != new_dt) {
-        lyd_free_withsiblings(new_dt);
     }
 
     return rc;
@@ -1695,7 +1758,7 @@ main(int argc, char* argv[])
        { "state-data",no_argument,       NULL, 'o' },
        { "get",       required_argument, NULL, 'g' },
        { "set",       required_argument, NULL, 's' },
-       { "set-value", required_argument, NULL, 'w' },
+       { "set-value", optional_argument, NULL, 'w' },
        { "del",       required_argument, NULL, 'r' },
        { 0, 0, 0, 0 }
     };
@@ -1834,21 +1897,23 @@ main(int argc, char* argv[])
         rc = SR_ERR_INVAL_ARG;
         goto terminate;
     } else if (NULL == module_name && ((operation == SRCFG_OP_EXPORT_XPATH) || (operation == SRCFG_OP_IMPORT_XPATH) || (operation == SRCFG_OP_DELETE_XPATH))) {
-	/* module name got from xpath */
-	if (xpath) {
-		snprintf(module_name_xpath, strchr(xpath, ':') - xpath, "%s", xpath + 1);
-		module_name = module_name_xpath;
-	}
-	else {
-		fprintf(stderr, "%s: XPATH is not specified.\n", argv[0]);
-		rc = SR_ERR_INVAL_ARG;
-		goto terminate;
-	}
-	if ((operation == SRCFG_OP_IMPORT_XPATH) && (xpathvalue ==  NULL)) {
-		fprintf(stderr, "%s: XPATH value is not specified. Please use -w option\n", argv[0]);
-		rc = SR_ERR_INVAL_ARG;
-		goto terminate;
-	}
+		/* module name got from xpath */
+		if (xpath) {
+			snprintf(module_name_xpath, strchr(xpath, ':') - xpath, "%s", xpath + 1);
+			module_name = module_name_xpath;
+		}
+		else {
+			fprintf(stderr, "%s: XPATH is not specified.\n", argv[0]);
+			rc = SR_ERR_INVAL_ARG;
+			goto terminate;
+		}
+#if 0
+		if ((operation == SRCFG_OP_IMPORT_XPATH) && (xpathvalue ==  NULL)) {
+			fprintf(stderr, "%s: XPATH value is not specified. Please use -w option\n", argv[0]);
+			rc = SR_ERR_INVAL_ARG;
+			goto terminate;
+		}
+#endif
     }
     /*  -> format */
     if (strcasecmp("xml", format_name) == 0) {
