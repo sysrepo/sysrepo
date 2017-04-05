@@ -109,19 +109,22 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src/" DESTINATION ${CMAKE_INS
 # Examples
 if(GEN_CPP_BINDINGS AND BUILD_CPP_EXAMPLES)
 	add_subdirectory(cpp/examples)
-  add_subdirectory(cpp/tests)
 
-  set(CPP_TEST_MODULE "swig-test")
-  set(CPP_TEST_MODULE_REV "2017-03-09")
-  set(CPP_SWIG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
-  set(CPP_TEST_DIR ${CPP_SWIG_DIR}/tests)
-  set(CPP_YANG_DIR ${CPP_TEST_DIR}/yang)
+  if (ENABLE_TESTS)
+    add_subdirectory(cpp/tests)
 
-  ADD_CUSTOM_COMMAND(
-    TARGET Sysrepo-cpp
-    POST_BUILD
-    COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CPP_YANG_DIR}/${CPP_TEST_MODULE}@${CPP_TEST_MODULE_REV}.yang
-    VERBATIM)
+    set(CPP_TEST_MODULE "swig-test")
+    set(CPP_TEST_MODULE_REV "2017-03-09")
+    set(CPP_SWIG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+    set(CPP_TEST_DIR ${CPP_SWIG_DIR}/tests)
+    set(CPP_YANG_DIR ${CPP_TEST_DIR}/yang)
+
+    ADD_CUSTOM_COMMAND(
+      TARGET Sysrepo-cpp
+      POST_BUILD
+      COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CPP_YANG_DIR}/${CPP_TEST_MODULE}@${CPP_TEST_MODULE_REV}.yang
+      VERBATIM)
+  endif()
 endif()
 
 if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "2")
