@@ -2896,6 +2896,8 @@ sr_str_to_time(char *time_str, time_t *time)
         rc = SR_ERR_INVAL_ARG;
         goto cleanup;
     }
+    /* need to learn on its own whether it is DST */
+    tm.tm_isdst = -1;
 
     *time = mktime(&tm);
 

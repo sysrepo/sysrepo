@@ -5843,7 +5843,7 @@ cl_neg_subscribe_test (void **state)
 
     /* xpath identifies a container */
     rc = sr_event_notif_subscribe(session, "/test-module:main", test_event_notif_status_change_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
-    assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     assert_null(subs);
 
     rc = sr_event_notif_subscribe(session, "/unknown-module:non-existing-rpc", test_event_notif_status_change_cb, NULL, SR_SUBSCR_DEFAULT, &subs);

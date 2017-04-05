@@ -2803,7 +2803,7 @@ cl_config_change_replay_test(void **state)
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
 
-    rc = sr_event_notif_subscribe(session, "/ietf-netconf-notifications:netconf-config-change", test_replay_cb,
+    rc = sr_event_notif_subscribe(session, "/ietf-netconf-notifications:*//.", test_replay_cb,
             &replay, SR_SUBSCR_NOTIF_REPLAY_FIRST | SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(SR_ERR_OK, rc);
 

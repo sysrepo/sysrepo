@@ -775,8 +775,6 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
     /*    -> notification: */
     add_nacm_rule(nacm_config, "acl1", "deny-link-discovered", "test-module", NACM_RULE_NOTIF,
             "link-discovered", "read", "deny", "Not allowed to receive the link-discovered notification");
-    add_nacm_rule(nacm_config, "acl1", "rule-with-no-effect2", "nc-notifications", NACM_RULE_NOTIF,
-            "replayComplete", "*", "deny", "NETCONF replayComplete notification cannot be effectively denied");
     /*    -> data, test-module: */
     add_nacm_rule(nacm_config, "acl1", "allow-to-modify-i8", "test-module", NACM_RULE_DATA,
             "/test-module:main/i8", "update", "permit", "Allow to modify 8-bit signed integer in the main container");
@@ -1109,9 +1107,6 @@ subscribe_dummy_event_notif_callback(sr_session_ctx_t *user_session, void *priva
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
     assert_int_equal_bt(rc, SR_ERR_OK);
     rc = sr_event_notif_subscribe(user_session, "/ietf-netconf-notifications:netconf-capability-change",
-            dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal_bt(rc, SR_ERR_OK);
-    rc = sr_event_notif_subscribe(user_session, "/nc-notifications:replayComplete",
             dummy_event_notif_cb, private_ctx, SR_SUBSCR_CTX_REUSE, subscription);
     assert_int_equal_bt(rc, SR_ERR_OK);
 
@@ -1785,12 +1780,6 @@ nacm_cl_test_event_notif_nacm_with_empty_nacm_cfg(void **state)
     sr_free_val(values);
     sr_free_tree(trees);
 
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
-
     /* unsubscribe sysrepo-user1 */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1844,11 +1833,6 @@ nacm_cl_test_event_notif_nacm_with_empty_nacm_cfg(void **state)
     sr_free_val(values);
     sr_free_tree(trees);
 
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* unsubscribe sysrepo-user2 */
     rc = sr_unsubscribe(NULL, subscription);
@@ -1903,12 +1887,6 @@ nacm_cl_test_event_notif_nacm_with_empty_nacm_cfg(void **state)
     sr_free_val(values);
     sr_free_tree(trees);
 
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
-
     /* unsubscribe sysrepo-user3 */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1961,12 +1939,6 @@ nacm_cl_test_event_notif_nacm_with_empty_nacm_cfg(void **state)
     EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
     sr_free_val(values);
     sr_free_tree(trees);
-
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* unsubscribe sysrepo-user4 */
     rc = sr_unsubscribe(NULL, subscription);
@@ -2049,12 +2021,6 @@ nacm_cl_test_event_notif_nacm(void **state)
     sr_free_val(values);
     sr_free_tree(trees);
 
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
-
     /* unsubscribe sysrepo-user1 */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -2110,12 +2076,6 @@ nacm_cl_test_event_notif_nacm(void **state)
     sr_free_val(values);
     sr_free_tree(trees);
 
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
-
     /* unsubscribe sysrepo-user2 */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -2169,12 +2129,6 @@ nacm_cl_test_event_notif_nacm(void **state)
     sr_free_val(values);
     sr_free_tree(trees);
 
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
-
     /* unsubscribe sysrepo-user3 */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -2227,12 +2181,6 @@ nacm_cl_test_event_notif_nacm(void **state)
     EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
     sr_free_val(values);
     sr_free_tree(trees);
-
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* unsubscribe sysrepo-user4 */
     rc = sr_unsubscribe(NULL, subscription);
@@ -2315,12 +2263,6 @@ nacm_cl_test_event_notif_nacm_with_denied_read_by_dflt(void **state)
     sr_free_val(values);
     sr_free_tree(trees);
 
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
-
     /* unsubscribe sysrepo-user1 */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -2373,12 +2315,6 @@ nacm_cl_test_event_notif_nacm_with_denied_read_by_dflt(void **state)
     EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "", "");
     sr_free_val(values);
     sr_free_tree(trees);
-
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* unsubscribe sysrepo-user2 */
     rc = sr_unsubscribe(NULL, subscription);
@@ -2433,12 +2369,6 @@ nacm_cl_test_event_notif_nacm_with_denied_read_by_dflt(void **state)
     sr_free_val(values);
     sr_free_tree(trees);
 
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
-
     /* unsubscribe sysrepo-user3 */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -2491,12 +2421,6 @@ nacm_cl_test_event_notif_nacm_with_denied_read_by_dflt(void **state)
     EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
     sr_free_val(values);
     sr_free_tree(trees);
-
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* unsubscribe sysrepo-user4 */
     rc = sr_unsubscribe(NULL, subscription);
@@ -2579,12 +2503,6 @@ nacm_cl_test_event_notif_nacm_with_ext_groups(void **state)
     sr_free_val(values);
     sr_free_tree(trees);
 
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
-
     /* unsubscribe sysrepo-user1 */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -2637,12 +2555,6 @@ nacm_cl_test_event_notif_nacm_with_ext_groups(void **state)
     EVENT_NOTIF_DENIED_TREE(EVENT_NOTIF_XPATH, trees, 1, "deny-netconf-capability-change", "Not allowed to receive the NETCONF capability change notification");
     sr_free_val(values);
     sr_free_tree(trees);
-
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* unsubscribe sysrepo-user2 */
     rc = sr_unsubscribe(NULL, subscription);
@@ -2697,12 +2609,6 @@ nacm_cl_test_event_notif_nacm_with_ext_groups(void **state)
     sr_free_val(values);
     sr_free_tree(trees);
 
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
-
     /* unsubscribe sysrepo-user3 */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -2755,12 +2661,6 @@ nacm_cl_test_event_notif_nacm_with_ext_groups(void **state)
     EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, trees, 1);
     sr_free_val(values);
     sr_free_tree(trees);
-
-    /* test Event notification "replayComplete" from nc-notifications */
-#undef EVENT_NOTIF_XPATH
-#define EVENT_NOTIF_XPATH "/nc-notifications:replayComplete"
-    EVENT_NOTIF_PERMITED(EVENT_NOTIF_XPATH, NULL, 0);
-    EVENT_NOTIF_PERMITED_TREE(EVENT_NOTIF_XPATH, NULL, 0);
 
     /* unsubscribe sysrepo-user4 */
     rc = sr_unsubscribe(NULL, subscription);
