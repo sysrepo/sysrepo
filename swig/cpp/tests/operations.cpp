@@ -90,24 +90,19 @@ void test_set_item(S_Session sess)
 int
 main(int argc, char **argv)
 {
-    try {
-        S_Connection conn(new Connection("app1"));
-        S_Session sess(new Session(conn));
-        S_Subscribe subs(new Subscribe(sess));
+    S_Connection conn(new Connection("app1"));
+    S_Session sess(new Session(conn));
+    S_Subscribe subs(new Subscribe(sess));
 
-        S_Callback cb(new My_Callback());
+    S_Callback cb(new My_Callback());
 
-        subs->module_change_subscribe(module_name, cb);
+    subs->module_change_subscribe(module_name, cb);
 
-        init_test(sess);
-        test_get_item(sess);
+    init_test(sess);
+    test_get_item(sess);
 
-        test_delete_item(sess);
-        test_set_item(sess);
-
-    } catch( const std::exception& e ) {
-        cout << e.what() << endl;
-    }
+    test_delete_item(sess);
+    test_set_item(sess);
 
     return 0;
 }
