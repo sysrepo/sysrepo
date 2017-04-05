@@ -15,23 +15,17 @@ const int LOW_BOUND = 10;
 const int HIGH_BOUND = 20;
 const char *xpath_if_fmt = "/swig-test:cpp-operations/test-get[name='%s']/%s";
 
-char *
-get_test_name(int i)
+std::string get_test_name(int i)
 {
-    char buf[MAX_LEN] = {0};
-    sprintf(buf, "test-cpp-%d", i);
-    return strdup(buf);
+  return "test-cpp-" + to_string(i);
 }
 
-const char *
-get_xpath(char *test_name, char *node_name)
+std::string get_xpath(const std::string &test_name, const std::string &node_name)
 {
-    char buf[MAX_LEN];
-    sprintf(buf, xpath_if_fmt, test_name, node_name);
-    return strdup(buf);
+  return "/swig-test:cpp-operations/test-get[name='" + test_name + "']/" + node_name;
 }
 
-class NOPCb: public Callback {
+class NopCallback: public Callback {
 public:
     int module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
         {
@@ -42,14 +36,14 @@ public:
 void init_test(S_Session sess)
 {
     S_Subscribe subs(new Subscribe(sess));
-    S_Callback cb(new NOPCb());
+    S_Callback cb(new NopCallback());
 
     subs->module_change_subscribe(module_name, cb, NULL, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY);
 
     for (int i = LOW_BOUND; i < HIGH_BOUND; i++) {
-        const char *xpath = (char*)get_xpath(get_test_name(i), (char *) "number");
+        const auto xpath = get_xpath(get_test_name(i), "number");
         S_Val vset(new Val((int32_t)i, SR_INT32_T));
-        sess->set_item(xpath, vset);
+        sess->set_item(xpath.c_str(), vset);
     }
 
     sess->commit();
@@ -62,10 +56,10 @@ void init_test(S_Session sess)
 void
 clean_test(S_Session sess)
 {
-    char xpath[100] = {0};
-    sprintf(xpath, "/%s:*", module_name);
+    string module_name_tmp(module_name);
+    const string xpath = "/" + module_name_tmp + ":*";
 
-    sess->delete_item(xpath);
+    sess->delete_item(xpath.c_str());
     sess->commit();
     // sess.copy_config(module_name, sr_datastore_t.SR_DS_RUNNING, sr_datastore_t.SR_DS_STARTUP);
     usleep(100);
@@ -102,9 +96,9 @@ test_module_change_delete(S_Session sess)
 
     subs->module_change_subscribe(module_name, cb, NULL, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY);
 
-    const char *xpath = (char*)get_xpath(get_test_name(LOW_BOUND), (char *) "number");
-    S_Val v = sess->get_item(xpath);
-    sess->delete_item(xpath);
+    const auto xpath = get_xpath(get_test_name(LOW_BOUND), "number");
+    S_Val v = sess->get_item(xpath.c_str());
+    sess->delete_item(xpath.c_str());
     sess->commit();
 
     usleep(100);
@@ -143,9 +137,9 @@ test_module_change_modify(S_Session sess)
 
     subs->module_change_subscribe(module_name, cb, NULL, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY);
 
-    const char *xpath = (char*)get_xpath(get_test_name(LOW_BOUND), (char *) "number");
+    const auto xpath = get_xpath(get_test_name(LOW_BOUND), "number");
     S_Val vset(new Val((int32_t)42, SR_INT32_T));
-    sess->set_item(xpath, vset);
+    sess->set_item(xpath.c_str(), vset);
     sess->commit();
 
     usleep(100);
@@ -184,9 +178,9 @@ test_module_change_create(S_Session sess)
 
     subs->module_change_subscribe(module_name, cb, NULL, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY);
 
-    const char *xpath = (char*)get_xpath(get_test_name(HIGH_BOUND), (char *) "number");
+    const auto xpath = get_xpath(get_test_name(HIGH_BOUND), "number");
     S_Val vset(new Val((int32_t)42, SR_INT32_T));
-    sess->set_item(xpath, vset);
+    sess->set_item(xpath.c_str(), vset);
     sess->commit();
 
     usleep(100);
@@ -197,7 +191,6 @@ test_module_change_create(S_Session sess)
 int
 main(int argc, char **argv)
 {
-  try {
     S_Connection conn(new Connection("app1"));
     S_Session sess(new Session(conn));
 
@@ -211,9 +204,6 @@ main(int argc, char **argv)
 
     test_module_change_create(sess);
     assert(1 == 1);
-  } catch( const std::exception& e ) {
-    cout << e.what() << endl;
-  }
 
   return 0;
 }
