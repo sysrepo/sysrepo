@@ -1746,7 +1746,7 @@ next_node:
                     node = node->next;
                     process_children = true;
                 } else {
-                    node = node->parent;
+                    node = lys_parent(node);
                     process_children = false;
                 }
             } else {
