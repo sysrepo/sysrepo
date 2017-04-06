@@ -430,9 +430,8 @@ np_notif_store_test(void **state)
 
     /* store notification */
     rc = np_store_event_notification(np_ctx, test_ctx->rp_session_ctx->user_credentials, "/test-module:link-discovered",
-            time(NULL), &node);
+            time(NULL), node);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_null(node);
 
     /* retrieve notifications  */
     rc = np_get_event_notifications(np_ctx, test_ctx->rp_session_ctx, "/test-module:link-discovered", 0, time(NULL),
@@ -449,6 +448,7 @@ np_notif_store_test(void **state)
 
     rc = np_notification_store_cleanup(np_ctx, false);
     assert_int_equal(rc, SR_ERR_OK);
+    lyd_free_withsiblings(node);
     ly_ctx_destroy(ctx, NULL);
 #endif
 }

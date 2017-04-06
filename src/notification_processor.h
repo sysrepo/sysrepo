@@ -328,13 +328,12 @@ void np_subscriptions_list_cleanup(sr_list_t *subscriptions_list);
  * @param[in] user_cred Credentials of the user requesting storing of the notification.
  * @param[in] xpath XPath of the notification to be stored.
  * @param[in] generated_time Time when notification has been generated.
- * @param[in] data_tree Pointer to the data tree of the notification. Will be freed and pointer
- * set to NULL upon successful execution.
+ * @param[in] data_tree Pointer to the data tree of the notification.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath,
-        const time_t generated_time, struct lyd_node **data_tree);
+        const time_t generated_time, struct lyd_node *data_tree);
 
 /**
  * @brief Retrieves event notifications from the notification datastore.

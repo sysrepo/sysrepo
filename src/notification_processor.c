@@ -1633,7 +1633,7 @@ np_subscriptions_list_cleanup(sr_list_t *subscriptions_list)
 
 int
 np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t generated_time,
-        struct lyd_node **notif_data_tree)
+        struct lyd_node *notif_data_tree)
 {
 #define TIME_BUF_SIZE 64
 
@@ -1642,7 +1642,7 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
     char data_xpath[PATH_MAX] = { 0, };
     char generated_time_buf[TIME_BUF_SIZE] = { 0, };
     struct timespec logged_time_spec = { 0, };
-    struct lyd_node *data_tree = NULL, *new_node = NULL;
+    struct lyd_node *data_tree = NULL, *new_node = NULL, *dt_dup = NULL;
     int fd = -1;
     int rc = SR_ERR_OK;
 
@@ -1694,21 +1694,25 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
 
     if (0 == strcmp("/ietf-netconf-notifications:netconf-config-change", xpath)) {
         char *string_notif = NULL;
-        rc = dm_netconf_config_change_to_string(np_ctx->rp_ctx->dm_ctx, *notif_data_tree, &string_notif);
+        rc = dm_netconf_config_change_to_string(np_ctx->rp_ctx->dm_ctx, notif_data_tree, &string_notif);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed print config-change notif to string");
         new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_STRING);
-        lyd_free_withsiblings(*notif_data_tree);
-        *notif_data_tree = NULL;
     } else {
         /* store notification data as anydata */
-        new_node = lyd_new_anydata(new_node, NULL, "data", (void*)*notif_data_tree, LYD_ANYDATA_DATATREE);
+        dt_dup = lyd_dup_to_ctx(notif_data_tree, 1, notif_data_tree->schema->module->ctx);
+        if (NULL == dt_dup) {
+            SR_LOG_ERR("Error duplicating notification data tree: %s.", ly_errmsg());
+            goto cleanup;
+        }
+
+        new_node = lyd_new_anydata(new_node, NULL, "data", (void*)dt_dup, LYD_ANYDATA_DATATREE);
     }
     if (NULL == new_node) {
         SR_LOG_ERR("Error by adding notification content into notification store: %s.", ly_errmsg());
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     } else {
-        *notif_data_tree = NULL; /* data tree freed in lyd_new_anydata */
+        dt_dup = NULL; /* data tree freed in lyd_new_anydata */
     }
 
     /* save notif. data */

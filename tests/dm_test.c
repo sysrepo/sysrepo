@@ -595,7 +595,7 @@ dm_event_notif_test(void **state)
 
     /* non-existing event notification */
     rc = dm_validate_event_notif(ctx, session, "/test-module:non-existing-event-notif", values, values_cnt,
-            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     dm_copy_errors(session, NULL, &error_msg, &error_xpath);
     assert_string_equal("target node is not present in the schema tree", error_msg);
@@ -628,7 +628,7 @@ dm_event_notif_test(void **state)
     values[5].data.string_val = strdup("eth2");
 
     rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", values, values_cnt,
-            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL, NULL);
     assert_int_equal(SR_ERR_OK, rc);
     /* including default leaf */
     assert_int_equal(7, with_def_cnt);
@@ -641,7 +641,7 @@ dm_event_notif_test(void **state)
     free(with_def[6].xpath);
     with_def[6].xpath = strdup("/test-module:link-removed/non-existing-node");
     rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", with_def, with_def_cnt,
-            NULL, NULL, NULL, NULL, NULL, NULL);
+            NULL, NULL, NULL, NULL, NULL, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     dm_copy_errors(session, NULL, &error_msg, &error_xpath);
     assert_string_equal("Resolving XPath expression \"/test-module:link-removed/non-existing-node\" failed.", error_msg);
@@ -667,7 +667,7 @@ dm_event_notif_test(void **state)
 
     /* non-existing location of the notification in the data tree */
     rc = dm_validate_event_notif(ctx, session, "/test-module:kernel-modules/kernel-module[name=\"non-existent-module\"]/status-change",
-            values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL);
+            values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     dm_copy_errors(session, NULL, &error_msg, &error_xpath);
     assert_string_equal("target node is not present in the data tree", error_msg);
@@ -691,7 +691,7 @@ dm_event_notif_test(void **state)
 
     /* unsatisfied "must" condition */
     rc = dm_validate_event_notif(ctx, session, "/test-module:kernel-modules/kernel-module[name=\"irqbypass.ko\"]/status-change",
-            values, values_cnt, NULL, NULL, NULL, NULL, NULL, NULL);
+            values, values_cnt, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     dm_copy_errors(session, NULL, &error_msg, &error_xpath);
     assert_string_equal("time-of-change must be greater than magic_number", error_msg);
@@ -704,7 +704,7 @@ dm_event_notif_test(void **state)
     /* satisfied "must" condition */
     values[1].data.uint32_val = 132;
     rc = dm_validate_event_notif(ctx, session, "/test-module:kernel-modules/kernel-module[name=\"irqbypass.ko\"]/status-change",
-            values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL);
+            values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL, NULL);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, with_def_cnt);
     assert_int_equal(2, with_def_tree_cnt);
