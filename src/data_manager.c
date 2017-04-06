@@ -568,7 +568,7 @@ dm_release_tmp_ly_ctx(dm_ctx_t *dm_ctx, dm_tmp_ly_ctx_t *tmp_ctx)
     const struct lys_module *module = NULL;
 
     /* disable all modules */
-    while (NULL == (module = ly_ctx_get_module_iter(tmp_ctx->ctx, &idx))) {
+    while (NULL != (module = ly_ctx_get_module_iter(tmp_ctx->ctx, &idx))) {
         lys_set_disabled(module);
     }
 
