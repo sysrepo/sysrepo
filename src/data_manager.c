@@ -5819,13 +5819,19 @@ cleanup:
 
         lyd_free_withsiblings(data_tree);
     } else {
-        lyd_free_withsiblings(di->node);
-        di->node = data_tree;
+        if (data_tree) {
+            lyd_free_withsiblings(di->node);
+            di->node = data_tree;
+        }
 
-        *ret_ctx = tmp_ctx->ctx;
-        tmp_ctx->ctx = NULL;
+        if ((NULL != tmp_ctx) && (NULL != ret_ctx)) {
+            *ret_ctx = tmp_ctx->ctx;
+            tmp_ctx->ctx = NULL;
+        }
     }
-    dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
+    if (tmp_ctx) {
+        dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
+    }
 
     return rc;
 }
@@ -6056,6 +6062,7 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     char *module_name = NULL;
     dm_data_info_t *di = NULL;
     const struct lys_node *proc_node = NULL;
+    struct lyd_node *data_tree = NULL, *tmp_dt;
     struct lyxml_elem *xml = NULL;
     int rc = SR_ERR_OK;
     dm_tmp_ly_ctx_t *tmp_ctx = NULL;
@@ -6119,8 +6126,8 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     }
 
     /* parse the XML into the data tree */
-    di->node = lyd_parse_xml(ly_ctx, &xml, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
-    if (NULL == di->node) {
+    data_tree = lyd_parse_xml(ly_ctx, &xml, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
+    if (NULL == data_tree) {
         SR_LOG_ERR("Error by parsing notification data: %s", ly_errmsg());
         rc = dm_report_error(session, ly_errmsg(), notification->xpath, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
@@ -6128,12 +6135,15 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
 
     if (!dm_skip_procedure_content_validation(notification->xpath)) {
         /* validate the data tree & add default nodes */
+        tmp_dt = di->node;
+        di->node = data_tree;
         rc = dm_validate_procedure_content(dm_ctx, session, di, DM_PROCEDURE_EVENT_NOTIF, true, proc_node, &tmp_ly_ctx);
+        di->node = tmp_dt;
         CHECK_RC_MSG_GOTO(rc, cleanup, "Procedure validation failed.");
     }
 
     /* convert data tree into desired format */
-    rc = dm_ly_datatree_to_sr_val_node(sr_mem, notification->xpath, di->node, api_variant, false,
+    rc = dm_ly_datatree_to_sr_val_node(sr_mem, notification->xpath, data_tree, api_variant, false,
             (SR_API_VALUES == api_variant) ? (void**)(&notification->data.values) : (void**)(&notification->data.trees),
             &notification->data_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to convert notification data tree into desired format.");
@@ -6144,7 +6154,7 @@ cleanup:
     if (NULL != xml) {
         lyxml_free(ly_ctx, xml);
     }
-    lyd_free_withsiblings(di->node);
+    lyd_free_withsiblings(data_tree);
     ly_ctx_destroy(tmp_ly_ctx, NULL);
     if (locked) {
         md_ctx_unlock(dm_ctx->md_ctx);
