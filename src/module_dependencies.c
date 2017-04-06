@@ -1742,11 +1742,23 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
 next_node:
             /* backtracking + automatically moving to the next sibling if there is any */
             if (node != root) {
-                if (node->next && main_module_schema == LYS_MAIN_MODULE(node->next)) {
+                if (node->nodetype != LYS_AUGMENT && node->next && main_module_schema == LYS_MAIN_MODULE(node->next)) {
                     node = node->next;
                     process_children = true;
                 } else {
-                    node = node->parent;
+                    parent = lys_parent(node);
+                    if (!augment) {
+                        /* if we already got into augment data, we have to go back */
+                        node = parent;
+                    } else {
+                        /* if processing augment, we must be able to go back through
+                         * the augments from the same module */
+                        if (parent && main_module_schema == LYS_MAIN_MODULE(parent)) {
+                            node = parent;
+                        } else {
+                            node = node->parent; /* should be NULL */
+                        }
+                    }
                     process_children = false;
                 }
             } else {
@@ -2080,7 +2092,7 @@ dependencies:
     /* process dependencies introduced by augments */
     for (uint32_t i = 0; i < module_schema->augment_size; ++i) {
         augment = module_schema->augment + i;
-        if (module_schema != LYS_MAIN_MODULE(augment->target)) {
+        if (augment->target && module_schema != LYS_MAIN_MODULE(augment->target)) {
             module_lkp.name = (char *)LYS_MAIN_MODULE(augment->target)->name;
             module_lkp.revision_date = (char *)md_get_module_revision(LYS_MAIN_MODULE(augment->target));
             module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
