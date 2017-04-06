@@ -2928,6 +2928,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     const char *xpath = NULL;
     char *module_name = NULL;
     struct lyd_node *notif_data_tree = NULL;
+    struct ly_ctx *notif_ctx = NULL;
     sr_api_variant_t msg_api_variant = SR_API_VALUES;
     sr_val_t *values = NULL, *with_def = NULL;
     sr_node_t *trees = NULL, *with_def_tree = NULL;
@@ -2973,10 +2974,10 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     /* validate event-notification request */
     if (SR_API_VALUES == msg_api_variant) {
         rc = dm_validate_event_notif(rp_ctx->dm_ctx, dm_session, xpath, values, values_cnt, NULL,
-                &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
+                &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree, &notif_ctx);
     } else {
         rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, dm_session, xpath, trees, tree_cnt, NULL,
-                &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
+                &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree, &notif_ctx);
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.", xpath);
 
@@ -2997,7 +2998,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     if (!(msg->request->event_notif_req->options & SR__EVENT_NOTIF_REQ__NOTIF_FLAGS__EPHEMERAL)) {
         /* store the notification in the datastore */
         rc = np_store_event_notification(rp_ctx->np_ctx, NULL != session ? session->user_credentials : NULL,
-                xpath, msg->request->event_notif_req->timestamp, &notif_data_tree);
+                xpath, msg->request->event_notif_req->timestamp, notif_data_tree);
         CHECK_RC_MSG_GOTO(rc, finalize, "Failed to save event notification");
     }
 #ifndef STORE_CONFIG_CHANGE_NOTIF
@@ -3087,6 +3088,9 @@ finalize:
     }
     if (NULL != notif_data_tree) {
         lyd_free_withsiblings(notif_data_tree);
+    }
+    if (NULL != notif_ctx) {
+        ly_ctx_destroy(notif_ctx, NULL);
     }
     return rc;
 }
