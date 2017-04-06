@@ -2092,7 +2092,7 @@ dependencies:
     /* process dependencies introduced by augments */
     for (uint32_t i = 0; i < module_schema->augment_size; ++i) {
         augment = module_schema->augment + i;
-        if (module_schema != LYS_MAIN_MODULE(augment->target)) {
+        if (augment->target && module_schema != LYS_MAIN_MODULE(augment->target)) {
             module_lkp.name = (char *)LYS_MAIN_MODULE(augment->target)->name;
             module_lkp.revision_date = (char *)md_get_module_revision(LYS_MAIN_MODULE(augment->target));
             module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
