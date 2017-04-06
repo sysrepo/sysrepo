@@ -1746,7 +1746,19 @@ next_node:
                     node = node->next;
                     process_children = true;
                 } else {
-                    node = lys_parent(node);
+                    parent = lys_parent(node);
+                    if (!augment) {
+                        /* if we already got into augment data, we have to go back */
+                        node = parent;
+                    } else {
+                        /* if processing augment, we must be able to go back through
+                         * the augments from the same module */
+                        if (parent && main_module_schema == LYS_MAIN_MODULE(parent)) {
+                            node = parent;
+                        } else {
+                            node = node->parent; /* should be NULL */
+                        }
+                    }
                     process_children = false;
                 }
             } else {
