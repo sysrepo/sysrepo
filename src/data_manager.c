@@ -5668,7 +5668,7 @@ cleanup:
  */
 static int
 dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *di, const dm_procedure_t type,
-        const bool input, const struct lys_node *proc_node, struct ly_ctx **ret_ctx)
+        const bool input, const struct lys_node *proc_node, struct lyd_node **data_tree, struct ly_ctx **ret_ctx)
 {
     int validation_options = 0;
     bool ext_ref = false, backtracking = false;
@@ -5678,7 +5678,7 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
     sr_list_t *data_for_validation = NULL;
     dm_tmp_ly_ctx_t *tmp_ctx = NULL;
     dm_data_info_t *dep_di = NULL;
-    struct lyd_node *data_tree = NULL;
+    struct lyd_node *val_data_tree = NULL;
     bool validation_failed = false;
     bool *should_be_freed = NULL;
 
@@ -5727,7 +5727,11 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
     /* attach data dependant modules */
     if (di->schema->has_instance_id || ext_ref) {
 
+        val_data_tree = di->node;
+        di->node = *data_tree;
         rc = dm_requires_tmp_context(dm_ctx, session, di, &required_data, &di->required_modules);
+        di->node = val_data_tree;
+        val_data_tree = NULL;
         CHECK_RC_LOG_GOTO(rc, cleanup, "Require tmp ctx check failed for module %s", di->schema->module_name);
 
         if (NULL == di->required_modules) {
@@ -5735,7 +5739,7 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
             rc = dm_load_dependant_data(dm_ctx, session, di);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", di->schema->module_name);
 
-            if (0 != lyd_validate(&di->node, validation_options, NULL)) {
+            if (0 != lyd_validate(data_tree, validation_options, di->node)) {
                 SR_LOG_DBG("Validation failed for %s module", di->schema->module->name);
                 validation_failed = true;
             } else {
@@ -5746,6 +5750,7 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
                 rc = dm_remove_added_data_trees(session, di);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Removing of added data trees failed");
             }
+
         } else {
             /* validate using tmp ly_ctx */
 
@@ -5772,14 +5777,20 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
             rc = dm_get_tmp_ly_ctx(dm_ctx, di->required_modules, &tmp_ctx);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to acquire tmp ctx");
 
-            /* migrate data to working context */
+            /* migrate data tree to working context */
+            val_data_tree = sr_dup_datatree_to_ctx(*data_tree, tmp_ctx->ctx);
+            lyd_free_withsiblings(*data_tree);
+            *data_tree = val_data_tree;
+            val_data_tree = NULL;
+
+            /* migrate additional data to working context */
             for (size_t i = 0; i < data_for_validation->count; i++) {
                 dm_data_info_t *d = (dm_data_info_t *)data_for_validation->data[i];
                 if (NULL != d->node) {
-                    if (NULL == data_tree) {
-                        data_tree = sr_dup_datatree_to_ctx(d->node, tmp_ctx->ctx);
+                    if (NULL == val_data_tree) {
+                        val_data_tree = sr_dup_datatree_to_ctx(d->node, tmp_ctx->ctx);
                     } else {
-                        int ret = lyd_merge_to_ctx(&data_tree, d->node, LYD_OPT_EXPLICIT, tmp_ctx->ctx);
+                        int ret = lyd_merge_to_ctx(&val_data_tree, d->node, LYD_OPT_EXPLICIT, tmp_ctx->ctx);
                         CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Failed to merge data tree '%s'", d->schema->module_name);
                     }
                 }
@@ -5789,19 +5800,15 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
             }
 
             /* start validation */
-            if (0 != lyd_validate(&data_tree, validation_options, NULL)) {
+            if (0 != lyd_validate(data_tree, validation_options, val_data_tree)) {
                 SR_LOG_DBG("Validation failed for %s module", di->schema->module->name);
                 validation_failed = true;
             } else {
                 SR_LOG_DBG("Validation succeeded for '%s' module", di->schema->module->name);
             }
-
-            /* remove data from different modules and replace data in data_info to have default nodes in place */
-            rc = dm_remove_added_data_trees_by_module_name(di->schema->module_name, &data_tree);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to remove added data trees");
         }
     } else {
-        if (0 != lyd_validate(&di->node, validation_options, NULL)) {
+        if (0 != lyd_validate(data_tree, validation_options, di->node)) {
             SR_LOG_DBG("Validation failed for %s module", di->schema->module->name);
             validation_failed = true;
         } else {
@@ -5813,24 +5820,18 @@ cleanup:
     sr_list_cleanup(required_data);
     sr_list_cleanup(data_for_validation);
     free(should_be_freed);
-    if (validation_failed) {
-        SR_LOG_ERR("%s content validation failed: %s", proc_node->name, ly_errmsg());
-        rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
-
-        lyd_free_withsiblings(data_tree);
-    } else {
-        if (data_tree) {
-            lyd_free_withsiblings(di->node);
-            di->node = data_tree;
-        }
-
-        if ((NULL != tmp_ctx) && (NULL != ret_ctx)) {
-            *ret_ctx = tmp_ctx->ctx;
-            tmp_ctx->ctx = NULL;
-        }
+    lyd_free_withsiblings(val_data_tree);
+    if ((NULL != tmp_ctx) && (NULL != ret_ctx)) {
+        *ret_ctx = tmp_ctx->ctx;
+        tmp_ctx->ctx = NULL;
     }
     if (tmp_ctx) {
         dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
+    }
+
+    if (validation_failed) {
+        SR_LOG_ERR("%s content validation failed: %s", proc_node->name, ly_errmsg());
+        rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
     }
 
     return rc;
@@ -5876,7 +5877,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 {
     dm_data_info_t *di = NULL;
     const struct lys_node *proc_node = NULL;
-    struct lyd_node *data_tree = NULL, *tmp_node;
+    struct lyd_node *data_tree = NULL;
     char *tmp_xpath = NULL;
     struct ly_set *nodeset = NULL;
     struct ly_ctx *tmp_ctx = NULL;
@@ -5956,11 +5957,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 
     /* validate the content (and also add default nodes) */
     if (!dm_skip_procedure_content_validation(xpath)) {
-        tmp_node = di->node;
-        di->node = data_tree;
-        rc = dm_validate_procedure_content(dm_ctx, session, di, type, input, proc_node, &tmp_ctx);
-        data_tree = di->node;
-        di->node = tmp_node;
+        rc = dm_validate_procedure_content(dm_ctx, session, di, type, input, proc_node, &data_tree, &tmp_ctx);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Procedure validation failed.");
     }
 
@@ -6062,7 +6059,7 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     char *module_name = NULL;
     dm_data_info_t *di = NULL;
     const struct lys_node *proc_node = NULL;
-    struct lyd_node *data_tree = NULL, *tmp_dt;
+    struct lyd_node *data_tree = NULL;
     struct lyxml_elem *xml = NULL;
     int rc = SR_ERR_OK;
     dm_tmp_ly_ctx_t *tmp_ctx = NULL;
@@ -6135,10 +6132,7 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
 
     if (!dm_skip_procedure_content_validation(notification->xpath)) {
         /* validate the data tree & add default nodes */
-        tmp_dt = di->node;
-        di->node = data_tree;
-        rc = dm_validate_procedure_content(dm_ctx, session, di, DM_PROCEDURE_EVENT_NOTIF, true, proc_node, &tmp_ly_ctx);
-        di->node = tmp_dt;
+        rc = dm_validate_procedure_content(dm_ctx, session, di, DM_PROCEDURE_EVENT_NOTIF, true, proc_node, &data_tree, &tmp_ly_ctx);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Procedure validation failed.");
     }
 
