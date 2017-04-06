@@ -1742,7 +1742,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
 next_node:
             /* backtracking + automatically moving to the next sibling if there is any */
             if (node != root) {
-                if (node->next && main_module_schema == LYS_MAIN_MODULE(node->next)) {
+                if (node->nodetype != LYS_AUGMENT && node->next && main_module_schema == LYS_MAIN_MODULE(node->next)) {
                     node = node->next;
                     process_children = true;
                 } else {
