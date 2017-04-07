@@ -483,13 +483,13 @@ main(int argc, char* argv[])
     rc = sr_session_start(ctx.connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &ctx.session);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepo: %s", sr_strerror(rc));
 
-    /* load the plugins */
-    rc = sr_pd_load_plugins(&ctx);
-
     /* tell the parent process that we are okay */
     if (!debug_mode) {
         sr_daemonize_signal_success(parent_pid);
     }
+
+    /* load the plugins */
+    rc = sr_pd_load_plugins(&ctx);
 
     SR_LOG_INF_MSG("Sysrepo plugin daemon initialized successfully.");
 

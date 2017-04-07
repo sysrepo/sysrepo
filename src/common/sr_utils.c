@@ -2222,6 +2222,7 @@ sr_daemon_check_single_instance(const char *pid_file, int *pid_file_fd)
 static void
 sr_daemon_ignore_signals()
 {
+    signal(SIGCHLD, SIG_DFL);  /* do not ignore, use default handler to keep e.g. waitpid() working */
     signal(SIGUSR1, SIG_IGN);
     signal(SIGALRM, SIG_IGN);
     signal(SIGTSTP, SIG_IGN);  /* keyboard stop */
