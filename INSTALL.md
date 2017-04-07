@@ -122,6 +122,17 @@ $ make install
 make doc
 ```
 
+## Docker and sysrepo
+Sysrepo regulary builds docker images, the official image is [sysrepo/sysrepo-netopeer2](https://hub.docker.com/r/sysrepo/sysrepo-netopeer2/) and it is based on ubuntu 16.04.
+
+There are also dockerfiles for master and devel branches, the supported platforms are:
+- [Arch](./deploy/docker/sysrepo-netopeer2/platforms/Dockerfile.arch)
+- [Debian](./deploy/docker/sysrepo-netopeer2/platforms/Dockerfile.debian)
+- [Fedora](./deploy/docker/sysrepo-netopeer2/platforms/Dockerfile.fedora)
+- [Gentoo](./deploy/docker/sysrepo-netopeer2/platforms/Dockerfile.gentoo)
+- [Ubuntu](./deploy/docker/sysrepo-netopeer2/platforms/Dockerfile.ubuntu)
+
+All of the dockerfiles can be found here [platforms](./deploy/docker/sysrepo-netopeer2/platforms)
 
 ## Useful CMake options
 #### Changing build mode:
