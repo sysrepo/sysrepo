@@ -30,7 +30,7 @@ RUN \
 
 # add netconf user
 RUN \
-      adduser --system netconf && \
+      useradd --system netconf && \
       echo "netconf:netconf" | chpasswd
 
 # use /opt/dev as working directory
@@ -56,7 +56,7 @@ RUN \
 RUN \
       git clone https://github.com/CESNET/libyang.git && \
       cd libyang && mkdir build && cd build && \
-		git checkout devel && \
+      git checkout devel && \
       cmake -DCMAKE_BUILD_TYPE:String="Release" -DENABLE_BUILD_TESTS=OFF .. && \
       make -j2 && \
       make install && \
@@ -66,7 +66,7 @@ RUN \
 RUN \
       git clone https://github.com/sysrepo/sysrepo.git && \
       cd sysrepo && mkdir build && cd build && \
-		git checkout devel && \
+      git checkout devel && \
       cmake -DCMAKE_BUILD_TYPE:String="Release" -DENABLE_TESTS=OFF -DREPOSITORY_LOC:PATH=/etc/sysrepo .. && \
       make -j2 && \
       make install && \
@@ -76,7 +76,7 @@ RUN \
 RUN \
       git clone https://github.com/CESNET/libnetconf2.git && \
       cd libnetconf2 && mkdir build && cd build && \
-		git checkout devel && \
+      git checkout devel && \
       cmake -DCMAKE_BUILD_TYPE:String="Release" -DENABLE_BUILD_TESTS=OFF .. && \
       make -j2 && \
       make install && \

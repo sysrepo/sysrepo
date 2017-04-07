@@ -10,8 +10,8 @@ RUN \
 RUN \
       emerge -q \
       automake \
-	   bison \
-	   flex \
+       bison \
+       flex \
       dev-vcs/git \
       cmake \
       vim \
@@ -55,7 +55,7 @@ RUN \
 RUN \
       git clone https://github.com/CESNET/libyang.git && \
       cd libyang && mkdir build && cd build && \
-		git checkout master-sysrepo && \
+      git checkout master-sysrepo && \
       cmake -DCMAKE_BUILD_TYPE:String="Release" -DENABLE_BUILD_TESTS=OFF .. && \
       make -j2 && \
       make install && \
