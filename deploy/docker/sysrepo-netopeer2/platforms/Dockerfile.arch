@@ -30,7 +30,7 @@ RUN \
 
 # add netconf user
 RUN \
-      adduser --system netconf && \
+      useradd --system netconf && \
       echo "netconf:netconf" | chpasswd
 
 # use /opt/dev as working directory
