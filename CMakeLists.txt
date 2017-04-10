@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 2.8.12)
 project(sysrepo)
 set(SYSREPO_DESC "YANG-based system repository")
 include(GNUInstallDirs)
@@ -8,6 +8,9 @@ set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 5)
 set(SYSREPO_MICRO_VERSION 11)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
+
+# osx specific
+set(CMAKE_MACOSX_RPATH TRUE)
 
 # setup bindings
 set(GEN_LANGUAGE_BINDINGS 1 CACHE BOOL "Enable language bindings generation.")
