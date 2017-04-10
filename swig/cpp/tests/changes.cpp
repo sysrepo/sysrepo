@@ -69,10 +69,10 @@ public:
 
             snprintf(change_path, MAX_LEN, "/%s:*", module_name);
             auto it = sess->get_changes_iter(&change_path[0]);
+            auto change = sess->get_change_next(it);
 
-            while (auto change = sess->get_change_next(it)) {
-                assert(SR_OP_DELETED == change->oper());
-            }
+            assert(SR_OP_DELETED == change->oper());
+            assert(change->old_val()->data()->get_int32() == 10);
             return SR_ERR_OK;
         }
 };
@@ -98,13 +98,15 @@ public:
     int module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
         {
             char change_path[MAX_LEN];
-
             snprintf(change_path, MAX_LEN, "/%s:*", module_name);
             auto it = sess->get_changes_iter(&change_path[0]);
+            auto change = sess->get_change_next(it);
 
-            while (auto change = sess->get_change_next(it)) {
-                assert(SR_OP_MODIFIED == change->oper());
-            }
+            assert(SR_OP_MODIFIED == change->oper());
+            string xpath(change->new_val()->xpath());
+            assert("/swig-test-cpp-changes:cpp-changes/test-get[name='test-cpp-10']/number" ==
+                   xpath);
+            assert(change->new_val()->data()->get_int32() == 42);
             return SR_ERR_OK;
         }
 };
@@ -134,10 +136,17 @@ public:
 
             snprintf(change_path, MAX_LEN, "/%s:*", module_name);
             auto it = sess->get_changes_iter(&change_path[0]);
+            auto change = sess->get_change_next(it);
 
-            while (auto change = sess->get_change_next(it)) {
-                assert(SR_OP_CREATED == change->oper());
-            }
+            assert(SR_OP_CREATED == change->oper());
+            string xpath(change->new_val()->xpath());
+            assert("/swig-test-cpp-changes:cpp-changes/test-get[name='test-cpp-20']" ==
+                   xpath);
+            change = sess->get_change_next(it);
+            assert(change->new_val()->data()->get_string() == string("test-cpp-20"));
+            change = sess->get_change_next(it);
+            assert(change->new_val()->data()->get_int32() == 42);
+
             return SR_ERR_OK;
         }
 };
