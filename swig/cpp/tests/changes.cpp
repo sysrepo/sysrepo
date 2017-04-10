@@ -172,23 +172,14 @@ test_module_change_create(S_Session sess)
 int
 main(int argc, char **argv)
 {
-    int n_try = 3;
-    while(n_try-- > 0) {
-        try {
-            S_Connection conn(new Connection("test changes"));
-            S_Session sess(new Session(conn, SR_DS_RUNNING));
+    S_Connection conn(new Connection("test changes"));
+    S_Session sess(new Session(conn, SR_DS_RUNNING));
 
-            clean_test(sess);
-            test_module_change_delete(sess);
-            clean_test(sess);
-            test_module_change_modify(sess);
-            test_module_change_create(sess);
-            return 0;
-        } catch (const std::exception& e) {
-            cout << e.what() << endl;
-            usleep(1000);
-        }
-    }
+    clean_test(sess);
+    test_module_change_delete(sess);
+    clean_test(sess);
+    test_module_change_modify(sess);
+    test_module_change_create(sess);
 
-    assert(false);
+    return 0;
 }

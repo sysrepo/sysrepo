@@ -88,27 +88,18 @@ void test_set_item(S_Session sess)
 int
 main(int argc, char **argv)
 {
-    int n_try = 3;
-    while(n_try-- > 0) {
-        try {
-            S_Connection conn(new Connection("test operations"));
-            S_Session sess(new Session(conn, SR_DS_RUNNING));
-            S_Subscribe subs(new Subscribe(sess));
+        S_Connection conn(new Connection("test operations"));
+        S_Session sess(new Session(conn, SR_DS_RUNNING));
+        S_Subscribe subs(new Subscribe(sess));
 
-            S_Callback cb(new My_Callback());
+        S_Callback cb(new My_Callback());
 
-            subs->module_change_subscribe(module_name.c_str(), cb);
+        subs->module_change_subscribe(module_name.c_str(), cb);
 
-            init_test(sess);
-            test_get_item(sess);
-            test_delete_item(sess);
-            test_set_item(sess);
-            return 0;
-        } catch (const std::exception& e) {
-            cout << e.what() << endl;
-            usleep(1000);
-        }
-    }
+        init_test(sess);
+        test_get_item(sess);
+        test_delete_item(sess);
+        test_set_item(sess);
 
-    assert(false);
+        return 0;
 }
