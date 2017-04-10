@@ -2566,7 +2566,9 @@ sr_create_uri_for_module(const struct lys_module *module, char **uri)
 
     snprintf(buffer, len, "%s?module=%s", module->ns, module->name);
     size_t ptr = strlen(buffer);
-    snprintf(buffer + ptr, len-ptr, "&amp;revision=%s", module->rev[0].date);
+    if (0 < module->rev_size) {
+        snprintf(buffer + ptr, len-ptr, "&amp;revision=%s", module->rev[0].date);
+    }
 
     if (features->count > 0) {
         ptr = strlen(buffer);
