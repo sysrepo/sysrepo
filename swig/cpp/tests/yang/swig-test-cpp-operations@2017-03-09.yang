@@ -1,0 +1,57 @@
+module swig-test-cpp-operations {
+
+    yang-version 1;
+
+    namespace
+      "urn:ietf:params:xml:ns:yang:swig-test-cpp-operations";
+
+    prefix swig_test;
+
+    organization
+      "Sysrepo";
+
+    contact
+      "Project repository <https://github.com/sysrepo/sysrep>";
+
+    description
+      "This module contains a collection of YANG definitions for
+     testing sysrepo SWIG language bindings.";
+
+    revision "2017-03-09" {
+      description "Initial revision.";
+      reference
+        "No";
+
+    }
+    container java-changes {
+        list test-get {
+            key "name";
+
+            leaf name {
+                type string;
+                description
+                  "Name of the test.";
+            }
+
+            leaf number {
+                 type int32;
+            }
+        }
+    }
+
+    container cpp-operations {
+        list test-get {
+            key "name";
+
+            leaf name {
+                type string;
+                description
+                  "Name of the test.";
+            }
+
+            leaf number {
+                 type int32;
+            }
+        }
+    }
+}
