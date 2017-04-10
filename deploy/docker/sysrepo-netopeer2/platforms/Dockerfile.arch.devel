@@ -146,7 +146,7 @@ RUN \
       make install
 
 ENV EDITOR vim
-EXPOSE 6001
+EXPOSE 830
 
 COPY supervisord.conf /etc/supervisord.conf
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
