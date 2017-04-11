@@ -820,7 +820,8 @@ dm_enable_module_subtree_running_internal(dm_ctx_t *ctx, dm_session_t *session, 
 }
 
 static int
-dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, dm_schema_info_t *si)
+dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, dm_schema_info_t *si,
+                                bool features_only)
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, si);
     char **enabled_subtrees = NULL, **features = NULL;
@@ -846,7 +847,7 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const c
             }
         }
 
-        if (SR_ERR_OK == rc) {
+        if (!features_only && SR_ERR_OK == rc) {
             if (module_enabled) {
                 /* enable running datastore for whole module */
                 rc = dm_enable_module_running_internal(dm_ctx, NULL, si, module_name);
@@ -1001,16 +1002,22 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
 
     /* apply persist data enable features, running datastore */
     if (module->has_persist) {
-        rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module_name, si); /* TODO: session should be known here */
+        rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module_name, si, false); /* TODO: session should be known here */
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", module_name);
     }
 
     ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *) ll_node->data;
-        if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) && dep->dest->has_persist) {
-            rc = dm_apply_persist_data_for_model(dm_ctx, NULL, dep->dest->name, si); /* TODO: session should be known here */
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", dep->dest->name);
+        if (dep->dest->has_persist) {
+            if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
+                rc = dm_apply_persist_data_for_model(dm_ctx, NULL, dep->dest->name, si, false); /* TODO: session should be known here */
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", dep->dest->name);
+            } else if (dep->type == MD_DEP_IMPORT) {
+                /* we need to know features status from even imported modules */
+                rc = dm_apply_persist_data_for_model(dm_ctx, NULL, dep->dest->name, si, true);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
+            }
         }
         ll_node = ll_node->next;
     }
@@ -4652,16 +4659,21 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
         CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", module->name);
 
         if (module->has_persist) {
-            rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si);
+            rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si, false);
             CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
         }
 
         ll_node = module->deps->first;
         while (ll_node) {
             dep = (md_dep_t *) ll_node->data;
-            if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) && dep->dest->has_persist) {
-                rc = dm_apply_persist_data_for_model(dm_ctx, session, dep->dest->name, si);
-                CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", dep->dest->name);
+            if (dep->dest->has_persist) {
+                if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
+                    rc = dm_apply_persist_data_for_model(dm_ctx, session, dep->dest->name, si, false);
+                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", dep->dest->name);
+                } else if (dep->type == MD_DEP_IMPORT) {
+                    rc = dm_apply_persist_data_for_model(dm_ctx, session, dep->dest->name, si, true);
+                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply features from persist data for %s", dep->dest->name);
+                }
             }
             ll_node = ll_node->next;
         }
@@ -4685,7 +4697,7 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
                     CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", dep->dest->name);
 
                     if (module->has_persist) {
-                        rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si_ext);
+                        rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si_ext, false);
                         CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
                     }
                 }
