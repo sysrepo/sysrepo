@@ -1135,7 +1135,7 @@ sr_libyang_val_str_to_sr_val(const char *val_str, sr_type_t type, sr_val_t *valu
         ret = sscanf(val_str, "%"SCNd64, &value->data.int64_val);
         break;
     case SR_DECIMAL64_T:
-        ret = scanf(val_str, "%g", &value->data.decimal64_val);
+        ret = sscanf(val_str, "%lf", &value->data.decimal64_val);
         break;
     default:
         SR_LOG_ERR_MSG("Unknown type to convert");
