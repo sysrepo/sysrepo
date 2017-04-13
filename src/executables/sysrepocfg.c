@@ -1165,6 +1165,9 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
 		if (lyset)
 			ly_set_free(lyset);
 	}
+	else {
+		rc = SR_ERR_BAD_ELEMENT;
+	}
 
     if (SR_ERR_OK == rc) {
 		/* commit the changes */
