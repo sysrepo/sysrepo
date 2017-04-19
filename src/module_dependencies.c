@@ -1775,7 +1775,7 @@ next_node:
  * @brief Try to insert given module into the dependency graph and update all direct edges.
  */
 static int
-md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, const char *revision, bool dependency,
+md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, const char *revision, bool implemented,
                      md_module_t *belongsto, sr_list_t *implicitly_inserted)
 {
     int rc = SR_ERR_INTERNAL;
@@ -1826,7 +1826,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     CHECK_NULL_NOMEM_GOTO(module->ns, rc, cleanup);
     module->filepath = strdup(module_schema->filepath);
     CHECK_NULL_NOMEM_GOTO(module->filepath, rc, cleanup);
-    module->implemented = module->submodule ? belongsto->implemented : !dependency;
+    module->implemented = implemented;
 
     /* Is this the latest revision of this module? */
     module_ll_node = md_ctx->modules->first;
@@ -1834,10 +1834,15 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
         module2 = (md_module_t *)module_ll_node->data;
         if (0 == strcmp(module->name, module2->name)) {
             /* already installed */
-            if (!dependency) {
+            if (implemented) {
                 if (module2->implemented) {
-                    rc = SR_ERR_DATA_EXISTS;
-                    SR_LOG_WRN("Module '%s' is already installed.", md_get_module_fullname(module));
+                    if (0 == strcmp(module->revision_date, module2->revision_date)) {
+                        rc = SR_ERR_DATA_EXISTS;
+                        SR_LOG_WRN("Module '%s' is already installed.", md_get_module_fullname(module));
+                    } else {
+                        rc = SR_ERR_UNSUPPORTED;
+                        SR_LOG_ERR("Module '%s' is already installed in another revision.", md_get_module_fullname(module));
+                    }
                     goto cleanup;
                 } else if (0 == strcmp(module->revision_date, module2->revision_date)) {
                     module2->implemented = true;
@@ -1953,7 +1958,7 @@ dependencies:
         if (NULL == inc->submodule->filepath) {
             continue;
         }
-        rc = md_insert_lys_module(md_ctx, (struct lys_module *)inc->submodule, md_get_inc_revision(inc), true,
+        rc = md_insert_lys_module(md_ctx, (struct lys_module *)inc->submodule, md_get_inc_revision(inc), implemented,
                                   module->submodule ? belongsto : module, implicitly_inserted);
         if (SR_ERR_OK != rc) {
             goto cleanup;
@@ -1989,9 +1994,10 @@ dependencies:
             SR_LOG_ERR("Unable to parse '%s' schema file: %s", imp->module->filepath, ly_errmsg());
             goto cleanup;
         }
+        /* non-implemented dependency will have all dependencies only imported */
         rc = md_insert_lys_module(md_ctx, imp_module_schema, md_get_module_revision(imp_module_schema),
-                                  true, NULL, implicitly_inserted);
-        if (SR_ERR_OK != rc) {
+                                  implemented ? imp->module->implemented : false, NULL, implicitly_inserted);
+        if (SR_ERR_OK != rc && SR_ERR_DATA_EXISTS != rc) {
             goto cleanup;
         }
         ly_ctx_destroy(tmp_ly_ctx, NULL);
@@ -2152,7 +2158,7 @@ dependencies:
     }
 
     /* inform caller about implicitly installed modules */
-    if (!module->submodule && dependency) {
+    if (!module->submodule && !implemented) {
         rc = md_get_module_key(module, &module_key);
         CHECK_RC_MSG_GOTO(rc, cleanup, "md_get_module_key failed");
         rc = sr_list_add(implicitly_inserted, module_key);
@@ -2228,7 +2234,7 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath, sr_list_t **implicitly_
     }
 
     /* insert module into the dependency graph */
-    rc = md_insert_lys_module(md_ctx, module_schema, md_get_module_revision(module_schema), false, NULL,
+    rc = md_insert_lys_module(md_ctx, module_schema, md_get_module_revision(module_schema), true, NULL,
             implicitly_inserted);
     if (rc != SR_ERR_OK) {
         goto cleanup;
