@@ -1135,7 +1135,7 @@ sr_libyang_val_str_to_sr_val(const char *val_str, sr_type_t type, sr_val_t *valu
         ret = sscanf(val_str, "%"SCNd64, &value->data.int64_val);
         break;
     case SR_DECIMAL64_T:
-        ret = scanf(val_str, "%g", &value->data.decimal64_val);
+        ret = sscanf(val_str, "%lf", &value->data.decimal64_val);
         break;
     default:
         SR_LOG_ERR_MSG("Unknown type to convert");
@@ -2566,7 +2566,9 @@ sr_create_uri_for_module(const struct lys_module *module, char **uri)
 
     snprintf(buffer, len, "%s?module=%s", module->ns, module->name);
     size_t ptr = strlen(buffer);
-    snprintf(buffer + ptr, len-ptr, "&amp;revision=%s", module->rev[0].date);
+    if (0 < module->rev_size) {
+        snprintf(buffer + ptr, len-ptr, "&amp;revision=%s", module->rev[0].date);
+    }
 
     if (features->count > 0) {
         ptr = strlen(buffer);
