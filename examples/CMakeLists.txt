@@ -44,7 +44,7 @@ macro(INSTALL_EXAMPLE_YANG MODULE_NAME REVISION)
     set(CMD "${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=666")
     if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.data.xml)
         # import data into module
-        set(CMD "${CMD}; ${CMAKE_BINARY_DIR}/src/sysrepocfg --import=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.data.xml --datastore=startup --format=xml --level=0 ${MODULE_NAME}")
+        set(CMD "${CMD}\; ${CMAKE_BINARY_DIR}/src/sysrepocfg --import=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.data.xml --datastore=startup --format=xml --level=0 ${MODULE_NAME}")
     endif()
     EXEC_AT_INSTALL_TIME(${CMD})
 endmacro(INSTALL_EXAMPLE_YANG)

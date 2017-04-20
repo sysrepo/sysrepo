@@ -191,7 +191,7 @@ add_subdirectory(src)
 # execute command at the install time
 macro(EXEC_AT_INSTALL_TIME CMD)
     install(CODE "message(STATUS \"Exec: ${CMD}\")
-        execute_process(COMMAND ${CMD} OUTPUT_QUIET RESULT_VARIABLE ret)
+        execute_process(COMMAND bash \"-c\" \"${CMD}\" OUTPUT_QUIET RESULT_VARIABLE ret)
         if (NOT \${ret} EQUAL 0)
           message(FATAL_ERROR \"Error: \${ret}\")
         endif()"
