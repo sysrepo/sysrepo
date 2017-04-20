@@ -3656,9 +3656,11 @@ rp_worker_thread_execute(void *rp_ctx_p)
                 if (dequeued_prev) {
                     /* only if the thread has actually processed something since the last wakeup */
                     size_t count = 0;
+                    pthread_mutex_lock(&rp_ctx->request_queue_mutex);
                     while ((0 == sr_cbuff_items_in_queue(rp_ctx->request_queue)) && (count < rp_ctx->thread_spin_limit)) {
                         count++;
                     }
+                    pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
                 }
                 pthread_mutex_lock(&rp_ctx->request_queue_mutex);
                 if (0 != sr_cbuff_items_in_queue(rp_ctx->request_queue)) {
