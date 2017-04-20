@@ -493,7 +493,7 @@ ac_set_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
 }
 
 int
-ac_unset_user_identity(ac_ctx_t *ac_ctx)
+ac_unset_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
 {
     int rc = SR_ERR_OK;
 
@@ -507,7 +507,9 @@ ac_unset_user_identity(ac_ctx_t *ac_ctx)
     /* set the identity back to process original */
     rc = ac_set_identity(ac_ctx->proc_euid, ac_ctx->proc_egid);
 
-    pthread_mutex_unlock(&ac_ctx->lock);
+    if (NULL != user_credentials) {
+        pthread_mutex_unlock(&ac_ctx->lock);
+    }
 
     return rc;
 }

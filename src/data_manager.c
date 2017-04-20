@@ -1235,7 +1235,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, dm_schema_info
 
     int fd = open(data_filename, O_RDONLY);
 
-    ac_unset_user_identity(dm_ctx->ac_ctx);
+    ac_unset_user_identity(dm_ctx->ac_ctx, dm_session_ctx->user_credentials);
 
     if (-1 != fd) {
         /* lock, read-only, blocking */
@@ -1362,7 +1362,7 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
     rc = dm_lock_file(dm_ctx->locking_ctx, lock_file);
 
     /* switch identity back */
-    ac_unset_user_identity(dm_ctx->ac_ctx);
+    ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
     /* log information about locked model */
     if (SR_ERR_OK != rc) {
@@ -3250,7 +3250,7 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_list_t 
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
         ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
         fd = open(file_name, O_RDONLY);
-        ac_unset_user_identity(dm_ctx->ac_ctx);
+        ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
         if (-1 == fd) {
             SR_LOG_DBG("File %s can not be opened for read write", file_name);
@@ -4012,12 +4012,12 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         count++;
     }
 
-    ac_unset_user_identity(dm_ctx->ac_ctx);
+    ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
     return rc;
 
 cleanup:
-    ac_unset_user_identity(dm_ctx->ac_ctx);
+    ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
     free(file_name);
     return rc;
 }
@@ -5103,7 +5103,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
             }
             fds[opened_files] = open(file_name, O_RDWR | O_TRUNC);
             if (NULL != session) {
-                ac_unset_user_identity(dm_ctx->ac_ctx);
+                ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
             }
             if (-1 == fds[opened_files]) {
                 SR_LOG_ERR("File %s can not be opened", file_name);

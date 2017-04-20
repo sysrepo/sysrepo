@@ -219,7 +219,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     error = errno;
 
     if (NULL != user_cred) {
-        ac_unset_user_identity(pm_ctx->rp_ctx->ac_ctx);
+        ac_unset_user_identity(pm_ctx->rp_ctx->ac_ctx, user_cred);
     }
 
     if (-1 == fd) {
@@ -233,7 +233,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
                 /* create new persist file */
                 ac_set_user_identity(pm_ctx->rp_ctx->ac_ctx, user_cred);
                 fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                ac_unset_user_identity(pm_ctx->rp_ctx->ac_ctx);
+                ac_unset_user_identity(pm_ctx->rp_ctx->ac_ctx, user_cred);
                 if (-1 == fd) {
                     SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, sr_strerror_safe(error));
                     rc = SR_ERR_INTERNAL;
