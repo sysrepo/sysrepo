@@ -53,7 +53,8 @@ typedef enum srcfg_operation_e {
     SRCFG_OP_EXPORT, /**< Export configuration to file or stdout */
     SRCFG_OP_IMPORT_XPATH, /**< Set configuration from an XPATH */
     SRCFG_OP_EXPORT_XPATH,  /**< Get an XPATH from the specified datastore */
-    SRCFG_OP_DELETE_XPATH  /**< Delete an XPATH from the specified datastore */
+    SRCFG_OP_DELETE_XPATH,  /**< Delete an XPATH from the specified datastore */
+	SRCFG_OP_MERGE /**< Merge configuration from file or stdin into specified module */
 } srcfg_operation_t;
 
 /**
@@ -930,6 +931,179 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Merge content of the specified datastore for the given module from a file
+ * referenced by the descriptor 'fd_in'
+ */
+static int
+srcfg_merge_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, srcfg_datastore_t datastore,
+                       LYD_FORMAT format, bool permanent)
+{
+    int rc = SR_ERR_INTERNAL;
+	unsigned i = 0;
+    struct lyd_node *new_dt = NULL;
+    struct lyd_node *current_dt = NULL;
+    struct lyd_node *deps_dt = NULL;
+    struct lyd_difflist *diff = NULL;
+    char *first_xpath = NULL, *second_xpath = NULL;
+    char *input_data = NULL;
+    int ret = 0;
+    struct stat info;
+
+    CHECK_NULL_ARG2(ly_ctx, module);
+
+    /* parse input data */
+    ret = fstat(fd_in, &info);
+    CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
+                              "Unable to obtain input file info: %s.", sr_strerror_safe(errno));
+    ly_errno = LY_SUCCESS;
+    if (S_ISREG(info.st_mode)) {
+        /* load (using mmap) and parse the input data in one step */
+        new_dt = lyd_parse_fd(ly_ctx, fd_in, format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+    } else { /* most likely STDIN */
+        /* load input data into the memory first */
+        ret = srcfg_read_file_content(fd_in, &input_data);
+        CHECK_RC_MSG_GOTO(ret, cleanup, "Unable to read the input data.");
+        /* parse the input data stored inside memory buffer */
+        new_dt = lyd_parse_mem(ly_ctx, input_data, format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+    }
+    if (NULL == new_dt && LY_SUCCESS != ly_errno) {
+        SR_LOG_ERR("Unable to parse the input data: %s (%s)", ly_errmsg(), ly_errpath());
+        goto cleanup;
+    }
+
+    /* discard previously un-commited changes (and clear the data-store cache) */
+    rc = sr_discard_changes(srcfg_session);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Error by sr_session_discard: %s", sr_strerror(rc));
+
+    /* get data trees of data-dependant modules */
+    rc = srcfg_get_data_deps(ly_ctx, module, &deps_dt);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
+
+    /* validate input data */
+    rc = srcfg_merge_data_trees(&new_dt, deps_dt);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
+    ret = lyd_validate(&new_dt, LYD_OPT_STRICT | LYD_OPT_CONFIG, ly_ctx);
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Input data are not valid: %s (%s)",
+                        ly_errmsg(), ly_errpath());
+
+    /* get data tree of currently stored configuration and validate it */
+    rc = srcfg_get_module_data(ly_ctx, module, &current_dt);
+    if (SR_ERR_OK == rc) {
+        rc = srcfg_merge_data_trees(&current_dt, deps_dt);
+    }
+    if (SR_ERR_OK == rc) {
+        ret = lyd_validate(&current_dt, LYD_OPT_STRICT | LYD_OPT_CONFIG, ly_ctx);
+        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Data returned by sysrepo are not valid: %s (%s)",
+                            ly_errmsg(), ly_errpath());
+    } else {
+        goto cleanup;
+    }
+
+    /* get the list of changes made by the user */
+    diff = lyd_diff(current_dt, new_dt, 0);
+    if (NULL == diff) {
+        SR_LOG_ERR("Unable to get the list of changes: %s", ly_errmsg());
+        goto cleanup;
+    }
+
+    /* iterate over the list of differences and for each issue corresponding Sysrepo command(s) */
+    while (diff->type && LYD_DIFF_END != diff->type[i]) {
+        if (NULL != diff->first[i]) {
+            first_xpath = lyd_path(diff->first[i]);
+            if (NULL == first_xpath) {
+                SR_LOG_ERR("Error returned from lyd_path: %s.", ly_errmsg());
+                goto cleanup;
+            }
+        }
+        if (NULL != diff->second[i]) {
+            second_xpath = lyd_path(diff->second[i]);
+            if (NULL == second_xpath) {
+                free(first_xpath);
+                first_xpath = NULL;
+                SR_LOG_ERR("Error returned from lyd_path: %s.", ly_errmsg());
+                goto cleanup;
+            }
+        }
+        switch (diff->type[i]) {
+            case LYD_DIFF_DELETED:
+                SR_LOG_DBG("<LYD_DIFF_DELETED> node: %s, not deleted because merging", first_xpath);
+                //rc = srcfg_convert_lydiff_deleted(first_xpath);
+                break;
+            case LYD_DIFF_CHANGED:
+                SR_LOG_DBG("<LYD_DIFF_CHANGED> orig: %s, new: %s", first_xpath, second_xpath);
+                rc = srcfg_convert_lydiff_changed(first_xpath, diff->second[i]);
+                break;
+            case LYD_DIFF_MOVEDAFTER1:
+                SR_LOG_DBG("<LYD_DIFF_MOVEDAFTER1> moved: %s, after: %s", first_xpath, second_xpath);
+                rc = srcfg_convert_lydiff_movedafter(first_xpath, second_xpath);
+                break;
+            case LYD_DIFF_CREATED:
+                SR_LOG_DBG("<LYD_DIFF_CREATED> parent: %s, new node: %s", first_xpath, second_xpath);
+                rc = srcfg_convert_lydiff_created(diff->second[i]);
+                break;
+            case LYD_DIFF_MOVEDAFTER2:
+                SR_LOG_DBG("<LYD_DIFF_MOVEDAFTER2> after: %s, this new node was inserted: %s", first_xpath, second_xpath);
+                rc = srcfg_convert_lydiff_movedafter(second_xpath, first_xpath);
+                break;
+            default:
+                assert(0 && "not reachable");
+        }
+        free(first_xpath);
+        free(second_xpath);
+        first_xpath = second_xpath = NULL;
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
+        ++i;
+    }
+    if (0 == i) {
+        SR_LOG_DBG_MSG("No changes were made.");
+    } else {
+        /* commit the changes */
+        rc = sr_commit(srcfg_session);
+        if (SR_ERR_OK != rc) {
+            const sr_error_info_t *err = NULL;
+            size_t err_cnt = 0;
+            SR_LOG_ERR("Error returned from sr_commit: %s.", sr_strerror(rc));
+            sr_get_last_errors(srcfg_session, &err, &err_cnt);
+            for (size_t j = 0; j < err_cnt; j++) {
+                SR_LOG_ERR("%s : %s", err[j].xpath, err[j].message);
+            }
+            goto cleanup;
+        }
+        if (SRCFG_STORE_RUNNING == datastore && permanent) {
+            /* copy running datastore data into the startup datastore */
+            rc = sr_copy_config(srcfg_session, module->name, SR_DS_RUNNING, SR_DS_STARTUP);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Error returned from sr_copy_config: %s.", sr_strerror(rc));
+                goto cleanup;
+            }
+        }
+    }
+
+    rc = SR_ERR_OK;
+
+cleanup:
+    if (NULL != deps_dt) {
+        lyd_free_withsiblings(deps_dt);
+    }
+    if (NULL != current_dt) {
+        lyd_free_withsiblings(current_dt);
+    }
+    if (NULL != new_dt) {
+        lyd_free_withsiblings(new_dt);
+    }
+    if (input_data) {
+        free(input_data);
+    }
+    return rc;
+}
+
 /**-----------------------------------------------------------------------------
  *	@Function: srcfg_get_format
  *	@Brief:    return a sysrepo type from a string
@@ -1282,6 +1456,56 @@ fail:
     printf("Errors were encountered during importing. Cancelling the operation.\n");
 
 cleanup:
+    if (ly_ctx) {
+        ly_ctx_destroy(ly_ctx, NULL);
+    }
+    return rc;
+}
+
+/**
+ * @brief Performs the --merge operation.
+ */
+static int
+srcfg_merge_operation(md_module_t *module, srcfg_datastore_t datastore, const char *filepath,
+                       LYD_FORMAT format, bool permanent)
+{
+    int rc = SR_ERR_INTERNAL, ret = 0;
+    struct ly_ctx *ly_ctx = NULL;
+    int fd_in = STDIN_FILENO;
+
+    CHECK_NULL_ARG(module);
+
+    /* init libyang context */
+    ret = srcfg_ly_init(&ly_ctx, module);
+    CHECK_RC_MSG_GOTO(ret, fail, "Failed to initialize libyang context.");
+
+    if (filepath) {
+        /* try to open the input file */
+        fd_in = open(filepath, O_RDONLY);
+        CHECK_NOT_MINUS1_LOG_GOTO(fd_in, rc, SR_ERR_INTERNAL, fail,
+                                  "Unable to open the input file '%s': %s.", filepath, sr_strerror_safe(errno));
+    } else {
+        /* read configuration from stdin */
+        printf("Please enter the new configuration:\n");
+    }
+
+    /* merge datastore data */
+    ret = srcfg_merge_datastore(ly_ctx, fd_in, module, datastore, format, permanent);
+    if (SR_ERR_OK != ret) {
+        goto fail;
+    }
+
+    rc = SR_ERR_OK;
+    printf("The new configuration was successfully applied.\n");
+    goto cleanup;
+
+fail:
+    printf("Errors were encountered during importing. Cancelling the operation.\n");
+
+cleanup:
+    if (STDIN_FILENO != fd_in && -1 != fd_in) {
+        close(fd_in);
+    }
     if (ly_ctx) {
         ly_ctx_destroy(ly_ctx, NULL);
     }
@@ -1706,6 +1930,11 @@ srcfg_print_help()
     printf("                                 3 = log error, warning and informational messages\n");
     printf("                                 4 = log everything, including development debug messages\n");
     printf("  -o, --state-data             Flag used to override default session handling; if present state data will be displayed\n");
+    printf("  -s, --set <xpath>            Flag used to specify an XPATH to be set\n");
+    printf("  -w, --set-value <value>      Flag used to specify a value to be set to an XPATH specified with -s option\n");
+    printf("  -g, --get <xpath>            Flag used to specify an XPATH to be get\n");
+    printf("  -r, --del <xpath>            Flag used to specify an XPATH to be deleted\n");
+    printf("  -m, --merge <path>           Flag used to merge a configuration from a supplied file\n");
     printf("\n");
     printf("Examples:\n");
     printf("  1) Edit *ietf-interfaces* module's *running config* in *xml format* in *default editor*:\n");
@@ -1718,6 +1947,8 @@ srcfg_print_help()
     printf("     sysrepocfg --export=/tmp/backup.json --format=json --datastore=startup ietf-interfaces\n\n");
     printf("  5) Import *ietf-interfaces* module's *running config* content from */tmp/backup.json* file in *json format*:\n");
     printf("     sysrepocfg --import=/tmp/backup.json --format=json ietf-interfaces\n\n");
+    printf("  6) Merge *ietf-interfaces* module's *running config* content from */tmp/backup.json* file in *json format*:\n");
+    printf("     sysrepocfg --merge=/tmp/backup.json --format=json ietf-interfaces\n\n");
 }
 
 /**
@@ -1743,7 +1974,7 @@ main(int argc, char* argv[])
     sr_llist_node_t *ll_node = NULL;
     int rc = SR_ERR_OK;
     int sflag = SR_SESS_CONFIG_ONLY;
-    char *xpath = NULL;
+    char **xpath = NULL;
     char module_name_xpath[PATH_MAX];
     char *xpathvalue = NULL;
 
@@ -1763,13 +1994,14 @@ main(int argc, char* argv[])
        { "set",       required_argument, NULL, 's' },
        { "set-value", optional_argument, NULL, 'w' },
        { "del",       required_argument, NULL, 'r' },
+	   { "merge",     required_argument, NULL, 'm' },
        { 0, 0, 0, 0 }
     };
 
     /* parse options */
     int curind = optind;
 
-    while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpol:0:g:s:g:s:w:r:", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpol:0:g:s:g:s:w:r:m:", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srcfg_print_help();
@@ -1794,6 +2026,12 @@ main(int argc, char* argv[])
                 break;
             case 'i':
                 operation = SRCFG_OP_IMPORT;
+                if (NULL != optarg && 0 != strcmp("-", optarg)) {
+                    filepath = optarg;
+                }
+                break;
+            case 'm':
+                operation = SRCFG_OP_MERGE;
                 if (NULL != optarg && 0 != strcmp("-", optarg)) {
                     filepath = optarg;
                 }
@@ -1895,29 +2133,12 @@ main(int argc, char* argv[])
 
     /* check argument values */
     /*  -> module */
-    if (NULL == module_name && ((operation != SRCFG_OP_EXPORT_XPATH) && (operation != SRCFG_OP_IMPORT_XPATH) && (operation != SRCFG_OP_DELETE_XPATH))) {
+    if (NULL == module_name) {
         fprintf(stderr, "%s: Module name is not specified.\n", argv[0]);
         rc = SR_ERR_INVAL_ARG;
         goto terminate;
-    } else if (NULL == module_name && ((operation == SRCFG_OP_EXPORT_XPATH) || (operation == SRCFG_OP_IMPORT_XPATH) || (operation == SRCFG_OP_DELETE_XPATH))) {
-		/* module name got from xpath */
-		if (xpath) {
-			snprintf(module_name_xpath, strchr(xpath, ':') - xpath, "%s", xpath + 1);
-			module_name = module_name_xpath;
-		}
-		else {
-			fprintf(stderr, "%s: XPATH is not specified.\n", argv[0]);
-			rc = SR_ERR_INVAL_ARG;
-			goto terminate;
-		}
-#if 0
-		if ((operation == SRCFG_OP_IMPORT_XPATH) && (xpathvalue ==  NULL)) {
-			fprintf(stderr, "%s: XPATH value is not specified. Please use -w option\n", argv[0]);
-			rc = SR_ERR_INVAL_ARG;
-			goto terminate;
-		}
-#endif
     }
+
     /*  -> format */
     if (strcasecmp("xml", format_name) == 0) {
         format = LYD_XML;
@@ -2037,6 +2258,9 @@ main(int argc, char* argv[])
             break;
         case SRCFG_OP_DELETE_XPATH:
 			rc = srcfg_delete_xpath_operation(xpath);
+            break;
+        case SRCFG_OP_MERGE:
+            rc = srcfg_merge_operation(module, datastore, filepath, format, permanent);
             break;
     }
 
