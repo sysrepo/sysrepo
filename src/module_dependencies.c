@@ -1960,7 +1960,7 @@ dependencies:
         }
         rc = md_insert_lys_module(md_ctx, (struct lys_module *)inc->submodule, md_get_inc_revision(inc), implemented,
                                   module->submodule ? belongsto : module, implicitly_inserted);
-        if (SR_ERR_OK != rc) {
+        if (SR_ERR_OK != rc && SR_ERR_DATA_EXISTS != rc) {
             goto cleanup;
         }
     }
