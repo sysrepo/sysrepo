@@ -1974,7 +1974,7 @@ main(int argc, char* argv[])
     sr_llist_node_t *ll_node = NULL;
     int rc = SR_ERR_OK;
     int sflag = SR_SESS_CONFIG_ONLY;
-    char **xpath = NULL;
+    char *xpath = NULL;
     char module_name_xpath[PATH_MAX];
     char *xpathvalue = NULL;
 
@@ -2133,12 +2133,22 @@ main(int argc, char* argv[])
 
     /* check argument values */
     /*  -> module */
-    if (NULL == module_name) {
+    if (NULL == module_name && ((operation != SRCFG_OP_EXPORT_XPATH) && (operation != SRCFG_OP_IMPORT_XPATH) && (operation != SRCFG_OP_DELETE_XPATH))) {
         fprintf(stderr, "%s: Module name is not specified.\n", argv[0]);
         rc = SR_ERR_INVAL_ARG;
         goto terminate;
+    } else if (NULL == module_name && ((operation == SRCFG_OP_EXPORT_XPATH) || (operation == SRCFG_OP_IMPORT_XPATH) || (operation == SRCFG_OP_DELETE_XPATH))) {
+		/* module name got from xpath */
+		if (xpath) {
+			snprintf(module_name_xpath, strchr(xpath, ':') - xpath, "%s", xpath + 1);
+			module_name = module_name_xpath;
+		}
+		else {
+			fprintf(stderr, "%s: XPATH is not specified.\n", argv[0]);
+			rc = SR_ERR_INVAL_ARG;
+			goto terminate;
+		}
     }
-
     /*  -> format */
     if (strcasecmp("xml", format_name) == 0) {
         format = LYD_XML;
