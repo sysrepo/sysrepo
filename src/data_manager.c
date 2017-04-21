@@ -564,7 +564,7 @@ dm_release_tmp_ly_ctx(dm_ctx_t *dm_ctx, dm_tmp_ly_ctx_t *tmp_ctx)
 {
     CHECK_NULL_ARG2(dm_ctx, tmp_ctx);
     int rc = SR_ERR_OK;
-    uint32_t idx = 0;
+    uint32_t idx = LY_INTERNAL_MODULE_COUNT;
     const struct lys_module *module = NULL;
 
     /* disable all modules */
