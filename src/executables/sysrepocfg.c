@@ -999,49 +999,49 @@ srcfg_write_xpath_value(sr_type_t srtype, const char *xpath, const char *xpathva
         }
 
         switch (srtype) {
-        case SR_BINARY_T:
-        case SR_BITS_T:
-        case SR_ENUM_T:
-        case SR_IDENTITYREF_T:
-        case SR_INSTANCEID_T:
-        case SR_STRING_T:
-            rc = sr_val_set_str_data(&value, srtype, xpathvalue);
-            if (SR_ERR_OK != rc) {
-                printf("Error by sr_val_set_str_data: %s for %s\n", strerror(rc), xpath);
+            case SR_BINARY_T:
+            case SR_BITS_T:
+            case SR_ENUM_T:
+            case SR_IDENTITYREF_T:
+            case SR_INSTANCEID_T:
+            case SR_STRING_T:
+                rc = sr_val_set_str_data(&value, srtype, xpathvalue);
+                if (SR_ERR_OK != rc) {
+                    printf("Error by sr_val_set_str_data: %s for %s\n", strerror(rc), xpath);
+                    goto cleanup;
+                }
+                break;
+            case SR_BOOL_T:
+                value.data.bool_val = atoi(xpathvalue);
+                break;
+            case SR_UINT8_T:
+                value.data.uint8_val = atoi(xpathvalue);
+                break;
+            case SR_UINT16_T:
+                value.data.uint16_val = atoi(xpathvalue);
+                break;
+            case SR_UINT32_T:
+                value.data.uint32_val = atoi(xpathvalue);
+                break;
+            case SR_UINT64_T:
+                value.data.uint64_val = atoll(xpathvalue);
+                break;
+            case SR_INT8_T:
+                value.data.int8_val = atoi(xpathvalue);
+                break;
+            case SR_INT16_T:
+                value.data.int16_val = atoi(xpathvalue);
+                break;
+            case SR_INT32_T:
+                value.data.int32_val = atoi(xpathvalue);
+                break;
+            case SR_INT64_T:
+                value.data.int64_val = atoll(xpathvalue);
+                break;
+            default:
+                printf("%s type %d not supported\n", __FUNCTION__, srtype);
                 goto cleanup;
-            }
-            break;
-        case SR_BOOL_T:
-            value.data.bool_val = atoi(xpathvalue);
-            break;
-        case SR_UINT8_T:
-            value.data.uint8_val = atoi(xpathvalue);
-            break;
-        case SR_UINT16_T:
-            value.data.uint16_val = atoi(xpathvalue);
-            break;
-        case SR_UINT32_T:
-            value.data.uint32_val = atoi(xpathvalue);
-            break;
-        case SR_UINT64_T:
-            value.data.uint64_val = atoll(xpathvalue);
-            break;
-        case SR_INT8_T:
-            value.data.int8_val = atoi(xpathvalue);
-            break;
-        case SR_INT16_T:
-            value.data.int16_val = atoi(xpathvalue);
-            break;
-        case SR_INT32_T:
-            value.data.int32_val = atoi(xpathvalue);
-            break;
-        case SR_INT64_T:
-            value.data.int64_val = atoll(xpathvalue);
-            break;
-        default:
-            printf("%s type %d not supported\n", __FUNCTION__, srtype);
-            goto cleanup;
-            break;
+                break;
         }
         if (xpathvalue) {
             rc = sr_set_item(srcfg_session, xpath, &value, SR_EDIT_DEFAULT);
@@ -1108,42 +1108,42 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
             if (lyset->set.s[j]) {
                 sr_type_t srtype = SR_UNKNOWN_T;
                 switch (lyset->set.s[j]->nodetype) {
-                case LYS_LEAF:
-                case LYS_LEAFLIST:
-                    srtype = srcfg_convert_format((struct lys_node_leaf*) lyset->set.s[j]);
-                    if (xpathvalue) {
-                        rc = srcfg_write_xpath_value(srtype, xpath, xpathvalue);
-                    } else if (!xpathvalue && (lyset->set.s[j]->nodetype == LYS_LEAFLIST)) {
-                        sr_xpath_ctx_t state = {0};
-                        char *lastnode = NULL;
-                        char *lastnodeval = NULL;
-                        unsigned int len;
-                        char *valindex = NULL;
+                    case LYS_LEAF:
+                    case LYS_LEAFLIST:
+                        srtype = srcfg_convert_format((struct lys_node_leaf*) lyset->set.s[j]);
+                        if (xpathvalue) {
+                            rc = srcfg_write_xpath_value(srtype, xpath, xpathvalue);
+                        } else if (!xpathvalue && (lyset->set.s[j]->nodetype == LYS_LEAFLIST)) {
+                            sr_xpath_ctx_t state = {0};
+                            char *lastnode = NULL;
+                            char *lastnodeval = NULL;
+                            unsigned int len;
+                            char *valindex = NULL;
 
-                        lastnode = sr_xpath_last_node((char *) xpath, &state);
-                        if ((valindex = (strstr(lastnode, ".="))) != NULL) {
-                            valindex = valindex + 3;
-                            len = (valindex  - lastnode - 2);
-                            lastnodeval = malloc(len * sizeof(char));
-                            snprintf(lastnodeval, len, "%s", valindex);
-                            sr_xpath_recover(&state);
-                            rc = srcfg_write_xpath_value(srtype, xpath, lastnodeval);
-                            free(lastnodeval);
-                        } else {
+                            lastnode = sr_xpath_last_node((char *) xpath, &state);
+                            if ((valindex = (strstr(lastnode, ".="))) != NULL) {
+                                valindex = valindex + 3;
+                                len = (valindex  - lastnode - 2);
+                                lastnodeval = malloc(len * sizeof(char));
+                                snprintf(lastnodeval, len, "%s", valindex);
+                                sr_xpath_recover(&state);
+                                rc = srcfg_write_xpath_value(srtype, xpath, lastnodeval);
+                                free(lastnodeval);
+                            } else {
+                                rc = SR_ERR_DATA_MISSING;
+                            }
+                        } else if (!xpathvalue && (lyset->set.s[j]->nodetype == LYS_LEAF)) {
                             rc = SR_ERR_DATA_MISSING;
                         }
-                    } else if (!xpathvalue && (lyset->set.s[j]->nodetype == LYS_LEAF)) {
-                        rc = SR_ERR_DATA_MISSING;
-                    }
-                    break;
-                case LYS_LIST:
-                    srtype = SR_LIST_T;
-                    rc = srcfg_write_xpath_value(srtype, xpath, NULL);
-                    break;
-                default:
-                    printf("type %d not supported\n", lyset->set.s[j]->nodetype);
-                    rc = SR_ERR_UNSUPPORTED;
-                    break;
+                        break;
+                    case LYS_LIST:
+                        srtype = SR_LIST_T;
+                        rc = srcfg_write_xpath_value(srtype, xpath, NULL);
+                        break;
+                    default:
+                        printf("type %d not supported\n", lyset->set.s[j]->nodetype);
+                        rc = SR_ERR_UNSUPPORTED;
+                        break;
                 }
                 if (SR_ERR_OK != rc) {
                     printf("Error by srcfg_write_xpath_value: %s for %s\n", strerror(rc), xpath);
@@ -1446,20 +1446,21 @@ srcfg_delete_xpath_operation(const char *xpath)
 
     CHECK_NULL_ARG(xpath);
 
-	rc = sr_delete_item(srcfg_session, xpath, SR_EDIT_DEFAULT);
-	if (SR_ERR_OK != rc) {
-		srcfg_report_error(rc);
-		printf("Unable to delete item. Canceling the operation.\n");
-	}
+    rc = sr_delete_item(srcfg_session, xpath, SR_EDIT_DEFAULT);
+    if (SR_ERR_OK != rc) {
+        srcfg_report_error(rc);
+        printf("Unable to delete item. Canceling the operation.\n");
+    }
 
-	rc = sr_commit(srcfg_session);
-	if (SR_ERR_OK != rc) {
-		srcfg_report_error(rc);
-		printf("Unable to commit. Canceling the operation.\n");
-	}
+    rc = sr_commit(srcfg_session);
+    if (SR_ERR_OK != rc) {
+        srcfg_report_error(rc);
+        printf("Unable to commit. Canceling the operation.\n");
+    }
 
-	if (rc == SR_ERR_OK)
-		printf("The new configuration was successfully applied.\n");
+    if (rc == SR_ERR_OK) {
+        printf("The new configuration was successfully applied.\n");
+    }
     return rc;
 }
 
