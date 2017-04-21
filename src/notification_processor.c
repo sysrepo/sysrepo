@@ -366,7 +366,7 @@ np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *dat
     fd = open(data_filename, (read_only ? O_RDONLY : O_RDWR));
 
     if (NULL != user_cred) {
-        ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx);
+        ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
     }
 
     if (-1 == fd) {
@@ -380,7 +380,7 @@ np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *dat
                 /* create new persist file */
                 ac_set_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
                 fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx);
+                ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
                 if (-1 == fd) {
                     SR_LOG_ERR("Unable to create a new data file '%s': %s", data_filename, sr_strerror_safe(errno));
                     rc = SR_ERR_INTERNAL;
