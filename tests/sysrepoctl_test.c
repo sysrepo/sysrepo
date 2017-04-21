@@ -305,9 +305,8 @@ sysrepoctl_test_init(void **state)
                                    TEST_SCHEMA_SEARCH_DIR ".ietf-interfaces@2014-05-08.yang.bkp");
     exec_shell_command(buff, ".*", true, 0);
 
-    /* first uninstall ietf-ip, ietf-interfaces */
+    /* first uninstall ietf-ip (and automatically also ietf-interfaces which was only imported) */
     exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-ip --revision=2014-06-16", ".*", true, 0);
-    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision=2014-05-08", ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang", false);
 
     /* revert the ietf-interfaces schema file */
