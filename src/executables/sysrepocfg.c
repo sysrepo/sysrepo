@@ -1116,19 +1116,19 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
 					{
 						srtype = srcfg_convert_format((struct lys_node_leaf*) lyset->set.s[j]);
 						if (xpathvalue) {
-							
+
 							rc = srcfg_write_xpath_value(srtype, xpath, xpathvalue);
 						}
 						else if (!xpathvalue && (lyset->set.s[j]->nodetype == LYS_LEAFLIST)) {
 							sr_xpath_ctx_t state = {0};
-							char *lastnode = NULL;		
+							char *lastnode = NULL;
 							char *lastnodeval = NULL;
 							unsigned int len;
 							char *valindex = NULL;
 
-							lastnode = sr_xpath_last_node((char *) xpath, &state); 
+							lastnode = sr_xpath_last_node((char *) xpath, &state);
 							if ((valindex = (strstr(lastnode, ".="))) != NULL) {
-								valindex = valindex + 3; 
+								valindex = valindex + 3;
 								len = (valindex  - lastnode - 2);
 								lastnodeval = malloc(len * sizeof(char));
 								snprintf(lastnodeval, len, "%s", valindex);
