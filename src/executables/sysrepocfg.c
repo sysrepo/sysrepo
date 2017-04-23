@@ -1032,7 +1032,6 @@ srcfg_merge_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, src
         switch (diff->type[i]) {
             case LYD_DIFF_DELETED:
                 SR_LOG_DBG("<LYD_DIFF_DELETED> node: %s, not deleted because merging", first_xpath);
-                //rc = srcfg_convert_lydiff_deleted(first_xpath);
                 break;
             case LYD_DIFF_CHANGED:
                 SR_LOG_DBG("<LYD_DIFF_CHANGED> orig: %s, new: %s", first_xpath, second_xpath);

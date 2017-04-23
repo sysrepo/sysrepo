@@ -474,6 +474,15 @@ createDataTreeIETFinterfacesModuleMerge(){
     lyd_new_leaf(node, module_ip, "enabled", "false");
     lyd_new_leaf(node, module_ip, "mtu", "1600");
 
+    node = lyd_new(root, module_interfaces, "interface");
+    lyd_new_leaf(node, module_interfaces, "name", "vdsl0");
+    lyd_new_leaf(node, module_interfaces, "description", "Vdsl 0 for Merging");
+    lyd_new_leaf(node, module_interfaces, "type", "iana-if-type:vdsl");
+    lyd_new_leaf(node, module_interfaces, "enabled", "true");
+    node = lyd_new(node, module_ip, "ipv4");
+    lyd_new_leaf(node, module_ip, "enabled", "true");
+    lyd_new_leaf(node, module_ip, "mtu", "1500");
+
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces.merge.xml", root));
 

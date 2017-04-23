@@ -497,6 +497,20 @@ srcfg_test_merge(void **state)
     assert_string_equal("Ethernet 0 for Merging", rvalue->data.string_val);
     sr_free_val(rvalue);
 
+    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", &rvalue);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(SR_UINT16_T, rvalue->type);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", rvalue->xpath);
+    assert_int_equal(1600, rvalue->data.uint16_val);
+    sr_free_val(rvalue);
+
+    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='vdsl0']/description", &rvalue);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(SR_STRING_T, rvalue->type);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='vdsl0']/description", rvalue->xpath);
+    assert_string_equal("Vdsl 0 for Merging", rvalue->data.string_val);
+    sr_free_val(rvalue);
+
 cleanup:
     /* restore pre-test state */
     assert_int_equal(0, srcfg_test_unsubscribe("ietf-interfaces"));
