@@ -366,7 +366,7 @@ np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *dat
     fd = open(data_filename, (read_only ? O_RDONLY : O_RDWR));
 
     if (NULL != user_cred) {
-        ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx);
+        ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
     }
 
     if (-1 == fd) {
@@ -380,7 +380,7 @@ np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *dat
                 /* create new persist file */
                 ac_set_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
                 fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx);
+                ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
                 if (-1 == fd) {
                     SR_LOG_ERR("Unable to create a new data file '%s': %s", data_filename, sr_strerror_safe(errno));
                     rc = SR_ERR_INTERNAL;
@@ -552,7 +552,9 @@ np_get_notification_files(np_ctx_t *np_ctx, const char *module_name, time_t time
     /* scan files in the directory with the data files (in alphabetical order) */
     dir_elem_cnt = scandir(dirname, &entries, NULL, alphasort);
     if (dir_elem_cnt < 0) {
-        SR_LOG_ERR("Error by scanning directory: %s.", sr_strerror_safe(errno));
+        if (errno != ENOENT) {
+            SR_LOG_ERR("Error by scanning directory: %s.", sr_strerror_safe(errno));
+        }
     } else {
         for (size_t i = 0; i < dir_elem_cnt; i++) {
             if ((DT_DIR != entries[i]->d_type) &&
@@ -840,10 +842,11 @@ static int
 np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, const char *xpath)
 {
     CHECK_NULL_ARG2(np_ctx, xpath);
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, i;
     char *module_name = NULL;
     dm_schema_info_t *si = NULL;
     struct lys_node *sch_node;
+    struct ly_set *set = NULL;
     char *predicate = NULL;
 
     if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == type) {
@@ -863,6 +866,43 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
         rc = dm_get_module_and_lock(np_ctx->rp_ctx->dm_ctx, module_name, &si);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to find module %s", module_name);
 
+        if (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == type) {
+            set = lys_find_xpath(NULL, si->module->data, xpath, 0);
+            if (NULL == set || 0 == set->number) {
+                SR_LOG_ERR("Node identified by xpath %s was not found", xpath);
+                rc = SR_ERR_BAD_ELEMENT;
+                goto cleanup;
+            }
+            if (1 == set->number) {
+                if (set->set.s[0]->nodetype != LYS_NOTIF) {
+                    SR_LOG_ERR("Xpath %s doesn't identify event notification.", xpath);
+                    rc = SR_ERR_BAD_ELEMENT;
+                } else if (0 == strcmp(set->set.s[0]->module->name, "nc-notifications")) {
+                    if (0 == strcmp(set->set.s[0]->name, "replayComplete")) {
+                        SR_LOG_ERR_MSG("You cannot subscribe to the special \"replayComplete\" notification.");
+                        rc = SR_ERR_BAD_ELEMENT;
+                    } else if (0 == strcmp(set->set.s[0]->name, "notificationComplete")) {
+                        SR_LOG_ERR_MSG("You cannot subscribe to the special \"notificationComplete\" notification.");
+                        rc = SR_ERR_BAD_ELEMENT;
+                    }
+                }
+                goto cleanup;
+            }
+
+            /* subscription for the whole module */
+            for (i = 0; i < set->number; ++i) {
+                if (set->set.s[i]->nodetype == LYS_NOTIF) {
+                    break;
+                }
+            }
+            if (i == set->number) {
+                SR_LOG_ERR("No notifications identified by xpath %s were found", xpath);
+                rc = SR_ERR_UNSUPPORTED;
+                goto cleanup;
+            }
+            goto cleanup;
+        }
+
         sch_node = sr_find_schema_node(si->module->data, xpath, 0);
         if (NULL == sch_node) {
             SR_LOG_ERR("Node identified by xpath %s was not found", xpath);
@@ -876,10 +916,6 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
             goto cleanup;
         } else if (SR__SUBSCRIPTION_TYPE__ACTION_SUBS == type && !(LYS_ACTION & sch_node->nodetype)) {
             SR_LOG_ERR("Xpath %s doesn't identify action.", xpath);
-            rc = SR_ERR_UNSUPPORTED;
-            goto cleanup;
-        } else if (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == type && !(LYS_NOTIF & sch_node->nodetype)) {
-            SR_LOG_ERR("Xpath %s doesn't identify event notification.", xpath);
             rc = SR_ERR_UNSUPPORTED;
             goto cleanup;
         } else if (SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == type) {
@@ -900,6 +936,7 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
 
 cleanup:
     free(module_name);
+    ly_set_free(set);
     if (NULL != si) {
         pthread_rwlock_unlock(&si->model_lock);
     }
@@ -1596,7 +1633,7 @@ np_subscriptions_list_cleanup(sr_list_t *subscriptions_list)
 
 int
 np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t generated_time,
-        struct lyd_node **notif_data_tree)
+        struct lyd_node *notif_data_tree)
 {
 #define TIME_BUF_SIZE 64
 
@@ -1605,13 +1642,24 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
     char data_xpath[PATH_MAX] = { 0, };
     char generated_time_buf[TIME_BUF_SIZE] = { 0, };
     struct timespec logged_time_spec = { 0, };
-    struct lyd_node *data_tree = NULL, *new_node = NULL;
+    struct lyd_node *data_tree = NULL, *new_node = NULL, *dt_dup = NULL;
     int fd = -1;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(np_ctx, xpath, notif_data_tree);
 
     SR_LOG_DBG("Storing notification '%s' generated on '%ld'.", xpath, generated_time);
+
+    /* check for special notifications which are not allowed */
+    if (0 == strcmp(xpath, "/nc-notifications:replayComplete")) {
+        SR_LOG_ERR_MSG("Special notification \"replayComplete\" is generated only by sysrepo itself.");
+        rc = SR_ERR_BAD_ELEMENT;
+        goto cleanup;
+    } else if (0 == strcmp(xpath, "/nc-notifications:notificationComplete")) {
+        SR_LOG_ERR_MSG("Special notification \"notificationComplete\" is generated only by sysrepo itself.");
+        rc = SR_ERR_BAD_ELEMENT;
+        goto cleanup;
+    }
 
     /* extract module name from xpath */
     rc = sr_copy_first_ns(xpath, &module_name);
@@ -1646,21 +1694,25 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
 
     if (0 == strcmp("/ietf-netconf-notifications:netconf-config-change", xpath)) {
         char *string_notif = NULL;
-        rc = dm_netconf_config_change_to_string(np_ctx->rp_ctx->dm_ctx, *notif_data_tree, &string_notif);
+        rc = dm_netconf_config_change_to_string(np_ctx->rp_ctx->dm_ctx, notif_data_tree, &string_notif);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed print config-change notif to string");
         new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_STRING);
-        lyd_free_withsiblings(*notif_data_tree);
-        *notif_data_tree = NULL;
     } else {
         /* store notification data as anydata */
-        new_node = lyd_new_anydata(new_node, NULL, "data", (void*)*notif_data_tree, LYD_ANYDATA_DATATREE);
+        dt_dup = lyd_dup_to_ctx(notif_data_tree, 1, notif_data_tree->schema->module->ctx);
+        if (NULL == dt_dup) {
+            SR_LOG_ERR("Error duplicating notification data tree: %s.", ly_errmsg());
+            goto cleanup;
+        }
+
+        new_node = lyd_new_anydata(new_node, NULL, "data", (void*)dt_dup, LYD_ANYDATA_DATATREE);
     }
     if (NULL == new_node) {
         SR_LOG_ERR("Error by adding notification content into notification store: %s.", ly_errmsg());
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     } else {
-        *notif_data_tree = NULL; /* data tree freed in lyd_new_anydata */
+        dt_dup = NULL; /* data tree freed in lyd_new_anydata */
     }
 
     /* save notif. data */
@@ -1722,8 +1774,12 @@ np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, con
     }
 
     /* get all notifications matching the xpath */
-    snprintf(req_xpath, PATH_MAX, NP_NS_XPATH_NOTIFICATION_BY_XPATH, xpath);
-    node_set = lyd_find_xpath(main_tree, req_xpath);
+    if (xpath[strlen(xpath) - 1] == '.') {
+        node_set = lyd_find_xpath(main_tree, "/*/*");
+    } else {
+        snprintf(req_xpath, PATH_MAX, NP_NS_XPATH_NOTIFICATION_BY_XPATH, xpath);
+        node_set = lyd_find_xpath(main_tree, req_xpath);
+    }
 
     if (NULL != node_set && node_set->number > 0) {
         /* init the notification list */

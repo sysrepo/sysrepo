@@ -1727,7 +1727,7 @@ typedef void (*sr_event_notif_tree_cb)(const sr_ev_notif_type_t notif_type, cons
  * @brief Subscribes for delivery of an event notification specified by xpath.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath XPath identifying the event notification.
+ * @param[in] xpath XPath identifying one event notification or the whole module.
  * @param[in] callback Callback to be called when the event notification is send.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
@@ -1748,7 +1748,7 @@ int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath,
  * in a list of trees rather than as a flat enumeration of all values.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath XPath identifying the event notification.
+ * @param[in] xpath XPath identifying one event notification or the whole module.
  * @param[in] callback Callback to be called when the event notification is called.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
@@ -1806,7 +1806,7 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath, const
  * @param[in] start_time Starting time of the desired time window for notification replay.
  * @param[in] stop_time End time of the desired time window for notification replay. If set to 0,
  * no stop time will be applied (all notifications up to the current time will be delivered,
- * ::SR_EV_NOTIF_REPLAY_STOP notification won't be delivered.).
+ * ::SR_EV_NOTIF_REPLAY_STOP notification won't be delivered).
  *
  * @return Error code (SR_ERR_OK on success).
  */

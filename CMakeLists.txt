@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 2.8.12)
 project(sysrepo)
 set(SYSREPO_DESC "YANG-based system repository")
 include(GNUInstallDirs)
@@ -8,6 +8,9 @@ set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 5)
 set(SYSREPO_MICRO_VERSION 11)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
+
+# osx specific
+set(CMAKE_MACOSX_RPATH TRUE)
 
 # setup bindings
 set(GEN_LANGUAGE_BINDINGS 1 CACHE BOOL "Enable language bindings generation.")
@@ -35,6 +38,9 @@ if(CMAKE_COMPILER_IS_GNUCC)
 endif()
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
+
+set(CALL_TARGET_BINS_DIRECTLY ON CACHE BOOL "Enable calling sysrepoctl/sysrepocfg directly at install time")
+set(INDIRECT_YANG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/yang/" CACHE PATH "Where to store YANG files when not executing sysrepoctl directly")
 
 if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
@@ -185,15 +191,20 @@ add_subdirectory(src)
 # execute command at the install time
 macro(EXEC_AT_INSTALL_TIME CMD)
     install(CODE "message(STATUS \"Exec: ${CMD}\")
-        execute_process(COMMAND ${CMD} OUTPUT_QUIET RESULT_VARIABLE ret)
+        execute_process(COMMAND bash \"-c\" \"${CMD}\" OUTPUT_QUIET RESULT_VARIABLE ret)
         if (NOT \${ret} EQUAL 0)
           message(FATAL_ERROR \"Error: \${ret}\")
         endif()"
         )
 endmacro(EXEC_AT_INSTALL_TIME)
 
+set(SH_INSTALL_YANG_CMDS "#!/bin/bash\n\nset -eux -o pipefail\nshopt -s failglob\n\nSYSREPOCTL=sysrepoctl\n\n")
 macro(INSTALL_YANG MODULE_NAME REVISION PERMISSIONS)
-    EXEC_AT_INSTALL_TIME("${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=${PERMISSIONS}")
+    if(CALL_TARGET_BINS_DIRECTLY)
+        EXEC_AT_INSTALL_TIME("${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=${PERMISSIONS}")
+    else()
+        set(SH_INSTALL_YANG_CMDS "${SH_INSTALL_YANG_CMDS}\\\${SYSREPOCTL} --install --yang=${INDIRECT_YANG_INSTALL_DIR}/${MODULE_NAME}${REVISION}.yang --permissions=${PERMISSIONS}\n")
+    endif()
 endmacro(INSTALL_YANG)
 
 # Examples
@@ -296,4 +307,13 @@ INSTALL_YANG("nc-notifications" "" "666")
 
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(swig)
+endif()
+
+if(NOT CALL_TARGET_BINS_DIRECTLY)
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/yang/"
+            DESTINATION "${INDIRECT_YANG_INSTALL_DIR}"
+            FILES_MATCHING PATTERN "*.yang")
+    set(install_yang_file_name "${CMAKE_CURRENT_BINARY_DIR}/install-yang.sh")
+    install(CODE "file(WRITE \"${install_yang_file_name}\" \"${SH_INSTALL_YANG_CMDS}\")")
+    install(CODE "message(STATUS \"Installation commands were written to ${install_yang_file_name}\")")
 endif()

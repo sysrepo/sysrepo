@@ -46,7 +46,7 @@
 
 %ignore Val::Val(int8_t,sr_type_t);
 %ignore Val::Val(int16_t,sr_type_t);
-%ignore Val::Val(int32_t,sr_type_t);
+//%ignore Val::Val(int32_t,sr_type_t);
 %ignore Val::Val(int64_t,sr_type_t);
 %ignore Val::Val(uint8_t,sr_type_t);
 %ignore Val::Val(uint16_t,sr_type_t);

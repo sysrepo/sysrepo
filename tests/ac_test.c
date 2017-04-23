@@ -270,7 +270,7 @@ ac_test_identity_switch(void **state)
     }
 
     /* switch identity back */
-    rc = ac_unset_user_identity(ctx);
+    rc = ac_unset_user_identity(ctx, &credentials1);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* make sure we can access passwd as before switching */
@@ -300,7 +300,7 @@ ac_test_identity_switch(void **state)
         assert_int_equal(fd, -1);
 
         /* switch identity back */
-        rc = ac_unset_user_identity(ctx);
+        rc = ac_unset_user_identity(ctx, &credentials2);
         assert_int_equal(rc, SR_ERR_OK);
     }
 

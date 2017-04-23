@@ -889,11 +889,12 @@ int dm_validate_action_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char 
  * @param [out] with_def_tree Event notification data including default values represented as sysrepo trees.
  * @param [out] with_def_tree_cnt Number of items inside the *with_def_tree* array.
  * @param [out] res_data_tree Resulting data tree, can be NULL in case that the caller does not need it.
+ * @param [out] res_ctx Context of \p res_data_tree in case a temporary one had to be created.
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *notif_xpath, sr_val_t *values, size_t value_cnt,
         sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt,
-        struct lyd_node **res_data_tree);
+        struct lyd_node **res_data_tree, struct ly_ctx **res_ctx);
 
 /**
  * @brief Validates content of an event notification request with data represented using sr_node_t.
@@ -908,11 +909,12 @@ int dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char 
  * @param [out] with_def_tree Event notification data including default values represented as sysrepo trees.
  * @param [out] with_def_tree_cnt Number of items inside the *with_def_tree* array.
  * @param [out] res_data_tree Resulting data tree, can be NULL in case that the caller does not need it.
+ * @param [out] res_ctx Context of \p res_data_tree in case a temporary one had to be created.
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *notif_xpath, sr_node_t *trees, size_t tree_cnt,
         sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt,
-        struct lyd_node **res_data_tree);
+        struct lyd_node **res_data_tree, struct ly_ctx **res_ctx);
 
 /**
  * @brief Parses event notification with data in XML format (notification->type == NP_EV_NOTIF_DATA_XML) into desired

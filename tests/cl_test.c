@@ -5284,16 +5284,6 @@ cl_event_notif_replay_test(void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* subscribe for link discovery */
-    rc = sr_event_notif_subscribe(session, "/test-module:link-discovered", test_event_notif_link_discovery_replay_cb,
-            &cb_status, SR_SUBSCR_NOTIF_REPLAY_FIRST, &subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* subscribe for link removal */
-    rc = sr_event_notif_subscribe(session, "/test-module:link-removed", test_event_notif_link_removed_replay_cb,
-            &cb_status, SR_SUBSCR_NOTIF_REPLAY_FIRST | SR_SUBSCR_CTX_REUSE, &subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
     /* send event notification - link discovery */
     values[0].xpath = "/test-module:link-discovered/source/address";
     values[0].type = SR_STRING_T;
@@ -5326,6 +5316,16 @@ cl_event_notif_replay_test(void **state)
     values[3].data.string_val = "eth2";
 
     rc = sr_event_notif_send(session, "/test-module:link-removed", values, 4, SR_EV_NOTIF_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for link discovery */
+    rc = sr_event_notif_subscribe(session, "/test-module:link-discovered", test_event_notif_link_discovery_replay_cb,
+            &cb_status, SR_SUBSCR_NOTIF_REPLAY_FIRST, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for link removal */
+    rc = sr_event_notif_subscribe(session, "/test-module:link-removed", test_event_notif_link_removed_replay_cb,
+            &cb_status, SR_SUBSCR_NOTIF_REPLAY_FIRST | SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* replay the notifications */
@@ -5843,7 +5843,7 @@ cl_neg_subscribe_test (void **state)
 
     /* xpath identifies a container */
     rc = sr_event_notif_subscribe(session, "/test-module:main", test_event_notif_status_change_cb, NULL, SR_SUBSCR_DEFAULT, &subs);
-    assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     assert_null(subs);
 
     rc = sr_event_notif_subscribe(session, "/unknown-module:non-existing-rpc", test_event_notif_status_change_cb, NULL, SR_SUBSCR_DEFAULT, &subs);

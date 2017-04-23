@@ -3726,6 +3726,9 @@ sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subscrip
         rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__EVENT_NOTIF_REPLAY);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
+        /* set replaying flag */
+        sm_subscription->replaying = true;
+
         sr_msg_free(msg_req);
         sr_msg_free(msg_resp);
     }

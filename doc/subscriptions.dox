@@ -272,6 +272,7 @@ rc = sr_dp_get_items_subscribe(session, "/demo:abc/value", dp_value, private_ctx
 
 Data provider will be asked for xpaths with keys filled (corresponding to currently configured lists `/demo:abc`) he is supposed to return leaf for the particular instance.
 # | Xpath requested by sysrepo  | Example of xpath returned by data provider
+--|------------- | -------------
 1.|```/demo:abc[cfg='X']/value``` callback will be called for each configured list instance. (X will be replaced by the actual value of the key). User is supposed to return value of the leaf. |  For the xpath ```/demo:abc[cfg='0']/value``` provider is supposed to return value of the leaf.
 
 */

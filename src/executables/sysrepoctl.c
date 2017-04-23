@@ -47,6 +47,7 @@ typedef struct srctl_module_owner_s {
 
 int srctl_log_level = -1;
 static char *srctl_schema_search_dir = SR_SCHEMA_SEARCH_DIR;
+static char *srctl_schema_search_submod_dir = SR_SCHEMA_SEARCH_DIR"/submodules/";
 static char *srctl_data_search_dir = SR_DATA_SEARCH_DIR;
 static char *srctl_internal_schema_search_dir = SR_INTERNAL_SCHEMA_SEARCH_DIR;
 static char *srctl_internal_data_search_dir = SR_INTERNAL_DATA_SEARCH_DIR;
@@ -239,12 +240,14 @@ srctl_get_dir_path(const char *file_path)
  * @brief Generates the YANG file path from module name and optional revision date.
  */
 static void
-srctl_get_yang_path(const char *module_name, const char *revision_date, char *yang_path, size_t path_max_len)
+srctl_get_yang_path(const char *module_name, const char *revision_date, char *yang_path, size_t path_max_len, int submodule)
 {
     if (NULL != revision_date) {
-        snprintf(yang_path, path_max_len, "%s%s@%s%s", srctl_schema_search_dir, module_name, revision_date, SR_SCHEMA_YANG_FILE_EXT);
+        snprintf(yang_path, path_max_len, "%s%s@%s%s", submodule ? srctl_schema_search_submod_dir : srctl_schema_search_dir,
+                 module_name, revision_date, SR_SCHEMA_YANG_FILE_EXT);
     } else {
-        snprintf(yang_path, path_max_len, "%s%s%s", srctl_schema_search_dir, module_name, SR_SCHEMA_YANG_FILE_EXT);
+        snprintf(yang_path, path_max_len, "%s%s%s", submodule ? srctl_schema_search_submod_dir : srctl_schema_search_dir,
+                 module_name, SR_SCHEMA_YANG_FILE_EXT);
     }
 }
 
@@ -252,12 +255,14 @@ srctl_get_yang_path(const char *module_name, const char *revision_date, char *ya
  * @brief Generates the YIN file path from module name and optional revision date.
  */
 static void
-srctl_get_yin_path(const char *module_name, const char *revision_date, char *yin_path, size_t path_max_len)
+srctl_get_yin_path(const char *module_name, const char *revision_date, char *yin_path, size_t path_max_len, int submodule)
 {
     if (NULL != revision_date) {
-        snprintf(yin_path, PATH_MAX, "%s%s@%s%s", srctl_schema_search_dir, module_name, revision_date, SR_SCHEMA_YIN_FILE_EXT);
+        snprintf(yin_path, PATH_MAX, "%s%s@%s%s", submodule ? srctl_schema_search_submod_dir : srctl_schema_search_dir,
+                 module_name, revision_date, SR_SCHEMA_YIN_FILE_EXT);
     } else {
-        snprintf(yin_path, PATH_MAX, "%s%s%s", srctl_schema_search_dir, module_name, SR_SCHEMA_YIN_FILE_EXT);
+        snprintf(yin_path, PATH_MAX, "%s%s%s", submodule ? srctl_schema_search_submod_dir : srctl_schema_search_dir,
+                 module_name, SR_SCHEMA_YIN_FILE_EXT);
     }
 }
 
@@ -713,7 +718,7 @@ srctl_same_file(const char *file1, const char *file2)
  * @brief Installs specified schema files to sysrepo.
  */
 static int
-srctl_schema_install(const struct lys_module *module, const char *yang_src, const char *yin_src)
+srctl_schema_install(const struct lys_module *module, const char *yang_src, const char *yin_src, int submodule)
 {
     char yang_dst[PATH_MAX] = { 0, }, yin_dst[PATH_MAX] = { 0, }, cmd[PATH_MAX] = { 0, };
     const char *yang_path = NULL, *yin_path = NULL;
@@ -723,7 +728,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
         /* install YANG */
         if (-1 != access(yang_src, F_OK)) {
             /* only if the source file actually exists */
-            srctl_get_yang_path(module->name, module->rev[0].date, yang_dst, PATH_MAX);
+            srctl_get_yang_path(module->name, module->rev[0].date, yang_dst, PATH_MAX, submodule);
             if (srctl_same_file(yang_src, yang_dst)) {
                 printf("Schema of the module %s is already installed, skipping...\n", module->name);
             } else {
@@ -743,7 +748,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
         /* install YIN */
         if (-1 != access(yin_src, F_OK)) {
             /* only if the source file actually exists */
-            srctl_get_yin_path(module->name, module->rev[0].date, yin_dst, PATH_MAX);
+            srctl_get_yin_path(module->name, module->rev[0].date, yin_dst, PATH_MAX, submodule);
             if (srctl_same_file(yin_src, yin_dst)) {
                 printf("Schema of the module %s is already installed, skipping...\n", module->name);
             } else {
@@ -769,7 +774,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
             yang_path = NULL;
             yin_path = module->inc[i].submodule->filepath;
         }
-        rc = srctl_schema_install((const struct lys_module *)module->inc[i].submodule, yang_path, yin_path);
+        rc = srctl_schema_install((const struct lys_module *)module->inc[i].submodule, yang_path, yin_path, 1);
         if (SR_ERR_OK != rc) {
             fprintf(stderr, "Error: Unable to resolve the dependency on '%s'.\n", module->inc[i].submodule->name);
             goto fail;
@@ -788,7 +793,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
             yang_path = NULL;
             yin_path = module->imp[i].module->filepath;
         }
-        rc = srctl_schema_install(module->imp[i].module, yang_path, yin_path);
+        rc = srctl_schema_install(module->imp[i].module, yang_path, yin_path, 0);
         if (SR_ERR_OK != rc) {
             fprintf(stderr, "Error: Unable to resolve the dependency on '%s'.\n", module->imp[i].module->name);
             goto fail;
@@ -896,6 +901,37 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
         fprintf(stderr, "Error: Either YANG or YIN file must be specified for --install operation.\n");
         goto fail;
     }
+
+    /* make sure that target locations are available */
+    if (access(srctl_schema_search_dir, F_OK) == -1) {
+        /* create schema repository */
+        ret = mkdir(srctl_schema_search_dir, S_IRWXU | S_IRWXG | S_IRWXO);
+        if (ret == -1) {
+            fprintf(stderr, "Error: Unable to create schema repository '%s': %s.\n", srctl_schema_search_dir,
+                    sr_strerror_safe(errno));
+            goto fail;
+        }
+    }
+    if (access(srctl_schema_search_dir, W_OK) == -1) {
+        fprintf(stderr, "Error: Unable to write into the schema repository '%s': %s.\n", srctl_schema_search_dir,
+                sr_strerror_safe(errno));
+        goto fail;
+    }
+    if (access(srctl_schema_search_submod_dir, F_OK) == -1) {
+        /* create schema repository */
+        ret = mkdir(srctl_schema_search_submod_dir, S_IRWXU | S_IRWXG | S_IRWXO);
+        if (ret == -1) {
+            fprintf(stderr, "Error: Unable to create schema repository '%s': %s.\n", srctl_schema_search_submod_dir,
+                    sr_strerror_safe(errno));
+            goto fail;
+        }
+    }
+    if (access(srctl_schema_search_submod_dir, W_OK) == -1) {
+        fprintf(stderr, "Error: Unable to write into the schema repository '%s': %s.\n", srctl_schema_search_submod_dir,
+                sr_strerror_safe(errno));
+        goto fail;
+    }
+
     printf("Installing a new module from file '%s'...\n", (NULL != yang) ? yang : yin);
 
     /* extract the search directory path */
@@ -931,7 +967,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
      }
 
     /* Install schema files */
-    rc = srctl_schema_install(module, yang, yin);
+    rc = srctl_schema_install(module, yang, yin, 0);
     if (SR_ERR_OK != rc) {
         goto fail;
     }
@@ -944,10 +980,10 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
 
     /* Update dependencies */
     if (NULL != yin) {
-        srctl_get_yin_path(module->name, module->rev[0].date, schema_dst, PATH_MAX);
+        srctl_get_yin_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
     }
     else if (NULL != yang) {
-        srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX);
+        srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
     }
     rc = md_insert_module(md_ctx, schema_dst, &implicitly_installed);
     if (SR_ERR_DATA_EXISTS == rc) {
@@ -1000,7 +1036,7 @@ fail_dep_update:
 fail_data:
     /* remove both yang and yin schema files */
     if (NULL != yang) {
-        srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX);
+        srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
         ret = unlink(schema_dst);
         if (0 != ret && ENOENT != errno) {
             fprintf(stderr, "Error: Unable to revert the installation of the schema file '%s'.\n", schema_dst);
@@ -1009,7 +1045,7 @@ fail_data:
         }
     }
     if (NULL != yin) {
-        srctl_get_yin_path(module->name, module->rev[0].date, schema_dst, PATH_MAX);
+        srctl_get_yin_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
         ret = unlink(schema_dst);
         if (0 != ret && ENOENT != errno) {
             fprintf(stderr, "Error: Unable to revert the installation of the schema file '%s'.\n", schema_dst);

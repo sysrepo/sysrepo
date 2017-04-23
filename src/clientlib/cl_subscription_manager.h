@@ -74,7 +74,7 @@ typedef struct cl_sm_subscription_ctx_s {
     sr_session_ctx_t *data_session;              /**< Pointer to a data session that can be used from notification callbacks. */
     void *private_ctx;                           /**< Private context pointer, opaque to sysrepo. */
     int opts;                                    /**< Subscription options. */
-    bool replay_completed;                       /**< TRUE in case of an event notification subscription, if replay has completed. */
+    bool replaying;                              /**< TRUE in case of an event notification subscription, which is currently replaying notifications. */
 } cl_sm_subscription_ctx_t;
 
 /**

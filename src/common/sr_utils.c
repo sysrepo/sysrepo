@@ -1135,7 +1135,7 @@ sr_libyang_val_str_to_sr_val(const char *val_str, sr_type_t type, sr_val_t *valu
         ret = sscanf(val_str, "%"SCNd64, &value->data.int64_val);
         break;
     case SR_DECIMAL64_T:
-        ret = scanf(val_str, "%g", &value->data.decimal64_val);
+        ret = sscanf(val_str, "%lf", &value->data.decimal64_val);
         break;
     default:
         SR_LOG_ERR_MSG("Unknown type to convert");
@@ -2222,6 +2222,7 @@ sr_daemon_check_single_instance(const char *pid_file, int *pid_file_fd)
 static void
 sr_daemon_ignore_signals()
 {
+    signal(SIGCHLD, SIG_DFL);  /* do not ignore, use default handler to keep e.g. waitpid() working */
     signal(SIGUSR1, SIG_IGN);
     signal(SIGALRM, SIG_IGN);
     signal(SIGTSTP, SIG_IGN);  /* keyboard stop */
@@ -2565,7 +2566,9 @@ sr_create_uri_for_module(const struct lys_module *module, char **uri)
 
     snprintf(buffer, len, "%s?module=%s", module->ns, module->name);
     size_t ptr = strlen(buffer);
-    snprintf(buffer + ptr, len-ptr, "&amp;revision=%s", module->rev[0].date);
+    if (0 < module->rev_size) {
+        snprintf(buffer + ptr, len-ptr, "&amp;revision=%s", module->rev[0].date);
+    }
 
     if (features->count > 0) {
         ptr = strlen(buffer);
@@ -2896,6 +2899,8 @@ sr_str_to_time(char *time_str, time_t *time)
         rc = SR_ERR_INVAL_ARG;
         goto cleanup;
     }
+    /* need to learn on its own whether it is DST */
+    tm.tm_isdst = -1;
 
     *time = mktime(&tm);
 

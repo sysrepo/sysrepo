@@ -2920,6 +2920,26 @@ cleanup:
 }
 
 /**
+ * @brief Checks that a notification matches a subcription.
+ * @return 0 if not, 1 if matches.
+ */
+static int
+rp_event_notif_match_subscr(const char *ntf_xpath, const char *subscr_xpath)
+{
+    /* specific subscription for this notification */
+    if (!strcmp(ntf_xpath, subscr_xpath)) {
+        return 1;
+    }
+
+    /* whole module subscription */
+    if (!strcmp(subscr_xpath + strlen(subscr_xpath) - 4, "*//.") && !strncmp(ntf_xpath, subscr_xpath, strlen(subscr_xpath) - 4)) {
+        return 1;
+    }
+
+    return 0;
+}
+
+/**
  * @brief Processes an event notification request.
  */
 static int
@@ -2928,6 +2948,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     const char *xpath = NULL;
     char *module_name = NULL;
     struct lyd_node *notif_data_tree = NULL;
+    struct ly_ctx *notif_ctx = NULL;
     sr_api_variant_t msg_api_variant = SR_API_VALUES;
     sr_val_t *values = NULL, *with_def = NULL;
     sr_node_t *trees = NULL, *with_def_tree = NULL;
@@ -2973,10 +2994,10 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     /* validate event-notification request */
     if (SR_API_VALUES == msg_api_variant) {
         rc = dm_validate_event_notif(rp_ctx->dm_ctx, dm_session, xpath, values, values_cnt, NULL,
-                &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
+                &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree, &notif_ctx);
     } else {
         rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, dm_session, xpath, trees, tree_cnt, NULL,
-                &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree);
+                &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree, &notif_ctx);
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.", xpath);
 
@@ -2997,7 +3018,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     if (!(msg->request->event_notif_req->options & SR__EVENT_NOTIF_REQ__NOTIF_FLAGS__EPHEMERAL)) {
         /* store the notification in the datastore */
         rc = np_store_event_notification(rp_ctx->np_ctx, NULL != session ? session->user_credentials : NULL,
-                xpath, msg->request->event_notif_req->timestamp, &notif_data_tree);
+                xpath, msg->request->event_notif_req->timestamp, notif_data_tree);
         CHECK_RC_MSG_GOTO(rc, finalize, "Failed to save event notification");
     }
 #ifndef STORE_CONFIG_CHANGE_NOTIF
@@ -3018,7 +3039,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     if (NULL != subscriptions_list) {
         for (size_t i = 0; i < subscriptions_list->count; i++) {
             subscription = subscriptions_list->data[i];
-            if (NULL != subscription->xpath && 0 == strcmp(subscription->xpath, msg->request->event_notif_req->xpath)) {
+            if (NULL != subscription->xpath && rp_event_notif_match_subscr(msg->request->event_notif_req->xpath, subscription->xpath)) {
                 /* duplicate msg into req with values and subscription details
                  * @note we are not using memory context for the *req* message because with so many
                  * duplications it would be actually less efficient than normally.
@@ -3040,9 +3061,10 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
                     }
                 }
 
-                rc = rp_event_notif_send(rp_ctx, session, msg->request->event_notif_req->type, subscription->xpath,
-                        msg->request->event_notif_req->timestamp, subscription->api_variant, with_def, with_def_cnt,
-                        with_def_tree, with_def_tree_cnt, subscription->dst_address, subscription->dst_id, 0);
+                rc = rp_event_notif_send(rp_ctx, session, msg->request->event_notif_req->type,
+                        msg->request->event_notif_req->xpath, msg->request->event_notif_req->timestamp,
+                        subscription->api_variant, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt,
+                        subscription->dst_address, subscription->dst_id, 0);
                 CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the notification '%s' to the subscriber '%s'.",
                         subscription->xpath, subscription->dst_address);
             }
@@ -3087,6 +3109,9 @@ finalize:
     }
     if (NULL != notif_data_tree) {
         lyd_free_withsiblings(notif_data_tree);
+    }
+    if (NULL != notif_ctx) {
+        ly_ctx_destroy(notif_ctx, NULL);
     }
     return rc;
 }
@@ -3142,9 +3167,9 @@ rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *se
     }
 
     /* send replay-complete notification */
-    rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_COMPLETE, replay_req->xpath,
-            time(NULL), sr_api_variant_gpb_to_sr(replay_req->api_variant), NULL, 0, NULL, 0,
-            replay_req->subscriber_address, replay_req->subscription_id, 0);
+    rc = rp_event_notif_send(rp_ctx, session, SR__EVENT_NOTIF_REQ__NOTIF_TYPE__REPLAY_COMPLETE,
+            replay_req->xpath, time(NULL), sr_api_variant_gpb_to_sr(replay_req->api_variant),
+            NULL, 0, NULL, 0, replay_req->subscriber_address, replay_req->subscription_id, 0);
     CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the replay-complete notification to the subscriber '%s'.",
             replay_req->subscriber_address);
 

@@ -42,7 +42,7 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
     size_t count = 0;
     int rc = SR_ERR_OK;
     char xpath[XPATH_MAX_LEN] = {0};
-    snprintf(xpath, XPATH_MAX_LEN, "/%s:*//*", module_name);
+    snprintf(xpath, XPATH_MAX_LEN, "/%s:*//.", module_name);
 
     rc = sr_get_items(session, xpath, &values, &count);
     if (SR_ERR_OK != rc) {

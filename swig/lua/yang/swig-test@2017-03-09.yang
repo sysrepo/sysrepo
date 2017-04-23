@@ -1,0 +1,90 @@
+module swig-test {
+
+    yang-version 1;
+
+    namespace
+      "urn:ietf:params:xml:ns:yang:swig-test";
+
+    prefix swig_test;
+
+    organization
+      "Sysrepo";
+
+    contact
+      "Project repository <https://github.com/sysrepo/sysrep>";
+
+    description
+      "This module contains a collection of YANG definitions for
+     testing sysrepo SWIG language bindings.";
+
+    revision "2017-03-09" {
+      description "Initial revision.";
+      reference
+        "No";
+
+    }
+
+    container lua {
+        list test {
+            key "name";
+
+            leaf name {
+                type string;
+                description
+                  "Name of the test.";
+            }
+
+            leaf number {
+                 type int32;
+            }
+        }
+    }
+
+    container lua-changes {
+        list test {
+            key "name";
+
+            leaf name {
+                type string;
+                description
+                  "Name of the test.";
+            }
+
+            leaf number {
+                 type int32;
+            }
+        }
+    }
+
+    container java-operations {
+        list test-get {
+            key "name";
+
+            leaf name {
+                type string;
+                description
+                  "Name of the test.";
+            }
+
+            leaf number {
+                 type int32;
+            }
+        }
+    }
+
+    container java-changes {
+        list test-get {
+            key "name";
+
+            leaf name {
+                type string;
+                description
+                  "Name of the test.";
+            }
+
+            leaf number {
+                 type int32;
+            }
+        }
+    }
+}
