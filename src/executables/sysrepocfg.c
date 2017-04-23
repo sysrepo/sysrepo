@@ -54,7 +54,7 @@ typedef enum srcfg_operation_e {
     SRCFG_OP_IMPORT_XPATH, /**< Set configuration from an XPATH */
     SRCFG_OP_EXPORT_XPATH,  /**< Get an XPATH from the specified datastore */
     SRCFG_OP_DELETE_XPATH,  /**< Delete an XPATH from the specified datastore */
-	SRCFG_OP_MERGE /**< Merge configuration from file or stdin into specified module */
+    SRCFG_OP_MERGE /**< Merge configuration from file or stdin into specified module */
 } srcfg_operation_t;
 
 /**
@@ -1984,7 +1984,7 @@ main(int argc, char* argv[])
        { "set",       required_argument, NULL, 's' },
        { "set-value", optional_argument, NULL, 'w' },
        { "del",       required_argument, NULL, 'r' },
-	   { "merge",     required_argument, NULL, 'm' },
+       { "merge",     required_argument, NULL, 'm' },
        { 0, 0, 0, 0 }
     };
 
