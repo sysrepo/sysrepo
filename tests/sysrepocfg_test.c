@@ -1179,8 +1179,8 @@ main() {
             cmocka_unit_test_setup_teardown(srcfg_test_editing, srcfg_test_set_startup_datastore, srcfg_test_teardown),
             cmocka_unit_test_setup_teardown(srcfg_test_editing, srcfg_test_set_running_datastore, srcfg_test_teardown),
             cmocka_unit_test_setup_teardown(srcfg_test_import, srcfg_test_init_datastore_content, NULL),
-			cmocka_unit_test_setup_teardown(srcfg_test_xpath, srcfg_test_set_running_datastore, NULL),
-			cmocka_unit_test_setup_teardown(srcfg_test_merge, srcfg_test_set_running_datastore_merge, NULL)
+            cmocka_unit_test_setup_teardown(srcfg_test_xpath, srcfg_test_set_running_datastore, NULL),
+            cmocka_unit_test_setup_teardown(srcfg_test_merge, srcfg_test_set_running_datastore_merge, NULL)
     };
 
     /* create libyang context */
