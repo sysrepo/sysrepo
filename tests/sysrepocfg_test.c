@@ -227,6 +227,15 @@ srcfg_test_set_running_datastore(void **state)
 }
 
 static int
+srcfg_test_set_running_datastore_merge(void **state)
+{
+    createDataTreeIETFinterfacesModuleMerge();
+    srcfg_test_datastore = strdup("running");
+    assert_non_null_bt(srcfg_test_datastore);
+    return 0;
+}
+
+static int
 srcfg_test_teardown(void **state)
 {
     free(srcfg_test_datastore);
@@ -462,6 +471,33 @@ srcfg_test_xpath(void **state)
     sr_free_val(rvalue);
 
 
+    /* restore pre-test state */
+    assert_int_equal(0, srcfg_test_unsubscribe("ietf-interfaces"));
+}
+
+static void
+srcfg_test_merge(void **state)
+{
+    sr_val_t *rvalue = { 0 };
+    int rc = 0;
+    
+    exec_shell_command("../src/sysrepocfg -d running -g /ietf-interfaces:*//*", "no active subscriptions", true, 1);
+    assert_int_equal(0, srcfg_test_subscribe("ietf-interfaces"));
+    exec_shell_command("../src/sysrepocfg -m " TEST_DATA_SEARCH_DIR "ietf-interfaces.merge.xml -d running ietf-interfaces", ".*", true, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+	rc = sr_session_refresh(srcfg_test_session);
+	if (rc != SR_ERR_OK) {
+		printf("Error by sr_session_refresh %s\n", sr_strerror(rc));
+		goto cleanup;
+	}    
+    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/description", &rvalue);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(SR_STRING_T, rvalue->type);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']/description", rvalue->xpath);
+    assert_string_equal("Ethernet 0 for Merging", rvalue->data.string_val);
+    sr_free_val(rvalue);
+
+cleanup:
     /* restore pre-test state */
     assert_int_equal(0, srcfg_test_unsubscribe("ietf-interfaces"));
 }
@@ -1143,7 +1179,8 @@ main() {
             cmocka_unit_test_setup_teardown(srcfg_test_editing, srcfg_test_set_startup_datastore, srcfg_test_teardown),
             cmocka_unit_test_setup_teardown(srcfg_test_editing, srcfg_test_set_running_datastore, srcfg_test_teardown),
             cmocka_unit_test_setup_teardown(srcfg_test_import, srcfg_test_init_datastore_content, NULL),
-			cmocka_unit_test_setup_teardown(srcfg_test_xpath, srcfg_test_set_running_datastore, NULL)
+			cmocka_unit_test_setup_teardown(srcfg_test_xpath, srcfg_test_set_running_datastore, NULL),
+			cmocka_unit_test_setup_teardown(srcfg_test_merge, srcfg_test_set_running_datastore_merge, NULL)
     };
 
     /* create libyang context */

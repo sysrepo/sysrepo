@@ -1922,7 +1922,7 @@ srcfg_print_help()
     printf("  -o, --state-data             Flag used to override default session handling; if present state data will be displayed\n");
     printf("  -s, --set <xpath>            Flag used to specify an XPATH to be set\n");
     printf("  -w, --set-value <value>      Flag used to specify a value to be set to an XPATH specified with -s option\n");
-    printf("  -g, --get <xpath>            Flag used to specify an XPATH to be get\n");
+    printf("  -g, --get <xpath>            Flag used to specify an XPATH to be read\n");
     printf("  -r, --del <xpath>            Flag used to specify an XPATH to be deleted\n");
     printf("  -m, --merge <path>           Flag used to merge a configuration from a supplied file\n");
     printf("\n");
