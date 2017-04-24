@@ -894,7 +894,6 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     bool local_search_dir = false;
     bool md_installed = false;
     char schema_dst[PATH_MAX] = { 0, };
-    sr_list_t *implicitly_installed = NULL, *implicitly_removed = NULL;
     int rc = SR_ERR_INTERNAL, ret = 0;
 
     if (NULL == yang && NULL == yin) {
@@ -985,7 +984,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     else if (NULL != yang) {
         srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
     }
-    rc = md_insert_module(md_ctx, schema_dst, &implicitly_installed);
+    rc = md_insert_module(md_ctx, schema_dst, NULL);
     if (SR_ERR_DATA_EXISTS == rc) {
         printf("The module is already installed, exiting...\n");
         rc = SR_ERR_OK; /*< do not treat as error */
@@ -1058,7 +1057,7 @@ fail_data:
         rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir,
                     srctl_internal_data_search_dir, true, &md_ctx);
         if (SR_ERR_OK == rc) {
-            rc = md_remove_module(md_ctx, module->name, module->rev[0].date, &implicitly_removed);
+            rc = md_remove_module(md_ctx, module->name, module->rev[0].date, NULL);
         }
         if (SR_ERR_OK == rc) {
             md_flush(md_ctx);
@@ -1078,8 +1077,6 @@ cleanup:
     if (local_search_dir) {
         free((char*)search_dir);
     }
-    md_free_module_key_list(implicitly_installed);
-    md_free_module_key_list(implicitly_removed);
     return rc;
 }
 
@@ -1097,7 +1094,6 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
     struct dirent *ep = NULL;
     char schema_filename[PATH_MAX] = { 0, };
     const struct lys_module *module = NULL;
-    sr_list_t *implicitly_installed = NULL;
 
     if (NULL == module_name) {
         fprintf(stderr, "Error: Module must be specified for --init operation.\n");
@@ -1162,7 +1158,7 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
     }
 
     /* update dependencies */
-    rc = md_insert_module(md_ctx, module->filepath, &implicitly_installed);
+    rc = md_insert_module(md_ctx, module->filepath, NULL);
     if (SR_ERR_DATA_EXISTS != rc) { /*< ignore if already initialized */
         if (SR_ERR_OK != rc) {
             fprintf(stderr, "Error: Unable to insert the module into the dependency graph.\n");
@@ -1185,7 +1181,6 @@ fail:
 cleanup:
     md_destroy(md_ctx);
     ly_ctx_destroy(ly_ctx, NULL);
-    md_free_module_key_list(implicitly_installed);
     return rc;
 }
 
