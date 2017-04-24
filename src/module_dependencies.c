@@ -42,6 +42,7 @@
 #define MD_XPATH_MODULE_FILEPATH             MD_XPATH_MODULE "/filepath"
 #define MD_XPATH_MODULE_LATEST_REV_FLAG      MD_XPATH_MODULE "/latest-revision"
 #define MD_XPATH_SUBMODULE_FLAG              MD_XPATH_MODULE "/submodule"
+#define MD_XPATH_INSTALLED_FLAG              MD_XPATH_MODULE "/installed"
 #define MD_XPATH_IMPLEMENTED_FLAG            MD_XPATH_MODULE "/implemented"
 #define MD_XPATH_HAS_DATA_FLAG               MD_XPATH_MODULE "/has-data"
 #define MD_XPATH_HAS_PERSIST_FLAG            MD_XPATH_MODULE "/has-persist"
@@ -1130,6 +1131,8 @@ md_init(const char *schema_search_dir,
                             module->latest_revision = leaf->value.bln;
                         } else if (node->schema->name && 0 == strcmp("submodule", node->schema->name)) {
                             module->submodule = leaf->value.bln;
+                        } else if (node->schema->name && 0 == strcmp("installed", node->schema->name)) {
+                            module->installed = leaf->value.bln;
                         } else if (node->schema->name && 0 == strcmp("implemented", node->schema->name)) {
                             module->implemented = leaf->value.bln;
                         } else if (node->schema->name && 0 == strcmp("has-data", node->schema->name)) {
@@ -1925,20 +1928,24 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
+    /*  - installed flag */
+    rc = md_lyd_new_path(md_ctx, MD_XPATH_INSTALLED_FLAG, module->installed ? "true" : "false", module,
+                         "set installed flag", NULL, module->name, module->revision_date);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
     /*  - implemented flag */
     rc = md_lyd_new_path(md_ctx, MD_XPATH_IMPLEMENTED_FLAG, module->implemented ? "true" : "false", module,
                          "set implemented flag", NULL, module->name, module->revision_date);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-
     /*  - has-data flag */
     rc = md_lyd_new_path(md_ctx, MD_XPATH_HAS_DATA_FLAG, module->has_data ? "true" : "false", module,
                          "set has-data flag", NULL, module->name, module->revision_date);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-
     /*  - has-persist flag */
     rc = md_lyd_new_path(md_ctx, MD_XPATH_HAS_PERSIST_FLAG, module->has_persist ? "true" : "false", module,
                          "set has-persist flag", NULL, module->name, module->revision_date);
@@ -2516,7 +2523,7 @@ md_remove_module_internal(md_ctx_t *md_ctx, const char *name, const char *revisi
                 }
                 dep_node2 = dep_node2->next;
             }
-            if (0 == usage_cnt && (dep->dest->submodule || !dep->dest->implemented)) {
+            if (0 == usage_cnt && (dep->dest->submodule || !dep->dest->installed)) {
                 /* no longer needed (sub)module */
                 if (!dep->dest->submodule) {
                     ret = md_get_module_key(dep->dest, &module_key);
