@@ -1,5 +1,12 @@
-### Things you may try first 
-(put "x" in "[]" if you already tried those. If you haven't - we will)
+### How to submit issue
+Please use this text as a template and replace text in the sections or remove
+the entire section if that does not apply to your issue. For example in case of
+question or feature request, just description with some example is probably
+fine. Also remember to use github's markup form properly, especially in case of
+output or code listing.
+
+### Things you may try first
+(put "x" in "[]" if you already tried following)
 * [] Did you check if this is a duplicate issue?
 * [] Did you test it on the latest sysrepo devel branch?
 
@@ -35,5 +42,4 @@ For example:
 Installed modules: `sysrepoctl -l`
 Content of datastore used: check files in  Sysrepo data directory (default `/etc/sysrepo/data`).
 
-Provide us with those attachments and keep your fingers crossed. 
 Thanks!
