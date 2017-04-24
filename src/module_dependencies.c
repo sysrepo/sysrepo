@@ -1778,8 +1778,8 @@ next_node:
  * @brief Try to insert given module into the dependency graph and update all direct edges.
  */
 static int
-md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, const char *revision, bool dependency,
-                     md_module_t *belongsto, sr_list_t *implicitly_inserted)
+md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, const char *revision, bool installed,
+                     bool implemented, md_module_t *belongsto, sr_list_t *implicitly_inserted)
 {
     int rc = SR_ERR_INTERNAL;
     struct ly_ctx *tmp_ly_ctx = NULL;
@@ -1795,6 +1795,11 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     md_module_key_t *module_key = NULL;
 
     CHECK_NULL_ARG3(md_ctx, module_schema, revision);
+    if (installed && !implemented) {
+        SR_LOG_ERR_MSG("Invalid arguments to install module.");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
 
     /* allocate structure for storing module dependency info */
     rc = md_alloc_module(&module);
@@ -1829,54 +1834,57 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     CHECK_NULL_NOMEM_GOTO(module->ns, rc, cleanup);
     module->filepath = strdup(module_schema->filepath);
     CHECK_NULL_NOMEM_GOTO(module->filepath, rc, cleanup);
-    module->implemented = module->submodule ? belongsto->implemented : !dependency;
+    module->installed = installed;
+    module->implemented = implemented;
 
     /* Is this the latest revision of this module? */
     module_ll_node = md_ctx->modules->first;
     while (module_ll_node) {
         module2 = (md_module_t *)module_ll_node->data;
         if (0 == strcmp(module->name, module2->name)) {
-            /* already installed */
-            if (!dependency) {
-                if (module2->implemented) {
-                    rc = SR_ERR_DATA_EXISTS;
-                    SR_LOG_WRN("Module '%s' is already installed.", md_get_module_fullname(module));
-                    goto cleanup;
-                } else if (0 == strcmp(module->revision_date, module2->revision_date)) {
-                    module2->implemented = true;
-                    /* update implemented flag */
-                    rc = md_lyd_new_path(md_ctx, MD_XPATH_IMPLEMENTED_FLAG, "true", module2,
-                                         "set implemented flag", NULL, module2->name, module2->revision_date);
-                    if (SR_ERR_OK != rc) {
+            /* already in repository */
+            if (0 == strcmp(module->revision_date, module2->revision_date)) {
+                if (installed) {
+                    if (module2->installed && !module2->submodule) {
+                        SR_LOG_WRN("Module '%s' is already installed.", md_get_module_fullname(module));
+                        rc = SR_ERR_OK;
                         goto cleanup;
+                    } else if (!module2->installed) {
+                        SR_LOG_INF("Module '%s' is now explicitly installed.", md_get_module_fullname(module));
+                        /* update install flag */
+                        module2->installed = true;
+                        rc = md_lyd_new_path(md_ctx, MD_XPATH_INSTALLED_FLAG, "true", module2, "set installed flag",
+                                             NULL, module2->name, module2->revision_date);
+                        if (SR_ERR_OK != rc) {
+                            goto cleanup;
+                        }
                     }
-                    SR_LOG_INF("Module '%s' is now implemented, not only imported.",
-                               md_get_module_fullname(module));
+                }
+
+                /* submodules need to always be processed again */
+                if ((implemented && !module2->implemented) || module2->submodule) {
+                    if (implemented && !module2->implemented) {
+                        /* update implemented flag */
+                        module2->implemented = true;
+                        rc = md_lyd_new_path(md_ctx, MD_XPATH_IMPLEMENTED_FLAG, "true", module2, "set implemented flag",
+                                            NULL, module2->name, module2->revision_date);
+                        if (SR_ERR_OK != rc) {
+                            goto cleanup;
+                        }
+                    }
                     /* update submodules */
                     md_free_module(module);
                     module = module2;
                     already_installed = true;
                     goto dependencies;
                 }
-            } else if (0 == strcmp(module->revision_date, module2->revision_date)) {
-                if (!module->submodule) {
-                    rc = SR_ERR_OK;
-                    goto cleanup;
-                }
-                /* already installed submodule, still needs to be processed again */
-                md_free_module(module);
-                module = module2;
-                if (!module->implemented && belongsto->implemented) {
-                    module->implemented = true;
-                    /* update implemented flag */
-                    rc = md_lyd_new_path(md_ctx, MD_XPATH_IMPLEMENTED_FLAG, "true", module,
-                                         "set implemented flag", NULL, module->name, module->revision_date);
-                    if (SR_ERR_OK != rc) {
-                        goto cleanup;
-                    }
-                }
-                already_installed = true;
-                goto dependencies;
+
+                rc = SR_ERR_OK;
+                goto cleanup;
+            } else if (implemented && module2->implemented) {
+                SR_LOG_ERR("Module '%s' is already implemented in another revision.", md_get_module_fullname(module));
+                rc = SR_ERR_DATA_EXISTS;
+                goto cleanup;
             }
 
             if (module2->latest_revision) {
@@ -1960,8 +1968,8 @@ dependencies:
         if (NULL == inc->submodule->filepath) {
             continue;
         }
-        rc = md_insert_lys_module(md_ctx, (struct lys_module *)inc->submodule, md_get_inc_revision(inc), true,
-                                  module->submodule ? belongsto : module, implicitly_inserted);
+        rc = md_insert_lys_module(md_ctx, (struct lys_module *)inc->submodule, md_get_inc_revision(inc), installed,
+                                  implemented, module->submodule ? belongsto : module, implicitly_inserted);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
@@ -1996,8 +2004,9 @@ dependencies:
             SR_LOG_ERR("Unable to parse '%s' schema file: %s", imp->module->filepath, ly_errmsg());
             goto cleanup;
         }
-        rc = md_insert_lys_module(md_ctx, imp_module_schema, md_get_module_revision(imp_module_schema),
-                                  true, NULL, implicitly_inserted);
+        /* non-implemented dependency will have all dependencies only imported */
+        rc = md_insert_lys_module(md_ctx, imp_module_schema, md_get_module_revision(imp_module_schema), false,
+                                  implemented ? imp->module->implemented : false, NULL, implicitly_inserted);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
@@ -2159,7 +2168,7 @@ dependencies:
     }
 
     /* inform caller about implicitly installed modules */
-    if (!module->submodule && dependency) {
+    if (!module->submodule && !installed) {
         rc = md_get_module_key(module, &module_key);
         CHECK_RC_MSG_GOTO(rc, cleanup, "md_get_module_key failed");
         rc = sr_list_add(implicitly_inserted, module_key);
@@ -2235,8 +2244,8 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath, sr_list_t **implicitly_
     }
 
     /* insert module into the dependency graph */
-    rc = md_insert_lys_module(md_ctx, module_schema, md_get_module_revision(module_schema), false, NULL,
-            implicitly_inserted);
+    rc = md_insert_lys_module(md_ctx, module_schema, md_get_module_revision(module_schema), true, true, NULL,
+                              implicitly_inserted);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
