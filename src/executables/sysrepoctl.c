@@ -914,14 +914,12 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
                 sr_strerror_safe(errno));
         goto fail;
     }
-    if (access(srctl_schema_search_submod_dir, F_OK) == -1) {
-        /* create schema repository */
-        ret = mkdir(srctl_schema_search_submod_dir, S_IRWXU | S_IRWXG | S_IRWXO);
-        if (ret == -1) {
-            fprintf(stderr, "Error: Unable to create schema repository '%s': %s.\n", srctl_schema_search_submod_dir,
-                    sr_strerror_safe(errno));
-            goto fail;
-        }
+    /* create schema repository */
+    ret = mkdir(srctl_schema_search_submod_dir, S_IRWXU | S_IRWXG | S_IRWXO);
+    if (ret == -1 && errno != EEXIST) {
+      fprintf(stderr, "Error: Unable to create schema repository '%s': %s.\n", srctl_schema_search_submod_dir,
+              sr_strerror_safe(errno));
+      goto fail;
     }
     if (access(srctl_schema_search_submod_dir, W_OK) == -1) {
         fprintf(stderr, "Error: Unable to write into the schema repository '%s': %s.\n", srctl_schema_search_submod_dir,
