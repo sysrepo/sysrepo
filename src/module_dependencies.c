@@ -1785,7 +1785,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     struct ly_ctx *tmp_ly_ctx = NULL;
     const struct lys_module *imp_module_schema = NULL;
     bool already_installed = false;
-    md_module_t *module = NULL, *module2 = NULL, *main_module = NULL;
+    md_module_t *module = NULL, *module2 = NULL, *main_module = NULL, *match_implemented, *match_latest_rev, *match_revision;
     sr_llist_node_t *module_ll_node = NULL;
     struct lys_import *imp = NULL;
     struct lys_include *inc = NULL;
@@ -1837,72 +1837,94 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     module->installed = installed;
     module->implemented = implemented;
 
-    /* Is this the latest revision of this module? */
-    module_ll_node = md_ctx->modules->first;
-    while (module_ll_node) {
+    /* Go through all the modules and collect information about existing modules */
+    match_implemented = NULL;
+    match_latest_rev = NULL;
+    match_revision = NULL;
+    for (module_ll_node = md_ctx->modules->first; module_ll_node; module_ll_node = module_ll_node->next) {
         module2 = (md_module_t *)module_ll_node->data;
         if (0 == strcmp(module->name, module2->name)) {
-            /* already in repository */
+            if (module2->implemented) {
+                match_implemented = module2;
+            }
+            if (module2->latest_revision) {
+                match_latest_rev = module2;
+            }
             if (0 == strcmp(module->revision_date, module2->revision_date)) {
-                if (installed) {
-                    if (module2->installed && !module2->submodule) {
-                        SR_LOG_WRN("Module '%s' is already installed.", md_get_module_fullname(module));
-                        rc = SR_ERR_OK;
-                        goto cleanup;
-                    } else if (!module2->installed) {
-                        SR_LOG_INF("Module '%s' is now explicitly installed.", md_get_module_fullname(module));
-                        /* update install flag */
-                        module2->installed = true;
-                        rc = md_lyd_new_path(md_ctx, MD_XPATH_INSTALLED_FLAG, "true", module2, "set installed flag",
-                                             NULL, module2->name, module2->revision_date);
-                        if (SR_ERR_OK != rc) {
-                            goto cleanup;
-                        }
-                    }
-                }
+                match_revision = module2;
+            }
+        }
+    }
 
-                /* submodules need to always be processed again */
-                if ((implemented && !module2->implemented) || module2->submodule) {
-                    if (implemented && !module2->implemented) {
-                        /* update implemented flag */
-                        module2->implemented = true;
-                        rc = md_lyd_new_path(md_ctx, MD_XPATH_IMPLEMENTED_FLAG, "true", module2, "set implemented flag",
-                                            NULL, module2->name, module2->revision_date);
-                        if (SR_ERR_OK != rc) {
-                            goto cleanup;
-                        }
-                    }
-                    /* update submodules */
-                    md_free_module(module);
-                    module = module2;
-                    already_installed = true;
-                    goto dependencies;
-                }
-
+    /* Can we modify modules the way needed? */
+    if (match_implemented) {
+        if (match_revision == match_implemented) {
+            SR_LOG_INF("Module '%s' is already installed.", md_get_module_fullname(module));
+            if (!module->submodule) {
                 rc = SR_ERR_OK;
                 goto cleanup;
-            } else if (implemented && module2->implemented) {
-                SR_LOG_ERR("Module '%s' is already implemented in another revision.", md_get_module_fullname(module));
-                rc = SR_ERR_DATA_EXISTS;
-                goto cleanup;
             }
+        } else if (implemented) {
+            SR_LOG_ERR("Module '%s' is already implemented in revision '%s'.", module->name, match_implemented->revision_date);
+            rc = SR_ERR_DATA_EXISTS;
+            goto cleanup;
+        }
+    }
 
-            if (module2->latest_revision) {
-                if (0 > strcmp(module->revision_date, module2->revision_date)) {
-                    module->latest_revision = false;
-                } else {
-                    module2->latest_revision = false;
-                    /* unset the latest_revision flag in the data_tree */
-                    rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_LATEST_REV_FLAG, "false", module2,
-                                         "set latest-revision flag", NULL, module2->name, module2->revision_date);
-                    if (SR_ERR_OK != rc) {
-                        goto cleanup;
-                    }
-                    break; /*< definitely not yet installed */
+    /* Perform all the required actions */
+    if (match_revision) {
+        if (installed) {
+            if (match_revision->installed && !match_revision->submodule) {
+                SR_LOG_INF("Module '%s' is already installed.", md_get_module_fullname(module));
+                rc = SR_ERR_OK;
+                goto cleanup;
+            } else if (!match_revision->installed) {
+                SR_LOG_INF("Module '%s' is now explicitly installed.", md_get_module_fullname(module));
+                /* update install flag */
+                match_revision->installed = true;
+                rc = md_lyd_new_path(md_ctx, MD_XPATH_INSTALLED_FLAG, "true", match_revision, "set installed flag",
+                                     NULL, match_revision->name, match_revision->revision_date);
+                if (SR_ERR_OK != rc) {
+                    goto cleanup;
                 }
             }
         }
-        module_ll_node = module_ll_node->next;
+
+        /* submodules need to always be processed again */
+        if ((implemented && !match_revision->implemented) || match_revision->submodule) {
+            if (implemented && !match_revision->implemented) {
+                /* update implemented flag */
+                match_revision->implemented = true;
+                rc = md_lyd_new_path(md_ctx, MD_XPATH_IMPLEMENTED_FLAG, "true", match_revision, "set implemented flag",
+                                     NULL, match_revision->name, match_revision->revision_date);
+                if (SR_ERR_OK != rc) {
+                    goto cleanup;
+                }
+            }
+            /* update submodules */
+            md_free_module(module);
+            module = match_revision;
+            already_installed = true;
+            goto dependencies;
+        }
+
+        rc = SR_ERR_OK;
+        goto cleanup;
+    }
+
+    /* We now know we are creating a new module entry, update latest_revision if needed */
+    if (match_latest_rev) {
+        if (0 > strcmp(module->revision_date, match_latest_rev->revision_date)) {
+            module->latest_revision = false;
+        } else {
+            match_latest_rev->latest_revision = false;
+            /* unset the latest_revision flag in the data_tree */
+            rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_LATEST_REV_FLAG, "false", match_latest_rev,
+                                    "set latest-revision flag", NULL, match_latest_rev->name, match_latest_rev->revision_date);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+        }
     }
 
     /* Add entry into the data_tree */
