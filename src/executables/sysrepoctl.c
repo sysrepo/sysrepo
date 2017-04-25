@@ -965,19 +965,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
         goto fail;
      }
 
-    /* Install schema files */
-    rc = srctl_schema_install(module, yang, yin, 0);
-    if (SR_ERR_OK != rc) {
-        goto fail;
-    }
-
-    /* Install data files */
-    rc = srctl_data_install(module, owner, permissions);
-    if (SR_ERR_OK != rc) {
-        goto fail_data;
-    }
-
-    /* Update dependencies */
+    /* update dependencies */
     if (NULL != yin) {
         srctl_get_yin_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
     }
@@ -985,26 +973,31 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
         srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
     }
     rc = md_insert_module(md_ctx, schema_dst, NULL);
-    if (SR_ERR_DATA_EXISTS == rc) {
-        printf("The module is already installed, exiting...\n");
-        rc = SR_ERR_OK; /*< do not treat as error */
-        goto cleanup; /*< already installed, do not revert */
-    }
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Unable to insert the module into the dependency graph.\n");
-        goto fail_dep_update;
+        goto fail;
     }
     rc = md_flush(md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Unable to apply the changes made in the dependency graph.\n");
-        goto fail_dep_update;
-    } else {
-        md_installed = true;
+        goto fail;
     }
 
     /* unlock and release the internal data file with dependencies */
     md_destroy(md_ctx);
     md_ctx = NULL;
+
+    /* install schema files */
+    rc = srctl_schema_install(module, yang, yin, 0);
+    if (SR_ERR_OK != rc) {
+        goto fail_schema;
+    }
+
+    /* install data files */
+    rc = srctl_data_install(module, owner, permissions);
+    if (SR_ERR_OK != rc) {
+        goto fail_data;
+    }
 
     /* Notify sysrepo about the change */
     if (!custom_repository) {
@@ -1029,10 +1022,10 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     goto cleanup;
 
 fail_notif:
-fail_dep_update:
-    printf("Reverting the install operation...\n");
-    srctl_data_uninstall(module->name);
 fail_data:
+    srctl_data_uninstall(module->name);
+fail_schema:
+    printf("Reverting the install operation...\n");
     /* remove both yang and yin schema files */
     if (NULL != yang) {
         srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
@@ -1052,19 +1045,17 @@ fail_data:
             printf("Deleted the schema file '%s'.\n", schema_dst);
         }
     }
-    if (md_installed) {
-        /* remove from dependency list */
-        rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir,
-                    srctl_internal_data_search_dir, true, &md_ctx);
-        if (SR_ERR_OK == rc) {
-            rc = md_remove_module(md_ctx, module->name, module->rev[0].date, NULL);
-        }
-        if (SR_ERR_OK == rc) {
-            md_flush(md_ctx);
-        }
-        md_destroy(md_ctx);
-        md_ctx = NULL;
+    /* remove from dependency list */
+    rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir,
+                 srctl_internal_data_search_dir, true, &md_ctx);
+    if (SR_ERR_OK == rc) {
+        rc = md_remove_module(md_ctx, module->name, module->rev[0].date, NULL);
     }
+    if (SR_ERR_OK == rc) {
+        md_flush(md_ctx);
+    }
+    md_destroy(md_ctx);
+    md_ctx = NULL;
 fail:
     printf("Install operation failed.\n");
 
