@@ -730,6 +730,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
             /* only if the source file actually exists */
             srctl_get_yang_path(module->name, module->rev[0].date, yang_dst, PATH_MAX, submodule);
             if (srctl_same_file(yang_src, yang_dst)) {
+                rc = SR_ERR_DATA_EXISTS;
                 printf("Schema of the module %s is already installed, skipping...\n", module->name);
             } else {
                 printf("Installing the YANG file to '%s'...\n", yang_dst);
@@ -750,6 +751,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
             /* only if the source file actually exists */
             srctl_get_yin_path(module->name, module->rev[0].date, yin_dst, PATH_MAX, submodule);
             if (srctl_same_file(yin_src, yin_dst)) {
+                rc = SR_ERR_DATA_EXISTS;
                 printf("Schema of the module %s is already installed, skipping...\n", module->name);
             } else {
                 printf("Installing the YIN file to '%s'...\n", yin_dst);
@@ -774,8 +776,8 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
             yang_path = NULL;
             yin_path = module->inc[i].submodule->filepath;
         }
-        rc = srctl_schema_install((const struct lys_module *)module->inc[i].submodule, yang_path, yin_path, 1);
-        if (SR_ERR_OK != rc) {
+        ret = srctl_schema_install((const struct lys_module *)module->inc[i].submodule, yang_path, yin_path, 1);
+        if (SR_ERR_OK != ret && SR_ERR_DATA_EXISTS != ret) {
             fprintf(stderr, "Error: Unable to resolve the dependency on '%s'.\n", module->inc[i].submodule->name);
             goto fail;
         }
@@ -793,14 +795,14 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
             yang_path = NULL;
             yin_path = module->imp[i].module->filepath;
         }
-        rc = srctl_schema_install(module->imp[i].module, yang_path, yin_path, 0);
-        if (SR_ERR_OK != rc) {
+        ret = srctl_schema_install(module->imp[i].module, yang_path, yin_path, 0);
+        if (SR_ERR_OK != ret && SR_ERR_DATA_EXISTS != ret) {
             fprintf(stderr, "Error: Unable to resolve the dependency on '%s'.\n", module->imp[i].module->name);
             goto fail;
         }
     }
 
-    return SR_ERR_OK;
+    return rc;
 
 fail:
     printf("Installation of schema files cancelled for module '%s', reverting...\n", module->name);
@@ -892,9 +894,8 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     md_ctx_t *md_ctx = NULL;
     const struct lys_module *module;
     bool local_search_dir = false;
-    bool md_installed = false;
     char schema_dst[PATH_MAX] = { 0, };
-    int rc = SR_ERR_INTERNAL, ret = 0;
+    int rc = SR_ERR_INTERNAL, rc_schema = SR_ERR_INTERNAL, ret = 0;
 
     if (NULL == yang && NULL == yin) {
         fprintf(stderr, "Error: Either YANG or YIN file must be specified for --install operation.\n");
@@ -963,35 +964,35 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     if (NULL == module) {
         fprintf(stderr, "Error: Unable to load the module by libyang.\n");
         goto fail;
-     }
+    }
+
+    /* install schema files */
+    rc_schema = srctl_schema_install(module, yang, yin, 0);
+    if (SR_ERR_OK != rc_schema && SR_ERR_DATA_EXISTS != rc_schema) {
+        rc = rc_schema;
+        goto fail_schema;
+    }
 
     /* update dependencies */
     if (NULL != yin) {
         srctl_get_yin_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
-    }
-    else if (NULL != yang) {
+    } else if (NULL != yang) {
         srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
     }
     rc = md_insert_module(md_ctx, schema_dst, NULL);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Unable to insert the module into the dependency graph.\n");
-        goto fail;
+        goto fail_schema;
     }
     rc = md_flush(md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Unable to apply the changes made in the dependency graph.\n");
-        goto fail;
+        goto fail_schema;
     }
 
     /* unlock and release the internal data file with dependencies */
     md_destroy(md_ctx);
     md_ctx = NULL;
-
-    /* install schema files */
-    rc = srctl_schema_install(module, yang, yin, 0);
-    if (SR_ERR_OK != rc) {
-        goto fail_schema;
-    }
 
     /* install data files */
     rc = srctl_data_install(module, owner, permissions);
@@ -1023,28 +1024,6 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
 
 fail_notif:
 fail_data:
-    srctl_data_uninstall(module->name);
-fail_schema:
-    printf("Reverting the install operation...\n");
-    /* remove both yang and yin schema files */
-    if (NULL != yang) {
-        srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
-        ret = unlink(schema_dst);
-        if (0 != ret && ENOENT != errno) {
-            fprintf(stderr, "Error: Unable to revert the installation of the schema file '%s'.\n", schema_dst);
-        } else {
-            printf("Deleted the schema file '%s'.\n", schema_dst);
-        }
-    }
-    if (NULL != yin) {
-        srctl_get_yin_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
-        ret = unlink(schema_dst);
-        if (0 != ret && ENOENT != errno) {
-            fprintf(stderr, "Error: Unable to revert the installation of the schema file '%s'.\n", schema_dst);
-        } else {
-            printf("Deleted the schema file '%s'.\n", schema_dst);
-        }
-    }
     /* remove from dependency list */
     rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir,
                  srctl_internal_data_search_dir, true, &md_ctx);
@@ -1056,6 +1035,29 @@ fail_schema:
     }
     md_destroy(md_ctx);
     md_ctx = NULL;
+
+    srctl_data_uninstall(module->name);
+fail_schema:
+    printf("Reverting the install operation...\n");
+    /* remove both yang and yin schema files */
+    if (NULL != yang && SR_ERR_DATA_EXISTS != rc_schema) {
+        srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
+        ret = unlink(schema_dst);
+        if (0 != ret && ENOENT != errno) {
+            fprintf(stderr, "Error: Unable to revert the installation of the schema file '%s'.\n", schema_dst);
+        } else {
+            printf("Deleted the schema file '%s'.\n", schema_dst);
+        }
+    }
+    if (NULL != yin && SR_ERR_DATA_EXISTS != rc_schema) {
+        srctl_get_yin_path(module->name, module->rev[0].date, schema_dst, PATH_MAX, 0);
+        ret = unlink(schema_dst);
+        if (0 != ret && ENOENT != errno) {
+            fprintf(stderr, "Error: Unable to revert the installation of the schema file '%s'.\n", schema_dst);
+        } else {
+            printf("Deleted the schema file '%s'.\n", schema_dst);
+        }
+    }
 fail:
     printf("Install operation failed.\n");
 
