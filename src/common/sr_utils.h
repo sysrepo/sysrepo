@@ -209,7 +209,16 @@ int sr_copy_first_ns(const char *xpath, char **namespace);
  * @param [out] namespaces
  * @param [out] namespace_cnt
  */
-int sr_copy_first_ns_from_expr(const char *expr, char*** namespaces, size_t *namespace_cnt);
+int sr_copy_first_ns_from_expr(const char *expr, char ***namespaces, size_t *namespace_cnt);
+
+/**
+ * @brief Returns an allocated C-array of all namespaces found in the given expression.
+ *
+ * @param [in] expr
+ * @param [out] namespaces
+ * @param [out] ns_count
+ */
+int sr_copy_all_ns(const char *xpath, char ***namespaces, size_t *ns_count);
 
 /**
  * @brief Compares the first namespace of the xpath. If an argument is NULL

@@ -6633,7 +6633,8 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
     sr_list_t *models = NULL;
     bool locked = false;
     struct ly_set *set = NULL;
-    char *module_name = NULL;
+    char **module_names = NULL, *module_name = NULL;
+    size_t module_name_count = 0;
     bool inserted = false;
 
     rc = sr_list_init(&models);
@@ -6650,16 +6651,21 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
     /* loop through instance ids */
     set = lyd_find_xpath(notif, "/ietf-netconf-notifications:netconf-config-change/edit/target");
     for (unsigned int i = 0; i < set->number; i++) {
-        rc = sr_copy_first_ns(((struct lyd_node_leaf_list *) set->set.d[i])->value_str, &module_name);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to copy first ns");
+        rc = sr_copy_all_ns(((struct lyd_node_leaf_list *) set->set.d[i])->value_str, &module_names, &module_name_count);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to copy ns");
 
-        rc = sr_list_insert_unique_ord(models, module_name, dm_string_cmp, &inserted);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into the list");
+        for (size_t j = 0; j < module_name_count; ++j) {
+            rc = sr_list_insert_unique_ord(models, module_names[j], dm_string_cmp, &inserted);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add items into the list");
 
-        if (!inserted) {
-            free(module_name);
+            if (!inserted) {
+                free(module_names[j]);
+            }
+            module_names[j] = NULL;
         }
-        module_name = NULL;
+        module_name_count = 0;
+        free(module_names);
+        module_names = NULL;
     }
 
     rc = dm_get_tmp_ly_ctx(dm_ctx, models, &tmp_ctx);
@@ -6674,6 +6680,10 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
 
 cleanup:
     free(module_name);
+    for (size_t j = 0; j < module_name_count; ++j) {
+        free(module_names[j]);
+    }
+    free(module_names);
     ly_set_free(set);
     sr_free_list_of_strings(models);
     lyd_free_withsiblings(tmp_notif);
