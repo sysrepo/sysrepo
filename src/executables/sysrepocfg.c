@@ -1663,18 +1663,21 @@ cleanup:
  * @brief Performs the xpath --del operation.
  */
 static int
-srcfg_delete_xpath_operation(const char *xpath)
+srcfg_delete_xpath_operation(const char **xpath, int xpathdel_count)
 {
     int rc = SR_ERR_INTERNAL;
-
+    int i = 0;
+    
     CHECK_NULL_ARG(xpath);
 
-    rc = sr_delete_item(srcfg_session, xpath, SR_EDIT_DEFAULT);
-    if (SR_ERR_OK != rc) {
-        srcfg_report_error(rc);
-        printf("Unable to delete item. Canceling the operation.\n");
+    for (i = 0; i < xpathdel_count; i++) {
+        rc = sr_delete_item(srcfg_session, xpath[i], SR_EDIT_DEFAULT);
+        if (SR_ERR_OK != rc) {
+            srcfg_report_error(rc);
+            printf("Unable to delete item. Canceling the operation.\n");
+        }
     }
-
+    
     rc = sr_commit(srcfg_session);
     if (SR_ERR_OK != rc) {
         srcfg_report_error(rc);
@@ -1927,7 +1930,7 @@ srcfg_print_help()
     printf("\n");
     printf("Examples:\n");
     printf("  1) Edit *ietf-interfaces* module's *running config* in *xml format* in *default editor*:\n");
-    printf("     sysrepocf ietf-interfaces\n\n");
+    printf("     sysrepocfg ietf-interfaces\n\n");
     printf("  2) Edit *ietf-interfaces* module's *running config* in *xml format* in *vim*:\n");
     printf("     sysrepocfg --editor=vim ietf-interfaces\n\n");
     printf("  3) Edit *ietf-interfaces* module's *startup config* in *json format* in *default editor*:\n");
@@ -1966,7 +1969,9 @@ main(int argc, char* argv[])
     char *xpath = NULL;
     char module_name_xpath[PATH_MAX];
     char *xpathvalue = NULL;
-
+    char **xpathdel = NULL;
+    int xpathdel_count = 0;
+    
     struct option longopts[] = {
        { "help",      no_argument,       NULL, 'h' },
        { "version",   no_argument,       NULL, 'v' },
@@ -2058,7 +2063,9 @@ main(int argc, char* argv[])
             case 'r':
                 operation = SRCFG_OP_DELETE_XPATH;
                 if (NULL != optarg && 0 != strcmp("-", optarg)) {
-                    xpath = optarg;
+                    xpathdel = realloc(xpathdel, sizeof(char *) * (xpathdel_count + 1));
+                    xpathdel[xpathdel_count] = strdup(optarg);
+                    xpathdel_count++;
                 }
                 break;
             case 'w':
@@ -2122,11 +2129,11 @@ main(int argc, char* argv[])
 
     /* check argument values */
     /*  -> module */
-    if (NULL == module_name && ((operation != SRCFG_OP_EXPORT_XPATH) && (operation != SRCFG_OP_IMPORT_XPATH) && (operation != SRCFG_OP_DELETE_XPATH))) {
+    if (NULL == module_name && ((operation != SRCFG_OP_EXPORT_XPATH) && (operation != SRCFG_OP_IMPORT_XPATH))) {
         fprintf(stderr, "%s: Module name is not specified.\n", argv[0]);
         rc = SR_ERR_INVAL_ARG;
         goto terminate;
-    } else if (NULL == module_name && ((operation == SRCFG_OP_EXPORT_XPATH) || (operation == SRCFG_OP_IMPORT_XPATH) || (operation == SRCFG_OP_DELETE_XPATH))) {
+    } else if (NULL == module_name && ((operation == SRCFG_OP_EXPORT_XPATH) || (operation == SRCFG_OP_IMPORT_XPATH))) {
 		/* module name got from xpath */
 		if (xpath) {
 			snprintf(module_name_xpath, strchr(xpath, ':') - xpath, "%s", xpath + 1);
@@ -2256,7 +2263,10 @@ main(int argc, char* argv[])
             rc = srcfg_import_xpath_operation(module, datastore, xpath, xpathvalue, permanent);
             break;
         case SRCFG_OP_DELETE_XPATH:
-			rc = srcfg_delete_xpath_operation(xpath);
+			rc = srcfg_delete_xpath_operation((const char **) xpathdel, xpathdel_count);
+			for (int j = 0; j < xpathdel_count; j++)
+			    free(xpathdel[j]);
+			free(xpathdel);
             break;
         case SRCFG_OP_MERGE:
             rc = srcfg_merge_operation(module, datastore, filepath, format, permanent);
