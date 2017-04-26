@@ -1350,7 +1350,7 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
     /* check if already locked by this session */
     for (size_t i = 0; i < session->locked_files->count; i++) {
         if (0 == strcmp(lock_file, (char *) session->locked_files->data[i])) {
-            SR_LOG_INF("File %s is already by this session", lock_file);
+            SR_LOG_INF("File %s is already locked by this session", lock_file);
             free(lock_file);
             goto cleanup;
         }
@@ -3811,7 +3811,7 @@ dm_commit_lock_model(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_
         }
         CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in running ds", module_name);
     } else {
-        /* in case of startup/running ds acquire only startup/running lock*/
+        /* in case of startup/running ds acquire only startup/running */
         rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
         if (SR_ERR_LOCKED == rc) {
             /* check if the lock is hold by session that issued commit */
@@ -5017,6 +5017,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
     char *file_name = NULL;
     int *fds = NULL;
     dm_commit_context_t *c_ctx = NULL;
+    sr_datastore_t prev_ds = 0;
 
     if (src == dst || 0 == module_names->count) {
         return rc;
@@ -5063,22 +5064,23 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
 
     for (size_t i = 0; i < module_names->count; i++) {
         module_name = module_names->data[i];
-        /* lock module in source ds */
-        if (SR_DS_CANDIDATE != src) {
-            rc = dm_lock_module(dm_ctx, src_session, (char *) module_name);
-            if (SR_ERR_LOCKED == rc && NULL != session && src == session->datastore) {
-                /* check if the lock is hold by session that issued copy-config */
-                rc = dm_lock_module(dm_ctx, session, (char *) module_name);
-            }
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s can not be locked in source datastore", module_name);
-        }
 
         /* lock module in destination */
         if (SR_DS_CANDIDATE != dst) {
             rc = dm_lock_module(dm_ctx, dst_session, (char *) module_name);
-            if (SR_ERR_LOCKED == rc && NULL != session && dst == session->datastore) {
+            if (SR_ERR_LOCKED == rc && NULL != session) {
+                prev_ds = session->datastore;
+                if (dst != session->datastore) {
+                    /* temporary switch DS to check locks */
+                    prev_ds = session->datastore;
+                    dm_session_switch_ds(session, dst);
+                }
                 /* check if the lock is hold by session that issued copy-config */
                 rc = dm_lock_module(dm_ctx, session, (char *) module_name);
+
+                if (prev_ds != session->datastore) {
+                    dm_session_switch_ds(session, prev_ds);
+                }
             }
             CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s can not be locked in destination datastore", module_name);
         }
