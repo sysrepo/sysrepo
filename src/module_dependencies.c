@@ -2287,7 +2287,7 @@ cleanup:
     if (tmp_ly_ctx) {
         ly_ctx_destroy(tmp_ly_ctx, NULL);
     }
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_OK != rc || NULL == implicitly_inserted_p) {
         md_free_module_key_list(implicitly_inserted);
     }
     return rc;
