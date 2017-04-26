@@ -304,6 +304,44 @@ cleanup:
 }
 
 int
+sr_copy_all_ns(const char *xpath, char ***namespaces_p, size_t *ns_count_p)
+{
+    CHECK_NULL_ARG3(xpath, namespaces_p, ns_count_p);
+
+    int rc = SR_ERR_OK;
+    char *colon_pos, **tmp, **namespaces = NULL;
+    size_t ns_count = 0;
+
+    if (xpath[0] != '/') {
+        return SR_ERR_INVAL_ARG;
+    }
+
+    while ((colon_pos = strchr(xpath, ':'))) {
+        for (xpath = colon_pos; isalnum(xpath[-1]) || (xpath[-1] == '_') || (xpath[-1] == '-') || (xpath[-1] == '.'); --xpath);
+        tmp = realloc(namespaces, ++ns_count * sizeof *namespaces);
+        CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
+        namespaces = tmp;
+
+        namespaces[ns_count - 1] = strndup(xpath, colon_pos - xpath);
+        CHECK_NULL_NOMEM_GOTO(namespaces[ns_count - 1], rc, cleanup);
+
+        xpath = colon_pos + 1;
+    }
+
+cleanup:
+    if (SR_ERR_OK == rc) {
+        *namespaces_p = namespaces;
+        *ns_count_p = ns_count;
+    } else {
+        for (size_t i = 0; i < ns_count; ++i) {
+            free(namespaces[i]);
+        }
+        free(namespaces);
+    }
+    return rc;
+}
+
+int
 sr_cmp_first_ns(const char *xpath, const char *ns)
 {
     size_t cmp_len = 0;
