@@ -303,7 +303,7 @@ static const char * const md_module_E_body =
 static const char * const md_module_F_filepath = TEST_SCHEMA_SEARCH_DIR TEST_MODULE_PREFIX "F" TEST_MODULE_EXT;
 static const char * const md_module_F_body =
 "  revision \"2016-06-21\" {\n"
-"    description \"First revision of FE.\";\n"
+"    description \"First revision of F.\";\n"
 "  }\n"
 "\n"
 "  container data {\n"
@@ -1483,8 +1483,9 @@ md_test_insert_module(void **state)
 
     /* try to insert module A again */
     rc = md_insert_module(md_ctx, md_module_A_filepath, &implicitly_inserted);
-    assert_null(implicitly_inserted);
-    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(0, implicitly_inserted->count);
+    sr_list_cleanup(implicitly_inserted);
 
     /* insert module B */
     rc = md_insert_module(md_ctx, md_module_B_filepath, &implicitly_inserted);
@@ -1527,12 +1528,12 @@ md_test_insert_module(void **state)
     implicitly_inserted = NULL;
     validate_context(md_ctx);
 
-    /* D-rev1 is now really implemented */
-    rc = md_insert_module(md_ctx, md_module_D_rev1_filepath, &implicitly_inserted);
+    /* D-rev1 is now really implemented, D-rev2 cannot be also implemented and installed */
+    rc = md_insert_module(md_ctx, md_module_D_rev2_filepath, &implicitly_inserted);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
     assert_null(implicitly_inserted);
 
-    /* insert module F (D-rev2 should get inserted automatically) */
+    /* insert module F (D-rev2 should get inserted automatically, but only as import) */
     rc = md_insert_module(md_ctx, md_module_F_filepath, &implicitly_inserted);
     assert_int_equal(SR_ERR_OK, rc);
     inserted.D_rev2 = inserted.F = true;
@@ -1720,7 +1721,7 @@ md_test_grouping_and_uses(void **state)
     md_module_t *module = NULL;
     md_ctx_t *md_ctx = NULL;
     sr_list_t *implicitly_inserted = NULL;
- 
+
     /* initialize context */
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal",
                  TEST_DATA_SEARCH_DIR "internal", false, &md_ctx);

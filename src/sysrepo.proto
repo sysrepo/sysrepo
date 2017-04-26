@@ -244,12 +244,14 @@ message Schema {
   required string module_name = 1;           /**< Name of the module. */
   required string ns = 2;                    /**< Namespace of the module. */
   required string prefix = 3;                /**< Prefix of he module. */
-  required bool implemented = 4;             /**< TRUE for explicitly installed modules. */
+  required bool installed = 4;               /**< TRUE only for explicitly installed modules (those are always implemented). */
+  required bool implemented = 5;             /**< TRUE for implemented modules (do not have to be installed if they have augments,
+                                                  deviations or are targets for leafrefs of other implemented modules). */
 
-  required SchemaRevision revision = 5;      /**< Revision of the module*/
-  repeated SchemaSubmodule submodules = 6;   /**< Submodules */
+  required SchemaRevision revision = 6;      /**< Revision of the module*/
+  repeated SchemaSubmodule submodules = 7;   /**< Submodules */
 
-  repeated string enabled_features = 7;      /**< Features enabled for the module */
+  repeated string enabled_features = 8;      /**< Features enabled for the module */
 }
 
 /**
