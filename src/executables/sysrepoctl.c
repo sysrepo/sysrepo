@@ -1074,110 +1074,6 @@ cleanup:
 }
 
 /**
- * @brief Performs the --init operation.
- */
-static int
-srctl_init(const char *module_name, const char *revision, const char *owner, const char *permissions)
-{
-    int rc = SR_ERR_OK;
-    uint32_t idx = 0;
-    struct ly_ctx *ly_ctx = NULL;
-    md_ctx_t *md_ctx = NULL;
-    DIR *dp = NULL;
-    struct dirent *ep = NULL;
-    char schema_filename[PATH_MAX] = { 0, };
-    const struct lys_module *module = NULL;
-
-    if (NULL == module_name) {
-        fprintf(stderr, "Error: Module must be specified for --init operation.\n");
-        rc = SR_ERR_INVAL_ARG;
-        goto fail;
-    }
-
-    /* init libyang context */
-    ly_ctx = ly_ctx_new(srctl_schema_search_dir);
-    if (NULL == ly_ctx) {
-        fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
-        rc = SR_ERR_INTERNAL;
-        goto fail;
-    }
-
-    /* init module dependencies context */
-    rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
-                 true, &md_ctx);
-    if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
-        goto fail;
-    }
-
-    /* search for the schema file in the repository */
-    dp = opendir(srctl_schema_search_dir);
-    if (NULL == dp) {
-        fprintf(stderr, "Error by opening schema directory: %s.\n", sr_strerror_safe(errno));
-        rc = SR_ERR_INTERNAL;
-        goto fail;
-    }
-
-    /* load all schemas present in the repository */
-    while (NULL != (ep = readdir(dp))) {
-        if (sr_str_ends_with(ep->d_name, SR_SCHEMA_YIN_FILE_EXT) || sr_str_ends_with(ep->d_name, SR_SCHEMA_YANG_FILE_EXT)) {
-            snprintf(schema_filename, PATH_MAX, "%s%s", srctl_schema_search_dir, ep->d_name);
-            lys_parse_path(ly_ctx, schema_filename, sr_str_ends_with(ep->d_name, SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG);
-        }
-    }
-    closedir(dp);
-
-    /* find matching module to initialize */
-    do {
-        module = ly_ctx_get_module_iter(ly_ctx, &idx);
-        if ((NULL != module) && (NULL != module->name) && (0 == strcmp(module->name, module_name))) {
-            if ((NULL == revision) || ((module->rev_size > 0) && (0 == strcmp(module->rev[0].date, revision)))) {
-                break;
-            }
-        }
-    } while (NULL != module);
-
-    if (NULL == module) {
-        fprintf(stderr, "Error: Cannot find schema file for the module '%s@%s' in the repository.\n",
-                module_name, revision);
-        rc = SR_ERR_INVAL_ARG;
-        goto fail;
-    }
-
-    /* install data files */
-    rc = srctl_data_install(module, owner, permissions);
-    if (SR_ERR_OK != rc) {
-        goto fail;
-    }
-
-    /* update dependencies */
-    rc = md_insert_module(md_ctx, module->filepath, NULL);
-    if (SR_ERR_DATA_EXISTS != rc) { /*< ignore if already initialized */
-        if (SR_ERR_OK != rc) {
-            fprintf(stderr, "Error: Unable to insert the module into the dependency graph.\n");
-            goto fail;
-        }
-        rc = md_flush(md_ctx);
-        if (SR_ERR_OK != rc) {
-            fprintf(stderr, "Error: Unable to apply the changes made in the dependency graph.\n");
-            goto fail;
-        }
-    }
-
-    printf("Init operation completed successfully.\n");
-    rc = SR_ERR_OK;
-    goto cleanup;
-
-fail:
-    printf("Init operation cancelled.\n");
-
-cleanup:
-    md_destroy(md_ctx);
-    ly_ctx_destroy(ly_ctx, NULL);
-    return rc;
-}
-
-/**
  * @brief Performs the --feature-enable or --feature-disable operation.
  */
 static int
@@ -1234,7 +1130,6 @@ srctl_print_help()
     printf("  -v, --version          Prints version.\n");
     printf("  -l, --list             Lists YANG modules installed in sysrepo.\n");
     printf("  -i, --install          Installs specified schema into sysrepo (--yang or --yin must be specified).\n");
-    printf("  -t, --init             Initializes already installed YANG/YIN schema (--module must be specified).\n");
     printf("  -u, --uninstall        Uninstalls specified schema from sysrepo (--module must be specified).\n");
     printf("  -c, --change           Changes specified module in sysrepo (--module must be specified).\n");
     printf("  -e, --feature-enable   Enables a feature within a module in sysrepo (feature name is the argument, --module must be specified).\n");
@@ -1244,10 +1139,10 @@ srctl_print_help()
     printf("  -L, --level            Set verbosity level of logging ([0 - 4], 0 = all logging turned off).\n");
     printf("  -g, --yang             Path to the file with schema in YANG format (--install operation).\n");
     printf("  -n, --yin              Path to the file with schema in YIN format (--install operation).\n");
-    printf("  -m, --module           Name of the module to be operated on (--init, --uninstall, --change, --feature-enable, --feature-disable operations).\n");
-    printf("  -r, --revision         Revision of the module to be operated on (--init, --uninstall operations).\n");
-    printf("  -o, --owner            Owner user and group of the module's data in chown format (--install, --init, --change operations).\n");
-    printf("  -p, --permissions      Access permissions of the module's data in chmod format (--install, --init, --change operations).\n");
+    printf("  -m, --module           Name of the module to be operated on (--uninstall, --change, --feature-enable, --feature-disable operations).\n");
+    printf("  -r, --revision         Revision of the module to be operated on (--uninstall operations).\n");
+    printf("  -o, --owner            Owner user and group of the module's data in chown format (--install, --change operations).\n");
+    printf("  -p, --permissions      Access permissions of the module's data in chmod format (--install, --change operations).\n");
     printf("  -s, --search-dir       Directory to search for included/imported modules. Defaults to the directory with the YANG file being installed. (--install operation).\n");
     printf("  -S, --search-installed Search for included/imported modules in sysrepo schema directory. (--install operation).\n");
     printf("\n");
@@ -1281,7 +1176,6 @@ main(int argc, char* argv[])
        { "version",         no_argument,       NULL, 'v' },
        { "list",            no_argument,       NULL, 'l' },
        { "install",         no_argument,       NULL, 'i' },
-       { "init",            no_argument,       NULL, 't' },
        { "uninstall",       no_argument,       NULL, 'u' },
        { "change",          no_argument,       NULL, 'c' },
        { "feature-enable",  required_argument, NULL, 'e' },
@@ -1300,7 +1194,7 @@ main(int argc, char* argv[])
        { 0, 0, 0, 0 }
     };
 
-    while ((c = getopt_long(argc, argv, "hvlituce:d:L:g:n:m:r:o:p:s:S0:W;", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "hvliuce:d:L:g:n:m:r:o:p:s:S0:W;", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srctl_print_help();
@@ -1315,7 +1209,6 @@ main(int argc, char* argv[])
                 break;
             case 'l':
             case 'i':
-            case 't':
             case 'u':
             case 'c':
                 operation = c;
@@ -1397,9 +1290,6 @@ main(int argc, char* argv[])
             break;
         case 'i':
             rc = srctl_install(yang, yin, owner, permissions, search_dir);
-            break;
-        case 't':
-            rc = srctl_init(module, revision, owner, permissions);
             break;
         case 'u':
             rc = srctl_uninstall(module, revision);
