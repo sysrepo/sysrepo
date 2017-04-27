@@ -25,15 +25,17 @@ if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
     cd ../..
 
     # protobuf 
-    git clone https://github.com/google/protobuf.git
-    cd protobuf
+    wget https://github.com/google/protobuf/archive/v3.2.0.tar.gz
+    tar -xzf v3.2.0.tar.gz
+    cd protobuf-3.2.0
     ./autogen.sh && ./configure --prefix=$INSTALL_PREFIX_DIR 
     make -j2 && make install
     cd ..
 
     # protobuf-c
-    git clone https://github.com/protobuf-c/protobuf-c.git
-    cd protobuf-c
+    wget https://github.com/protobuf-c/protobuf-c/archive/v1.2.1.tar.gz
+    tar -xzf v1.2.1.tar.gz
+    cd protobuf-c-1.2.1
     ./autogen.sh && ./configure --prefix=$INSTALL_PREFIX_DIR
     make -j2 && make install
     cd ..
