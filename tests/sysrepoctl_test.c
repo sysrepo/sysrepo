@@ -204,6 +204,12 @@ sysrepoctl_test_install(void **state)
     exec_shell_command("../src/sysrepoctl --uninstall --module=test-dep-installed", ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "test-dep-installed.yang", false);
     exec_shell_command("../src/sysrepoctl -l", "!test-dep-installed", true, 0);
+
+    /* finally install back iana-if-type to restore the pre-test state */
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/iana-if-type.yang "
+            "--owner=%s --permissions=644", user);
+    exec_shell_command(buff, ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "iana-if-type@2014-05-08.yang", true);
 }
 
 static void
