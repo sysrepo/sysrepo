@@ -173,14 +173,22 @@ srctl_list_modules()
         rc = sr_list_schemas(session, &schemas, &schema_cnt);
     }
 
-    printf("\n%-30s| %-11s| %-20s| %-12s| %-30s| %s\n",
-            "Module Name", "Revision", "Data Owner", "Permissions", "Submodules", "Enabled Features");
-    printf("---------------------------------------------------------------------------------------------------------------------------------\n");
+    printf("\n%-30s| %-11s| %-12s| %-20s| %-12s| %-30s| %s\n",
+            "Module Name", "Revision", "Conformance", "Data Owner", "Permissions", "Submodules", "Enabled Features");
+    printf("-----------------------------------------------------------------------------------------------------------------------------------------------\n");
 
     if (SR_ERR_OK == rc) {
         for (size_t i = 0; i < schema_cnt; i++) {
             printf("%-30s| %-11s| ", schemas[i].module_name,
                     (NULL == schemas[i].revision.revision ? "" : schemas[i].revision.revision));
+            /* print conformance */
+            if (schemas[i].installed) {
+                printf("Installed   | ");
+            } else if (schemas[i].implemented) {
+                printf("Implemented | ");
+            } else {
+                printf("Imported    | ");
+            }
             /* print owner */
             srctl_print_module_owner(schemas[i].module_name, buff);
             printf("%-20s| ", buff);
