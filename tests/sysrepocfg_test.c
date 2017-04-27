@@ -94,7 +94,11 @@ srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, 
             /* LYS_ANYDATA not supported by libyang JSON printer */
             ++skip_differences;
         } else {
-            printf("first: %s; second: %s\n", lyd_path(diff->first[count]), lyd_path(diff->second[count]));
+            char *first = lyd_path(diff->first[count]);
+            char *second = lyd_path(diff->second[count]);
+            printf("first: %s; second: %s\n", first, second);
+            free(first);
+            free(second);
         }
         ++count;
     }
