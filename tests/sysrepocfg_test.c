@@ -1205,6 +1205,7 @@ main() {
                 lys_features_enable(module, module->features[i].name);
             }
         }
+        sr_free_schemas(schemas, schema_cnt);
     }
     if (SR_ERR_OK != ret) {
         fprintf(stderr, "Unable to load all schemas.\n");
