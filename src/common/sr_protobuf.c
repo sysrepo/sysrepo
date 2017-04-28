@@ -2449,6 +2449,7 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
                 CHECK_NULL_NOMEM_GOTO(schemas[i]->prefix, rc, cleanup);
             }
         }
+        schemas[i]->installed = sr_schemas[i].installed;
         schemas[i]->implemented = sr_schemas[i].implemented;
 
         schemas[i]->revision = sr_calloc(sr_mem, 1, sizeof (*schemas[i]->revision));
@@ -2612,6 +2613,7 @@ sr_schemas_gpb_to_sr(sr_mem_ctx_t *sr_mem, const Sr__Schema **gpb_schemas, const
                 CHECK_NULL_NOMEM_GOTO(schemas[i].prefix, rc, cleanup);
             }
         }
+        schemas[i].installed = gpb_schemas[i]->installed;
         schemas[i].implemented = gpb_schemas[i]->implemented;
 
         if (NULL != gpb_schemas[i]->revision->revision) {

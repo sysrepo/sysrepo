@@ -304,6 +304,7 @@ endif()
 
 INSTALL_YANG("ietf-netconf-notifications" "" "666")
 INSTALL_YANG("nc-notifications" "" "666")
+INSTALL_YANG("notifications" "" "666")
 
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(swig)

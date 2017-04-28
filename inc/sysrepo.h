@@ -617,7 +617,8 @@ typedef struct sr_schema_s {
     const char *module_name;         /**< Name of the module. */
     const char *ns;                  /**< Namespace of the module used in @ref xp_page "XPath". */
     const char *prefix;              /**< Prefix of the module. */
-    bool implemented;                /**< TRUE if the module is implemented (= explicitly installed),
+    bool installed;                  /**< TRUE if the module was explicitly installed. */
+    bool implemented;                /**< TRUE if the module is implemented (does not have to be installed),
                                           not just imported. */
 
     sr_sch_revision_t revision;      /**< Revision the module. */

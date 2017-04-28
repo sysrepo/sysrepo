@@ -1323,7 +1323,7 @@ static void
 dm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 {
     if (LY_LLERR == level) {
-        SR_LOG_DBG("libyang error: %s", msg);
+        SR_LOG_ERR("libyang error: %s", msg);
     }
 }
 
@@ -1350,7 +1350,7 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
     /* check if already locked by this session */
     for (size_t i = 0; i < session->locked_files->count; i++) {
         if (0 == strcmp(lock_file, (char *) session->locked_files->data[i])) {
-            SR_LOG_INF("File %s is already by this session", lock_file);
+            SR_LOG_INF("File %s is already locked by this session", lock_file);
             free(lock_file);
             goto cleanup;
         }
@@ -2887,6 +2887,7 @@ dm_list_module(dm_ctx_t *dm_ctx, dm_session_t *dm_session, md_module_t *module, 
     sr_mem_edit_string(sr_mem, (char **)&schema->prefix, module->prefix);
     CHECK_NULL_NOMEM_GOTO(schema->prefix, rc, cleanup);
 
+    schema->installed = module->installed;
     schema->implemented = module->implemented;
 
     rc = dm_list_rev_file(dm_ctx, sr_mem, module->name, module->revision_date, &schema->revision);
@@ -3811,7 +3812,7 @@ dm_commit_lock_model(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_
         }
         CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in running ds", module_name);
     } else {
-        /* in case of startup/running ds acquire only startup/running lock*/
+        /* in case of startup/running ds acquire only startup/running */
         rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
         if (SR_ERR_LOCKED == rc) {
             /* check if the lock is hold by session that issued commit */
@@ -5017,6 +5018,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
     char *file_name = NULL;
     int *fds = NULL;
     dm_commit_context_t *c_ctx = NULL;
+    sr_datastore_t prev_ds = 0;
 
     if (src == dst || 0 == module_names->count) {
         return rc;
@@ -5063,22 +5065,23 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
 
     for (size_t i = 0; i < module_names->count; i++) {
         module_name = module_names->data[i];
-        /* lock module in source ds */
-        if (SR_DS_CANDIDATE != src) {
-            rc = dm_lock_module(dm_ctx, src_session, (char *) module_name);
-            if (SR_ERR_LOCKED == rc && NULL != session && src == session->datastore) {
-                /* check if the lock is hold by session that issued copy-config */
-                rc = dm_lock_module(dm_ctx, session, (char *) module_name);
-            }
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s can not be locked in source datastore", module_name);
-        }
 
         /* lock module in destination */
         if (SR_DS_CANDIDATE != dst) {
             rc = dm_lock_module(dm_ctx, dst_session, (char *) module_name);
-            if (SR_ERR_LOCKED == rc && NULL != session && dst == session->datastore) {
+            if (SR_ERR_LOCKED == rc && NULL != session) {
+                prev_ds = session->datastore;
+                if (dst != session->datastore) {
+                    /* temporary switch DS to check locks */
+                    prev_ds = session->datastore;
+                    dm_session_switch_ds(session, dst);
+                }
                 /* check if the lock is hold by session that issued copy-config */
                 rc = dm_lock_module(dm_ctx, session, (char *) module_name);
+
+                if (prev_ds != session->datastore) {
+                    dm_session_switch_ds(session, prev_ds);
+                }
             }
             CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s can not be locked in destination datastore", module_name);
         }
@@ -6571,10 +6574,14 @@ dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const str
     rc = dm_get_data_info(session->dm_ctx, session, module_name, &di);
     CHECK_RC_MSG_RETURN(rc, "Get data info failed");
 
-    *res = lyd_find_instance(di->node, node);
-    if (NULL == *res) {
-        SR_LOG_ERR("Failed to find nodes %s in module %s", node->name, module_name);
-        rc = SR_ERR_INTERNAL;
+    if (di->node == NULL) {
+        *res = ly_set_new();
+    } else {
+        *res = lyd_find_instance(di->node, node);
+        if (NULL == *res) {
+            SR_LOG_ERR("Failed to find nodes %s in module %s", node->name, module_name);
+            rc = SR_ERR_INTERNAL;
+        }
     }
 
     return rc;
@@ -6633,7 +6640,8 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
     sr_list_t *models = NULL;
     bool locked = false;
     struct ly_set *set = NULL;
-    char *module_name = NULL;
+    char **module_names = NULL, *module_name = NULL;
+    size_t module_name_count = 0;
     bool inserted = false;
 
     rc = sr_list_init(&models);
@@ -6650,16 +6658,21 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
     /* loop through instance ids */
     set = lyd_find_xpath(notif, "/ietf-netconf-notifications:netconf-config-change/edit/target");
     for (unsigned int i = 0; i < set->number; i++) {
-        rc = sr_copy_first_ns(((struct lyd_node_leaf_list *) set->set.d[i])->value_str, &module_name);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to copy first ns");
+        rc = sr_copy_all_ns(((struct lyd_node_leaf_list *) set->set.d[i])->value_str, &module_names, &module_name_count);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to copy ns");
 
-        rc = sr_list_insert_unique_ord(models, module_name, dm_string_cmp, &inserted);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into the list");
+        for (size_t j = 0; j < module_name_count; ++j) {
+            rc = sr_list_insert_unique_ord(models, module_names[j], dm_string_cmp, &inserted);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add items into the list");
 
-        if (!inserted) {
-            free(module_name);
+            if (!inserted) {
+                free(module_names[j]);
+            }
+            module_names[j] = NULL;
         }
-        module_name = NULL;
+        module_name_count = 0;
+        free(module_names);
+        module_names = NULL;
     }
 
     rc = dm_get_tmp_ly_ctx(dm_ctx, models, &tmp_ctx);
@@ -6674,6 +6687,10 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
 
 cleanup:
     free(module_name);
+    for (size_t j = 0; j < module_name_count; ++j) {
+        free(module_names[j]);
+    }
+    free(module_names);
     ly_set_free(set);
     sr_free_list_of_strings(models);
     lyd_free_withsiblings(tmp_notif);
