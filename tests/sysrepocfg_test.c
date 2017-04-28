@@ -94,7 +94,11 @@ srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, 
             /* LYS_ANYDATA not supported by libyang JSON printer */
             ++skip_differences;
         } else {
-            printf("first: %s; second: %s\n", lyd_path(diff->first[count]), lyd_path(diff->second[count]));
+            char *first = lyd_path(diff->first[count]);
+            char *second = lyd_path(diff->second[count]);
+            printf("first: %s; second: %s\n", first, second);
+            free(first);
+            free(second);
         }
         ++count;
     }
@@ -381,6 +385,7 @@ srcfg_test_xpath(void **state)
 	assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']/description", rvalue->xpath);
 	assert_string_equal("description eth0", rvalue->data.string_val);
     sr_free_val(rvalue);
+    rvalue = NULL;
 
 	/* set a boolean value */
 	exec_shell_command("../src/sysrepocfg -s \"/ietf-interfaces:interfaces/interface[name='eth0']/enabled\" -w false --datastore=running", ".*", true, 0);
@@ -394,6 +399,7 @@ srcfg_test_xpath(void **state)
 	assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']/enabled", rvalue->xpath);
 	assert_false(rvalue->data.bool_val);
     sr_free_val(rvalue);
+    rvalue = NULL;
 
 	/* set a leaf value */
 	exec_shell_command("../src/sysrepocfg -d running -s \"/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu\" -w 1600", ".*", true, 0);
@@ -407,6 +413,7 @@ srcfg_test_xpath(void **state)
 	assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", rvalue->xpath);
 	assert_int_equal(1600, rvalue->data.uint16_val);
     sr_free_val(rvalue);
+    rvalue = NULL;
 
 	/* set a not existing leaf */
 	exec_shell_command("../src/sysrepocfg -d running -s \"/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/fakeleaf\" -w 'not existing leaf'", ".*", true, 1);
@@ -417,6 +424,7 @@ srcfg_test_xpath(void **state)
     rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/fakeleaf", &rvalue);
 	assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     sr_free_val(rvalue);
+    rvalue = NULL;
 
 	/* set a leaf without a value */
 	exec_shell_command("../src/sysrepocfg -d running -s \"/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu\"", ".*", true, 1);
@@ -430,7 +438,7 @@ srcfg_test_xpath(void **state)
 	assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", rvalue->xpath);
 	assert_int_equal(1600, rvalue->data.uint16_val);
     sr_free_val(rvalue);
-
+    rvalue = NULL;
 
 	/* remove a leaf */
 	exec_shell_command("../src/sysrepocfg -d running -r \"/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu\"", ".*", true, 0);
@@ -440,6 +448,8 @@ srcfg_test_xpath(void **state)
 	}
     rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", &rvalue);
 	assert_int_equal(rc, SR_ERR_NOT_FOUND);
+    sr_free_val(rvalue);
+    rvalue = NULL;
 
 	/* create a new list entry */
 	exec_shell_command("../src/sysrepocfg -d running -s \"/ietf-interfaces:interfaces/interface[name='eth6']/type\" -w 'iana-if-type:ethernetCsmacd'", ".*", true, 0);
@@ -450,6 +460,7 @@ srcfg_test_xpath(void **state)
     rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth6']/type", &rvalue);
 	assert_int_equal(rc, SR_ERR_OK);
     sr_free_val(rvalue);
+    rvalue = NULL;
 
 	/* remove a list entry */
 	exec_shell_command("../src/sysrepocfg -d running -r \"/ietf-interfaces:interfaces/interface[name='eth6']\"", ".*", true, 0);
@@ -460,7 +471,7 @@ srcfg_test_xpath(void **state)
     rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth6']/type", &rvalue);
 	assert_int_equal(rc, SR_ERR_NOT_FOUND);
     sr_free_val(rvalue);
-
+    rvalue = NULL;
 
     /* restore pre-test state */
     assert_int_equal(0, srcfg_test_unsubscribe("ietf-interfaces"));
@@ -1194,6 +1205,7 @@ main() {
                 lys_features_enable(module, module->features[i].name);
             }
         }
+        sr_free_schemas(schemas, schema_cnt);
     }
     if (SR_ERR_OK != ret) {
         fprintf(stderr, "Unable to load all schemas.\n");

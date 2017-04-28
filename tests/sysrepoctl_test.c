@@ -30,6 +30,7 @@
 #include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <pwd.h>
 
 #include "sysrepo.h"
 #include "sr_common.h"
@@ -143,7 +144,13 @@ sysrepoctl_test_install(void **state)
     md_ctx_t *md_ctx = NULL;
     md_module_t *module = NULL;
     char buff[PATH_MAX] = { 0, };
-    char *user = getenv("USER");
+    char *user = NULL;
+    register struct passwd *pw = NULL;
+    register uid_t uid = geteuid();
+
+    pw = getpwuid(uid);
+    assert_non_null(pw);
+    user = pw->pw_name;
 
     skip_if_daemon_running(); /* module uninstall & install requires restart of the Sysrepo Engine */
 
@@ -216,7 +223,13 @@ static void
 sysrepoctl_test_change(void **state)
 {
     char buff[PATH_MAX] = { 0, };
-    char *user = getenv("USER");
+    char *user = NULL;
+    register struct passwd *pw = NULL;
+    register uid_t uid = geteuid();
+
+    pw = getpwuid(uid);
+    assert_non_null(pw);
+    user = pw->pw_name;
 
     /* invalid arguments */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --change --owner=%s --permissions=664", user);
@@ -250,7 +263,13 @@ static void
 sysrepoctl_test_feature(void **state)
 {
     char buff[PATH_MAX] = { 0, };
-    char *user = getenv("USER");
+    char *user = NULL;
+    register struct passwd *pw = NULL;
+    register uid_t uid = geteuid();
+
+    pw = getpwuid(uid);
+    assert_non_null(pw);
+    user = pw->pw_name;
 
     /* invalid arguments */
     exec_shell_command("../src/sysrepoctl --feature-enable=if-mib", ".*", true, 1);

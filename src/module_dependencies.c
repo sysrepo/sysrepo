@@ -2287,7 +2287,7 @@ cleanup:
     if (tmp_ly_ctx) {
         ly_ctx_destroy(tmp_ly_ctx, NULL);
     }
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_OK != rc || NULL == implicitly_inserted_p) {
         md_free_module_key_list(implicitly_inserted);
     }
     return rc;
@@ -2696,10 +2696,8 @@ md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision, sr_li
 
     rc = md_remove_module_internal(md_ctx, name, revision, false, implicitly_removed);
 
-    if (SR_ERR_OK == rc) {
-        if (implicitly_removed_p) {
-            *implicitly_removed_p = implicitly_removed;
-        }
+    if (SR_ERR_OK == rc && implicitly_removed_p) {
+        *implicitly_removed_p = implicitly_removed;
     } else {
         md_free_module_key_list(implicitly_removed);
     }

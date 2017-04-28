@@ -35,7 +35,7 @@ On FreBSD:
 - CMocka and libyang need to be installed from sources
 
 On Mac OS X:
-- `brew cmake protobuf protobuf-c libev`
+- `brew install cmake protobuf protobuf-c libev`
 - CMocka, libyang and libredblack need to be installed from sources
 
 
