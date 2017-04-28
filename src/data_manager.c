@@ -1323,7 +1323,7 @@ static void
 dm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 {
     if (LY_LLERR == level) {
-        SR_LOG_DBG("libyang error: %s", msg);
+        SR_LOG_ERR("libyang error: %s", msg);
     }
 }
 
