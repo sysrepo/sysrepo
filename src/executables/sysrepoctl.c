@@ -1100,7 +1100,7 @@ srctl_print_help()
     printf("Available operation-options:\n");
     printf("  -h, --help             Prints usage help.\n");
     printf("  -v, --version          Prints version.\n");
-    printf("  -l, --list             Lists YANG modules installed in sysrepo.\n");
+    printf("  -l, --list             Lists YANG modules installed in sysrepo (note that Conformance Installed implies also Implemented).\n");
     printf("  -i, --install          Installs specified schema into sysrepo (--yang or --yin must be specified).\n");
     printf("  -u, --uninstall        Uninstalls specified schema from sysrepo (--module must be specified).\n");
     printf("  -c, --change           Changes specified module in sysrepo (--module must be specified).\n");
