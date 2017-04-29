@@ -1456,7 +1456,7 @@ srcfg_delete_xpath_operation(const char **xpath, int xpathdel_count)
             printf("Unable to delete item. Canceling the operation.\n");
         }
     }
-    
+
     rc = sr_commit(srcfg_session);
     if (SR_ERR_OK != rc) {
         srcfg_report_error(rc);
