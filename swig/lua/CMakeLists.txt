@@ -28,7 +28,7 @@ set_target_properties(${SWIG_MODULE_${LUA_SWIG_BINDING}_REAL_NAME} PROPERTIES PR
 swig_link_libraries(${LUA_SWIG_BINDING} ${LUA_LIBRARIES} Sysrepo_Lua)
 
 # tests
-if (ENABLE_TESTS)
+if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
 
     set(LUA_TEST_MODULE "swig-test")
     set(LUA_TEST_MODULE_REV "2017-03-09")
