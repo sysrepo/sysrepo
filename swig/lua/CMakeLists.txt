@@ -4,6 +4,8 @@ add_definitions(-DSWIGLUA)
 project(Sysrepo_Lua)
 
 add_library(Sysrepo_Lua SHARED ${SYSREPO_CPP_SOURCES})
+SET_TARGET_PROPERTIES(Sysrepo_Lua PROPERTIES
+              VERSION ${SYSREPO_VERSION} SOVERSION ${SYSREPO_SOVERSION})
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 

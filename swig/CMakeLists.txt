@@ -96,6 +96,8 @@ set(SYSREPO_H_SOURCES
 	${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.h)
 
 add_library(Sysrepo-cpp SHARED ${SYSREPO_CPP_SOURCES})
+SET_TARGET_PROPERTIES(Sysrepo-cpp PROPERTIES
+              VERSION ${SYSREPO_VERSION} SOVERSION ${SYSREPO_SOVERSION})
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
