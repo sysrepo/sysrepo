@@ -856,8 +856,9 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, sr
         switch (diff->type[i]) {
             case LYD_DIFF_DELETED:
                 SR_LOG_DBG("<LYD_DIFF_DELETED> node: %s", first_xpath);
-                if (!merge)
+                if (!merge) {
                     rc = srcfg_convert_lydiff_deleted(first_xpath);
+                }
                 break;
             case LYD_DIFF_CHANGED:
                 SR_LOG_DBG("<LYD_DIFF_CHANGED> orig: %s, new: %s", first_xpath, second_xpath);
@@ -1917,8 +1918,7 @@ main(int argc, char* argv[])
         if (xpath) {
             snprintf(module_name_xpath, strchr(xpath, ':') - xpath, "%s", xpath + 1);
             module_name = module_name_xpath;
-        }
-        else {
+        } else {
             fprintf(stderr, "%s: XPATH is not specified.\n", argv[0]);
             rc = SR_ERR_INVAL_ARG;
             goto terminate;
