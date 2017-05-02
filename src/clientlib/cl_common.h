@@ -111,6 +111,15 @@ void cl_session_cleanup(sr_session_ctx_t *session);
 int cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path);
 
 /**
+ * @brief Verifies compatibility of the server (sysrepod) version.
+ *
+ * @param[in] connection Connection context acquired by ::cl_connection_create call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int cl_version_verify(sr_conn_ctx_t *connection);
+
+/**
  * @brief Processes (sends) the request over the connection and receive the response.
  *
  * @param[in] session Session context acquired by ::cl_session_create call.
