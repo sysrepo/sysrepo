@@ -32,7 +32,6 @@
 #include <fcntl.h>
 #include <ctype.h>
 #include <libyang/libyang.h>
-
 #include "sr_common.h"
 #include "client_library.h"
 #include "module_dependencies.h"
