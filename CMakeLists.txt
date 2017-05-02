@@ -224,6 +224,7 @@ if(ENABLE_TESTS)
         add_subdirectory(tests)
     else(CMOCKA_FOUND)
         MESSAGE(WARNING "CMocka not found, tests are disabled.")
+        SET(ENABLE_TESTS false)
     endif(CMOCKA_FOUND)
 endif(ENABLE_TESTS)
 
