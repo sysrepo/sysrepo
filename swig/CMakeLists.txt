@@ -113,7 +113,7 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src/" DESTINATION ${CMAKE_INS
 if(GEN_CPP_BINDINGS AND BUILD_CPP_EXAMPLES)
 	add_subdirectory(cpp/examples)
 
-    if (ENABLE_TESTS)
+    if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
         add_subdirectory(cpp/tests)
 
         macro(INSTALL_YANG MODULE_NAME MODULE_REVISION)
