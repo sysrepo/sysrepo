@@ -1138,7 +1138,7 @@ main(int argc, char* argv[])
     char *yang = NULL, *yin = NULL, *module = NULL, *revision = NULL;
     char *owner = NULL, *permissions = NULL;
     char *search_dir = NULL;
-    char local_schema_search_dir[PATH_MAX] = { 0, }, local_data_search_dir[PATH_MAX] = { 0, };
+    char local_schema_search_dir[PATH_MAX] = { 0, }, local_schema_search_submod_dir[PATH_MAX] = { 0, }, local_data_search_dir[PATH_MAX] = { 0, };
     char local_internal_schema_search_dir[PATH_MAX] = { 0, }, local_internal_data_search_dir[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
     int search_installed = 0;
@@ -1221,10 +1221,13 @@ main(int argc, char* argv[])
                 strncpy(local_internal_schema_search_dir, optarg, PATH_MAX - 15);
                 strncpy(local_internal_data_search_dir, optarg, PATH_MAX - 15);
                 strcat(local_schema_search_dir, "/yang/");
+                strcat(local_schema_search_submod_dir, local_schema_search_dir);
+                strcat(local_schema_search_submod_dir, "/submodules/");
                 strcat(local_data_search_dir, "/data/");
                 strcat(local_internal_schema_search_dir, "/yang/internal");
                 strcat(local_internal_data_search_dir, "/data/internal");
                 srctl_schema_search_dir = local_schema_search_dir;
+                srctl_schema_search_submod_dir = local_schema_search_submod_dir;
                 srctl_data_search_dir = local_data_search_dir;
                 srctl_internal_schema_search_dir = local_internal_schema_search_dir;
                 srctl_internal_data_search_dir = local_internal_data_search_dir;
