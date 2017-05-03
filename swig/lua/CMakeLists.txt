@@ -39,6 +39,9 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
     set(LUA_TEST_DIR ${LUA_SWIG_DIR}/tests)
     set(LUA_YANG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/yang)
 
+    # make libsysrepoLua depend on sysrepoctl
+    add_dependencies(libsysrepoLua sysrepoctl)
+
     ADD_CUSTOM_COMMAND(
        TARGET libsysrepoLua
         POST_BUILD

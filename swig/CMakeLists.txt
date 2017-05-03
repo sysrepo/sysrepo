@@ -118,8 +118,8 @@ if(GEN_CPP_BINDINGS AND BUILD_CPP_EXAMPLES)
     if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
         add_subdirectory(cpp/tests)
 
-		# make Sysrepo-cpp depend on sysrepoctl
-		add_dependencies(Sysrepo-cpp sysrepoctl)
+        # make Sysrepo-cpp depend on sysrepoctl
+        add_dependencies(Sysrepo-cpp sysrepoctl)
 	
         macro(INSTALL_YANG MODULE_NAME MODULE_REVISION)
 
