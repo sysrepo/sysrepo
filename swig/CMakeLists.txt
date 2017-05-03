@@ -96,6 +96,8 @@ set(SYSREPO_H_SOURCES
 	${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.h)
 
 add_library(Sysrepo-cpp SHARED ${SYSREPO_CPP_SOURCES})
+SET_TARGET_PROPERTIES(Sysrepo-cpp PROPERTIES
+              VERSION ${SYSREPO_VERSION} SOVERSION ${SYSREPO_SOVERSION})
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
@@ -116,6 +118,9 @@ if(GEN_CPP_BINDINGS AND BUILD_CPP_EXAMPLES)
     if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
         add_subdirectory(cpp/tests)
 
+        # make Sysrepo-cpp depend on sysrepoctl
+        add_dependencies(Sysrepo-cpp sysrepoctl)
+	
         macro(INSTALL_YANG MODULE_NAME MODULE_REVISION)
 
           set(CPP_TEST_MODULE ${MODULE_NAME})

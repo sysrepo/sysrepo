@@ -52,6 +52,7 @@ const char *const sr_errlist[] = {
         "Requested resource is already locked", /* SR_ERR_LOCKED */
         "Timeout has expired",                  /* SR_ERR_TIME_OUT */
         "Sysrepo Engine restart is needed",     /* SR_ERR_RESTART_NEEDED */
+        "Sysrepo client library versions are not compatible",  /* SR_ERR_VERSION_MISMATCH */
 };
 
 const char *

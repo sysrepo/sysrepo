@@ -4,6 +4,8 @@ add_definitions(-DSWIGLUA)
 project(Sysrepo_Lua)
 
 add_library(Sysrepo_Lua SHARED ${SYSREPO_CPP_SOURCES})
+SET_TARGET_PROPERTIES(Sysrepo_Lua PROPERTIES
+              VERSION ${SYSREPO_VERSION} SOVERSION ${SYSREPO_SOVERSION})
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
@@ -36,6 +38,9 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
     set(LUA_SWIG_DIR ${CMAKE_CURRENT_BINARY_DIR})
     set(LUA_TEST_DIR ${LUA_SWIG_DIR}/tests)
     set(LUA_YANG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/yang)
+
+    # make libsysrepoLua depend on sysrepoctl
+    add_dependencies(libsysrepoLua sysrepoctl)
 
     ADD_CUSTOM_COMMAND(
        TARGET libsysrepoLua
