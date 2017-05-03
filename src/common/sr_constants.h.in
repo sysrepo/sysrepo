@@ -26,6 +26,9 @@
 /** Current version of sysrepo. */
 #define SR_VERSION "@SYSREPO_VERSION@"
 
+/** Compatible sysrepo versions. */
+#define SR_COMPAT_VERSION "@SYSREPO_SOVERSION@"
+
 /* Portability feature-check macros. */
 #cmakedefine HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP
 #cmakedefine HAVE_GETPEEREID
@@ -34,15 +37,31 @@
 #cmakedefine HAVE_SETFSUID
 #cmakedefine HAVE_STAT_ST_MTIM
 #cmakedefine HAVE_TIMED_LOCK
+#cmakedefine HAVE_FSETXATTR
 
 /** Use libavl (if defined) or libredblack (if not defined) for binary tree manipulations. */
 #cmakedefine USE_AVL_LIB
 
+/** Enable NETCONF Access Control Model (RFC 6536). */
+#cmakedefine ENABLE_NACM
+
+/** UID to be used to identify NACM recovery session, default value is 0. */
+#define SR_NACM_RECOVERY_UID @NACM_RECOVERY_UID@
+
 /** Use Sysrepo's own memory management. */
 #cmakedefine USE_SR_MEM_MGMT
 
+/** Enable event notifications store. */
+#cmakedefine ENABLE_NOTIF_STORE
+
 /** Controls whether thread IDs should be printed. */
 #cmakedefine LOG_THREAD_ID
+
+/** Generate config-change notifications (RFC 6470). */
+#cmakedefine ENABLE_CONFIG_CHANGE_NOTIF
+
+/** Save config-change notifications (RFC 6470) in the notification store (slows down the commit process). */
+#cmakedefine STORE_CONFIG_CHANGE_NOTIF
 
 /** Path to the directory with schemas. */
 #define SR_SCHEMA_SEARCH_DIR "@SCHEMA_SEARCH_DIR@"
@@ -55,6 +74,9 @@
 
 /** Path to the directory with internal data files. */
 #define SR_INTERNAL_DATA_SEARCH_DIR "@INTERNAL_DATA_SEARCH_DIR@"
+
+/** Path to the directory with notification store data files. */
+#define SR_NOTIF_DATA_SEARCH_DIR "@NOTIF_DATA_SEARCH_DIR@"
 
 /** Path to the directory with sysrepo plugins. */
 #define SR_PLUGINS_DIR "@PLUGINS_DIR@"
@@ -119,10 +141,22 @@
 /** Plugin health check timeout (in seconds). */
 #define SR_PLUGIN_HEALTH_CHECK_TIMEOUT 10
 
-/**
- * Timeout (in seconds) after which the commit will be aborted / released
- * in case that not all notification ACKs have been received.
- */
-#define SR_COMMIT_TIMEOUT @COMMIT_TIMEOUT@
+/** Timeout (in seconds) for standard Sysrepo API requests. */
+#define SR_REQUEST_TIMEOUT @REQUEST_TIMEOUT@
+
+/** Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action). */
+#define SR_LONG_REQUEST_TIMEOUT @LONG_REQUEST_TIMEOUT@
+
+/** Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers. */
+#define SR_COMMIT_VERIFY_TIMEOUT @COMMIT_VERIFY_TIMEOUT@
+
+/** Timeout (in seconds) that a request can wait for operational data from data providers. */
+#define SR_OPER_DATA_PROVIDE_TIMEOUT @OPER_DATA_PROVIDE_TIMEOUT@
+
+/** Timeout (in minutes) after which stored notifications will be aged out and erased from notification store. */
+#define SR_NOTIF_AGE_TIMEOUT @NOTIF_AGE_TIMEOUT@
+
+/** Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files). */
+#define SR_NOTIF_TIME_WINDOW @NOTIF_TIME_WINDOW@
 
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

@@ -1,0 +1,190 @@
+/**
+
+@page bin_page Sysrepo Binaries
+
+By installation, four main parts of sysrepo are installed on the system:
+the **sysrepo control tool** (`sysrepoctl`), the **sysrepo configuration tool** 
+(`sysrepocfg`), the **sysrepo library** (a.k.a @ref cl or libsysrepo) 
+and the **sysrepo daemon** (`sysrepod`).
+See @ref sysrepoctl, @ref libsysrepo and @ref sysrepod for more details about
+these components.
+
+An important setting of a sysrepo installation is the location of 
+<b>repository directory</b>. It is basically a common filesystem directory 
+where all YANG models and corresponding  data files of all applications that 
+use sysrepo as their datastore are located. It can be set by specifying 
+`REPOSITORY_LOC` cmake option and it is most commonly set to `/etc/sysrepo` and
+later retrieved via pkg-config variable `SR_REPOSITORY_LOC`,
+e.g.: `pkg-config --variable=SR_REPOSITORY_LOC libsysrepo`.
+
+
+@section sysrepoctl Using sysrepoctl tool
+`sysrepoctl` is a tool for the management of YANG modules installed in sysrepo.
+It can be used for installing of new YANG modules to sysrepo, uninstalling 
+existing ones, listing current state of installed modules, enabling / disabling
+of YANG features within the module or changing access permissions. Detailed usage 
+of the tool can be displayed by executing `sysrepoctl -h`.
+
+@subsection sysrepoctl_install Installing and uninstalling of YANG modules to / from sysrepo
+To list currently installed YANG modules, issue the `sysrepoctl -l` command. If
+you need to install a new YANG module, use `sysrepoctl --install` command, providing
+either YANG or YIN schema of the module to be installed. If the new module
+depends on any other modules (e.g. includes or imports another module), all
+dependent schemas must be located in the same directoy as the schema being installed,
+or in the directory specified by `--search-dir` option. All dependent modules
+will be automatically installed (if not installed already). 
+
+Example of the install operation:
+~~~~~~~~~~~~~~~
+sysrepoctl --install --yang=/home/user/ietf-interfaces.yang 
+~~~~~~~~~~~~~~~
+Newly installed module can be used immediately after executing `sysrepoctl --install`
+command, restart of the sysrepo daemon is not needed.
+
+@subsection sysrepoctl_permissions Specifying module access permissions
+By default, the owner user and group of a module installed by sysrepoctl tool
+will be set to the UID and GID of the user who executed the sysrepoctl tool, 
+with the access permissions allowing read & write access to everyone (666).
+It is highly recommended to specify desired ownership and access permissions
+using `--owner` and `--pemissions` options by install operation, e.g.:
+~~~~~~~~~~~~~~~
+sysrepoctl --install --yang=/home/user/ietf-interfaces.yang --owner=admin:admin --permissions=664
+~~~~~~~~~~~~~~~
+
+To change the currently set owner and/or permissions, you can use `sysrepoctl --change`
+command as follows:
+~~~~~~~~~~~~~~~
+sysrepoctl --change --module=ietf-interfaces --owner=admin:admin --permissions=644
+~~~~~~~~~~~~~~~
+You can issue the `sysrepoctl -l` command to check currently set access permissions 
+of individual modules installed in sysrepo. See @ref ac_page page for more 
+information on access control in sysrepo.
+
+@subsection sysrepoctl_features Enabling / disabling YANG featues of a module
+YANG models can contain several conditional sections that can be enabled or disabled 
+in control of the device enabling or disabling so-called "features"
+(see [section 5.6.2 of RFC 6020](https://tools.ietf.org/html/rfc6020#section-5.6.2))).
+In sysrepo, these features can be turned on and off by `--feature-enable` and 
+`--feature-disable` options of `sysrepoctl`, e.g.:
+~~~~~~~~~~~~~~~
+sysrepoctl --feature-enable=if-mib --module=ietf-interfaces
+~~~~~~~~~~~~~~~
+The changes in enabled features are persistent (do not reset by sysrepo or system reload).
+
+
+@section sysrepocfg Using sysrepocfg tool
+`sysrepocfg`  is  a  command-line tool for editing, importing and exporting configuration 
+stored in Sysrepo datastore. It allows the user to edit startup or running 
+configuration of specified module in preferred text editor and to propagate the 
+performed changes into the datastore transparently for all subscribed applications.
+Moreover, the user can export the current configuration into a file or get it 
+printed to the standard output and, similarly, an already prepared configuration 
+can be imported from a file or read from the standard input.
+
+See `sysrepocfg` manual page (`man 1 sysrepocfg`) for more detailed description of the tool.
+
+@subsection sysrepoctl_dump Dumping and importing data from / to sysrepo
+Contents of the running or startup datastore can be easily dumped (e.g. for backup purposes)
+and imported (e.g. for initail data import, or data recovery purposes) by 
+`sysrepocfg --export` and `sysrepocfg --import` commands, e.g.:
+~~~~~~~~~~~~~~~
+sysrepocfg --export=/tmp/backup.json --format=json --datastore=startup ietf-interfaces
+sysrepocfg --import=/tmp/backup.json --format=json ietf-interfaces
+~~~~~~~~~~~~~~~
+Sysrepo currently supports two dump & import formats: XML and JSON.
+
+
+@section libsysrepo Using sysrepo library in your application
+Sysrepo library is an interface between sysrepo datastore and northbound and 
+southbound applications. To use it, you need to link `libsysrepo` to your 
+application and include sysrepo public header file in the source that needs to use it.
+
+Access to the sysrepo datastore is connection- and session- oriented. Before 
+calling any data access/manipulation API, one needs to connect to the datastore 
+via ::sr_connect and open a session via ::sr_session_start.
+
+Following C code illustrates the minimal example of including sysrepo header file,
+opening of a connection and a configuration session and retrieving a single data leaf value:
+
+~~~~~~~~~~~~~~~{.c}
+#include <sysrepo.h>
+
+...
+
+sr_conn_ctx_t *conn = NULL;
+sr_connect("application_name", SR_CONN_DEFAULT, &conn);
+
+sr_session_ctx_t *sess = NULL;
+sr_session_start(conn, SR_DS_STARTUP, &sess);
+
+sr_val_t *value = NULL;
+sr_get_item(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/enabled", &value);
+
+...
+
+~~~~~~~~~~~~~~~
+
+See [examples directory](https://github.com/sysrepo/sysrepo/tree/master/examples) 
+for more usage examples and @ref cl documentation for the full description of the API.
+
+
+@section sysrepod Starting sysrepo daemon
+Sysrepo deamon provides the functionality of the datastore on the system (executes 
+the system-wide Sysrepo Engine) and should normally be automatically started by 
+system startup. However, auto-start is not configured by cmake install operation 
+and you need to configure it yourself, accroding to the guidelines of your system.
+
+Sysrepo deamon can be started by executing of the following command:
+~~~~~~~~~~~~~~~
+sysrepod
+~~~~~~~~~~~~~~~
+
+The daemon accepts several arguments aimed for debugging. You can display them
+by executing `sysrepod -h`
+~~~~~~~~~~~~~~~
+sysrepod - sysrepo daemon, version 0.1.18
+
+Usage:
+  sysrepod [-h] [-v] [-d] [-l <level>]
+
+Options:
+  -h          Prints usage help.
+  -v          Prints version.
+  -d          Debug mode - daemon will run in the foreground and print logs to stderr instead of syslog.
+  -l <level>  Sets verbosity level of logging:
+                      0 = all logging turned off
+                      1 = log only error messages
+                      2 = (default) log error and warning messages
+                      3 = log error, warning and informational messages
+                      4 = log everything, including development debug messages
+~~~~~~~~~~~~~~~
+
+It needs to be noted that the no-single-point-of-failure design of sysrepo does 
+not require the presence of sysrepo daemon on the system. In that case, the client
+library initializes its own Sysrepo Engine instance within the application 
+process to perform requested operations. When the application disconnects from 
+sysrepo, this local Sysrepo Engine is cleaned up.
+
+However, having one system-wide sysrepo daemon saves a lot of resources 
+that would be wasted by frequent init and cleanup procedures of local Sysrepo
+Engines by access from multiple sysrepo clients, as well as offers better 
+concurrency control. Therefore it is vital to have system-wide sysrepo daemon
+running when possible.
+
+
+@section subscribe Subscribing to running datastore
+As described in @ref ds_page, to enable a configuration subtree in the running datastore,
+some application needs to subscribe for the changes in the subtree in sysrepo datastore.
+If no application has subscribed for specified subtree, it would have no data in the 
+running datastore and all attempts to modify the subtree in the running datastore will
+result into an error.
+
+For testing purposes, you can use `application_example` or `application_changes_example`
+from the `examples` subdirectory. These applications subscribe for chnges in the module
+specified as the argument and print the new configuration after it has changed:
+
+~~~~~~~~~~~~~~~
+examples/application_example ietf-interfaces
+~~~~~~~~~~~~~~~
+
+*/

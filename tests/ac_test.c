@@ -31,6 +31,7 @@
 #include "access_control.h"
 #include "test_module_helper.h"
 #include "test_data.h"
+#include "system_helper.h"
 
 /**
  * @brief Test setup routine.
@@ -269,7 +270,7 @@ ac_test_identity_switch(void **state)
     }
 
     /* switch identity back */
-    rc = ac_unset_user_identity(ctx);
+    rc = ac_unset_user_identity(ctx, &credentials1);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* make sure we can access passwd as before switching */
@@ -299,7 +300,7 @@ ac_test_identity_switch(void **state)
         assert_int_equal(fd, -1);
 
         /* switch identity back */
-        rc = ac_unset_user_identity(ctx);
+        rc = ac_unset_user_identity(ctx, &credentials2);
         assert_int_equal(rc, SR_ERR_OK);
     }
 
@@ -368,5 +369,8 @@ main() {
             cmocka_unit_test_setup_teardown(ac_test_negative, ac_test_setup, ac_test_teardown),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

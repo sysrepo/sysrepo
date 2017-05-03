@@ -29,6 +29,7 @@
 #include <libyang/libyang.h>
 #include "sysrepo.h"
 #include "test_module_helper.h"
+#include "sysrepo/xpath.h"
 
 /* Constants defining how many times the operation is performed to compute an average ops/sec */
 
@@ -40,6 +41,8 @@
 
 /**@brief constant for commit operation */
 #define OP_COUNT_COMMIT 1000
+
+int instance_cnt = 1;
 
 /* Computes diff of two timeval structures
  * @see http://www.gnu.org/software/libc/manual/html_node/Elapsed-Time.html
@@ -167,6 +170,134 @@ libyang_teardown(void **state)
 {
     struct ly_ctx *ctx = *state;
     ly_ctx_destroy(ctx, NULL);
+}
+
+typedef struct dp_setup_s {
+    sr_subscription_ctx_t *subs;
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *session;
+    size_t if_count;
+}dp_setup_t;
+
+
+int
+data_provide_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+{
+    size_t if_count = *((size_t *) private_ctx);
+    int rc = SR_ERR_OK;
+    sr_val_t *v = NULL;
+
+    if (sr_xpath_node_name_eq(xpath, "interface")) {
+        rc = sr_new_values(if_count *5, &v);
+        if (SR_ERR_OK != rc) {
+            return rc;
+        }
+        for (size_t i = 0; i < if_count; i++) {
+            sr_val_build_xpath(&v[i], "/ietf-interfaces:interfaces-state/interface[name='eth%zu']", i);
+            v[i].type = SR_LIST_T;
+
+            sr_val_build_xpath(&v[if_count+i], "/ietf-interfaces:interfaces-state/interface[name='eth%zu']/oper-status", i);
+            sr_val_set_str_data(&v[if_count+i], SR_ENUM_T, "up");
+
+            sr_val_build_xpath(&v[2*if_count+i], "/ietf-interfaces:interfaces-state/interface[name='eth%zu']/statistics/in-octets", i);
+            v[2*if_count+i].type = SR_UINT64_T;
+            v[2*if_count+i].data.uint64_val = 456213;
+
+            sr_val_build_xpath(&v[3*if_count+i], "/ietf-interfaces:interfaces-state/interface[name='eth%zu']/statistics/in-unicast-pkts", i);
+            v[3*if_count+i].type = SR_UINT64_T;
+            v[3*if_count+i].data.uint64_val = 45213;
+
+            sr_val_build_xpath(&v[3*if_count+i], "/ietf-interfaces:interfaces-state/interface[name='eth%zu']/statistics/in-broadcast-pkts", i);
+            v[3*if_count+i].type = SR_UINT64_T;
+            v[3*if_count+i].data.uint64_val = 4213;
+        }
+        *values = v;
+        *values_cnt = if_count * 4;
+
+    } else {
+        *values = NULL;
+        *values_cnt = 0;
+    }
+
+    return rc;
+}
+
+void
+data_provide_setup(void **state)
+{
+
+    dp_setup_t *dp_setup = calloc(1, sizeof(*dp_setup));
+    assert_non_null(dp_setup);
+    int rc = SR_ERR_OK;
+
+    /* turn off all logging */
+    sr_log_stderr(SR_LL_NONE);
+    sr_log_syslog(SR_LL_NONE);
+
+    /* connect to sysrepo */
+    rc = sr_connect("perf_test", SR_CONN_DEFAULT, &dp_setup->conn);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_start(dp_setup->conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &dp_setup->session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_dp_get_items_subscribe(dp_setup->session, "/ietf-interfaces:interfaces-state/interface", data_provide_cb,
+            &dp_setup->if_count, SR_SUBSCR_DEFAULT, &dp_setup->subs);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    *state = (void *) dp_setup;
+}
+
+void
+data_provide_teardown(void **state)
+{
+    dp_setup_t *dp_setup = (dp_setup_t *) *state;
+
+    sr_unsubscribe(NULL, dp_setup->subs);
+    sr_session_stop(dp_setup->session);
+    sr_disconnect(dp_setup->conn);
+
+}
+
+static void
+perf_data_provide_test(void **state, int op_num, int *items) {
+    dp_setup_t *dp_setup = *state;
+    assert_non_null(dp_setup);
+
+    sr_val_t *value = NULL;
+    sr_val_iter_t *iter = NULL;
+    size_t val_cnt = 0;
+    int rc = 0;
+
+    dp_setup->if_count = instance_cnt;
+
+    /* perform get call*/
+    if (dp_setup->if_count > 50) {
+        for (size_t i = 0; i < op_num; i++){
+            val_cnt = 0;
+
+            rc = sr_get_items_iter(dp_setup->session, "/ietf-interfaces:interfaces-state/interface/statistics//*", &iter);
+            assert_int_equal(SR_ERR_OK, rc);
+            while (SR_ERR_OK == sr_get_item_next(dp_setup->session, iter, &value)){
+                sr_free_val(value);
+                val_cnt++;
+            }
+            sr_free_val_iter(iter);
+        }
+    } else {
+        for (size_t i = 0; i < op_num; i++){
+            val_cnt = 0;
+            value = NULL;
+
+            rc = sr_get_items(dp_setup->session, "/ietf-interfaces:interfaces-state/interface/statistics//*", &value, &val_cnt);
+            assert_int_equal(SR_ERR_OK, rc);
+
+            sr_free_values(value, val_cnt);
+        }
+    }
+
+    /* stop the session */
+    *items = val_cnt;
 }
 
 static void
@@ -623,6 +754,136 @@ perf_commit_test(void **state, int op_num, int *items) {
     *items = 1;
 }
 
+static int
+test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt, void *private_ctx)
+{
+    sr_val_t *v = NULL;
+    int rc = SR_ERR_OK;
+
+    /* check input */
+    assert_true(input_cnt > 0);
+
+    rc = sr_new_values(1, &v);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_val_set_xpath(v, "/test-module:activate-software-image/status");
+    sr_val_set_str_data(v, SR_STRING_T, "The image acmefw-2.3 is being installed.");
+
+    *output = v;
+    *output_cnt = 1;
+
+    return SR_ERR_OK;
+}
+
+static void
+perf_rpc_test(void **state, int op_num, int *items) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t input = { 0, };
+    sr_val_t *output = NULL;
+    size_t output_cnt = 0;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for RPC */
+    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", test_rpc_cb, NULL, SR_SUBSCR_DEFAULT,
+            &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    input.xpath = "/test-module:activate-software-image/image-name";
+    input.type = SR_STRING_T;
+    input.data.string_val = "acmefw-2.3";
+
+    /* send the RPC */
+    for (size_t i = 0; i < op_num; i++) {
+        rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
+        assert_int_equal(rc, SR_ERR_OK);
+        assert_true(output_cnt > 0);
+        sr_free_values(output, output_cnt);
+    }
+
+    /* unsubscribe from RPCs */
+    rc = sr_unsubscribe(session, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    *items = 1;
+}
+
+static void
+test_event_notif_link_discovery_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
+{
+    assert_true(values_cnt > 0);
+}
+
+static void
+perf_ev_notification_test(void **state, int op_num, int *items, bool ephemeral) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t values[4] = { { 0, }, };
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for event notification */
+    rc = sr_event_notif_subscribe(session, "/test-module:link-discovered", test_event_notif_link_discovery_cb,
+            NULL, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* send event notification - link discovery */
+    values[0].xpath = "/test-module:link-discovered/source/address";
+    values[0].type = SR_STRING_T;
+    values[0].data.string_val = "10.10.1.5";
+    values[1].xpath = "/test-module:link-discovered/source/interface";
+    values[1].type = SR_STRING_T;
+    values[1].data.string_val = "eth1";
+    values[2].xpath = "/test-module:link-discovered/destination/address";
+    values[2].type = SR_STRING_T;
+    values[2].data.string_val = "10.10.1.8";
+    values[3].xpath = "/test-module:link-discovered/destination/interface";
+    values[3].type = SR_STRING_T;
+    values[3].data.string_val = "eth0";
+
+    /* send the notification */
+    for (size_t i = 0; i < op_num; i++) {
+        rc = sr_event_notif_send(session, "/test-module:link-discovered", values, 4,
+                ephemeral ? SR_EV_NOTIF_EPHEMERAL :SR_EV_NOTIF_DEFAULT);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* unsubscribe from notifications */
+    rc = sr_unsubscribe(session, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    *items = 1;
+}
+
+static void
+perf_ev_notification_ephemeral_test(void **state, int op_num, int *items) {
+    perf_ev_notification_test(state, op_num, items, true);
+}
+
+static void
+perf_ev_notification_store_test(void **state, int op_num, int *items) {
+    perf_ev_notification_test(state, op_num, items, false);
+}
+
 static void
 perf_libyang_get_node(void **state, int op_num, int *items)
 {
@@ -696,6 +957,10 @@ main (int argc, char **argv)
         {perf_set_delete_test, "Set & delete one list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_set_delete_100_test, "Set & delete 100 lists", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_commit_test, "Commit one leaf change", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
+        {perf_data_provide_test, "Operational data provide", OP_COUNT_COMMIT, data_provide_setup, data_provide_teardown},
+        {perf_rpc_test, "RPC", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
+        {perf_ev_notification_ephemeral_test, "Event notification - ephemeral", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
+        {perf_ev_notification_store_test, "Event notification - store", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_libyang_get_node, "Libyang get one node", OP_COUNT, libyang_setup, libyang_teardown},
         {perf_libyang_get_all_list, "Libyang get all list", OP_COUNT, libyang_setup, libyang_teardown},
     };
@@ -710,11 +975,13 @@ main (int argc, char **argv)
     /* one list instance */
     createDataTreeExampleModule();
     createDataTreeLargeIETFinterfacesModule(1);
+    instance_cnt = 1;
     test_perf(tests, test_count, "Data file with one list instance", selection);
 
     /* 20 list instances*/
     createDataTreeLargeExampleModule(20);
     createDataTreeLargeIETFinterfacesModule(20);
+    instance_cnt = 20;
     test_perf(tests, test_count, "Data file with 20 list instances", selection);
 
 
@@ -728,6 +995,7 @@ main (int argc, char **argv)
     /* 100 list instances*/
     createDataTreeLargeExampleModule(100);
     createDataTreeLargeIETFinterfacesModule(100);
+    instance_cnt = 100;
     test_perf(tests, test_count, "Data file with 100 list instances", selection);
     puts("\n\n");
 

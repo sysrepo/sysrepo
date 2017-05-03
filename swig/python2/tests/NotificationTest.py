@@ -35,7 +35,7 @@ class NotificationTester(SysrepoTester):
 
     def subscribeStep(self, xpath):
         self.filename = "notifications_test_" + str(randint(0, 9999))
-        self.process = subprocess.Popen(["notifications_test_app", xpath, self.filename])
+        self.process = subprocess.Popen(['NotificationTestApp.py', xpath, self.filename])
         self.report_pid(self.process.pid)
         # wait for running data file to be copied
         time.sleep(0.1)
@@ -49,10 +49,6 @@ class NotificationTester(SysrepoTester):
             self.notifications = []
             for line in f:
                 self.notifications.append(line.split("|"))
-
-        if len(expected) != len(self.notifications):
-           for n in self.notifications:
-                print >> sys.stderr, n
 
         self.tc.assertEqual(len(expected), len(self.notifications))
 
@@ -123,7 +119,7 @@ class NotificationTest(unittest.TestCase):
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
+        subscriber.add_step(subscriber.waitTimeoutStep, 0.4)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
 
@@ -212,7 +208,7 @@ class NotificationTest(unittest.TestCase):
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
+        subscriber.add_step(subscriber.waitTimeoutStep, 0.4)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
 
@@ -297,7 +293,7 @@ class NotificationTest(unittest.TestCase):
         subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.waitStep)
+        tester.add_step(tester.waitTimeoutStep, 0.4)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
@@ -402,7 +398,7 @@ class NotificationTest(unittest.TestCase):
         subscriber4.add_step(subscriber4.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.waitStep)
+        tester.add_step(tester.waitTimeoutStep, 0.4)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
@@ -483,7 +479,7 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.waitStep)
+        tester.add_step(tester.waitTimeoutStep, 0.2)
         subscriber.add_step(subscriber.waitStep)
 
         srd.add_step(srd.waitStep)
@@ -544,7 +540,7 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.waitStep)
 
         srd.add_step(srd.waitStep)
-        tester.add_step(tester.waitStep)
+        tester.add_step(tester.waitTimeoutStep, 0.4)
         subscriber.add_step(subscriber.waitStep)
 
 

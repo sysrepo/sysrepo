@@ -15,6 +15,10 @@ module sysrepo-module-dependencies {
     "List of dependencies stored for each module by sysrepo.
      Used only internally by Sysrepo Engine.";
 
+  revision "2017-04-21" {
+    description "added installed node, other module flags decription enhanced";
+  }
+
   revision "2016-06-14" {
     description "initial revision";
     reference "sysrepo.org";
@@ -58,12 +62,17 @@ module sysrepo-module-dependencies {
     leaf submodule {
         type boolean;
         default false;
-        description "TRUE if this is only submodule, FALSE in case of a proper module.";
+        description "TRUE if this is only submodule, FALSE in case of a main module.";
+    }
+
+    leaf installed {
+        type boolean;
+        description "TRUE if the module was explicitly installed and not just imported.";
     }
 
     leaf implemented {
         type boolean;
-        description "TRUE if this module is implemented and not just imported.";
+        description "TRUE if this module is implemented (its data tree is accessible) and not just imported.";
     }
 
     leaf has-data {
@@ -104,10 +113,10 @@ module sysrepo-module-dependencies {
                     description "The source imports this module.";
                 }
                 enum extension {
-                    description "The source is extended by this module.";
+                    description "The source is extended by this module (with an augment statement).";
                 }
                 enum data {
-                    description "The source references data of this module.";
+                    description "The source references data of this module (in a leafref, must, or when statements).";
                 }
             }
             description "Type of the dependency.";

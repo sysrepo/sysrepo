@@ -41,6 +41,12 @@ void createDataTreeTestModule();
 void createDataTreeIETFinterfacesModule();
 
 /**
+ * Creates ietf-interfaces data tree and writes it into a file for merging test
+ */
+
+void createDataTreeIETFinterfacesModuleMerge();
+
+/**
  * Creates example-module data tree and writes it into a file.
  */
 void createDataTreeExampleModule();
@@ -64,6 +70,11 @@ void createDataTreeReferencedModule(int8_t magic_number);
  * Creates state-data module configuration.
  */
 void createDataTreeStateModule();
+
+/**
+ * Skips the testcase if sysrepod is running.
+ */
+void skip_if_daemon_running();
 
 #define XP_TEST_MODULE_ENUM "/test-module:main/enum"
 #define XP_TEST_MODULE_ENUM_VALUE "maybe"
@@ -93,7 +104,6 @@ void createDataTreeStateModule();
 #define XP_TEST_MODULE_INT8_VALUE "8"
 #define XP_TEST_MODULE_INT8_VALUE_T 8
 
-
 #define XP_TEST_MODULE_INT16 "/test-module:main/i16"
 #define XP_TEST_MODULE_INT16_VALUE "16"
 #define XP_TEST_MODULE_INT16_VALUE_T 16
@@ -117,16 +127,22 @@ void createDataTreeStateModule();
 #define XP_TEST_MODULE_UINT16_VALUE "16"
 #define XP_TEST_MODULE_UINT16_VALUE_T 16
 
-
 #define XP_TEST_MODULE_UINT32 "/test-module:main/ui32"
 #define XP_TEST_MODULE_UINT32_VALUE "32"
 #define XP_TEST_MODULE_UINT32_VALUE_T 32
-
 
 #define XP_TEST_MODULE_UINT64 "/test-module:main/ui64"
 #define XP_TEST_MODULE_UINT64_VALUE "64"
 #define XP_TEST_MODULE_UINT64_VALUE_T 64
 
+#define XP_TEST_MODULE_ANYXML "/test-module:main/xml-data"
+#define XP_TEST_MODULE_ANYXML_VALUE "<p xmlns=\"http://www.w3.org/1999/xhtml\">This is <em>very</em> cool.</p>"
+
+#define XP_TEST_MODULE_ANYDATA "/test-module:main/any-data"
+#define XP_TEST_MODULE_ANYDATA_VALUE "<container><leaf1>value1</leaf1><leaf2>value2</leaf2></container>"
+
+#define XP_TEST_MODULE_INSTANCE_ID "/test-module:main/instance_id"
+#define XP_TEST_MODULE_INSTANCE_ID_VALUE "/test-module:main/test-module:i64"
 
 #define XP_TEST_MODULE_DEC64_IN_UNION "/test-module:dec64-in-union"
 #define XP_TEST_MODULE_DEC64_IN_UNION_VALUE "-11.17"

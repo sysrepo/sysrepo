@@ -51,6 +51,8 @@ message Value {
     UINT16 = 23;
     UINT32 = 24;
     UINT64 = 25;
+    ANYXML = 26;
+    ANYDATA = 27;
   }
 
   required string xpath = 1;
@@ -73,6 +75,8 @@ message Value {
   optional uint32 uint16_val = 23;
   optional uint32 uint32_val = 24;
   optional uint64 uint64_val = 25;
+  optional string anyxml_val = 26;
+  optional string anydata_val = 27;
 }
 
 /**
@@ -122,6 +126,7 @@ enum SessionFlags {
   SESS_DEFAULT      = 0x00;   /**< Default (normal) session behavior. */
   SESS_CONFIG_ONLY  = 0x01;   /**< Session will process only configuration data (e.g. sysrepo won't
                                    return any state data by ::sr_get_items / ::sr_get_items_iter calls). */
+  SESS_ENABLE_NACM  = 0x02;   /**< Enable NETCONF access control for this session. */
   SESS_NOTIFICATION = 0x400;  /**< Notification session (internal type of session). */
 }
 
@@ -131,7 +136,7 @@ enum SessionFlags {
 message SessionStartReq {
   required DataStore datastore = 1;
   optional string user_name = 2;
-  required uint32 options = 3;
+  required uint32 options = 3;   /**< Bitwise OR of SessionFlags. */
   optional uint32 commit_id = 4; /**< Applicable if SESS_NOTIFICATION was specified. */
 }
 
@@ -158,15 +163,29 @@ message SessionStopResp {
 
 /**
  * @brief Refreshes configuration data cached within the session.
- * Sent by sr_session_data_refresh API call.
+ * Sent by sr_session_refresh API call.
  */
 message SessionRefreshReq {
 }
 
 /**
- * @brief Response to sr_session_data_refresh request.
+ * @brief Response to sr_session_refresh request.
  */
 message SessionRefreshResp {
+  repeated Error errors = 1;
+}
+
+/**
+ * @brief Checks aliveness and validity of the session & connection tied to it.
+ * Sent by sr_session_check API call.
+ */
+message SessionCheckReq {
+}
+
+/**
+ * @brief Response to sr_session_check request.
+ */
+message SessionCheckResp {
   repeated Error errors = 1;
 }
 
@@ -197,6 +216,19 @@ message SessionSetOptsReq {
 message SessionSetOptsResp {
 }
 
+/**
+ * @brief Request to verify version compatibility.
+ */
+message VersionVerifyReq {
+  required string soname = 1;
+}
+
+/**
+ * @brief Response to version verification.
+ */
+ message VersionVerifyResp {
+   optional string soname = 1;    /**< server-side SONAME version in case of versions incompatibility. */
+ }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Data Retrieval API (get / get-config functionality)
@@ -225,11 +257,14 @@ message Schema {
   required string module_name = 1;           /**< Name of the module. */
   required string ns = 2;                    /**< Namespace of the module. */
   required string prefix = 3;                /**< Prefix of he module. */
+  required bool installed = 4;               /**< TRUE only for explicitly installed modules (those are always implemented). */
+  required bool implemented = 5;             /**< TRUE for implemented modules (do not have to be installed if they have augments,
+                                                  deviations or are targets for leafrefs of other implemented modules). */
 
-  required SchemaRevision revision = 4;      /**< Revision of the module*/
-  repeated SchemaSubmodule submodules = 5;   /**< Submodules */
+  required SchemaRevision revision = 6;      /**< Revision of the module*/
+  repeated SchemaSubmodule submodules = 7;   /**< Submodules */
 
-  repeated string enabled_features = 6;      /**< Features enabled for the module */
+  repeated string enabled_features = 8;      /**< Features enabled for the module */
 }
 
 /**
@@ -251,10 +286,11 @@ message ListSchemasResp {
  * Sent by sr_get_schema API call.
  */
 message GetSchemaReq {
-  required string module_name = 1;
+  optional string module_name = 1;
   optional string revision = 2;
   optional string submodule_name = 3;
-  required bool yang_format = 4;
+  optional string submodule_revision = 4;
+  required bool yang_format = 5;
 }
 
 /**
@@ -389,6 +425,24 @@ message SetItemReq {
  */
 message SetItemResp {
 }
+
+/**
+ * @brief Sets the value of the leaf, leaf-list or presence container.
+ * The value is transferred as string.
+ * Sent by sr_set_item_str API call.
+ */
+message SetItemStrReq {
+  required string xpath = 1;
+  optional string value = 2;
+  required uint32 options = 3;  /**< Bitwise OR of EditFlags */
+}
+
+/**
+ * @brief Response to sr_set_item_str request.
+ */
+message SetItemStrResp {
+}
+
 
 /**
  * @brief Deletes the nodes under the specified xpath.
@@ -655,6 +709,26 @@ message GetChangesResp {
 // RPC (Remote Procedure Calls) / Action API
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief Sends a request to check if the owner of this session is authorized to invoke
+ * the protocol operation referenced by the xpath.
+ * Sent by sr_check_exec_permission.
+ */
+message CheckExecPermReq {
+    required string xpath = 1;
+}
+
+/**
+ * @brief Response to sr_check_exec_permission request.
+ */
+message CheckExecPermResp {
+    required bool permitted = 1;
+}
+
+/**
+ * @brief Sends a RPC / action request into the datastore, will be delivered to the RPC subscriber.
+ * Sent by sr_rpc_send / sr_rpc_send_tree and sr_action_send / sr_action_send_tree API calls.
+ */
 message RPCReq {
   required bool action = 1;
   required string xpath = 2;
@@ -666,6 +740,9 @@ message RPCReq {
   optional uint32 subscription_id = 11;
 }
 
+/**
+ * @brief Response to sr_rpc_send / sr_rpc_send_tree or sr_action_send / sr_action_send_tree request.
+ */
 message RPCResp {
   required bool action = 1;
   required string xpath = 2;
@@ -679,16 +756,67 @@ message RPCResp {
 // Event Notifications API
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief Sends an event notification into the datastore, will be delivered to all notification subscribers.
+ * Sent by sr_event_notif_send API call.
+ */
 message EventNotifReq {
-  required string xpath = 1;
-  repeated Value values = 2;
-  repeated Node trees = 3;
+  /**
+   * @brief Type of the event notification.
+   */
+  enum NotifType {
+    REALTIME = 1;
+    REPLAY = 2;
+    REPLAY_COMPLETE = 3;
+    REPLAY_STOP = 4;
+  }
+
+  /**
+   * @brief Flags used to override default session handling.
+   */
+  enum NotifFlags {
+    DEFAULT    = 0x00;     /**< Notification will be handled normally. */
+    EPHEMERAL  = 0x01;     /**< Notification will not be stored in the notification store. */
+  }
+
+  required NotifType type = 1;
+  required uint32 options = 2;  /**< Bitwise OR of NotifFlags. */
+
+  required string xpath = 3;
+  repeated Value values = 4;
+  repeated Node trees = 5;
+  required uint64 timestamp = 6;
 
   optional string subscriber_address = 10;
   optional uint32 subscription_id = 11;
+
+  required bool do_not_send_reply = 20;
 }
 
+/**
+ * @brief Response to sr_event_notif_send request.
+ */
 message EventNotifResp {
+}
+
+/**
+ * @brief Sends a request to replay event notifications stored in the datastore.
+ * Sent by sr_event_notif_replay API call.
+ */
+message EventNotifReplayReq {
+  required string xpath = 1;
+  required uint64 start_time = 2;
+  required uint64 stop_time = 3;
+
+  required string subscriber_address = 10;
+  required uint32 subscription_id = 11;
+  required ApiVariant api_variant = 12;
+}
+
+/**
+ * @brief Response to sr_event_notif_replay request.
+ */
+message EventNotifReplayResp {
 }
 
 
@@ -763,17 +891,53 @@ message FeatureEnableResp {
 // Sysrepo Engine internal messages
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief Internal request to unsubscribe all subscriptions of a subscriber on given destination address.
+ */
 message UnsubscribeDestinationReq {
   required string destination = 1;
 }
 
+/**
+ * @brief Internal request to timeout a commit, if it hasn't been terminated yet.
+ */
 message CommitTimeoutReq {
   required uint32 commit_id = 1;
   required bool expired = 2;
 }
 
+/**
+ * @brief Internal request to timeout a request for operational data, if it hasn't been terminated yet.
+ */
 message OperDataTimeoutReq {
   required uint64 request_id = 1;
+}
+
+/**
+ * @brief Internal request for internal state data (state data provided by Sysrepo Engine itself).
+ */
+message InternalStateDataReq {
+  required uint64 request_id = 1;
+  required string xpath = 2;
+}
+
+/**
+ * @brief Internal request to cleanup aged notifications in the Notification Store.
+ */
+message NotifStoreCleanupReq {
+}
+
+/**
+ * @brief Message to be delivered to the client after some timeout.
+ */
+message DelayedMsgReq {
+  required Msg message = 1;
+}
+
+/**
+ * @brief Internal request to reload NACM configuration from the running datastore.
+ */
+message NacmReloadReq {
 }
 
 
@@ -788,8 +952,10 @@ enum Operation {
   SESSION_START = 10;
   SESSION_STOP = 11;
   SESSION_REFRESH = 12;
-  SESSION_SWITCH_DS = 13;
-  SESSION_SET_OPTS = 14;
+  SESSION_CHECK = 13;
+  SESSION_SWITCH_DS = 14;
+  SESSION_SET_OPTS = 15;
+  VERSION_VERIFY = 16;
 
   LIST_SCHEMAS = 20;
   GET_SCHEMA = 21;
@@ -806,6 +972,7 @@ enum Operation {
   SET_ITEM = 40;
   DELETE_ITEM = 41;
   MOVE_ITEM = 42;
+  SET_ITEM_STR = 43;
 
   VALIDATE = 50;
   COMMIT = 51;
@@ -821,26 +988,35 @@ enum Operation {
   GET_CHANGES = 73;
 
   DATA_PROVIDE = 80;
-  RPC = 81;
-  ACTION = 82;
-  EVENT_NOTIF = 83;
+  CHECK_EXEC_PERMISSION = 81;
+  RPC = 82;
+  ACTION = 83;
+  EVENT_NOTIF = 84;
+  EVENT_NOTIF_REPLAY = 85;
 
   UNSUBSCRIBE_DESTINATION = 101;
   COMMIT_TIMEOUT = 102;
   OPER_DATA_TIMEOUT = 103;
+  INTERNAL_STATE_DATA = 104;
+  NOTIF_STORE_CLEANUP = 105;
+  DELAYED_MSG = 106;
+  NACM_RELOAD = 107;
 }
 
 /**
  * @brief Request for an operation.
  */
 message Request {
-  required Operation operation = 1;
+  required uint64 _id = 1; /* Request ID used internally by sysrepo */
+  required Operation operation = 2;
 
   optional SessionStartReq session_start_req = 10;
   optional SessionStopReq session_stop_req = 11;
   optional SessionRefreshReq session_refresh_req = 12;
-  optional SessionSwitchDsReq session_switch_ds_req =13;
-  optional SessionSetOptsReq session_set_opts_req = 14;
+  optional SessionCheckReq session_check_req = 13;
+  optional SessionSwitchDsReq session_switch_ds_req = 14;
+  optional SessionSetOptsReq session_set_opts_req = 15;
+  optional VersionVerifyReq version_verify_req = 16;
 
   optional ListSchemasReq list_schemas_req = 20;
   optional GetSchemaReq get_schema_req = 21;
@@ -857,6 +1033,7 @@ message Request {
   optional SetItemReq set_item_req = 40;
   optional DeleteItemReq delete_item_req = 41;
   optional MoveItemReq move_item_req = 42;
+  optional SetItemStrReq set_item_str_req = 43;
 
   optional ValidateReq validate_req = 50;
   optional CommitReq commit_req = 51;
@@ -872,8 +1049,10 @@ message Request {
   optional GetChangesReq get_changes_req = 73;
 
   optional DataProvideReq data_provide_req = 80;
-  optional RPCReq rpc_req = 81;
-  optional EventNotifReq event_notif_req = 82;
+  optional CheckExecPermReq check_exec_perm_req = 81;
+  optional RPCReq rpc_req = 82;
+  optional EventNotifReq event_notif_req = 83;
+  optional EventNotifReplayReq event_notif_replay_req = 84;
 }
 
 /**
@@ -887,8 +1066,10 @@ message Response {
   optional SessionStartResp session_start_resp = 10;
   optional SessionStopResp session_stop_resp = 11;
   optional SessionRefreshResp session_refresh_resp = 12;
-  optional SessionSwitchDsResp session_switch_ds_resp = 13;
-  optional SessionSetOptsResp session_set_opts_resp = 14;
+  optional SessionCheckResp session_check_resp = 13;
+  optional SessionSwitchDsResp session_switch_ds_resp = 14;
+  optional SessionSetOptsResp session_set_opts_resp = 15;
+  optional VersionVerifyResp version_verify_resp = 16;
 
   optional ListSchemasResp list_schemas_resp = 20;
   optional GetSchemaResp get_schema_resp = 21;
@@ -905,6 +1086,7 @@ message Response {
   optional SetItemResp set_item_resp = 40;
   optional DeleteItemResp delete_item_resp = 41;
   optional MoveItemResp move_item_resp = 42;
+  optional SetItemStrResp set_item_str_resp = 43;
 
   optional ValidateResp validate_resp = 50;
   optional CommitResp commit_resp = 51;
@@ -920,8 +1102,10 @@ message Response {
   optional GetChangesResp get_changes_resp = 73;
 
   optional DataProvideResp data_provide_resp = 80;
-  optional RPCResp rpc_resp = 81;
-  optional EventNotifResp event_notif_resp = 82;
+  optional CheckExecPermResp check_exec_perm_resp = 81;
+  optional RPCResp rpc_resp = 82;
+  optional EventNotifResp event_notif_resp = 83;
+  optional EventNotifReplayResp event_notif_replay_resp = 84;
 }
 
 /**
@@ -963,6 +1147,10 @@ message InternalRequest {
   optional UnsubscribeDestinationReq unsubscribe_dst_req = 10;
   optional CommitTimeoutReq commit_timeout_req = 11;
   optional OperDataTimeoutReq oper_data_timeout_req = 12;
+  optional InternalStateDataReq internal_state_data_req = 13;
+  optional NotifStoreCleanupReq notif_store_cleanup_req = 14;
+  optional DelayedMsgReq delayed_msg_req = 15;
+  optional NacmReloadReq nacm_reload_req = 16;
 }
 
 /**
@@ -982,7 +1170,7 @@ message Msg {
   }
 
   required MsgType type = 1;                      /**< Indicates type of the message. */
-  required uint32 session_id = 2;                 /**< Session identifier. Can be 0 (value is ignored) for session_start request. */
+  required uint32 session_id = 2;                 /**< Session identifier. Can be 0 (value is ignored) for session_start and version_verify requests. */
 
   optional Request request = 3;                   /**< Filled in in case of type == REQUEST. */
   optional Response response = 4;                 /**< Filled in in case of type == RESPONSE. */

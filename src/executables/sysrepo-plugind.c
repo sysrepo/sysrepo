@@ -293,6 +293,38 @@ sr_pd_cleanup_plugins(sr_pd_ctx_t *ctx)
 }
 
 /**
+ * @brief Check the session and reconnect if it is needed.
+ */
+static void
+sr_pd_session_check(sr_pd_ctx_t *ctx)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG_VOID(ctx);
+
+    rc = sr_session_check(ctx->session);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_DBG_MSG("Reconnecting to Sysrepo Engine.");
+
+        /* disconnect */
+        sr_session_stop(ctx->session);
+        sr_disconnect(ctx->connection);
+        ctx->session = NULL;
+        ctx->connection = NULL;
+
+        /* reconnect */
+        rc = sr_connect("sysrepo-plugind", SR_CONN_DAEMON_REQUIRED | SR_CONN_DAEMON_START, &ctx->connection);
+        if (SR_ERR_OK == rc) {
+            rc = sr_session_start(ctx->connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &ctx->session);
+        }
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Error by reconnecting to Sysrepo Engine: %s", sr_strerror(rc));
+        }
+    }
+}
+
+/**
  * @brief Callback called by the event loop watcher when health check timer expires.
  */
 static void
@@ -444,20 +476,20 @@ main(int argc, char* argv[])
     ctx.init_retry_timer.data = &ctx;
 
     /* connect to sysrepo */
-    rc = sr_connect("sysrepo-plugind", SR_CONN_DEFAULT, &ctx.connection);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepo: %s", sr_strerror(rc));
+    rc = sr_connect("sysrepo-plugind", SR_CONN_DAEMON_REQUIRED | SR_CONN_DAEMON_START, &ctx.connection);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepod: %s", sr_strerror(rc));
 
     /* start the session */
     rc = sr_session_start(ctx.connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &ctx.session);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepo: %s", sr_strerror(rc));
 
-    /* load the plugins */
-    rc = sr_pd_load_plugins(&ctx);
-
     /* tell the parent process that we are okay */
     if (!debug_mode) {
         sr_daemonize_signal_success(parent_pid);
     }
+
+    /* load the plugins */
+    rc = sr_pd_load_plugins(&ctx);
 
     SR_LOG_INF_MSG("Sysrepo plugin daemon initialized successfully.");
 
@@ -469,11 +501,18 @@ main(int argc, char* argv[])
 
     ev_loop_destroy(ctx.event_loop);
 
+    /* check whether the session is still valid & reconnect if needed */
+    sr_pd_session_check(&ctx);
+
 cleanup:
     sr_pd_cleanup_plugins(&ctx);
 
-    sr_session_stop(ctx.session);
-    sr_disconnect(ctx.connection);
+    if (NULL != ctx.session) {
+        sr_session_stop(ctx.session);
+    }
+    if (NULL != ctx.connection) {
+        sr_disconnect(ctx.connection);
+    }
 
     SR_LOG_INF_MSG("Sysrepo plugin daemon terminated.");
     sr_logger_cleanup();

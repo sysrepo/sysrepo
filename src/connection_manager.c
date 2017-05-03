@@ -766,6 +766,93 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
 }
 
 /**
+ * @brief Processes a session check request.
+ */
+static int
+cm_session_check_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg_in)
+{
+    Sr__Msg *msg = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(cm_ctx, session, msg_in, msg_in->request, msg_in->request->session_check_req);
+
+    SR_LOG_DBG("Processing session_check request (session id=%"PRIu32").", session->id);
+
+    /* prepare the response */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__SESSION_CHECK, 0, &msg);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot allocate the response for session_check request (session id=%"PRIu32").", session->id);
+        return SR_ERR_NOMEM;
+    }
+
+    msg->session_id = session->id;
+
+    /* send the response */
+    rc = cm_msg_send_connection(cm_ctx, session->connection, msg);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to send session_check response (session id=%"PRIu32").", session->id);
+    }
+
+    /* release the message */
+    sr_msg_free(msg);
+
+    return rc;
+}
+
+/**
+ * @brief Perform versions verification
+ */
+static int
+cm_verify_version_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *msg_in)
+{
+    Sr__Msg *msg = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(cm_ctx, conn, msg_in, msg_in->request, msg_in->request->version_verify_req);
+
+    /* prepare the response */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__VERSION_VERIFY, 0, &msg);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot allocate the response for version_verify request (conn=%p).", (void*)conn);
+        sr_mem_free(sr_mem);
+        return SR_ERR_NOMEM;
+    }
+
+    /* verify versions (soname) */
+    if (NULL == msg_in->request->version_verify_req->soname ||
+            strcmp(msg_in->request->version_verify_req->soname, SR_COMPAT_VERSION)) {
+        SR_LOG_ERR("Client's \"%s\" version is not compatible with version \""SR_COMPAT_VERSION"\" in use.",
+                   msg_in->request->version_verify_req->soname);
+        rc = SR_ERR_VERSION_MISMATCH;
+    }
+
+    if (SR_ERR_OK != rc) {
+        /* set the error code and local soname version string into response */
+        msg->response->result = rc;
+        sr_mem_edit_string(sr_mem, &msg->response->version_verify_resp->soname, SR_COMPAT_VERSION);
+        CHECK_NULL_NOMEM_GOTO(msg->response->version_verify_resp->soname, rc, cleanup);
+    }
+
+    /* send the response */
+    rc = cm_msg_send_connection(cm_ctx, conn, msg);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to send version_verification response (conn=%p).", (void*)conn);
+    }
+
+cleanup:
+    /* release the message */
+    sr_msg_free(msg);
+
+    return rc;
+}
+
+/**
  * @brief Processes a request from client.
  */
 static int
@@ -801,6 +888,10 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
             break;
         case SR__OPERATION__SESSION_STOP:
             rc = cm_session_stop_req_process(cm_ctx, session, msg);
+            sr_msg_free(msg);
+            break;
+        case SR__OPERATION__SESSION_CHECK:
+            rc = cm_session_check_req_process(cm_ctx, session, msg);
             sr_msg_free(msg);
             break;
         default:
@@ -936,14 +1027,41 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
         goto cleanup;
     }
 
+    if (!conn->established) {
+        if (cm_ctx->mode == CM_MODE_LOCAL) {
+            /* version is not verified since only intra-precess communication is allowed */
+            conn->established = true;
+        } else {
+            /* First message in the connection must be the request to verify version */
+            if (SR__MSG__MSG_TYPE__REQUEST != msg->type || SR__OPERATION__VERSION_VERIFY != msg->request->operation) {
+                SR_LOG_ERR_MSG("Version compatibility must be verified before processing any other message.");
+                rc = SR_ERR_VERSION_MISMATCH;
+                goto cleanup;
+            }
+
+            rc = cm_verify_version_req_process(cm_ctx, conn, msg);
+            if (SR_ERR_OK == rc) {
+                /* connection is verified */
+                conn->established = true;
+            }
+            /* processing done */
+            goto cleanup;
+        }
+    }
+
     /* find matching session (except for some exceptions) */
     if (SR__MSG__MSG_TYPE__NOTIFICATION_ACK != msg->type &&
             ((SR__MSG__MSG_TYPE__REQUEST != msg->type) || (SR__OPERATION__SESSION_START != msg->request->operation))) {
         rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Unable to find session context for session id=%"PRIu32" (conn=%p).",
-                    msg->session_id, (void*)conn);
-            rc = SR_ERR_INVAL_ARG;
+                    msg->session_id, (void*) conn);
+            if (SR__MSG__MSG_TYPE__RESPONSE == msg->type && SR__OPERATION__DATA_PROVIDE == msg->response->operation) {
+                SR_LOG_DBG_MSG("Ignoring not found session for data provide response");
+                rc = SR_ERR_OK;
+            } else {
+                rc = SR_ERR_INVAL_ARG;
+            }
             goto cleanup;
         }
         if (CM_AF_UNIX_SERVER != conn->type && conn != session->connection) {
@@ -1501,17 +1619,21 @@ cm_out_event_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     SR_LOG_DBG("Sending an event notification to '%s'.", destination_address);
 
     /* find the session */
-    rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to find the session matching with id specified in the message "
-                "(id=%"PRIu32").", msg->session_id);
-        sr_msg_free(msg);
-        return SR_ERR_INTERNAL;
-    }
-    if ((NULL == session) || (NULL == session->cm_data)) {
-        SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
-        sr_msg_free(msg);
-        return SR_ERR_INTERNAL;
+    if (0 != msg->session_id) {
+        rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Unable to find the session matching with id specified in the message "
+                    "(id=%"PRIu32").", msg->session_id);
+            sr_msg_free(msg);
+            return SR_ERR_INTERNAL;
+        }
+        if ((NULL == session) || (NULL == session->cm_data)) {
+            SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
+            sr_msg_free(msg);
+            return SR_ERR_INTERNAL;
+        }
+    } else {
+        SR_LOG_DBG_MSG("Processing event notification without associated session");
     }
 
     /* get a connection to the notification destination */
@@ -1982,6 +2104,16 @@ cm_watch_signal(cm_ctx_t *cm_ctx, int signum, cm_signal_cb callback)
 cm_connection_mode_t
 cm_get_connection_mode(cm_ctx_t *cm_ctx)
 {
-    return cm_ctx->mode;
+    if (NULL != cm_ctx) {
+        return cm_ctx->mode;
+    } else {
+        return CM_MODE_LOCAL;
+    }
+}
+
+int
+cm_before_cleanup(cm_ctx_t *cm_ctx)
+{
+   return rp_wait_for_commits_to_finish(cm_ctx->rp_ctx);
 }
 

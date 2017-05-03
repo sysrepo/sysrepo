@@ -23,8 +23,10 @@
 #ifndef SR_UTILS_H_
 #define SR_UTILS_H_
 
-#include <time.h>
 #include <stdio.h>
+#include <stdbool.h>
+#define __USE_XOPEN
+#include <time.h>
 
 #ifdef __APPLE__
 /* OS X get_time */
@@ -40,7 +42,13 @@ typedef int clockid_t;
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+/* Return main module of a libyang's scheme element. */
+#define LYS_MAIN_MODULE(lys_elem)  \
+            (lys_elem->module->type ? ((struct lys_submodule *)lys_elem->module)->belongsto : lys_elem->module)
+
+
 typedef struct dm_data_info_s dm_data_info_t;  /**< forward declaration */
+typedef struct sr_list_s sr_list_t;  /**< forward declaration */
 
 /**
  * @brief Internal structure holding information about changes used for notifications
@@ -84,6 +92,11 @@ typedef struct sr_print_ctx_s {
         } mem;
     } method;
 } sr_print_ctx_t;
+
+/**
+ * Callback used to ask if a given subtree should be pruned away.
+ */
+typedef int (*sr_tree_pruning_cb)(void *pruning_ctx, const struct lyd_node *subtree, bool *prune);
 
 /**
  * @defgroup utils Utility Functions
@@ -149,6 +162,38 @@ int sr_path_join(const char *path1, const char *path2, char **result);
 void sr_str_trim(char *str);
 
 /**
+ * @brief Calculates 32-bit hash from a C-string. Uses *djb2* algorithm from *Dan Bernstein*.
+ *
+ * @param [in] str String to calculate hash from.
+ * @return Hash value.
+ */
+uint32_t sr_str_hash(const char *str);
+
+/**
+ * @brief Print to allocated string. This is an implementation of vasprintf() which is only a GNU/BSD
+ * extension and not defined by POSIX, even though it is quite usefull in many cases.
+ *
+ * @param [out] strp A newly allocated string is returned via this pointer.
+ * @param [in] fmt Format string.
+ * @param [in] ap Sequence of additional arguments, each containing a value to be used to replace
+ *                a format specifier in the format string
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_vasprintf(char **strp, const char *fmt, va_list ap);
+
+/**
+ * @brief Print to allocated string. This is an implementation of asprintf() which is only a GNU/BSD
+ * extension and not defined by POSIX, even though it is quite usefull in many cases.
+ *
+ * @param [out] strp A newly allocated string is returned via this pointer.
+ * @param [in] fmt Format string.
+ * @param [in] ... Sequence of additional arguments, each containing a value to be used to replace
+ *                 a format specifier in the format string
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_asprintf(char **strp, const char *fmt, ...);
+
+/**
  * @brief Copies the first string from the beginning of the xpath up to the first colon,
  * that represents the name of the data file.
  * @param [in] xpath
@@ -164,7 +209,16 @@ int sr_copy_first_ns(const char *xpath, char **namespace);
  * @param [out] namespaces
  * @param [out] namespace_cnt
  */
-int sr_copy_first_ns_from_expr(const char *expr, char*** namespaces, size_t *namespace_cnt);
+int sr_copy_first_ns_from_expr(const char *expr, char ***namespaces, size_t *namespace_cnt);
+
+/**
+ * @brief Returns an allocated C-array of all namespaces found in the given expression.
+ *
+ * @param [in] expr
+ * @param [out] namespaces
+ * @param [out] ns_count
+ */
+int sr_copy_all_ns(const char *xpath, char ***namespaces, size_t *ns_count);
 
 /**
  * @brief Compares the first namespace of the xpath. If an argument is NULL
@@ -197,6 +251,18 @@ int sr_get_lock_data_file_name(const char *data_search_dir, const char *module_n
  * @return Error code (SR_ERR_OK on success)
  */
 int sr_get_persist_data_file_name(const char *data_search_dir, const char *module_name, char **file_name);
+
+/**
+ * @brief Creates the file name of the persistent data file into the provided buffer.
+ *
+ * @param [in] data_search_dir Path to the directory with data files.
+ * @param [in] module_name Name of the module.
+ * @param [in,out] buff Buffer where file name will be written.
+ * @param [in] buff_len Size of the buffer.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_get_persist_data_file_name_buf(const char *data_search_dir, const char *module_name, char *buff, size_t buff_len);
 
 /**
  * @brief Creates the data file name corresponding to the module_name (schema).
@@ -290,11 +356,56 @@ int sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid);
 int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree);
 
 /**
+ * @brief Check if the set contains the specified object.
+ * @param[in] set Set to explore.
+ * @param[in] node Object to be found in the set.
+ * @param[in] sorted *true* if the items of the set are sorted in the ascending order.
+ * @return Index of the object in the set or -1 if the object is not present in the set.
+ */
+int sr_ly_set_contains(const struct ly_set *set, void *node, bool sorted);
+
+/**
+ * @brief Sort items of a libyang set in the ascending order.
+ *
+ * @param [in] set Libyang set to sort.
+ */
+int sr_ly_set_sort(struct ly_set *set);
+
+/**
+ * @brief Returns *true* if the given schema node could be referenced from a data tree,
+ * *false* otherwise.
+ *
+ * @param [in] node
+ */
+bool sr_lys_data_node(struct lys_node *node);
+
+/**
+ * @brief Get the closest predecessor that may be referenced from a data tree.
+ *
+ * @param [in] node
+ * @param [in] augment True if this node may be from an augment definition.
+ */
+struct lys_node *sr_lys_node_get_data_parent(struct lys_node *node, bool augment);
+
+/**
  * @brief Copies the datatree pointed by root including its siblings.
  * @param [in] root Root of the datatree to be duped.
  * @return duplicated datatree or NULL in case of error
  */
 struct lyd_node* sr_dup_datatree(struct lyd_node *root);
+
+/**
+ * @brief Duplicates the date tree including its sibling into the provided context
+ *
+ * @note duplication might fails if the data tree contains a node that uses a schema
+ * not loaded in destination context (unresolved instance ids do not cause problem).
+ * consider calling ::dm_remove_added_data_trees_by_module_name or ::dm_remove_added_data_trees
+ *
+ * @param [in] root Data tree to be duplicated
+ * @param [in] ctx Destination context where the data tree should be duplicated to
+ * @return duplicated data tree using the provided context
+ */
+struct lyd_node* sr_dup_datatree_to_ctx(struct lyd_node *root, struct ly_ctx *ctx);
 
 /**
  * lyd_unlink wrapper handles the unlink of the root_node
@@ -349,13 +460,21 @@ int sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t
 int sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value);
 
 /**
+ * @brief Copies value from lyd_node_anydata to the sr_val_t.
+ * @param [in] input which is copied
+ * @param [in] value where the content is copied to
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *value);
+
+/**
  * @brief Converts sr_val_t to string representation, used in set item.
  * @param [in] value
  * @param [in] schema_node
  * @param [out] out
  * @return
  */
-int sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out);
+int sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_node, char **out);
 
 /**
  * @brief Test whether provided schema node is a list key node
@@ -383,9 +502,11 @@ sr_api_variant_t sr_api_variant_from_str(const char *api_variant_str);
  * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree.
  *
  * @param [in] node libyang node.
+ * @param [in] pruning_cb For each subtree this callback decides if it should be pruned away.
+ * @param [in] pruning_ctx Context to pruning callback, opaque to this function.
  * @param [out] sr_tree Returned sysrepo tree.
  */
-int sr_copy_node_to_tree(const struct lyd_node *node, sr_node_t *sr_tree);
+int sr_copy_node_to_tree(const struct lyd_node *node, sr_tree_pruning_cb pruning_cb, void *pruning_ctx, sr_node_t *sr_tree);
 
 /**
  * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree chunk.
@@ -395,10 +516,12 @@ int sr_copy_node_to_tree(const struct lyd_node *node, sr_node_t *sr_tree);
  * @param [in] slice_width Maximum number of child nodes of the chunk root to include.
  * @param [in] child_limit Limit on the number of copied children imposed on each node starting from the 3rd level.
  * @param [in] depth_limit Maximum number of tree levels to copy.
+ * @param [in] pruning_cb For each subtree this callback decides if it should be pruned away.
+ * @param [in] pruning_ctx Context to pruning callback, opaque to this function.
  * @param [out] sr_tree Returned sysrepo tree.
  */
 int sr_copy_node_to_tree_chunk(const struct lyd_node *node, size_t slice_offset, size_t slice_width, size_t child_limit,
-        size_t depth_limit, sr_node_t *sr_tree);
+        size_t depth_limit, sr_tree_pruning_cb pruning_cb, void *pruning_ctx, sr_node_t *sr_tree);
 
 /**
  * @brief Convert a set of libyang nodes into an array of sysrepo trees. For each node a corresponding
@@ -408,10 +531,13 @@ int sr_copy_node_to_tree_chunk(const struct lyd_node *node, size_t slice_offset,
  *
  * @param [in] nodes A set of libyang nodes.
  * @param [in] sr_mem Sysrepo memory context to use for memory allocation. Can be NULL.
+ * @param [in] pruning_cb For each subtree this callback decides if it should be pruned away.
+ * @param [in] pruning_ctx Context to pruning callback, opaque to this function.
  * @param [out] sr_trees Returned array of sysrepo trees.
  * @param [out] count Number of returned trees.
  */
-int sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count);
+int sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_tree_pruning_cb pruning_cb, void *pruning_ctx,
+        sr_node_t **sr_trees, size_t *count);
 
 /**
  * @brief Convert a set of libyang nodes into an array of sysrepo tree chunks. For each node a corresponding
@@ -425,11 +551,15 @@ int sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr
  * @param [in] child_limit Limit on the number of copied children imposed on each node starting from the 3rd level.
  * @param [in] depth_limit Maximum number of tree levels to copy.
  * @param [in] sr_mem Sysrepo memory context to use for memory allocation. Can be NULL.
+ * @param [in] pruning_cb For each subtree this callback decides if it should be pruned away.
+ * @param [in] pruning_ctx Context to pruning callback, opaque to this function.
  * @param [out] sr_trees Returned array of sysrepo trees.
  * @param [out] count Number of returned trees.
+ * @param [out] chunk_ids IDs of the returned chunks.
  */
 int sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_width, size_t child_limit,
-        size_t depth_limit, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count);
+        size_t depth_limit, sr_mem_ctx_t *sr_mem, sr_tree_pruning_cb pruning_cb, void *pruning_ctx,
+        sr_node_t **sr_trees, size_t *count, char ***chunk_ids);
 
 /**
  * @brief Convert a sysrepo tree into a libyang data tree.
@@ -548,19 +678,21 @@ void sr_daemonize_signal_success(pid_t parent_pid);
 int sr_clock_get_time(clockid_t clock_id, struct timespec *ts);
 
 /**
- * @brief Sets correct permissions on provided socket directory according to the
- * data access permission of the YANG module.
+ * @brief Sets data file permissions on provided data file / directory derived from the
+ * data access permission of the main data file of the module.
  *
- * @param[in] socket_dir Socket directory.
+ * @param[in] target_file Target file / directory whose access permissions need to be modified.
+ * @param[in] target_is_dir True if target is a directory, false if it is a file.
  * @param[in] data_serach_dir Location of the directory with data files.
  * @param[in] module_name Name of the module whose access permissions are used
- * to derive the permissions for the socket directory.
+ * to derive the permissions for the target file / directory.
  * @param[in] strict TRUE in no errors are allowed during the process of setting permissions,
  * FALSE otherwise.
  *
  * @return Error code.
  */
-int sr_set_socket_dir_permissions(const char *socket_dir, const char *data_serach_dir, const char *module_name, bool strict);
+int sr_set_data_file_permissions(const char *target_file, bool target_is_dir, const char *data_serach_dir,
+        const char *module_name, bool strict);
 
 /**
  * @brief Function encapsulates the lys_find_xpath for the use cases where the expected
@@ -595,6 +727,84 @@ bool sr_lys_module_has_data(const struct lys_module *module);
  * @param [in] format Format string followed by corresponding set of extra arguments.
  */
 int sr_print(sr_print_ctx_t *print_ctx, const char *format, ...);
+
+/**
+ * @brief Creates the uri for module with the following pattern:
+ * NAMESPACE?module=MODULE_NAME&amp;revision=REVISION&amp;features=FEATURE1,FEATURE2
+ * @param [in] module - module to generate uri from
+ * @param [out] uri
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_create_uri_for_module(const struct lys_module *module, char **uri);
+
+/**
+ * @brief Get username from UID.
+ *
+ * @param [in] uid UID of the user to get the name of.
+ * @param [out] username Returned username. Deallocate with ::free.
+ */
+int sr_get_user_name(uid_t uid, char **username);
+
+/**
+ * @brief Lookup UID and primary GID in the password database by username.
+ *
+ * @param [in] username Name of the user to search for.
+ * @param [out] uid ID of the user whose name matches the given username.
+ * @param [out] gid ID of the primary group of the matching user.
+ */
+int sr_get_user_id(const char *username, uid_t *uid, gid_t *gid);
+
+/**
+ * @brief Get groupname from GID.
+ *
+ * @param [in] gid GID of the group to get the name of.
+ * @param [out] groupname Returned groupname. Deallocate with ::free.
+ */
+int sr_get_group_name(uid_t uid, char **groupname);
+
+/**
+ * @brief Lookup GID in the group database by groupname.
+ *
+ * @param [in] groupname Name of the group to search for.
+ * @param [out] gid ID of the group with matching groupname.
+ */
+int sr_get_group_id(const char *groupname, gid_t *gid);
+
+/**
+ * @brief Returns an array of all system groups that the given user is member of.
+ *
+ * @param [in] username Name of the user to search for in the group database.
+ * @param [out] groups Array of groups (their names) that the user is member of.
+ * @param [out] group_cnt Number of returned groups.
+ */
+int sr_get_user_groups(const char *username, char ***groups, size_t *group_cnt);
+
+/**
+ * @brief Frees the list and that contains allocated strings (they are freed as well).
+ * @param [in] list
+ */
+void sr_free_list_of_strings(sr_list_t *list);
+
+/*
+ * @brief Converts time_t into string formatted as date-and-time type defined in RFC 6991.
+ *
+ * @param [in] time Time to be coverted into string.
+ * @param [out] buff String buffer where time will be written.
+ * @param [in] buff_size Size of the string buffer.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_time_to_str(time_t time, char *buff, size_t buff_size);
+
+/**
+ * @brief Converts time string formatted as date-and-time type defined in RFC 6991 into time_t.
+ *
+ * @param [in] time_str String to be converted into time.
+ * @param [out] time Resulting time.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_str_to_time(char *time_str, time_t *time);
 
 /**@} utils */
 

@@ -25,14 +25,12 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include "sr_common.h"
 #include "request_processor.h"
 #include "access_control.h"
-
-#ifdef HAVE_SETFSUID
-#include <sys/fsuid.h>
-#endif
 
 /**
  * @brief Access Control module context.
@@ -146,31 +144,43 @@ ac_check_file_access(const char *file_name, const ac_operation_t operation)
 static int
 ac_set_identity(const uid_t euid, const gid_t egid)
 {
+    int rc = SR_ERR_OK;
     int ret = -1;
+    char *username = NULL;
+
+    /* get username */
+    rc = sr_get_user_name(euid, &username);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get username for UID %d.", euid);
+
+    SR_LOG_DBG("Switching identity to UID='%d' and GID='%d' (username: %s).", euid, egid, username);
+
+    if (0 != euid) {
+        /* set secondary groups while still being the root user */
+        ret = initgroups(username, egid);
+        CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
+                "Unable to switch the set of supplementary groups: %s", sr_strerror_safe(errno));
+    }
 
     /* set gid */
-#ifdef HAVE_SETFSUID
-    ret = setfsgid(egid);
-#else
     ret = setegid(egid);
-#endif
-    if (-1 == ret) {
-        SR_LOG_ERR("Unable to switch effective gid: %s", sr_strerror_safe(errno));
-        return SR_ERR_INTERNAL;
-    }
+    CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
+            "Unable to switch effective gid: %s", sr_strerror_safe(errno));
 
     /* set uid */
-#ifdef HAVE_SETFSUID
-    ret = setfsuid(euid);
-#else
     ret = seteuid(euid);
-#endif
-    if (-1 == ret) {
-        SR_LOG_ERR("Unable to switch effective uid: %s", sr_strerror_safe(errno));
-        return SR_ERR_INTERNAL;
+    CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
+            "Unable to switch effective uid: %s", sr_strerror_safe(errno));
+
+    if (0 == euid) {
+        /* set secondary groups now that we are back to the root user */
+        ret = initgroups(username, egid);
+        CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
+                "Unable to switch the set of supplementary groups: %s", sr_strerror_safe(errno));
     }
 
-    return SR_ERR_OK;
+cleanup:
+    free(username);
+    return rc;
 }
 
 /**
@@ -184,9 +194,7 @@ ac_check_file_access_with_eid(ac_ctx_t *ac_ctx, const char *file_name,
 
     CHECK_NULL_ARG2(ac_ctx, file_name);
 
-#ifndef HAVE_SETFSUID
     pthread_mutex_lock(&ac_ctx->lock);
-#endif
 
     rc_tmp = ac_set_identity(euid, egid);
 
@@ -196,10 +204,7 @@ ac_check_file_access_with_eid(ac_ctx_t *ac_ctx, const char *file_name,
         rc_tmp = ac_set_identity(ac_ctx->proc_euid, ac_ctx->proc_egid);
     }
 
-#ifndef HAVE_SETFSUID
     pthread_mutex_unlock(&ac_ctx->lock);
-#endif
-
 
     return (SR_ERR_OK == rc_tmp) ? rc : rc_tmp;
 }
@@ -470,9 +475,7 @@ ac_set_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
             return SR_ERR_OK;
         }
 
-#ifndef HAVE_SETFSUID
-    pthread_mutex_lock(&ac_ctx->lock);
-#endif
+        pthread_mutex_lock(&ac_ctx->lock);
 
         if (0 == user_credentials->r_uid) {
             /* real user-id is root */
@@ -490,7 +493,7 @@ ac_set_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
 }
 
 int
-ac_unset_user_identity(ac_ctx_t *ac_ctx)
+ac_unset_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
 {
     int rc = SR_ERR_OK;
 
@@ -504,9 +507,9 @@ ac_unset_user_identity(ac_ctx_t *ac_ctx)
     /* set the identity back to process original */
     rc = ac_set_identity(ac_ctx->proc_euid, ac_ctx->proc_egid);
 
-#ifndef HAVE_SETFSUID
-    pthread_mutex_unlock(&ac_ctx->lock);
-#endif
+    if (NULL != user_credentials) {
+        pthread_mutex_unlock(&ac_ctx->lock);
+    }
 
     return rc;
 }

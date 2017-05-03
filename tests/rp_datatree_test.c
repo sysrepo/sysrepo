@@ -34,6 +34,7 @@
 #include "test_module_helper.h"
 #include "rp_dt_context_helper.h"
 #include "rp_internal.h"
+#include "system_helper.h"
 
 #define LEAF_VALUE "leafV"
 
@@ -47,7 +48,7 @@ createData(void **state)
 
 int setup(void **state){
    createData(state);
-   test_rp_ctx_create((rp_ctx_t**)state);
+   test_rp_ctx_create(CM_MODE_LOCAL, (rp_ctx_t**)state);
    return 0;
 }
 
@@ -343,19 +344,22 @@ void check_ietf_interfaces_int_tree(sr_node_t *tree, size_t index)
 void ietf_interfaces_test(void **state){
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
-    dm_ctx_t *ctx = rp_ctx->dm_ctx;
-    dm_session_t *ses_ctx = NULL;
+    rp_session_t *rp_session = NULL;
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
     struct lyd_node *root = NULL;
+
     createDataTreeIETFinterfacesModule();
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
-    rc = dm_get_datatree(ctx, ses_ctx, "ietf-interfaces", &root);
+
+    test_rp_session_create(rp_ctx, SR_DS_STARTUP, &rp_session);
+    rc = dm_get_datatree(dm_ctx, rp_session->dm_session, "ietf-interfaces", &root);
     assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(root);
 
     sr_val_t *values = NULL;
     size_t count = 0;
 
 #define INTERFACES "/ietf-interfaces:interfaces/*"
-    rc = rp_dt_get_values(ctx, root, NULL, INTERFACES, false, &values, &count);
+    rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, INTERFACES, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     for (size_t i = 0; i < count; i++) {
@@ -365,7 +369,7 @@ void ietf_interfaces_test(void **state){
     sr_free_values(values, count);
 
 #define INTERFACE_ETH0 "/ietf-interfaces:interfaces/interface[name='eth0']"
-    rc = rp_dt_get_values(ctx, root, NULL, INTERFACE_ETH0, false, &values, &count);
+    rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, INTERFACE_ETH0, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_int_values(values, count);
     for (size_t i = 0; i < count; i++) {
@@ -375,7 +379,7 @@ void ietf_interfaces_test(void **state){
     sr_free_values(values, count);
 
 #define INTERFACE_ETH0_IPV4 "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"
-    rc = rp_dt_get_values(ctx, root, NULL, INTERFACE_ETH0_IPV4, false, &values, &count);
+    rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, INTERFACE_ETH0_IPV4, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_ipv4_values(values, count);
     for (size_t i = 0; i < count; i++) {
@@ -385,7 +389,7 @@ void ietf_interfaces_test(void **state){
     sr_free_values(values, count);
 
 #define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
-    rc = rp_dt_get_values(ctx, root, NULL, INTERFACE_ETH0_IPV4_IP, false, &values, &count);
+    rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, INTERFACE_ETH0_IPV4_IP, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_addr_values(values, count);
     for (size_t i = 0; i < count; i++) {
@@ -394,18 +398,19 @@ void ietf_interfaces_test(void **state){
     }
     sr_free_values(values, count);
 
-    dm_session_stop(ctx, ses_ctx);
+    test_rp_session_cleanup(rp_ctx, rp_session);
 }
 
 void ietf_interfaces_tree_test(void **state){
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
-    dm_ctx_t *ctx = rp_ctx->dm_ctx;
-    dm_session_t *ses_ctx = NULL;
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
+    rp_session_t *rp_session = NULL;
     struct lyd_node *root = NULL;
+
     createDataTreeIETFinterfacesModule();
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
-    rc = dm_get_datatree(ctx, ses_ctx, "ietf-interfaces", &root);
+    test_rp_session_create(rp_ctx, SR_DS_STARTUP, &rp_session);
+    rc = dm_get_datatree(dm_ctx, rp_session->dm_session, "ietf-interfaces", &root);
     assert_int_equal(SR_ERR_OK, rc);
 
     sr_node_t *trees = NULL;
@@ -413,7 +418,7 @@ void ietf_interfaces_tree_test(void **state){
     size_t count = 0;
 
 #define INTERFACES "/ietf-interfaces:interfaces/*"
-    rc = rp_dt_get_subtrees(ctx, root, NULL, INTERFACES, false, &trees, &count);
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session, root, NULL, INTERFACES, false, &trees, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     for (size_t i = 0; i < count; i++) {
@@ -423,68 +428,69 @@ void ietf_interfaces_tree_test(void **state){
     sr_free_trees(trees, count);
 
 #define INTERFACE_ETH0 "/ietf-interfaces:interfaces/interface[name='eth0']"
-    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_ETH0, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_ETH0, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_int_tree(tree, 0);
     sr_free_tree(tree);
 
 #define INTERFACE_ETH1 "/ietf-interfaces:interfaces/interface[name='eth1']"
-    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_ETH1, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_ETH1, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_int_tree(tree, 1);
     sr_free_tree(tree);
 
 #define INTERFACE_GIGAETH0 "/ietf-interfaces:interfaces/interface[name='gigaeth0']"
-    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_GIGAETH0, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_GIGAETH0, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_int_tree(tree, 2);
     sr_free_tree(tree);
 
 #define INTERFACE_ETH0_IPV4 "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"
-    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_ETH0_IPV4, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_ETH0_IPV4, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_ipv4_tree(tree, 0);
     sr_free_tree(tree);
 
 #define INTERFACE_ETH1_IPV4 "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4"
-    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_ETH1_IPV4, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_ETH1_IPV4, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_ipv4_tree(tree, 1);
     sr_free_tree(tree);
 
 #define INTERFACE_GIGAETH0_IPV4 "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4"
-    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_GIGAETH0_IPV4, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_GIGAETH0_IPV4, false, &tree);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
 #define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
-    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_ETH0_IPV4_IP, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_ETH0_IPV4_IP, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_addr_tree(tree, 0, true);
     sr_free_tree(tree);
 
 #define INTERFACE_ETH1_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/address[ip='10.10.1.5']"
-    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_ETH1_IPV4_IP, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_ETH1_IPV4_IP, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_addr_tree(tree, 1, true);
     sr_free_tree(tree);
 
 #define INTERFACE_GIGAETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4/address"
-    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_GIGAETH0_IPV4_IP, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_GIGAETH0_IPV4_IP, false, &tree);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
-    dm_session_stop(ctx, ses_ctx);
+    test_rp_session_cleanup(rp_ctx, rp_session);
 }
 
 void ietf_interfaces_tree_with_opts_test(void **state)
 {
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
-    dm_ctx_t *ctx = rp_ctx->dm_ctx;
-    dm_session_t *ses_ctx = NULL;
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
+    rp_session_t *rp_session = NULL;
     struct lyd_node *root = NULL;
+
     createDataTreeIETFinterfacesModule();
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
-    rc = dm_get_datatree(ctx, ses_ctx, "ietf-interfaces", &root);
+    test_rp_session_create(rp_ctx, SR_DS_STARTUP, &rp_session);
+    rc = dm_get_datatree(dm_ctx, rp_session->dm_session, "ietf-interfaces", &root);
     assert_int_equal(SR_ERR_OK, rc);
 
     sr_node_t *trees = NULL;
@@ -497,7 +503,7 @@ void ietf_interfaces_tree_with_opts_test(void **state)
 #define INTERFACE_ETH1 "/ietf-interfaces:interfaces/interface[name='eth1']"
 #define INTERFACE_GIGAETH0 "/ietf-interfaces:interfaces/interface[name='gigaeth0']"
     /* get all interfaces in their entirety */
-    rc = rp_dt_get_subtrees_chunks(ctx, root, NULL, INTERFACES, 0, SIZE_MAX, SIZE_MAX, SIZE_MAX, false,
+    rc = rp_dt_get_subtrees_chunks(dm_ctx, rp_session, root, NULL, INTERFACES, 0, SIZE_MAX, SIZE_MAX, SIZE_MAX, false,
             &trees, &count, &chunk_ids);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
@@ -515,7 +521,7 @@ void ietf_interfaces_tree_with_opts_test(void **state)
     sr_free_trees(trees, count);
 
     /* slice interfaces and leave only chunk of eth0 */
-    rc = rp_dt_get_subtree_chunk(ctx, root, NULL, "/ietf-interfaces:interfaces", 0, 1, 2, 3, false, &tree, &chunk_id);
+    rc = rp_dt_get_subtree_chunk(dm_ctx, rp_session, root, NULL, "/ietf-interfaces:interfaces", 0, 1, 2, 3, false, &tree, &chunk_id);
     assert_int_equal(SR_ERR_OK, rc);
     assert_null(tree->parent);
     assert_string_equal("/ietf-interfaces:interfaces", chunk_id);
@@ -553,7 +559,7 @@ void ietf_interfaces_tree_with_opts_test(void **state)
     sr_free_tree(tree);
 
     /* limit depth to only top nodes of all interfaces */
-    rc = rp_dt_get_subtree_chunk(ctx, root, NULL, "/ietf-interfaces:interfaces", 0, SIZE_MAX, SIZE_MAX, 2, false, &tree,
+    rc = rp_dt_get_subtree_chunk(dm_ctx, rp_session, root, NULL, "/ietf-interfaces:interfaces", 0, SIZE_MAX, SIZE_MAX, 2, false, &tree,
             &chunk_id);
     assert_int_equal(SR_ERR_OK, rc);
     assert_null(tree->parent);
@@ -577,7 +583,7 @@ void ietf_interfaces_tree_with_opts_test(void **state)
     sr_free_tree(tree);
 
     /* slice eth0 out and get full two levels of the remaining interfaces */
-    rc = rp_dt_get_subtree_chunk(ctx, root, NULL, "/ietf-interfaces:interfaces", 1, SIZE_MAX, SIZE_MAX, 3, false, &tree,
+    rc = rp_dt_get_subtree_chunk(dm_ctx, rp_session, root, NULL, "/ietf-interfaces:interfaces", 1, SIZE_MAX, SIZE_MAX, 3, false, &tree,
             &chunk_id);
     assert_int_equal(SR_ERR_OK, rc);
     assert_null(tree->parent);
@@ -678,25 +684,26 @@ void ietf_interfaces_tree_with_opts_test(void **state)
     assert_null(node->next);
     sr_free_tree(tree);
 
-    dm_session_stop(ctx, ses_ctx);
+    test_rp_session_cleanup(rp_ctx, rp_session);
 }
 
 void get_values_test_module_test(void **state){
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
-    dm_ctx_t *ctx = rp_ctx->dm_ctx;
-    dm_session_t *ses_ctx = NULL;
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
-
+    rp_session_t *rp_session = NULL;
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
     struct lyd_node *root = NULL;
+
     createDataTreeTestModule();
-    dm_get_datatree(ctx, ses_ctx, "test-module", &root);
+    test_rp_session_create(rp_ctx, SR_DS_STARTUP, &rp_session);
+    rc = dm_get_datatree(dm_ctx, rp_session->dm_session, "test-module", &root);
+    assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(root);
 
     sr_val_t *value;
 
     /* enum leaf*/
-    rc = rp_dt_get_value(ctx, root, NULL, XP_TEST_MODULE_ENUM, false, &value);
+    rc = rp_dt_get_value(dm_ctx, rp_session, root, NULL, XP_TEST_MODULE_ENUM, false, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_ENUM_T, value->type);
@@ -705,7 +712,7 @@ void get_values_test_module_test(void **state){
     sr_free_val(value);
 
     /* binary leaf*/
-    rc = rp_dt_get_value(ctx, root, NULL, XP_TEST_MODULE_RAW, false, &value);
+    rc = rp_dt_get_value(dm_ctx, rp_session, root, NULL, XP_TEST_MODULE_RAW, false, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_BINARY_T, value->type);
@@ -714,7 +721,7 @@ void get_values_test_module_test(void **state){
     sr_free_val(value);
 
     /*bits leaf*/
-    rc = rp_dt_get_value(ctx, root, NULL, XP_TEST_MODULE_BITS, false, &value);
+    rc = rp_dt_get_value(dm_ctx, rp_session, root, NULL, XP_TEST_MODULE_BITS, false, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_BITS_T, value->type);
@@ -724,7 +731,7 @@ void get_values_test_module_test(void **state){
 
     /* leafref */
 #define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age"
-    rc = rp_dt_get_value(ctx, root, NULL, LEAFREF_XP, false, &value);
+    rc = rp_dt_get_value(dm_ctx, rp_session, root, NULL, LEAFREF_XP, false, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_UINT8_T, value->type);
@@ -732,26 +739,26 @@ void get_values_test_module_test(void **state){
 
     sr_free_val(value);
 
-    dm_session_stop(ctx, ses_ctx);
+    test_rp_session_cleanup(rp_ctx, rp_session);
 }
 
 void get_tree_test_module_test(void **state)
 {
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
-    dm_ctx_t *ctx = rp_ctx->dm_ctx;
-    dm_session_t *ses_ctx = NULL;
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
-
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
+    rp_session_t *rp_session = NULL;
     struct lyd_node *root = NULL;
+
     createDataTreeTestModule();
-    dm_get_datatree(ctx, ses_ctx, "test-module", &root);
-    assert_non_null(root);
+    test_rp_session_create(rp_ctx, SR_DS_STARTUP, &rp_session);
+    rc = dm_get_datatree(dm_ctx, rp_session->dm_session, "test-module", &root);
+    assert_int_equal(SR_ERR_OK, rc);
 
     sr_node_t *tree = NULL;
 
     /* enum leaf */
-    rc = rp_dt_get_subtree(ctx, root, NULL, XP_TEST_MODULE_ENUM, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, XP_TEST_MODULE_ENUM, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("enum", tree->name);
     assert_string_equal("test-module", tree->module_name);
@@ -766,7 +773,7 @@ void get_tree_test_module_test(void **state)
     sr_free_tree(tree);
 
     /* binary leaf*/
-    rc = rp_dt_get_subtree(ctx, root, NULL, XP_TEST_MODULE_RAW, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, XP_TEST_MODULE_RAW, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("raw", tree->name);
     assert_string_equal("test-module", tree->module_name);
@@ -781,7 +788,7 @@ void get_tree_test_module_test(void **state)
     sr_free_tree(tree);
 
     /*bits leaf*/
-    rc = rp_dt_get_subtree(ctx, root, NULL, XP_TEST_MODULE_BITS, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, XP_TEST_MODULE_BITS, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("options", tree->name);
     assert_string_equal("test-module", tree->module_name);
@@ -797,7 +804,7 @@ void get_tree_test_module_test(void **state)
 
     /* leafref */
 #define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age"
-    rc = rp_dt_get_subtree(ctx, root, NULL, LEAFREF_XP, false, &tree);
+    rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, LEAFREF_XP, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("age", tree->name);
     assert_string_equal("test-module", tree->module_name);
@@ -811,17 +818,18 @@ void get_tree_test_module_test(void **state)
 
     sr_free_tree(tree);
 
-    dm_session_stop(ctx, ses_ctx);
+    test_rp_session_cleanup(rp_ctx, rp_session);
 }
 
 void get_values_test(void **state){
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
-    dm_ctx_t *ctx = rp_ctx->dm_ctx;
-    dm_session_t *ses_ctx = NULL;
+    rp_session_t *rp_session = NULL;
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
     struct lyd_node *data_tree = NULL;
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
-    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+
+    test_rp_session_create(rp_ctx, SR_DS_STARTUP, &rp_session);
+    rc = dm_get_datatree(dm_ctx, rp_session->dm_session, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
 
     struct lyd_node *root = NULL;
@@ -832,7 +840,7 @@ void get_values_test(void **state){
     size_t count = 0;
 
     #define XP_MODULE "/example-module:*"
-    rc = rp_dt_get_values(ctx, root, NULL, XP_MODULE, false, &values, &count);
+    rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, XP_MODULE, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(4, count); /*container + 3 leaf-list instances */
     for (size_t i = 0; i < count; i++) {
@@ -841,7 +849,7 @@ void get_values_test(void **state){
     sr_free_values(values, count);
 
 #define XP_LEAF "/example-module:container/list[key1='key1'][key2='key2']/leaf"
-    rc = rp_dt_get_values(ctx, root, NULL, XP_LEAF, false, &values, &count);
+    rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, XP_LEAF, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(1, count);
     for (size_t i = 0; i < count; i++) {
@@ -851,7 +859,7 @@ void get_values_test(void **state){
     sr_free_values(values, count);
 
 #define XP_LIST_WITH_KEYS "/example-module:container/list[key1='key1'][key2='key2']/*"
-    rc = rp_dt_get_values(ctx, root, NULL, XP_LIST_WITH_KEYS, false, &values, &count);
+    rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, XP_LIST_WITH_KEYS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     for (size_t i = 0; i < count; i++) {
@@ -860,7 +868,7 @@ void get_values_test(void **state){
     sr_free_values(values, count);
 
 #define XP_LIST_WITHOUT_KEYS "/example-module:container/list"
-    rc = rp_dt_get_values(ctx, root, NULL, XP_LIST_WITHOUT_KEYS, false, &values, &count);
+    rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, XP_LIST_WITHOUT_KEYS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
     for (size_t i = 0; i < count; i++) {
@@ -869,7 +877,7 @@ void get_values_test(void **state){
     sr_free_values(values, count);
 
 #define XP_CONTAINER "/example-module:container"
-    rc = rp_dt_get_values(ctx, root, NULL, XP_CONTAINER, false, &values, &count);
+    rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, XP_CONTAINER, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(1, count);
     for (size_t i = 0; i < count; i++) {
@@ -878,7 +886,7 @@ void get_values_test(void **state){
     sr_free_values(values, count);
 
 #define XP_LEAFLIST "/example-module:number"
-    rc = rp_dt_get_values(ctx, root, NULL, XP_LEAFLIST, false, &values, &count);
+    rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, XP_LEAFLIST, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     for (size_t i = 0; i < count; i++) {
@@ -889,17 +897,18 @@ void get_values_test(void **state){
 
     lyd_free_withsiblings(root);
 
-    dm_session_stop(ctx, ses_ctx);
+    test_rp_session_cleanup(rp_ctx, rp_session);
 }
 
 void get_trees_test(void **state){
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
-    dm_ctx_t *ctx = rp_ctx->dm_ctx;
-    dm_session_t *ses_ctx = NULL;
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
+    rp_session_t *rp_session = NULL;
     struct lyd_node *data_tree = NULL;
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
-    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+
+    test_rp_session_create(rp_ctx, SR_DS_STARTUP, &rp_session);
+    rc = dm_get_datatree(dm_ctx, rp_session->dm_session, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
 
     struct lyd_node *root = NULL;
@@ -910,7 +919,7 @@ void get_trees_test(void **state){
     size_t count = 0;
 
     #define XP_MODULE "/example-module:*"
-    rc = rp_dt_get_subtrees(ctx, root, NULL, XP_MODULE, false, &trees, &count);
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session, root, NULL, XP_MODULE, false, &trees, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(4, count); /*container + 3 leaf-list instances */
     // container
@@ -944,7 +953,7 @@ void get_trees_test(void **state){
     sr_free_trees(trees, count);
 
 #define XP_LEAF "/example-module:container/list[key1='key1'][key2='key2']/leaf"
-    rc = rp_dt_get_subtrees(ctx, root, NULL, XP_LEAF, false, &trees, &count);
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session, root, NULL, XP_LEAF, false, &trees, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(1, count);
     assert_string_equal("leaf", trees[0].name);
@@ -956,7 +965,7 @@ void get_trees_test(void **state){
     sr_free_trees(trees, count);
 
 #define XP_LIST_WITH_KEYS "/example-module:container/list[key1='key1'][key2='key2']/*"
-    rc = rp_dt_get_subtrees(ctx, root, NULL, XP_LIST_WITH_KEYS, false, &trees, &count);
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session, root, NULL, XP_LIST_WITH_KEYS, false, &trees, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     // key1
@@ -983,7 +992,7 @@ void get_trees_test(void **state){
     sr_free_trees(trees, count);
 
 #define XP_LIST_WITHOUT_KEYS "/example-module:container/list"
-    rc = rp_dt_get_subtrees(ctx, root, NULL, XP_LIST_WITHOUT_KEYS, false, &trees, &count);
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session, root, NULL, XP_LIST_WITHOUT_KEYS, false, &trees, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
     for (count = 0; count < 2; ++count) {
@@ -996,7 +1005,7 @@ void get_trees_test(void **state){
     sr_free_trees(trees, count);
 
 #define XP_CONTAINER "/example-module:container"
-    rc = rp_dt_get_subtrees(ctx, root, NULL, XP_CONTAINER, false, &trees, &count);
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session, root, NULL, XP_CONTAINER, false, &trees, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(1, count);
     assert_string_equal("container", trees[0].name);
@@ -1007,7 +1016,7 @@ void get_trees_test(void **state){
     sr_free_trees(trees, count);
 
 #define XP_LEAFLIST "/example-module:number"
-    rc = rp_dt_get_subtrees(ctx, root, NULL, XP_LEAFLIST, false, &trees, &count);
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session, root, NULL, XP_LEAFLIST, false, &trees, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     // number - 2
@@ -1035,7 +1044,7 @@ void get_trees_test(void **state){
 
     lyd_free_withsiblings(root);
 
-    dm_session_stop(ctx, ses_ctx);
+    test_rp_session_cleanup(rp_ctx, rp_session);
 }
 
 void get_values_opts_test(void **state) {
@@ -1044,7 +1053,7 @@ void get_values_opts_test(void **state) {
     rp_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
 
-    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
+    test_rp_session_create(ctx, SR_DS_STARTUP, &ses_ctx);
     rc = dm_get_datatree(ctx->dm_ctx, ses_ctx->dm_session, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -1061,7 +1070,7 @@ void get_values_opts_test(void **state) {
 
 #define EX_CONT "/example-module:container//*"
     struct ly_set *nodes = NULL;
-    rc = rp_dt_find_nodes_with_opts(ctx->dm_ctx, ses_ctx->dm_session, &get_items_ctx, root, EX_CONT, 0, 3, &nodes);
+    rc = rp_dt_find_nodes_with_opts(ctx->dm_ctx, ses_ctx, &get_items_ctx, root, EX_CONT, 0, 3, &nodes);
     assert_int_equal(rc, SR_ERR_OK);
     ly_set_free(nodes);
 
@@ -1099,20 +1108,21 @@ void get_values_opts_test(void **state) {
 void get_values_with_augments_test(void **state){
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
-    dm_ctx_t *ctx = rp_ctx->dm_ctx;
-    dm_session_t *ses_ctx = NULL;
+    rp_session_t *rp_session = NULL;
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
     struct lyd_node *data_tree = NULL;
     struct lyd_node *root = NULL;
     size_t count = 0;
     sr_val_t *values = NULL;
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
 
-    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    test_rp_session_create(rp_ctx, SR_DS_STARTUP, &rp_session);
+    rc = dm_get_datatree(dm_ctx, rp_session->dm_session, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
+
     createDataTreeWithAugments(data_tree->schema->module->ctx, &root);
     assert_non_null(root);
 #define SM_MODULE "/small-module:item/*"
-    rc = rp_dt_get_values(ctx, root, NULL, SM_MODULE, false, &values, &count);
+    rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, SM_MODULE, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
 
@@ -1121,28 +1131,28 @@ void get_values_with_augments_test(void **state){
     }
     sr_free_values(values, count);
 
-
     lyd_free_withsiblings(root);
-    dm_session_stop(ctx, ses_ctx);
+    test_rp_session_cleanup(rp_ctx, rp_session);
 }
 
 void get_trees_with_augments_test(void **state){
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
-    dm_ctx_t *ctx = rp_ctx->dm_ctx;
-    dm_session_t *ses_ctx = NULL;
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
+    rp_session_t *rp_session = NULL;
     struct lyd_node *data_tree = NULL;
     struct lyd_node *root = NULL;
     size_t count = 0;
     sr_node_t *trees = NULL;
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
 
-    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    test_rp_session_create(rp_ctx, SR_DS_STARTUP, &rp_session);
+    rc = dm_get_datatree(dm_ctx, rp_session->dm_session, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
+
     createDataTreeWithAugments(data_tree->schema->module->ctx, &root);
     assert_non_null(root);
 #define SM_MODULE "/small-module:item/*"
-    rc = rp_dt_get_subtrees(ctx, root, NULL, SM_MODULE, false, &trees, &count);
+    rc = rp_dt_get_subtrees(dm_ctx, rp_session, root, NULL, SM_MODULE, false, &trees, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
     // name
@@ -1162,28 +1172,28 @@ void get_trees_with_augments_test(void **state){
     sr_free_trees(trees, count);
 
     lyd_free_withsiblings(root);
-    dm_session_stop(ctx, ses_ctx);
+    test_rp_session_cleanup(rp_ctx, rp_session);
 }
 
 void get_value_test(void **state)
 {
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
-    dm_ctx_t *ctx = rp_ctx->dm_ctx;
-    dm_session_t *ses_ctx = NULL;
+    rp_session_t *rp_session = NULL;
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
     struct lyd_node *data_tree = NULL;
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
-
-    /* Load from file */
-    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
-    assert_int_equal(SR_ERR_OK, rc);
     sr_val_t *value = NULL;
 
-    assert_int_equal(SR_ERR_INVAL_ARG, rp_dt_get_value(ctx, data_tree, NULL, "/example-module:", false, &value));
+    /* Load from file */
+    test_rp_session_create(rp_ctx, SR_DS_STARTUP, &rp_session);
+    rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_ERR_INVAL_ARG, rp_dt_get_value(dm_ctx, rp_session, data_tree, NULL, "/example-module:", false, &value));
 
     /*leaf*/
 #define XPATH_FOR_VALUE "/example-module:container/list[key1='key1'][key2='key2']/leaf"
-    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, NULL, XPATH_FOR_VALUE, false, &value));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_value(dm_ctx, rp_session, data_tree, NULL, XPATH_FOR_VALUE, false, &value));
 
     assert_int_equal(SR_STRING_T, value->type);
     assert_string_equal("Leaf value", value->data.string_val);
@@ -1193,7 +1203,7 @@ void get_value_test(void **state)
 
     /*list*/
 #define XPATH_FOR_LIST "/example-module:container/list[key1='key1'][key2='key2']"
-    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, NULL, XPATH_FOR_LIST, false, &value));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_value(dm_ctx, rp_session, data_tree, NULL, XPATH_FOR_LIST, false, &value));
     assert_non_null(value);
     assert_int_equal(SR_LIST_T, value->type);
     assert_string_equal(XPATH_FOR_LIST, value->xpath);
@@ -1201,34 +1211,34 @@ void get_value_test(void **state)
 
     /*container*/
 #define XPATH_FOR_CONTAINER "/example-module:container"
-    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, NULL, "/example-module:container", false, &value));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_value(dm_ctx, rp_session, data_tree, NULL, "/example-module:container", false, &value));
     assert_non_null(value);
     assert_int_equal(SR_CONTAINER_T, value->type);
     assert_string_equal(XPATH_FOR_CONTAINER, value->xpath);
     sr_free_val(value);
 
-    dm_session_stop(ctx, ses_ctx);
+    test_rp_session_cleanup(rp_ctx, rp_session);
 }
 
 void get_tree_test(void **state)
 {
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
-    dm_ctx_t *ctx = rp_ctx->dm_ctx;
-    dm_session_t *ses_ctx = NULL;
+    dm_ctx_t *dm_ctx = rp_ctx->dm_ctx;
+    rp_session_t *rp_session = NULL;
     struct lyd_node *data_tree = NULL;
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
-
-    /* Load from file */
-    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
-    assert_int_equal(SR_ERR_OK, rc);
     sr_node_t *tree = NULL;
 
-    assert_int_equal(SR_ERR_INVAL_ARG, rp_dt_get_subtree(ctx, data_tree, NULL, "/example-module:", false, &tree));
+    /* Load from file */
+    test_rp_session_create(rp_ctx, SR_DS_STARTUP, &rp_session);
+    rc = dm_get_datatree(dm_ctx, rp_session->dm_session, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_ERR_INVAL_ARG, rp_dt_get_subtree(dm_ctx, rp_session, data_tree, NULL, "/example-module:", false, &tree));
 
     /*leaf*/
 #define XPATH_FOR_VALUE "/example-module:container/list[key1='key1'][key2='key2']/leaf"
-    assert_int_equal(SR_ERR_OK, rp_dt_get_subtree(ctx, data_tree, NULL, XPATH_FOR_VALUE, false, &tree));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_subtree(dm_ctx, rp_session, data_tree, NULL, XPATH_FOR_VALUE, false, &tree));
 
     assert_string_equal("leaf", tree->name);
     assert_string_equal("example-module", tree->module_name);
@@ -1241,7 +1251,7 @@ void get_tree_test(void **state)
 
     /*list*/
 #define XPATH_FOR_LIST "/example-module:container/list[key1='key1'][key2='key2']"
-    assert_int_equal(SR_ERR_OK, rp_dt_get_subtree(ctx, data_tree, NULL, XPATH_FOR_LIST, false, &tree));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_subtree(dm_ctx, rp_session, data_tree, NULL, XPATH_FOR_LIST, false, &tree));
 
     assert_string_equal("list", tree->name);
     assert_string_equal("example-module", tree->module_name);
@@ -1253,7 +1263,7 @@ void get_tree_test(void **state)
 
     /*container*/
 #define XPATH_FOR_CONTAINER "/example-module:container"
-    assert_int_equal(SR_ERR_OK, rp_dt_get_subtree(ctx, data_tree, NULL, "/example-module:container", false, &tree));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_subtree(dm_ctx, rp_session, data_tree, NULL, "/example-module:container", false, &tree));
 
     assert_string_equal("container", tree->name);
     assert_string_equal("example-module", tree->module_name);
@@ -1263,7 +1273,7 @@ void get_tree_test(void **state)
 
     sr_free_tree(tree);
 
-    dm_session_stop(ctx, ses_ctx);
+    test_rp_session_cleanup(rp_ctx, rp_session);
 }
 
 void get_node_test_found(void **state)
@@ -1389,7 +1399,7 @@ void get_value_wrapper_test(void **state){
     int rc = 0;
     rp_ctx_t *ctx = *state;
     rp_session_t *ses_ctx = NULL;
-    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
+    test_rp_session_create(ctx, SR_DS_STARTUP, &ses_ctx);
 
     /* unknown model*/
     sr_val_t *value = NULL;
@@ -1422,7 +1432,7 @@ void get_tree_wrapper_test(void **state){
     int rc = 0;
     rp_ctx_t *ctx = *state;
     rp_session_t *ses_ctx = NULL;
-    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
+    test_rp_session_create(ctx, SR_DS_STARTUP, &ses_ctx);
 
     /* unknown model*/
     sr_node_t *tree = NULL;
@@ -1458,7 +1468,7 @@ get_nodes_with_opts_cache_missed_test(void **state)
     rp_ctx_t *ctx = *state;
     rp_session_t *ses_ctx = NULL;
 
-    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
+    test_rp_session_create(ctx, SR_DS_STARTUP, &ses_ctx);
     sr_val_t *values = NULL;
     size_t count = 0;
     rp_dt_get_items_ctx_t get_items_ctx;
@@ -1496,7 +1506,7 @@ default_nodes_test(void **state)
     rp_ctx_t *ctx = *state;
     rp_session_t *ses_ctx = NULL;
 
-    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
+    test_rp_session_create(ctx, SR_DS_STARTUP, &ses_ctx);
     sr_val_t *val = NULL;
     sr_node_t *tree = NULL;
     sr_error_info_t *errors = NULL;
@@ -1524,7 +1534,7 @@ default_nodes_test(void **state)
     sr_free_tree(tree);
 
     /* list with default value */
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']", NULL, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']", NULL, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1543,7 +1553,7 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 99;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='createWithStrict']/num", v, SR_EDIT_STRICT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='createWithStrict']/num", v, NULL, SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1569,10 +1579,10 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 42;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']", NULL, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']", NULL, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", v, SR_EDIT_STRICT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", v, NULL, SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1598,7 +1608,7 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 9;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", v, SR_EDIT_STRICT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", v, NULL, SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     /* list with non-default value */
@@ -1608,7 +1618,7 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 9;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", v, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", v, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1634,7 +1644,7 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 0;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", v, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", v, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1652,7 +1662,7 @@ default_nodes_test(void **state)
     sr_free_tree(tree);
 
     /* list with default value later overwritten with a non-default one */
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']", NULL, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']", NULL, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     v = NULL;
@@ -1661,7 +1671,7 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 9;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']/num", v, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']/num", v, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1751,7 +1761,7 @@ default_nodes_test(void **state)
     v->type = SR_INT8_T;
     v->data.int8_val = 0;
 
-    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", v, SR_EDIT_DEFAULT);
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", v, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
@@ -1787,7 +1797,7 @@ default_nodes_toplevel_test(void **state)
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
-    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
+    test_rp_session_create(ctx, SR_DS_STARTUP, &ses_ctx);
 
     /* top-level default value */
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:top-level-default", &val);
@@ -1822,10 +1832,14 @@ default_nodes_toplevel_test(void **state)
     rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* top-level default value with empty data tree is not present #333, will be added during commit or validate */
     ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:top-level-default", &val);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(val->type, SR_STRING_T);
+    assert_string_equal(val->data.string_val, "default value");
+
+    sr_free_val(val);
 
     test_rp_session_cleanup(ctx, ses_ctx);
 }
@@ -1838,7 +1852,7 @@ union_test(void **state)
     rp_session_t *ses_ctx = NULL;
     sr_val_t *val = NULL;
 
-    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
+    test_rp_session_create(ctx, SR_DS_STARTUP, &ses_ctx);
     sr_log_stderr(SR_LL_DBG);
     /* union - unint8 */
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:list[key='k1']/union", &val);
@@ -1887,7 +1901,11 @@ int main(){
             cmocka_unit_test(default_nodes_toplevel_test),
             cmocka_unit_test_setup(union_test, createData),
     };
-    return cmocka_run_group_tests(tests, setup, teardown);
+
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, setup, teardown);
+    watchdog_stop();
+    return ret;
 }
 
 

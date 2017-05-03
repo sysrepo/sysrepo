@@ -101,6 +101,11 @@ module test-module {
     leaf-list numbers {
       type uint8;
     }
+    leaf instance_id {
+      type instance-identifier;
+    }
+    anyxml xml-data;
+    anydata any-data;
   }
 
   identity base_id;
@@ -122,6 +127,9 @@ module test-module {
       type identityref{
         base base_id;
       }
+    }
+    leaf instance_id {
+       type instance-identifier;
     }
     leaf union {
       type union{
@@ -442,6 +450,8 @@ module test-module {
           }
         }
       }
+
+      action unload { }
 
       action get-dependencies {
         output {

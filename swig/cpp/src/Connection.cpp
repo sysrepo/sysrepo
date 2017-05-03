@@ -49,11 +49,6 @@ cleanup:
     return;
 }
 
-sr_conn_ctx_t *Connection::get_conn()
-{
-    return _conn;
-}
-
 Connection::~Connection()
 {
     if (NULL != _conn) {

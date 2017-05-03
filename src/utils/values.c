@@ -369,64 +369,79 @@ sr_print_val_ctx(sr_print_ctx_t *print_ctx, const sr_val_t *value)
     switch (value->type) {
     case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
-        rc = sr_print(print_ctx, "(container)\n");
+        rc = sr_print(print_ctx, "(container)");
         break;
     case SR_LIST_T:
-        rc = sr_print(print_ctx, "(list instance)\n");
+        rc = sr_print(print_ctx, "(list instance)");
         break;
     case SR_STRING_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.string_val);
+        rc = sr_print(print_ctx, "= %s", value->data.string_val);
         break;
     case SR_BOOL_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.bool_val ? "true" : "false");
+        rc = sr_print(print_ctx, "= %s", value->data.bool_val ? "true" : "false");
         break;
     case SR_DECIMAL64_T:
-        rc = sr_print(print_ctx, "= %g\n", value->data.decimal64_val);
+        rc = sr_print(print_ctx, "= %g", value->data.decimal64_val);
         break;
     case SR_INT8_T:
-        rc = sr_print(print_ctx, "= %" PRId8 "\n", value->data.int8_val);
+        rc = sr_print(print_ctx, "= %" PRId8, value->data.int8_val);
         break;
     case SR_INT16_T:
-        rc = sr_print(print_ctx, "= %" PRId16 "\n", value->data.int16_val);
+        rc = sr_print(print_ctx, "= %" PRId16, value->data.int16_val);
         break;
     case SR_INT32_T:
-        rc = sr_print(print_ctx, "= %" PRId32 "\n", value->data.int32_val);
+        rc = sr_print(print_ctx, "= %" PRId32, value->data.int32_val);
         break;
     case SR_INT64_T:
-        rc = sr_print(print_ctx, "= %" PRId64 "\n", value->data.int64_val);
+        rc = sr_print(print_ctx, "= %" PRId64, value->data.int64_val);
         break;
     case SR_UINT8_T:
-        rc = sr_print(print_ctx, "= %" PRIu8 "\n", value->data.uint8_val);
+        rc = sr_print(print_ctx, "= %" PRIu8, value->data.uint8_val);
         break;
     case SR_UINT16_T:
-        rc = sr_print(print_ctx, "= %" PRIu16 "\n", value->data.uint16_val);
+        rc = sr_print(print_ctx, "= %" PRIu16, value->data.uint16_val);
         break;
     case SR_UINT32_T:
-        rc = sr_print(print_ctx, "= %" PRIu32 "\n", value->data.uint32_val);
+        rc = sr_print(print_ctx, "= %" PRIu32, value->data.uint32_val);
         break;
     case SR_UINT64_T:
-        rc = sr_print(print_ctx, "= %" PRIu64 "\n", value->data.uint64_val);
+        rc = sr_print(print_ctx, "= %" PRIu64, value->data.uint64_val);
         break;
     case SR_IDENTITYREF_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.identityref_val);
+        rc = sr_print(print_ctx, "= %s", value->data.identityref_val);
         break;
     case SR_INSTANCEID_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.instanceid_val);
+        rc = sr_print(print_ctx, "= %s", value->data.instanceid_val);
         break;
     case SR_BITS_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.bits_val);
+        rc = sr_print(print_ctx, "= %s", value->data.bits_val);
         break;
     case SR_BINARY_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.binary_val);
+        rc = sr_print(print_ctx, "= %s", value->data.binary_val);
         break;
     case SR_ENUM_T:
-        rc = sr_print(print_ctx, "= %s\n", value->data.enum_val);
+        rc = sr_print(print_ctx, "= %s", value->data.enum_val);
         break;
     case SR_LEAF_EMPTY_T:
-        rc = sr_print(print_ctx, "(empty leaf)\n");
+        rc = sr_print(print_ctx, "(empty leaf)");
         break;
     default:
-        rc = sr_print(print_ctx, "(unprintable)\n");
+        rc = sr_print(print_ctx, "(unprintable)");
+    }
+
+    if (SR_ERR_OK == rc) {
+        switch (value->type) {
+        case SR_UNKNOWN_T:
+        case SR_TREE_ITERATOR_T:
+        case SR_CONTAINER_T:
+        case SR_CONTAINER_PRESENCE_T:
+        case SR_LIST_T:
+        case SR_LEAF_EMPTY_T:
+            rc = sr_print(print_ctx, "\n");
+            break;
+        default:
+            rc = sr_print(print_ctx, "%s\n", value->dflt ? " [default]" : "");
+        }
     }
 
     CHECK_RC_MSG_RETURN(rc, "Failed to print data of a sysrepo value");
@@ -486,4 +501,206 @@ sr_print_val_mem(char **mem_p, const sr_val_t *value)
         free(print_ctx.method.mem.buf);
     }
     return rc;
+}
+
+char *
+sr_val_to_str(const sr_val_t *value)
+{
+    int rc = SR_ERR_OK;
+    char *out = NULL;
+
+    if (NULL != value) {
+        switch (value->type) {
+        case SR_BINARY_T:
+            if (NULL != value->data.binary_val) {
+                out = strdup(value->data.binary_val);
+                CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
+            }
+            break;
+        case SR_BITS_T:
+            if (NULL != value->data.bits_val) {
+                out = strdup(value->data.bits_val);
+                CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
+            }
+            break;
+        case SR_BOOL_T:
+            out = value->data.bool_val ? strdup("true") : strdup("false");
+            CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
+            break;
+        case SR_DECIMAL64_T:
+            rc = sr_asprintf(&out, "%g", value->data.decimal64_val);
+            break;
+        case SR_ENUM_T:
+            if (NULL != value->data.enum_val) {
+                out = strdup(value->data.enum_val);
+                CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
+            }
+            break;
+        case SR_LIST_T:
+        case SR_CONTAINER_T:
+        case SR_CONTAINER_PRESENCE_T:
+        case SR_LEAF_EMPTY_T:
+            out = strdup("");
+            CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
+            break;
+        case SR_IDENTITYREF_T:
+            if (NULL != value->data.identityref_val) {
+                out = strdup(value->data.identityref_val);
+                CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
+            }
+            break;
+        case SR_INSTANCEID_T:
+            if (NULL != value->data.instanceid_val) {
+                out = strdup(value->data.instanceid_val);
+                CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
+            }
+            break;
+        case SR_INT8_T:
+            rc = sr_asprintf(&out, "%"PRId8, value->data.int8_val);
+            break;
+        case SR_INT16_T:
+            rc = sr_asprintf(&out, "%"PRId16, value->data.int16_val);
+            break;
+        case SR_INT32_T:
+            rc = sr_asprintf(&out, "%"PRId32, value->data.int32_val);
+            break;
+        case SR_INT64_T:
+            rc = sr_asprintf(&out, "%"PRId64, value->data.int64_val);
+            break;
+        case SR_STRING_T:
+            if (NULL != value->data.string_val){
+                out = strdup(value->data.string_val);
+                CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
+            }
+            break;
+        case SR_UINT8_T:
+            rc = sr_asprintf(&out, "%"PRIu8, value->data.uint8_val);
+            break;
+        case SR_UINT16_T:
+            rc = sr_asprintf(&out, "%"PRIu16, value->data.uint16_val);
+            break;
+        case SR_UINT32_T:
+            rc = sr_asprintf(&out, "%"PRIu32, value->data.uint32_val);
+            break;
+        case SR_UINT64_T:
+            rc = sr_asprintf(&out, "%"PRIu64, value->data.uint64_val);
+            break;
+        case SR_ANYXML_T:
+            if (NULL != value->data.anyxml_val){
+                out = strdup(value->data.anyxml_val);
+                CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
+            }
+            break;
+        case SR_ANYDATA_T:
+            if (NULL != value->data.anydata_val){
+                out = strdup(value->data.anydata_val);
+                CHECK_NULL_NOMEM_GOTO(out, rc, cleanup);
+            }
+            break;
+        default:
+            SR_LOG_ERR_MSG("Conversion of value_t to string failed");
+        }
+    }
+cleanup:
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Failed to duplicate string");
+    }
+    return out;
+}
+
+int
+sr_val_to_buff(const sr_val_t *value, char buffer[], size_t size)
+{
+    size_t len = 0;
+
+    if (NULL == value) {
+        SR_LOG_WRN_MSG("NULL provided as value argument");
+        return 0;
+    }
+
+    switch (value->type) {
+    case SR_BINARY_T:
+        if (NULL != value->data.binary_val) {
+            len = snprintf(buffer, size, "%s", value->data.binary_val);
+        }
+        break;
+    case SR_BITS_T:
+        if (NULL != value->data.bits_val) {
+            len = snprintf(buffer, size, "%s", value->data.bits_val);
+        }
+        break;
+    case SR_BOOL_T:
+        len = snprintf(buffer, size, "%s", value->data.bool_val ? "true" : "false");
+        break;
+    case SR_DECIMAL64_T:
+        len = snprintf(buffer, size, "%g", value->data.decimal64_val);
+        break;
+    case SR_ENUM_T:
+        if (NULL != value->data.enum_val) {
+            len = snprintf(buffer, size, "%s", value->data.enum_val);
+        }
+        break;
+    case SR_LIST_T:
+    case SR_CONTAINER_T:
+    case SR_CONTAINER_PRESENCE_T:
+    case SR_LEAF_EMPTY_T:
+        len = snprintf(buffer, size, "%s", "");
+        break;
+    case SR_IDENTITYREF_T:
+        if (NULL != value->data.identityref_val) {
+            len = snprintf(buffer, size, "%s", value->data.identityref_val);
+        }
+        break;
+    case SR_INSTANCEID_T:
+        if (NULL != value->data.instanceid_val) {
+            len = snprintf(buffer, size, "%s", value->data.instanceid_val);
+        }
+        break;
+    case SR_INT8_T:
+        len = snprintf(buffer, size, "%"PRId8, value->data.int8_val);
+        break;
+    case SR_INT16_T:
+        len = snprintf(buffer, size, "%"PRId16, value->data.int16_val);
+        break;
+    case SR_INT32_T:
+        len = snprintf(buffer, size, "%"PRId32, value->data.int32_val);
+        break;
+    case SR_INT64_T:
+        len = snprintf(buffer, size, "%"PRId64, value->data.int64_val);
+        break;
+    case SR_STRING_T:
+        if (NULL != value->data.string_val) {
+            len = snprintf(buffer, size, "%s", value->data.string_val);
+        }
+        break;
+    case SR_UINT8_T:
+        len = snprintf(buffer, size, "%"PRIu8, value->data.uint8_val);
+        break;
+    case SR_UINT16_T:
+        len = snprintf(buffer, size, "%"PRIu16, value->data.uint16_val);
+        break;
+    case SR_UINT32_T:
+        len = snprintf(buffer, size, "%"PRIu32, value->data.uint32_val);
+        break;
+    case SR_UINT64_T:
+        len = snprintf(buffer, size, "%"PRIu64, value->data.uint64_val);
+        break;
+    case SR_ANYXML_T:
+        if (NULL != value->data.anyxml_val) {
+            len = snprintf(buffer, size, "%s", value->data.anyxml_val);
+        }
+        break;
+    case SR_ANYDATA_T:
+        if (NULL != value->data.anydata_val) {
+            len = snprintf(buffer, size, "%s", value->data.anydata_val);
+        }
+        break;
+    default:
+        SR_LOG_ERR_MSG("Conversion of value_t to string failed");
+    }
+
+    if (size < (len+1)) {
+        SR_LOG_DBG_MSG("There is not enough space in the buffer to print the value");
+    }
+    return len;
 }

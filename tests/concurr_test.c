@@ -29,6 +29,7 @@
 #include "sr_common.h"
 
 #include "test_module_helper.h"
+#include "system_helper.h"
 
 #define TEST_THREAD_COUNT 10
 
@@ -229,5 +230,8 @@ main()
             cmocka_unit_test_setup_teardown(concurr_connections_test, sysrepo_setup, sysrepo_teardown),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

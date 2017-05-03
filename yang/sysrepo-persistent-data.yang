@@ -132,6 +132,12 @@ module sysrepo-persistent-data {
           description "XPath of the subtree where the subscription is active.";
         }
 
+        leaf username {
+          when "../type = 'event-notification'";
+          type string;
+          description "Name of the user behind the subcription for event notification delivery.";
+        }
+
         leaf event {
           when "../type = 'module-change' or ../type = 'subtree-change'";
           type identityref {
@@ -151,6 +157,12 @@ module sysrepo-persistent-data {
           type empty;
           description "If present, the subscription enables specified subtree in
             the running datastore.";
+        }
+
+        leaf enable-nacm {
+          when "../type = 'event-notification'";
+          type empty;
+          description "If present, the NETCONF Access Control is enabled for this subscription.";
         }
 
         leaf api-variant {

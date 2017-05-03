@@ -101,7 +101,7 @@ rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
 
     /* send notification for event_notif_sub(_tree)_example */
     printf(">>> Sending event notification for '/turing-machine:paused'...\n");
-    rc = sr_event_notif_send(session, "/turing-machine:paused", notif, input_cnt);
+    rc = sr_event_notif_send(session, "/turing-machine:paused", notif, input_cnt, SR_EV_NOTIF_DEFAULT);
     if (SR_ERR_NOT_FOUND == rc) {
         printf("No application subscribed for '/turing-machine:paused', skipping.\n"
                "(run event_notif_sub_example or event_notif_sub_tree_example)\n\n");

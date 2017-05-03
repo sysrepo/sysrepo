@@ -25,4 +25,8 @@ module example-module {
    leaf-list number {
       type uint16;
    }
+
+   leaf-list array {
+      type string;
+   }
 }

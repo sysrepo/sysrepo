@@ -31,7 +31,7 @@
 #include <sys/stat.h>
 
 #include "sysrepo/xpath.h"
-
+#include "system_helper.h"
 
 static void
 sr_xpath_next_node_test (void **st)
@@ -580,5 +580,8 @@ main() {
         cmocka_unit_test(sr_xpath_with_augments_test),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

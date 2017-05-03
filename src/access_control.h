@@ -169,10 +169,11 @@ int ac_set_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials);
  * to the process identity saved at the time of ::ac_init.
  *
  * @param[in] ac_ctx Access Control module context acquired by ::ac_init call.
+ * @param[in] user_credentials Credentials of a sysrepo user.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int ac_unset_user_identity(ac_ctx_t *ac_ctx);
+int ac_unset_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials);
 
 /**@} ac */
 

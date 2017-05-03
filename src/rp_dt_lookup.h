@@ -37,7 +37,7 @@
  * offset items are skipped. Then sr_val_t structures are filled from nodes. Nodes look up can
  * be skipped if saved state in get_items_ctx correspond to the request.
  * @param [in] dm_ctx
- * @param [in] dm_session
+ * @param [in] rp_session
  * @param [in] get_items_ctx - cache that can speed up the request. If the
  * subsequent nodes are requested.
  * @param [in] data_tree
@@ -47,7 +47,7 @@
  * @param [out] nodes
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND
  */
-int rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree, const char *xpath,
+int rp_dt_find_nodes_with_opts(dm_ctx_t *dm_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree, const char *xpath,
                               size_t offset, size_t limit, struct ly_set **nodes);
 
 /**

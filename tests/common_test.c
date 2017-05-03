@@ -27,11 +27,13 @@
 #include <cmocka.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <pwd.h>
 #include <sys/stat.h>
 
 #include "sr_common.h"
 #include "request_processor.h"
 #include "test_data.h"
+#include "system_helper.h"
 
 static int
 logging_setup(void **state)
@@ -201,6 +203,113 @@ sr_list_test(void **state)
     sr_list_cleanup(list);
 }
 
+
+static int
+sr_my_strcmp(void *a, void *b)
+{
+    int result = strcmp(a, b);
+    if (result < 0) {
+        return -1;
+    } else if (result > 0) {
+        return 1;
+    } else {
+        return 0;
+    }
+
+}
+/*
+ * Tests sysrepo list with ordering.
+ */
+static void
+sr_ordered_list_test(void **state)
+{
+    sr_list_t *list = NULL;
+    int rc = SR_ERR_OK;
+    char *item = NULL;
+    bool inserted = false;
+
+    rc = sr_list_init(&list);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    item = strdup("b");
+    assert_non_null(item);
+
+    rc = sr_list_insert_unique_ord(list, item, sr_my_strcmp, &inserted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(inserted);
+
+    item = strdup("a");
+    assert_non_null(item);
+
+    rc = sr_list_insert_unique_ord(list, item, sr_my_strcmp, &inserted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(inserted);
+
+    /* try to insert duplicate */
+    item = strdup("a");
+    assert_non_null(item);
+
+    rc = sr_list_insert_unique_ord(list, item, sr_my_strcmp, &inserted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_false(inserted);
+    free(item);
+
+    item = strdup("c");
+    assert_non_null(item);
+
+    rc = sr_list_insert_unique_ord(list, item, sr_my_strcmp, &inserted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(inserted);
+
+    item = strdup("f");
+    assert_non_null(item);
+
+    rc = sr_list_insert_unique_ord(list, item, sr_my_strcmp, &inserted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(inserted);
+
+    item = strdup("g");
+    assert_non_null(item);
+
+    rc = sr_list_insert_unique_ord(list, item, sr_my_strcmp, &inserted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(inserted);
+
+    item = strdup("d");
+    assert_non_null(item);
+
+    rc = sr_list_insert_unique_ord(list, item, sr_my_strcmp, &inserted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(inserted);
+
+    /* check the ordering */
+    assert_string_equal("a", list->data[0]);
+    assert_string_equal("b", list->data[1]);
+    assert_string_equal("c", list->data[2]);
+    assert_string_equal("d", list->data[3]);
+    assert_string_equal("f", list->data[4]);
+    assert_string_equal("g", list->data[5]);
+
+    /* remove the first element */
+    free(list->data[0]);
+    rc = sr_list_rm_at(list, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* insert it back*/
+    item = strdup("a");
+    assert_non_null(item);
+
+    rc = sr_list_insert_unique_ord(list, item, sr_my_strcmp, &inserted);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(inserted);
+
+    assert_string_equal("a", list->data[0]);
+    assert_string_equal("b", list->data[1]);
+    assert_string_equal("c", list->data[2]);
+
+    sr_free_list_of_strings(list);
+}
+
 /*
  * Tests circular buffer - stores integers in it.
  */
@@ -339,6 +448,159 @@ circular_buffer_test3(void **state)
     assert_false(sr_cbuff_dequeue(buffer, &msg));
 
     sr_cbuff_cleanup(buffer);
+}
+
+/*
+ * Tests sysrepo bitset DS.
+ */
+static void
+sr_bitset_test(void **state)
+{
+    sr_bitset_t *bitset1 = NULL, *bitset2 = NULL;
+    const size_t bit_count1 = 33, bit_count2 = 80;
+    bool value = false, disjoint = false;
+    size_t i = 0;
+    int rc = SR_ERR_OK;
+
+    assert_true(sr_bitset_empty(bitset1));
+    assert_true(sr_bitset_empty(bitset2));
+
+    /* test initialization */
+    rc = sr_bitset_init(bit_count1, NULL);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
+    rc = sr_bitset_init(0, &bitset1);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
+    rc = sr_bitset_init(bit_count1, &bitset1);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_bitset_init(bit_count2, &bitset2);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* initially all zero */
+    assert_true(sr_bitset_empty(bitset1));
+    assert_true(sr_bitset_empty(bitset2));
+    for (i = 0; i < bit_count1; i++) {
+        rc = sr_bitset_get(bitset1, i, &value);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_false(value);
+    }
+    for (i = 0; i < bit_count2; i++) {
+        rc = sr_bitset_get(bitset2, i, &value);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_false(value);
+    }
+
+    /* out of the range */
+    rc = sr_bitset_get(bitset1, bit_count1, &value);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    rc = sr_bitset_get(bitset2, bit_count2, &value);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* set some bits */
+    rc = sr_bitset_set(bitset1, 0, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset1, 12, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset1, 32, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset1, 33, true); /* out of the range */
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    rc = sr_bitset_set(bitset2, 6, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset2, 13, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset2, 41, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset2, 70, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset2, 80, true); /* out of the range */
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    assert_false(sr_bitset_empty(bitset1));
+    assert_false(sr_bitset_empty(bitset2));
+
+    /* test that the bits were set */
+    for (i = 0; i < bit_count1; i++) {
+        rc = sr_bitset_get(bitset1, i, &value);
+        assert_int_equal(SR_ERR_OK, rc);
+        switch (i) {
+            case 0:
+            case 12:
+            case 32:
+                assert_true(value);
+                break;
+            default:
+                assert_false(value);
+        }
+    }
+    for (i = 0; i < bit_count2; i++) {
+        rc = sr_bitset_get(bitset2, i, &value);
+        assert_int_equal(SR_ERR_OK, rc);
+        switch (i) {
+            case 6:
+            case 13:
+            case 41:
+            case 70:
+                assert_true(value);
+                break;
+            default:
+                assert_false(value);
+        }
+    }
+
+    /* sets are disjoint */
+    rc = sr_bitset_disjoint(bitset1, bitset2, &disjoint);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(disjoint);
+
+    /* make the intersection of sets non-empty */
+    rc = sr_bitset_set(bitset2, 0, true);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_bitset_set(bitset2, 32, true);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_bitset_disjoint(bitset1, bitset2, &disjoint);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(disjoint);
+
+    /* still not empty intersection */
+    rc = sr_bitset_set(bitset2, 0, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_bitset_disjoint(bitset1, bitset2, &disjoint);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(disjoint);
+
+    /* disjoint again */
+    rc = sr_bitset_set(bitset2, 32, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_bitset_disjoint(bitset1, bitset2, &disjoint);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(disjoint);
+
+    /* reset all bits to zero */
+    sr_bitset_reset(bitset1);
+    sr_bitset_reset(bitset2);
+    assert_true(sr_bitset_empty(bitset1));
+    assert_true(sr_bitset_empty(bitset2));
+    for (i = 0; i < bit_count1; i++) {
+        rc = sr_bitset_get(bitset1, i, &value);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_false(value);
+    }
+    for (i = 0; i < bit_count2; i++) {
+        rc = sr_bitset_get(bitset2, i, &value);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_false(value);
+    }
+
+    /* cleanup */
+    sr_bitset_cleanup(bitset1);
+    sr_bitset_cleanup(bitset2);
 }
 
 /*
@@ -542,7 +804,7 @@ sr_node_t_test(void **state)
     assert_non_null(nodeset);
     assert_int_equal(4, nodeset->number);
 
-    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, &trees, &tree_cnt));
+    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, NULL, NULL, &trees, &tree_cnt));
     assert_non_null(trees);
     assert_int_equal(4, tree_cnt);
 
@@ -698,7 +960,7 @@ sr_node_t_with_augments_test(void **state)
     assert_non_null(nodeset);
     assert_int_equal(2, nodeset->number);
 
-    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, &trees, &tree_cnt));
+    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, NULL, NULL, &trees, &tree_cnt));
     assert_non_null(trees);
     assert_int_equal(2, tree_cnt);
 
@@ -798,7 +1060,7 @@ sr_node_t_rpc_input_test(void **state)
     assert_non_null(nodeset);
     assert_int_equal(2, nodeset->number);
 
-    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, &trees, &tree_cnt));
+    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, NULL, NULL, &trees, &tree_cnt));
     assert_non_null(trees);
     assert_int_equal(2, tree_cnt);
 
@@ -888,7 +1150,7 @@ sr_node_t_rpc_output_test(void **state)
     assert_non_null(nodeset);
     assert_int_equal(3, nodeset->number);
 
-    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, &trees, &tree_cnt));
+    assert_int_equal(SR_ERR_OK, sr_nodes_to_trees(nodeset, NULL, NULL, NULL, &trees, &tree_cnt));
     assert_non_null(trees);
     assert_int_equal(3, tree_cnt);
 
@@ -1160,14 +1422,124 @@ sr_error_info_test(void **state)
     sr_free_errors(errors, error_cnt);
 }
 
+static void
+sr_create_uri_test(void **state)
+{
+    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    char *buffer = NULL;
+    int rc = SR_ERR_OK;
+    const struct lys_module *module = ly_ctx_load_module(ctx, "test-module", NULL);
+
+    rc = sr_create_uri_for_module(module, &buffer);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(buffer, "urn:ietf:params:xml:ns:yang:test-module?module=test-module");
+    free(buffer);
+
+    //ietf-interfaces
+    module = ly_ctx_load_module(ctx, "ietf-interfaces", NULL);
+    rc = sr_create_uri_for_module(module, &buffer);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(buffer, "urn:ietf:params:xml:ns:yang:ietf-interfaces?module=ietf-interfaces&amp;revision=2014-05-08");
+    free(buffer);
+
+    assert_int_equal(0, lys_features_enable(module, "arbitrary-names"));
+    assert_int_equal(0, lys_features_enable(module, "pre-provisioning"));
+    assert_int_equal(0, lys_features_enable(module, "if-mib"));
+    rc = sr_create_uri_for_module(module, &buffer);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(buffer, "urn:ietf:params:xml:ns:yang:ietf-interfaces?module=ietf-interfaces&amp;revision=2014-05-08&amp;features=arbitrary-names,pre-provisioning,if-mib");
+    free(buffer);
+
+    ly_ctx_destroy(ctx, NULL);
+}
+
+static void
+sr_get_system_groups_test(void **state)
+{
+    char **groups = NULL;
+    size_t group_cnt = 0;
+    struct passwd *pw = NULL;
+    uid_t uid = 0;
+
+    uid = geteuid();
+    pw = getpwuid(uid);
+    if (pw) {
+         assert_int_equal(SR_ERR_OK, sr_get_user_groups(pw->pw_name, &groups, &group_cnt));
+         for (size_t i = 0; i < group_cnt; ++i) {
+             assert_non_null(groups[i]);
+             assert_true(0 < strlen(groups[i]));
+             SR_LOG_DBG("User '%s' is member of the group '%s'.", pw->pw_name, groups[i]);
+             free(groups[i]);
+         }
+         free(groups);
+    }
+}
+
+static void
+sr_free_list_of_strings_test(void **state)
+{
+    int rc = SR_ERR_OK;
+    sr_list_t *list = NULL;
+
+    sr_free_list_of_strings(list);
+
+    rc = sr_list_init(&list);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_list_add(list, strdup("abc"));
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_list_add(list, strdup("def"));
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_list_add(list, strdup("ghi"));
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_free_list_of_strings(list);
+}
+
+static void
+sr_dup_data_tree_to_ctx_test(void **state)
+{
+    struct ly_ctx *ctx_A = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    struct ly_ctx *ctx_B = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    struct lyd_node *data_tree_A = NULL, *data_tree_B = NULL;
+
+    ly_ctx_load_module(ctx_A, "test-module", NULL);
+    ly_ctx_load_module(ctx_B, "test-module", NULL);
+
+    /* duplicate NULL data tree */
+    data_tree_B = sr_dup_datatree_to_ctx(data_tree_A, ctx_B);
+    assert_null(data_tree_B);
+
+    /* create data tree and duplicate it*/
+    data_tree_A = lyd_new_path(NULL, ctx_A, "/test-module:list[key='a']", NULL, 0, 0);
+    lyd_new_path(data_tree_A, ctx_A, "/test-module:list[key='b']", NULL, 0, 0);
+
+    assert_non_null(data_tree_A);
+    assert_non_null(data_tree_A->next);
+
+    data_tree_B = sr_dup_datatree_to_ctx(data_tree_A, ctx_B);
+    assert_non_null(data_tree_B);
+    assert_non_null(data_tree_B->next);
+
+    lyd_free_withsiblings(data_tree_A);
+    lyd_free_withsiblings(data_tree_B);
+
+    ly_ctx_destroy(ctx_A, NULL);
+    ly_ctx_destroy(ctx_B, NULL);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(sr_llist_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_list_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_ordered_list_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test1, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test2, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test3, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_bitset_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(logger_callback_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_locking_set_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_node_t_test, logging_setup, logging_cleanup),
@@ -1177,7 +1549,14 @@ main() {
             cmocka_unit_test_setup_teardown(sr_free_schema_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_copy_first_ns_from_expr_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_error_info_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_create_uri_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_get_system_groups_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_free_list_of_strings_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_dup_data_tree_to_ctx_test, logging_setup, logging_cleanup),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

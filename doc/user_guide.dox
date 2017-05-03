@@ -1,0 +1,11 @@
+/**
+
+@page user_guidelines User Guide
+
+This guide contains information intended for any sysrepo users. The guide is divided in the following sections:
+
+- @subpage bin_page
+- @subpage ds_page
+- @subpage ac_page
+
+*/

@@ -126,12 +126,29 @@ int rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg);
  *
  * @param [in] rp_ctx
  * @param [in] commit_id
+ * @param [in] finished false for verify phase, true for apply/abort notifications
  * @param [in] result
  * @param [in] err_subs_xpaths - freed by function
  * @param [in] errors - freed by function
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, int result, sr_list_t *err_subs_xpaths, sr_list_t *errors);
+int rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finished, int result, sr_list_t *err_subs_xpaths, sr_list_t *errors);
+
+/**
+ * @brief Prepares notification config-chagnge message.
+ * @param [in] rp_ctx
+ * @param [in] session
+ * @param [in] diff_lists
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, sr_list_t *diff_lists);
+
+/**
+ * @brief Function waits until commit is finished, it also blocks any further commits.
+ * @param [in] rp_ctx
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_wait_for_commits_to_finish(rp_ctx_t *rp_ctx);
 
 /**@} rp */
 

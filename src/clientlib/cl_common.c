@@ -395,7 +395,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     }
 
     /* set timeout for receive operation */
-    tv.tv_sec = CL_REQUEST_TIMEOUT;
+    tv.tv_sec = SR_REQUEST_TIMEOUT;
     tv.tv_usec = 0;
     rc = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
     if (-1 == rc) {
@@ -406,6 +406,78 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
 
     conn_ctx->fd = fd;
     return SR_ERR_OK;
+}
+
+int
+cl_version_verify(sr_conn_ctx_t *connection)
+{
+    int rc = SR_ERR_OK;
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+
+    /* prepare version-verification request */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__VERSION_VERIFY, /* undefined session id */ 0, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* set argument */
+    sr_mem_edit_string(sr_mem, &msg_req->request->version_verify_req->soname, SR_COMPAT_VERSION);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->version_verify_req->soname, rc, cleanup);
+
+    /* send the request */
+    SR_LOG_DBG("Sending %s request.", sr_gpb_operation_name(SR__OPERATION__VERSION_VERIFY));
+
+    pthread_mutex_lock(&connection->lock);
+    rc = cl_message_send(connection, msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to send the message with request (operation=%s).",
+                   sr_gpb_operation_name(msg_req->request->operation));
+        pthread_mutex_unlock(&connection->lock);
+        goto cleanup;
+    }
+
+    SR_LOG_DBG("%s request sent, waiting for response.", sr_gpb_operation_name(SR__OPERATION__VERSION_VERIFY));
+
+    /* receive the response */
+    rc = cl_message_recv(connection, &msg_resp, NULL);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to receive the message with response (operation=%s).",
+                   sr_gpb_operation_name(msg_req->request->operation));
+        pthread_mutex_unlock(&connection->lock);
+        goto cleanup;
+    }
+    pthread_mutex_unlock(&connection->lock);
+
+    SR_LOG_DBG("%s response received, processing.", sr_gpb_operation_name(SR__OPERATION__VERSION_VERIFY));
+
+    /* validate the response */
+    rc = sr_gpb_msg_validate(msg_resp, SR__MSG__MSG_TYPE__RESPONSE, SR__OPERATION__VERSION_VERIFY);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Malformed message with response received (operation=%s).",
+                   sr_gpb_operation_name(msg_req->request->operation));
+        goto cleanup;
+    }
+
+    /* process the result */
+    if (SR_ERR_OK != msg_resp->response->result) {
+        SR_LOG_ERR("Sysrepod's \"%s\" version is not compatible with version \""SR_COMPAT_VERSION"\" in use.",
+                   msg_resp->response->version_verify_resp->soname);
+        rc = msg_resp->response->result;
+        goto cleanup;
+    }
+
+cleanup:
+    if (NULL != msg_req) {
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
+    }
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
+    }
+
+    return rc;
 }
 
 int
@@ -421,8 +493,9 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
 
     pthread_mutex_lock(&session->conn_ctx->lock);
     /* some operation may take more time, raise the timeout */
-    if (SR__OPERATION__COMMIT == expected_response_op) {
-        tv.tv_sec = CL_REQUEST_LONG_TIMEOUT;
+    if (SR__OPERATION__COMMIT == expected_response_op || SR__OPERATION__COPY_CONFIG == expected_response_op ||
+            SR__OPERATION__RPC == expected_response_op || SR__OPERATION__ACTION == expected_response_op) {
+        tv.tv_sec = SR_LONG_REQUEST_TIMEOUT;
         tv.tv_usec = 0;
         rc = setsockopt(session->conn_ctx->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
         if (-1 == rc) {
@@ -450,9 +523,10 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
         return rc;
     }
 
-    /* change socket timeout to the standard value*/
-    if (SR__OPERATION__COMMIT == expected_response_op) {
-        tv.tv_sec = CL_REQUEST_TIMEOUT;
+    /* change socket timeout to the standard value */
+    if (SR__OPERATION__COMMIT == expected_response_op || SR__OPERATION__COPY_CONFIG == expected_response_op ||
+            SR__OPERATION__RPC == expected_response_op || SR__OPERATION__ACTION == expected_response_op) {
+        tv.tv_sec = SR_REQUEST_TIMEOUT;
         rc = setsockopt(session->conn_ctx->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
         if (-1 == rc) {
             SR_LOG_WRN("Unable to set timeout for socket operations: %s", sr_strerror_safe(errno));
@@ -480,6 +554,7 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
         /* log the error (except expected ones) */
         if (SR_ERR_NOT_FOUND != (*msg_resp)->response->result &&
                 SR_ERR_VALIDATION_FAILED != (*msg_resp)->response->result &&
+                SR_ERR_UNAUTHORIZED != (*msg_resp)->response->result &&
                 SR_ERR_OPERATION_FAILED != (*msg_resp)->response->result) {
             SR_LOG_ERR("Error by processing of the %s request (session id=%"PRIu32"): %s.",
                     sr_gpb_operation_name(msg_req->request->operation), session->id,

@@ -32,6 +32,7 @@
 #include "persistence_manager.h"
 #include "rp_internal.h"
 #include "rp_dt_context_helper.h"
+#include "system_helper.h"
 
 #include "test_data.h"
 
@@ -51,8 +52,8 @@ test_setup(void **state)
     test_ctx = calloc(1, sizeof(*test_ctx));
     assert_non_null(test_ctx);
 
-    test_rp_ctx_create(&test_ctx->rp_ctx);
-    test_rp_sesssion_create(test_ctx->rp_ctx, SR_DS_RUNNING, &test_ctx->rp_session_ctx);
+    test_rp_ctx_create(CM_MODE_LOCAL, &test_ctx->rp_ctx);
+    test_rp_session_create(test_ctx->rp_ctx, SR_DS_RUNNING, &test_ctx->rp_session_ctx);
 
     *state = test_ctx;
     return 0;
@@ -98,17 +99,17 @@ np_tmp_subscription_test(void **state)
 
     /* create subscription 1 */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS,
-            "addr1", 123, NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_DEFAULT);
+            "addr1", 123, NULL, NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* create subscription 2 */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS,
-            "addr2", 123, NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_DEFAULT);
+            "addr2", 123, NULL, NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* create subscription 3 */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS,
-            "addr1", 456, NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_DEFAULT);
+            "addr1", 456, NULL, NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* module install notify */
@@ -145,27 +146,39 @@ np_persistent_subscription_test(void **state)
 
     /* create subscription to example-module @ addr1 */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            "addr1", 123, "example-module", NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
+            "addr1", 123, "example-module", NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* create subscription to test-module @ addr1 */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            "addr1", 456, "test-module", NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
+            "addr1", 456, "test-module", NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* create subscription to small-module @ addr1 */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            "addr1", 789, "small-module", NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
+            "addr1", 789, "small-module", NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* create subscription to test-module @ addr1 */
+    rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS,
+            "addr1", 999, "test-module", "/test-module:link-removed", "user2", SR__NOTIFICATION_EVENT__APPLY_EV, 0,
+            SR_API_VALUES, NP_SUBSCR_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* create subscription to example-module @ addr2 */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            "addr2", 123, "example-module", NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_DEFAULT);
+            "addr2", 123, "example-module", NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* create subscription to test-module @ addr2 */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            "addr2", 456, "test-module", NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_DEFAULT);
+            "addr2", 456, "test-module", NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* create subscription to test-module @ addr2 */
+    rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS,
+            "addr2", 789, "test-module", "/test-module:link-discovered", "user1", SR__NOTIFICATION_EVENT__APPLY_EV, 0,
+            SR_API_VALUES, NP_SUBSCR_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* unsubscribe addr1 per partes */
@@ -175,6 +188,10 @@ np_persistent_subscription_test(void **state)
 
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
             "addr1", 789, "small-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS,
+            "addr1", 999, "test-module");
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
@@ -203,12 +220,12 @@ np_negative_subscription_test(void **state)
 
     /* subscribe */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            "addr2", 456, "example-module", NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
+            "addr2", 456, "example-module", NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* try to subscribe again for the same */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            "addr2", 456, "example-module", NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
+            "addr2", 456, "example-module", NULL, NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 0, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_DATA_EXISTS);
 
     /* try to unsubscribe from module-change subscription without specifying module name */
@@ -267,57 +284,52 @@ np_module_subscriptions_test(void **state)
     np_ctx_t *np_ctx = test_ctx->rp_ctx->np_ctx;
     assert_non_null(np_ctx);
     sr_list_t *subscriptions_list = NULL;
-
-    np_subscription_t **subscriptions_arr = NULL;
-    size_t subscriptions_cnt = 0;
+    np_subscription_t *subscription = NULL;
 
     /* delete old subscriptions, if any */
     np_unsubscribe_destination(np_ctx, "addr3");
 
     /* subscribe */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            "addr3", 123, "example-module", NULL, SR__NOTIFICATION_EVENT__VERIFY_EV, 10, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
+            "addr3", 123, "example-module", NULL, NULL, SR__NOTIFICATION_EVENT__VERIFY_EV, 10, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
-            "addr3", 456, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__VERIFY_EV, 20,
+            "addr3", 456, "example-module", "/example-module:container", NULL, SR__NOTIFICATION_EVENT__VERIFY_EV, 20,
             SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
-            "addr3", 789, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__APPLY_EV, 20,
+            "addr3", 789, "example-module", "/example-module:container", NULL, SR__NOTIFICATION_EVENT__APPLY_EV, 20,
             SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get all subscriptions */
-    rc = np_get_module_change_subscriptions(np_ctx, "example-module", &subscriptions_arr, &subscriptions_cnt);
+    rc = np_get_module_change_subscriptions(np_ctx, test_ctx->rp_session_ctx->user_credentials, "example-module",
+            &subscriptions_list);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_int_equal(subscriptions_cnt, 3);
+    assert_non_null(subscriptions_list);
+    assert_int_equal(subscriptions_list->count, 3);
 
-    rc = sr_list_init(&subscriptions_list);
-    assert_int_equal(rc, SR_ERR_OK);
+    for (size_t i = 0; i < subscriptions_list->count; i++) {
+        subscription = subscriptions_list->data[i];
+        assert_non_null(subscription);
+        assert_true((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type) ||
+                (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription->type));
+        assert_true(10 == subscription->priority || 20 == subscription->priority);
+        assert_true((SR__NOTIFICATION_EVENT__VERIFY_EV == subscription->notif_event) ||
+                (SR__NOTIFICATION_EVENT__APPLY_EV == subscription->notif_event));
 
-    for (size_t i = 0; i < subscriptions_cnt; i++) {
-        assert_non_null(subscriptions_arr[i]);
-        assert_true((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscriptions_arr[i]->type) ||
-                (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscriptions_arr[i]->type));
-        assert_true(10 == subscriptions_arr[i]->priority || 20 == subscriptions_arr[i]->priority);
-        assert_true((SR__NOTIFICATION_EVENT__VERIFY_EV == subscriptions_arr[i]->notif_event) ||
-                (SR__NOTIFICATION_EVENT__APPLY_EV == subscriptions_arr[i]->notif_event));
-        /* notify and add into list */
-        rc = np_subscription_notify(np_ctx, subscriptions_arr[i], SR_EV_APPLY, 0);
+        /* notify */
+        rc = np_subscription_notify(np_ctx, subscription, SR_EV_APPLY, 0);
         assert_int_equal(rc, SR_ERR_OK);
-        sr_list_add(subscriptions_list, subscriptions_arr[i]);
     }
-    free(subscriptions_arr);
 
     /* send commit_end notifications */
     rc = np_commit_notifications_sent(np_ctx, 12345, true, subscriptions_list);
     assert_int_equal(rc, SR_ERR_OK);
-    for (size_t i = 0; i < subscriptions_list->count; i++) {
-        np_free_subscription(subscriptions_list->data[i]);
-    }
-    sr_list_cleanup(subscriptions_list);
+
+    np_subscriptions_list_cleanup(subscriptions_list);
 
     /* unsubscribe */
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
@@ -342,9 +354,7 @@ np_dp_subscriptions_test(void **state)
     np_ctx_t *np_ctx = test_ctx->rp_ctx->np_ctx;
     assert_non_null(np_ctx);
     sr_list_t *subscriptions_list = NULL;
-
-    np_subscription_t **subscriptions_arr = NULL;
-    size_t subscriptions_cnt = 0;
+    np_subscription_t *subscription = NULL;
 
     /* delete old subscriptions, if any */
     np_unsubscribe_destination(np_ctx, "addr3");
@@ -352,45 +362,37 @@ np_dp_subscriptions_test(void **state)
     /* subscribe */
 
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
-            "addr4", 789, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__VERIFY_EV, 20,
+            "addr4", 789, "example-module", "/example-module:container", NULL, SR__NOTIFICATION_EVENT__VERIFY_EV, 20,
             SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
-            "addr5", 1011, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__VERIFY_EV, 20,
+            "addr5", 1011, "example-module", "/example-module:container", NULL, SR__NOTIFICATION_EVENT__VERIFY_EV, 20,
             SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get subscriptions */
-    rc = np_get_data_provider_subscriptions(np_ctx, "example-module", &subscriptions_arr, &subscriptions_cnt);
+    rc = np_get_data_provider_subscriptions(np_ctx, test_ctx->rp_session_ctx, "example-module", &subscriptions_list);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_int_not_equal(subscriptions_cnt, 0);
+    assert_non_null(subscriptions_list);
+    assert_int_not_equal(subscriptions_list->count, 0);
 
-    assert_int_equal(subscriptions_cnt, 2);
-
-    rc = sr_list_init(&subscriptions_list);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(subscriptions_list->count, 2);
 
     rc = sr_gpb_req_alloc(NULL, SR__OPERATION__GET_ITEM, test_ctx->rp_session_ctx->id, &test_ctx->rp_session_ctx->req);
     assert_int_equal(rc, SR_ERR_OK);
-    for (size_t i = 0; i < subscriptions_cnt; i++) {
-        assert_non_null(subscriptions_arr[i]);
-        assert_true(SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == subscriptions_arr[i]->type);
+    for (size_t i = 0; i < subscriptions_list->count; i++) {
+        subscription = subscriptions_list->data[i];
+        assert_non_null(subscription);
+        assert_true(SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == subscription->type);
 
         /* notify and add into list */
-        rc = np_data_provider_request(np_ctx, subscriptions_arr[i], test_ctx->rp_session_ctx, "/example-module:container");
+        rc = np_data_provider_request(np_ctx, subscription, test_ctx->rp_session_ctx, "/example-module:container");
         assert_int_equal(rc, SR_ERR_OK);
-
-        sr_list_add(subscriptions_list, subscriptions_arr[i]);
     }
-    free(subscriptions_arr);
 
     /* release the subscriptions */
-    assert_int_equal(rc, SR_ERR_OK);
-    for (size_t i = 0; i < subscriptions_list->count; i++) {
-        np_free_subscription(subscriptions_list->data[i]);
-    }
-    sr_list_cleanup(subscriptions_list);
+    np_subscriptions_list_cleanup(subscriptions_list);
 
     /* unsubscribe */
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
@@ -402,6 +404,55 @@ np_dp_subscriptions_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+np_notif_store_test(void **state)
+{
+#ifndef ENABLE_NOTIF_STORE
+    skip();
+#else
+    int rc = SR_ERR_OK;
+    test_ctx_t *test_ctx = *state;
+    assert_non_null(test_ctx);
+    np_ctx_t *np_ctx = test_ctx->rp_ctx->np_ctx;
+
+    struct ly_ctx *ctx = NULL;
+    const struct lys_module *module = NULL;
+    struct lyd_node *node = NULL;
+    sr_list_t *notif_list = NULL;
+
+    /* create notif. data tree */
+    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    assert_non_null(ctx);
+    module = ly_ctx_load_module(ctx, "test-module", NULL);
+    assert_non_null(module);
+    node = lyd_new_path(NULL, ctx, "/test-module:link-discovered/source/interface", "eth0", 0, 0);
+    assert_non_null(node);
+
+    /* store notification */
+    rc = np_store_event_notification(np_ctx, test_ctx->rp_session_ctx->user_credentials, "/test-module:link-discovered",
+            time(NULL), node);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* retrieve notifications  */
+    rc = np_get_event_notifications(np_ctx, test_ctx->rp_session_ctx, "/test-module:link-discovered", 0, time(NULL),
+            SR_API_VALUES, &notif_list);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(notif_list);
+
+    for (size_t i = 0; i < notif_list->count; i++) {
+        np_ev_notification_t *notification = notif_list->data[i];
+        assert_string_equal(notification->xpath, "/test-module:link-discovered");
+        np_event_notification_cleanup(notification);
+    }
+    sr_list_cleanup(notif_list);
+
+    rc = np_notification_store_cleanup(np_ctx, false);
+    assert_int_equal(rc, SR_ERR_OK);
+    lyd_free_withsiblings(node);
+    ly_ctx_destroy(ctx, NULL);
+#endif
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -411,7 +462,11 @@ main() {
             cmocka_unit_test_setup_teardown(np_hello_notify_test, test_setup, test_teardown),
             cmocka_unit_test_setup_teardown(np_module_subscriptions_test, test_setup, test_teardown),
             cmocka_unit_test_setup_teardown(np_dp_subscriptions_test, test_setup, test_teardown),
+            cmocka_unit_test_setup_teardown(np_notif_store_test, test_setup, test_teardown),
     };
 
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_start(300);
+    int ret = cmocka_run_group_tests(tests, NULL, NULL);
+    watchdog_stop();
+    return ret;
 }

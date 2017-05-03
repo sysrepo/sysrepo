@@ -1,6 +1,6 @@
 /**
 
-@page subscr Subscriptions
+@page subscribtions Subscriptions
 
 Sysrepo allows managed applications / plugins to subscribe for two types of asynchronous events:
 
@@ -60,7 +60,7 @@ defined by `ietf-ip` module.)
 - ::sr_subtree_change_subscribe  - the selected subtree of the configuration can be enabled by this API. For xpath argument of this API call
 use xpath expression without predicates. Despite the module-level subscription covers many use-case. There are situations when user wants to be
 subscribed only for a subtree. In some cases only a part of the configuration defined by a model
-is covered by the application and the other part might be covered by another application. Splitting the logic 
+is covered by the application and the other part might be covered by another application. Splitting the logic
 of applying the changes might by another reason for using the call. As the name suggests, only a part of the configuration is enabled & copied.
 The subsequent table explains what nodes are enabled.
 
@@ -106,7 +106,7 @@ To provide leaf or leaf-list at top level you have to specify their xpath in sub
 ~~~~~~~~~~~~~~~{.c}
 rc = sr_dp_get_items_subscribe(session, "/demo:state_data", dp_state_data, private_ctx, SR_SUBSCR_DEFAULT, &subscription);
 
-rc = sr_dp_get_items_subscribe(session, "/demo:values", dp_values, private_ctx, SR_SUBSCR_CTX_REUSE, &subscription);    
+rc = sr_dp_get_items_subscribe(session, "/demo:values", dp_values, private_ctx, SR_SUBSCR_CTX_REUSE, &subscription);
 ~~~~~~~~~~~~~~~
 Each callback will be called once with the xpath that was used in subscribe call. Callback will be called if the user
 request particular node.
@@ -152,7 +152,7 @@ module demo {
 ~~~~~~~~~~~~~~~{.c}
 rc = sr_dp_get_items_subscribe(session, "/demo:sensors", dp_sensors, private_ctx, SR_SUBSCR_DEFAULT, &subscription);
 
-rc = sr_dp_get_items_subscribe(session, "/demo:seats", dp_seats, private_ctx, SR_SUBSCR_CTX_REUSE, &subscription);    
+rc = sr_dp_get_items_subscribe(session, "/demo:seats", dp_seats, private_ctx, SR_SUBSCR_CTX_REUSE, &subscription);
 ~~~~~~~~~~~~~~~
 
 If a user requests a node from the container or the list, sysrepo will ask for `/demo:sensors` or `/demo:seats`. (In the current
@@ -176,7 +176,7 @@ module demo {
      leaf number_of_accidents {
         type uint8;
      }
-     
+
      list cross_road {
 
        key id;
@@ -244,7 +244,7 @@ Following table summarize the sequence of the requests from sysrepo and expected
 ~~~~~~~~~~~~~~~{.c}
 module demo {
    /*..*/
- 
+
    list abc {
       key cfg;
       leaf cfg {
@@ -270,9 +270,9 @@ module demo {
 rc = sr_dp_get_items_subscribe(session, "/demo:abc/value", dp_value, private_ctx, SR_SUBSCR_DEFAULT, &subscription);
 ~~~~~~~~~~~~~~~
 
-Data provider will be asked for xpath without keys `/demo:abc/value` he is supposed to return leaves for all instances. 
+Data provider will be asked for xpaths with keys filled (corresponding to currently configured lists `/demo:abc`) he is supposed to return leaf for the particular instance.
 # | Xpath requested by sysrepo  | Example of xpath returned by data provider
 --|------------- | -------------
-1.|`/demo:abc/value`|  ```/demo:abc/value[cfg='0']/value```, ```/demo:abc/value[cfg='1']/value```, ```/demo:abc/value[cfg='2']/value```, ...
+1.|```/demo:abc[cfg='X']/value``` callback will be called for each configured list instance. (X will be replaced by the actual value of the key). User is supposed to return value of the leaf. |  For the xpath ```/demo:abc[cfg='0']/value``` provider is supposed to return value of the leaf.
 
 */

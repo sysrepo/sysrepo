@@ -40,7 +40,6 @@ public:
     Tree(sr_node_t *tree, S_Deleter deleter);
     S_Tree dup();
     S_Tree node();
-    sr_node_t *tree() {return _node;};
     char *name() {return _node->name;};
     sr_type_t type() {return _node->type;};
     bool dflt() {return _node->dflt;};
@@ -51,11 +50,12 @@ public:
     S_Tree prev();
     S_Tree first_child();
     S_Tree last_child();
+    S_String to_string(int depth_limit);
+    S_String value_to_string();
     void set_name(const char *name);
     void set_module(const char *module_name);
     void set_str_data(sr_type_t type, const char *string_val);
     void add_child(const char *child_name, const char *child_module_name, S_Tree child);
-    sr_node_t **get() {return &_node;};
     void set(const char *val, sr_type_t type = SR_STRING_T);
     void set(bool bool_val, sr_type_t type = SR_BOOL_T);
     void set(double decimal64_val);
@@ -68,6 +68,9 @@ public:
     void set(uint32_t uint32_val, sr_type_t type);
     void set(uint64_t uint64_val, sr_type_t type);
     ~Tree();
+
+    friend class Session;
+    friend class Subscribe;
 
 private:
     sr_node_t *_node;
@@ -84,10 +87,10 @@ public:
     S_Tree tree(size_t n);
     S_Trees dup();
     size_t tree_cnt() {return _cnt;};
-    size_t *p_trees_cnt() {return &_cnt;};
-    sr_node_t **p_trees() {return &_trees;};
-    sr_node_t *trees() {return _trees;};
     ~Trees();
+
+    friend class Session;
+    friend class Subscribe;
 
 private:
     size_t _cnt;

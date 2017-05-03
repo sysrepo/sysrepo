@@ -4,10 +4,11 @@ set -e
 INSTALL_PREFIX_DIR=$HOME/local
 export PKG_CONFIG_PATH=$INSTALL_PREFIX_DIR/lib/pkgconfig:$PKG_CONFIG_PATH
 
+sudo apt-get install --reinstall ca-certificates
 sudo apt-get install software-properties-common # add-apt-repository tool
 sudo add-apt-repository --yes ppa:stefanklug/swig
 sudo apt-get update -qq
-sudo apt-get install -y --force-yes libavl-dev libev-dev valgrind swig3.0 python-dev gdb
+sudo apt-get install -y --force-yes libavl-dev libev-dev valgrind coreutils swig3.0 python-dev gdb
 pip install --user codecov
 echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-certificates.crt
 
@@ -24,15 +25,17 @@ if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
     cd ../..
 
     # protobuf 
-    git clone https://github.com/google/protobuf.git
-    cd protobuf
+    wget https://github.com/google/protobuf/archive/v3.2.0.tar.gz
+    tar -xzf v3.2.0.tar.gz
+    cd protobuf-3.2.0
     ./autogen.sh && ./configure --prefix=$INSTALL_PREFIX_DIR 
     make -j2 && make install
     cd ..
 
     # protobuf-c
-    git clone https://github.com/protobuf-c/protobuf-c.git
-    cd protobuf-c
+    wget https://github.com/protobuf-c/protobuf-c/archive/v1.2.1.tar.gz
+    tar -xzf v1.2.1.tar.gz
+    cd protobuf-c-1.2.1
     ./autogen.sh && ./configure --prefix=$INSTALL_PREFIX_DIR
     make -j2 && make install
     cd ..
@@ -44,10 +47,10 @@ fi
 # libraries that we don't want to cache
 
 # libyang
-if [[ "$TRAVIS_BRANCH" == "devel" ]]; then
-    git clone -b devel https://github.com/CESNET/libyang.git
-else
+if [[ "$TRAVIS_BRANCH" == *"master"* ]]; then
     git clone https://github.com/CESNET/libyang.git
+else
+    git clone -b devel https://github.com/CESNET/libyang.git
 fi
 cd libyang ; mkdir build ; cd build
 cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
