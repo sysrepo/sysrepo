@@ -241,7 +241,7 @@ typedef enum sr_error_e {
     SR_ERR_LOCKED,             /**< Requested resource is already locked. */
     SR_ERR_TIME_OUT,           /**< Time out has expired. */
     SR_ERR_RESTART_NEEDED,     /**< Sysrepo Engine restart is needed. */
-    SR_ERR_VERSION_MISSMATCH,  /**< Incompatible client library used to communicate with sysrepo. */
+    SR_ERR_VERSION_MISMATCH,   /**< Incompatible client library used to communicate with sysrepo. */
 } sr_error_t;
 
 /**

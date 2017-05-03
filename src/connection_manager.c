@@ -829,7 +829,7 @@ cm_verify_version_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *
             strcmp(msg_in->request->version_verify_req->soname, SR_COMPAT_VERSION)) {
         SR_LOG_ERR("Client's \"%s\" version is not compatible with version \""SR_COMPAT_VERSION"\" in use.",
                    msg_in->request->version_verify_req->soname);
-        rc = SR_ERR_VERSION_MISSMATCH;
+        rc = SR_ERR_VERSION_MISMATCH;
     }
 
     if (SR_ERR_OK != rc) {
@@ -1035,7 +1035,7 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
             /* First message in the connection must be the request to verify version */
             if (SR__MSG__MSG_TYPE__REQUEST != msg->type || SR__OPERATION__VERSION_VERIFY != msg->request->operation) {
                 SR_LOG_ERR_MSG("Version compatibility must be verified before processing any other message.");
-                rc = SR_ERR_VERSION_MISSMATCH;
+                rc = SR_ERR_VERSION_MISMATCH;
                 goto cleanup;
             }
 

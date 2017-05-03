@@ -448,7 +448,7 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
     /*
      * version verification
      * - not performed in case of local mode when only intra-process communication is allowed
-     * and client library versions missmatch is not possible
+     * and client library versions mismatch is not possible
      */
     if (!connection->library_mode) {
         rc = cl_version_verify(connection);
