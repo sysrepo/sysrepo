@@ -447,14 +447,10 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
 
     /*
      * version verification
-     * - not performed in case of local mode when only intra-process communication is allowed
-     * and client library versions mismatch is not possible
      */
-    if (!connection->library_mode) {
-        rc = cl_version_verify(connection);
-        if (SR_ERR_OK != rc) {
-            goto cleanup;
-        }
+    rc = cl_version_verify(connection);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
     }
 
     if (NULL != cm_ctx) {
