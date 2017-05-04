@@ -74,25 +74,6 @@ cm_teardown(void **state)
     return 0;
 }
 
-static int
-cm_connect_to_server()
-{
-    struct sockaddr_un addr;
-    int fd = -1, rc = -1;
-
-    fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    assert_int_not_equal(fd, -1);
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, CM_AF_SOCKET_PATH, sizeof(addr.sun_path)-1);
-
-    rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
-    assert_int_not_equal(rc, -1);
-
-    return fd;
-}
-
 static void
 cm_message_send(const int fd, const void *msg_buf, const size_t msg_size)
 {
@@ -162,6 +143,64 @@ cm_msg_pack_to_buff(Sr__Msg *msg, uint8_t **msg_buf, size_t *msg_size)
 
     sr__msg__pack(msg, *msg_buf);
     sr__msg__free_unpacked(msg, NULL);
+}
+
+static void
+cm_version_verify_generate(const char *soname, uint8_t **msg_buf, size_t *msg_size)
+{
+    assert_non_null(msg_buf);
+    assert_non_null(msg_size);
+
+    Sr__Msg *msg = NULL;
+    sr_gpb_req_alloc(NULL, SR__OPERATION__VERSION_VERIFY, 0, &msg);
+    assert_non_null(msg);
+    assert_non_null(msg->request);
+    assert_non_null(msg->request->version_verify_req);
+
+    if (NULL != soname) {
+        msg->request->version_verify_req->soname = strdup(soname);
+    } else {
+        msg->request->version_verify_req->soname = strdup(SR_COMPAT_VERSION);
+    }
+
+    cm_msg_pack_to_buff(msg, msg_buf, msg_size);
+}
+
+static int
+cm_connect_to_server(int verify)
+{
+    struct sockaddr_un addr;
+    int fd = -1, rc = -1;
+    Sr__Msg *msg = NULL;
+    uint8_t *msg_buf = NULL;
+    size_t msg_size = 0;
+
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    assert_int_not_equal(fd, -1);
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, CM_AF_SOCKET_PATH, sizeof(addr.sun_path)-1);
+
+    rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
+    assert_int_not_equal(rc, -1);
+
+    if (verify) {
+        /* verify version */
+        cm_version_verify_generate(NULL, &msg_buf, &msg_size);
+        cm_message_send(fd, msg_buf, msg_size);
+        free(msg_buf);
+        msg = cm_message_recv(fd);
+        assert_non_null(msg);
+        assert_int_equal(msg->type, SR__MSG__MSG_TYPE__RESPONSE);
+        assert_non_null(msg->response);
+        assert_int_equal(msg->response->result, SR_ERR_OK);
+        assert_int_equal(msg->response->operation, SR__OPERATION__VERSION_VERIFY);
+        assert_non_null(msg->response->version_verify_resp);
+        sr__msg__free_unpacked(msg, NULL);
+    }
+
+    return fd;
 }
 
 static void
@@ -273,7 +312,7 @@ cm_session_test(void **state) {
     int i = 0, fd = 0;
 
     for (i = 0; i < 10; i++) {
-        fd = cm_connect_to_server();
+        fd = cm_connect_to_server(1);
         session_start_stop(fd);
         close(fd);
     }
@@ -290,7 +329,28 @@ cm_session_neg_test(void **state) {
     int fd1 = 0, fd2 = 0;
     uint32_t session_id1 = 0, session_id2 = 0;
 
-    fd1 = cm_connect_to_server();
+    fd1 = cm_connect_to_server(0);
+
+    /* try invalid version  */
+    cm_version_verify_generate("invalid", &msg_buf, &msg_size);
+    cm_message_send(fd1, msg_buf, msg_size);
+    free(msg_buf);
+    msg = cm_message_recv(fd1);
+    assert_non_null(msg);
+    assert_int_equal(msg->type, SR__MSG__MSG_TYPE__RESPONSE);
+    assert_non_null(msg->response);
+    assert_int_equal(msg->response->result, SR_ERR_VERSION_MISMATCH);
+    assert_int_equal(msg->response->operation, SR__OPERATION__VERSION_VERIFY);
+    assert_non_null(msg->response->version_verify_resp);
+    assert_string_equal_bt(msg->response->version_verify_resp->soname, SR_COMPAT_VERSION);
+    sr__msg__free_unpacked(msg, NULL);
+
+    /* disconnect expected */
+    msg = cm_message_recv(fd1);
+    assert_null(msg);
+    close(fd1);
+
+    fd1 = cm_connect_to_server(1);
 
     /* try a message with NULL request  */
     msg = calloc(1, sizeof(*msg));
@@ -307,7 +367,7 @@ cm_session_neg_test(void **state) {
     assert_null(msg);
     close(fd1);
 
-    fd1 = cm_connect_to_server();
+    fd1 = cm_connect_to_server(1);
 
     /* try a message with bad session id */
     cm_session_stop_generate(999, &msg_buf, &msg_size);
@@ -319,7 +379,7 @@ cm_session_neg_test(void **state) {
     assert_null(msg);
     close(fd1);
 
-    fd1 = cm_connect_to_server();
+    fd1 = cm_connect_to_server(1);
 
     /* try a session_start request with non-existing username */
     cm_session_start_generate("non-existing-username", &msg_buf, &msg_size);
@@ -335,8 +395,8 @@ cm_session_neg_test(void **state) {
     sr__msg__free_unpacked(msg, NULL);
     close(fd1);
 
-    fd1 = cm_connect_to_server();
-    fd2 = cm_connect_to_server();
+    fd1 = cm_connect_to_server(1);
+    fd2 = cm_connect_to_server(1);
 
     /* try to stop session via another connection */
     /* session_start request */
@@ -360,7 +420,7 @@ cm_session_neg_test(void **state) {
     assert_null(msg);
     close(fd2);
 
-    fd2 = cm_connect_to_server();
+    fd2 = cm_connect_to_server(1);
 
     /* try sending a response */
     /* session_start request */
@@ -416,7 +476,7 @@ cm_session_neg_test(void **state) {
     assert_null(msg);
     close(fd1);
 
-    fd2 = cm_connect_to_server();
+    fd2 = cm_connect_to_server(1);
 
     /* try not closing a connection with an open session (auto cleanup) */
     /* session_start request */
@@ -444,7 +504,7 @@ cm_buffers_test(void **state)
     uint32_t session_id = 0;
     struct timespec ts = { 0 };
 
-    int fd = cm_connect_to_server();
+    int fd = cm_connect_to_server(1);
 
     /* send session_start request */
     cm_session_start_generate(NULL, &msg_buf, &msg_size);
