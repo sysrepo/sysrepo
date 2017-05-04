@@ -817,15 +817,23 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, sr
 
     /* get data tree of currently stored configuration and validate it */
     rc = srcfg_get_module_data(ly_ctx, module, &current_dt);
-    if (SR_ERR_OK == rc) {
-        rc = srcfg_merge_data_trees(&current_dt, deps_dt);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
     }
-    if (SR_ERR_OK == rc) {
+    if (NULL != current_dt) {
+        rc = srcfg_merge_data_trees(&current_dt, deps_dt);
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
         ret = lyd_validate(&current_dt, LYD_OPT_STRICT | LYD_OPT_CONFIG, ly_ctx);
         CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Data returned by sysrepo are not valid: %s (%s)",
                             ly_errmsg(), ly_errpath());
     } else {
-        goto cleanup;
+        /* if current datastore is empty, do not validate it, it is likely a fresh install */
+        rc = srcfg_merge_data_trees(&current_dt, deps_dt);
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
     }
 
     /* get the list of changes made by the user */
@@ -1447,7 +1455,7 @@ srcfg_delete_xpath_operation(const char **xpath, int xpathdel_count)
 {
     int rc = SR_ERR_INTERNAL;
     int i = 0;
-    
+
     CHECK_NULL_ARG(xpath);
 
     for (i = 0; i < xpathdel_count; i++) {
@@ -1751,7 +1759,7 @@ main(int argc, char* argv[])
     char *xpathvalue = NULL;
     char **xpathdel = NULL;
     int xpathdel_count = 0;
-    
+
     struct option longopts[] = {
        { "help",      no_argument,       NULL, 'h' },
        { "version",   no_argument,       NULL, 'v' },
