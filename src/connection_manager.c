@@ -810,7 +810,7 @@ cm_verify_version_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *
 {
     Sr__Msg *msg = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, r;
 
     CHECK_NULL_ARG5(cm_ctx, conn, msg_in, msg_in->request, msg_in->request->version_verify_req);
 
@@ -840,8 +840,11 @@ cm_verify_version_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *
     }
 
     /* send the response */
-    rc = cm_msg_send_connection(cm_ctx, conn, msg);
-    if (SR_ERR_OK != rc) {
+    r = cm_msg_send_connection(cm_ctx, conn, msg);
+    if (SR_ERR_OK != r) {
+        if (SR_ERR_OK == rc) {
+            rc = r;
+        }
         SR_LOG_ERR("Unable to send version_verification response (conn=%p).", (void*)conn);
     }
 
@@ -1028,25 +1031,20 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
     }
 
     if (!conn->established) {
-        if (cm_ctx->mode == CM_MODE_LOCAL) {
-            /* version is not verified since only intra-precess communication is allowed */
-            conn->established = true;
-        } else {
-            /* First message in the connection must be the request to verify version */
-            if (SR__MSG__MSG_TYPE__REQUEST != msg->type || SR__OPERATION__VERSION_VERIFY != msg->request->operation) {
-                SR_LOG_ERR_MSG("Version compatibility must be verified before processing any other message.");
-                rc = SR_ERR_VERSION_MISMATCH;
-                goto cleanup;
-            }
-
-            rc = cm_verify_version_req_process(cm_ctx, conn, msg);
-            if (SR_ERR_OK == rc) {
-                /* connection is verified */
-                conn->established = true;
-            }
-            /* processing done */
+        /* First message in the connection must be the request to verify version */
+        if (SR__MSG__MSG_TYPE__REQUEST != msg->type || SR__OPERATION__VERSION_VERIFY != msg->request->operation) {
+            SR_LOG_ERR_MSG("Version compatibility must be verified before processing any other message.");
+            rc = SR_ERR_VERSION_MISMATCH;
             goto cleanup;
         }
+
+        rc = cm_verify_version_req_process(cm_ctx, conn, msg);
+        if (SR_ERR_OK == rc) {
+            /* connection is verified */
+            conn->established = true;
+        }
+        /* processing done */
+        goto cleanup;
     }
 
     /* find matching session (except for some exceptions) */
