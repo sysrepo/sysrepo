@@ -390,9 +390,10 @@ struct lys_node *sr_lys_node_get_data_parent(struct lys_node *node, bool augment
 /**
  * @brief Copies the datatree pointed by root including its siblings.
  * @param [in] root Root of the datatree to be duped.
+ * @param [in] ly_ctx libyang context
  * @return duplicated datatree or NULL in case of error
  */
-struct lyd_node* sr_dup_datatree(struct lyd_node *root);
+struct lyd_node* sr_dup_datatree(struct lyd_node *root, struct ly_ctx *ly_ctx);
 
 /**
  * @brief Duplicates the date tree including its sibling into the provided context

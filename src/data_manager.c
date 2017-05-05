@@ -619,7 +619,7 @@ dm_insert_data_info_copy(sr_btree_t *tree, const dm_data_info_t *di)
     CHECK_NULL_NOMEM_RETURN(copy);
 
     if (NULL != di->node) {
-        copy->node = sr_dup_datatree(di->node);
+        copy->node = sr_dup_datatree(di->node, di->schema->ly_ctx);
         CHECK_NULL_NOMEM_GOTO(copy->node, rc, cleanup);
     }
 
@@ -3948,7 +3948,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 
             di = calloc(1, sizeof(*di));
             CHECK_NULL_NOMEM_GOTO(di, rc, cleanup);
-            di->node = sr_dup_datatree(info->node);
+            di->node = sr_dup_datatree(info->node, info->schema->ly_ctx);
             if (NULL != info->node && NULL == di->node) {
                 SR_LOG_ERR_MSG("Data tree duplication failed");
                 rc = SR_ERR_INTERNAL;
@@ -5135,7 +5135,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
             }
         } else {
             /* copy data tree into candidate session */
-            struct lyd_node *dup = sr_dup_datatree(src_infos[i]->node);
+            struct lyd_node *dup = sr_dup_datatree(src_infos[i]->node, src_infos[i]->schema->ly_ctx);
             dm_data_info_t *di_tmp = NULL;
             if (NULL != src_infos[i]->node && NULL == dup) {
                 SR_LOG_ERR("Duplication of data tree %s failed", src_infos[i]->schema->module->name);
@@ -6218,7 +6218,7 @@ dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_
         lyd_free_withsiblings(new_info->node);
         new_info->node = NULL;
         if (NULL != info->node) {
-            new_info->node = sr_dup_datatree(info->node);
+            new_info->node = sr_dup_datatree(info->node, info->schema->ly_ctx);
         }
 
         if (!existed) {
@@ -6273,7 +6273,7 @@ dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, con
     new_info->schema = info->schema;
     new_info->timestamp = info->timestamp;
     if (NULL != info->node) {
-        tmp_node = sr_dup_datatree(info->node);
+        tmp_node = sr_dup_datatree(info->node, info->schema->ly_ctx);
         CHECK_NULL_NOMEM_ERROR(tmp_node, rc);
     }
 
