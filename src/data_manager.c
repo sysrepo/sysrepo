@@ -6463,7 +6463,7 @@ dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, s
             /* skip submodules */
             continue;
         }
-        if (!module->latest_revision) {
+        if (!module->implemented || !module->has_data) {
             continue;
         }
 
