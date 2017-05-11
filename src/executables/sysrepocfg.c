@@ -761,7 +761,7 @@ srcfg_convert_lydiff_movedafter(const char *target_xpath, const char *after_xpat
  */
 static int
 srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, srcfg_datastore_t datastore,
-                       LYD_FORMAT format, bool permanent, bool merge)
+                       LYD_FORMAT format, bool permanent, bool merge, bool strict)
 {
     int rc = SR_ERR_INTERNAL;
     unsigned i = 0;
@@ -783,13 +783,13 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, sr
     ly_errno = LY_SUCCESS;
     if (S_ISREG(info.st_mode)) {
         /* load (using mmap) and parse the input data in one step */
-        new_dt = lyd_parse_fd(ly_ctx, fd_in, format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+        new_dt = lyd_parse_fd(ly_ctx, fd_in, format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG | (strict ? LYD_OPT_STRICT : 0));
     } else { /* most likely STDIN */
         /* load input data into the memory first */
         ret = srcfg_read_file_content(fd_in, &input_data);
         CHECK_RC_MSG_GOTO(ret, cleanup, "Unable to read the input data.");
         /* parse the input data stored inside memory buffer */
-        new_dt = lyd_parse_mem(ly_ctx, input_data, format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+        new_dt = lyd_parse_mem(ly_ctx, input_data, format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG | (strict ? LYD_OPT_STRICT : 0));
     }
     if (NULL == new_dt && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Unable to parse the input data: %s (%s)", ly_errmsg(), ly_errpath());
@@ -1208,7 +1208,7 @@ cleanup:
  */
 static int
 srcfg_import_operation(md_module_t *module, srcfg_datastore_t datastore, const char *filepath,
-                       LYD_FORMAT format, bool permanent, bool merge)
+                       LYD_FORMAT format, bool permanent, bool merge, bool strict)
 {
     int rc = SR_ERR_INTERNAL, ret = 0;
     struct ly_ctx *ly_ctx = NULL;
@@ -1231,7 +1231,7 @@ srcfg_import_operation(md_module_t *module, srcfg_datastore_t datastore, const c
     }
 
     /* import datastore data */
-    ret = srcfg_import_datastore(ly_ctx, fd_in, module, datastore, format, permanent, merge);
+    ret = srcfg_import_datastore(ly_ctx, fd_in, module, datastore, format, permanent, merge, strict);
     if (SR_ERR_OK != ret) {
         goto fail;
     }
@@ -1515,7 +1515,7 @@ srcfg_prompt(const char *question, const char *positive, const char *negative)
  */
 static int
 srcfg_edit_operation(md_module_t *module, srcfg_datastore_t datastore, LYD_FORMAT format,
-                     const char *editor, bool keep, bool permanent, bool merge)
+                     const char *editor, bool keep, bool permanent, bool merge, bool strict)
 {
     int rc = SR_ERR_INTERNAL, ret = 0;
     struct ly_ctx *ly_ctx = NULL;
@@ -1602,7 +1602,7 @@ edit:
                               "Unable to re-open the configuration after it was edited using the text editor.");
 
     /* import temporary file content into the datastore */
-    ret = srcfg_import_datastore(ly_ctx, fd_tmp, module, datastore, format, permanent, merge);
+    ret = srcfg_import_datastore(ly_ctx, fd_tmp, module, datastore, format, permanent, merge, strict);
     close(fd_tmp);
     fd_tmp = -1;
     if (SR_ERR_OK != ret) {
@@ -1715,6 +1715,7 @@ srcfg_print_help()
     printf("  -g, --get <xpath>            Flag used to specify an XPATH to be read\n");
     printf("  -r, --del <xpath>            Flag used to specify an XPATH to be deleted\n");
     printf("  -m, --merge <path>           Flag used to merge a configuration from a supplied file\n");
+    printf("  -n, --not-strict             Flag used to silently ignore unknown data from any supplied data file\n");
     printf("\n");
     printf("Examples:\n");
     printf("  1) Edit *ietf-interfaces* module's *running config* in *xml format* in *default editor*:\n");
@@ -1744,7 +1745,7 @@ main(int argc, char* argv[])
     char *filepath = NULL;
     srcfg_datastore_t datastore = SRCFG_STORE_RUNNING;
     LYD_FORMAT format = LYD_XML;
-    bool enabled = false, keep = false, permanent = false;
+    bool enabled = false, keep = false, permanent = false, strict = true;
     int log_level = -1;
     char local_schema_search_dir[PATH_MAX] = { 0, }, local_internal_schema_search_dir[PATH_MAX] = { 0, };
     char local_internal_data_search_dir[PATH_MAX] = { 0, };
@@ -1767,6 +1768,7 @@ main(int argc, char* argv[])
        { "format",    required_argument, NULL, 'f' },
        { "editor",    required_argument, NULL, 'e' },
        { "import",    optional_argument, NULL, 'i' },
+       { "not-strict",no_argument,       NULL, 'n' },
        { "export",    optional_argument, NULL, 'x' },
        { "keep",      no_argument,       NULL, 'k' },
        { "permanent", no_argument,       NULL, 'p' },
@@ -1783,7 +1785,7 @@ main(int argc, char* argv[])
     /* parse options */
     int curind = optind;
 
-    while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpol:0:g:s:g:s:w:r:m:", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, ":hvd:f:e:i:nx:kpol:0:g:s:g:s:w:r:m:", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srcfg_print_help();
@@ -1811,6 +1813,9 @@ main(int argc, char* argv[])
                 if (NULL != optarg && 0 != strcmp("-", optarg)) {
                     filepath = optarg;
                 }
+                break;
+            case 'n':
+                strict = false;
                 break;
             case 'm':
                 operation = SRCFG_OP_MERGE;
@@ -2035,10 +2040,10 @@ main(int argc, char* argv[])
     /* call selected operation */
     switch (operation) {
         case SRCFG_OP_EDIT:
-            rc = srcfg_edit_operation(module, datastore, format, editor, keep, permanent, false);
+            rc = srcfg_edit_operation(module, datastore, format, editor, keep, permanent, false, strict);
             break;
         case SRCFG_OP_IMPORT:
-            rc = srcfg_import_operation(module, datastore, filepath, format, permanent, false);
+            rc = srcfg_import_operation(module, datastore, filepath, format, permanent, false, strict);
             break;
         case SRCFG_OP_EXPORT:
             rc = srcfg_export_operation(module, filepath, format);
@@ -2056,7 +2061,7 @@ main(int argc, char* argv[])
             free(xpathdel);
             break;
         case SRCFG_OP_MERGE:
-            rc = srcfg_import_operation(module, datastore, filepath, format, permanent, true);
+            rc = srcfg_import_operation(module, datastore, filepath, format, permanent, true, strict);
             break;
     }
 
