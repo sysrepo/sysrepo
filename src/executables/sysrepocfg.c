@@ -479,7 +479,7 @@ srcfg_get_data_deps(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_node*
     ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *)ll_node->data;
-        if (MD_DEP_DATA == dep->type && dep->dest->latest_revision && dep->dest->has_data) {
+        if (MD_DEP_DATA == dep->type && dep->dest->implemented && dep->dest->has_data) {
             rc = srcfg_get_module_data(ly_ctx, dep->dest, &dep_data_tree);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
@@ -2017,7 +2017,7 @@ main(int argc, char* argv[])
             ll_node = module->deps->first;
             while (SR_ERR_OK == rc && ll_node) {
                 dep = (md_dep_t *)ll_node->data;
-                if (MD_DEP_DATA == dep->type && dep->dest->latest_revision) {
+                if (MD_DEP_DATA == dep->type && dep->dest->implemented) {
                     rc = sr_check_enabled_running(srcfg_session, dep->dest->name, &enabled);
                     if (SR_ERR_OK == rc && !enabled) {
                         printf("Cannot read data from module '%s' (referenced by target module '%s') "
