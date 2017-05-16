@@ -1470,175 +1470,166 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
             must = NULL;
             restr = NULL;
             switch (node->nodetype) {
-                case LYS_CONTAINER:
-                    {
-                        struct lys_node_container *cont = (struct lys_node_container *)node;
-                        if (NULL != cont->when) {
-                            when = cont->when->cond;
+            case LYS_CONTAINER:
+            {
+                struct lys_node_container *cont = (struct lys_node_container *)node;
+                if (NULL != cont->when) {
+                    when = cont->when->cond;
+                }
+                must = cont->must;
+                must_size = cont->must_size;
+                break;
+            }
+            case LYS_LIST:
+            {
+                struct lys_node_list *list = (struct lys_node_list *)node;
+                if (NULL != list->when) {
+                    when = list->when->cond;
+                }
+                must = list->must;
+                must_size = list->must_size;
+                break;
+            }
+            case LYS_CHOICE:
+            {
+                struct lys_node_choice *choice = (struct lys_node_choice *)node;
+                if (NULL != choice->when) {
+                    when = choice->when->cond;
+                }
+                break;
+            }
+            case LYS_ANYDATA:
+            case LYS_ANYXML:
+            {
+                struct lys_node_anydata *anydata = (struct lys_node_anydata *)node;
+                if (NULL != anydata->when) {
+                    when = anydata->when->cond;
+                }
+                must = anydata->must;
+                must_size = anydata->must_size;
+                break;
+            }
+            case LYS_USES:
+            {
+                struct lys_node_uses *uses = (struct lys_node_uses *)node;
+                if (NULL != uses->when) {
+                    when = uses->when->cond;
+                }
+                /* must inside refines */
+                for (size_t i = 0; i < uses->refine_size; ++i) {
+                    must = uses->refine[i].must;
+                    must_size = uses->refine[i].must_size;
+                    for (size_t j = 0; j < must_size; ++j) {
+                        rc = md_collect_data_dependencies(md_ctx, must[j].expr, dest_module, module, node->module);
+                        if (SR_ERR_OK != rc) {
+                            return rc;
                         }
-                        must = cont->must;
-                        must_size = cont->must_size;
-                        break;
                     }
-                case LYS_LIST:
-                    {
-                        struct lys_node_list *list = (struct lys_node_list *)node;
-                        if (NULL != list->when) {
-                            when = list->when->cond;
+                }
+                must = NULL;
+                must_size = 0;
+                break;
+            }
+            case LYS_CASE:
+            {
+                struct lys_node_case *case_node = (struct lys_node_case *)node;
+                if (NULL != case_node->when) {
+                    when = case_node->when->cond;
+                }
+                break;
+            }
+            case LYS_AUGMENT:
+            {
+                struct lys_node_augment *augment = (struct lys_node_augment *)node;
+                if (NULL != augment->when) {
+                    when = augment->when->cond;
+                }
+                break;
+            }
+            case LYS_INPUT:
+            case LYS_OUTPUT:
+            {
+                struct lys_node_inout *inout = (struct lys_node_inout *)node;
+                must = inout->must;
+                must_size = inout->must_size;
+                break;
+            }
+            case LYS_NOTIF:
+            {
+                struct lys_node_notif *notif = (struct lys_node_notif *)node;
+                must = notif->must;
+                must_size = notif->must_size;
+                break;
+            }
+            case LYS_LEAF:
+            case LYS_LEAFLIST:
+            {
+                struct lys_node_leaf *leaf = (struct lys_node_leaf *)node;
+                if (NULL != leaf->when) {
+                    when = leaf->when->cond;
+                }
+                switch (leaf->type.base) {
+                case LY_TYPE_INST:
+                    /* instance identifiers */
+                    rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->inst_ids, module, node,
+                                            MD_XPATH_MODULE_INST_ID);
+                    CHECK_RC_MSG_RETURN(rc,
+                            "Failed to add instance identifier reference into the dependency info.");
+                    break;
+                case LY_TYPE_LEAFREF:
+                    /* leafref */
+                    xpath = leaf->type.info.lref.path;
+                    if (NULL != xpath) {
+                        rc = md_collect_data_dependencies(md_ctx, xpath, dest_module, module, node->module);
+                        if (SR_ERR_OK != rc) {
+                            return rc;
                         }
-                        must = list->must;
-                        must_size = list->must_size;
-                        break;
                     }
-                 case LYS_CHOICE:
-                    {
-                        struct lys_node_choice *choice = (struct lys_node_choice *)node;
-                        if (NULL != choice->when) {
-                            when = choice->when->cond;
+                    break;
+                case LY_TYPE_BINARY:
+                    if (NULL != leaf->type.info.binary.length) {
+                        restr = leaf->type.info.binary.length->expr;
+                    }
+                    break;
+                case LY_TYPE_DEC64:
+                    if (NULL != leaf->type.info.dec64.range) {
+                        restr = leaf->type.info.dec64.range->expr;
+                    }
+                    break;
+                case LY_TYPE_INT8:
+                case LY_TYPE_UINT8:
+                case LY_TYPE_INT16:
+                case LY_TYPE_UINT16:
+                case LY_TYPE_INT32:
+                case LY_TYPE_UINT32:
+                case LY_TYPE_INT64:
+                case LY_TYPE_UINT64:
+                    if (NULL != leaf->type.info.num.range) {
+                        restr = leaf->type.info.num.range->expr;
+                    }
+                    break;
+                case LY_TYPE_STRING:
+                    if (NULL != leaf->type.info.str.length) {
+                        restr = leaf->type.info.str.length->expr;
+                    }
+                    must = leaf->type.info.str.patterns;
+                    must_size = leaf->type.info.str.pat_count;
+                    for (size_t i = 0; i < must_size; ++i) {
+                        rc = md_collect_data_dependencies(md_ctx, must[i].expr, dest_module, module, node->module);
+                        if (SR_ERR_OK != rc) {
+                            return rc;
                         }
-                        break;
                     }
-                 case LYS_ANYDATA:
-                 case LYS_ANYXML:
-                    {
-                        struct lys_node_anydata *anydata = (struct lys_node_anydata *)node;
-                        if (NULL != anydata->when) {
-                            when = anydata->when->cond;
-                        }
-                        must = anydata->must;
-                        must_size = anydata->must_size;
-                        break;
-                    }
-                 case LYS_USES:
-                    {
-                        struct lys_node_uses *uses = (struct lys_node_uses *)node;
-                        if (NULL != uses->when) {
-                            when = uses->when->cond;
-                        }
-                        /* must inside refines */
-                        for (size_t i = 0; i < uses->refine_size; ++i) {
-                            must = uses->refine[i].must;
-                            must_size = uses->refine[i].must_size;
-                            for (size_t j = 0; j < must_size; ++j) {
-                                rc = md_collect_data_dependencies(md_ctx, must[j].expr, dest_module, module,
-                                        node->module);
-                                if (SR_ERR_OK != rc) {
-                                    return rc;
-                                }
-                            }
-                        }
-                        must = NULL;
-                        must_size = 0;
-                        break;
-                    }
-                 case LYS_CASE:
-                    {
-                        struct lys_node_case *case_node = (struct lys_node_case *)node;
-                        if (NULL != case_node->when) {
-                            when = case_node->when->cond;
-                        }
-                        break;
-                    }
-                 case LYS_AUGMENT:
-                    {
-                        struct lys_node_augment *augment = (struct lys_node_augment *)node;
-                        if (NULL != augment->when) {
-                            when = augment->when->cond;
-                        }
-                        break;
-                    }
-                case LYS_INPUT:
-                case LYS_OUTPUT:
-                    {
-                        struct lys_node_inout *inout = (struct lys_node_inout *)node;
-                        must = inout->must;
-                        must_size = inout->must_size;
-                        break;
-                    }
-                case LYS_NOTIF:
-                    {
-                        struct lys_node_notif *notif = (struct lys_node_notif *)node;
-                        must = notif->must;
-                        must_size = notif->must_size;
-                        break;
-                    }
-                case LYS_LEAF:
-                case LYS_LEAFLIST:
-                    {
-                        struct lys_node_leaf *leaf = (struct lys_node_leaf *)node;
-                        if (NULL != leaf->when) {
-                            when = leaf->when->cond;
-                        }
-                        switch (leaf->type.base) {
-                            case LY_TYPE_INST:
-                                {
-                                    /* instance identifiers */
-                                    rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->inst_ids, module, node,
-                                                            MD_XPATH_MODULE_INST_ID);
-                                    CHECK_RC_MSG_RETURN(rc,
-                                            "Failed to add instance identifier reference into the dependency info.");
-                                    break;
-                                }
-                            case LY_TYPE_LEAFREF:
-                                {
-                                    /* leafref */
-                                    xpath = leaf->type.info.lref.path;
-                                    if (NULL != xpath) {
-                                        rc = md_collect_data_dependencies(md_ctx, xpath, dest_module, module,
-                                                node->module);
-                                        if (SR_ERR_OK != rc) {
-                                            return rc;
-                                        }
-                                    }
-                                    break;
-                                }
-                            case LY_TYPE_BINARY:
-                                if (NULL != leaf->type.info.binary.length) {
-                                    restr = leaf->type.info.binary.length->expr;
-                                }
-                                break;
-                            case LY_TYPE_DEC64:
-                                if (NULL != leaf->type.info.dec64.range) {
-                                    restr = leaf->type.info.dec64.range->expr;
-                                }
-                                break;
-                            case LY_TYPE_INT8:
-                            case LY_TYPE_UINT8:
-                            case LY_TYPE_INT16:
-                            case LY_TYPE_UINT16:
-                            case LY_TYPE_INT32:
-                            case LY_TYPE_UINT32:
-                            case LY_TYPE_INT64:
-                            case LY_TYPE_UINT64:
-                                if (NULL != leaf->type.info.num.range) {
-                                    restr = leaf->type.info.num.range->expr;
-                                }
-                                break;
-                            case LY_TYPE_STRING:
-                                {
-                                    if (NULL != leaf->type.info.str.length) {
-                                        restr = leaf->type.info.str.length->expr;
-                                    }
-                                    must = leaf->type.info.str.patterns;
-                                    must_size = leaf->type.info.str.pat_count;
-                                    for (size_t i = 0; i < must_size; ++i) {
-                                        rc = md_collect_data_dependencies(md_ctx, must[i].expr, dest_module, module,
-                                                node->module);
-                                        if (SR_ERR_OK != rc) {
-                                            return rc;
-                                        }
-                                    }
-                                    break;
-                                }
-                            default:
-                                break;
-                        }
-                        must = leaf->must;
-                        must_size = leaf->must_size;
-                        break;
-                    }
+                    break;
                 default:
                     break;
+                }
+                must = leaf->must;
+                must_size = leaf->must_size;
+                break;
+            }
+            default:
+                break;
             }
 
             /* when */
