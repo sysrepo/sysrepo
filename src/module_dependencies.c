@@ -1421,7 +1421,7 @@ cleanup:
  *        and data dependencies (and maybe more in the future as needed).
  */
 static int
-md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *root, bool augment)
+md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *root)
 {
     int rc = SR_ERR_OK;
     struct lys_node *node = NULL, *child = NULL, *parent = NULL;
@@ -1432,6 +1432,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
     struct lys_restr *must = NULL;
     size_t must_size = 0;
     bool backtracking = false;
+    bool augment = (root->nodetype == LYS_AUGMENT ? true : false);
     CHECK_NULL_ARG(md_ctx);
 
     if (NULL == root) {
@@ -2163,14 +2164,14 @@ dependencies:
 
     /* collect instance identifiers and operational data subtrees */
     if (!module->submodule) {
-        rc = md_traverse_schema_tree(md_ctx, module, module_schema->data, false);
+        rc = md_traverse_schema_tree(md_ctx, module, module_schema->data);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
     }
     for (uint32_t i = 0; i < module_schema->augment_size; ++i) {
         augment = module_schema->augment + i;
-        rc = md_traverse_schema_tree(md_ctx, main_module, (struct lys_node *)augment, true);
+        rc = md_traverse_schema_tree(md_ctx, main_module, (struct lys_node *)augment);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
