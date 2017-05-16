@@ -2569,14 +2569,8 @@ md_remove_module_internal(md_ctx_t *md_ctx, const char *name, const char *revisi
                 }
                 md_remove_module_internal(md_ctx, dep->dest->name, dep->dest->revision_date, true,
                         implicitly_removed);
-                /**
-                 * Restart the iteration. Recursive removal might have invalidated the pointer
-                 * and some successors.
-                 */
-                dep_node = module->deps->first;
-                continue;
             } else {
-                /* just remove edges pointing to this module */
+                /* just remove edges pointing to this module and this dependency */
                 dep_node2 = dep->dest->inv_deps->first;
                 while (dep_node2) {
                     dep2 = (md_dep_t *)dep_node2->data;
@@ -2590,9 +2584,16 @@ md_remove_module_internal(md_ctx_t *md_ctx, const char *name, const char *revisi
                     }
                     dep_node2 = dep_node2->next;
                 }
+
+                sr_llist_cleanup(dep->orig_modules);
+                free(dep);
+                sr_llist_rm(module->deps, dep_node);
             }
+
+            dep_node = module->deps->first;
+        } else {
+            dep_node = dep_node->next;
         }
-        dep_node = dep_node->next;
     }
 
     /* What is the latest revision for this module now? */
