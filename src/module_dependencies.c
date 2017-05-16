@@ -2097,9 +2097,9 @@ dependencies:
     for (uint32_t i = 0; i < module_schema->ident_size; ++i) {
         ident = module_schema->ident + i;
         for (uint8_t b = 0; b < ident->base_size; b++) {
-            if (ident->base && module_schema != lys_node_module(ident->base[b])) {
-                module_lkp.name = (char *)lys_node_module(ident->base[b])->name;
-                module_lkp.revision_date = (char *)md_get_module_revision(lys_node_module(ident->base[b]));
+            if (ident->base && module_schema != lys_node_module((struct lys_node *)ident->base[b])) {
+                module_lkp.name = (char *)lys_node_module((struct lys_node *)ident->base[b])->name;
+                module_lkp.revision_date = (char *)md_get_module_revision(lys_node_module((struct lys_node *)ident->base[b]));
                 module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
                 if (NULL == module2) {
                     SR_LOG_ERR_MSG("Unable to resolve dependency induced by a derived identity.");
