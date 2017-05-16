@@ -351,8 +351,8 @@ md_construct_lys_xpath(const struct lys_node *node_schema, char **xpath)
     while (NULL != cur_schema) {
         parent_schema = sr_lys_node_get_data_parent((struct lys_node *)cur_schema, false);
         length += 1 /* "/" */;
-        if (!parent_schema || 0 != strcmp(LYS_MAIN_MODULE(parent_schema)->name, LYS_MAIN_MODULE(cur_schema)->name)) {
-            length += strlen(LYS_MAIN_MODULE(cur_schema)->name) + 1 /* ":" */;
+        if (!parent_schema || 0 != strcmp(lys_node_module(parent_schema)->name, lys_node_module(cur_schema)->name)) {
+            length += strlen(lys_node_module(cur_schema)->name) + 1 /* ":" */;
         }
         length += strlen(cur_schema->name);
         cur_schema = parent_schema;
@@ -373,14 +373,14 @@ md_construct_lys_xpath(const struct lys_node *node_schema, char **xpath)
         length = strlen(cur_schema->name);
         cur -= length;
         memcpy(cur, cur_schema->name, length);
-        if (!parent_schema || 0 != strcmp(LYS_MAIN_MODULE(parent_schema)->name, LYS_MAIN_MODULE(cur_schema)->name)) {
+        if (!parent_schema || 0 != strcmp(lys_node_module(parent_schema)->name, lys_node_module(cur_schema)->name)) {
             /* separator */
             cur -= 1;
             *cur = ':';
             /* module */
-            length = strlen(LYS_MAIN_MODULE(cur_schema)->name);
+            length = strlen(lys_node_module(cur_schema)->name);
             cur -= length;
-            memcpy(cur, LYS_MAIN_MODULE(cur_schema)->name, length);
+            memcpy(cur, lys_node_module(cur_schema)->name, length);
         }
         /* separator */
         cur -= 1;
@@ -494,8 +494,8 @@ md_get_destination_module(md_ctx_t *md_ctx, md_module_t *module, const struct ly
     } while (parent);
 
     md_module_t module_lkp;
-    module_lkp.name = (char *)LYS_MAIN_MODULE(node)->name;
-    module_lkp.revision_date = (char *)md_get_module_revision(LYS_MAIN_MODULE(node));
+    module_lkp.name = (char *)lys_node_module(node)->name;
+    module_lkp.revision_date = (char *)md_get_module_revision(lys_node_module(node));
 
     if (NULL != module && NULL != module->name && 0 == strcmp(module_lkp.name, module->name) &&
         0 == strcmp(module_lkp.revision_date, module->revision_date)) {
@@ -1438,7 +1438,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
         return SR_ERR_OK;
     }
 
-    main_module_schema = LYS_MAIN_MODULE(root);
+    main_module_schema = lys_node_module(root);
     dest_module = (augment ? md_get_destination_module(md_ctx, module, root) : module);
     if (NULL == dest_module) {
         /* shouldn't happen as all imports are already processed */
@@ -1458,7 +1458,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
             /* go as deep as possible */
             if (process_children) {
                 while (!(node->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) && node->child
-                       && LYS_MAIN_MODULE(node->child) == main_module_schema) {
+                       && lys_node_module(node->child) == main_module_schema) {
                     node = node->child;
                 }
             }
@@ -1689,7 +1689,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                         /* a mix of configuration and operational data amongst children */
                         backtracking = false;
                         child = node->child;
-                        while ((NULL != child) && (main_module_schema == LYS_MAIN_MODULE(child)) && (child != node)) {
+                        while ((NULL != child) && (main_module_schema == lys_node_module(child)) && (child != node)) {
                             assert(!backtracking || (LYS_USES == child->nodetype));
                             if ((LYS_USES != child->nodetype) && (LYS_CONFIG_R & child->flags)) {
                                 /* child with state data */
@@ -1745,7 +1745,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
 next_node:
             /* backtracking + automatically moving to the next sibling if there is any */
             if (node != root) {
-                if (node->nodetype != LYS_AUGMENT && node->next && main_module_schema == LYS_MAIN_MODULE(node->next)) {
+                if (node->nodetype != LYS_AUGMENT && node->next && main_module_schema == lys_node_module(node->next)) {
                     node = node->next;
                     process_children = true;
                 } else {
@@ -1756,7 +1756,7 @@ next_node:
                     } else {
                         /* if processing augment, we must be able to go back through
                          * the augments from the same module */
-                        if (parent && main_module_schema == LYS_MAIN_MODULE(parent)) {
+                        if (parent && main_module_schema == lys_node_module(parent)) {
                             node = parent;
                         } else {
                             node = node->parent; /* should be NULL */
@@ -1769,7 +1769,7 @@ next_node:
                 break;
             }
         } while (node);
-    } while (!augment && NULL != (root = root->next) && LYS_MAIN_MODULE(root) == main_module_schema);
+    } while (!augment && NULL != (root = root->next) && lys_node_module(root) == main_module_schema);
 
     return SR_ERR_OK;
 }
@@ -2097,9 +2097,9 @@ dependencies:
     for (uint32_t i = 0; i < module_schema->ident_size; ++i) {
         ident = module_schema->ident + i;
         for (uint8_t b = 0; b < ident->base_size; b++) {
-            if (ident->base && module_schema != LYS_MAIN_MODULE(ident->base[b])) {
-                module_lkp.name = (char *)LYS_MAIN_MODULE(ident->base[b])->name;
-                module_lkp.revision_date = (char *)md_get_module_revision(LYS_MAIN_MODULE(ident->base[b]));
+            if (ident->base && module_schema != lys_node_module(ident->base[b])) {
+                module_lkp.name = (char *)lys_node_module(ident->base[b])->name;
+                module_lkp.revision_date = (char *)md_get_module_revision(lys_node_module(ident->base[b]));
                 module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
                 if (NULL == module2) {
                     SR_LOG_ERR_MSG("Unable to resolve dependency induced by a derived identity.");
@@ -2128,9 +2128,9 @@ dependencies:
     /* process dependencies introduced by augments */
     for (uint32_t i = 0; i < module_schema->augment_size; ++i) {
         augment = module_schema->augment + i;
-        if (augment->target && module_schema != LYS_MAIN_MODULE(augment->target)) {
-            module_lkp.name = (char *)LYS_MAIN_MODULE(augment->target)->name;
-            module_lkp.revision_date = (char *)md_get_module_revision(LYS_MAIN_MODULE(augment->target));
+        if (augment->target && module_schema != lys_node_module(augment->target)) {
+            module_lkp.name = (char *)lys_node_module(augment->target)->name;
+            module_lkp.revision_date = (char *)md_get_module_revision(lys_node_module(augment->target));
             module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
             if (NULL == module2) {
                 if (module->submodule && NULL != belongsto &&
