@@ -203,15 +203,6 @@ int sr_asprintf(char **strp, const char *fmt, ...);
 int sr_copy_first_ns(const char *xpath, char **namespace);
 
 /**
- * @brief Returns an allocated C-array of all top-most namespaces found in the given expression.
- *
- * @param [in] expr
- * @param [out] namespaces
- * @param [out] namespace_cnt
- */
-int sr_copy_first_ns_from_expr(const char *expr, char ***namespaces, size_t *namespace_cnt);
-
-/**
  * @brief Returns an allocated C-array of all namespaces found in the given expression.
  *
  * @param [in] expr
