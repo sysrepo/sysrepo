@@ -1571,17 +1571,6 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                         }
                     }
                     break;
-                case LY_TYPE_STRING:
-                    must = leaf->type.info.str.patterns;
-                    must_size = leaf->type.info.str.pat_count;
-                    for (size_t i = 0; i < must_size; ++i) {
-                        rc = md_collect_data_dependencies(md_ctx, must[i].expr, dest_module, module, being_parsed, node,
-                                LYXP_MUST);
-                        if (SR_ERR_OK != rc) {
-                            return rc;
-                        }
-                    }
-                    break;
                 default:
                     break;
                 }
