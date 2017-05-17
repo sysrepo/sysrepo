@@ -41,6 +41,12 @@ void createDataTreeTestModule();
 void createDataTreeIETFinterfacesModule();
 
 /**
+ * Creates ietf-interfaces data tree and writes it into a file for merging test
+ */
+
+void createDataTreeIETFinterfacesModuleMerge();
+
+/**
  * Creates example-module data tree and writes it into a file.
  */
 void createDataTreeExampleModule();

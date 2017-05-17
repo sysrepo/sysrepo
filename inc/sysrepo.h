@@ -241,6 +241,7 @@ typedef enum sr_error_e {
     SR_ERR_LOCKED,             /**< Requested resource is already locked. */
     SR_ERR_TIME_OUT,           /**< Time out has expired. */
     SR_ERR_RESTART_NEEDED,     /**< Sysrepo Engine restart is needed. */
+    SR_ERR_VERSION_MISMATCH,   /**< Incompatible client library used to communicate with sysrepo. */
 } sr_error_t;
 
 /**
@@ -617,7 +618,8 @@ typedef struct sr_schema_s {
     const char *module_name;         /**< Name of the module. */
     const char *ns;                  /**< Namespace of the module used in @ref xp_page "XPath". */
     const char *prefix;              /**< Prefix of the module. */
-    bool implemented;                /**< TRUE if the module is implemented (= explicitly installed),
+    bool installed;                  /**< TRUE if the module was explicitly installed. */
+    bool implemented;                /**< TRUE if the module is implemented (does not have to be installed),
                                           not just imported. */
 
     sr_sch_revision_t revision;      /**< Revision the module. */

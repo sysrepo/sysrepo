@@ -332,8 +332,11 @@ sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, con
     connection->type = type;
     connection->fd = fd;
 
-    /* set peer's effective uid and gid */
-    if (CM_AF_UNIX_SERVER != type) {
+    if (CM_AF_UNIX_SERVER == type) {
+        /* other side version was already verified, do not expect version-verification request */
+        connection->established = true;
+    } else { /* CM_AF_UNIX_CLIENT */
+        /* set peer's effective uid and gid */
         rc = sr_get_peer_eid(fd, &connection->uid, &connection->gid);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Cannot retrieve uid and gid of the peer.");

@@ -4,6 +4,8 @@ add_definitions(-DSWIGLUA)
 project(Sysrepo_Lua)
 
 add_library(Sysrepo_Lua SHARED ${SYSREPO_CPP_SOURCES})
+SET_TARGET_PROPERTIES(Sysrepo_Lua PROPERTIES
+              VERSION ${SYSREPO_VERSION} SOVERSION ${SYSREPO_SOVERSION})
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
@@ -28,7 +30,7 @@ set_target_properties(${SWIG_MODULE_${LUA_SWIG_BINDING}_REAL_NAME} PROPERTIES PR
 swig_link_libraries(${LUA_SWIG_BINDING} ${LUA_LIBRARIES} Sysrepo_Lua)
 
 # tests
-if (ENABLE_TESTS AND GEN_LUA_BINDINGS)
+if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
 
     set(LUA_TEST_MODULE "swig-test")
     set(LUA_TEST_MODULE_REV "2017-03-09")
@@ -36,6 +38,9 @@ if (ENABLE_TESTS AND GEN_LUA_BINDINGS)
     set(LUA_SWIG_DIR ${CMAKE_CURRENT_BINARY_DIR})
     set(LUA_TEST_DIR ${LUA_SWIG_DIR}/tests)
     set(LUA_YANG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/yang)
+
+    # make libsysrepoLua depend on sysrepoctl
+    add_dependencies(libsysrepoLua sysrepoctl)
 
     ADD_CUSTOM_COMMAND(
        TARGET libsysrepoLua

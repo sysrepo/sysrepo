@@ -102,6 +102,7 @@ typedef struct sm_connection_s {
     uid_t uid;                        /**< Peer's effective user ID. */
     gid_t gid;                        /**< Peer's effective group ID. */
     bool close_requested;             /**< Connection close requested. */
+    bool established;                 /**< Necessary checks done */
 
     sm_ctx_t *sm_ctx;                 /**< Associated Session Manager context. */
     cm_connection_ctx_t *cm_data;     /**< Connection Manager-related data. */

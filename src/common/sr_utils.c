@@ -224,78 +224,36 @@ sr_copy_first_ns(const char *xpath, char **namespace)
 }
 
 int
-sr_copy_first_ns_from_expr(const char *expr, char*** namespaces_p, size_t *namespace_cnt_p)
+sr_copy_all_ns(const char *xpath, char ***namespaces_p, size_t *ns_count_p)
 {
+    CHECK_NULL_ARG3(xpath, namespaces_p, ns_count_p);
+
     int rc = SR_ERR_OK;
-    const char *ns = NULL, *cur = NULL;
-    bool ignore = false, copied = false;
-    char **namespaces = NULL, **tmp = NULL;
-    size_t namespace_cnt = 0, namespace_size = 0, new_size = 0;
+    char *colon_pos, **tmp, **namespaces = NULL;
+    size_t ns_count = 0;
 
-    CHECK_NULL_ARG3(expr, namespaces_p, namespace_cnt_p);
+    if (xpath[0] != '/') {
+        return SR_ERR_INVAL_ARG;
+    }
 
-    cur = ns = expr;
-    while ('\0' != *cur) {
-        if (isspace(*cur) || NULL != strchr("[<>=+@$&|", *cur)) {
-            /* restart */
-            ignore = false;
-            ns = cur+1;
-        } else if ('\'' == *cur || '"' == *cur) {
-            if (!ignore) {
-                /* restart */
-                ns = cur+1;
-            }
-        } else if ('/' == *cur) {
-            if (ns < cur) {
-                ignore = true;
-            } else {
-                /* restart */
-                ns = cur+1;
-            }
-        } else if (']' == *cur) {
-            ignore = true;
-        } else if (':' == *cur) {
-            if (!ignore && ns < cur) {
-                copied = false;
-                for (size_t i = 0; i < namespace_cnt; ++i) {
-                    if (0 == strncmp(namespaces[i], ns, cur - ns)) {
-                        copied = true;
-                        break;
-                    }
-                }
-                if (false == copied) {
-                    if (namespace_cnt == namespace_size) {
-                        /* realloc */
-                        if (0 == namespace_size) {
-                            new_size = 2;
-                        } else {
-                            new_size = namespace_size * 2;
-                        }
-                        tmp = (char **)realloc(namespaces, (sizeof *namespaces) * new_size);
-                        CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
-                        namespaces = tmp;
-                        for (size_t i = namespace_size; i < new_size; ++i) {
-                            namespaces[i] = NULL;
-                        }
-                        namespace_size = new_size;
-                    }
-                    assert(namespace_cnt < namespace_size);
-                    namespaces[namespace_cnt] = strndup(ns, cur - ns);
-                    CHECK_NULL_NOMEM_GOTO(namespaces[namespace_cnt], rc, cleanup);
-                    ++namespace_cnt;
-                }
-            }
-            ignore = true;
-        }
-        ++cur;
+    while ((colon_pos = strchr(xpath, ':'))) {
+        for (xpath = colon_pos; isalnum(xpath[-1]) || (xpath[-1] == '_') || (xpath[-1] == '-') || (xpath[-1] == '.'); --xpath);
+        tmp = realloc(namespaces, ++ns_count * sizeof *namespaces);
+        CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
+        namespaces = tmp;
+
+        namespaces[ns_count - 1] = strndup(xpath, colon_pos - xpath);
+        CHECK_NULL_NOMEM_GOTO(namespaces[ns_count - 1], rc, cleanup);
+
+        xpath = colon_pos + 1;
     }
 
 cleanup:
     if (SR_ERR_OK == rc) {
         *namespaces_p = namespaces;
-        *namespace_cnt_p = namespace_cnt;
+        *ns_count_p = ns_count;
     } else {
-        for (size_t i = 0; i < namespace_cnt; ++i) {
+        for (size_t i = 0; i < ns_count; ++i) {
             free(namespaces[i]);
         }
         free(namespaces);

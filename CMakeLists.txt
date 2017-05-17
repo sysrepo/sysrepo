@@ -5,9 +5,10 @@ include(GNUInstallDirs)
 
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
-set(SYSREPO_MINOR_VERSION 5)
-set(SYSREPO_MICRO_VERSION 11)
+set(SYSREPO_MINOR_VERSION 6)
+set(SYSREPO_MICRO_VERSION 1)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
+set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION})
 
 # osx specific
 set(CMAKE_MACOSX_RPATH TRUE)
@@ -224,6 +225,7 @@ if(ENABLE_TESTS)
         add_subdirectory(tests)
     else(CMOCKA_FOUND)
         MESSAGE(WARNING "CMocka not found, tests are disabled.")
+        SET(ENABLE_TESTS false)
     endif(CMOCKA_FOUND)
 endif(ENABLE_TESTS)
 
@@ -304,6 +306,7 @@ endif()
 
 INSTALL_YANG("ietf-netconf-notifications" "" "666")
 INSTALL_YANG("nc-notifications" "" "666")
+INSTALL_YANG("notifications" "" "666")
 
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(swig)

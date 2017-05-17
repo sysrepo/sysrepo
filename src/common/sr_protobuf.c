@@ -39,6 +39,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "session-switch-ds";
     case SR__OPERATION__SESSION_SET_OPTS:
         return "session-set-opts";
+    case SR__OPERATION__VERSION_VERIFY:
+        return "version-verify";
     case SR__OPERATION__LIST_SCHEMAS:
         return "list-schemas";
     case SR__OPERATION__GET_SCHEMA:
@@ -183,6 +185,12 @@ sr_gpb_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uint
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__session_set_opts_req__init((Sr__SessionSetOptsReq*)sub_msg);
             req->session_set_opts_req = (Sr__SessionSetOptsReq*)sub_msg;
+            break;
+        case SR__OPERATION__VERSION_VERIFY:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__VersionVerifyReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__version_verify_req__init((Sr__VersionVerifyReq*)sub_msg);
+            req->version_verify_req = (Sr__VersionVerifyReq*)sub_msg;
             break;
         case SR__OPERATION__LIST_SCHEMAS:
             sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__ListSchemasReq));
@@ -445,6 +453,12 @@ sr_gpb_resp_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uin
            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
            sr__session_set_opts_resp__init((Sr__SessionSetOptsResp*)sub_msg);
            resp->session_set_opts_resp = (Sr__SessionSetOptsResp*)sub_msg;
+           break;
+        case SR__OPERATION__VERSION_VERIFY:
+           sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__VersionVerifyResp));
+           CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+           sr__version_verify_resp__init((Sr__VersionVerifyResp*)sub_msg);
+           resp->version_verify_resp = (Sr__VersionVerifyResp*)sub_msg;
            break;
         case SR__OPERATION__LIST_SCHEMAS:
             sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__ListSchemasResp));
@@ -907,6 +921,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__SESSION_SET_OPTS:
                 CHECK_NULL_RETURN(msg->request->session_set_opts_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__VERSION_VERIFY:
+                CHECK_NULL_RETURN(msg->request->version_verify_req, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__LIST_SCHEMAS:
                 CHECK_NULL_RETURN(msg->request->list_schemas_req, SR_ERR_MALFORMED_MSG);
                 break;
@@ -1019,6 +1036,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__SESSION_SET_OPTS:
                 CHECK_NULL_RETURN(msg->response->session_set_opts_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__VERSION_VERIFY:
+                CHECK_NULL_RETURN(msg->response->version_verify_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__LIST_SCHEMAS:
                 CHECK_NULL_RETURN(msg->response->list_schemas_resp, SR_ERR_MALFORMED_MSG);
@@ -2449,6 +2469,7 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
                 CHECK_NULL_NOMEM_GOTO(schemas[i]->prefix, rc, cleanup);
             }
         }
+        schemas[i]->installed = sr_schemas[i].installed;
         schemas[i]->implemented = sr_schemas[i].implemented;
 
         schemas[i]->revision = sr_calloc(sr_mem, 1, sizeof (*schemas[i]->revision));
@@ -2612,6 +2633,7 @@ sr_schemas_gpb_to_sr(sr_mem_ctx_t *sr_mem, const Sr__Schema **gpb_schemas, const
                 CHECK_NULL_NOMEM_GOTO(schemas[i].prefix, rc, cleanup);
             }
         }
+        schemas[i].installed = gpb_schemas[i]->installed;
         schemas[i].implemented = gpb_schemas[i]->implemented;
 
         if (NULL != gpb_schemas[i]->revision->revision) {

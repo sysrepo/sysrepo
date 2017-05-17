@@ -445,6 +445,14 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
         SR_LOG_INF("Connected to daemon Sysrepo Engine at socket=%s", SR_DAEMON_SOCKET);
     }
 
+    /*
+     * version verification
+     */
+    rc = cl_version_verify(connection);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
+
     if (NULL != cm_ctx) {
         local_cm_ctx = cm_ctx;
     }

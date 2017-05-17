@@ -216,6 +216,19 @@ message SessionSetOptsReq {
 message SessionSetOptsResp {
 }
 
+/**
+ * @brief Request to verify version compatibility.
+ */
+message VersionVerifyReq {
+  required string soname = 1;
+}
+
+/**
+ * @brief Response to version verification.
+ */
+ message VersionVerifyResp {
+   optional string soname = 1;    /**< server-side SONAME version in case of versions incompatibility. */
+ }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Data Retrieval API (get / get-config functionality)
@@ -244,12 +257,14 @@ message Schema {
   required string module_name = 1;           /**< Name of the module. */
   required string ns = 2;                    /**< Namespace of the module. */
   required string prefix = 3;                /**< Prefix of he module. */
-  required bool implemented = 4;             /**< TRUE for explicitly installed modules. */
+  required bool installed = 4;               /**< TRUE only for explicitly installed modules (those are always implemented). */
+  required bool implemented = 5;             /**< TRUE for implemented modules (do not have to be installed if they have augments,
+                                                  deviations or are targets for leafrefs of other implemented modules). */
 
-  required SchemaRevision revision = 5;      /**< Revision of the module*/
-  repeated SchemaSubmodule submodules = 6;   /**< Submodules */
+  required SchemaRevision revision = 6;      /**< Revision of the module*/
+  repeated SchemaSubmodule submodules = 7;   /**< Submodules */
 
-  repeated string enabled_features = 7;      /**< Features enabled for the module */
+  repeated string enabled_features = 8;      /**< Features enabled for the module */
 }
 
 /**
@@ -940,6 +955,7 @@ enum Operation {
   SESSION_CHECK = 13;
   SESSION_SWITCH_DS = 14;
   SESSION_SET_OPTS = 15;
+  VERSION_VERIFY = 16;
 
   LIST_SCHEMAS = 20;
   GET_SCHEMA = 21;
@@ -1000,6 +1016,7 @@ message Request {
   optional SessionCheckReq session_check_req = 13;
   optional SessionSwitchDsReq session_switch_ds_req = 14;
   optional SessionSetOptsReq session_set_opts_req = 15;
+  optional VersionVerifyReq version_verify_req = 16;
 
   optional ListSchemasReq list_schemas_req = 20;
   optional GetSchemaReq get_schema_req = 21;
@@ -1052,6 +1069,7 @@ message Response {
   optional SessionCheckResp session_check_resp = 13;
   optional SessionSwitchDsResp session_switch_ds_resp = 14;
   optional SessionSetOptsResp session_set_opts_resp = 15;
+  optional VersionVerifyResp version_verify_resp = 16;
 
   optional ListSchemasResp list_schemas_resp = 20;
   optional GetSchemaResp get_schema_resp = 21;
@@ -1152,7 +1170,7 @@ message Msg {
   }
 
   required MsgType type = 1;                      /**< Indicates type of the message. */
-  required uint32 session_id = 2;                 /**< Session identifier. Can be 0 (value is ignored) for session_start request. */
+  required uint32 session_id = 2;                 /**< Session identifier. Can be 0 (value is ignored) for session_start and version_verify requests. */
 
   optional Request request = 3;                   /**< Filled in in case of type == REQUEST. */
   optional Response response = 4;                 /**< Filled in in case of type == RESPONSE. */

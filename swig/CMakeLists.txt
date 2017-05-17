@@ -96,6 +96,8 @@ set(SYSREPO_H_SOURCES
 	${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.h)
 
 add_library(Sysrepo-cpp SHARED ${SYSREPO_CPP_SOURCES})
+SET_TARGET_PROPERTIES(Sysrepo-cpp PROPERTIES
+              VERSION ${SYSREPO_VERSION} SOVERSION ${SYSREPO_SOVERSION})
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
@@ -112,6 +114,31 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src/" DESTINATION ${CMAKE_INS
 # Examples
 if(GEN_CPP_BINDINGS AND BUILD_CPP_EXAMPLES)
 	add_subdirectory(cpp/examples)
+
+    if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
+        add_subdirectory(cpp/tests)
+
+        # make Sysrepo-cpp depend on sysrepoctl
+        add_dependencies(Sysrepo-cpp sysrepoctl)
+	
+        macro(INSTALL_YANG MODULE_NAME MODULE_REVISION)
+
+          set(CPP_TEST_MODULE ${MODULE_NAME})
+          set(CPP_TEST_MODULE_REV ${MODULE_REVISION} )
+          set(CPP_SWIG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+          set(CPP_TEST_DIR ${CPP_SWIG_DIR}/tests)
+          set(CPP_YANG_DIR ${CPP_TEST_DIR}/yang)
+
+          ADD_CUSTOM_COMMAND(
+            TARGET Sysrepo-cpp
+            POST_BUILD
+            COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CPP_YANG_DIR}/${CPP_TEST_MODULE}@${CPP_TEST_MODULE_REV}.yang
+            VERBATIM)
+        endmacro(INSTALL_YANG)
+
+        INSTALL_YANG("swig-test-cpp-changes"    "2017-03-09")
+        INSTALL_YANG("swig-test-cpp-operations" "2017-03-09")
+    endif()
 endif()
 
 if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "2")

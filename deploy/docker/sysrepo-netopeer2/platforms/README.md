@@ -2,7 +2,7 @@
 
 Run `sysrepod` and `netopeer2-server` in the container:
 ```
-docker run -it --name sysrepo -p 830:6001 --rm sysrepo/sysrepo-netopeer2:latest
+docker run -it --name sysrepo -p 830:830 --rm sysrepo/sysrepo-netopeer2:latest
 ```
 
 On the devel branch the default port is 830.
