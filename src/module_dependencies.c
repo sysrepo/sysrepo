@@ -1322,61 +1322,48 @@ md_get_module_info_by_ns(const md_ctx_t *md_ctx, const char *namespace, md_modul
     return SR_ERR_OK;
 }
 
-static md_module_t *
-md_get_imported_module(const md_ctx_t *md_ctx, const struct lys_module *orig_module, const char *name)
-{
-    md_module_t *imp_module = NULL;
-    struct lys_module *imp_module_schema = NULL;
-    md_module_t module_lkp = { 0, };
-
-    for (size_t i = 0; i < orig_module->imp_size; ++i) {
-        imp_module_schema = orig_module->imp[i].module;
-        if (0 == strcmp(imp_module_schema->name, name)) {
-            module_lkp.name = (char *)imp_module_schema->name;
-            module_lkp.revision_date = (char *)md_get_module_revision(imp_module_schema);
-            break;
-        }
-    }
-
-    if (NULL == module_lkp.name || NULL == module_lkp.revision_date) {
-        /* try transitive imports */
-        for (size_t i = 0; i < orig_module->imp_size; ++i) {
-            imp_module_schema = orig_module->imp[i].module;
-            imp_module = md_get_imported_module(md_ctx, imp_module_schema, name);
-            if (NULL != imp_module) {
-                return imp_module;
-            }
-        }
-    }
-
-    if (NULL == module_lkp.name || NULL == module_lkp.revision_date) {
-        /* not found */
-        return NULL;
-    }
-
-    imp_module = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
-    return imp_module;
-}
-
 static int
 md_collect_data_dependencies(md_ctx_t *md_ctx, const char *ref, md_module_t *module, md_module_t *orig_module,
-        const struct lys_module *orig_module_schema)
+        sr_list_t *being_parsed, const struct lys_node *cur_node, int lyxp_opts)
 {
     int rc = SR_ERR_OK;
     md_module_t *module2 = NULL;
-    char **namespaces = NULL;
-    size_t namespace_cnt = 0;
+    struct ly_set *set = NULL;
+    struct lys_node *parent = NULL;
 
-    CHECK_NULL_ARG5(md_ctx, ref, module, orig_module, orig_module_schema);
+    CHECK_NULL_ARG5(md_ctx, ref, module, orig_module, cur_node);
 
-    rc = sr_copy_first_ns_from_expr(ref, &namespaces, &namespace_cnt);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get the list of prefixes from an expression");
+    if (cur_node->nodetype == LYS_AUGMENT) {
+        cur_node = ((struct lys_node_augment *)cur_node)->target;
+    }
 
-    for (size_t i = 0; i < namespace_cnt; ++i) {
-        module2 = md_get_imported_module(md_ctx, orig_module_schema, namespaces[i]);
-        if (NULL == module2) {
-            SR_LOG_WRN_MSG("Failed to get the module schema based on the prefix");
-            continue;
+    /* we should have all the required schemas in cur_node context */
+    set = lys_xpath_atomize(cur_node, LYXP_NODE_ELEM, ref, lyxp_opts);
+    if (NULL == set) {
+        SR_LOG_ERR_MSG("Failed to parse an expression");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    for (size_t i = 0; i < set->number; ++i) {
+        /* find the top-level parent to avoid requiring non-existing data from augment modules */
+        for (parent = set->set.s[i]; lys_parent(parent); parent = lys_parent(parent));
+        module2 = NULL;
+
+        /* first traverse currently parsed modules */
+        for (size_t j = 0; j < being_parsed->count; ++j) {
+            if (0 == strcmp(lys_node_module(parent)->name, ((md_module_t *)being_parsed->data[j])->name)) {
+                module2 = (md_module_t *)being_parsed->data[j];
+                break;
+            }
+        }
+        /* then try the whole md context */
+        if (!module2) {
+            rc = md_get_module_info(md_ctx, lys_node_module(parent)->name, "", &module2);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN_MSG("Failed to get the module schema based on the prefix");
+                continue;
+            }
         }
         if (module == module2) {
             continue;
@@ -1409,10 +1396,7 @@ md_collect_data_dependencies(md_ctx_t *md_ctx, const char *ref, md_module_t *mod
     }
 
 cleanup:
-    for (size_t i = 0; i < namespace_cnt; ++i) {
-        free(namespaces[i]);
-    }
-    free(namespaces);
+    ly_set_free(set);
     return rc;
 }
 
@@ -1421,23 +1405,25 @@ cleanup:
  *        and data dependencies (and maybe more in the future as needed).
  */
 static int
-md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *root)
+md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *root, sr_list_t *being_parsed)
 {
     int rc = SR_ERR_OK;
     struct lys_node *node = NULL, *child = NULL, *parent = NULL;
     const struct lys_module *main_module_schema = NULL;
     md_module_t *dest_module = NULL;
     bool process_children = true;
-    const char *when = NULL, *xpath = NULL, *restr = NULL;
+    const char *when = NULL, *xpath = NULL;
     struct lys_restr *must = NULL;
     size_t must_size = 0;
     bool backtracking = false;
-    bool augment = (root->nodetype == LYS_AUGMENT ? true : false);
+    bool augment = false;
     CHECK_NULL_ARG(md_ctx);
 
     if (NULL == root) {
         return SR_ERR_OK;
     }
+
+    augment = (root->nodetype == LYS_AUGMENT ? true : false);
 
     main_module_schema = lys_node_module(root);
     dest_module = (augment ? md_get_destination_module(md_ctx, module, root) : module);
@@ -1468,7 +1454,6 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
             when = NULL;
             must_size = 0;
             must = NULL;
-            restr = NULL;
             switch (node->nodetype) {
             case LYS_CONTAINER:
             {
@@ -1520,7 +1505,8 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                     must = uses->refine[i].must;
                     must_size = uses->refine[i].must_size;
                     for (size_t j = 0; j < must_size; ++j) {
-                        rc = md_collect_data_dependencies(md_ctx, must[j].expr, dest_module, module, node->module);
+                        rc = md_collect_data_dependencies(md_ctx, must[j].expr, dest_module, module, being_parsed, node,
+                                                          LYXP_MUST);
                         if (SR_ERR_OK != rc) {
                             return rc;
                         }
@@ -1572,50 +1558,25 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                 case LY_TYPE_INST:
                     /* instance identifiers */
                     rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->inst_ids, module, node,
-                                            MD_XPATH_MODULE_INST_ID);
-                    CHECK_RC_MSG_RETURN(rc,
-                            "Failed to add instance identifier reference into the dependency info.");
+                            MD_XPATH_MODULE_INST_ID);
+                    CHECK_RC_MSG_RETURN(rc, "Failed to add instance identifier reference into the dependency info.");
                     break;
                 case LY_TYPE_LEAFREF:
                     /* leafref */
                     xpath = leaf->type.info.lref.path;
                     if (NULL != xpath) {
-                        rc = md_collect_data_dependencies(md_ctx, xpath, dest_module, module, node->module);
+                        rc = md_collect_data_dependencies(md_ctx, xpath, dest_module, module, being_parsed, node, 0);
                         if (SR_ERR_OK != rc) {
                             return rc;
                         }
                     }
                     break;
-                case LY_TYPE_BINARY:
-                    if (NULL != leaf->type.info.binary.length) {
-                        restr = leaf->type.info.binary.length->expr;
-                    }
-                    break;
-                case LY_TYPE_DEC64:
-                    if (NULL != leaf->type.info.dec64.range) {
-                        restr = leaf->type.info.dec64.range->expr;
-                    }
-                    break;
-                case LY_TYPE_INT8:
-                case LY_TYPE_UINT8:
-                case LY_TYPE_INT16:
-                case LY_TYPE_UINT16:
-                case LY_TYPE_INT32:
-                case LY_TYPE_UINT32:
-                case LY_TYPE_INT64:
-                case LY_TYPE_UINT64:
-                    if (NULL != leaf->type.info.num.range) {
-                        restr = leaf->type.info.num.range->expr;
-                    }
-                    break;
                 case LY_TYPE_STRING:
-                    if (NULL != leaf->type.info.str.length) {
-                        restr = leaf->type.info.str.length->expr;
-                    }
                     must = leaf->type.info.str.patterns;
                     must_size = leaf->type.info.str.pat_count;
                     for (size_t i = 0; i < must_size; ++i) {
-                        rc = md_collect_data_dependencies(md_ctx, must[i].expr, dest_module, module, node->module);
+                        rc = md_collect_data_dependencies(md_ctx, must[i].expr, dest_module, module, being_parsed, node,
+                                LYXP_MUST);
                         if (SR_ERR_OK != rc) {
                             return rc;
                         }
@@ -1634,7 +1595,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
 
             /* when */
             if (NULL != when) {
-                rc = md_collect_data_dependencies(md_ctx, when, dest_module, module, node->module);
+                rc = md_collect_data_dependencies(md_ctx, when, dest_module, module, being_parsed, node, LYXP_WHEN);
                 if (SR_ERR_OK != rc) {
                     return rc;
                 }
@@ -1642,13 +1603,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
 
             /* must */
             for (size_t i = 0; NULL != must && i < must_size; ++i) {
-                rc = md_collect_data_dependencies(md_ctx, must[i].expr, dest_module, module, node->module);
-                if (SR_ERR_OK != rc) {
-                    return rc;
-                }
-            }
-            if (NULL != restr) {
-                rc = md_collect_data_dependencies(md_ctx, restr, dest_module, module, node->module);
+                rc = md_collect_data_dependencies(md_ctx, must[i].expr, dest_module, module, being_parsed, node, LYXP_MUST);
                 if (SR_ERR_OK != rc) {
                     return rc;
                 }
@@ -1771,7 +1726,7 @@ next_node:
  */
 static int
 md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, const char *revision, bool installed,
-                     bool implemented, md_module_t *belongsto, sr_list_t *implicitly_inserted)
+                     bool implemented, md_module_t *belongsto, sr_list_t *implicitly_inserted, sr_list_t *being_parsed)
 {
     int rc = SR_ERR_INTERNAL;
     struct ly_ctx *tmp_ly_ctx = NULL;
@@ -1975,6 +1930,9 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
         goto cleanup;
     }
 
+    rc = sr_list_add(being_parsed, module);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "sr_list_add failed");
+
 dependencies:
     /* Recursivelly insert all include-based dependencies. */
     for (size_t i = 0; i < module_schema->inc_size; i++) {
@@ -1983,7 +1941,7 @@ dependencies:
             continue;
         }
         rc = md_insert_lys_module(md_ctx, (struct lys_module *)inc->submodule, md_get_inc_revision(inc), installed,
-                                  implemented, module->submodule ? belongsto : module, implicitly_inserted);
+                                  implemented, module->submodule ? belongsto : module, implicitly_inserted, being_parsed);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
@@ -2020,7 +1978,7 @@ dependencies:
         }
         /* non-implemented dependency will have all dependencies only imported */
         rc = md_insert_lys_module(md_ctx, imp_module_schema, md_get_module_revision(imp_module_schema), false,
-                                  implemented ? imp->module->implemented : false, NULL, implicitly_inserted);
+                                  implemented ? imp->module->implemented : false, NULL, implicitly_inserted, being_parsed);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
@@ -2155,25 +2113,27 @@ dependencies:
 
     /* collect instance identifiers and operational data subtrees */
     if (!module->submodule) {
-        rc = md_traverse_schema_tree(md_ctx, module, module_schema->data);
+        rc = md_traverse_schema_tree(md_ctx, module, module_schema->data, being_parsed);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
     }
     for (uint32_t i = 0; i < module_schema->augment_size; ++i) {
         augment = module_schema->augment + i;
-        rc = md_traverse_schema_tree(md_ctx, main_module, (struct lys_node *)augment);
+        rc = md_traverse_schema_tree(md_ctx, main_module, (struct lys_node *)augment, being_parsed);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
     }
 
-    /* process dependencies introduces by deviations */
+    /* process dependencies introduced by deviations */
     for (uint32_t i = 0; i < module_schema->deviation_size; ++i) {
         struct lys_deviate *deviate = module_schema->deviation[i].deviate;
         if (NULL != deviate) {
             for (size_t j = 0; j < deviate->must_size; ++j) {
-                rc = md_collect_data_dependencies(md_ctx, deviate->must[j].expr, main_module, main_module, module_schema);
+                /* orig_node will fail to be traversed further for relative paths, lets hope it will not come to that */
+                rc = md_collect_data_dependencies(md_ctx, deviate->must[j].expr, main_module, main_module,
+                                                  being_parsed, module_schema->deviation[i].orig_node, LYXP_MUST);
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
                 }
@@ -2236,8 +2196,11 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath, sr_list_t **implicitly_
     struct ly_ctx *tmp_ly_ctx = NULL;
     const struct lys_module *module_schema = NULL;
     sr_list_t *implicitly_inserted = NULL;
+    sr_list_t *being_parsed = NULL;
 
     rc = sr_list_init(&implicitly_inserted);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
+    rc = sr_list_init(&being_parsed);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     /* Use a separate context for module schema processing */
@@ -2259,7 +2222,10 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath, sr_list_t **implicitly_
 
     /* insert module into the dependency graph */
     rc = md_insert_lys_module(md_ctx, module_schema, md_get_module_revision(module_schema), true, true, NULL,
-                              implicitly_inserted);
+                              implicitly_inserted, being_parsed);
+    sr_list_cleanup(being_parsed);
+    being_parsed = NULL;
+
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
@@ -2282,6 +2248,7 @@ cleanup:
     if (SR_ERR_OK != rc || NULL == implicitly_inserted_p) {
         md_free_module_key_list(implicitly_inserted);
     }
+    sr_list_cleanup(being_parsed);
     return rc;
 }
 
