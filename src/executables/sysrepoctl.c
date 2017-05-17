@@ -357,20 +357,21 @@ srctl_update_socket_dir_permissions(const char *module_name)
     /* create the parent directory if it does not exist */
     strncat(path, SR_SUBSCRIPTIONS_SOCKET_DIR, PATH_MAX - 1);
     strncat(path, "/", PATH_MAX - strlen(path) - 1);
-    if (-1 == access(path, F_OK)) {
-        old_umask = umask(0);
-        ret = mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
-        umask(old_umask);
+
+    old_umask = umask(0);
+    ret = mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
+    umask(old_umask);
+    if (-1 == ret && EEXIST != errno) {
         CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", path, sr_strerror_safe(errno));
     }
 
     /* create the module directory if it does not exist */
     strncat(path, module_name, PATH_MAX - strlen(path) - 1);
     strncat(path, "/", PATH_MAX - strlen(path) - 1);
-    if (-1 == access(path, F_OK)) {
-        old_umask = umask(0);
-        ret = mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
-        umask(old_umask);
+    old_umask = umask(0);
+    ret = mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
+    umask(old_umask);
+    if (-1 == ret && EEXIST != errno) {
         CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", path, sr_strerror_safe(errno));
     }
 
