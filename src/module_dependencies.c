@@ -1652,7 +1652,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                                 child = child->next;
                             } else {
                                 backtracking = true;
-                                child = child->parent;
+                                child = lys_parent(child);
                             }
                         }
                     } else {
