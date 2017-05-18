@@ -116,7 +116,8 @@ sr_node_t_get_child(const sr_node_t *node, size_t index)
         ++i;
         child = child->next;
     }
-    assert_true_bt(false && "index out of range");
+    /* index out of range */
+    assert_true_bt(false);
     return NULL;
 }
 
