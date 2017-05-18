@@ -705,8 +705,8 @@ verify_existence_of_log_msg(const char *msg_re, bool should_exist)
 
     do {
         pthread_mutex_lock(&log_history.lock);
-        for (size_t i = already_checked; !exists && (i < log_history.logs->count); ++i) {
-            char *message = (char *)log_history.logs->data[i];
+        for (; !exists && (already_checked < log_history.logs->count); ++already_checked) {
+            char *message = (char *)log_history.logs->data[already_checked];
             regex_t re;
             /* Compile regular expression */
             assert_int_equal_bt(0, regcomp(&re, msg_re, REG_NOSUB | REG_EXTENDED));
@@ -722,7 +722,6 @@ verify_existence_of_log_msg(const char *msg_re, bool should_exist)
 #endif
             regfree(&re);
         }
-        already_checked = log_history.logs->count;
         pthread_mutex_unlock(&log_history.lock);
         ++attempt;
         if (should_exist && !exists) {

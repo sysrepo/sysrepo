@@ -1759,6 +1759,7 @@ main(int argc, char* argv[])
     char module_name_xpath[PATH_MAX];
     char *xpathvalue = NULL;
     char **xpathdel = NULL;
+    void *reallocated;
     int xpathdel_count = 0;
 
     struct option longopts[] = {
@@ -1856,7 +1857,9 @@ main(int argc, char* argv[])
             case 'r':
                 operation = SRCFG_OP_DELETE_XPATH;
                 if (NULL != optarg && 0 != strcmp("-", optarg)) {
-                    xpathdel = realloc(xpathdel, sizeof(char *) * (xpathdel_count + 1));
+                    reallocated = realloc(xpathdel, sizeof(char *) * (xpathdel_count + 1));
+                    CHECK_NULL_NOMEM_GOTO(reallocated, rc, terminate);
+                    xpathdel = reallocated;
                     xpathdel[xpathdel_count] = strdup(optarg);
                     xpathdel_count++;
                 }

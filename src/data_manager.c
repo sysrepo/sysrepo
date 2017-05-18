@@ -2600,13 +2600,6 @@ dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *i
             lyd_free_withsiblings(info->node);
 
             info->node = sr_dup_datatree_to_ctx(data_tree, info->schema->ly_ctx);
-
-            /* free data tree */
-            lyd_free_withsiblings(data_tree);
-
-            /* release working context */
-            dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
-
         }
     } else {
         if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
@@ -2621,6 +2614,10 @@ cleanup:
     sr_list_cleanup(required_data);
     sr_list_cleanup(data_for_validation);
     free(should_be_freed);
+    lyd_free_withsiblings(data_tree);
+    if (tmp_ctx) {
+        dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
+    }
     if (validation_failed) {
         rc = SR_ERR_VALIDATION_FAILED;
     }
@@ -6079,7 +6076,6 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     int rc = SR_ERR_OK;
     dm_tmp_ly_ctx_t *tmp_ctx = NULL;
     struct ly_ctx *ly_ctx = NULL, *tmp_ly_ctx = NULL;
-    bool locked = false;
 
     CHECK_NULL_ARG4(dm_ctx, session, notification, notification->xpath);
 
@@ -6112,7 +6108,6 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to acquire tmp ly_ctx");
 
         md_ctx_lock(dm_ctx->md_ctx, false);
-        locked = true;
         ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
 
         xml = lyxml_parse_mem(tmp_ctx->ctx, notification->data.string, 0);
@@ -6165,7 +6160,7 @@ cleanup:
     }
     lyd_free_withsiblings(data_tree);
     ly_ctx_destroy(tmp_ly_ctx, NULL);
-    if (locked) {
+    if (tmp_ctx) {
         md_ctx_unlock(dm_ctx->md_ctx);
         dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
     }
@@ -6638,7 +6633,6 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
     dm_tmp_ly_ctx_t *tmp_ctx = NULL;
     struct lyd_node *tmp_notif = NULL;
     sr_list_t *models = NULL;
-    bool locked = false;
     struct ly_set *set = NULL;
     char **module_names = NULL, *module_name = NULL;
     size_t module_name_count = 0;
@@ -6679,7 +6673,6 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to acquire tmp ly_ctx");
 
     md_ctx_lock(dm_ctx->md_ctx, false);
-    locked = true;
     ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
 
     tmp_notif = sr_dup_datatree_to_ctx(notif, tmp_ctx->ctx);
@@ -6694,10 +6687,8 @@ cleanup:
     ly_set_free(set);
     sr_free_list_of_strings(models);
     lyd_free_withsiblings(tmp_notif);
-    if (locked) {
+    if (tmp_ctx) {
         md_ctx_unlock(dm_ctx->md_ctx);
-    }
-    if (NULL != tmp_ctx) {
         dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
     }
 

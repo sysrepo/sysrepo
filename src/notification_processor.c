@@ -1321,14 +1321,14 @@ np_get_module_change_subscriptions(np_ctx_t *np_ctx, const ac_ucred_t *user_cred
         }
     }
 
-    return SR_ERR_OK;
-
 cleanup:
 
     np_subscriptions_list_cleanup(subscriptions_list_1);
     np_subscriptions_list_cleanup(subscriptions_list_2);
-    np_subscriptions_list_cleanup(*subscriptions_list);
-    *subscriptions_list = NULL;
+    if (SR_ERR_OK != rc) {
+        np_subscriptions_list_cleanup(*subscriptions_list);
+        *subscriptions_list = NULL;
+    }
 
     return rc;
 }
