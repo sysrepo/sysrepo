@@ -238,9 +238,10 @@ sr_copy_all_ns(const char *xpath, char ***namespaces_p, size_t *ns_count_p)
 
     while ((colon_pos = strchr(xpath, ':'))) {
         for (xpath = colon_pos; isalnum(xpath[-1]) || (xpath[-1] == '_') || (xpath[-1] == '-') || (xpath[-1] == '.'); --xpath);
-        tmp = realloc(namespaces, ++ns_count * sizeof *namespaces);
+        tmp = realloc(namespaces, (ns_count + 1) * sizeof *namespaces);
         CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
         namespaces = tmp;
+        ns_count++;
 
         namespaces[ns_count - 1] = strndup(xpath, colon_pos - xpath);
         CHECK_NULL_NOMEM_GOTO(namespaces[ns_count - 1], rc, cleanup);
