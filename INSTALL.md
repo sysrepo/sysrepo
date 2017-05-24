@@ -105,6 +105,10 @@ $ cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
 ```
 $ cmake -DCMAKE_BUILD_TYPE=Debug ..
 ```
+By default, a debug build results in a prefixed installation.
+The repository is placed in the build directory, and so are the PID files and other runtime data.
+To enable a debug build while still using the systemwide installation of sysrepo, pass the ``-DIS_DEVELOPER_CONFIGURATION=OFF`` to CMake.
+
 3) Build:
 ```
 $ make
