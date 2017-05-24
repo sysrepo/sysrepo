@@ -1929,7 +1929,7 @@ dm_load_dependant_data(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *
         ll_node = module->deps->first;
         while (ll_node) {
             dep = (md_dep_t *)ll_node->data;
-            if (MD_DEP_DATA == dep->type && dep->dest->latest_revision && dep->dest->has_data) {
+            if (MD_DEP_DATA == dep->type && dep->dest->implemented && dep->dest->has_data) {
                 const char *dependant_module = dep->dest->name;
                 rc = dm_append_data_tree(session->dm_ctx, session, info, dependant_module);
                 CHECK_RC_LOG_GOTO(rc, unlock, "Failed to append data tree %s", dependant_module);
@@ -4570,7 +4570,7 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
     ll_node = module->inv_deps->first;
     while (ll_node) {
         dep = (md_dep_t *) ll_node->data;
-        if (dep->type == MD_DEP_EXTENSION && true == dep->dest->latest_revision) {
+        if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented) {
             lookup.module_name = (char *) dep->dest->name;
             si = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
             if (NULL != si && NULL != si->ly_ctx) {
@@ -4683,7 +4683,7 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
         ll_node = module->inv_deps->first;
         while (ll_node) {
             dep = (md_dep_t *)ll_node->data;
-            if (dep->type == MD_DEP_EXTENSION && true == dep->dest->latest_revision) {
+            if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented) {
                 lookup.module_name = (char *)dep->dest->name;
                 si_ext = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
                 if (NULL != si_ext && NULL != si_ext->ly_ctx) {

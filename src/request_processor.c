@@ -2438,10 +2438,19 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
         if (subs_index < session->state_data_ctx.subscription_nodes->count) {
             for (size_t i = 0; i < xp_count; i++) {
                 size_t len = strlen(xpaths[i]) + strlen(iter->name) + 2 /* slash + zero byte */;
+
+                if (lys_node_module(sch_node) != lys_node_module(iter)) {
+                    len += strlen(lys_node_module(iter)->name) + 1;
+                }
+
                 request_xp = calloc(len, sizeof(*request_xp));
                 CHECK_NULL_NOMEM_GOTO(request_xp, rc, cleanup);
 
-                snprintf(request_xp, len, "%s/%s", xpaths[i], iter->name);
+                if (lys_node_module(sch_node) == lys_node_module(iter)) {
+                    snprintf(request_xp, len, "%s/%s", xpaths[i], iter->name);
+                } else {
+                    snprintf(request_xp, len, "%s/%s:%s", xpaths[i], lys_node_module(iter)->name, iter->name);
+                }
 
                 rc = np_data_provider_request(rp_ctx->np_ctx, session->state_data_ctx.subscriptions->data[subs_index],
                         session, request_xp);
