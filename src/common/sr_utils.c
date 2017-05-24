@@ -1003,51 +1003,6 @@ matching_done:
     return type == value->type ? SR_ERR_OK : SR_ERR_INVAL_ARG;
 }
 
-/**
- * Functions copies the bits into string
- * @param [in] leaf - data tree node from the bits will be copied
- * @param [out] value - destination value where a space separated set bit field will be copied to
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, sr_val_t *value)
-{
-    CHECK_NULL_ARG3(leaf, value, leaf->schema);
-
-    struct lys_node_leaf *sch = (struct lys_node_leaf *) leaf->schema;
-    char *bits_str = NULL;
-    int bits_count = sch->type.info.bits.count;
-    struct lys_type_bit **bits = leaf->value.bit;
-
-    size_t length = 1; /* terminating NULL byte*/
-    for (int i = 0; i < bits_count; i++) {
-        if (NULL != bits[i] && NULL != bits[i]->name) {
-            length += strlen(bits[i]->name);
-            length++; /*space after bit*/
-        }
-    }
-    bits_str = sr_calloc(value->_sr_mem, length, sizeof(*bits_str));
-    if (NULL == bits_str) {
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        return SR_ERR_NOMEM;
-    }
-    size_t offset = 0;
-    for (int i = 0; i < bits_count; i++) {
-        if (NULL != bits[i] && NULL != bits[i]->name) {
-            strcpy(bits_str + offset, bits[i]->name);
-            offset += strlen(bits[i]->name);
-            bits_str[offset] = ' ';
-            offset++;
-        }
-    }
-    if (0 != offset) {
-        bits_str[offset - 1] = '\0';
-    }
-
-    value->data.bits_val = bits_str;
-    return SR_ERR_OK;
-}
-
 int
 sr_libyang_val_str_to_sr_val(const char *val_str, sr_type_t type, sr_val_t *value)
 {
@@ -1173,12 +1128,12 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         }
         return SR_ERR_OK;
     case LY_TYPE_BITS:
-        if (NULL == leaf->value.bit) {
-            SR_LOG_ERR("Missing schema information for node '%s'", node_name);
-        }
-        rc = sr_libyang_leaf_copy_bits(leaf, value);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'bits'", node_name);
+        if (NULL != leaf->value_str) {
+            sr_mem_edit_string(value->_sr_mem, &value->data.bits_val, leaf->value_str);
+            if (NULL == value->data.bits_val) {
+                SR_LOG_ERR_MSG("Bits duplication failed");
+                return SR_ERR_NOMEM;
+            }
         }
         return rc;
     case LY_TYPE_BOOL:
