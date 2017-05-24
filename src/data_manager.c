@@ -1145,8 +1145,6 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
                 return SR_ERR_INTERNAL;
             }
 
-            dm_remove_added_data_trees_by_module_name(schema_info->module_name, &tmp_node);
-
             if (NULL != tmp_node) {
                 data_tree = sr_dup_datatree_to_ctx(tmp_node, schema_info->ly_ctx);
             }
