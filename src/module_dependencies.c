@@ -1337,11 +1337,12 @@ md_collect_data_dependencies(md_ctx_t *md_ctx, const char *ref, md_module_t *mod
         cur_node = ((struct lys_node_augment *)cur_node)->target;
     }
 
-    /* we should have all the required schemas in cur_node context */
+    /* we should have all the required schemas in cur_node context, but the expression may be invalid */
+    ly_verb(LY_LLSILENT);
     set = lys_xpath_atomize(cur_node, LYXP_NODE_ELEM, ref, lyxp_opts);
+    ly_verb(LY_LLERR);
     if (NULL == set) {
-        SR_LOG_ERR_MSG("Failed to parse an expression");
-        rc = SR_ERR_INTERNAL;
+        SR_LOG_WRN("Failed to evaluate expression %s, it will be ignored.", ref);
         goto cleanup;
     }
 
@@ -1359,7 +1360,8 @@ md_collect_data_dependencies(md_ctx_t *md_ctx, const char *ref, md_module_t *mod
         }
         /* then try the whole md context */
         if (!module2) {
-            rc = md_get_module_info(md_ctx, lys_node_module(parent)->name, "", &module2);
+            rc = md_get_module_info(md_ctx, lys_node_module(parent)->name,
+                    (lys_node_module(parent)->rev_size ? lys_node_module(parent)->rev[0].date : NULL), &module2);
             if (SR_ERR_OK != rc) {
                 SR_LOG_WRN_MSG("Failed to get the module schema based on the prefix");
                 continue;
@@ -1651,7 +1653,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                                 child = child->next;
                             } else {
                                 backtracking = true;
-                                child = child->parent;
+                                child = lys_parent(child);
                             }
                         }
                     } else {

@@ -35,6 +35,7 @@ Connection::Connection(const char *app_name, const sr_conn_options_t opts)
 {
     int ret;
     _opts = opts;
+    _conn = 0;
 
     /* connect to sysrepo */
     ret = sr_connect(app_name, _opts, &_conn);
