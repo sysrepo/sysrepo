@@ -1236,6 +1236,12 @@ typedef struct sr_subscription_ctx_s sr_subscription_ctx_t;
 typedef struct sr_change_iter_s sr_change_iter_t;
 
 /**
+ * @brief Options overriding default behavior of subscriptions,
+ * it is supposed to be a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ */
+typedef uint32_t sr_subscr_options_t;
+
+/**
  * @brief Callback to be called by the event of changing any running datastore
  * content within the specified module. Subscribe to it by ::sr_module_change_subscribe call.
  *
@@ -1678,12 +1684,6 @@ typedef enum sr_ev_notif_flag_e {
     SR_EV_NOTIF_EPHEMERAL = 1,    /**< Notification will not be stored in the notification store
                                        (and therefore will be also delivered faster). */
 } sr_ev_notif_flag_t;
-
-/**
- * @brief Options overriding default behavior of subscriptions,
- * it is supposed to be a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- */
-typedef uint32_t sr_subscr_options_t;
 
 /**
  * @brief Callback to be called by the delivery of event notification specified by xpath.
