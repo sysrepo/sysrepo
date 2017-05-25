@@ -1182,12 +1182,6 @@ typedef enum sr_subscr_flag_e {
 } sr_subscr_flag_t;
 
 /**
- * @brief Options overriding default behavior of subscriptions,
- * it is supposed to be a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- */
-typedef uint32_t sr_subscr_options_t;
-
-/**
  * @brief Type of the notification event that has occurred (passed to notification callbacks).
  *
  * @note Each change is normally notified twice: first as ::SR_EV_VERIFY event and then as ::SR_EV_APPLY or ::SR_EV_ABORT
