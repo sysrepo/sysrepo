@@ -54,6 +54,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <time.h>
 #ifdef __APPLE__
     #include <sys/types.h>
 #endif
