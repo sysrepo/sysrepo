@@ -848,7 +848,7 @@ srctl_data_install(const struct lys_module *module, const char *owner, const cha
     int ret = 0, rc = SR_ERR_OK;
 
     /* install data files only if module can contain any data */
-    if (sr_lys_module_has_data(module)) {
+    if (module->implemented && sr_lys_module_has_data(module)) {
         printf("Installing data files for module '%s'...\n", module->name);
         ret = srctl_data_files_apply(module->name, srctl_file_create, NULL, false);
         if (0 != ret) {
