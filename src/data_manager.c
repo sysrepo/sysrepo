@@ -3725,7 +3725,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
         if (info->modified) {
             c_ctx->modif_count++;
 
-            if (SR_DS_STARTUP != session->datastore) {
+            if (SR_DS_RUNNING == session->datastore) {
                 rc = dm_prepare_module_subscriptions(dm_ctx, session, info->schema, &ms);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Prepare module subscription failed %s", info->schema->module->name);
 

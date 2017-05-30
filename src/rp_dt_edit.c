@@ -820,7 +820,12 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 return SR_ERR_VALIDATION_FAILED;
             }
             SR_LOG_DBG_MSG("Commit (2/10): validation succeeded");
-            state = DM_COMMIT_LOAD_MODIFIED_MODELS;
+            if (session->datastore == SR_DS_CANDIDATE) {
+                /* for candidate commit, we do not merge any trees, we only check NACM now */
+                state = DM_COMMIT_NACM;
+            } else {
+                state = DM_COMMIT_LOAD_MODIFIED_MODELS;
+            }
             break;
         case DM_COMMIT_LOAD_MODIFIED_MODELS:
             rc = dm_commit_prepare_context(rp_ctx->dm_ctx, session->dm_session, &commit_ctx);
@@ -868,7 +873,11 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 goto cleanup;
             }
             SR_LOG_DBG_MSG("Commit (6/10): write access granted by NACM");
-            state = DM_COMMIT_NOTIFY_VERIFY;
+            if (session->datastore == SR_DS_CANDIDATE) {
+                state = DM_COMMIT_FINISHED;
+            } else {
+                state = DM_COMMIT_NOTIFY_VERIFY;
+            }
             break;
         case DM_COMMIT_NOTIFY_VERIFY:
             rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_VERIFY, commit_ctx);
@@ -1061,7 +1070,7 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
-    /* copy to running is candidate commit behind the scenes */
+    /* copy to running is running commit behind the scenes */
     rc = dm_session_start(rp_ctx->dm_ctx, session->user_credentials, src, &backup);
     CHECK_RC_MSG_RETURN(rc, "Session start of temporary session failed");
 
@@ -1096,15 +1105,14 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
             CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed %s", module);
             info->modified = true;
         }
+    }
 
-    }
-    /* change session to candidate */
-    if (SR_DS_STARTUP == src) {
-        rc = rp_dt_switch_datastore(rp_ctx, session, SR_DS_CANDIDATE);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree switch failed");
-        rc = dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, SR_DS_STARTUP, SR_DS_CANDIDATE);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree move failed");
-    }
+    /* move changes to running datastore, then commit them */
+    rc = rp_dt_switch_datastore(rp_ctx, session, SR_DS_RUNNING);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree switch failed");
+    rc = dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, src, SR_DS_RUNNING);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree move failed");
+
     /* commit */
     rc = rp_dt_commit(rp_ctx, session, NULL, &errors, &e_cnt);
     sr_free_errors(errors, e_cnt);
