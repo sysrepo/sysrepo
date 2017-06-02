@@ -1720,7 +1720,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
                      md_module_t *belongsto, sr_list_t *implicitly_inserted, sr_list_t *being_parsed)
 {
     int rc = SR_ERR_INTERNAL;
-    bool already_installed = false;
+    bool already_present = false;
     md_module_t *module = NULL, *module2 = NULL, *main_module = NULL, *match_implemented, *match_latest_rev, *match_revision;
     sr_llist_node_t *module_ll_node = NULL;
     struct lys_import *imp = NULL;
@@ -1840,7 +1840,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
             /* update submodules */
             md_free_module(module);
             module = match_revision;
-            already_installed = true;
+            already_present = true;
             goto dependencies;
         }
 
@@ -1923,6 +1923,8 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     CHECK_RC_MSG_GOTO(rc, cleanup, "sr_list_add failed");
 
 dependencies:
+    main_module = (module->submodule ? belongsto : module);
+
     /* Recursivelly insert all include-based dependencies. */
     for (size_t i = 0; i < module_schema->inc_size; i++) {
         inc = module_schema->inc + i;
@@ -1936,10 +1938,11 @@ dependencies:
         }
     }
 
-    if (!module->submodule && already_installed) {
-        /* we only needed to update submodules */
-        rc = SR_ERR_OK;
-        goto cleanup;
+    if (!module->submodule && already_present) {
+        /* skip processing imports/includes which were already processed even for
+         * only imported modules and go directly into processing dependencies introduced
+         * only by the implemented modules */
+        goto implemented_dependencies;
     }
 
     /* Recursivelly insert all import-based dependencies. */
@@ -1981,7 +1984,6 @@ dependencies:
     /**
      * Note: all submodule dependencies are inherited by the module that it belongs to.
      */
-    main_module = (module->submodule ? belongsto : module);
 
     /* process dependencies introduces directly by imports */
     for (uint8_t i = 0; i < module_schema->imp_size; ++i) {
@@ -2014,9 +2016,10 @@ dependencies:
         }
     }
 
+implemented_dependencies:
+
     /* the following dependencies are introduced only by implemented modules */
     if (module_schema->implemented) {
-
         /* process dependencies introduced by identities */
         for (uint32_t i = 0; i < module_schema->ident_size; ++i) {
             ident = module_schema->ident + i;
@@ -2125,7 +2128,7 @@ dependencies:
         module_key = NULL;
     }
 
-    if (!already_installed) {
+    if (!already_present) {
         /* insert the new module into the linked list */
         rc = sr_llist_add_new(md_ctx->modules, module);
         if (SR_ERR_OK != rc) {
@@ -2155,7 +2158,7 @@ dependencies:
 
 cleanup:
     md_free_module_key(module_key);
-    if (!already_installed && module) { /*< not inserted into the btree */
+    if (!already_present && module) { /*< not inserted into the btree */
         md_free_module(module);
     }
     return rc;
