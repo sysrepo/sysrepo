@@ -79,15 +79,15 @@
         if (strlen(RULE) && strlen(RULE_INFO)) { \
             assert_int_equal(SR_ERR_OK, \
                              sr_asprintf(&regex, "\\[DBG\\] .* Delivery of the notification '%s' for subscription '[^']+' @ [0-9]+ " \
-                                                 "was blocked by the NACM rule '%s' \\(%s\\).\n", escaped_xpath, RULE, RULE_INFO)); \
+                                                 "was blocked by the NACM rule '%s' \\(%s\\).", escaped_xpath, RULE, RULE_INFO)); \
         } else if (strlen(RULE)) { \
             assert_int_equal(SR_ERR_OK, \
                              sr_asprintf(&regex, "\\[DBG\\] .* Delivery of the notification '%s' for subscription '[^']+' @ [0-9]+ " \
-                                                 "was blocked by the NACM rule '%s'.\n", escaped_xpath, RULE)); \
+                                                 "was blocked by the NACM rule '%s'.", escaped_xpath, RULE)); \
         } else { \
             assert_int_equal(SR_ERR_OK, \
                              sr_asprintf(&regex, "\\[DBG\\] .* Delivery of the notification '%s' for subscription '[^']+' @ [0-9]+ " \
-                                                 "was blocked by NACM.\n", escaped_xpath)); \
+                                                 "was blocked by NACM.", escaped_xpath)); \
         }\
         verify_existence_of_log_msg(regex, true); \
         free(regex); regex = NULL; \
@@ -533,7 +533,7 @@ daemon_log_reader(void *arg)
 {
     (void)arg;
     char *line = NULL, *msg = NULL;
-    size_t len = 0;
+    size_t buflen = 0, len;
     bool running = false;
 
     do {
@@ -548,9 +548,12 @@ daemon_log_reader(void *arg)
 
     while (running) {
         pthread_mutex_lock(&log_history.lock);
-        while (readline(daemon_stderr, &line, &len)) {
+        while ((len = readline(daemon_stderr, &line, &buflen))) {
             msg = strdup(line);
             assert_non_null_bt(msg);
+            if (msg[len - 1] == '\n') {
+                msg[len - 1] = '\0';
+            }
             SR_LOG_DBG("DAEMON: %s", msg);
             assert_int_equal_bt(SR_ERR_OK, sr_list_add(log_history.logs, msg));
         }
