@@ -2119,16 +2119,16 @@ implemented_dependencies:
         }
     }
 
-    /* inform caller about implicitly installed modules */
-    if (!module->submodule && !installed) {
-        rc = md_get_module_key(module, &module_key);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "md_get_module_key failed");
-        rc = sr_list_add(implicitly_inserted, module_key);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "sr_list_add failed");
-        module_key = NULL;
-    }
-
     if (!already_present) {
+        /* inform caller about implicitly inserted modules */
+        if (!module->submodule && !installed) {
+            rc = md_get_module_key(module, &module_key);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "md_get_module_key failed");
+            rc = sr_list_add(implicitly_inserted, module_key);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "sr_list_add failed");
+            module_key = NULL;
+        }
+
         /* insert the new module into the linked list */
         rc = sr_llist_add_new(md_ctx->modules, module);
         if (SR_ERR_OK != rc) {
