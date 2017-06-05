@@ -1063,12 +1063,6 @@ subscribe_dummy_rpc_callback(sr_session_ctx_t *handler_session, void *private_ct
     rc = sr_rpc_subscribe(handler_session, "/test-module:activate-software-image", dummy_rpc_cb, private_ctx,
             SR_SUBSCR_DEFAULT, subscription);
     assert_int_equal_bt(rc, SR_ERR_OK);
-    rc = sr_rpc_subscribe(handler_session, "/ietf-netconf:close-session", dummy_rpc_cb, private_ctx,
-            SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal_bt(rc, SR_ERR_OK);
-    rc = sr_rpc_subscribe(handler_session, "/ietf-netconf:kill-session", dummy_rpc_cb, private_ctx,
-            SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal_bt(rc, SR_ERR_OK);
     rc = sr_rpc_subscribe(handler_session, "/turing-machine:initialize", dummy_rpc_cb, private_ctx,
             SR_SUBSCR_CTX_REUSE, subscription);
     assert_int_equal_bt(rc, SR_ERR_OK);
@@ -1128,8 +1122,6 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
     bool permitted = true;
     sr_val_t *input = NULL;
     sr_node_t *input_tree = NULL;
-    const sr_error_info_t *error_info = NULL;
-    char *error_msg = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1154,46 +1146,6 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
     /*  -> sysrepo-user4 */
     RPC_PERMITED(3, RPC_XPATH, NULL, 0, 2);
     RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 2);
-
-    /* test NETCONF operation "close-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:close-session"
-    /*  -> sysrepo-user1 */
-    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
-
-    /* test NETCONF operation "kill-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:kill-session"
-    assert_int_equal(SR_ERR_OK, sr_new_val(RPC_XPATH "/session-id", &input));
-    input->type = SR_UINT32_T;
-    input->data.uint32_val = 12;
-    assert_int_equal(SR_ERR_OK, sr_new_tree("session-id", "ietf-netconf", &input_tree));
-    input_tree->type = SR_UINT32_T;
-    input_tree->data.uint32_val = 12;
-    /*  -> sysrepo-user1 */
-    RPC_DENIED(0, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(0, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user2 */
-    RPC_DENIED(1, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(1, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user3 */
-    RPC_DENIED(2, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(2, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, input_tree, 1, 0);
-    sr_free_val(input);
-    sr_free_tree(input_tree);
 
     /* test RPC "initialize" from turing-machine */
 #undef RPC_XPATH
@@ -1305,46 +1257,6 @@ nacm_cl_test_rpc_nacm(void **state)
     RPC_PERMITED(3, RPC_XPATH, NULL, 0, 2);
     RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 2);
 
-    /* test NETCONF operation "close-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:close-session"
-    /*  -> sysrepo-user1 */
-    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
-
-    /* test NETCONF operation "kill-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:kill-session"
-    assert_int_equal(SR_ERR_OK, sr_new_val(RPC_XPATH "/session-id", &input));
-    input->type = SR_UINT32_T;
-    input->data.uint32_val = 12;
-    assert_int_equal(SR_ERR_OK, sr_new_tree("session-id", "ietf-netconf", &input_tree));
-    input_tree->type = SR_UINT32_T;
-    input_tree->data.uint32_val = 12;
-    /*  -> sysrepo-user1 */
-    RPC_DENIED(0, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(0, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, input_tree, 1, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, input_tree, 1, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, input_tree, 1, 0);
-    sr_free_val(input);
-    sr_free_tree(input_tree);
-
     /* test RPC "initialize" from turing-machine */
 #undef RPC_XPATH
 #define RPC_XPATH "/turing-machine:initialize"
@@ -1455,46 +1367,6 @@ nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
     RPC_PERMITED(3, RPC_XPATH, NULL, 0, 2);
     RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 2);
 
-    /* test NETCONF operation "close-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:close-session"
-    /*  -> sysrepo-user1 */
-    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
-
-    /* test NETCONF operation "kill-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:kill-session"
-    assert_int_equal(SR_ERR_OK, sr_new_val(RPC_XPATH "/session-id", &input));
-    input->type = SR_UINT32_T;
-    input->data.uint32_val = 12;
-    assert_int_equal(SR_ERR_OK, sr_new_tree("session-id", "ietf-netconf", &input_tree));
-    input_tree->type = SR_UINT32_T;
-    input_tree->data.uint32_val = 12;
-    /*  -> sysrepo-user1 */
-    RPC_DENIED(0, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(0, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, input_tree, 1, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, input_tree, 1, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, input_tree, 1, 0);
-    sr_free_val(input);
-    sr_free_tree(input_tree);
-
     /* test RPC "initialize" from turing-machine */
 #undef RPC_XPATH
 #define RPC_XPATH "/turing-machine:initialize"
@@ -1604,46 +1476,6 @@ nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
     /*  -> sysrepo-user4 */
     RPC_PERMITED(3, RPC_XPATH, NULL, 0, 2);
     RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 2);
-
-    /* test NETCONF operation "close-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:close-session"
-    /*  -> sysrepo-user1 */
-    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
-
-    /* test NETCONF operation "kill-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:kill-session"
-    assert_int_equal(SR_ERR_OK, sr_new_val(RPC_XPATH "/session-id", &input));
-    input->type = SR_UINT32_T;
-    input->data.uint32_val = 12;
-    assert_int_equal(SR_ERR_OK, sr_new_tree("session-id", "ietf-netconf", &input_tree));
-    input_tree->type = SR_UINT32_T;
-    input_tree->data.uint32_val = 12;
-    /*  -> sysrepo-user1 */
-    RPC_DENIED(0, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(0, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, input_tree, 1, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, input_tree, 1, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, input_tree, 1, 0);
-    sr_free_val(input);
-    sr_free_tree(input_tree);
 
     /* test RPC "initialize" from turing-machine */
 #undef RPC_XPATH
