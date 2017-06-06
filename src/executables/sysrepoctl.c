@@ -181,6 +181,7 @@ srctl_list_modules()
         for (size_t i = 0; i < schema_cnt; i++) {
             printf("%-30s| %-11s| ", schemas[i].module_name,
                     (NULL == schemas[i].revision.revision ? "" : schemas[i].revision.revision));
+
             /* print conformance */
             if (schemas[i].installed) {
                 printf("Installed   | ");
@@ -189,18 +190,30 @@ srctl_list_modules()
             } else {
                 printf("Imported    | ");
             }
+
             /* print owner */
-            srctl_print_module_owner(schemas[i].module_name, buff);
+            if (schemas[i].implemented) {
+                srctl_print_module_owner(schemas[i].module_name, buff);
+            } else {
+                buff[0] = '\0';
+            }
             printf("%-20s| ", buff);
+
             /* print permissions */
-            srctl_print_module_permissions(schemas[i].module_name, buff);
+            if (schemas[i].implemented) {
+                srctl_print_module_permissions(schemas[i].module_name, buff);
+            } else {
+                buff[0] = '\0';
+            }
             printf("%-12s| ", buff);
+
             /* print submodules */
             size_t printed = 0;
             for (size_t j = 0; j < schemas[i].submodule_count; j++) {
                 printed += printf(" %s", schemas[i].submodules[j].submodule_name);
             }
             for (size_t j = printed; j < 30; j++) printf(" ");
+
             /* print enabled features */
             printf("|");
             for (size_t j = 0; j < schemas[i].enabled_feature_cnt; j++) {
@@ -835,7 +848,7 @@ srctl_data_install(const struct lys_module *module, const char *owner, const cha
     int ret = 0, rc = SR_ERR_OK;
 
     /* install data files only if module can contain any data */
-    if (sr_lys_module_has_data(module)) {
+    if (module->implemented && sr_lys_module_has_data(module)) {
         printf("Installing data files for module '%s'...\n", module->name);
         ret = srctl_data_files_apply(module->name, srctl_file_create, NULL, false);
         if (0 != ret) {
