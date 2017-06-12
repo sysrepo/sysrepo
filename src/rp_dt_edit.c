@@ -820,12 +820,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 return SR_ERR_VALIDATION_FAILED;
             }
             SR_LOG_DBG_MSG("Commit (2/10): validation succeeded");
-            if (session->datastore == SR_DS_CANDIDATE) {
-                /* for candidate commit, we do not merge any trees, we only check NACM now */
-                state = DM_COMMIT_NACM;
-            } else {
-                state = DM_COMMIT_LOAD_MODIFIED_MODELS;
-            }
+            state = DM_COMMIT_LOAD_MODIFIED_MODELS;
             break;
         case DM_COMMIT_LOAD_MODIFIED_MODELS:
             rc = dm_commit_prepare_context(rp_ctx->dm_ctx, session->dm_session, &commit_ctx);
@@ -874,6 +869,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             }
             SR_LOG_DBG_MSG("Commit (6/10): write access granted by NACM");
             if (session->datastore == SR_DS_CANDIDATE) {
+                /* we are finished for candidate, no changes are written */
                 state = DM_COMMIT_FINISHED;
             } else {
                 state = DM_COMMIT_NOTIFY_VERIFY;
@@ -961,9 +957,6 @@ cleanup:
         /* discard changes in session in next get_data_tree call newly committed content will be loaded */
         if (SR_DS_CANDIDATE != session->datastore) {
             rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
-        } else {
-            dm_remove_session_operations(session->dm_session);
-            rc = dm_remove_modified_flag(session->dm_session);
         }
         SR_LOG_DBG_MSG("Commit (10/10): finished successfully");
     }

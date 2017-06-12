@@ -3739,7 +3739,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
 
     SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models", c_ctx->modif_count, i);
 
-    if (0 == session->oper_count[session->datastore] && 0 != c_ctx->modif_count && SR_DS_CANDIDATE != session->datastore) {
+    if (0 == session->oper_count[session->datastore] && 0 != c_ctx->modif_count && SR_DS_RUNNING != session->datastore) {
         SR_LOG_WRN_MSG("No operation logged, however data tree marked as modified");
         c_ctx->modif_count = 0;
         *commit_ctx = c_ctx;
@@ -3756,7 +3756,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     CHECK_NULL_NOMEM_GOTO(c_ctx->existed, rc, cleanup);
 
     /* create commit session */
-    rc = dm_session_start(dm_ctx, session->user_credentials, SR_DS_CANDIDATE == session->datastore ? SR_DS_RUNNING : session->datastore, &c_ctx->session);
+    rc = dm_session_start(dm_ctx, session->user_credentials, session->datastore, &c_ctx->session);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Commit session initialization failed");
 
     rc = sr_list_init(&c_ctx->up_to_date_models);
@@ -3868,7 +3868,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         }
         rc = dm_commit_lock_model(dm_ctx, (dm_session_t *) session, c_ctx, info->schema->module->name);
         CHECK_RC_LOG_RETURN(rc, "Module %s can not be locked", info->schema->module->name);
-        if (SR_DS_CANDIDATE == session->datastore) {
+        if (SR_DS_RUNNING == session->datastore) {
             /* check if all subtrees are enabled */
             bool has_not_enabled = true;
             rc = dm_has_not_enabled_nodes(info, &has_not_enabled);
