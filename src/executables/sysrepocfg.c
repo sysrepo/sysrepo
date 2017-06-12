@@ -268,7 +268,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_nod
         }
 
         /* skip default values */
-        if (schema->nodetype == LYS_LEAF && value->dflt) {
+        if ((schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && value->dflt) {
             goto next;
         }
 
@@ -376,7 +376,7 @@ srcfg_get_xpath_data(struct ly_ctx *ly_ctx, md_module_t *module, const char *xpa
         }
 
         /* skip default values */
-        if (schema->nodetype == LYS_LEAF && value->dflt) {
+        if ((schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && value->dflt) {
             goto next;
         }
 

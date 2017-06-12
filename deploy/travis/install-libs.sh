@@ -21,7 +21,7 @@ if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
     git clone git://git.cryptomilk.org/projects/cmocka.git
     cd cmocka ; mkdir build; cd build
     cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX_DIR -DCMAKE_C_FLAGS="-DUNIT_TESTING_DEBUG" ..
-    make -j2 && make install
+    make -j2 > /dev/null && make install
     cd ../..
 
     # protobuf 
@@ -29,7 +29,7 @@ if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
     tar -xzf v3.2.0.tar.gz
     cd protobuf-3.2.0
     ./autogen.sh && ./configure --prefix=$INSTALL_PREFIX_DIR 
-    make -j2 && make install
+    make -j2 > /dev/null && make install
     cd ..
 
     # protobuf-c
@@ -37,7 +37,7 @@ if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
     tar -xzf v1.2.1.tar.gz
     cd protobuf-c-1.2.1
     ./autogen.sh && ./configure --prefix=$INSTALL_PREFIX_DIR
-    make -j2 && make install
+    make -j2 > /dev/null && make install
     cd ..
 
 else
@@ -54,6 +54,6 @@ else
 fi
 cd libyang ; mkdir build ; cd build
 cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
-make -j2 && sudo make install
+make -j2 > /dev/null && sudo make install
 cd ../..
 
