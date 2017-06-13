@@ -3937,8 +3937,8 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
         CHECK_RC_MSG_GOTO(rc, cleanup, "File up to date check failed");
 
-        /* ops are skipped also when candidate is committed to the running */
-        if (copy_uptodate || SR_DS_CANDIDATE == session->datastore) {
+        /* ops are skipped also when running is committed */
+        if (copy_uptodate || SR_DS_RUNNING == session->datastore) {
             SR_LOG_DBG("Timestamp for the model %s matches, ops will be skipped", info->schema->module->name);
             rc = sr_list_add(c_ctx->up_to_date_models, (void *) info->schema->module->name);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
@@ -3986,7 +3986,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
              * If config change notifications are generated we have to save prev state for startup as well.
              * if NACM is enabled, we need to get the previous state in any case.
              */
-            if (SR_DS_CANDIDATE == session->datastore || copy_uptodate) {
+            if (SR_DS_RUNNING == session->datastore || copy_uptodate) {
                 /* load data tree from file system */
                 rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->schema, &di);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Loading data file failed");
