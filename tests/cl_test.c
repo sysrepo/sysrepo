@@ -3684,10 +3684,10 @@ candidate_ds_test(void **state)
     assert_string_equal(value.data.string_val, val->data.string_val);
     sr_free_val(val);
 
-    /* commit should fail because non enabled nodes are modified */
     rc = sr_commit(session_candidate);
-    assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
+    assert_int_equal(SR_ERR_OK, rc);
 
+    /* copy-config should fail because non enabled nodes are modified */
     rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
@@ -3696,8 +3696,11 @@ candidate_ds_test(void **state)
             &callback_called, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* commit should pass */
-    rc = sr_commit(session_candidate);
+    /* copy-config should pass */
+    rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_session_refresh(session_running);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_get_item(session_running, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
@@ -3706,7 +3709,7 @@ candidate_ds_test(void **state)
     assert_string_equal(value.data.string_val, val->data.string_val);
     sr_free_val(val);
 
-    /* copy config should work as well*/
+    /* another copy-config should work as well*/
     value.data.string_val = "xyz";
     rc = sr_set_item(session_candidate, value.xpath, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -3945,6 +3948,8 @@ cl_get_changes_iter_test(void **state)
     /* save changes to running */
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -4004,6 +4009,8 @@ cl_get_changes_iter_multi_test(void **state)
     /* save changes to running */
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -4030,6 +4037,8 @@ cl_get_changes_iter_multi_test(void **state)
     /* save changes to running */
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -4051,6 +4060,8 @@ cl_get_changes_iter_multi_test(void **state)
 
     /* save changes to running */
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
