@@ -3657,7 +3657,7 @@ dm_release_resources_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx
     return SR_ERR_OK;
 }
 
-int
+static int
 dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 {
     CHECK_NULL_ARG(c_ctx);

@@ -498,14 +498,6 @@ int dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t e
 void dm_free_commit_context(void *commit_ctx);
 
 /**
- * @brief Saves commit context to be used for notifications. Releases acquired locks
- * and closes opened files.
- * @param [in] dm_ctx
- * @param [in] c_ctx
- */
-int dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx);
-
-/**
  * @brief Logs operation into session operation list. The operation list is used
  * during the commit. Passed allocated arguments are freed in case of error also.
  * @param [in] session
