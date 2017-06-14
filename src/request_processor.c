@@ -1459,7 +1459,7 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
         rc = rp_dt_commit(rp_ctx, session, c_ctx, &errors, &err_cnt);
     }
     if (SR_ERR_OK == rc && RP_REQ_WAITING_FOR_VERIFIERS == session->state) {
-        SR_LOG_DBG_MSG("Request paused, waiting for verifiers");
+        SR_LOG_DBG_MSG("Commit request paused, waiting for verifiers");
         /* we are waiting for verifiers data do not free the request */
         *skip_msg_cleanup = true;
         sr_msg_free(resp);
@@ -1551,6 +1551,15 @@ rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
         return SR_ERR_NOMEM;
     }
 
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&rp_ctx->commit_block_mutex, rc, cleanup);
+    /* do this check only if this really will be a commit */
+    if (SR__DATA_STORE__RUNNING == msg->request->copy_config_req->dst_datastore && rp_ctx->block_further_commits) {
+        rc = SR_ERR_OPERATION_FAILED;
+    }
+    pthread_mutex_unlock(&rp_ctx->commit_block_mutex);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Stop requested, commits are blocked.");
+
+    session->req = msg;
     rc = rp_dt_copy_config(rp_ctx, session, msg->request->copy_config_req->module_name,
                 sr_datastore_gpb_to_sr(msg->request->copy_config_req->src_datastore),
                 sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore));
@@ -1566,6 +1575,7 @@ rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
+cleanup:
     return rc;
 }
 
@@ -4114,6 +4124,7 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finishe
 {
     CHECK_NULL_ARG(rp_ctx);
     int rc = SR_ERR_OK;
+    const char *op_str;
     dm_commit_context_t *c_ctx = NULL;
     dm_commit_ctxs_t *dm_ctxs = NULL;
     bool locked = false;
@@ -4132,7 +4143,18 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finishe
     if (!finished && DM_COMMIT_WAIT_FOR_NOTIFICATIONS == c_ctx->state &&
         NULL != c_ctx->init_session) {
 
-        SR_LOG_INF("Resuming commit with id %"PRIu32" continue with %s", commit_id, SR_ERR_OK == result ? "write" : "abort");
+        switch (c_ctx->init_session->req->request->operation) {
+        case SR__OPERATION__COPY_CONFIG:
+            op_str = "copy_config";
+            break;
+        case SR__OPERATION__COMMIT:
+            op_str = "commit";
+            break;
+        default:
+            SR_LOG_ERR_MSG("Invalid operation of a resumed commit request");
+            goto cleanup;
+        }
+        SR_LOG_INF("Resuming %s with id %"PRIu32" continue with %s", op_str, commit_id, SR_ERR_OK == result ? "write" : "abort");
         c_ctx->state = SR_ERR_OK == result ? DM_COMMIT_WRITE : DM_COMMIT_NOTIFY_ABORT;
         c_ctx->err_subs_xpaths = err_subs_xpaths;
 
