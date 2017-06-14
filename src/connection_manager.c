@@ -435,7 +435,8 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
                 /* drop the session in Session Manager */
                 sm_session_drop(cm_ctx->sm_ctx, sess->session);
             } else {
-                /* just remove the session from the connection's session list */
+                /* just remove the session from the connection's session list and vice versa */
+                sess->session->connection = NULL;
                 conn->session_list = conn->session_list->next;
                 free(sess);
             }
