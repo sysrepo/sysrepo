@@ -47,9 +47,6 @@
 
 #define CM_MAX_SIGNAL_WATCHERS 2  /**< Maximum number of signals that Connection Manager can watch for. */
 
-#define CM_SUBSCRIBER_DISCONNECT_TIMEOUT 1  /**< Timeout (in seconds) to wait after disconnection of a subscriber
-                                                 before removing of the subscription. */
-
 /**
  * @brief Connection Manager context.
  */
@@ -446,8 +443,9 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     if (CM_AF_UNIX_SERVER == conn->type && NULL != conn->dst_address) {
         /* this was a subscriber connection, remove the subscriptions for that destination */
         SR_LOG_DBG("Subscription server at '%s' has disconnected.", conn->dst_address);
-        /* unsubscribe after timeout to prevent configuration flaps in running ds */
-        cm_subscr_unsubscribe_destination(cm_ctx, conn->dst_address, CM_SUBSCRIBER_DISCONNECT_TIMEOUT);
+        /* we must unsubscribe immediately because otherwise this connection may be
+         * found again before it is removed and by removing it twice we get a segfault */
+        cm_subscr_unsubscribe_destination(cm_ctx, conn->dst_address, 0);
     }
 
     /* cleanup connection, pointers to the connection from outstanding sessions will be set to NULL */
