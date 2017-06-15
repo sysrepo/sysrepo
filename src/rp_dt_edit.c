@@ -959,6 +959,8 @@ cleanup:
             rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
         }
         SR_LOG_DBG_MSG("Commit (10/10): finished successfully");
+    } else {
+        SR_LOG_DBG_MSG("Commit (10/10): finished with an error");
     }
     return rc;
 }
