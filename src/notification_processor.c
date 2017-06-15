@@ -1683,7 +1683,7 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
             (uint32_t) (((logged_time_spec.tv_sec * 100) + (uint32_t)(logged_time_spec.tv_nsec / 1.0e7)) % UINT32_MAX));
     new_node = lyd_new_path(data_tree, np_ctx->ly_ctx, data_xpath, NULL, 0, 0);
     if (NULL == new_node) {
-        SR_LOG_WRN("Error by adding new notification entry: %s.", ly_errmsg());
+        SR_LOG_WRN("Error by adding new notification entry %s: %s.", data_xpath, ly_errmsg());
         goto cleanup; /* do not set error code - it may be just too much notifications within the same hundred of second */
     }
     if (NULL == data_tree) {
