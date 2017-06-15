@@ -1053,7 +1053,7 @@ cleanup:
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char* module_name, sr_datastore_t src)
+rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char* module_name, sr_datastore_t src, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG2(rp_ctx, session);
     int rc = SR_ERR_OK;
@@ -1063,8 +1063,6 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
     dm_commit_context_t *c_ctx = NULL;
     dm_data_info_t *info = NULL;
     int first_err = SR_ERR_OK;
-    sr_error_info_t *errors = NULL;
-    size_t e_cnt = 0;
 
     /* are we resuming a copy_config commit? */
     if (RP_REQ_RESUMED == session->state) {
@@ -1117,8 +1115,7 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
     }
 
     /* commit */
-    rc = rp_dt_commit(rp_ctx, session, c_ctx, &errors, &e_cnt);
-    sr_free_errors(errors, e_cnt);
+    rc = rp_dt_commit(rp_ctx, session, c_ctx, errors, err_cnt);
 
 cleanup:
     first_err = rc;
@@ -1139,7 +1136,7 @@ cleanup_sess_stop:
 }
 
 int
-rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst)
+rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG2(rp_ctx, session);
     SR_LOG_INF("Copy config: %s -> %s, model: %s", sr_ds_to_str(src), sr_ds_to_str(dst), module_name);
@@ -1165,7 +1162,7 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
         }
 
     } else {
-        rc = rp_dt_copy_config_to_running(rp_ctx, session, module_name, src);
+        rc = rp_dt_copy_config_to_running(rp_ctx, session, module_name, src, errors, err_cnt);
     }
 
     rp_dt_switch_datastore(rp_ctx, session, prev_ds);

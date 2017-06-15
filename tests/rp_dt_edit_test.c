@@ -2359,32 +2359,34 @@ copy_to_running_test(void **state)
     int rc = 0;
     rp_ctx_t *ctx = *state;
     rp_session_t *sessionA = NULL, *sessionB = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
 
     test_rp_session_create(ctx, SR_DS_CANDIDATE, &sessionA);
     test_rp_session_create(ctx, SR_DS_STARTUP, &sessionB);
 
     /* only enabled modules are copied, no module is enabled => no operation*/
-    rc = rp_dt_copy_config(ctx, sessionB, NULL, SR_DS_STARTUP, SR_DS_RUNNING);
+    rc = rp_dt_copy_config(ctx, sessionB, NULL, SR_DS_STARTUP, SR_DS_RUNNING, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* explictly select a module which is not enabled copy fails*/
-    rc = rp_dt_copy_config(ctx, sessionB, "test-module", SR_DS_STARTUP, SR_DS_RUNNING);
+    rc = rp_dt_copy_config(ctx, sessionB, "test-module", SR_DS_STARTUP, SR_DS_RUNNING, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
     /* only enabled modules are copied, no module is enabled => no operation*/
-    rc = rp_dt_copy_config(ctx, sessionA, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING);
+    rc = rp_dt_copy_config(ctx, sessionA, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* empty data tree loaded from running (source of candidate) can be copied to running */
-    rc = rp_dt_copy_config(ctx, sessionA, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    rc = rp_dt_copy_config(ctx, sessionA, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* copy startup to candidate */
-    rc = rp_dt_copy_config(ctx, sessionA, "test-module", SR_DS_STARTUP, SR_DS_CANDIDATE);
+    rc = rp_dt_copy_config(ctx, sessionA, "test-module", SR_DS_STARTUP, SR_DS_CANDIDATE, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* copy of not enabled module to running should fail */
-    rc = rp_dt_copy_config(ctx, sessionA, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    rc = rp_dt_copy_config(ctx, sessionA, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
     test_rp_session_cleanup(ctx, sessionA);

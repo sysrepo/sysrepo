@@ -456,6 +456,8 @@ cl_get_changes_moved_test(void **state)
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;

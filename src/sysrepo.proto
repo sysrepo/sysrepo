@@ -537,6 +537,7 @@ message CopyConfigReq {
  * @brief Response to sr_copy_config request.
  */
 message CopyConfigResp {
+  repeated Error errors = 1;
 }
 
 

@@ -143,9 +143,11 @@ int rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info
  * @param [in] module_name
  * @param [in] src
  * @param [in] dst
+ * @param [out] errors
+ * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst);
+int rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst, sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Changes the datastore of the session. Subsequent call will operate on the
