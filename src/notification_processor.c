@@ -1637,7 +1637,7 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
 {
 #define TIME_BUF_SIZE 64
 
-    char *module_name = NULL;
+    char *module_name = NULL, *tmp_xpath = NULL, *ptr;
     char data_filename[PATH_MAX] = { 0, };
     char data_xpath[PATH_MAX] = { 0, };
     char generated_time_buf[TIME_BUF_SIZE] = { 0, };
@@ -1677,10 +1677,20 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
     sr_time_to_str(generated_time, generated_time_buf, TIME_BUF_SIZE);
     sr_clock_get_time(CLOCK_REALTIME, &logged_time_spec);
 
+    /* make sure there will be no invalid quotes */
+    if (strchr(xpath, '\'')) {
+        tmp_xpath = strdup(xpath);
+        for (ptr = strchr(xpath, '\''); ptr; ptr = strchr(ptr, '\'')) {
+            *ptr = '"';
+        }
+    }
+
     /* create data subtree to be stored in the notif. data file */
-    snprintf(data_xpath, PATH_MAX - 1, NP_NS_XPATH_NOTIFICATION, xpath, generated_time_buf,
+    snprintf(data_xpath, PATH_MAX - 1, NP_NS_XPATH_NOTIFICATION, tmp_xpath ? tmp_xpath : xpath, generated_time_buf,
             /* logged-time in hundreds of seconds */
             (uint32_t) (((logged_time_spec.tv_sec * 100) + (uint32_t)(logged_time_spec.tv_nsec / 1.0e7)) % UINT32_MAX));
+    free(tmp_xpath);
+
     new_node = lyd_new_path(data_tree, np_ctx->ly_ctx, data_xpath, NULL, 0, 0);
     if (NULL == new_node) {
         SR_LOG_WRN("Error by adding new notification entry %s: %s.", data_xpath, ly_errmsg());
