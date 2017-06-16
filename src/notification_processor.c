@@ -1680,7 +1680,7 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
     /* make sure there will be no invalid quotes */
     if (strchr(xpath, '\'')) {
         tmp_xpath = strdup(xpath);
-        for (ptr = strchr(xpath, '\''); ptr; ptr = strchr(ptr, '\'')) {
+        for (ptr = strchr(tmp_xpath, '\''); ptr; ptr = strchr(ptr + 1, '\'')) {
             *ptr = '"';
         }
     }
