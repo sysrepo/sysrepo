@@ -3797,16 +3797,17 @@ dm_commit_lock_model(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_
             /* check if the lock is hold by session that issued commit */
             rc = dm_lock_module(dm_ctx, session, module_name);
         }
-        dm_session_switch_ds(c_ctx->session, SR_DS_RUNNING);
         CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in candidate ds", module_name);
+
         /* acquire running lock*/
+        dm_session_switch_ds(c_ctx->session, SR_DS_RUNNING);
         rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
         if (SR_ERR_LOCKED == rc) {
             /* check if the lock is hold by session that issued commit */
-            dm_session_switch_ds(session, SR_DS_RUNNING);
             rc = dm_lock_module(dm_ctx, session, module_name);
-            dm_session_switch_ds(session, SR_DS_CANDIDATE);
         }
+        /* switch DS back */
+        dm_session_switch_ds(c_ctx->session, SR_DS_CANDIDATE);
         CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in running ds", module_name);
     } else {
         /* in case of startup/running ds acquire only startup/running */
