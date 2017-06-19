@@ -1458,6 +1458,11 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
     session->holds_ds_lock[session->datastore] = true;
 
     for (size_t i = 0; i < schema_count; i++) {
+        if (!schemas[i].implemented) {
+            /* nothing to lock */
+            continue;
+        }
+
         rc = dm_lock_module(dm_ctx, session, (char *) schemas[i].module_name);
         if (SR_ERR_OK != rc) {
             if (SR_ERR_UNAUTHORIZED == rc) {
