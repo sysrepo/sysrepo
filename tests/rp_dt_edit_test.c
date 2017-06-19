@@ -2291,11 +2291,10 @@ candidate_edit_test(void **state)
 {
     int rc = 0;
     rp_ctx_t *ctx = *state;
-    rp_session_t *sessionA = NULL, *sessionB = NULL;
+    rp_session_t *sessionA = NULL;
     sr_val_t *value = NULL;
 
     test_rp_session_create(ctx, SR_DS_CANDIDATE, &sessionA);
-    test_rp_session_create(ctx, SR_DS_CANDIDATE, &sessionB);
 
     sr_val_t iftype = {0};
     iftype.xpath = NULL;
@@ -2342,15 +2341,7 @@ candidate_edit_test(void **state)
     assert_int_equal(v->data.int8_val, value->data.int8_val);
     sr_free_val(value);
 
-    /* test locking on candidate ds */
-    rc = dm_lock_module(ctx->dm_ctx, sessionA->dm_session, "test-module");
-    assert_int_equal(SR_ERR_OK, rc);
-
-    rc = dm_lock_module(ctx->dm_ctx, sessionB->dm_session, "test-module");
-    assert_int_equal(SR_ERR_LOCKED, rc);
-
     test_rp_session_cleanup(ctx, sessionA);
-    test_rp_session_cleanup(ctx, sessionB);
 }
 
 static void
@@ -2398,18 +2389,17 @@ copy_to_running_test(void **state)
 }
 
 static void
-candidate_commit_lock_test(void **state)
+candidate_copy_config_lock_test(void **state)
 {
     int rc = 0;
     rp_ctx_t *ctx = *state;
-    rp_session_t *sessionA = NULL, *sessionB = NULL, *sessionC = NULL;
+    rp_session_t *sessionA = NULL, *sessionB = NULL;
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
     sr_val_t *value = NULL;
 
     test_rp_session_create(ctx, SR_DS_CANDIDATE, &sessionA);
     test_rp_session_create(ctx, SR_DS_RUNNING, &sessionB);
-    test_rp_session_create(ctx, SR_DS_CANDIDATE, &sessionC);
 
     rc = dm_enable_module_running(ctx->dm_ctx, sessionA->dm_session, "test-module", NULL);
     assert_int_equal(SR_ERR_OK, rc);
@@ -2429,31 +2419,20 @@ candidate_commit_lock_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, sessionA, v->xpath, v, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* commit failed running locked */
+    /* copy-config failed running locked */
     rc = rp_dt_commit(ctx, sessionA, NULL, false, &errors, &e_cnt);
-    assert_int_equal(SR_ERR_LOCKED, rc);
-    sr_free_errors(errors, e_cnt);
-
-    rc = dm_lock_module(ctx->dm_ctx, sessionC->dm_session, "test-module");
     assert_int_equal(SR_ERR_OK, rc);
-
-    /* commit failed running & candidate locked */
-    rc = rp_dt_commit(ctx, sessionA, NULL, false, &errors, &e_cnt);
+    rc = rp_dt_copy_config(ctx, sessionA, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING, &errors, &e_cnt);
     assert_int_equal(SR_ERR_LOCKED, rc);
     sr_free_errors(errors, e_cnt);
 
     rc = dm_unlock_module(ctx->dm_ctx, sessionB->dm_session, "test-module");
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* commit failed candidate locked */
+    /* already committed... */
     rc = rp_dt_commit(ctx, sessionA, NULL, false, &errors, &e_cnt);
-    assert_int_equal(SR_ERR_LOCKED, rc);
-    sr_free_errors(errors, e_cnt);
-
-    rc = dm_unlock_module(ctx->dm_ctx, sessionC->dm_session, "test-module");
     assert_int_equal(SR_ERR_OK, rc);
-
-    rc = rp_dt_commit(ctx, sessionA, NULL, false, &errors, &e_cnt);
+    rc = rp_dt_copy_config(ctx, sessionA, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:main/i8", &value);
@@ -2465,7 +2444,6 @@ candidate_commit_lock_test(void **state)
 
     test_rp_session_cleanup(ctx, sessionA);
     test_rp_session_cleanup(ctx, sessionB);
-    test_rp_session_cleanup(ctx, sessionC);
 }
 
 
@@ -2608,7 +2586,7 @@ int main(){
             cmocka_unit_test(empty_string_leaf_test),
             cmocka_unit_test(candidate_edit_test),
             cmocka_unit_test(copy_to_running_test),
-            cmocka_unit_test(candidate_commit_lock_test),
+            cmocka_unit_test(candidate_copy_config_lock_test),
             cmocka_unit_test_setup(edit_union_type, createData),
             cmocka_unit_test_setup(validaton_of_multiple_models, createData),
     };

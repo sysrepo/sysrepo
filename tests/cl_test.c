@@ -1685,6 +1685,19 @@ cl_locking_test(void **state)
     assert_string_equal("test-module", error->xpath);
     assert_string_equal("Module has been modified, it can not be locked. Discard or commit changes", error->message);
 
+    /* try locking one candidate module from 2 sessions */
+    rc = sr_session_switch_ds(sessionA, SR_DS_CANDIDATE);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_switch_ds(sessionB, SR_DS_CANDIDATE);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_lock_module(sessionA, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_lock_module(sessionB, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop the sessions */
     rc = sr_session_stop(sessionA);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1715,7 +1728,7 @@ cl_ds_locking_test(void **state)
     rc = sr_lock_datastore(sessionB);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* switch and lock candidate*/
+    /* switch and lock candidate */
     rc = sr_unlock_datastore(sessionA);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1725,12 +1738,12 @@ cl_ds_locking_test(void **state)
     rc = sr_lock_datastore(sessionA);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* try to lock candidate from different session*/
+    /* try to lock candidate from different session, should succeed */
     rc = sr_session_switch_ds(sessionB, SR_DS_CANDIDATE);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_lock_datastore(sessionB);
-    assert_int_equal(rc, SR_ERR_LOCKED);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the sessions */
     rc = sr_session_stop(sessionA);
@@ -3674,6 +3687,8 @@ candidate_ds_test(void **state)
     assert_string_equal(value.data.string_val, val->data.string_val);
     sr_free_val(val);
 
+    rc = sr_commit(session_candidate);
+    assert_int_equal(SR_ERR_OK, rc);
     rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_STARTUP);
     assert_int_equal(rc, SR_ERR_OK);
 

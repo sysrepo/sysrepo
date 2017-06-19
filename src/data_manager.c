@@ -1356,13 +1356,15 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
         }
     }
 
-    /* switch identity */
-    ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
+    if (session->datastore != SR_DS_CANDIDATE) {
+        /* switch identity */
+        ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
-    rc = dm_lock_file(dm_ctx->locking_ctx, lock_file);
+        rc = dm_lock_file(dm_ctx->locking_ctx, lock_file);
 
-    /* switch identity back */
-    ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
+        /* switch identity back */
+        ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
+    }
 
     /* log information about locked model */
     if (SR_ERR_OK != rc) {
@@ -1411,7 +1413,9 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
         SR_LOG_ERR("File %s has not been locked in this context", lock_file);
         rc = SR_ERR_INVAL_ARG;
     } else {
-        rc = dm_unlock_file(dm_ctx->locking_ctx, lock_file);
+        if (session->datastore != SR_DS_CANDIDATE) {
+            rc = dm_unlock_file(dm_ctx->locking_ctx, lock_file);
+        }
         free(session->locked_files->data[i]);
         sr_list_rm_at(session->locked_files, i);
         pthread_mutex_lock(&si->usage_count_mutex);
@@ -1440,15 +1444,17 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
     rc = dm_list_schemas(dm_ctx, session, &schemas, &schema_count);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List schemas failed");
 
-    pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
-    if (dm_ctx->ds_lock[session->datastore]) {
-        SR_LOG_ERR_MSG("Datastore lock is hold by other session");
-        rc = SR_ERR_LOCKED;
+    if (session->datastore != SR_DS_CANDIDATE) {
+        pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
+        if (dm_ctx->ds_lock[session->datastore]) {
+            SR_LOG_ERR_MSG("Datastore lock is held by another session");
+            rc = SR_ERR_LOCKED;
+            pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
+            goto cleanup;
+        }
+        dm_ctx->ds_lock[session->datastore] = true;
         pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
-        goto cleanup;
     }
-    dm_ctx->ds_lock[session->datastore] = true;
-    pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
     session->holds_ds_lock[session->datastore] = true;
 
     for (size_t i = 0; i < schema_count; i++) {
@@ -1458,7 +1464,7 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
                 SR_LOG_INF("Not allowed to lock %s, skipping", schemas[i].module_name);
                 continue;
             } else if (SR_ERR_LOCKED == rc) {
-                SR_LOG_ERR("Model %s is already locked by other session", schemas[i].module_name);
+                SR_LOG_ERR("Model %s is already locked by anther session", schemas[i].module_name);
             }
             for (size_t l = 0; l < locked->count; l++) {
                 dm_unlock_module(dm_ctx, session, (char *) locked->data[l]);
@@ -1544,7 +1550,9 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
             SR_LOG_WRN("Get schema info by lock file failed %s", (char *) session->locked_files->data[0]);
         }
 
-        dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
+        if (session->datastore != SR_DS_CANDIDATE) {
+            dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
+        }
         free(session->locked_files->data[0]);
         sr_list_rm_at(session->locked_files, 0);
     }
