@@ -998,7 +998,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
 
     /* compute xpath hashes for all schema nodes (referenced from data tree) */
     rc = dm_init_missing_node_priv_data(si);
-    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", module->name);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to initialize private data for module %s", module->name);
 
     /* apply persist data enable features, running datastore */
     if (module->has_persist) {
