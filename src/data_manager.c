@@ -3789,50 +3789,6 @@ cleanup:
     return rc;
 }
 
-/**
- * @brief Acquires locks that are needed to commit changes into the datastore
- * @param [in] dm_ctx
- * @param [in] session
- * @param [in] c_ctx
- * @param [in] module_name
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-dm_commit_lock_model(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx, const char *module_name)
-{
-    CHECK_NULL_ARG4(dm_ctx, session, c_ctx, module_name);
-    int rc = SR_ERR_OK;
-    if (SR_DS_CANDIDATE == session->datastore) {
-        /* acquire candidate lock*/
-        dm_session_switch_ds(c_ctx->session, SR_DS_CANDIDATE);
-        rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
-        if (SR_ERR_LOCKED == rc) {
-            /* check if the lock is hold by session that issued commit */
-            rc = dm_lock_module(dm_ctx, session, module_name);
-        }
-        CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in candidate ds", module_name);
-
-        /* acquire running lock*/
-        dm_session_switch_ds(c_ctx->session, SR_DS_RUNNING);
-        rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
-        if (SR_ERR_LOCKED == rc) {
-            /* check if the lock is hold by session that issued commit */
-            rc = dm_lock_module(dm_ctx, session, module_name);
-        }
-        /* switch DS back */
-        dm_session_switch_ds(c_ctx->session, SR_DS_CANDIDATE);
-        CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in running ds", module_name);
-    } else {
-        /* in case of startup/running ds acquire only startup/running */
-        rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
-        if (SR_ERR_LOCKED == rc) {
-            /* check if the lock is hold by session that issued commit */
-            rc = dm_lock_module(dm_ctx, session, module_name);
-        }
-    }
-    return rc;
-}
-
 static int
 dm_dup_required_models_list(dm_data_info_t *src, dm_data_info_t *dest)
 {
@@ -3880,7 +3836,11 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         if (!info->modified) {
             continue;
         }
-        rc = dm_commit_lock_model(dm_ctx, (dm_session_t *) session, c_ctx, info->schema->module->name);
+        rc = dm_lock_module(dm_ctx, c_ctx->session, info->schema->module->name);
+        if (SR_ERR_LOCKED == rc) {
+            /* check if the lock is hold by session that issued commit */
+            rc = dm_lock_module(dm_ctx, (dm_session_t *)session, info->schema->module->name);
+        }
         CHECK_RC_LOG_RETURN(rc, "Module %s can not be locked", info->schema->module->name);
         if (SR_DS_RUNNING == session->datastore) {
             /* check if all subtrees are enabled */
