@@ -3850,7 +3850,7 @@ cleanup:
 
 int
 dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx,
-        sr_error_info_t **errors, size_t *err_cnt)
+        bool force_copy_uptodate, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG3(c_ctx, errors, err_cnt);
     CHECK_NULL_ARG5(dm_ctx, session, c_ctx->session, c_ctx->fds, c_ctx->existed);
@@ -3885,10 +3885,10 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             }
         }
     }
-    i = 0;
 
     ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
+    i = 0;
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         if (!info->modified) {
             continue;
@@ -3934,14 +3934,17 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         }
         dm_data_info_t *di = NULL;
 
-        bool copy_uptodate = false;
-        rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "File up to date check failed");
+        bool copy_uptodate;
+        if (force_copy_uptodate) {
+            copy_uptodate = true;
+        } else {
+            rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "File up to date check failed");
+        }
 
-        /* ops are skipped also when running is committed */
-        if (copy_uptodate || SR_DS_RUNNING == session->datastore) {
+        if (session->datastore == SR_DS_CANDIDATE || copy_uptodate) {
             SR_LOG_DBG("Timestamp for the model %s matches, ops will be skipped", info->schema->module->name);
-            rc = sr_list_add(c_ctx->up_to_date_models, (void *) info->schema->module->name);
+            rc = sr_list_add(c_ctx->up_to_date_models, (void *)info->schema->module->name);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
 
             di = calloc(1, sizeof(*di));
@@ -3973,7 +3976,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             CHECK_RC_MSG_GOTO(rc, cleanup, "Loading data file failed");
         }
 
-        rc = sr_btree_insert(c_ctx->session->session_modules[c_ctx->session->datastore], (void *) di);
+        rc = sr_btree_insert(c_ctx->session->session_modules[c_ctx->session->datastore], (void *)di);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Insert into commit session avl failed module %s", info->schema->module->name);
             dm_data_info_free(di);
@@ -3983,16 +3986,16 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         if (SR_DS_STARTUP != session->datastore || !c_ctx->disabled_config_change ||
                 (NULL != dm_ctx->nacm_ctx && (c_ctx->init_session->options & SR_SESS_ENABLE_NACM))) {
             /**
-             * For candidate and running we save prev state.
+             * For running and candidate we save previous state.
              * If config change notifications are generated we have to save prev state for startup as well.
              * if NACM is enabled, we need to get the previous state in any case.
              */
-            if (SR_DS_RUNNING == session->datastore || copy_uptodate) {
+            if (session->datastore == SR_DS_CANDIDATE || copy_uptodate) {
                 /* load data tree from file system */
                 rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->schema, &di);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Loading data file failed");
 
-                rc = sr_btree_insert(c_ctx->prev_data_trees, (void *) di);
+                rc = sr_btree_insert(c_ctx->prev_data_trees, (void *)di);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR("Insert into prev data trees failed module %s", info->schema->module->name);
                     dm_data_info_free(di);

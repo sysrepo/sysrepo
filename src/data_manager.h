@@ -442,12 +442,15 @@ int dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] c_ctx - commit context
+ * @param [in] force_copy_uptodate True if timestamp check of session info datatree and datastore file should be
+ * skipped and session info datatree should be always used (otherwise if the timestamp of session datatrees is older
+ * than of datastore file, the datatrees are overwritten with data loaded from the datastore file)
  * @param [out] errors
  * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx,
-        sr_error_info_t **errors, size_t *err_cnt);
+        bool force_copy_uptodate, sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Tries to acquire write locks on opened fds

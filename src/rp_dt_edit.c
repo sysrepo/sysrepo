@@ -789,7 +789,8 @@ rp_dt_reload_nacm(rp_ctx_t *rp_ctx)
 }
 
 int
-rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, sr_error_info_t **errors, size_t *err_cnt)
+rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, bool force_copy_uptodate,
+        sr_error_info_t **errors, size_t *err_cnt)
 {
     int rc = SR_ERR_OK;
     CHECK_NULL_ARG_NORET4(rc, rp_ctx, session, errors, err_cnt);
@@ -834,7 +835,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             pthread_mutex_lock(&commit_ctx->mutex);
             commit_ctx->disabled_config_change = rp_ctx->do_not_generate_config_change;
             /* open all files */
-            rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx,
+            rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx, force_copy_uptodate,
                     errors, err_cnt);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Loading of modified models failed");
             SR_LOG_DBG_MSG("Commit (3/10): all modified models loaded successfully");
@@ -1115,7 +1116,7 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
     }
 
     /* commit */
-    rc = rp_dt_commit(rp_ctx, session, c_ctx, errors, err_cnt);
+    rc = rp_dt_commit(rp_ctx, session, c_ctx, true, errors, err_cnt);
 
 cleanup:
     first_err = rc;

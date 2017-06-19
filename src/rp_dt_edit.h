@@ -117,11 +117,15 @@ int rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const cha
  * @param [in] rp_ctx
  * @param [in] session
  * @param [in] c_ctx - if argument is not NULL it is used as context to continue commit process
+ * @param [in] force_copy_uptodate True if timestamp check of session info datatree and datastore file should be
+ * skipped and session info datatree should be always used (otherwise if the timestamp of session datatrees is older
+ * than of datastore file, the datatrees are overwritten with data loaded from the datastore file)
  * @param [out] errors
  * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success), SR_ERR_COMMIT_FAILED, SR_ERR_VALIDATION_FAILED, SR_ERR_IO
  */
-int rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, sr_error_info_t **errors, size_t *err_cnt);
+int rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, bool force_copy_uptodate,
+        sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Tries to merge the current state of session with the file system change.
