@@ -4716,6 +4716,7 @@ cl_event_notif_tree_test(void **state)
     cl_test_en_cb_status_t cb_status;
     sr_node_t *trees = NULL;
     sr_node_t *tree = NULL;
+    sr_subscription_ctx_t *subscr = NULL;
     size_t tree_cnt = 0;
     size_t i;
     int rc = SR_ERR_OK;
@@ -4734,6 +4735,11 @@ cl_event_notif_tree_test(void **state)
         rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sub_session[i].session);
         assert_int_equal(rc, SR_ERR_OK);
     }
+
+    /* enable module */
+    rc = sr_module_change_subscribe(notif_session, "test-module", empty_module_change_cb, NULL,
+            0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscr);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe for link discovery in every session */
     for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
@@ -4893,6 +4899,8 @@ cl_event_notif_tree_test(void **state)
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_st);
         assert_int_equal(rc, SR_ERR_OK);
     }
+    rc = sr_unsubscribe(NULL, subscr);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop sessions */
     rc = sr_session_stop(notif_session);
@@ -4919,6 +4927,7 @@ cl_event_notif_combo_test(void **state)
     cl_test_en_cb_status_t cb_status;
     sr_node_t *trees = NULL;
     sr_node_t *tree = NULL;
+    sr_subscription_ctx_t *subscr = NULL;
     sr_val_t values[4];
     size_t tree_cnt = 0;
     size_t i;
@@ -4939,6 +4948,11 @@ cl_event_notif_combo_test(void **state)
         rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sub_session[i].session);
         assert_int_equal(rc, SR_ERR_OK);
     }
+
+    /* enable module */
+    rc = sr_module_change_subscribe(notif_session, "test-module", empty_module_change_cb, NULL,
+            0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscr);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe for link discovery in every session (mix of values and nodes) */
     for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
@@ -5125,6 +5139,8 @@ cl_event_notif_combo_test(void **state)
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_st);
         assert_int_equal(rc, SR_ERR_OK);
     }
+    rc = sr_unsubscribe(NULL, subscr);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop sessions */
     rc = sr_session_stop(notif_session);
