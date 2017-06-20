@@ -3824,7 +3824,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     CHECK_NULL_ARG3(c_ctx, errors, err_cnt);
     CHECK_NULL_ARG5(dm_ctx, session, c_ctx->session, c_ctx->fds, c_ctx->existed);
     CHECK_NULL_ARG(c_ctx->up_to_date_models);
-    dm_data_info_t *info = NULL;
+    dm_data_info_t *info = NULL, *di = NULL;
     size_t i = 0;
     size_t count = 0;
     int rc = SR_ERR_OK;
@@ -3866,49 +3866,53 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         if (!info->modified) {
             continue;
         }
-        rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->schema->module->name, c_ctx->session->datastore, &file_name);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
 
-        c_ctx->fds[count] = open(file_name, O_RDWR);
-        if (-1 == c_ctx->fds[count]) {
-            SR_LOG_DBG("File %s can not be opened for read write", file_name);
-            if (EACCES == errno) {
+        /* do not create or do anything with candidate data file, it does not exist and never should */
+        if (session->datastore != SR_DS_CANDIDATE) {
+            rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->schema->module->name, c_ctx->session->datastore, &file_name);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
+
+            c_ctx->fds[count] = open(file_name, O_RDWR);
+            if (-1 == c_ctx->fds[count]) {
+                SR_LOG_DBG("File %s can not be opened for read write", file_name);
+                if (EACCES == errno) {
 #define ERR_FMT "File %s can not be opened because of authorization"
-                if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name)) {
+                    if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name)) {
+                        SR_LOG_WRN_MSG("Failed to record commit operation error");
+                    }
+                    SR_LOG_ERR(ERR_FMT, file_name);
+                    rc = SR_ERR_UNAUTHORIZED;
+                    goto cleanup;
+#undef ERR_FMT
+                }
+
+                if (ENOENT == errno) {
+                    SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
+                    c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+                    CHECK_NOT_MINUS1_LOG_GOTO(c_ctx->fds[count], rc, SR_ERR_IO, cleanup, "File %s can not be created", file_name);
+                }
+            } else {
+                c_ctx->existed[count] = true;
+            }
+            /* file was opened successfully increment the number of files to be closed */
+            c_ctx->modif_count++;
+            /* try to lock for read, non-blocking */
+            rc = sr_lock_fd(c_ctx->fds[count], false, false);
+            if (SR_ERR_OK != rc) {
+#define ERR_FMT "Locking of file '%s' failed: %s."
+                if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name, sr_strerror(rc))) {
                     SR_LOG_WRN_MSG("Failed to record commit operation error");
                 }
-                SR_LOG_ERR(ERR_FMT, file_name);
-                rc = SR_ERR_UNAUTHORIZED;
+                SR_LOG_ERR(ERR_FMT, file_name, sr_strerror(rc));
+                rc = SR_ERR_OPERATION_FAILED;
                 goto cleanup;
 #undef ERR_FMT
             }
-
-            if (ENOENT == errno) {
-                SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
-                c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                CHECK_NOT_MINUS1_LOG_GOTO(c_ctx->fds[count], rc, SR_ERR_IO, cleanup, "File %s can not be created", file_name);
-            }
-        } else {
-            c_ctx->existed[count] = true;
         }
-        /* file was opened successfully increment the number of files to be closed */
-        c_ctx->modif_count++;
-        /* try to lock for read, non-blocking */
-        rc = sr_lock_fd(c_ctx->fds[count], false, false);
-        if (SR_ERR_OK != rc) {
-#define ERR_FMT "Locking of file '%s' failed: %s."
-            if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name, sr_strerror(rc))) {
-                SR_LOG_WRN_MSG("Failed to record commit operation error");
-            }
-            SR_LOG_ERR(ERR_FMT, file_name, sr_strerror(rc));
-            rc = SR_ERR_OPERATION_FAILED;
-            goto cleanup;
-#undef ERR_FMT
-        }
-        dm_data_info_t *di = NULL;
 
         bool copy_uptodate;
-        if (force_copy_uptodate) {
+        if (session->datastore == SR_DS_CANDIDATE || force_copy_uptodate) {
+            /* candidate datatree is always up-to-date, there is only one copy */
             copy_uptodate = true;
         } else {
             rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
@@ -3963,7 +3967,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
              * If config change notifications are generated we have to save prev state for startup as well.
              * if NACM is enabled, we need to get the previous state in any case.
              */
-            if (session->datastore == SR_DS_CANDIDATE || copy_uptodate) {
+            if (session->datastore != SR_DS_CANDIDATE && copy_uptodate) {
                 /* load data tree from file system */
                 rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->schema, &di);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Loading data file failed");
