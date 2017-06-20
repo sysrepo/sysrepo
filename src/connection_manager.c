@@ -1172,7 +1172,7 @@ cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
     cm_ctx = conn->cm_data->cm_ctx;
     buff = &conn->cm_data->in_buff;
 
-    SR_LOG_DBG("fd %d readable", conn->fd);
+    SR_LOG_DBG("fd %d readable (revents %d)", conn->fd, revents);
 
     do {
         /* expand input buffer if needed */
@@ -1239,7 +1239,7 @@ cm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
     CHECK_NULL_ARG_VOID3(conn, conn->cm_data, conn->cm_data->cm_ctx);
     cm_ctx = conn->cm_data->cm_ctx;
 
-    SR_LOG_DBG("fd %d writeable", conn->fd);
+    SR_LOG_DBG("fd %d writeable (revents %d)", conn->fd, revents);
 
     ev_io_stop(cm_ctx->event_loop, &conn->cm_data->write_watcher);
 
