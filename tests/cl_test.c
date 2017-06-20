@@ -4348,13 +4348,6 @@ test_event_notif_link_removed_cb(const sr_ev_notif_type_t notif_type, const char
 }
 
 static void
-test_event_notif_link_overutilized_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
-{
-    assert_true(0 && "This callback should not get called");
-}
-
-static void
 test_event_notif_status_change_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
@@ -4419,13 +4412,6 @@ cl_event_notif_test(void **state)
         rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-removed", test_event_notif_link_removed_cb,
                 &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lr);
         assert_int_equal(rc, SR_ERR_OK);
-    }
-
-    /* subscribe for nonexistent notification in every session */
-    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
-        rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-overutilized", test_event_notif_link_overutilized_cb,
-                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
-        assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     }
 
     /* subscribe for status-change in every session */
@@ -4501,7 +4487,7 @@ cl_event_notif_test(void **state)
     /* wait at most 5 seconds for all callbacks to get called */
     struct timespec ts;
     sr_clock_get_time(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 5;
+    ts.tv_sec += COND_WAIT_SEC;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
             && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS ||
                 cb_status.status_change < CL_TEST_EN_NUM_SESSIONS));
@@ -4680,13 +4666,6 @@ test_event_notif_link_removed_tree_cb(const sr_ev_notif_type_t notif_type, const
 }
 
 static void
-test_event_notif_link_overutilized_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
-{
-    assert_true(0 && "This callback should not get called");
-}
-
-static void
 test_event_notif_status_change_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
@@ -4770,14 +4749,6 @@ cl_event_notif_tree_test(void **state)
                 test_event_notif_link_removed_tree_cb,
                 &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lr);
         assert_int_equal(rc, SR_ERR_OK);
-    }
-
-    /* subscribe for nonexistent notification in every session */
-    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
-        rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-overutilized",
-                test_event_notif_link_overutilized_tree_cb,
-                &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
-        assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     }
 
     /* subscribe for status change in every session */
@@ -4894,7 +4865,7 @@ cl_event_notif_tree_test(void **state)
     /* wait at most 5 seconds for all callbacks to get called */
     struct timespec ts;
     sr_clock_get_time(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 5;
+    ts.tv_sec += COND_WAIT_SEC;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
             && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS ||
                 cb_status.status_change < CL_TEST_EN_NUM_SESSIONS));
@@ -4995,20 +4966,6 @@ cl_event_notif_combo_test(void **state)
                     &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lr);
         }
         assert_int_equal(rc, SR_ERR_OK);
-    }
-
-    /* subscribe for nonexistent notification in every session (mix of values and nodes) */
-    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
-        if (0 == i % 2) {
-            rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-overutilized",
-                    test_event_notif_link_overutilized_cb,
-                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
-        } else {
-            rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-overutilized",
-                    test_event_notif_link_overutilized_tree_cb,
-                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
-        }
-        assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     }
 
     /* subscribe for status-change in every session (mix of values and nodes) */
@@ -5134,7 +5091,7 @@ cl_event_notif_combo_test(void **state)
     /* wait at most 5 seconds for all callbacks to get called */
     struct timespec ts;
     sr_clock_get_time(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 5;
+    ts.tv_sec += COND_WAIT_SEC;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
             && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS ||
                 cb_status.status_change < 2*CL_TEST_EN_NUM_SESSIONS));
@@ -5377,7 +5334,7 @@ cl_event_notif_replay_test(void **state)
     /* wait at most 5 seconds for all callbacks to get called */
     struct timespec ts;
     sr_clock_get_time(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 5;
+    ts.tv_sec += COND_WAIT_SEC;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
             && (cb_status.link_removed < 3 || cb_status.link_discovered < 3));
     assert_true(cb_status.link_discovered >= 3);
