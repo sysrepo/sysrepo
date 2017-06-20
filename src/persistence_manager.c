@@ -1185,7 +1185,7 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
     rc = pm_save_data_tree(data_tree, fd);
 
     if (SR_ERR_OK == rc) {
-        SR_LOG_DBG("Subscription entry successfully added into '%s' persist data tree.", module_name);
+        SR_LOG_DBG("Subscription entry '%s' successfully added into '%s' persist data tree.", subscription->xpath, module_name);
     }
 
 cleanup:
