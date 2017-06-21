@@ -1816,6 +1816,10 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
             }
             rc = SR_ERR_OK;
             goto cleanup;
+        } else if (module_schema->implemented) {
+            SR_LOG_ERR("Module '%s' is already implemented in revision '%s'.", module->name, match_implemented->revision_date);
+            rc = SR_ERR_DATA_EXISTS;
+            goto cleanup;
         }
     }
 
