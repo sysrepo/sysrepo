@@ -224,86 +224,6 @@ sr_copy_first_ns(const char *xpath, char **namespace)
 }
 
 int
-sr_copy_first_ns_from_expr(const char *expr, char*** namespaces_p, size_t *namespace_cnt_p)
-{
-    int rc = SR_ERR_OK;
-    const char *ns = NULL, *cur = NULL;
-    bool ignore = false, copied = false;
-    char **namespaces = NULL, **tmp = NULL;
-    size_t namespace_cnt = 0, namespace_size = 0, new_size = 0;
-
-    CHECK_NULL_ARG3(expr, namespaces_p, namespace_cnt_p);
-
-    cur = ns = expr;
-    while ('\0' != *cur) {
-        if (isspace(*cur) || NULL != strchr("[<>=+@$&|", *cur)) {
-            /* restart */
-            ignore = false;
-            ns = cur+1;
-        } else if ('\'' == *cur || '"' == *cur) {
-            if (!ignore) {
-                /* restart */
-                ns = cur+1;
-            }
-        } else if ('/' == *cur) {
-            if (ns < cur) {
-                ignore = true;
-            } else {
-                /* restart */
-                ns = cur+1;
-            }
-        } else if (']' == *cur) {
-            ignore = true;
-        } else if (':' == *cur) {
-            if (!ignore && ns < cur) {
-                copied = false;
-                for (size_t i = 0; i < namespace_cnt; ++i) {
-                    if (0 == strncmp(namespaces[i], ns, cur - ns)) {
-                        copied = true;
-                        break;
-                    }
-                }
-                if (false == copied) {
-                    if (namespace_cnt == namespace_size) {
-                        /* realloc */
-                        if (0 == namespace_size) {
-                            new_size = 2;
-                        } else {
-                            new_size = namespace_size * 2;
-                        }
-                        tmp = (char **)realloc(namespaces, (sizeof *namespaces) * new_size);
-                        CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
-                        namespaces = tmp;
-                        for (size_t i = namespace_size; i < new_size; ++i) {
-                            namespaces[i] = NULL;
-                        }
-                        namespace_size = new_size;
-                    }
-                    assert(namespace_cnt < namespace_size);
-                    namespaces[namespace_cnt] = strndup(ns, cur - ns);
-                    CHECK_NULL_NOMEM_GOTO(namespaces[namespace_cnt], rc, cleanup);
-                    ++namespace_cnt;
-                }
-            }
-            ignore = true;
-        }
-        ++cur;
-    }
-
-cleanup:
-    if (SR_ERR_OK == rc) {
-        *namespaces_p = namespaces;
-        *namespace_cnt_p = namespace_cnt;
-    } else {
-        for (size_t i = 0; i < namespace_cnt; ++i) {
-            free(namespaces[i]);
-        }
-        free(namespaces);
-    }
-    return rc;
-}
-
-int
 sr_copy_all_ns(const char *xpath, char ***namespaces_p, size_t *ns_count_p)
 {
     CHECK_NULL_ARG3(xpath, namespaces_p, ns_count_p);
@@ -318,9 +238,10 @@ sr_copy_all_ns(const char *xpath, char ***namespaces_p, size_t *ns_count_p)
 
     while ((colon_pos = strchr(xpath, ':'))) {
         for (xpath = colon_pos; isalnum(xpath[-1]) || (xpath[-1] == '_') || (xpath[-1] == '-') || (xpath[-1] == '.'); --xpath);
-        tmp = realloc(namespaces, ++ns_count * sizeof *namespaces);
+        tmp = realloc(namespaces, (ns_count + 1) * sizeof *namespaces);
         CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
         namespaces = tmp;
+        ns_count++;
 
         namespaces[ns_count - 1] = strndup(xpath, colon_pos - xpath);
         CHECK_NULL_NOMEM_GOTO(namespaces[ns_count - 1], rc, cleanup);
@@ -1082,51 +1003,6 @@ matching_done:
     return type == value->type ? SR_ERR_OK : SR_ERR_INVAL_ARG;
 }
 
-/**
- * Functions copies the bits into string
- * @param [in] leaf - data tree node from the bits will be copied
- * @param [out] value - destination value where a space separated set bit field will be copied to
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, sr_val_t *value)
-{
-    CHECK_NULL_ARG3(leaf, value, leaf->schema);
-
-    struct lys_node_leaf *sch = (struct lys_node_leaf *) leaf->schema;
-    char *bits_str = NULL;
-    int bits_count = sch->type.info.bits.count;
-    struct lys_type_bit **bits = leaf->value.bit;
-
-    size_t length = 1; /* terminating NULL byte*/
-    for (int i = 0; i < bits_count; i++) {
-        if (NULL != bits[i] && NULL != bits[i]->name) {
-            length += strlen(bits[i]->name);
-            length++; /*space after bit*/
-        }
-    }
-    bits_str = sr_calloc(value->_sr_mem, length, sizeof(*bits_str));
-    if (NULL == bits_str) {
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        return SR_ERR_NOMEM;
-    }
-    size_t offset = 0;
-    for (int i = 0; i < bits_count; i++) {
-        if (NULL != bits[i] && NULL != bits[i]->name) {
-            strcpy(bits_str + offset, bits[i]->name);
-            offset += strlen(bits[i]->name);
-            bits_str[offset] = ' ';
-            offset++;
-        }
-    }
-    if (0 != offset) {
-        bits_str[offset - 1] = '\0';
-    }
-
-    value->data.bits_val = bits_str;
-    return SR_ERR_OK;
-}
-
 int
 sr_libyang_val_str_to_sr_val(const char *val_str, sr_type_t type, sr_val_t *value)
 {
@@ -1252,12 +1128,12 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         }
         return SR_ERR_OK;
     case LY_TYPE_BITS:
-        if (NULL == leaf->value.bit) {
-            SR_LOG_ERR("Missing schema information for node '%s'", node_name);
-        }
-        rc = sr_libyang_leaf_copy_bits(leaf, value);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'bits'", node_name);
+        if (NULL != leaf->value_str) {
+            sr_mem_edit_string(value->_sr_mem, &value->data.bits_val, leaf->value_str);
+            if (NULL == value->data.bits_val) {
+                SR_LOG_ERR_MSG("Bits duplication failed");
+                return SR_ERR_NOMEM;
+            }
         }
         return rc;
     case LY_TYPE_BOOL:

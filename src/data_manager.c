@@ -998,7 +998,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
 
     /* compute xpath hashes for all schema nodes (referenced from data tree) */
     rc = dm_init_missing_node_priv_data(si);
-    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", module->name);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to initialize private data for module %s", module->name);
 
     /* apply persist data enable features, running datastore */
     if (module->has_persist) {
@@ -1356,13 +1356,15 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
         }
     }
 
-    /* switch identity */
-    ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
+    if (session->datastore != SR_DS_CANDIDATE) {
+        /* switch identity */
+        ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
-    rc = dm_lock_file(dm_ctx->locking_ctx, lock_file);
+        rc = dm_lock_file(dm_ctx->locking_ctx, lock_file);
 
-    /* switch identity back */
-    ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
+        /* switch identity back */
+        ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
+    }
 
     /* log information about locked model */
     if (SR_ERR_OK != rc) {
@@ -1411,7 +1413,9 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
         SR_LOG_ERR("File %s has not been locked in this context", lock_file);
         rc = SR_ERR_INVAL_ARG;
     } else {
-        rc = dm_unlock_file(dm_ctx->locking_ctx, lock_file);
+        if (session->datastore != SR_DS_CANDIDATE) {
+            rc = dm_unlock_file(dm_ctx->locking_ctx, lock_file);
+        }
         free(session->locked_files->data[i]);
         sr_list_rm_at(session->locked_files, i);
         pthread_mutex_lock(&si->usage_count_mutex);
@@ -1440,25 +1444,32 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
     rc = dm_list_schemas(dm_ctx, session, &schemas, &schema_count);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List schemas failed");
 
-    pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
-    if (dm_ctx->ds_lock[session->datastore]) {
-        SR_LOG_ERR_MSG("Datastore lock is hold by other session");
-        rc = SR_ERR_LOCKED;
+    if (session->datastore != SR_DS_CANDIDATE) {
+        pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
+        if (dm_ctx->ds_lock[session->datastore]) {
+            SR_LOG_ERR_MSG("Datastore lock is held by another session");
+            rc = SR_ERR_LOCKED;
+            pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
+            goto cleanup;
+        }
+        dm_ctx->ds_lock[session->datastore] = true;
         pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
-        goto cleanup;
     }
-    dm_ctx->ds_lock[session->datastore] = true;
-    pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
     session->holds_ds_lock[session->datastore] = true;
 
     for (size_t i = 0; i < schema_count; i++) {
+        if (!schemas[i].implemented) {
+            /* nothing to lock */
+            continue;
+        }
+
         rc = dm_lock_module(dm_ctx, session, (char *) schemas[i].module_name);
         if (SR_ERR_OK != rc) {
             if (SR_ERR_UNAUTHORIZED == rc) {
                 SR_LOG_INF("Not allowed to lock %s, skipping", schemas[i].module_name);
                 continue;
             } else if (SR_ERR_LOCKED == rc) {
-                SR_LOG_ERR("Model %s is already locked by other session", schemas[i].module_name);
+                SR_LOG_ERR("Model %s is already locked by anther session", schemas[i].module_name);
             }
             for (size_t l = 0; l < locked->count; l++) {
                 dm_unlock_module(dm_ctx, session, (char *) locked->data[l]);
@@ -1544,7 +1555,9 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
             SR_LOG_WRN("Get schema info by lock file failed %s", (char *) session->locked_files->data[0]);
         }
 
-        dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
+        if (session->datastore != SR_DS_CANDIDATE) {
+            dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
+        }
         free(session->locked_files->data[0]);
         sr_list_rm_at(session->locked_files, 0);
     }
@@ -1929,7 +1942,7 @@ dm_load_dependant_data(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *
         ll_node = module->deps->first;
         while (ll_node) {
             dep = (md_dep_t *)ll_node->data;
-            if (MD_DEP_DATA == dep->type && dep->dest->latest_revision && dep->dest->has_data) {
+            if (MD_DEP_DATA == dep->type && dep->dest->implemented && dep->dest->has_data) {
                 const char *dependant_module = dep->dest->name;
                 rc = dm_append_data_tree(session->dm_ctx, session, info, dependant_module);
                 CHECK_RC_LOG_GOTO(rc, unlock, "Failed to append data tree %s", dependant_module);
@@ -2600,13 +2613,6 @@ dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *i
             lyd_free_withsiblings(info->node);
 
             info->node = sr_dup_datatree_to_ctx(data_tree, info->schema->ly_ctx);
-
-            /* free data tree */
-            lyd_free_withsiblings(data_tree);
-
-            /* release working context */
-            dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
-
         }
     } else {
         if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
@@ -2621,6 +2627,10 @@ cleanup:
     sr_list_cleanup(required_data);
     sr_list_cleanup(data_for_validation);
     free(should_be_freed);
+    lyd_free_withsiblings(data_tree);
+    if (tmp_ctx) {
+        dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
+    }
     if (validation_failed) {
         rc = SR_ERR_VALIDATION_FAILED;
     }
@@ -3660,7 +3670,7 @@ dm_release_resources_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx
     return SR_ERR_OK;
 }
 
-int
+static int
 dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 {
     CHECK_NULL_ARG(c_ctx);
@@ -3728,7 +3738,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
         if (info->modified) {
             c_ctx->modif_count++;
 
-            if (SR_DS_STARTUP != session->datastore) {
+            if (SR_DS_RUNNING == session->datastore) {
                 rc = dm_prepare_module_subscriptions(dm_ctx, session, info->schema, &ms);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Prepare module subscription failed %s", info->schema->module->name);
 
@@ -3742,7 +3752,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
 
     SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models", c_ctx->modif_count, i);
 
-    if (0 == session->oper_count[session->datastore] && 0 != c_ctx->modif_count && SR_DS_CANDIDATE != session->datastore) {
+    if (0 == session->oper_count[session->datastore] && 0 != c_ctx->modif_count && SR_DS_RUNNING != session->datastore) {
         SR_LOG_WRN_MSG("No operation logged, however data tree marked as modified");
         c_ctx->modif_count = 0;
         *commit_ctx = c_ctx;
@@ -3759,7 +3769,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     CHECK_NULL_NOMEM_GOTO(c_ctx->existed, rc, cleanup);
 
     /* create commit session */
-    rc = dm_session_start(dm_ctx, session->user_credentials, SR_DS_CANDIDATE == session->datastore ? SR_DS_RUNNING : session->datastore, &c_ctx->session);
+    rc = dm_session_start(dm_ctx, session->user_credentials, session->datastore, &c_ctx->session);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Commit session initialization failed");
 
     rc = sr_list_init(&c_ctx->up_to_date_models);
@@ -3776,49 +3786,6 @@ cleanup:
     c_ctx->modif_count = 0; /* no fd to be closed*/
     dm_model_subscription_free(ms);
     dm_free_commit_context(c_ctx);
-    return rc;
-}
-
-/**
- * @brief Acquires locks that are needed to commit changes into the datastore
- * @param [in] dm_ctx
- * @param [in] session
- * @param [in] c_ctx
- * @param [in] module_name
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-dm_commit_lock_model(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx, const char *module_name)
-{
-    CHECK_NULL_ARG4(dm_ctx, session, c_ctx, module_name);
-    int rc = SR_ERR_OK;
-    if (SR_DS_CANDIDATE == session->datastore) {
-        /* acquire candidate lock*/
-        dm_session_switch_ds(c_ctx->session, SR_DS_CANDIDATE);
-        rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
-        if (SR_ERR_LOCKED == rc) {
-            /* check if the lock is hold by session that issued commit */
-            rc = dm_lock_module(dm_ctx, session, module_name);
-        }
-        dm_session_switch_ds(c_ctx->session, SR_DS_RUNNING);
-        CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in candidate ds", module_name);
-        /* acquire running lock*/
-        rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
-        if (SR_ERR_LOCKED == rc) {
-            /* check if the lock is hold by session that issued commit */
-            dm_session_switch_ds(session, SR_DS_RUNNING);
-            rc = dm_lock_module(dm_ctx, session, module_name);
-            dm_session_switch_ds(session, SR_DS_CANDIDATE);
-        }
-        CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in running ds", module_name);
-    } else {
-        /* in case of startup/running ds acquire only startup/running */
-        rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
-        if (SR_ERR_LOCKED == rc) {
-            /* check if the lock is hold by session that issued commit */
-            rc = dm_lock_module(dm_ctx, session, module_name);
-        }
-    }
     return rc;
 }
 
@@ -3852,12 +3819,12 @@ cleanup:
 
 int
 dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx,
-        sr_error_info_t **errors, size_t *err_cnt)
+        bool force_copy_uptodate, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG3(c_ctx, errors, err_cnt);
     CHECK_NULL_ARG5(dm_ctx, session, c_ctx->session, c_ctx->fds, c_ctx->existed);
     CHECK_NULL_ARG(c_ctx->up_to_date_models);
-    dm_data_info_t *info = NULL;
+    dm_data_info_t *info = NULL, *di = NULL;
     size_t i = 0;
     size_t count = 0;
     int rc = SR_ERR_OK;
@@ -3869,9 +3836,13 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         if (!info->modified) {
             continue;
         }
-        rc = dm_commit_lock_model(dm_ctx, (dm_session_t *) session, c_ctx, info->schema->module->name);
+        rc = dm_lock_module(dm_ctx, c_ctx->session, info->schema->module->name);
+        if (SR_ERR_LOCKED == rc) {
+            /* check if the lock is hold by session that issued commit */
+            rc = dm_lock_module(dm_ctx, (dm_session_t *)session, info->schema->module->name);
+        }
         CHECK_RC_LOG_RETURN(rc, "Module %s can not be locked", info->schema->module->name);
-        if (SR_DS_CANDIDATE == session->datastore) {
+        if (SR_DS_RUNNING == session->datastore) {
             /* check if all subtrees are enabled */
             bool has_not_enabled = true;
             rc = dm_has_not_enabled_nodes(info, &has_not_enabled);
@@ -3887,63 +3858,70 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             }
         }
     }
-    i = 0;
 
     ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
+    i = 0;
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         if (!info->modified) {
             continue;
         }
-        rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->schema->module->name, c_ctx->session->datastore, &file_name);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
 
-        c_ctx->fds[count] = open(file_name, O_RDWR);
-        if (-1 == c_ctx->fds[count]) {
-            SR_LOG_DBG("File %s can not be opened for read write", file_name);
-            if (EACCES == errno) {
+        /* do not create or do anything with candidate data file, it does not exist and never should */
+        if (session->datastore != SR_DS_CANDIDATE) {
+            rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->schema->module->name, c_ctx->session->datastore, &file_name);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
+
+            c_ctx->fds[count] = open(file_name, O_RDWR);
+            if (-1 == c_ctx->fds[count]) {
+                SR_LOG_DBG("File %s can not be opened for read write", file_name);
+                if (EACCES == errno) {
 #define ERR_FMT "File %s can not be opened because of authorization"
-                if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name)) {
+                    if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name)) {
+                        SR_LOG_WRN_MSG("Failed to record commit operation error");
+                    }
+                    SR_LOG_ERR(ERR_FMT, file_name);
+                    rc = SR_ERR_UNAUTHORIZED;
+                    goto cleanup;
+#undef ERR_FMT
+                }
+
+                if (ENOENT == errno) {
+                    SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
+                    c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+                    CHECK_NOT_MINUS1_LOG_GOTO(c_ctx->fds[count], rc, SR_ERR_IO, cleanup, "File %s can not be created", file_name);
+                }
+            } else {
+                c_ctx->existed[count] = true;
+            }
+            /* file was opened successfully increment the number of files to be closed */
+            c_ctx->modif_count++;
+            /* try to lock for read, non-blocking */
+            rc = sr_lock_fd(c_ctx->fds[count], false, false);
+            if (SR_ERR_OK != rc) {
+#define ERR_FMT "Locking of file '%s' failed: %s."
+                if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name, sr_strerror(rc))) {
                     SR_LOG_WRN_MSG("Failed to record commit operation error");
                 }
-                SR_LOG_ERR(ERR_FMT, file_name);
-                rc = SR_ERR_UNAUTHORIZED;
+                SR_LOG_ERR(ERR_FMT, file_name, sr_strerror(rc));
+                rc = SR_ERR_OPERATION_FAILED;
                 goto cleanup;
 #undef ERR_FMT
             }
+        }
 
-            if (ENOENT == errno) {
-                SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
-                c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                CHECK_NOT_MINUS1_LOG_GOTO(c_ctx->fds[count], rc, SR_ERR_IO, cleanup, "File %s can not be created", file_name);
-            }
+        bool copy_uptodate;
+        if (session->datastore == SR_DS_CANDIDATE || force_copy_uptodate) {
+            /* candidate datatree is always up-to-date, there is only one copy */
+            copy_uptodate = true;
         } else {
-            c_ctx->existed[count] = true;
+            rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "File up to date check failed");
         }
-        /* file was opened successfully increment the number of files to be closed */
-        c_ctx->modif_count++;
-        /* try to lock for read, non-blocking */
-        rc = sr_lock_fd(c_ctx->fds[count], false, false);
-        if (SR_ERR_OK != rc) {
-#define ERR_FMT "Locking of file '%s' failed: %s."
-            if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name, sr_strerror(rc))) {
-                SR_LOG_WRN_MSG("Failed to record commit operation error");
-            }
-            SR_LOG_ERR(ERR_FMT, file_name, sr_strerror(rc));
-            rc = SR_ERR_OPERATION_FAILED;
-            goto cleanup;
-#undef ERR_FMT
-        }
-        dm_data_info_t *di = NULL;
 
-        bool copy_uptodate = false;
-        rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "File up to date check failed");
-
-        /* ops are skipped also when candidate is committed to the running */
-        if (copy_uptodate || SR_DS_CANDIDATE == session->datastore) {
+        if (session->datastore == SR_DS_CANDIDATE || copy_uptodate) {
             SR_LOG_DBG("Timestamp for the model %s matches, ops will be skipped", info->schema->module->name);
-            rc = sr_list_add(c_ctx->up_to_date_models, (void *) info->schema->module->name);
+            rc = sr_list_add(c_ctx->up_to_date_models, (void *)info->schema->module->name);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
 
             di = calloc(1, sizeof(*di));
@@ -3975,7 +3953,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             CHECK_RC_MSG_GOTO(rc, cleanup, "Loading data file failed");
         }
 
-        rc = sr_btree_insert(c_ctx->session->session_modules[c_ctx->session->datastore], (void *) di);
+        rc = sr_btree_insert(c_ctx->session->session_modules[c_ctx->session->datastore], (void *)di);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Insert into commit session avl failed module %s", info->schema->module->name);
             dm_data_info_free(di);
@@ -3985,16 +3963,16 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         if (SR_DS_STARTUP != session->datastore || !c_ctx->disabled_config_change ||
                 (NULL != dm_ctx->nacm_ctx && (c_ctx->init_session->options & SR_SESS_ENABLE_NACM))) {
             /**
-             * For candidate and running we save prev state.
+             * For running and candidate we save previous state.
              * If config change notifications are generated we have to save prev state for startup as well.
              * if NACM is enabled, we need to get the previous state in any case.
              */
-            if (SR_DS_CANDIDATE == session->datastore || copy_uptodate) {
+            if (session->datastore != SR_DS_CANDIDATE && copy_uptodate) {
                 /* load data tree from file system */
                 rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->schema, &di);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Loading data file failed");
 
-                rc = sr_btree_insert(c_ctx->prev_data_trees, (void *) di);
+                rc = sr_btree_insert(c_ctx->prev_data_trees, (void *)di);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR("Insert into prev data trees failed module %s", info->schema->module->name);
                     dm_data_info_free(di);
@@ -4573,7 +4551,7 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
     ll_node = module->inv_deps->first;
     while (ll_node) {
         dep = (md_dep_t *) ll_node->data;
-        if (dep->type == MD_DEP_EXTENSION && true == dep->dest->latest_revision) {
+        if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented) {
             lookup.module_name = (char *) dep->dest->name;
             si = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
             if (NULL != si && NULL != si->ly_ctx) {
@@ -4686,7 +4664,7 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
         ll_node = module->inv_deps->first;
         while (ll_node) {
             dep = (md_dep_t *)ll_node->data;
-            if (dep->type == MD_DEP_EXTENSION && true == dep->dest->latest_revision) {
+            if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented) {
                 lookup.module_name = (char *)dep->dest->name;
                 si_ext = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
                 if (NULL != si_ext && NULL != si_ext->ly_ctx) {
@@ -6079,7 +6057,6 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     int rc = SR_ERR_OK;
     dm_tmp_ly_ctx_t *tmp_ctx = NULL;
     struct ly_ctx *ly_ctx = NULL, *tmp_ly_ctx = NULL;
-    bool locked = false;
 
     CHECK_NULL_ARG4(dm_ctx, session, notification, notification->xpath);
 
@@ -6112,7 +6089,6 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to acquire tmp ly_ctx");
 
         md_ctx_lock(dm_ctx->md_ctx, false);
-        locked = true;
         ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
 
         xml = lyxml_parse_mem(tmp_ctx->ctx, notification->data.string, 0);
@@ -6165,7 +6141,7 @@ cleanup:
     }
     lyd_free_withsiblings(data_tree);
     ly_ctx_destroy(tmp_ly_ctx, NULL);
-    if (locked) {
+    if (tmp_ctx) {
         md_ctx_unlock(dm_ctx->md_ctx);
         dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
     }
@@ -6463,7 +6439,7 @@ dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, s
             /* skip submodules */
             continue;
         }
-        if (!module->latest_revision) {
+        if (!module->implemented || !module->has_data) {
             continue;
         }
 
@@ -6638,7 +6614,6 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
     dm_tmp_ly_ctx_t *tmp_ctx = NULL;
     struct lyd_node *tmp_notif = NULL;
     sr_list_t *models = NULL;
-    bool locked = false;
     struct ly_set *set = NULL;
     char **module_names = NULL, *module_name = NULL;
     size_t module_name_count = 0;
@@ -6679,7 +6654,6 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to acquire tmp ly_ctx");
 
     md_ctx_lock(dm_ctx->md_ctx, false);
-    locked = true;
     ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
 
     tmp_notif = sr_dup_datatree_to_ctx(notif, tmp_ctx->ctx);
@@ -6694,10 +6668,8 @@ cleanup:
     ly_set_free(set);
     sr_free_list_of_strings(models);
     lyd_free_withsiblings(tmp_notif);
-    if (locked) {
+    if (tmp_ctx) {
         md_ctx_unlock(dm_ctx->md_ctx);
-    }
-    if (NULL != tmp_ctx) {
         dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
     }
 

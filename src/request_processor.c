@@ -1456,10 +1456,10 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
 
     if (SR_ERR_OK == rc ) {
         session->req = msg;
-        rc = rp_dt_commit(rp_ctx, session, c_ctx, &errors, &err_cnt);
+        rc = rp_dt_commit(rp_ctx, session, c_ctx, false, &errors, &err_cnt);
     }
     if (SR_ERR_OK == rc && RP_REQ_WAITING_FOR_VERIFIERS == session->state) {
-        SR_LOG_DBG_MSG("Request paused, waiting for verifiers");
+        SR_LOG_DBG_MSG("Commit request paused, waiting for verifiers");
         /* we are waiting for verifiers data do not free the request */
         *skip_msg_cleanup = true;
         sr_msg_free(resp);
@@ -1531,11 +1531,14 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
  * @brief Processes a copy-config request.
  */
 static int
-rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *skip_msg_cleanup)
 {
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
+    sr_error_info_t *errors = NULL;
+    size_t err_cnt = 0;
+    bool locked = false;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->copy_config_req);
 
@@ -1551,21 +1554,49 @@ rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
         return SR_ERR_NOMEM;
     }
 
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&rp_ctx->commit_block_mutex, rc, cleanup);
+    /* do this check only if this really will be a commit */
+    if (SR__DATA_STORE__RUNNING == msg->request->copy_config_req->dst_datastore && rp_ctx->block_further_commits) {
+        rc = SR_ERR_OPERATION_FAILED;
+    }
+    pthread_mutex_unlock(&rp_ctx->commit_block_mutex);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Stop requested, commits are blocked.");
+
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
+    locked = true;
+
+    session->req = msg;
     rc = rp_dt_copy_config(rp_ctx, session, msg->request->copy_config_req->module_name,
                 sr_datastore_gpb_to_sr(msg->request->copy_config_req->src_datastore),
-                sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore));
+                sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore), &errors, &err_cnt);
 
+    if (SR_ERR_OK == rc && RP_REQ_WAITING_FOR_VERIFIERS == session->state) {
+        SR_LOG_DBG_MSG("Copy_config request paused, waiting for verifiers");
+        /* we are waiting for verifiers data do not free the request */
+        *skip_msg_cleanup = true;
+        sr_msg_free(resp);
+        pthread_mutex_unlock(&session->cur_req_mutex);
+        return SR_ERR_OK;
+    }
+
+cleanup:
+    session->state = RP_REQ_FINISHED;
+    session->req = NULL;
+    if (locked) {
+        pthread_mutex_unlock(&session->cur_req_mutex);
+    }
     /* set response code */
     resp->response->result = rc;
 
-    rc = rp_resp_fill_errors(resp, session->dm_session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    /* copy error information to GPB  (if any) */
+    if (err_cnt > 0) {
+        sr_gpb_fill_errors(errors, err_cnt, sr_mem, &resp->response->copy_config_resp->errors,
+                &resp->response->copy_config_resp->n_errors);
+        sr_free_errors(errors, err_cnt);
     }
 
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
-
     return rc;
 }
 
@@ -2438,10 +2469,19 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
         if (subs_index < session->state_data_ctx.subscription_nodes->count) {
             for (size_t i = 0; i < xp_count; i++) {
                 size_t len = strlen(xpaths[i]) + strlen(iter->name) + 2 /* slash + zero byte */;
+
+                if (lys_node_module(sch_node) != lys_node_module(iter)) {
+                    len += strlen(lys_node_module(iter)->name) + 1;
+                }
+
                 request_xp = calloc(len, sizeof(*request_xp));
                 CHECK_NULL_NOMEM_GOTO(request_xp, rc, cleanup);
 
-                snprintf(request_xp, len, "%s/%s", xpaths[i], iter->name);
+                if (lys_node_module(sch_node) == lys_node_module(iter)) {
+                    snprintf(request_xp, len, "%s/%s", xpaths[i], iter->name);
+                } else {
+                    snprintf(request_xp, len, "%s/%s:%s", xpaths[i], lys_node_module(iter)->name, iter->name);
+                }
 
                 rc = np_data_provider_request(rp_ctx->np_ctx, session->state_data_ctx.subscriptions->data[subs_index],
                         session, request_xp);
@@ -2781,7 +2821,8 @@ cleanup:
         rp_dt_free_state_data_ctx_content(&session->state_data_ctx);
         if (RP_REQ_WAITING_FOR_DATA == session->state) {
             SR_LOG_DBG("All data from data providers has been received session id = %u, "
-                    "re-enqueue the request (id=%" PRIu64 ")", session->id, session->req->request->_id);
+                    "re-enqueue the request (id=%" PRIu64 ")", session->id,
+                    session->req ? session->req->request->_id : 0);
             session->state = RP_REQ_DATA_LOADED;
             rp_msg_process(rp_ctx, session, session->req);
             session->req = NULL;
@@ -3356,7 +3397,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             rc = rp_discard_changes_req_process(rp_ctx, session, msg);
             break;
         case SR__OPERATION__COPY_CONFIG:
-            rc = rp_copy_config_req_process(rp_ctx, session, msg);
+            rc = rp_copy_config_req_process(rp_ctx, session, msg, skip_msg_cleanup);
             break;
         case SR__OPERATION__SESSION_REFRESH:
             rc = rp_session_refresh_req_process(rp_ctx, session, msg);
@@ -4104,6 +4145,7 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finishe
 {
     CHECK_NULL_ARG(rp_ctx);
     int rc = SR_ERR_OK;
+    const char *op_str;
     dm_commit_context_t *c_ctx = NULL;
     dm_commit_ctxs_t *dm_ctxs = NULL;
     bool locked = false;
@@ -4122,7 +4164,18 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finishe
     if (!finished && DM_COMMIT_WAIT_FOR_NOTIFICATIONS == c_ctx->state &&
         NULL != c_ctx->init_session) {
 
-        SR_LOG_INF("Resuming commit with id %"PRIu32" continue with %s", commit_id, SR_ERR_OK == result ? "write" : "abort");
+        switch (c_ctx->init_session->req->request->operation) {
+        case SR__OPERATION__COPY_CONFIG:
+            op_str = "copy_config";
+            break;
+        case SR__OPERATION__COMMIT:
+            op_str = "commit";
+            break;
+        default:
+            SR_LOG_ERR_MSG("Invalid operation of a resumed commit request");
+            goto cleanup;
+        }
+        SR_LOG_INF("Resuming %s with id %"PRIu32" continue with %s", op_str, commit_id, SR_ERR_OK == result ? "write" : "abort");
         c_ctx->state = SR_ERR_OK == result ? DM_COMMIT_WRITE : DM_COMMIT_NOTIFY_ABORT;
         c_ctx->err_subs_xpaths = err_subs_xpaths;
 

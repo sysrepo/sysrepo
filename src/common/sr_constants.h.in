@@ -26,6 +26,9 @@
 /** Current version of sysrepo. */
 #define SR_VERSION "@SYSREPO_VERSION@"
 
+/** Compatible sysrepo versions. */
+#define SR_COMPAT_VERSION "@SYSREPO_SOVERSION@"
+
 /* Portability feature-check macros. */
 #cmakedefine HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP
 #cmakedefine HAVE_GETPEEREID

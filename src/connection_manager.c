@@ -47,9 +47,6 @@
 
 #define CM_MAX_SIGNAL_WATCHERS 2  /**< Maximum number of signals that Connection Manager can watch for. */
 
-#define CM_SUBSCRIBER_DISCONNECT_TIMEOUT 1  /**< Timeout (in seconds) to wait after disconnection of a subscriber
-                                                 before removing of the subscription. */
-
 /**
  * @brief Connection Manager context.
  */
@@ -435,7 +432,8 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
                 /* drop the session in Session Manager */
                 sm_session_drop(cm_ctx->sm_ctx, sess->session);
             } else {
-                /* just remove the session from the connection's session list */
+                /* just remove the session from the connection's session list and vice versa */
+                sess->session->connection = NULL;
                 conn->session_list = conn->session_list->next;
                 free(sess);
             }
@@ -445,8 +443,9 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     if (CM_AF_UNIX_SERVER == conn->type && NULL != conn->dst_address) {
         /* this was a subscriber connection, remove the subscriptions for that destination */
         SR_LOG_DBG("Subscription server at '%s' has disconnected.", conn->dst_address);
-        /* unsubscribe after timeout to prevent configuration flaps in running ds */
-        cm_subscr_unsubscribe_destination(cm_ctx, conn->dst_address, CM_SUBSCRIBER_DISCONNECT_TIMEOUT);
+        /* we must unsubscribe immediately because otherwise this connection may be
+         * found again before it is removed and by removing it twice we get a segfault */
+        cm_subscr_unsubscribe_destination(cm_ctx, conn->dst_address, 0);
     }
 
     /* cleanup connection, pointers to the connection from outstanding sessions will be set to NULL */
@@ -803,6 +802,59 @@ cm_session_check_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *m
 }
 
 /**
+ * @brief Perform versions verification
+ */
+static int
+cm_verify_version_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *msg_in)
+{
+    Sr__Msg *msg = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    int rc = SR_ERR_OK, r;
+
+    CHECK_NULL_ARG5(cm_ctx, conn, msg_in, msg_in->request, msg_in->request->version_verify_req);
+
+    /* prepare the response */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__VERSION_VERIFY, 0, &msg);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot allocate the response for version_verify request (conn=%p).", (void*)conn);
+        sr_mem_free(sr_mem);
+        return SR_ERR_NOMEM;
+    }
+
+    /* verify versions (soname) */
+    if (NULL == msg_in->request->version_verify_req->soname ||
+            strcmp(msg_in->request->version_verify_req->soname, SR_COMPAT_VERSION)) {
+        SR_LOG_ERR("Client's \"%s\" version is not compatible with version \""SR_COMPAT_VERSION"\" in use.",
+                   msg_in->request->version_verify_req->soname);
+        rc = SR_ERR_VERSION_MISMATCH;
+    }
+
+    if (SR_ERR_OK != rc) {
+        /* set the error code and local soname version string into response */
+        msg->response->result = rc;
+        sr_mem_edit_string(sr_mem, &msg->response->version_verify_resp->soname, SR_COMPAT_VERSION);
+        CHECK_NULL_NOMEM_GOTO(msg->response->version_verify_resp->soname, rc, cleanup);
+    }
+
+    /* send the response */
+    r = cm_msg_send_connection(cm_ctx, conn, msg);
+    if (SR_ERR_OK != r) {
+        if (SR_ERR_OK == rc) {
+            rc = r;
+        }
+        SR_LOG_ERR("Unable to send version_verification response (conn=%p).", (void*)conn);
+    }
+
+cleanup:
+    /* release the message */
+    sr_msg_free(msg);
+
+    return rc;
+}
+
+/**
  * @brief Processes a request from client.
  */
 static int
@@ -977,6 +1029,23 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
         goto cleanup;
     }
 
+    if (!conn->established) {
+        /* First message in the connection must be the request to verify version */
+        if (SR__MSG__MSG_TYPE__REQUEST != msg->type || SR__OPERATION__VERSION_VERIFY != msg->request->operation) {
+            SR_LOG_ERR_MSG("Version compatibility must be verified before processing any other message.");
+            rc = SR_ERR_VERSION_MISMATCH;
+            goto cleanup;
+        }
+
+        rc = cm_verify_version_req_process(cm_ctx, conn, msg);
+        if (SR_ERR_OK == rc) {
+            /* connection is verified */
+            conn->established = true;
+        }
+        /* processing done */
+        goto cleanup;
+    }
+
     /* find matching session (except for some exceptions) */
     if (SR__MSG__MSG_TYPE__NOTIFICATION_ACK != msg->type &&
             ((SR__MSG__MSG_TYPE__REQUEST != msg->type) || (SR__OPERATION__SESSION_START != msg->request->operation))) {
@@ -1103,7 +1172,7 @@ cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
     cm_ctx = conn->cm_data->cm_ctx;
     buff = &conn->cm_data->in_buff;
 
-    SR_LOG_DBG("fd %d readable", conn->fd);
+    SR_LOG_DBG("fd %d readable (revents %d)", conn->fd, revents);
 
     do {
         /* expand input buffer if needed */
@@ -1170,7 +1239,7 @@ cm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
     CHECK_NULL_ARG_VOID3(conn, conn->cm_data, conn->cm_data->cm_ctx);
     cm_ctx = conn->cm_data->cm_ctx;
 
-    SR_LOG_DBG("fd %d writeable", conn->fd);
+    SR_LOG_DBG("fd %d writeable (revents %d)", conn->fd, revents);
 
     ev_io_stop(cm_ctx->event_loop, &conn->cm_data->write_watcher);
 

@@ -445,6 +445,14 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
         SR_LOG_INF("Connected to daemon Sysrepo Engine at socket=%s", SR_DAEMON_SOCKET);
     }
 
+    /*
+     * version verification
+     */
+    rc = cl_version_verify(connection);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
+
     if (NULL != cm_ctx) {
         local_cm_ctx = cm_ctx;
     }
@@ -2148,6 +2156,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name,
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
+    Sr__CopyConfigResp *copy_config_resp = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
@@ -2170,12 +2179,26 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name,
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__COPY_CONFIG);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+    if ((SR_ERR_OK != rc) && (SR_ERR_OPERATION_FAILED != rc) && (SR_ERR_VALIDATION_FAILED != rc) &&
+        (SR_ERR_UNAUTHORIZED != rc)) {
+        SR_LOG_ERR_MSG("Error by processing of copy_config request.");
+        goto cleanup;
+    }
+
+    copy_config_resp = msg_resp->response->copy_config_resp;
+    if ((SR_ERR_OPERATION_FAILED == rc) || (SR_ERR_VALIDATION_FAILED == rc) || (SR_ERR_UNAUTHORIZED == rc)) {
+        SR_LOG_ERR("Copy_config operation failed with %zu error(s).", copy_config_resp->n_errors);
+
+        /* store commit errors within the session */
+        if (copy_config_resp->n_errors > 0) {
+            cl_session_set_errors(session, copy_config_resp->errors, copy_config_resp->n_errors);
+        }
+    }
 
     sr_msg_free(msg_req);
     sr_msg_free(msg_resp);
 
-    return cl_session_return(session, SR_ERR_OK);
+    return cl_session_return(session, rc);
 
 cleanup:
     if (NULL != msg_req) {

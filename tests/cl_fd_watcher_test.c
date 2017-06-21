@@ -172,6 +172,8 @@ cl_fd_poll_test(void **state)
     /* commit changes */
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     do {
         ret = poll(poll_fd_set, poll_fd_cnt, -1);

@@ -470,6 +470,9 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
             rc = cl_socket_connect(connection, connection->dst_address);
         }
         if (SR_ERR_OK == rc) {
+            rc = cl_version_verify(connection);
+        }
+        if (SR_ERR_OK == rc) {
             rc = sr_btree_insert(sm_ctx->data_connection_btree, connection);
         }
         if (SR_ERR_OK != rc) {

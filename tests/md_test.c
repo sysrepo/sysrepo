@@ -675,46 +675,61 @@ md_test_init_and_destroy(void **state)
     md_destroy(md_ctx);
 }
 
+/*
+ * presence_type flag: 0 - inserted modules, 1 - implemented modules
+ */
 static bool
-inserted_module(const char *module_name)
+present_module(const char *module_name, int presence_type)
 {
+    md_test_inserted_modules_t *presence;
+
+    if (presence_type) {
+        presence = &implemented;
+    } else {
+        presence = &inserted;
+    }
+
     if (0 == strcmp("A", module_name)) {
-        return inserted.A;
+        return presence->A;
     } else if (0 == strcmp("B", module_name)   ||
                0 == strcmp("Bs1", module_name) ||
                0 == strcmp("Bs2", module_name) ||
                0 == strcmp("Bs3", module_name)){
-        return inserted.B;
+        return presence->B;
     } else if (0 == strcmp("C", module_name)) {
-        return inserted.C;
+        return presence->C;
     } else if (0 == strcmp("D@2016-06-10", module_name)) {
-        return inserted.D_rev1;
+        return presence->D_rev1;
     } else if (0 == strcmp("D@2016-06-20", module_name)) {
-        return inserted.D_rev2;
+        return presence->D_rev2;
     } else if (0 == strcmp("Dcommon@2016-06-10", module_name)) {
-        return inserted.D_rev1 || inserted.D_rev2;
+        return presence->D_rev1 || presence->D_rev2;
     } else if (0 == strcmp("E@2016-06-11", module_name)) {
-        return inserted.E;
+        return presence->E;
     } else if (0 == strcmp("F@2016-06-21", module_name)) {
-        return inserted.F;
+        return presence->F;
     }
     return false;
 }
 
 static bool
-inserted_edge(md_test_dep_t *dep, const char *dest_module)
+dependency_edge(md_test_dep_t *dep, const char *dest_module)
 {
+    int presence_type = 0;
+
     if (MD_DEP_NONE == dep->type) {
         return false;
+    } else if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
+        presence_type = 1;
     }
 
-    if (!inserted_module(dest_module)) {
+    if (!present_module(dest_module, presence_type)) {
         return false;
     }
 
     if (MD_DEP_DATA == dep->type && 0 < dep->orig_modules->count) {
         for (int i = 0; i < dep->orig_modules->count; ++i) {
-            if (inserted_module((const char *)(dep->orig_modules->data[i]))) {
+            if (present_module((const char *)(dep->orig_modules->data[i]), presence_type)) {
                 return true;
             }
         }
@@ -749,7 +764,7 @@ compare_orig_modules(sr_llist_t *orig_modules, sr_list_t *expected)
     size_t expected_cnt = 0;
 
     for (int i = 0; i < expected->count; ++i) {
-        if (inserted_module(expected->data[i])) {
+        if (present_module(expected->data[i], 1)) {
             ++expected_cnt;
             found = false;
             node = orig_modules->first;
@@ -786,7 +801,7 @@ validate_dependency(const sr_llist_t *deps, const char *module_name, int count, 
 
     for (int i = 0; i < count; ++i) {
         test_dep = va_arg(va, md_test_dep_t *);
-        in = inserted_edge(test_dep, module_name);
+        in = dependency_edge(test_dep, module_name);
         in_cnt += in;
         /* try to find the expected dependency */
         found = false;
@@ -857,7 +872,8 @@ validate_subtree_ref(md_ctx_t *md_ctx, sr_llist_t *list, const char *xpath,
 
     while (node) {
         subtree_ref = (md_subtree_ref_t *)node->data;
-        if (0 == strcmp(subtree_ref->xpath, xpath)) {
+        if (0 == strcmp(subtree_ref->xpath, xpath) && orig == subtree_ref->orig) {
+            assert_true_bt(orig->implemented);
             assert_string_equal_bt(subtree_ref->orig->name, full_module_name);
             if (0 == strcmp(subtree_ref->orig->revision_date, at)) {
                 assert_int_equal_bt(SR_ERR_OK, rc);
@@ -867,7 +883,11 @@ validate_subtree_ref(md_ctx_t *md_ctx, sr_llist_t *list, const char *xpath,
         }
         node = node->next;
     }
-    assert_int_equal_bt(SR_ERR_NOT_FOUND, rc);
+    if (SR_ERR_OK == rc) {
+        assert_false_bt(orig->implemented);
+    } else {
+        assert_int_equal_bt(SR_ERR_NOT_FOUND, rc);
+    }
     free(orig_name_cpy);
 }
 
@@ -899,7 +919,7 @@ validate_context(md_ctx_t *md_ctx)
         }
         assert_true_bt(module->has_data);
         /* inst_ids */
-        check_list_size(module->inst_ids, inserted.B + inserted.D_rev1 + 2*inserted.D_rev2);
+        check_list_size(module->inst_ids, implemented.B + implemented.D_rev1 + 2*implemented.D_rev2);
         validate_subtree_ref(md_ctx, module->inst_ids,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "B:B-ext-inst-id", "B");
@@ -916,7 +936,7 @@ validate_context(md_ctx_t *md_ctx)
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
                                      "/" TEST_MODULE_PREFIX "D:D-ext-inst-id2", "D@2016-06-20");
         /* op_data_subtrees */
-        check_list_size(module->op_data_subtrees, inserted.B + inserted.D_rev1 + inserted.D_rev2);
+        check_list_size(module->op_data_subtrees, implemented.B + implemented.D_rev1 + implemented.D_rev2);
         validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "B:B-ext-op-data", "B");
@@ -1009,19 +1029,19 @@ validate_context(md_ctx_t *md_ctx)
         validate_dependency(module->inv_deps, "Bs1", 0);
         validate_dependency(module->inv_deps, "Bs2", 0);
         validate_dependency(module->inv_deps, "Bs3", 0);
-        if (inserted.D_rev2) {
+        if (implemented.D_rev2) {
             validate_dependency(module->inv_deps, "C", 1, md_test_dep(MD_DEP_DATA, false, 0));
         } else {
             validate_dependency(module->inv_deps, "C", 0);
         }
-        if (inserted.D_rev2) {
+        if (implemented.D_rev2) {
             validate_dependency(module->inv_deps, "D@2016-06-10", 1, md_test_dep(MD_DEP_DATA, false, 0));
         } else {
             validate_dependency(module->inv_deps, "D@2016-06-10", 0);
         }
         validate_dependency(module->inv_deps, "D@2016-06-20", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-20"));
         validate_dependency(module->inv_deps, "Dcommon@2016-06-10", 0);
-        if (inserted.D_rev2) {
+        if (implemented.D_rev2) {
             validate_dependency(module->inv_deps, "E", 1, md_test_dep(MD_DEP_DATA, false, 0));
             validate_dependency(module->inv_deps, "F", 2, md_test_dep(MD_DEP_IMPORT, false), md_test_dep(MD_DEP_DATA, false, 0));
         } else {
@@ -1165,7 +1185,7 @@ validate_context(md_ctx_t *md_ctx)
         assert_non_null_bt(module->ll_node);
         /* dependencies */
         validate_dependency(module->deps, "A", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "C"));
-        if (inserted.D_rev2) {
+        if (implemented.D_rev2) {
             validate_dependency(module->deps, "B", 1, md_test_dep(MD_DEP_DATA, false, 0));
         } else {
             validate_dependency(module->deps, "B", 0);
@@ -1225,8 +1245,12 @@ validate_context(md_ctx_t *md_ctx)
         assert_non_null_bt(module->ly_data);
         assert_non_null_bt(module->ll_node);
         /* dependencies */
-        validate_dependency(module->deps, "A", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, false, 0));
-        if (inserted.D_rev2) {
+        if (implemented.D_rev1) {
+            validate_dependency(module->deps, "A", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, false, 0));
+        } else {
+            validate_dependency(module->deps, "A", 1, md_test_dep(MD_DEP_IMPORT, true));
+        }
+        if (implemented.D_rev2) {
             validate_dependency(module->deps, "B", 1, md_test_dep(MD_DEP_DATA, false, 0));
         } else {
             validate_dependency(module->deps, "B", 0);
@@ -1240,12 +1264,16 @@ validate_context(md_ctx_t *md_ctx)
         validate_dependency(module->deps, "Dcommon@2016-06-10", 1, md_test_dep(MD_DEP_INCLUDE, true));
         validate_dependency(module->deps, "E", 0);
         validate_dependency(module->deps, "F", 0);
-        validate_dependency(module->inv_deps, "A", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        if (implemented.D_rev1) {
+            validate_dependency(module->inv_deps, "A", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        }
         validate_dependency(module->inv_deps, "B", 0);
         validate_dependency(module->inv_deps, "Bs1", 0);
         validate_dependency(module->inv_deps, "Bs2", 0);
         validate_dependency(module->inv_deps, "Bs3", 0);
-        validate_dependency(module->inv_deps, "C", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        if (implemented.D_rev1) {
+            validate_dependency(module->inv_deps, "C", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        }
         validate_dependency(module->inv_deps, "D@2016-06-10", 0);
         validate_dependency(module->inv_deps, "D@2016-06-20", 0);
         validate_dependency(module->inv_deps, "Dcommon@2016-06-10", 0);
@@ -1282,23 +1310,41 @@ validate_context(md_ctx_t *md_ctx)
         assert_non_null_bt(module->ly_data);
         assert_non_null_bt(module->ll_node);
         /* dependencies */
-        validate_dependency(module->deps, "A", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, false, 0));
-        validate_dependency(module->deps, "B", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-20"));
+        if (implemented.D_rev2) {
+            validate_dependency(module->deps, "A", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, false, 0));
+            validate_dependency(module->deps, "B", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-20"));
+        } else {
+            validate_dependency(module->deps, "A", 1, md_test_dep(MD_DEP_IMPORT, true));
+            validate_dependency(module->deps, "B", 1, md_test_dep(MD_DEP_IMPORT, true));
+        }
         validate_dependency(module->deps, "Bs1", 0);
         validate_dependency(module->deps, "Bs2", 0);
         validate_dependency(module->deps, "Bs3", 0);
-        validate_dependency(module->deps, "C", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-20"));
+        if (implemented.D_rev2) {
+            validate_dependency(module->deps, "C", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-20"));
+        } else {
+            validate_dependency(module->deps, "C", 1, md_test_dep(MD_DEP_IMPORT, true));
+        }
         validate_dependency(module->deps, "D@2016-06-10", 0);
         validate_dependency(module->deps, "D@2016-06-20", 0);
         validate_dependency(module->deps, "Dcommon@2016-06-10", 1, md_test_dep(MD_DEP_INCLUDE, true));
         validate_dependency(module->deps, "E", 0);
         validate_dependency(module->deps, "F", 0);
-        validate_dependency(module->inv_deps, "A", 1, md_test_dep(MD_DEP_EXTENSION, false));
-        validate_dependency(module->inv_deps, "B", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        if (implemented.D_rev2) {
+            validate_dependency(module->inv_deps, "A", 1, md_test_dep(MD_DEP_EXTENSION, false));
+            validate_dependency(module->inv_deps, "B", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        } else {
+            validate_dependency(module->inv_deps, "A", 0);
+            validate_dependency(module->inv_deps, "B", 0);
+        }
         validate_dependency(module->inv_deps, "Bs1", 0);
         validate_dependency(module->inv_deps, "Bs2", 0);
         validate_dependency(module->inv_deps, "Bs3", 0);
-        validate_dependency(module->inv_deps, "C", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        if (implemented.D_rev2) {
+            validate_dependency(module->inv_deps, "C", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        } else {
+            validate_dependency(module->inv_deps, "C", 0);
+        }
         validate_dependency(module->inv_deps, "D@2016-06-10", 0);
         validate_dependency(module->inv_deps, "D@2016-06-20", 0);
         validate_dependency(module->inv_deps, "Dcommon@2016-06-10", 0);
@@ -1376,7 +1422,7 @@ validate_context(md_ctx_t *md_ctx)
         assert_non_null_bt(module->ll_node);
         /* dependencies */
         validate_dependency(module->deps, "A", 2, md_test_dep(MD_DEP_IMPORT, false), md_test_dep(MD_DEP_DATA, false, 0));
-        if (inserted.D_rev2) {
+        if (implemented.D_rev2) {
             validate_dependency(module->deps, "B", 1, md_test_dep(MD_DEP_DATA, false, 0));
         } else {
             validate_dependency(module->deps, "B", 0);

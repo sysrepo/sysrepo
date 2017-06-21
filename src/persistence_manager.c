@@ -1088,7 +1088,7 @@ int
 pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         const np_subscription_t *subscription, const bool exclusive)
 {
-    char xpath[PATH_MAX] = { 0, }, buff[15] = { 0, };
+    char xpath[PATH_MAX] = { 0, }, buff[15] = { 0, }, *tmp_xpath = NULL, *ptr;
     const char *value = NULL;
     struct lyd_node *data_tree = NULL;
     int fd = -1;
@@ -1102,8 +1102,18 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
         SR_LOG_DBG("Removing all existing %s subscriptions from '%s' persist data tree.",
                 sr_subscription_type_gpb_to_str(subscription->type), module_name);
 
+        /* make sure there will be no illegal quotes */
+        if (strchr(subscription->xpath, '\'')) {
+            tmp_xpath = strdup(subscription->xpath);
+            for (ptr = strchr(tmp_xpath, '\''); ptr; ptr = strchr(ptr + 1, '\'')) {
+                *ptr = '"';
+            }
+        }
+
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH, module_name,
-                sr_subscription_type_gpb_to_str(subscription->type), subscription->xpath);
+                sr_subscription_type_gpb_to_str(subscription->type), tmp_xpath ? tmp_xpath : subscription->xpath);
+        free(tmp_xpath);
+
         rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, false, true, NULL);
         if (SR_ERR_OK != rc) {
             SR_LOG_WRN("Unable to delete existing %s subscriptions.", sr_subscription_type_gpb_to_str(subscription->type));
@@ -1175,7 +1185,7 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
     rc = pm_save_data_tree(data_tree, fd);
 
     if (SR_ERR_OK == rc) {
-        SR_LOG_DBG("Subscription entry successfully added into '%s' persist data tree.", module_name);
+        SR_LOG_DBG("Subscription entry '%s' successfully added into '%s' persist data tree.", subscription->xpath, module_name);
     }
 
 cleanup:
