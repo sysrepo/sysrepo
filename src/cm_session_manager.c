@@ -486,9 +486,13 @@ sm_session_drop(const sm_ctx_t *sm_ctx, sm_session_t *session)
 
     SR_LOG_INF("Dropping session id=%"PRIu32".", session->id);
 
-    rc = sm_connection_remove_session(sm_ctx, session->connection, session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN("Cannot remove the session from connection (id=%"PRIu32").", session->id);
+    /* connection can be NULL if this is a leftover session on an already-closed connection (it had some
+     * pending messages) */
+    if (session->connection) {
+        rc = sm_connection_remove_session(sm_ctx, session->connection, session);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN("Cannot remove the session from connection (id=%"PRIu32").", session->id);
+        }
     }
 
     sr_btree_delete(sm_ctx->session_id_btree, session); /* sm_session_cleanup auto-invoked */

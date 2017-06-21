@@ -789,7 +789,8 @@ rp_dt_reload_nacm(rp_ctx_t *rp_ctx)
 }
 
 int
-rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, sr_error_info_t **errors, size_t *err_cnt)
+rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, bool force_copy_uptodate,
+        sr_error_info_t **errors, size_t *err_cnt)
 {
     int rc = SR_ERR_OK;
     CHECK_NULL_ARG_NORET4(rc, rp_ctx, session, errors, err_cnt);
@@ -834,7 +835,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             pthread_mutex_lock(&commit_ctx->mutex);
             commit_ctx->disabled_config_change = rp_ctx->do_not_generate_config_change;
             /* open all files */
-            rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx,
+            rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx, force_copy_uptodate,
                     errors, err_cnt);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Loading of modified models failed");
             SR_LOG_DBG_MSG("Commit (3/10): all modified models loaded successfully");
@@ -868,7 +869,12 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 goto cleanup;
             }
             SR_LOG_DBG_MSG("Commit (6/10): write access granted by NACM");
-            state = DM_COMMIT_NOTIFY_VERIFY;
+            if (session->datastore == SR_DS_CANDIDATE) {
+                /* we are finished for candidate, no changes are written */
+                state = DM_COMMIT_FINISHED;
+            } else {
+                state = DM_COMMIT_NOTIFY_VERIFY;
+            }
             break;
         case DM_COMMIT_NOTIFY_VERIFY:
             rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_VERIFY, commit_ctx);
@@ -952,11 +958,10 @@ cleanup:
         /* discard changes in session in next get_data_tree call newly committed content will be loaded */
         if (SR_DS_CANDIDATE != session->datastore) {
             rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
-        } else {
-            dm_remove_session_operations(session->dm_session);
-            rc = dm_remove_modified_flag(session->dm_session);
         }
         SR_LOG_DBG_MSG("Commit (10/10): finished successfully");
+    } else {
+        SR_LOG_DBG_MSG("Commit (10/10): finished with an error");
     }
     return rc;
 }
@@ -1049,81 +1054,90 @@ cleanup:
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char* module_name, sr_datastore_t src)
+rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char* module_name, sr_datastore_t src, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG2(rp_ctx, session);
     int rc = SR_ERR_OK;
     sr_list_t *modules = NULL;
     dm_session_t *backup = NULL;
     sr_datastore_t prev_ds = session->datastore;
+    dm_commit_context_t *c_ctx = NULL;
     dm_data_info_t *info = NULL;
     int first_err = SR_ERR_OK;
-    sr_error_info_t *errors = NULL;
-    size_t e_cnt = 0;
 
-    /* copy to running is candidate commit behind the scenes */
-    rc = dm_session_start(rp_ctx->dm_ctx, session->user_credentials, src, &backup);
-    CHECK_RC_MSG_RETURN(rc, "Session start of temporary session failed");
-
-    /* move datatrees & session ops -> backup */
-    rc = dm_move_session_tree_and_ops_all_ds(rp_ctx->dm_ctx, session->dm_session, backup);
-    CHECK_RC_MSG_GOTO(rc, cleanup_sess_stop, "Moving session data trees failed");
-
-    rc = rp_dt_switch_datastore(rp_ctx, session, src);
-
-    /* load models to be committed to the session */
-    if (NULL != module_name) {
-        if (SR_DS_CANDIDATE == src) {
-            rc = dm_copy_session_tree(rp_ctx->dm_ctx, backup, session->dm_session, module_name);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
-        }
-        /* load data tree if it was not copied from backup session */
-        rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module_name, &info);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
-        info->modified = true;
+    /* are we resuming a copy_config commit? */
+    if (RP_REQ_RESUMED == session->state) {
+        rc = dm_get_commit_context(rp_ctx->dm_ctx, session->commit_id, &c_ctx);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resume copy_config, commit ctx with id %"PRIu32" not found.", session->commit_id);
+        pthread_mutex_lock(&c_ctx->mutex);
     } else {
+        /* copy to running is running commit behind the scenes */
+        rc = dm_session_start(rp_ctx->dm_ctx, session->user_credentials, src, &backup);
+        CHECK_RC_MSG_RETURN(rc, "Session start of temporary session failed");
 
-        /* load all enabled models */
-        if (SR_DS_CANDIDATE == src) {
-            rc = dm_copy_modified_session_trees(rp_ctx->dm_ctx, backup, session->dm_session);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
-        }
-        rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
-        for (size_t i = 0; i < modules->count; i++) {
-            char *module = modules->data[i];
-            rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module, &info);
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed %s", module);
+        /* move datatrees & session ops -> backup */
+        rc = dm_move_session_tree_and_ops_all_ds(rp_ctx->dm_ctx, session->dm_session, backup);
+        CHECK_RC_MSG_GOTO(rc, cleanup_sess_stop, "Moving session data trees failed");
+
+        rc = rp_dt_switch_datastore(rp_ctx, session, src);
+
+        /* load models to be committed to the session */
+        if (NULL != module_name) {
+            if (SR_DS_CANDIDATE == src) {
+                rc = dm_copy_session_tree(rp_ctx->dm_ctx, backup, session->dm_session, module_name);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
+            }
+            /* load data tree if it was not copied from backup session */
+            rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module_name, &info);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
             info->modified = true;
+        } else {
+
+            /* load all enabled models */
+            if (SR_DS_CANDIDATE == src) {
+                rc = dm_copy_modified_session_trees(rp_ctx->dm_ctx, backup, session->dm_session);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
+            }
+            rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
+            for (size_t i = 0; i < modules->count; i++) {
+                char *module = modules->data[i];
+                rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module, &info);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed %s", module);
+                info->modified = true;
+            }
         }
 
-    }
-    /* change session to candidate */
-    if (SR_DS_STARTUP == src) {
-        rc = rp_dt_switch_datastore(rp_ctx, session, SR_DS_CANDIDATE);
+        /* move changes to running datastore, then commit them */
+        rc = rp_dt_switch_datastore(rp_ctx, session, SR_DS_RUNNING);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree switch failed");
-        rc = dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, SR_DS_STARTUP, SR_DS_CANDIDATE);
+        rc = dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, src, SR_DS_RUNNING);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree move failed");
     }
+
     /* commit */
-    rc = rp_dt_commit(rp_ctx, session, NULL, &errors, &e_cnt);
-    sr_free_errors(errors, e_cnt);
+    rc = rp_dt_commit(rp_ctx, session, c_ctx, true, errors, err_cnt);
 
 cleanup:
     first_err = rc;
-    /* move datatrees & ops backup -> session */
-    rc = dm_move_session_tree_and_ops_all_ds(rp_ctx->dm_ctx, backup, session->dm_session);
-
+    if (backup) {
+        /* move datatrees & ops backup -> session */
+        rc = dm_move_session_tree_and_ops_all_ds(rp_ctx->dm_ctx, backup, session->dm_session);
+    }
     /* change session to prev type */
     rc = rp_dt_switch_datastore(rp_ctx, session, prev_ds);
     sr_list_cleanup(modules);
+
 cleanup_sess_stop:
-    dm_session_stop(rp_ctx->dm_ctx, backup);
+    if (backup) {
+        dm_session_stop(rp_ctx->dm_ctx, backup);
+    }
+
     return first_err == SR_ERR_OK ? rc : first_err;
 }
 
 int
-rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst)
+rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG2(rp_ctx, session);
     SR_LOG_INF("Copy config: %s -> %s, model: %s", sr_ds_to_str(src), sr_ds_to_str(dst), module_name);
@@ -1149,7 +1163,7 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
         }
 
     } else {
-        rc = rp_dt_copy_config_to_running(rp_ctx, session, module_name, src);
+        rc = rp_dt_copy_config_to_running(rp_ctx, session, module_name, src, errors, err_cnt);
     }
 
     rp_dt_switch_datastore(rp_ctx, session, prev_ds);
