@@ -1795,11 +1795,27 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     /* Can we modify modules the way needed? */
     if (match_implemented) {
         if (match_revision == match_implemented) {
-            SR_LOG_INF("Module '%s' is already installed.", md_get_module_fullname(module));
-            if (!module->submodule) {
-                rc = SR_ERR_OK;
-                goto cleanup;
+            if (match_implemented->installed) {
+                SR_LOG_INF("Module '%s' is already installed.", md_get_module_fullname(module));
+            } else if (installed) {
+                SR_LOG_INF("Module '%s' is now explicitly installed.", md_get_module_fullname(module));
+                /* update install flag */
+                match_implemented->installed = true;
+                rc = md_lyd_new_path(md_ctx, MD_XPATH_INSTALLED_FLAG, "true", match_implemented, "set installed flag",
+                                     NULL, match_implemented->name, match_implemented->revision_date);
+                if (SR_ERR_OK != rc) {
+                    goto cleanup;
+                }
             }
+            if (module->submodule) {
+                /* update submodules */
+                md_free_module(module);
+                module = match_revision;
+                already_present = true;
+                goto dependencies;
+            }
+            rc = SR_ERR_OK;
+            goto cleanup;
         } else if (module_schema->implemented) {
             SR_LOG_ERR("Module '%s' is already implemented in revision '%s'.", module->name, match_implemented->revision_date);
             rc = SR_ERR_DATA_EXISTS;
