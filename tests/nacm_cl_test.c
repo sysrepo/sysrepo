@@ -3774,15 +3774,15 @@ nacm_cl_test_copy_config(void **state)
             0, SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(SR_ERR_OK, rc);
     rc = sr_module_change_subscribe(handler_session, "ietf-interfaces", module_change_empty_cb, NULL,
-            0, SR_SUBSCR_APPLY_ONLY, &subscription);
+            0, SR_SUBSCR_APPLY_ONLY | SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* copy-config to candidate */
     rc = sr_copy_config(sessions[0], NULL, SR_DS_RUNNING, SR_DS_CANDIDATE);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* change some values that user1 cannot read */
-    rc = sr_session_switch_ds(handler_session, SR_DS_RUNNING);
+    /* change the same values in candidate with user1 */
+    rc = sr_session_switch_ds(sessions[0], SR_DS_CANDIDATE);
     assert_int_equal(SR_ERR_OK, rc);
 
     val = calloc(1, sizeof *val);
@@ -3806,35 +3806,8 @@ nacm_cl_test_copy_config(void **state)
     val->data.bool_val = 1;
     rc = sr_set_item(handler_session, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled", val, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-
-    /* commit */
-    rc = sr_commit(handler_session);
-    assert_int_equal(SR_ERR_OK, rc);
-
-    /* change the same values in candidate with user1 */
-    rc = sr_session_switch_ds(sessions[0], SR_DS_CANDIDATE);
-    assert_int_equal(SR_ERR_OK, rc);
-
-    val = calloc(1, sizeof *val);
-    assert_ptr_not_equal(val, NULL);
-    val->type = SR_BOOL_T;
-    val->data.bool_val = 1;
-    rc = sr_set_item(sessions[0], XP_TEST_MODULE_BOOL, val, SR_EDIT_DEFAULT);
-    assert_int_equal(SR_ERR_OK, rc);
-
-    rc = sr_delete_item(sessions[0], "/test-module:main/numbers[.='20']", SR_EDIT_DEFAULT);
-    assert_int_equal(SR_ERR_OK, rc);
-
-    val->type = SR_BOOL_T;
-    val->data.bool_val = 1;
-    rc = sr_set_item(sessions[0], "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", val, SR_EDIT_DEFAULT);
-    assert_int_equal(SR_ERR_OK, rc);
-
-    val->type = SR_BOOL_T;
-    val->data.bool_val = 0;
-    rc = sr_set_item(sessions[0], "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled", val, SR_EDIT_DEFAULT);
-    assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(val);
+    val = NULL;
 
     rc = sr_commit(sessions[0]);
     assert_int_equal(SR_ERR_OK, rc);
@@ -3843,32 +3816,9 @@ nacm_cl_test_copy_config(void **state)
     rc = sr_copy_config(sessions[0], NULL, SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = sr_session_switch_ds(sessions[0], SR_DS_RUNNING);
+    /* refresh handler_session session running */
+    rc = sr_session_switch_ds(handler_session, SR_DS_RUNNING);
     assert_int_equal(SR_ERR_OK, rc);
-
-    /* refresh user1 session */
-    rc = sr_session_refresh(sessions[0]);
-    assert_int_equal(SR_ERR_OK, rc);
-
-    /* debug */
-    val = NULL;
-    rc = sr_get_item(sessions[0], XP_TEST_MODULE_BOOL, &val);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
-    assert_ptr_equal(val, NULL);
-
-    rc = sr_get_item(sessions[0], "/test-module:main/numbers[.='42']", &val);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
-    assert_ptr_equal(val, NULL);
-
-    rc = sr_get_item(sessions[0], "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", &val);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
-    assert_ptr_equal(val, NULL);
-
-    rc = sr_get_item(sessions[0], "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled", &val);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
-    assert_ptr_equal(val, NULL);
-
-    /* refresh handler_session session */
     rc = sr_session_refresh(handler_session);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -3876,27 +3826,25 @@ nacm_cl_test_copy_config(void **state)
     rc = sr_get_item(handler_session, XP_TEST_MODULE_BOOL, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_ptr_not_equal(val, NULL);
-    assert_int_equal(val->data.bool_val, 0);
+    assert_int_equal(val->data.bool_val, 1);
     sr_free_val(val);
     val = NULL;
 
     rc = sr_get_item(handler_session, "/test-module:main/numbers[.='20']", &val);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_ptr_not_equal(val, NULL);
-    sr_free_val(val);
-    val = NULL;
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_ptr_equal(val, NULL);
 
     rc = sr_get_item(handler_session, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_ptr_not_equal(val, NULL);
-    assert_int_equal(val->data.bool_val, 0);
+    assert_int_equal(val->data.bool_val, 1);
     sr_free_val(val);
     val = NULL;
 
     rc = sr_get_item(handler_session, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_ptr_not_equal(val, NULL);
-    assert_int_equal(val->data.bool_val, 1);
+    assert_int_equal(val->data.bool_val, 0);
     sr_free_val(val);
     val = NULL;
 
