@@ -1989,7 +1989,7 @@ main(int argc, char* argv[])
     }
 
     /* search for the module to use */
-    rc = md_get_module_info(md_ctx, module_name, NULL, &module);
+    rc = md_get_module_info(md_ctx, module_name, NULL, NULL, &module);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "%s: Module '%s' is not installed.\n", argv[0], module_name);
         goto terminate;

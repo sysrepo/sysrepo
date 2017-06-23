@@ -201,10 +201,11 @@ void md_free_module_key_list(sr_list_t *module_key_list);
  * @param [in] md_ctx Module Dependencies context
  * @param [in] name Name of the (sub)module
  * @param [in] revision Revision of the (sub)module, can be empty string
+ * @param [in] being_parsed Optional, in case some modules are just being parsed, look through them as well.
  * @param [out] module Output location for the pointer referencing the module info.
  */
 int md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision,
-                       md_module_t **module);
+                       sr_list_t *being_parsed, md_module_t **module);
 
 /**
  * @brief Get dependency-related information for a given (sub)module.

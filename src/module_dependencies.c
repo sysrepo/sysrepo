@@ -1291,20 +1291,35 @@ md_free_module_key_list(sr_list_t *module_key_list)
 
 int
 md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision,
-                   md_module_t **module)
+                   sr_list_t *being_parsed, md_module_t **module)
 {
     md_module_t module_lkp;
+
+    *module = NULL;
+
+    for (size_t i = 0; being_parsed && (i < being_parsed->count); ++i) {
+        if (0 == strcmp(name, ((md_module_t *)being_parsed->data[i])->name)) {
+            if (!revision) {
+                *module = (md_module_t *)being_parsed->data[i];
+                return SR_ERR_OK;
+            } else if (0 == strcmp(revision, ((md_module_t *)being_parsed->data[i])->revision_date)) {
+                *module = (md_module_t *)being_parsed->data[i];
+                return SR_ERR_OK;
+            }
+        }
+    }
+
     module_lkp.name = (char *)name;
     module_lkp.revision_date = (char *)revision;
 
     *module = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
-    if (NULL == *module) {
-        SR_LOG_ERR("Module '%s@%s' is not present in the dependency graph.",
-                   name, revision ? revision : "<latest>");
-        return SR_ERR_NOT_FOUND;
+    if (*module) {
+        return SR_ERR_OK;
     }
 
-    return SR_ERR_OK;
+    SR_LOG_ERR("Module '%s@%s' is not present in the dependency graph.",
+               name, revision ? revision : "<latest>");
+    return SR_ERR_NOT_FOUND;
 }
 
 int
@@ -1351,21 +1366,12 @@ md_collect_data_dependencies(md_ctx_t *md_ctx, const char *ref, md_module_t *mod
         for (parent = set->set.s[i]; lys_parent(parent); parent = lys_parent(parent));
         module2 = NULL;
 
-        /* first traverse currently parsed modules */
-        for (size_t j = 0; j < being_parsed->count; ++j) {
-            if (0 == strcmp(lys_node_module(parent)->name, ((md_module_t *)being_parsed->data[j])->name)) {
-                module2 = (md_module_t *)being_parsed->data[j];
-                break;
-            }
-        }
         /* then try the whole md context */
-        if (!module2) {
-            rc = md_get_module_info(md_ctx, lys_node_module(parent)->name,
-                    (lys_node_module(parent)->rev_size ? lys_node_module(parent)->rev[0].date : NULL), &module2);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_WRN_MSG("Failed to get the module schema based on the prefix");
-                continue;
-            }
+        rc = md_get_module_info(md_ctx, lys_node_module(parent)->name,
+                (lys_node_module(parent)->rev_size ? lys_node_module(parent)->rev[0].date : NULL), being_parsed, &module2);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN_MSG("Failed to get the module schema based on the prefix");
+            continue;
         }
         if (module == module2) {
             continue;
@@ -1409,20 +1415,10 @@ md_collect_identity_dependencies(md_ctx_t *md_ctx, const struct lys_ident *ident
     int rc = SR_ERR_OK;
     md_module_t *module2 = NULL;
 
-    /* first traverse currently parsed modules */
-    for (size_t i = 0; i < being_parsed->count; ++i) {
-        if (0 == strcmp(lys_main_module(ident->module)->name, ((md_module_t *)being_parsed->data[i])->name)) {
-            module2 = (md_module_t *)being_parsed->data[i];
-            break;
-        }
-    }
-    /* then try the whole md context */
-    if (!module2) {
-        rc = md_get_module_info(md_ctx, lys_main_module(ident->module)->name,
-                (lys_main_module(ident->module)->rev_size ? lys_main_module(ident->module)->rev[0].date : NULL), &module2);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_WRN_MSG("Failed to get the module schema based on the prefix");
-        }
+    rc = md_get_module_info(md_ctx, lys_main_module(ident->module)->name,
+            (lys_main_module(ident->module)->rev_size ? lys_main_module(ident->module)->rev[0].date : NULL), being_parsed, &module2);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN_MSG("Failed to get the module schema based on the prefix");
     }
 
     /* modules are different, add the dependency */
@@ -2079,9 +2075,7 @@ dependencies:
             /* skip libyang's internal modules */
             continue;
         }
-        module_lkp.name = (char *)imp->module->name;
-        module_lkp.revision_date = (char *)md_get_imp_revision(imp);
-        module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
+        md_get_module_info(md_ctx, imp->module->name, md_get_imp_revision(imp), being_parsed, &module2);
         if (NULL == module2) {
             SR_LOG_ERR_MSG("Unable to resolve import dependency.");
             rc = SR_ERR_INTERNAL;
@@ -2112,9 +2106,9 @@ implemented_dependencies:
             ident = module_schema->ident + i;
             for (uint8_t b = 0; b < ident->base_size; b++) {
                 if (ident->base && module_schema != lys_node_module((struct lys_node *)ident->base[b])) {
-                    module_lkp.name = (char *)lys_node_module((struct lys_node *)ident->base[b])->name;
-                    module_lkp.revision_date = (char *)md_get_module_revision(lys_node_module((struct lys_node *)ident->base[b]));
-                    module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
+                    md_get_module_info(md_ctx, lys_node_module((struct lys_node *)ident->base[b])->name,
+                                       md_get_module_revision(lys_node_module((struct lys_node *)ident->base[b])),
+                                       being_parsed, &module2);
                     if (NULL == module2) {
                         SR_LOG_ERR_MSG("Unable to resolve dependency induced by a derived identity.");
                         rc = SR_ERR_INTERNAL;

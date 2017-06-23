@@ -457,7 +457,7 @@ dm_module_clb (struct ly_ctx *ctx, const char *name, const char *ns, int options
             return NULL;
         }
     } else if (NULL != name) {
-        rc = md_get_module_info(md_ctx, name, NULL, &module);
+        rc = md_get_module_info(md_ctx, name, NULL, NULL, &module);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Module '%s' was not found", name);
             return NULL;
@@ -524,7 +524,7 @@ dm_get_tmp_ly_ctx(dm_ctx_t *dm_ctx, sr_list_t *models_to_be_loaded, dm_tmp_ly_ct
         locked = true;
         for (size_t i = 0; i < models_to_be_loaded->count; i++) {
             module_name = (char *) models_to_be_loaded->data[i];
-            rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, &module);
+            rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, NULL, &module);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get md_get_info for %s", module_name);
 
             ly_module = lys_parse_path(t_ctx->ctx, module->filepath, LYS_IN_YANG);
@@ -954,7 +954,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
 
     /* search for the module to use */
     md_ctx_lock(dm_ctx->md_ctx, false);
-    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, NULL, &module);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Module '%s:%s' is not installed.", module_name, revision ? revision : "<latest>");
         *schema_info = NULL;
@@ -1937,7 +1937,7 @@ dm_load_dependant_data(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *
 
     if (info->schema->cross_module_data_dependency) {
         md_ctx_lock(dm_ctx->md_ctx, false);
-        rc = md_get_module_info(dm_ctx->md_ctx, info->schema->module_name, NULL, &module);
+        rc = md_get_module_info(dm_ctx->md_ctx, info->schema->module_name, NULL, NULL, &module);
         CHECK_RC_LOG_GOTO(rc, unlock, "Unable to get the list of dependencies for module '%s'.", info->schema->module_name);
         ll_node = module->deps->first;
         while (ll_node) {
@@ -2340,7 +2340,7 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
 
         if (NULL != *required_modules) {
             /* list is already initialized that means we'll use temp ctx, append install time deps */
-            rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, &module);
+            rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, NULL, &module);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve md info for %s module", di->schema->module_name);
 
             /* installation time dependencies */
@@ -2373,7 +2373,7 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
     }
 
 
-    rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, &module);
+    rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, NULL, &module);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve md info for %s module", di->schema->module_name);
 
     /* loop through instance ids */
@@ -3035,7 +3035,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
 
     md_ctx_lock(dm_ctx->md_ctx, false);
     if (submodule_revision || !module_name) {
-        rc = md_get_module_info(dm_ctx->md_ctx, submodule_name, submodule_revision, &md_module);
+        rc = md_get_module_info(dm_ctx->md_ctx, submodule_name, submodule_revision, NULL, &md_module);
 
         /* find the top main module */
         while ((NULL != md_module) && (NULL != md_module->inv_deps->first)) {
@@ -3061,7 +3061,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
         md_ctx_unlock(dm_ctx->md_ctx);
         CHECK_RC_LOG_RETURN(rc, "Submodule %s in revision %s not found", submodule_name, submodule_revision);
     } else {
-        rc = md_get_module_info(dm_ctx->md_ctx, module_name, module_revision, &md_module);
+        rc = md_get_module_info(dm_ctx->md_ctx, module_name, module_revision, NULL, &md_module);
 
         if (NULL != md_module && !md_module->latest_revision) {
             /* find a module in latest revision that includes the requested module
@@ -4544,7 +4544,7 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
     /* apply the change in all loaded schema infos */
     md_ctx_lock(dm_ctx->md_ctx, true);
     pthread_rwlock_wrlock(&dm_ctx->schema_tree_lock);
-    rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, &module);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, NULL, &module);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s info failed", module_name);
 
     /* enable feature in all modules augmented by this module */
@@ -4594,7 +4594,7 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
     rc = md_insert_module(dm_ctx->md_ctx, file_name, &implicitly_installed);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert module into the dependency graph");
 
-    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, NULL, &module);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s info failed", module_name);
 
     lookup.module_name = (char *) module_name;
@@ -4763,7 +4763,7 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
     }
 
     md_ctx_lock(dm_ctx->md_ctx, true);
-    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, NULL, &module);
 
     /* remove module from the dependency graph */
     if (NULL == module) {
@@ -5165,7 +5165,7 @@ dm_has_state_data(dm_ctx_t *ctx, const char *module_name, bool *res)
     int rc = SR_ERR_OK;
 
     md_ctx_lock(ctx->md_ctx, false);
-    rc = md_get_module_info(ctx->md_ctx, module_name, NULL, &module);
+    rc = md_get_module_info(ctx->md_ctx, module_name, NULL, NULL, &module);
     if (SR_ERR_OK == rc) {
         *res = (module->op_data_subtrees->first != NULL);
     }

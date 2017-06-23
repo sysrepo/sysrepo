@@ -868,7 +868,7 @@ validate_subtree_ref(md_ctx_t *md_ctx, sr_llist_t *list, const char *xpath,
 
     /* test if the module is inserted */
     snprintf(full_module_name, PATH_MAX, "%s%s", TEST_MODULE_PREFIX, orig_name_cpy);
-    int rc = md_get_module_info(md_ctx, full_module_name, at, &orig);
+    int rc = md_get_module_info(md_ctx, full_module_name, at, NULL, &orig);
 
     while (node) {
         subtree_ref = (md_subtree_ref_t *)node->data;
@@ -901,7 +901,7 @@ validate_context(md_ctx_t *md_ctx)
     md_module_t *module = NULL;
 
     /* validate module A */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "A", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "A", NULL, NULL, &module);
     if (inserted.A) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -986,7 +986,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate module B */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "B", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "B", NULL, NULL, &module);
     if (inserted.B) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1054,7 +1054,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate submodule Bs1 */
-    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs1", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs1", NULL, NULL, &module);
     if (inserted.B) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1088,7 +1088,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate submodule Bs2 */
-    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs2", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs2", NULL, NULL, &module);
     if (inserted.B) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1122,7 +1122,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate submodule Bs3 */
-    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs3", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs3", NULL, NULL, &module);
     if (inserted.B) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1156,7 +1156,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate module C */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "C", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "C", NULL, NULL, &module);
     if (inserted.C) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1216,7 +1216,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate module D-rev1 */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", NULL, &module);
     if (inserted.D_rev1) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1285,7 +1285,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate module D-rev2 */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-20", &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-20", NULL, &module);
     if (inserted.D_rev2) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1356,7 +1356,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate submodule Dcommon */
-    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Dcommon", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Dcommon", NULL, NULL, &module);
     if (inserted.D_rev1 || inserted.D_rev2) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1391,7 +1391,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate module E */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "E", "2016-06-11", &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "E", "2016-06-11", NULL, &module);
     if (inserted.E) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1453,7 +1453,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate module F */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "F", "2016-06-21", &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "F", "2016-06-21", NULL, &module);
     if (inserted.F) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1776,7 +1776,7 @@ md_test_grouping_and_uses(void **state)
     /* insert module X */
     rc = md_insert_module(md_ctx, md_module_X_filepath, &implicitly_inserted);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "X", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "X", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* validate op_data_subtrees */
@@ -1817,51 +1817,51 @@ md_test_has_data(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* test modules installed by default */
-    rc = md_get_module_info(md_ctx, "example-module", NULL, &module);
+    rc = md_get_module_info(md_ctx, "example-module", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "iana-if-type", NULL, &module);
+    rc = md_get_module_info(md_ctx, "iana-if-type", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module->has_data);
-    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
+    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
     check_list_size(module->op_data_subtrees, 1); /* Bug #569 */
-    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
+    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module->has_data);
-    rc = md_get_module_info(md_ctx, "module-a", "2016-02-02", &module);
+    rc = md_get_module_info(md_ctx, "module-a", "2016-02-02", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "module-a", "2016-02-10", &module);
+    rc = md_get_module_info(md_ctx, "module-a", "2016-02-10", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "module-b", "2016-02-05", &module);
+    rc = md_get_module_info(md_ctx, "module-b", "2016-02-05", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "small-module", NULL, &module);
+    rc = md_get_module_info(md_ctx, "small-module", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "state-module", "2016-07-01", &module);
+    rc = md_get_module_info(md_ctx, "state-module", "2016-07-01", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "sub-a-one", "2016-02-02", &module);
+    rc = md_get_module_info(md_ctx, "sub-a-one", "2016-02-02", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module->has_data);
-    rc = md_get_module_info(md_ctx, "sub-a-one", "2016-02-10", &module);
+    rc = md_get_module_info(md_ctx, "sub-a-one", "2016-02-10", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module->has_data);
-    rc = md_get_module_info(md_ctx, "sub-a-two", "2016-02-02", &module);
+    rc = md_get_module_info(md_ctx, "sub-a-two", "2016-02-02", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module->has_data);
-    rc = md_get_module_info(md_ctx, "test-module", NULL, &module);
+    rc = md_get_module_info(md_ctx, "test-module", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "top-level-mandatory", NULL, &module);
+    rc = md_get_module_info(md_ctx, "top-level-mandatory", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
     /*If top-level node is an USES node, it's data-carrying*/
-    rc = md_get_module_info(md_ctx, "servers", NULL, &module);
+    rc = md_get_module_info(md_ctx, "servers", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
 
