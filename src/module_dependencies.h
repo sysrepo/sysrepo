@@ -37,8 +37,8 @@ typedef enum md_dep_type_e {
     MD_DEP_NONE,        /**< Invalid/Uninitialized dependency */
     MD_DEP_INCLUDE,     /**< Include */
     MD_DEP_IMPORT,      /**< Import */
-    MD_DEP_EXTENSION,   /**< Extension (augment, derived identity, ...) */
-    MD_DEP_DATA         /**< Cross-module data reference */
+    MD_DEP_EXTENSION,   /**< Extension (augment, derived identity, identityref) */
+    MD_DEP_DATA         /**< Cross-module data reference (instance-identifier, leafref) */
 } md_dep_type_t;
 
 typedef struct md_module_s md_module_t; /**< Forward declaration */
