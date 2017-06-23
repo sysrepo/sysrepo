@@ -745,6 +745,7 @@ md_add_subtree_ref(md_ctx_t *md_ctx, md_module_t *dest_module, sr_llist_t *dest_
     char *root_xpath = NULL;
     bool inserted = false;
     md_subtree_ref_t *subtree_ref = NULL;
+    sr_llist_node_t *llnode = NULL;
 
     CHECK_NULL_ARG5(md_ctx, dest_module, dest_llist, orig_module, root);
     CHECK_NULL_ARG(output_xpath);
@@ -759,6 +760,17 @@ md_add_subtree_ref(md_ctx_t *md_ctx, md_module_t *dest_module, sr_llist_t *dest_
     /* get and save xpath to this node */
     rc = md_construct_lys_xpath(root, &root_xpath);
     CHECK_RC_MSG_GOTO(rc, fail, "Failed to construct XPath to a subtree.");
+
+    /* check for duplicities */
+    for (llnode = dest_llist->first; llnode; llnode = llnode->next) {
+        subtree_ref = (md_subtree_ref_t *)llnode->data;
+        if (0 == strcmp(subtree_ref->xpath, root_xpath) && subtree_ref->orig == orig_module) {
+            /* already there */
+            free(root_xpath);
+            return SR_ERR_OK;
+        }
+    }
+
     subtree_ref = calloc(1, sizeof(md_subtree_ref_t));
     CHECK_NULL_NOMEM_GOTO(subtree_ref, rc, fail);
     subtree_ref->xpath = root_xpath;
