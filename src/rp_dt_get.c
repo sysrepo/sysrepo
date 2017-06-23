@@ -710,7 +710,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     rc = sr_list_init(&state_data_ctx->subtrees);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
-    rc = md_get_module_info(md_ctx, schema_info->module_name, NULL, &module);
+    rc = md_get_module_info(md_ctx, schema_info->module_name, NULL, NULL, &module);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s was not found in module dependency", schema_info->module_name);
 
     /* loop through operational node subtrees */

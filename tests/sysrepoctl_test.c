@@ -96,7 +96,7 @@ sysrepoctl_test_uninstall(void **state)
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
-    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
+    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", NULL, &module);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     md_destroy(md_ctx);
 
@@ -129,7 +129,7 @@ sysrepoctl_test_uninstall(void **state)
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
-    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
+    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", NULL, &module);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     md_destroy(md_ctx);
 }
@@ -193,11 +193,11 @@ sysrepoctl_test_install(void **state)
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
-    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
+    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
+    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = md_get_module_info(md_ctx, "test-dep-installed", NULL, &module);
+    rc = md_get_module_info(md_ctx, "test-dep-installed", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     md_destroy(md_ctx);
 
