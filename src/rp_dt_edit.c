@@ -789,7 +789,7 @@ rp_dt_reload_nacm(rp_ctx_t *rp_ctx)
 }
 
 int
-rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, bool force_copy_uptodate,
+rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, bool copy_config,
         sr_error_info_t **errors, size_t *err_cnt)
 {
     int rc = SR_ERR_OK;
@@ -835,7 +835,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             pthread_mutex_lock(&commit_ctx->mutex);
             commit_ctx->disabled_config_change = rp_ctx->do_not_generate_config_change;
             /* open all files */
-            rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx, force_copy_uptodate,
+            rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx, copy_config,
                     errors, err_cnt);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Loading of modified models failed");
             SR_LOG_DBG_MSG("Commit (3/10): all modified models loaded successfully");
@@ -859,7 +859,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             state = DM_COMMIT_NACM;
             break;
         case DM_COMMIT_NACM:
-            rc = dm_commit_netconf_access_control(rp_ctx->dm_ctx, session->dm_session, commit_ctx, errors, err_cnt);
+            rc = dm_commit_netconf_access_control(rp_ctx->dm_ctx, session->dm_session, commit_ctx, copy_config, errors, err_cnt);
             if (SR_ERR_OK != rc) {
                 if (SR_ERR_UNAUTHORIZED != rc) {
                     SR_LOG_ERR_MSG("Failed to evaluate write access for the commit operation");

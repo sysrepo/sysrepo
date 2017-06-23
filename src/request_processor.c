@@ -335,6 +335,9 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
 
     size_t diff_count = rp_count_changes_in_difflists(diff_lists);
     SR_LOG_DBG("%zu instance of /ietf-netconf-notifications/netconf-config-change/edit list will be created", diff_count);
+    if (0 == diff_count) {
+        return SR_ERR_OK;
+    }
 
     /* target + operation */
     val_cnt += diff_count * 2;

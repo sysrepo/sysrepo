@@ -866,6 +866,42 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
             NULL, "*", "deny", "Deny everything not explicitly permitted in test-module.");
 }
 
+static void
+copy_config_nacm_config(test_nacm_cfg_t *nacm_config)
+{
+    /* groups & users */
+    add_nacm_user(nacm_config, "sysrepo-user1", "group1");
+    /* access lists */
+    add_nacm_rule_list(nacm_config, "acl1", "group1", NULL);
+    /*  -> acl1: */
+    add_nacm_rule(nacm_config, "acl1", "deny-boolean", "test-module", NACM_RULE_DATA,
+            XP_TEST_MODULE_BOOL, "read", "deny", "Forbid reading the 'boolean' leaf.");
+    add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers[.>10]", "read", "deny", "Forbid reading 'numbers' higher than 10.");
+    add_nacm_rule(nacm_config, "acl1", "deny-read-interface-status", "*", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/enabled", "read", "deny", "Forbid reading interface 'status'.");
+    add_nacm_rule(nacm_config, "acl1", "deny-read-acm", "ietf-netconf-acm", NACM_RULE_DATA,
+            "/ietf-netconf-acm:*//.", "read", "deny", "Forbid reading NACM configuration.");
+}
+
+static int
+sysrepo_setup_for_copy_config(void **state)
+{
+    sr_conn_ctx_t *conn = NULL;
+    test_nacm_cfg_t *nacm_config = NULL;
+
+    /* NACM startup config */
+    new_nacm_config(&nacm_config);
+    copy_config_nacm_config(nacm_config);
+    save_nacm_config(nacm_config);
+    delete_nacm_config(nacm_config);
+
+    start_sysrepo_daemon(&conn);
+
+    *state = (void*)conn;
+    return 0;
+}
+
 static int
 sysrepo_setup_with_denied_exec_by_dflt(void **state)
 {
@@ -3710,6 +3746,119 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     }
 }
 
+static int
+module_change_empty_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
+{
+    return SR_ERR_OK;
+}
+
+static void
+nacm_cl_test_copy_config(void **state)
+{
+    int rc = 0;
+    sr_conn_ctx_t *conn = *state;
+    user_sessions_t sessions = {NULL};
+    sr_session_ctx_t *handler_session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t *val = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* start a session for each user */
+    start_user_sessions(conn, &handler_session, &sessions);
+
+    /* enable running datastore */
+    rc = sr_module_change_subscribe(handler_session, "test-module", module_change_empty_cb, NULL,
+            0, SR_SUBSCR_APPLY_ONLY, &subscription);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_module_change_subscribe(handler_session, "ietf-interfaces", module_change_empty_cb, NULL,
+            0, SR_SUBSCR_APPLY_ONLY | SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* copy-config to candidate */
+    rc = sr_copy_config(sessions[0], NULL, SR_DS_RUNNING, SR_DS_CANDIDATE);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* change the same values in candidate with user1 */
+    rc = sr_session_switch_ds(sessions[0], SR_DS_CANDIDATE);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val = calloc(1, sizeof *val);
+    assert_ptr_not_equal(val, NULL);
+    val->type = SR_BOOL_T;
+    val->data.bool_val = 0;
+    rc = sr_set_item(handler_session, XP_TEST_MODULE_BOOL, val, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val->type = SR_UINT8_T;
+    val->data.uint8_val = 20;
+    rc = sr_set_item(handler_session, "/test-module:main/numbers", val, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val->type = SR_BOOL_T;
+    val->data.bool_val = 0;
+    rc = sr_set_item(handler_session, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", val, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val->type = SR_BOOL_T;
+    val->data.bool_val = 1;
+    rc = sr_set_item(handler_session, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled", val, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val(val);
+    val = NULL;
+
+    rc = sr_commit(sessions[0]);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* copy-config back from candidate */
+    rc = sr_copy_config(sessions[0], NULL, SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* refresh handler_session session running */
+    rc = sr_session_switch_ds(handler_session, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_session_refresh(handler_session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* check the result */
+    rc = sr_get_item(handler_session, XP_TEST_MODULE_BOOL, &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_ptr_not_equal(val, NULL);
+    assert_int_equal(val->data.bool_val, 1);
+    sr_free_val(val);
+    val = NULL;
+
+    rc = sr_get_item(handler_session, "/test-module:main/numbers[.='20']", &val);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_ptr_equal(val, NULL);
+
+    rc = sr_get_item(handler_session, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_ptr_not_equal(val, NULL);
+    assert_int_equal(val->data.bool_val, 1);
+    sr_free_val(val);
+    val = NULL;
+
+    rc = sr_get_item(handler_session, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_ptr_not_equal(val, NULL);
+    assert_int_equal(val->data.bool_val, 0);
+    sr_free_val(val);
+    val = NULL;
+
+    /* stop sessions */
+    for (int i = 0; i < NUM_OF_USERS; ++i) {
+        rc = sr_session_stop(sessions[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+    rc = sr_unsubscribe(handler_session, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 static void
 nacm_cl_test_reload_nacm(void **state)
 {
@@ -4005,6 +4154,8 @@ main() {
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_permitted_write_by_dflt, sysrepo_setup_with_permitted_write_by_dflt, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
+        /* Copy-config */
+            cmocka_unit_test_setup_teardown(nacm_cl_test_copy_config, sysrepo_setup_for_copy_config, sysrepo_teardown),
         /* NACM reload */
             cmocka_unit_test_setup_teardown(nacm_cl_test_reload_nacm, sysrepo_setup, sysrepo_teardown),
     };
