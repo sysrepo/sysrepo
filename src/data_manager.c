@@ -4101,6 +4101,188 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
 }
 
 /**
+ * @brief Find equal \p node instance in \p data tree. Be careful, this implementation
+ * is tailored for use on 2 diffed trees, so some additional assumptions hold that are
+ * taken into consideration.
+ */
+static struct lyd_node *
+dm_find_data_instance(const struct lyd_node *data, const struct lyd_node *node)
+{
+    struct ly_set *set = NULL;
+    struct lyd_node *ret = NULL;
+    struct lyd_node_leaf_list *k1, *k2;
+    uint32_t i, j;
+
+    set = lyd_find_instance(data, node->schema);
+    if (!set) {
+        return NULL;
+    }
+
+    for (i = 0; !ret && (i < set->number); ++i) {
+        switch (node->schema->nodetype) {
+        case LYS_CONTAINER:
+        case LYS_LEAF:
+        case LYS_ANYXML:
+        case LYS_ANYDATA:
+            /* it is assumed that if leaf, anyxml, anydata exist, they have the same value */
+            ret = set->set.d[0];
+            break;
+        case LYS_LEAFLIST:
+            if (!strcmp(((struct lyd_node_leaf_list *)node)->value_str,
+                        ((struct lyd_node_leaf_list *)set->set.d[i])->value_str)) {
+                ret = set->set.d[i];
+            }
+            break;
+        case LYS_LIST:
+            k1 = (struct lyd_node_leaf_list *)node->child;
+            k2 = (struct lyd_node_leaf_list *)set->set.d[i]->child;
+            for (j = 0; j < ((struct lys_node_list *)node->schema)->keys_size; ++j) {
+                if (strcmp(k1->value_str, k2->value_str)) {
+                    break;
+                }
+                k1 = (struct lyd_node_leaf_list *)k1->next;
+                k2 = (struct lyd_node_leaf_list *)k2->next;
+            }
+            if (j < ((struct lys_node_list *)node->schema)->keys_size) {
+                ret = set->set.d[i];
+            }
+            break;
+        default:
+            assert(0);
+        }
+    }
+
+    return ret;
+}
+
+/**
+ * @brief Perform read NACM check on a single node, revert it if read access is not granted.
+ */
+static int
+dm_copy_config_read_nacm_single_node(dm_session_t *session, nacm_data_val_ctx_t *nacm_data_val_ctx,
+        const struct lyd_node *node, struct lyd_difflist *diff, size_t diff_idx, size_t *diff_size,
+        struct lyd_node *cc_tree, bool *denied)
+{
+    int rc = SR_ERR_OK;
+    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
+    const char *rule_name = NULL, *rule_info = NULL;
+    void *tmp = NULL;
+    struct lyd_node_anydata *tmp_node = NULL;
+    struct lyd_node *cc_first = NULL, *cc_second = NULL;
+
+    rc = nacm_check_data(nacm_data_val_ctx, NACM_ACCESS_READ, node, &nacm_action, &rule_name, &rule_info);
+    CHECK_RC_LOG_RETURN(rc, "NACM data validation failed for node: %s.", node->schema->name);
+
+    if (NACM_ACTION_DENY == nacm_action) {
+        /* report check fail */
+        nacm_report_read_access_denied(session->user_credentials, node, rule_name, rule_info);
+
+        /* revert the change in the copy-config (cc)tree */
+        switch (diff->type[diff_idx]) {
+        case LYD_DIFF_CHANGED:
+            if (node->schema->nodetype == LYS_LEAF) {
+                if (lyd_change_leaf((struct lyd_node_leaf_list *)diff->second[diff_idx],
+                            ((struct lyd_node_leaf_list *)diff->first[diff_idx])->value_str) < 0) {
+                    return SR_ERR_INTERNAL;
+                }
+            } else { /* LYS_ANYXML, LYS_ANYDATA */
+                tmp_node = (struct lyd_node_anydata *)lyd_dup(diff->first[diff_idx], 0);
+                /* switch values and free the copy */
+                tmp = (void *)((struct lyd_node_anydata *)diff->second[diff_idx])->value_type;
+                ((struct lyd_node_anydata *)diff->second[diff_idx])->value_type = tmp_node->value_type;
+                tmp_node->value_type = (LYD_ANYDATA_VALUETYPE)tmp;
+
+                memcpy(&tmp, &((struct lyd_node_anydata *)diff->second[diff_idx])->value, sizeof tmp);
+                ((struct lyd_node_anydata *)diff->second[diff_idx])->value = tmp_node->value;
+                memcpy(&tmp_node->value, &tmp, sizeof tmp);
+
+                lyd_free((struct lyd_node *)tmp_node);
+            }
+            break;
+        case LYD_DIFF_MOVEDAFTER1:
+            cc_first = dm_find_data_instance(cc_tree, diff->first[diff_idx]);
+            if (diff->first[diff_idx]->prev != diff->first[diff_idx]) {
+                cc_second = dm_find_data_instance(cc_tree, diff->first[diff_idx]->prev);
+                lyd_insert_after(cc_second, cc_first);
+            } else {
+                cc_second = dm_find_data_instance(cc_tree, diff->first[diff_idx]->next);
+                lyd_insert_before(cc_second, cc_first);
+            }
+            break;
+        case LYD_DIFF_DELETED:
+            if (diff->first[diff_idx]->parent) {
+                cc_first = dm_find_data_instance(cc_tree, diff->first[diff_idx]->parent);
+                lyd_insert(cc_first, lyd_dup(diff->first[diff_idx], 1));
+            } else {
+                lyd_insert_sibling(&cc_tree, lyd_dup(diff->first[diff_idx], 1));
+            }
+            break;
+        case LYD_DIFF_CREATED:
+            lyd_free(diff->second[diff_idx]);
+            break;
+        default:
+            /* LYD_DIFF_MOVEDAFTER2 should not be passed to this function,
+             * access control performed already for LYD_DIFF_CREATED of this node */
+            assert(0);
+        }
+
+        /* remove this diff item */
+        --(*diff_size);
+        memmove(&diff->type[diff_idx], &diff->type[diff_idx + 1], (*diff_size - diff_idx) * sizeof *diff->type);
+        memmove(&diff->first[diff_idx], &diff->first[diff_idx + 1], (*diff_size - diff_idx) * sizeof *diff->first);
+        memmove(&diff->second[diff_idx], &diff->second[diff_idx + 1], (*diff_size - diff_idx) * sizeof *diff->second);
+
+        if (denied) {
+            *denied = true;
+        }
+    } else if (denied) {
+        *denied = false;
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Perform read NACM check on every node in the subtree, revert any subtrees with read access not granted.
+ */
+static int
+dm_copy_config_read_nacm_subtree(dm_session_t *session, nacm_data_val_ctx_t *nacm_data_val_ctx,
+        const struct lyd_node *root, struct lyd_difflist *diff, size_t diff_idx, size_t *diff_size)
+{
+    int rc = SR_ERR_OK;
+    bool backtracking = false, denied = false;
+    const struct lyd_node *node = NULL;
+
+    assert(diff->type[diff_idx] == LYD_DIFF_CREATED);
+
+    node = root;
+    while (!backtracking || node != root) {
+        if (false == backtracking) {
+            rc = dm_copy_config_read_nacm_single_node(session, nacm_data_val_ctx, node, diff, diff_idx, diff_size, NULL, &denied);
+            if (SR_ERR_OK != rc) {
+                return rc;
+            }
+            if (!denied && !(node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) && node->child) {
+                node = node->child;
+            } else if (node->next && node != root) {
+                node = node->next;
+            } else {
+                backtracking = true;
+            }
+        } else {
+            if (node->next) {
+                node = node->next;
+                backtracking = false;
+            } else {
+                node = node->parent;
+            }
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
  * @brief Perform NETCONF access control for a single node.
  */
 static int
@@ -4170,12 +4352,12 @@ dm_commit_nacm_subtree(dm_session_t *session, nacm_data_val_ctx_t *nacm_data_val
 }
 
 int
-dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
+dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx, bool copy_config,
         sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG3(dm_ctx, session, c_ctx);
     int rc = SR_ERR_OK;
-    size_t i = 0, d_cnt = 0;
+    size_t i = 0, d_cnt = 0, d_idx = 0;
     bool denied = false, saved_diff = false;
     int denied_cnt = 0;
     nacm_data_val_ctx_t *nacm_data_val_ctx = NULL;
@@ -4229,7 +4411,7 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
                 info->schema->module->name);
         module_difflist = NULL;
 
-        if (diff->type[d_cnt] == LYD_DIFF_END) {
+        if (diff->type[0] == LYD_DIFF_END) {
             SR_LOG_DBG("No changes in module %s", info->schema->module->name);
             continue;
         }
@@ -4239,22 +4421,60 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
                 &nacm_data_val_ctx);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to start NACM data validation.");
 
+        if (copy_config) {
+            /* count diff items */
+            for (d_cnt = 0; LYD_DIFF_END != diff->type[d_cnt]; ++d_cnt);
+            ++d_cnt;
+
+            /* for copy_config perform read access checks */
+            d_idx = d_cnt - 1;
+            do {
+                --d_idx;
+                switch (diff->type[d_idx]) {
+                    case LYD_DIFF_CHANGED:
+                    case LYD_DIFF_MOVEDAFTER1:
+                    case LYD_DIFF_DELETED:
+                        rc = dm_copy_config_read_nacm_single_node(session, nacm_data_val_ctx, diff->first[d_idx],
+                                diff, d_idx, &d_cnt, commit_info->node, NULL);
+                        break;
+                    case LYD_DIFF_CREATED:
+                        rc = dm_copy_config_read_nacm_subtree(session, nacm_data_val_ctx, diff->first[d_idx],
+                                diff, d_idx, &d_cnt);
+                        break;
+                    case LYD_DIFF_MOVEDAFTER2:
+                        break;
+                    default:
+                        assert(0 && "not reachable");
+                }
+                if (SR_ERR_OK != rc) {
+                    goto cleanup;
+                }
+            } while (d_idx > 0);
+
+            if (diff->type[0] == LYD_DIFF_END) {
+                SR_LOG_DBG("No changes in module %s", info->schema->module->name);
+                nacm_data_validation_stop(nacm_data_val_ctx);
+                nacm_data_val_ctx = NULL;
+                continue;
+            }
+        }
+
         /* Iterate over all changes. Some changes may include whole subtrees. */
-        for (d_cnt = 0; LYD_DIFF_END != diff->type[d_cnt]; d_cnt++) {
+        for (d_idx = 0; LYD_DIFF_END != diff->type[d_idx]; d_idx++) {
             /* get node, access_type */
-            switch (diff->type[d_cnt]) {
+            switch (diff->type[d_idx]) {
                 case LYD_DIFF_CHANGED:
                 case LYD_DIFF_MOVEDAFTER1:
-                    rc = dm_commit_nacm_single_node(session, nacm_data_val_ctx, diff->first[d_cnt],
+                    rc = dm_commit_nacm_single_node(session, nacm_data_val_ctx, diff->first[d_idx],
                             NACM_ACCESS_UPDATE, &denied, errors, err_cnt);
                     denied_cnt += denied;
                     break;
                 case LYD_DIFF_DELETED:
-                    rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->first[d_cnt],
+                    rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->first[d_idx],
                             NACM_ACCESS_DELETE, &denied_cnt, errors, err_cnt);
                     break;
                 case LYD_DIFF_CREATED:
-                    rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->second[d_cnt],
+                    rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->second[d_idx],
                             NACM_ACCESS_CREATE, &denied_cnt, errors, err_cnt);
                     break;
                 case LYD_DIFF_MOVEDAFTER2:
@@ -4915,21 +5135,16 @@ dm_create_difflist_for_enabled_notif(dm_ctx_t *dm_ctx, const ac_ucred_t *user_cr
     if (NULL == ms->difflist) {
         SR_LOG_ERR_MSG("Error while generating diff");
         rc = SR_ERR_INTERNAL;
-        dm_model_subscription_free(ms);
         goto cleanup;
     }
 
     rc = dm_remove_non_matching_diff(ms, subscription);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Dm remove non match diff failed");
-        dm_model_subscription_free(ms);
         goto cleanup;
     }
 
     rc = sr_btree_insert(c_ctx->subscriptions, ms);
-    if (SR_ERR_OK != rc) {
-        dm_model_subscription_free(ms);
-    }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert model subscription structure");
     return rc;
 
@@ -5004,7 +5219,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
 
     if (NULL != subscription) {
         if (SR_DS_RUNNING != dst) {
-            SR_LOG_ERR_MSG("Notification can no be sent for datastore different from running");
+            SR_LOG_ERR_MSG("Notification cannot be sent for datastore different from running");
             return SR_ERR_INVAL_ARG;
         }
         rc = dm_prepare_c_ctx_for_enable_notification(dm_ctx, &c_ctx);
