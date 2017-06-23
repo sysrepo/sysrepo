@@ -1170,10 +1170,11 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Identity ref or schema in leaf '%s' is NULL", node_name);
             return SR_ERR_INTERNAL;
         }
-        if (leaf->schema->module == leaf->value.ident->module) {
+        if (lyd_node_module((struct lyd_node *)leaf) == lys_main_module(leaf->value.ident->module)) {
             sr_mem_edit_string(value->_sr_mem, &value->data.identityref_val, leaf->value.ident->name);
         } else {
-            sr_mem_edit_string_va_wrapper(value->_sr_mem, &value->data.identityref_val, "%s:%s", leaf->value.ident->module->name, leaf->value.ident->name);
+            sr_mem_edit_string_va_wrapper(value->_sr_mem, &value->data.identityref_val, "%s:%s",
+                                          lys_main_module(leaf->value.ident->module)->name, leaf->value.ident->name);
         }
 
         if (NULL == value->data.identityref_val) {
