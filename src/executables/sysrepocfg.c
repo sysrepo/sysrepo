@@ -1049,6 +1049,9 @@ srcfg_write_xpath_value(sr_type_t srtype, const char *xpath, const char *xpathva
             case SR_INT64_T:
                 value.data.int64_val = atoll(xpathvalue);
                 break;
+            case SR_DECIMAL64_T:
+                value.data.decimal64_val = atof(xpathvalue);
+                break;
             default:
                 printf("%s type %d not supported\n", __FUNCTION__, srtype);
                 goto cleanup;
