@@ -1055,13 +1055,13 @@ dm_schema_node_xpath_hash(void **state)
     verify_xpath_hash(node, hash);
     verify_data_depth(node, 2);
 
-    node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled");
+    node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:enabled");
     hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface")
            + sr_str_hash("ietf-ip:ipv4") + sr_str_hash("ietf-ip:enabled");
     verify_xpath_hash(node, hash);
     verify_data_depth(node, 3);
 
-    node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/ip");
+    node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:address[ietf-ip:ip='192.168.2.100']/ietf-ip:ip");
     hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface")
            + sr_str_hash("ietf-ip:ipv4") + sr_str_hash("ietf-ip:address") + sr_str_hash("ietf-ip:ip");
     verify_xpath_hash(node, hash);

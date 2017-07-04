@@ -50,6 +50,26 @@ rp_dt_create_xpath_for_node(sr_mem_ctx_t *sr_mem, const struct lyd_node *node, c
     return rc;
 }
 
+static struct lys_node *
+rp_dt_validate_node_xpath_get_data_node(struct lys_node *node)
+{
+    struct lys_node *ret = NULL, *tmp = NULL;
+
+    LY_TREE_FOR(node, ret) {
+        if (ret->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) {
+            break;
+        } else if (ret->nodetype == LYS_USES) {
+            tmp = rp_dt_validate_node_xpath_get_data_node(ret->child);
+            if (tmp) {
+                ret = tmp;
+                break;
+            }
+        }
+    }
+
+    return ret;
+}
+
 /**
  *
  * @brief Function tries to validate the xpath and to find the corresponding
@@ -72,6 +92,7 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
 
     char *namespace = NULL;
     const struct lys_module *module = NULL;
+    const struct lys_node *node = NULL;
     rc = sr_copy_first_ns(xpath, &namespace);
     CHECK_RC_MSG_RETURN(rc, "Namespace copy failed");
 
@@ -89,9 +110,16 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
         free(namespace);
         return SR_ERR_UNKNOWN_MODEL;
     }
+
+    node = rp_dt_validate_node_xpath_get_data_node(module->data);
+    if (NULL == node) {
+        SR_LOG_ERR("Module %s does not have any data", namespace);
+        free(namespace);
+        return SR_ERR_UNKNOWN_MODEL;
+    }
     free(namespace);
 
-    struct ly_set *set = lys_find_xpath(schema_info->ly_ctx, NULL, xpath, 0);
+    struct ly_set *set = lys_find_xpath(node, xpath, 0);
     if (NULL != set) {
         if(1 == set->number && NULL != match) {
             *match = set->set.s[0];

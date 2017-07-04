@@ -351,12 +351,12 @@ createDataTreeLargeIETFinterfacesModule(size_t if_count)
     struct lyd_node *root = NULL;
 
     #define MAX_IF_LEN 150
-    const char *template_prefix_len = "/ietf-interfaces:interfaces/interface[name='eth%d']/ietf-ip:ipv4/address[ip='192.168.%d.%d']/prefix-length";
+    const char *template_prefix_len = "/ietf-interfaces:interfaces/interface[name='eth%d']/ietf-ip:ipv4/ietf-ip:address[ietf-ip:ip='192.168.%d.%d']/ietf-ip:prefix-length";
     const char *template_type = "/ietf-interfaces:interfaces/interface[name='eth%d']/type";
     const char *template_desc = "/ietf-interfaces:interfaces/interface[name='eth%d']/description";
     const char *template_enabled = "/ietf-interfaces:interfaces/interface[name='eth%d']/enabled";
-    const char *template_ipv4_enabled = "/ietf-interfaces:interfaces/interface[name='eth%d']/ietf-ip:ipv4/enabled";
-    const char *template_ipv4_mtu = "/ietf-interfaces:interfaces/interface[name='eth%d']/ietf-ip:ipv4/mtu";
+    const char *template_ipv4_enabled = "/ietf-interfaces:interfaces/interface[name='eth%d']/ietf-ip:ipv4/ietf-ip:enabled";
+    const char *template_ipv4_mtu = "/ietf-interfaces:interfaces/interface[name='eth%d']/ietf-ip:ipv4/ietf-ip:mtu";
     char xpath[MAX_IF_LEN] = {0,};
 
     const struct lys_module *module_interfaces = ly_ctx_load_module(ctx, "ietf-interfaces", NULL);
