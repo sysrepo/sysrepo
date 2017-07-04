@@ -79,7 +79,7 @@ static const char * const md_submodule_B_sub1_body =
 "  }\n"
 "\n"
 "  leaf tax-enabled {\n"
-"    when \"/A:base-container/name = 'tax authority'\";\n"
+"    when \"/A:base-container/A:name = 'tax authority'\";\n"
 "    type boolean;\n"
 "  }";
 
@@ -172,7 +172,7 @@ static const char * const md_module_C_body =
 "      type int16;\n"
 "    }\n"
 "    leaf tax {\n"
-"      when \"/A:base-container/num > ../limit\";\n"
+"      when \"/A:base-container/A:num > ../limit\";\n"
 "      type int16;\n"
 "    }\n"
 "  }";
@@ -192,7 +192,7 @@ static const char * const md_module_D_rev1_body =
 "  }\n"
 "\n"
 "  leaf vat {\n"
-"    must \". <= /C:conditional-data/tax\";\n"
+"    must \". <= /C:conditional-data/C:tax\";\n"
 "    type uint16;\n"
 "  }";
 
@@ -227,7 +227,7 @@ static const char * const md_module_D_rev2_body =
 "  }\n"
 "\n"
 "  leaf vat {\n"
-"    must \". <= /C:conditional-data/tax\";\n"
+"    must \". <= /C:conditional-data/C:tax\";\n"
 "    must \"/B:tax-enabled = 'true'\";\n"
 "    type uint16;\n"
 "  }";
