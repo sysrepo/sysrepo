@@ -998,81 +998,22 @@ sr_type_t srcfg_convert_format(struct lys_node_leaf* leaf)
 static int
 srcfg_write_xpath_value(sr_type_t srtype, const char *xpath, const char *xpathvalue)
 {
-    int rc = SR_ERR_INTERNAL;
-    sr_val_t value = { 0 };
-
-    if (srtype != SR_LIST_T) {
-        value.type = srtype;
-        rc = sr_val_set_xpath(&value, xpath);
-        if (SR_ERR_OK != rc) {
-            printf("Error by sr_val_set_xpath: %s for %s\n", strerror(rc), xpath);
-            goto cleanup;
-        }
-
-        switch (srtype) {
-            case SR_BINARY_T:
-            case SR_BITS_T:
-            case SR_ENUM_T:
-            case SR_IDENTITYREF_T:
-            case SR_INSTANCEID_T:
-            case SR_STRING_T:
-                rc = sr_val_set_str_data(&value, srtype, xpathvalue);
-                if (SR_ERR_OK != rc) {
-                    printf("Error by sr_val_set_str_data: %s for %s\n", strerror(rc), xpath);
-                    goto cleanup;
-                }
-                break;
-            case SR_BOOL_T:
-                value.data.bool_val = atoi(xpathvalue);
-                break;
-            case SR_UINT8_T:
-                value.data.uint8_val = atoi(xpathvalue);
-                break;
-            case SR_UINT16_T:
-                value.data.uint16_val = atoi(xpathvalue);
-                break;
-            case SR_UINT32_T:
-                value.data.uint32_val = atoi(xpathvalue);
-                break;
-            case SR_UINT64_T:
-                value.data.uint64_val = atoll(xpathvalue);
-                break;
-            case SR_INT8_T:
-                value.data.int8_val = atoi(xpathvalue);
-                break;
-            case SR_INT16_T:
-                value.data.int16_val = atoi(xpathvalue);
-                break;
-            case SR_INT32_T:
-                value.data.int32_val = atoi(xpathvalue);
-                break;
-            case SR_INT64_T:
-                value.data.int64_val = atoll(xpathvalue);
-                break;
-            case SR_DECIMAL64_T:
-                value.data.decimal64_val = atof(xpathvalue);
-                break;
-            default:
-                printf("%s type %d not supported\n", __FUNCTION__, srtype);
-                goto cleanup;
-                break;
-        }
-        if (xpathvalue) {
-            rc = sr_set_item(srcfg_session, xpath, &value, SR_EDIT_DEFAULT);
-            if (SR_ERR_OK != rc) {
-                printf("Error by sr_set_item: %s for %s\n", strerror(rc), xpath);
-                goto cleanup;
-            }
-        }
-    } else {
-        rc = sr_set_item(srcfg_session, xpath, NULL, SR_EDIT_DEFAULT);
+    if (srtype == SR_LIST_T) {
+        int rc = sr_set_item(srcfg_session, xpath, NULL, SR_EDIT_DEFAULT);
         if (SR_ERR_OK != rc) {
             printf("Error by sr_set_item: %s for %s\n", strerror(rc), xpath);
-            goto cleanup;
+            return rc;
+        }
+    } else if (!xpathvalue) {
+        return SR_ERR_INTERNAL;
+    } else {
+        int rc = sr_set_item_str(srcfg_session, xpath, xpathvalue, SR_EDIT_DEFAULT);
+        if (SR_ERR_OK != rc) {
+            printf("Error by sr_set_item_str: %s for %s\n", strerror(rc), xpath);
+            return rc;
         }
     }
-cleanup:
-    return rc;
+    return 0;
 }
 
 /**
