@@ -1026,7 +1026,7 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
     //struct lyd_node *new_dt = NULL;
     struct lyd_node *current_dt = NULL;
     struct lyd_node *deps_dt = NULL;
-    int ret = 0, j = 0;
+    int j = 0;
     struct ly_set *lyset;
 
     CHECK_NULL_ARG2(ly_ctx, module);
@@ -1048,11 +1048,7 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
     if (SR_ERR_OK == rc) {
         rc = srcfg_merge_data_trees(&current_dt, deps_dt);
     }
-    if (SR_ERR_OK == rc) {
-        ret = lyd_validate(&current_dt, LYD_OPT_STRICT | LYD_OPT_CONFIG, ly_ctx);
-        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Data returned by sysrepo are not valid: %s (%s)",
-                            ly_errmsg(), ly_errpath());
-    } else {
+    if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
