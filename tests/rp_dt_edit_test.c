@@ -2307,7 +2307,7 @@ candidate_edit_test(void **state)
     sr_free_val_content(&iftype);
 
     /* modified module in cadidate is validated before copy */
-    rc = dm_copy_module(ctx->dm_ctx, sessionA->dm_session, "test-module", SR_DS_CANDIDATE, SR_DS_STARTUP, NULL);
+    rc = dm_copy_module(ctx->dm_ctx, sessionA->dm_session, "test-module", SR_DS_CANDIDATE, SR_DS_STARTUP, NULL, 0, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     rc = dm_discard_changes(ctx->dm_ctx, sessionA->dm_session);

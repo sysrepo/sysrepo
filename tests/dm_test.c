@@ -433,7 +433,7 @@ dm_copy_module_test(void **state)
    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &sessionA);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = dm_copy_module(ctx, sessionA, "example-module", SR_DS_STARTUP, SR_DS_RUNNING, NULL);
+   rc = dm_copy_module(ctx, sessionA, "example-module", SR_DS_STARTUP, SR_DS_RUNNING, NULL, 0, NULL, NULL);
    assert_int_equal(SR_ERR_OK, rc);
 
    rc = dm_get_module_and_lockw(ctx, "test-module", &si);
@@ -444,7 +444,7 @@ dm_copy_module_test(void **state)
 
    pthread_rwlock_unlock(&si->model_lock);
 
-   rc = dm_copy_all_models(ctx, sessionA, SR_DS_STARTUP, SR_DS_RUNNING);
+   rc = dm_copy_all_models(ctx, sessionA, SR_DS_STARTUP, SR_DS_RUNNING, 0, NULL, NULL);
    assert_int_equal(SR_ERR_OK, rc);
 
    dm_session_stop(ctx, sessionA);

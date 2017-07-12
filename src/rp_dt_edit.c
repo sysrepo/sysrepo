@@ -22,6 +22,7 @@
 #include "rp_dt_edit.h"
 #include "rp_dt_lookup.h"
 #include "rp_dt_xpath.h"
+#include "data_manager.h"
 #include "sysrepo.h"
 #include "sr_common.h"
 #include "access_control.h"
@@ -859,16 +860,21 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             state = DM_COMMIT_NACM;
             break;
         case DM_COMMIT_NACM:
-            rc = dm_commit_netconf_access_control(rp_ctx->dm_ctx, session->dm_session, commit_ctx, copy_config, errors, err_cnt);
-            if (SR_ERR_OK != rc) {
-                if (SR_ERR_UNAUTHORIZED != rc) {
-                    SR_LOG_ERR_MSG("Failed to evaluate write access for the commit operation");
-                } else {
-                    SR_LOG_ERR_MSG("Commit was aborted due to insufficient access rights");
+            if (NULL != rp_ctx->dm_ctx->nacm_ctx && (commit_ctx->init_session->options & SR_SESS_ENABLE_NACM)) {
+                rc = dm_commit_netconf_access_control(rp_ctx->dm_ctx->nacm_ctx, session->dm_session, commit_ctx,
+                                                      copy_config, errors, err_cnt);
+                if (SR_ERR_OK != rc) {
+                    if (SR_ERR_UNAUTHORIZED != rc) {
+                        SR_LOG_ERR_MSG("Failed to evaluate write access for the commit operation");
+                    } else {
+                        SR_LOG_ERR_MSG("Commit was aborted due to insufficient access rights");
+                    }
+                    goto cleanup;
                 }
-                goto cleanup;
+                SR_LOG_DBG_MSG("Commit (6/10): access granted by NACM");
+            } else {
+                SR_LOG_DBG_MSG("Commit (6/10): NACM access check skipped");
             }
-            SR_LOG_DBG_MSG("Commit (6/10): write access granted by NACM");
             if (session->datastore == SR_DS_CANDIDATE) {
                 /* we are finished for candidate, no changes are written */
                 state = DM_COMMIT_FINISHED;
@@ -1051,10 +1057,12 @@ cleanup:
  * @param [in] session
  * @param [in] module_name
  * @param [in] src
+ * @param [in] errors
+ * @param [in] err_cnt
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char* module_name, sr_datastore_t src, sr_error_info_t **errors, size_t *err_cnt)
+rp_dt_copy_config_to_running(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG2(rp_ctx, session);
     int rc = SR_ERR_OK;
@@ -1156,10 +1164,12 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
     if (SR_DS_RUNNING != dst) {
         if (NULL != module_name) {
             /* copy module content in DM */
-            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, module_name, src, dst, NULL);
+            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, module_name, src, dst, NULL,
+                                session->options & SR_SESS_ENABLE_NACM, errors, err_cnt);
         } else {
             /* copy all enabled modules */
-            rc = dm_copy_all_models(rp_ctx->dm_ctx, session->dm_session, src, dst);
+            rc = dm_copy_all_models(rp_ctx->dm_ctx, session->dm_session, src, dst,
+                                    session->options & SR_SESS_ENABLE_NACM, errors, err_cnt);
         }
 
     } else {
