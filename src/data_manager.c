@@ -770,30 +770,6 @@ dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schem
     return rc;
 }
 
-/**
- *
- * @note Function expects that a schema info is locked for writing.
- *
- * @param [in] ctx
- * @param [in] session
- * @param [in] module_name
- * @param [in] xpath
- * @param [in] schema_info
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-dm_enable_module_subtree_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schema_info_t *schema_info, const char *module_name, const char *xpath)
-{
-    CHECK_NULL_ARG3(ctx, module_name, xpath); /* session can be NULL */
-    int rc = SR_ERR_OK;
-
-    /* enable the subtree specified by xpath */
-    rc = rp_dt_enable_xpath(ctx, session, schema_info, xpath);
-    CHECK_RC_LOG_RETURN(rc, "Enabling of xpath %s failed", xpath);
-
-    return rc;
-}
-
 static int
 dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, dm_schema_info_t *si,
                                 bool features_only)
@@ -829,7 +805,7 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const c
             } else {
                 /* enable running datastore for specified subtrees */
                 for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
-                    rc = dm_enable_module_subtree_running_internal(dm_ctx, NULL, si, module_name, enabled_subtrees[i]);
+                    rc = rp_dt_enable_xpath(dm_ctx, NULL, si, enabled_subtrees[i]);
                     if (SR_ERR_OK != rc) {
                         SR_LOG_WRN("Unable to enable subtree '%s' in module '%s' in running ds.", enabled_subtrees[i], module_name);
                     }
@@ -5609,7 +5585,7 @@ dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const cha
     rc = dm_get_module_and_lockw(ctx, module_name, &si);
     CHECK_RC_LOG_RETURN(rc, "Lock schema %s for write failed", module_name);
 
-    rc = dm_enable_module_subtree_running_internal(ctx, session, si, module_name, xpath);
+    rc = rp_dt_enable_xpath(ctx, session, si, xpath);
     pthread_rwlock_unlock(&si->model_lock);
     CHECK_RC_LOG_RETURN(rc, "Enabling of xpath %s failed", xpath);
 
