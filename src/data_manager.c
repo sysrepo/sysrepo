@@ -4389,7 +4389,7 @@ dm_perform_netconf_access_control(nacm_ctx_t *nacm_ctx, dm_session_t *session, d
                         diff, d_idx, &d_cnt, new_info->node, NULL);
                 break;
             case LYD_DIFF_CREATED:
-                rc = dm_copy_config_read_nacm_subtree(session, nacm_data_val_ctx, diff->first[d_idx],
+                rc = dm_copy_config_read_nacm_subtree(session, nacm_data_val_ctx, diff->second[d_idx],
                         diff, d_idx, &d_cnt);
                 break;
             case LYD_DIFF_MOVEDAFTER2:
