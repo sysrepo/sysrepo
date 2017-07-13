@@ -1072,6 +1072,7 @@ rp_dt_copy_config_to_running(rp_ctx_t *rp_ctx, rp_session_t *session, const char
     dm_commit_context_t *c_ctx = NULL;
     dm_data_info_t *info = NULL;
     int first_err = SR_ERR_OK;
+    bool enabled = false;
 
     /* are we resuming a copy_config commit? */
     if (RP_REQ_RESUMED == session->state) {
@@ -1091,6 +1092,15 @@ rp_dt_copy_config_to_running(rp_ctx_t *rp_ctx, rp_session_t *session, const char
 
         /* load models to be committed to the session */
         if (NULL != module_name) {
+            /* is the module enabled? */
+            rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, module_name, NULL, &enabled);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Has enabled subtree failed %s", module_name);
+            if (!enabled) {
+                SR_LOG_ERR("Cannot copy module '%s', it is not enabled.", module_name);
+                rc = SR_ERR_OPERATION_FAILED;
+                goto cleanup;
+            }
+
             if (SR_DS_CANDIDATE == src) {
                 rc = dm_copy_session_tree(rp_ctx->dm_ctx, backup, session->dm_session, module_name);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");

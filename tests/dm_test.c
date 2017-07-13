@@ -433,16 +433,19 @@ dm_copy_module_test(void **state)
    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &sessionA);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = dm_copy_module(ctx, sessionA, "example-module", SR_DS_STARTUP, SR_DS_RUNNING, NULL, 0, NULL, NULL);
-   assert_int_equal(SR_ERR_OK, rc);
+   /* not enabled */
+   rc = dm_copy_module(ctx, sessionA, "test-module", SR_DS_STARTUP, SR_DS_RUNNING, NULL, 0, NULL, NULL);
+   assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
-   rc = dm_get_module_and_lockw(ctx, "test-module", &si);
+   rc = dm_get_module_without_lock(ctx, "test-module", &si);
    assert_int_equal(SR_ERR_OK, rc);
 
    rc = rp_dt_enable_xpath(ctx, sessionA, si, "/test-module:main");
    assert_int_equal(SR_ERR_OK, rc);
 
-   pthread_rwlock_unlock(&si->model_lock);
+   /* now enabled */
+   rc = dm_copy_module(ctx, sessionA, "test-module", SR_DS_STARTUP, SR_DS_RUNNING, NULL, 0, NULL, NULL);
+   assert_int_equal(SR_ERR_OK, rc);
 
    rc = dm_copy_all_models(ctx, sessionA, SR_DS_STARTUP, SR_DS_RUNNING, 0, NULL, NULL);
    assert_int_equal(SR_ERR_OK, rc);

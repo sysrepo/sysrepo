@@ -5662,6 +5662,16 @@ dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name,
     sr_list_t *module_list = NULL;
     dm_schema_info_t *schema_info = NULL;
     int rc = SR_ERR_OK;
+    bool enabled = false;
+
+    /* the module must be enabled */
+    rc = dm_has_enabled_subtree(dm_ctx, module_name, NULL, &enabled);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Has enabled subtree failed %s", module_name);
+    if (!enabled) {
+        SR_LOG_ERR("Cannot copy module '%s', it is not enabled.", module_name);
+        rc = SR_ERR_OPERATION_FAILED;
+        goto cleanup;
+    }
 
     rc = sr_list_init(&module_list);
     CHECK_RC_MSG_RETURN(rc, "List init failed");
@@ -5688,7 +5698,9 @@ dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, 
     sr_list_t *enabled_modules = NULL;
     int rc = SR_ERR_OK;
 
-    rc = dm_get_all_modules(dm_ctx, session, (SR_DS_RUNNING == src || SR_DS_RUNNING == dst), &enabled_modules);
+    /* candidate and running do not have data from disabled modules and startup -> startup does nothing,
+     * so we only consider enabled modules */
+    rc = dm_get_all_modules(dm_ctx, session, true, &enabled_modules);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
 
     rc = dm_copy_config(dm_ctx, session, enabled_modules, src, dst, NULL, nacm_on, errors, err_cnt);
