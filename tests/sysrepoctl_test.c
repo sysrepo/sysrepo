@@ -156,7 +156,7 @@ sysrepoctl_test_install(void **state)
     exec_shell_command(buff, ".*", true, 1);
 
     /* install ietf-ip */
-    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/ietf-ip@2014-06-16.yang "
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/ietf-ip@2014-06-16.yang "
             "--owner=%s --permissions=644", user);
     exec_shell_command(buff, ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-ip@2014-06-16.yang", true);
@@ -179,7 +179,7 @@ sysrepoctl_test_install(void **state)
     snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Implemented[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 644[[:space:]]*\\|", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
-    exec_shell_command("../src/sysrepoctl --install --yang=../../tests/yang/inner/test-dep-installed.yang "
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/inner/test-dep-installed.yang "
             "--search-installed  --permissions=644", ".*", true, 0);
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.startup", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.startup.lock", true);
@@ -207,11 +207,11 @@ sysrepoctl_test_install(void **state)
     exec_shell_command("../src/sysrepoctl -l", "!test-dep-installed", true, 0);
 
     /* finally install back ietf-interfaces and iana-if-type to restore the pre-test state */
-    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/ietf-interfaces@2014-05-08.yang "
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/ietf-interfaces@2014-05-08.yang "
             "--owner=%s --permissions=644", user);
     exec_shell_command(buff, ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang", true);
-    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/iana-if-type.yang "
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/iana-if-type.yang "
             "--owner=%s --permissions=644", user);
     exec_shell_command(buff, ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "iana-if-type@2014-05-08.yang", true);
