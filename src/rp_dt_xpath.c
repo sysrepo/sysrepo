@@ -50,26 +50,6 @@ rp_dt_create_xpath_for_node(sr_mem_ctx_t *sr_mem, const struct lyd_node *node, c
     return rc;
 }
 
-static struct lys_node *
-rp_dt_validate_node_xpath_get_data_node(struct lys_node *node)
-{
-    struct lys_node *ret = NULL, *tmp = NULL;
-
-    LY_TREE_FOR(node, ret) {
-        if (ret->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_NOTIF | LYS_RPC)) {
-            break;
-        } else if (ret->nodetype == LYS_USES) {
-            tmp = rp_dt_validate_node_xpath_get_data_node(ret->child);
-            if (tmp) {
-                ret = tmp;
-                break;
-            }
-        }
-    }
-
-    return ret;
-}
-
 /**
  *
  * @brief Function tries to validate the xpath and to find the corresponding
@@ -111,7 +91,7 @@ rp_dt_validate_node_xpath_internal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
         return SR_ERR_UNKNOWN_MODEL;
     }
 
-    node = rp_dt_validate_node_xpath_get_data_node(module->data);
+    node = sr_get_any_data_node(module->data);
     if (NULL == node) {
         SR_LOG_ERR("Module %s does not have any data", namespace);
         free(namespace);

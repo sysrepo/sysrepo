@@ -776,7 +776,7 @@ int sr_get_user_groups(const char *username, char ***groups, size_t *group_cnt);
  */
 void sr_free_list_of_strings(sr_list_t *list);
 
-/*
+/**
  * @brief Converts time_t into string formatted as date-and-time type defined in RFC 6991.
  *
  * @param [in] time Time to be coverted into string.
@@ -796,6 +796,15 @@ int sr_time_to_str(time_t time, char *buff, size_t buff_size);
  * @return Error code (SR_ERR_OK on success)
  */
 int sr_str_to_time(char *time_str, time_t *time);
+
+/**
+ * @brief Get any schema data node from a schema tree.
+ *
+ * @param [in] node Top-level tree node.
+ *
+ * @return Schema data node, NULL if not exists.
+ */
+struct lys_node *sr_get_any_data_node(struct lys_node *node);
 
 /**@} utils */
 

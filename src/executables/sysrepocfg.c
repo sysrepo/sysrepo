@@ -1079,7 +1079,7 @@ static int
 srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathvalue, md_module_t *module, srcfg_datastore_t datastore, bool permanent)
 {
     int rc = SR_ERR_INTERNAL;
-    //struct lyd_node *new_dt = NULL;
+    struct lys_node *snode = NULL;
     struct lyd_node *current_dt = NULL;
     struct lyd_node *deps_dt = NULL;
     int ret = 0, j = 0;
@@ -1110,6 +1110,16 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
                             ly_errmsg(), ly_errpath());
     } else {
         goto cleanup;
+    }
+
+    if (NULL != current_dt) {
+        snode = current_dt->schema;
+    } else {
+        snode = sr_get_any_data_node(module->data);
+        if (NULL == snode) {
+            rc = SR_ERR_BAD_ELEMENT;
+            goto cleanup;
+        }
     }
 
     lyset = lys_find_xpath(current_dt->schema, xpath, 0);
