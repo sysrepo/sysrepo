@@ -56,7 +56,7 @@ rp_dt_validate_node_xpath_get_data_node(struct lys_node *node)
     struct lys_node *ret = NULL, *tmp = NULL;
 
     LY_TREE_FOR(node, ret) {
-        if (ret->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) {
+        if (ret->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_NOTIF | LYS_RPC)) {
             break;
         } else if (ret->nodetype == LYS_USES) {
             tmp = rp_dt_validate_node_xpath_get_data_node(ret->child);
