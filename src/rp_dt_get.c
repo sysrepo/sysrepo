@@ -587,7 +587,7 @@ rp_dt_get_tree_roots(dm_schema_info_t *schema_info, const char *xpath, struct ly
     rc = rp_dt_get_start_node(schema_info, xpath, &start_node);
     CHECK_RC_LOG_RETURN(rc, "Failed to get the start node for xpath %s", xpath);
 
-    *roots = lys_find_xpath(start_node, xpath, 0);
+    *roots = lys_find_xpath(NULL, start_node, xpath, 0);
     if (NULL == *roots) {
         SR_LOG_ERR("Failed to get the set of tree roots for xpath %s", xpath);
         rc = SR_ERR_INVAL_ARG;

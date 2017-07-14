@@ -119,7 +119,7 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
     }
     free(namespace);
 
-    struct ly_set *set = lys_find_xpath(node, xpath, 0);
+    struct ly_set *set = lys_find_xpath(NULL, node, xpath, 0);
     if (NULL != set) {
         if(1 == set->number && NULL != match) {
             *match = set->set.s[0];

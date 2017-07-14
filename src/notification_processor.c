@@ -867,7 +867,7 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to find module %s", module_name);
 
         if (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == type) {
-            set = lys_find_xpath(si->module->data, xpath, 0);
+            set = lys_find_xpath(NULL, si->module->data, xpath, 0);
             if (NULL == set || 0 == set->number) {
                 SR_LOG_ERR("Node identified by xpath %s was not found", xpath);
                 rc = SR_ERR_BAD_ELEMENT;

@@ -2447,7 +2447,7 @@ struct lys_node *
 sr_find_schema_node(const struct lys_node *node, const char *expr, int options)
 {
     struct lys_node *result = NULL;
-    struct ly_set *set = lys_find_xpath(node, expr, options);
+    struct ly_set *set = lys_find_xpath(NULL, node, expr, options);
     if (NULL != set && 1 == set->number) {
         result = set->set.s[0];
     }
