@@ -1082,6 +1082,7 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
     struct lys_node *snode = NULL;
     struct lyd_node *current_dt = NULL;
     struct lyd_node *deps_dt = NULL;
+    const struct lys_module *schema_module = NULL;
     int ret = 0, j = 0;
     struct ly_set *lyset;
 
@@ -1115,14 +1116,17 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
     if (NULL != current_dt) {
         snode = current_dt->schema;
     } else {
-        snode = sr_get_any_data_node(module->data);
+        schema_module = ly_ctx_get_module(ly_ctx, module->name, module->revision_date);
+        if (NULL != schema_module) {
+            snode = sr_get_any_data_node(schema_module->data);
+        }
         if (NULL == snode) {
             rc = SR_ERR_BAD_ELEMENT;
             goto cleanup;
         }
     }
 
-    lyset = lys_find_xpath(current_dt->schema, xpath, 0);
+    lyset = lys_find_xpath(snode, xpath, 0);
     if (lyset && lyset->number) {
         for (j=0; j < lyset->number; j++) {
             //printf("node name %s,%s,%d nodetype %d\n", lyset->set.s[j]->name, lys_path(lyset->set.s[j]), lyset->number, lyset->set.s[j]->nodetype);
