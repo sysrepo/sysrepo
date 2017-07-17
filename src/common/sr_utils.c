@@ -2823,3 +2823,23 @@ cleanup:
     free(time_str_copy);
     return rc;
 }
+
+struct lys_node *
+sr_get_any_data_node(struct lys_node *node)
+{
+    struct lys_node *ret = NULL, *tmp = NULL;
+
+    LY_TREE_FOR(node, ret) {
+        if (ret->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_NOTIF | LYS_RPC)) {
+            break;
+        } else if (ret->nodetype == LYS_USES) {
+            tmp = sr_get_any_data_node(ret->child);
+            if (tmp) {
+                ret = tmp;
+                break;
+            }
+        }
+    }
+
+    return ret;
+}

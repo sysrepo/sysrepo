@@ -50,26 +50,6 @@ rp_dt_create_xpath_for_node(sr_mem_ctx_t *sr_mem, const struct lyd_node *node, c
     return rc;
 }
 
-static struct lys_node *
-rp_dt_validate_node_xpath_get_data_node(struct lys_node *node)
-{
-    struct lys_node *ret = NULL, *tmp = NULL;
-
-    LY_TREE_FOR(node, ret) {
-        if (ret->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) {
-            break;
-        } else if (ret->nodetype == LYS_USES) {
-            tmp = rp_dt_validate_node_xpath_get_data_node(ret->child);
-            if (tmp) {
-                ret = tmp;
-                break;
-            }
-        }
-    }
-
-    return ret;
-}
-
 /**
  *
  * @brief Function tries to validate the xpath and to find the corresponding
@@ -85,7 +65,7 @@ rp_dt_validate_node_xpath_get_data_node(struct lys_node *node)
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *schema_info, const char *xpath, struct lys_node **match)
+rp_dt_validate_node_xpath_internal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *schema_info, const char *xpath, struct lys_node **match)
 {
     CHECK_NULL_ARG3(dm_ctx, xpath, schema_info); /* match can be NULL */
     int rc = SR_ERR_OK;
@@ -111,7 +91,7 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
         return SR_ERR_UNKNOWN_MODEL;
     }
 
-    node = rp_dt_validate_node_xpath_get_data_node(module->data);
+    node = sr_get_any_data_node(module->data);
     if (NULL == node) {
         SR_LOG_ERR("Module %s does not have any data", namespace);
         free(namespace);
@@ -178,7 +158,7 @@ rp_dt_validate_node_xpath_lock(dm_ctx_t *dm_ctx, dm_session_t *session, const ch
     }
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s failed", namespace);
 
-    rc = rp_dt_validate_node_xpath_intrenal(dm_ctx, session, si, xpath, match);
+    rc = rp_dt_validate_node_xpath_internal(dm_ctx, session, si, xpath, match);
 
 cleanup:
     *schema_info = si;
@@ -259,7 +239,7 @@ rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *sc
     CHECK_NULL_ARG2(dm_ctx, xpath);
     int rc = SR_ERR_OK;
     struct lys_node *match = NULL, *node = NULL;
-    rc = rp_dt_validate_node_xpath_intrenal(dm_ctx, session, schema_info, xpath, &match);
+    rc = rp_dt_validate_node_xpath_internal(dm_ctx, session, schema_info, xpath, &match);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Xpath validation failed %s", xpath);
         return rc;
