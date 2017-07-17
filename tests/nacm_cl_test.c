@@ -892,6 +892,7 @@ sysrepo_setup_for_copy_config(void **state)
 
     /* NACM startup config */
     new_nacm_config(&nacm_config);
+    set_nacm_write_dflt(nacm_config, "permit");
     copy_config_nacm_config(nacm_config);
     save_nacm_config(nacm_config);
     delete_nacm_config(nacm_config);
@@ -3753,7 +3754,7 @@ module_change_empty_cb(sr_session_ctx_t *session, const char *module_name, sr_no
 }
 
 static void
-nacm_cl_test_copy_config(void **state)
+nacm_cl_test_copy_config(void **state, sr_datastore_t src_ds, sr_datastore_t dst_ds)
 {
     int rc = 0;
     sr_conn_ctx_t *conn = *state;
@@ -3777,34 +3778,34 @@ nacm_cl_test_copy_config(void **state)
             0, SR_SUBSCR_APPLY_ONLY | SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* copy-config to candidate */
-    rc = sr_copy_config(sessions[0], NULL, SR_DS_RUNNING, SR_DS_CANDIDATE);
+    /* copy-config to src_ds */
+    rc = sr_copy_config(sessions[0], NULL, dst_ds, src_ds);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* change the same values in candidate with user1 */
-    rc = sr_session_switch_ds(sessions[0], SR_DS_CANDIDATE);
+    /* change the same values in src_ds with user1 */
+    rc = sr_session_switch_ds(sessions[0], src_ds);
     assert_int_equal(SR_ERR_OK, rc);
 
     val = calloc(1, sizeof *val);
     assert_ptr_not_equal(val, NULL);
     val->type = SR_BOOL_T;
     val->data.bool_val = 0;
-    rc = sr_set_item(handler_session, XP_TEST_MODULE_BOOL, val, SR_EDIT_DEFAULT);
+    rc = sr_set_item(sessions[0], XP_TEST_MODULE_BOOL, val, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     val->type = SR_UINT8_T;
     val->data.uint8_val = 20;
-    rc = sr_set_item(handler_session, "/test-module:main/numbers", val, SR_EDIT_DEFAULT);
+    rc = sr_set_item(sessions[0], "/test-module:main/numbers", val, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     val->type = SR_BOOL_T;
     val->data.bool_val = 0;
-    rc = sr_set_item(handler_session, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", val, SR_EDIT_DEFAULT);
+    rc = sr_set_item(sessions[0], "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", val, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     val->type = SR_BOOL_T;
     val->data.bool_val = 1;
-    rc = sr_set_item(handler_session, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled", val, SR_EDIT_DEFAULT);
+    rc = sr_set_item(sessions[0], "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled", val, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(val);
     val = NULL;
@@ -3812,17 +3813,17 @@ nacm_cl_test_copy_config(void **state)
     rc = sr_commit(sessions[0]);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* copy-config back from candidate */
-    rc = sr_copy_config(sessions[0], NULL, SR_DS_CANDIDATE, SR_DS_RUNNING);
+    /* copy-config back */
+    rc = sr_copy_config(sessions[0], NULL, dst_ds, src_ds);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* refresh handler_session session running */
-    rc = sr_session_switch_ds(handler_session, SR_DS_RUNNING);
+    /* refresh handler_session session dst_ds */
+    rc = sr_session_switch_ds(handler_session, dst_ds);
     assert_int_equal(SR_ERR_OK, rc);
     rc = sr_session_refresh(handler_session);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* check the result */
+    /* check the result, that no data was actually changed */
     rc = sr_get_item(handler_session, XP_TEST_MODULE_BOOL, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_ptr_not_equal(val, NULL);
@@ -3857,6 +3858,24 @@ nacm_cl_test_copy_config(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_session_stop(handler_session);
     assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+nacm_cl_test_copy_config_cand_to_run(void **state)
+{
+    nacm_cl_test_copy_config(state, SR_DS_CANDIDATE, SR_DS_RUNNING);
+}
+
+static void
+nacm_cl_test_copy_config_cand_to_start(void **state)
+{
+    nacm_cl_test_copy_config(state, SR_DS_CANDIDATE, SR_DS_STARTUP);
+}
+
+static void
+nacm_cl_test_copy_config_run_to_start(void **state)
+{
+    nacm_cl_test_copy_config(state, SR_DS_RUNNING, SR_DS_STARTUP);
 }
 
 static void
@@ -4155,7 +4174,9 @@ main() {
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_permitted_write_by_dflt, sysrepo_setup_with_permitted_write_by_dflt, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
         /* Copy-config */
-            cmocka_unit_test_setup_teardown(nacm_cl_test_copy_config, sysrepo_setup_for_copy_config, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_copy_config_cand_to_run, sysrepo_setup_for_copy_config, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_copy_config_cand_to_start, sysrepo_setup_for_copy_config, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_copy_config_run_to_start, sysrepo_setup_for_copy_config, sysrepo_teardown),
         /* NACM reload */
             cmocka_unit_test_setup_teardown(nacm_cl_test_reload_nacm, sysrepo_setup, sysrepo_teardown),
     };
