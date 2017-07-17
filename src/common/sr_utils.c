@@ -1566,7 +1566,7 @@ sr_api_variant_from_str(const char *api_variant_str)
 /**
  * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree.
  *
- * @param [in] parent Parent node.
+ * @param [in] top_parent Top-level parent node.
  * @param [in] node libyang node.
  * @param [in] depth Depth of the node relative to the root node.
  * @param [in] slice_offset Number of child nodes of the chunk root to skip.
@@ -1576,7 +1576,7 @@ sr_api_variant_from_str(const char *api_variant_str)
  * @param [out] sr_tree Returned sysrepo tree.
  */
 static int
-sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_node *node, size_t depth,
+sr_copy_node_to_tree_internal(const struct lyd_node *top_parent, const struct lyd_node *node, size_t depth,
          size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit,
          sr_tree_pruning_cb pruning_cb, void *pruning_ctx, sr_node_t *sr_tree)
 {
@@ -1628,7 +1628,7 @@ sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_no
     sr_tree->dflt = node->dflt;
 
     /* set module_name */
-    if (NULL == parent || lyd_node_module(parent) != lyd_node_module(node)) {
+    if (NULL == top_parent || lyd_node_module(top_parent) != lyd_node_module(node)) {
         rc = sr_node_set_module(sr_tree, lyd_node_module(node)->name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set module of a sysrepo node.");
     }
@@ -1655,7 +1655,7 @@ sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_no
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
                 }
-                rc = sr_copy_node_to_tree_internal(node, child, depth + 1, slice_offset, slice_width,
+                rc = sr_copy_node_to_tree_internal(top_parent ? top_parent : node, child, depth + 1, slice_offset, slice_width,
                         child_limit, depth_limit, pruning_cb, pruning_ctx, sr_subtree);
                 if (SR_ERR_OK != rc) {
                     goto cleanup;

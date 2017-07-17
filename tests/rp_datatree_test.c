@@ -202,7 +202,7 @@ get_child_cnt(sr_node_t *parent)
  * Function expects a tree with root's xpath
  * /ietf-interfaces:interfaces/interface[name='<based on index>']/ietf-ip:ipv4/address[ip='192.168.2.100']
  */
-void check_ietf_interfaces_addr_tree(sr_node_t *tree, size_t index, bool top)
+void check_ietf_interfaces_addr_tree(sr_node_t *tree, size_t index, bool is_tree, bool top)
 {
     sr_node_t *node = NULL;
     const char * const addresses[] = {"192.168.2.100", "10.10.1.5"};
@@ -213,10 +213,10 @@ void check_ietf_interfaces_addr_tree(sr_node_t *tree, size_t index, bool top)
     // address
     assert_string_equal("address", tree->name);
     assert_int_equal(SR_LIST_T, tree->type);
-    if (top) {
-        assert_string_equal("ietf-ip", tree->module_name);
-    } else {
+    if (top && !is_tree) {
         assert_null(tree->module_name);
+    } else {
+        assert_string_equal("ietf-ip", tree->module_name);
     }
     assert_false(tree->dflt);
     assert_int_equal(2, get_child_cnt(tree));
@@ -225,7 +225,11 @@ void check_ietf_interfaces_addr_tree(sr_node_t *tree, size_t index, bool top)
     assert_string_equal("ip", node->name);
     assert_int_equal(SR_STRING_T, node->type);
     assert_string_equal(addresses[index], node->data.string_val);
-    assert_null(node->module_name);
+    if (top) {
+        assert_null(node->module_name);
+    } else {
+        assert_string_equal("ietf-ip", node->module_name);
+    }
     assert_false(node->dflt);
     assert_int_equal(0, get_child_cnt(node));
     // prefix-length
@@ -233,7 +237,11 @@ void check_ietf_interfaces_addr_tree(sr_node_t *tree, size_t index, bool top)
     assert_string_equal("prefix-length", node->name);
     assert_int_equal(SR_UINT8_T, node->type);
     assert_int_equal(prefix_lengths[index], node->data.uint8_val);
-    assert_null(node->module_name);
+    if (top) {
+        assert_null(node->module_name);
+    } else {
+        assert_string_equal("ietf-ip", node->module_name);
+    }
     assert_false(node->dflt);
     assert_int_equal(0, get_child_cnt(node));
 }
@@ -242,7 +250,7 @@ void check_ietf_interfaces_addr_tree(sr_node_t *tree, size_t index, bool top)
  * Function expect a tree with root's xpath
  * /ietf-interfaces:interfaces/interface[name=<based on index>]/ietf-ip:ipv4
  */
-void check_ietf_interfaces_ipv4_tree(sr_node_t *tree, size_t index)
+void check_ietf_interfaces_ipv4_tree(sr_node_t *tree, size_t index, bool top)
 {
     sr_node_t *node = NULL;
     assert_true(index < 2);
@@ -258,7 +266,11 @@ void check_ietf_interfaces_ipv4_tree(sr_node_t *tree, size_t index)
     assert_string_equal("enabled", node->name);
     assert_int_equal(SR_BOOL_T, node->type);
     assert_true(node->data.bool_val);
-    assert_null(node->module_name);
+    if (top) {
+        assert_null(node->module_name);
+    } else {
+        assert_string_equal("ietf-ip", node->module_name);
+    }
     assert_false(node->dflt);
     assert_int_equal(0, get_child_cnt(node));
     // mtu
@@ -266,18 +278,26 @@ void check_ietf_interfaces_ipv4_tree(sr_node_t *tree, size_t index)
     assert_string_equal("mtu", node->name);
     assert_int_equal(SR_UINT16_T, node->type);
     assert_int_equal(1500, node->data.uint16_val);
-    assert_null(node->module_name);
+    if (top) {
+        assert_null(node->module_name);
+    } else {
+        assert_string_equal("ietf-ip", node->module_name);
+    }
     assert_false(node->dflt);
     assert_int_equal(0, get_child_cnt(node));
     // address
     node = get_child_by_index(tree, 2);
-    check_ietf_interfaces_addr_tree(node, index, false);
+    check_ietf_interfaces_addr_tree(node, index, false, top);
     // forwarding
     node = get_child_by_index(tree, 3);
     assert_string_equal("forwarding", node->name);
     assert_int_equal(SR_BOOL_T, node->type);
     assert_false(node->data.bool_val);
-    assert_null(node->module_name);
+    if (top) {
+        assert_null(node->module_name);
+    } else {
+        assert_string_equal("ietf-ip", node->module_name);
+    }
     assert_true(node->dflt);
     assert_int_equal(0, get_child_cnt(node));
 }
@@ -336,7 +356,7 @@ void check_ietf_interfaces_int_tree(sr_node_t *tree, size_t index)
     // ipv4
     if (index < 2) {
         node = get_child_by_index(tree, 4);
-        check_ietf_interfaces_ipv4_tree(node, index);
+        check_ietf_interfaces_ipv4_tree(node, index, false);
     }
 }
 
@@ -388,7 +408,7 @@ void ietf_interfaces_test(void **state){
     }
     sr_free_values(values, count);
 
-#define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+#define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:address[ietf-ip:ip='192.168.2.100']"
     rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, INTERFACE_ETH0_IPV4_IP, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_addr_values(values, count);
@@ -448,32 +468,32 @@ void ietf_interfaces_tree_test(void **state){
 #define INTERFACE_ETH0_IPV4 "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"
     rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_ETH0_IPV4, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
-    check_ietf_interfaces_ipv4_tree(tree, 0);
+    check_ietf_interfaces_ipv4_tree(tree, 0, true);
     sr_free_tree(tree);
 
 #define INTERFACE_ETH1_IPV4 "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4"
     rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_ETH1_IPV4, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
-    check_ietf_interfaces_ipv4_tree(tree, 1);
+    check_ietf_interfaces_ipv4_tree(tree, 1, true);
     sr_free_tree(tree);
 
 #define INTERFACE_GIGAETH0_IPV4 "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4"
     rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_GIGAETH0_IPV4, false, &tree);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
-#define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+#define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:address[ietf-ip:ip='192.168.2.100']"
     rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_ETH0_IPV4_IP, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
-    check_ietf_interfaces_addr_tree(tree, 0, true);
+    check_ietf_interfaces_addr_tree(tree, 0, true, true);
     sr_free_tree(tree);
 
-#define INTERFACE_ETH1_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/address[ip='10.10.1.5']"
+#define INTERFACE_ETH1_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/ietf-ip:address[ietf-ip:ip='10.10.1.5']"
     rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_ETH1_IPV4_IP, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
-    check_ietf_interfaces_addr_tree(tree, 1, true);
+    check_ietf_interfaces_addr_tree(tree, 1, true, true);
     sr_free_tree(tree);
 
-#define INTERFACE_GIGAETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4/address"
+#define INTERFACE_GIGAETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4/ietf-ip:address"
     rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_GIGAETH0_IPV4_IP, false, &tree);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 

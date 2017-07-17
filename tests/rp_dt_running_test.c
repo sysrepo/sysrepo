@@ -104,12 +104,12 @@ enable_subtree_test(void **state)
    rc = dm_get_module_and_lockw(ctx->dm_ctx, "ietf-interfaces", &si);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, si, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address");
+   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, si, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/ietf-ip:address");
    assert_int_equal(SR_ERR_OK, rc);
 
    pthread_rwlock_unlock(&si->model_lock);
 
-   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", &si, &match);
+   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/ietf-ip:address", &si, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check address node */
@@ -130,7 +130,7 @@ enable_subtree_test(void **state)
    rc = dm_get_module_and_lockw(ctx->dm_ctx, "ietf-interfaces", &si);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, si, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address");
+   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, si, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/ietf-ip:address");
    assert_int_equal(SR_ERR_OK, rc);
 
    pthread_rwlock_unlock(&si->model_lock);
@@ -237,7 +237,7 @@ enable_running_for_submodule(void **state)
    val.data.string_val = strdup("abc");
    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/module-a:cont_a/something/a-string", SR_EDIT_DEFAULT, &val, NULL);
    assert_int_equal(SR_ERR_OK, rc);
-   
+
    /* enable a moudle has grouping/uses, per rfc6020 7.12.1 */
    rc = dm_enable_module_running(ctx->dm_ctx, session->dm_session, "servers", NULL);
    assert_int_equal(SR_ERR_OK, rc);
