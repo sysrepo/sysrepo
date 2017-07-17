@@ -31,6 +31,7 @@
 #include "sr_common.h"
 #include "rp_dt_get.h"
 #include "rp_dt_edit.h"
+#include "rp_dt_xpath.h"
 #include "test_module_helper.h"
 #include "rp_dt_context_helper.h"
 #include "rp_internal.h"
@@ -2293,6 +2294,8 @@ candidate_edit_test(void **state)
     rp_ctx_t *ctx = *state;
     rp_session_t *sessionA = NULL;
     sr_val_t *value = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
 
     test_rp_session_create(ctx, SR_DS_CANDIDATE, &sessionA);
 
@@ -2307,13 +2310,15 @@ candidate_edit_test(void **state)
     sr_free_val_content(&iftype);
 
     /* modified module in cadidate is validated before copy */
-    rc = dm_copy_module(ctx->dm_ctx, sessionA->dm_session, "test-module", SR_DS_CANDIDATE, SR_DS_STARTUP, NULL);
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, sessionA->dm_session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    sr_free_errors(errors, e_cnt);
+    errors = NULL;
+    e_cnt = 0;
 
     rc = dm_discard_changes(ctx->dm_ctx, sessionA->dm_session);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* refresh candidate session */
     sr_val_t *v = NULL;
     v = calloc(1, sizeof(*v));
     assert_non_null(v);
@@ -2328,9 +2333,7 @@ candidate_edit_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, sessionA, v->xpath, v, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    sr_error_info_t *errors = NULL;
-    size_t e_cnt = 0;
-
+    /* refresh candidate session */
     rc = rp_dt_refresh_session(ctx, sessionA, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -2356,7 +2359,7 @@ copy_to_running_test(void **state)
     test_rp_session_create(ctx, SR_DS_CANDIDATE, &sessionA);
     test_rp_session_create(ctx, SR_DS_STARTUP, &sessionB);
 
-    /* only enabled modules are copied, no module is enabled => no operation*/
+    /* only enabled modules are copied, no module is enabled => no operation */
     rc = rp_dt_copy_config(ctx, sessionB, NULL, SR_DS_STARTUP, SR_DS_RUNNING, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -2367,16 +2370,8 @@ copy_to_running_test(void **state)
     errors = NULL;
     e_cnt = 0;
 
-    /* only enabled modules are copied, no module is enabled => no operation*/
+    /* only enabled modules are copied, no module is enabled => no operation */
     rc = rp_dt_copy_config(ctx, sessionA, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING, &errors, &e_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-
-    /* empty data tree loaded from running (source of candidate) can be copied to running */
-    rc = rp_dt_copy_config(ctx, sessionA, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING, &errors, &e_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-
-    /* copy startup to candidate */
-    rc = rp_dt_copy_config(ctx, sessionA, "test-module", SR_DS_STARTUP, SR_DS_CANDIDATE, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* copy of not enabled module to running should fail */

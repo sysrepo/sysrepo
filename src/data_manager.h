@@ -46,9 +46,44 @@
 #define DM_DATASTORE_COUNT 3
 
 /**
- * @brief Structure that holds the context of an instance of Data Manager.
+ * @brief Structure holds commit contexts for the purposes of notification
+ * session.
  */
-typedef struct dm_ctx_s dm_ctx_t;
+typedef struct dm_c_ctxs_s {
+    sr_btree_t *tree;      /**< Tree of commit context used for notifications */
+    pthread_rwlock_t lock; /**< rwlock to access c_ctxs */
+    pthread_mutex_t empty_mutex; /**< guards empty and commits_blocked */
+    pthread_cond_t empty_cond;   /**< can be used to wait for empty to be true */
+    bool empty;                  /**< flag that is set to true if there is no commit ctx stored */
+    bool commits_blocked;        /**< flag that decides whether a new commit context cane be inserted into the tree */
+} dm_commit_ctxs_t;
+
+typedef struct dm_tmp_ly_ctx_s dm_tmp_ly_ctx_t;
+
+/**
+ * @brief Data manager context holding loaded schemas, data trees
+ * and corresponding locks
+ */
+typedef struct dm_ctx_s {
+    ac_ctx_t *ac_ctx;             /**< Access Control module context */
+    np_ctx_t *np_ctx;             /**< Notification Processor context */
+    pm_ctx_t *pm_ctx;             /**< Persistence Manager context */
+    md_ctx_t *md_ctx;             /**< Module Dependencies context */
+    nacm_ctx_t *nacm_ctx;         /**< NACM context */
+    cm_connection_mode_t conn_mode;  /**< Mode in which Connection Manager operates */
+    char *schema_search_dir;      /**< location where schema files are located */
+    char *data_search_dir;        /**< location where data files are located */
+    sr_locking_set_t *locking_ctx;/**< lock context for lock/unlock/commit operations */
+    bool *ds_lock;                /**< Flags if the ds lock is hold by a session*/
+    pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
+    sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas */
+    pthread_rwlock_t schema_tree_lock;  /**< rwlock for access schema_info_tree */
+    dm_commit_ctxs_t commit_ctxs; /**< Structure holding commit contexts and corresponding lock */
+    struct timespec last_commit_time;  /**< Time of the last commit */
+    dm_tmp_ly_ctx_t *tmp_ly_ctx;  /**< Structure wrapping libyang context that is used to validate/print/parse date
+                                   * where the set of required yang module can vary */
+
+} dm_ctx_t;
 
 /**
  * @brief Structure that holds Data Manager's per-session context.
@@ -196,19 +231,6 @@ typedef struct dm_commit_context_s {
     bool in_btree;              /**< set to tree if the context was inserted into btree */
     bool should_be_removed;     /**< flag denoting whether c_ctx can be removed from btree */
 } dm_commit_context_t;
-
-/**
- * @brief Structure holds commit contexts for the purposes of notification
- * session.
- */
-typedef struct dm_c_ctxs_s {
-    sr_btree_t *tree;      /**< Tree of commit context used for notifications */
-    pthread_rwlock_t lock; /**< rwlock to access c_ctxs */
-    pthread_mutex_t empty_mutex; /**< guards empty and commits_blocked */
-    pthread_cond_t empty_cond;   /**< can be used to wait for empty to be true */
-    bool empty;                  /**< flag that is set to true if there is no commit ctx stored */
-    bool commits_blocked;        /**< flag that decides whether a new commit context cane be inserted into the tree */
-} dm_commit_ctxs_t;
 
 /**
  * @brief End macro for data child iteration
@@ -473,7 +495,7 @@ int dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx);
  * @brief Execute NETCONF access control (NACM) to determine if the user is allowed
  * to perform all the data modifications included in the commit.
  *
- * @param [in] dm_ctx
+ * @param [in] nacm_ctx
  * @param [in] session
  * @param [in] c_ctx
  * @param [in] copy_config
@@ -481,8 +503,8 @@ int dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx);
  * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED in case of insufficient access rights)
  */
-int dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
-        bool copy_config, sr_error_info_t **errors, size_t *err_cnt);
+int dm_commit_netconf_access_control(nacm_ctx_t *nacm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
+                                     bool copy_config, sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Notifies about the changes made within the running commit. It is
@@ -785,10 +807,13 @@ int dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *
  * @param [in] source
  * @param [in] destination
  * @param [in] subscription if the subscription is not NULL SR_EV_ENABLED notification is sent to the subscription.
+ * @param [in] nacm_on
+ * @param [out] errors
+ * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, sr_datastore_t source, sr_datastore_t destination,
-        const np_subscription_t *subscription);
+        const np_subscription_t *subscription, bool nacm_on, sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Copies all enabled modules from one datastore to the another.
@@ -796,9 +821,13 @@ int dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_n
  * @param [in] session
  * @param [in] src
  * @param [in] dst
+ * @param [in] nacm_on
+ * @param [out] errors
+ * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst);
+int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst, bool nacm_on,
+                       sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Validates content of a RPC request or reply.

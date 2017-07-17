@@ -3689,18 +3689,6 @@ candidate_ds_test(void **state)
 
     rc = sr_commit(session_candidate);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_STARTUP);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* get-config from startup, candidate should be copied to the startup */
-    rc = sr_get_item(session_startup, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
-    assert_int_equal(rc, SR_ERR_OK);
-    assert_int_equal(value.type, val->type);
-    assert_string_equal(value.data.string_val, val->data.string_val);
-    sr_free_val(val);
-
-    rc = sr_commit(session_candidate);
-    assert_int_equal(SR_ERR_OK, rc);
 
     /* copy-config should fail because non enabled nodes are modified */
     rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
