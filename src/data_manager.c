@@ -1420,7 +1420,7 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
                 SR_LOG_INF("Not allowed to lock %s, skipping", schemas[i].module_name);
                 continue;
             } else if (SR_ERR_LOCKED == rc) {
-                SR_LOG_ERR("Model %s is already locked by anther session", schemas[i].module_name);
+                SR_LOG_ERR("Model %s is already locked by another session", schemas[i].module_name);
             }
             for (size_t l = 0; l < locked->count; l++) {
                 dm_unlock_module(dm_ctx, session, (char *) locked->data[l]);
