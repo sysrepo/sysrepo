@@ -55,31 +55,6 @@ typedef struct dm_tmp_ly_ctx_s {
 } dm_tmp_ly_ctx_t;
 
 /**
- * @brief Data manager context holding loaded schemas, data trees
- * and corresponding locks
- */
-typedef struct dm_ctx_s {
-    ac_ctx_t *ac_ctx;             /**< Access Control module context */
-    np_ctx_t *np_ctx;             /**< Notification Processor context */
-    pm_ctx_t *pm_ctx;             /**< Persistence Manager context */
-    md_ctx_t *md_ctx;             /**< Module Dependencies context */
-    nacm_ctx_t *nacm_ctx;         /**< NACM context */
-    cm_connection_mode_t conn_mode;  /**< Mode in which Connection Manager operates */
-    char *schema_search_dir;      /**< location where schema files are located */
-    char *data_search_dir;        /**< location where data files are located */
-    sr_locking_set_t *locking_ctx;/**< lock context for lock/unlock/commit operations */
-    bool *ds_lock;                /**< Flags if the ds lock is hold by a session*/
-    pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
-    sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas */
-    pthread_rwlock_t schema_tree_lock;  /**< rwlock for access schema_info_tree */
-    dm_commit_ctxs_t commit_ctxs; /**< Structure holding commit contexts and corresponding lock */
-    struct timespec last_commit_time;  /**< Time of the last commit */
-    dm_tmp_ly_ctx_t *tmp_ly_ctx;  /**< Structure wrapping libyang context that is used to validate/print/parse date
-                                   * where the set of required yang module can vary */
-
-} dm_ctx_t;
-
-/**
  * @brief Structure that holds Data Manager's per-session context.
  */
 typedef struct dm_session_s {
@@ -795,30 +770,6 @@ dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schem
     return rc;
 }
 
-/**
- *
- * @note Function expects that a schema info is locked for writing.
- *
- * @param [in] ctx
- * @param [in] session
- * @param [in] module_name
- * @param [in] xpath
- * @param [in] schema_info
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-dm_enable_module_subtree_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schema_info_t *schema_info, const char *module_name, const char *xpath)
-{
-    CHECK_NULL_ARG3(ctx, module_name, xpath); /* session can be NULL */
-    int rc = SR_ERR_OK;
-
-    /* enable the subtree specified by xpath */
-    rc = rp_dt_enable_xpath(ctx, session, schema_info, xpath);
-    CHECK_RC_LOG_RETURN(rc, "Enabling of xpath %s failed", xpath);
-
-    return rc;
-}
-
 static int
 dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, dm_schema_info_t *si,
                                 bool features_only)
@@ -854,7 +805,7 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const c
             } else {
                 /* enable running datastore for specified subtrees */
                 for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
-                    rc = dm_enable_module_subtree_running_internal(dm_ctx, NULL, si, module_name, enabled_subtrees[i]);
+                    rc = rp_dt_enable_xpath(dm_ctx, NULL, si, enabled_subtrees[i]);
                     if (SR_ERR_OK != rc) {
                         SR_LOG_WRN("Unable to enable subtree '%s' in module '%s' in running ds.", enabled_subtrees[i], module_name);
                     }
@@ -4351,23 +4302,140 @@ dm_commit_nacm_subtree(dm_session_t *session, nacm_data_val_ctx_t *nacm_data_val
     return SR_ERR_OK;
 }
 
-int
-dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx, bool copy_config,
-        sr_error_info_t **errors, size_t *err_cnt)
+static int
+dm_perform_netconf_access_control(nacm_ctx_t *nacm_ctx, dm_session_t *session, dm_data_info_t *prev_info,
+                                  dm_data_info_t *new_info, bool copy_config, sr_error_info_t **errors, size_t *err_cnt,
+                                  dm_commit_context_t *c_ctx)
 {
-    CHECK_NULL_ARG3(dm_ctx, session, c_ctx);
+    CHECK_NULL_ARG4(nacm_ctx, session, prev_info, new_info);
     int rc = SR_ERR_OK;
-    size_t i = 0, d_cnt = 0, d_idx = 0;
+    size_t d_cnt = 0, d_idx = 0;
     bool denied = false, saved_diff = false;
     int denied_cnt = 0;
     nacm_data_val_ctx_t *nacm_data_val_ctx = NULL;
     struct lyd_difflist *diff = NULL;
     dm_module_difflist_t *module_difflist = NULL;
-    dm_data_info_t *info = NULL, *commit_info = NULL, *prev_info = NULL, lookup_info = {0};
 
-    if (NULL == dm_ctx->nacm_ctx || !(c_ctx->init_session->options & SR_SESS_ENABLE_NACM)) {
+    /* get the set of changes */
+    saved_diff = false;
+    diff = lyd_diff(prev_info->node, new_info->node, LYD_DIFFOPT_WITHDEFAULTS);
+    if (NULL == diff) {
+        SR_LOG_ERR("Lyd diff failed for module %s", prev_info->schema->module->name);
+        rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
+
+    if (NULL != c_ctx) {
+        /* save diff for VERIFY notifications (even if the set is empty) */
+        module_difflist = calloc(1, sizeof *module_difflist);
+        CHECK_NULL_NOMEM_GOTO(module_difflist, rc, cleanup);
+        module_difflist->schema_info = prev_info->schema;
+        module_difflist->difflist = diff;
+        saved_diff = true;
+        rc = sr_btree_insert(c_ctx->difflists, (void *)module_difflist);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to insert diff-list for module %s into the binary tree",
+                    prev_info->schema->module->name);
+        module_difflist = NULL;
+    }
+
+    if (diff->type[0] == LYD_DIFF_END) {
+        SR_LOG_DBG("No changes in module %s", prev_info->schema->module->name);
+        return SR_ERR_OK;
+    }
+
+    /* start NACM data access validation for this module */
+    rc = nacm_data_validation_start(nacm_ctx, session->user_credentials, new_info->node->schema,
+            &nacm_data_val_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to start NACM data validation.");
+
+    if (copy_config) {
+        /* count diff items */
+        for (d_cnt = 0; LYD_DIFF_END != diff->type[d_cnt]; ++d_cnt);
+        ++d_cnt;
+
+        /* for copy_config perform read access checks */
+        d_idx = d_cnt - 1;
+        do {
+            --d_idx;
+            switch (diff->type[d_idx]) {
+            case LYD_DIFF_CHANGED:
+            case LYD_DIFF_MOVEDAFTER1:
+            case LYD_DIFF_DELETED:
+                rc = dm_copy_config_read_nacm_single_node(session, nacm_data_val_ctx, diff->first[d_idx],
+                        diff, d_idx, &d_cnt, new_info->node, NULL);
+                break;
+            case LYD_DIFF_CREATED:
+                rc = dm_copy_config_read_nacm_subtree(session, nacm_data_val_ctx, diff->second[d_idx],
+                        diff, d_idx, &d_cnt);
+                break;
+            case LYD_DIFF_MOVEDAFTER2:
+                break;
+            default:
+                assert(0 && "not reachable");
+            }
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+        } while (d_idx > 0);
+
+        if (diff->type[0] == LYD_DIFF_END) {
+            SR_LOG_DBG("No changes in module %s", prev_info->schema->module->name);
+            rc = SR_ERR_OK;
+            goto cleanup;
+        }
+    }
+
+    /* Iterate over all changes. Some changes may include whole subtrees. */
+    for (d_idx = 0; LYD_DIFF_END != diff->type[d_idx]; d_idx++) {
+        /* get node, access_type */
+        switch (diff->type[d_idx]) {
+        case LYD_DIFF_CHANGED:
+        case LYD_DIFF_MOVEDAFTER1:
+            rc = dm_commit_nacm_single_node(session, nacm_data_val_ctx, diff->first[d_idx],
+                    NACM_ACCESS_UPDATE, &denied, errors, err_cnt);
+            denied_cnt += denied;
+            break;
+        case LYD_DIFF_DELETED:
+            rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->first[d_idx],
+                    NACM_ACCESS_DELETE, &denied_cnt, errors, err_cnt);
+            break;
+        case LYD_DIFF_CREATED:
+            rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->second[d_idx],
+                    NACM_ACCESS_CREATE, &denied_cnt, errors, err_cnt);
+            break;
+        case LYD_DIFF_MOVEDAFTER2:
+            continue; /* access control performed already for LYD_DIFF_CREATED of this node */
+            break;
+        default:
+            assert(0 && "not reachable");
+        }
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    if (SR_ERR_OK == rc && denied_cnt > 0) {
+        rc = SR_ERR_UNAUTHORIZED;
+        /* update NACM stats */
+        (void)nacm_stats_add_denied_data_write(nacm_ctx);
+    }
+    if (!saved_diff && NULL != diff) {
+        lyd_free_diff(diff);
+    }
+    dm_module_difflist_free(module_difflist);
+    nacm_data_validation_stop(nacm_data_val_ctx);
+    return rc;
+}
+
+int
+dm_commit_netconf_access_control(nacm_ctx_t *nacm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx, bool copy_config,
+                                 sr_error_info_t **errors, size_t *err_cnt)
+{
+    CHECK_NULL_ARG3(nacm_ctx, session, c_ctx);
+    int rc = SR_ERR_OK;
+    size_t i = 0;
+    dm_data_info_t *info = NULL, *new_info = NULL, *prev_info = NULL, lookup_info = {0};
 
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         lookup_info.schema = info->schema;
@@ -4379,131 +4447,24 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
         prev_info = sr_btree_search(c_ctx->prev_data_trees, &lookup_info);
         if (NULL == prev_info) {
             SR_LOG_ERR("Current data tree for module %s not found", info->schema->module->name);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
+            return SR_ERR_INTERNAL;
         }
 
         /* configuration after commit */
-        commit_info = sr_btree_search(c_ctx->session->session_modules[c_ctx->session->datastore], &lookup_info);
-        if (NULL == commit_info) {
+        new_info = sr_btree_search(c_ctx->session->session_modules[c_ctx->session->datastore], &lookup_info);
+        if (NULL == new_info) {
             SR_LOG_ERR("Commit data tree for module %s not found", info->schema->module->name);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
+            return SR_ERR_INTERNAL;
         }
 
-        /* get the set of changes */
-        saved_diff = false;
-        diff = lyd_diff(prev_info->node, commit_info->node, LYD_DIFFOPT_WITHDEFAULTS);
-        if (NULL == diff) {
-            SR_LOG_ERR("Lyd diff failed for module %s", info->schema->module->name);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
+        rc = dm_perform_netconf_access_control(nacm_ctx, session, prev_info, new_info, copy_config, errors, err_cnt, c_ctx);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("NACM access check failed");
+            return rc;
         }
-
-        /* save diff for VERIFY notifications (even if the set is empty) */
-        module_difflist = calloc(1, sizeof *module_difflist);
-        CHECK_NULL_NOMEM_GOTO(module_difflist, rc, cleanup);
-        module_difflist->schema_info = info->schema;
-        module_difflist->difflist = diff;
-        saved_diff = true;
-        rc = sr_btree_insert(c_ctx->difflists, (void *)module_difflist);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to insert diff-list for module %s into the binary tree",
-                info->schema->module->name);
-        module_difflist = NULL;
-
-        if (diff->type[0] == LYD_DIFF_END) {
-            SR_LOG_DBG("No changes in module %s", info->schema->module->name);
-            continue;
-        }
-
-        /* start NACM data access validation for this module */
-        rc = nacm_data_validation_start(dm_ctx->nacm_ctx, session->user_credentials, commit_info->node->schema,
-                &nacm_data_val_ctx);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to start NACM data validation.");
-
-        if (copy_config) {
-            /* count diff items */
-            for (d_cnt = 0; LYD_DIFF_END != diff->type[d_cnt]; ++d_cnt);
-            ++d_cnt;
-
-            /* for copy_config perform read access checks */
-            d_idx = d_cnt - 1;
-            do {
-                --d_idx;
-                switch (diff->type[d_idx]) {
-                    case LYD_DIFF_CHANGED:
-                    case LYD_DIFF_MOVEDAFTER1:
-                    case LYD_DIFF_DELETED:
-                        rc = dm_copy_config_read_nacm_single_node(session, nacm_data_val_ctx, diff->first[d_idx],
-                                diff, d_idx, &d_cnt, commit_info->node, NULL);
-                        break;
-                    case LYD_DIFF_CREATED:
-                        rc = dm_copy_config_read_nacm_subtree(session, nacm_data_val_ctx, diff->first[d_idx],
-                                diff, d_idx, &d_cnt);
-                        break;
-                    case LYD_DIFF_MOVEDAFTER2:
-                        break;
-                    default:
-                        assert(0 && "not reachable");
-                }
-                if (SR_ERR_OK != rc) {
-                    goto cleanup;
-                }
-            } while (d_idx > 0);
-
-            if (diff->type[0] == LYD_DIFF_END) {
-                SR_LOG_DBG("No changes in module %s", info->schema->module->name);
-                nacm_data_validation_stop(nacm_data_val_ctx);
-                nacm_data_val_ctx = NULL;
-                continue;
-            }
-        }
-
-        /* Iterate over all changes. Some changes may include whole subtrees. */
-        for (d_idx = 0; LYD_DIFF_END != diff->type[d_idx]; d_idx++) {
-            /* get node, access_type */
-            switch (diff->type[d_idx]) {
-                case LYD_DIFF_CHANGED:
-                case LYD_DIFF_MOVEDAFTER1:
-                    rc = dm_commit_nacm_single_node(session, nacm_data_val_ctx, diff->first[d_idx],
-                            NACM_ACCESS_UPDATE, &denied, errors, err_cnt);
-                    denied_cnt += denied;
-                    break;
-                case LYD_DIFF_DELETED:
-                    rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->first[d_idx],
-                            NACM_ACCESS_DELETE, &denied_cnt, errors, err_cnt);
-                    break;
-                case LYD_DIFF_CREATED:
-                    rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->second[d_idx],
-                            NACM_ACCESS_CREATE, &denied_cnt, errors, err_cnt);
-                    break;
-                case LYD_DIFF_MOVEDAFTER2:
-                    continue; /* access control performed already for LYD_DIFF_CREATED of this node */
-                    break;
-                default:
-                    assert(0 && "not reachable");
-            }
-            if (SR_ERR_OK != rc) {
-                goto cleanup;
-            }
-        }
-
-        nacm_data_validation_stop(nacm_data_val_ctx);
-        nacm_data_val_ctx = NULL;
     }
 
-cleanup:
-    if (SR_ERR_OK == rc && denied_cnt > 0) {
-        rc = SR_ERR_UNAUTHORIZED;
-        /* update NACM stats */
-        (void)nacm_stats_add_denied_data_write(dm_ctx->nacm_ctx);
-    }
-    if (!saved_diff && NULL != diff) {
-        lyd_free_diff(diff);
-    }
-    dm_module_difflist_free(module_difflist);
-    nacm_data_validation_stop(nacm_data_val_ctx);
-    return rc;
+    return SR_ERR_OK;
 }
 
 /**
@@ -5106,7 +5067,8 @@ dm_remove_non_matching_diff(dm_model_subscription_t *ms, const np_subscription_t
  */
 static int
 dm_create_difflist_for_enabled_notif(dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, dm_session_t *src_session,
-        const char *module_name, const np_subscription_t *subscription, dm_commit_context_t *c_ctx) {
+        const char *module_name, const np_subscription_t *subscription, dm_commit_context_t *c_ctx)
+{
 
     CHECK_NULL_ARG5(dm_ctx, src_session, module_name, subscription, c_ctx);
 
@@ -5162,7 +5124,8 @@ cleanup:
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_send_enabled_notification(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx, const np_subscription_t *subscription) {
+dm_send_enabled_notification(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx, const np_subscription_t *subscription)
+{
     int rc = SR_ERR_OK;
     sr_list_t *notif_list = NULL;
 
@@ -5199,14 +5162,15 @@ cleanup:
 }
 
 static int
-dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_names, sr_datastore_t src, sr_datastore_t dst, const np_subscription_t *subscription)
+dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_names, sr_datastore_t src,
+               sr_datastore_t dst, const np_subscription_t *subscription, bool nacm_on, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG2(dm_ctx, module_names);
     int rc = SR_ERR_OK;
     dm_session_t *src_session = NULL;
     dm_session_t *dst_session = NULL;
     char *module_name = NULL;
-    dm_data_info_t **src_infos = NULL;
+    dm_data_info_t **src_infos = NULL, *dst_info = NULL;
     size_t opened_files = 0;
     char *file_name = NULL;
     int *fds = NULL;
@@ -5279,9 +5243,18 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
             CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s can not be locked in destination datastore", module_name);
         }
 
-        /* load data tree to be copied*/
+        /* load data tree to be copied */
         rc = dm_get_data_info(dm_ctx, src_session, module_name, &(src_infos[i]));
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
+
+        if (NULL != session && NULL != dm_ctx->nacm_ctx && nacm_on) {
+            /* load data tree to be replaced */
+            rc = dm_get_data_info(dm_ctx, session, module_name, &dst_info);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
+
+            rc = dm_perform_netconf_access_control(dm_ctx->nacm_ctx, session, dst_info, src_infos[i], true, errors, err_cnt, NULL);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Checking NACM failed");
+        }
 
         if (NULL != subscription && 0 == i) {
             /* subscription is supposed to be used when only one module/subtree is copied */
@@ -5315,7 +5288,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
     for (size_t i = 0; i < module_names->count; i++) {
         module_name = module_names->data[i];
         if (SR_DS_CANDIDATE != dst) {
-            /* write dest file, dst is either startup or running*/
+            /* write dest file, dst is either startup or running */
             if (0 != lyd_print_fd(fds[i], src_infos[i]->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)) {
                 SR_LOG_ERR("Copy of module %s failed", module_name);
                 rc = SR_ERR_INTERNAL;
@@ -5432,7 +5405,7 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
     pthread_rwlock_unlock(&si->model_lock);
     CHECK_RC_LOG_RETURN(rc, "Enable module %s running failed", module_name);
 
-    rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING, subscription);
+    rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING, subscription, 0, NULL, NULL);
 
     return rc;
 }
@@ -5592,7 +5565,7 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to copy mandatory nodes for subtree");
 
     /* copy module candidate -> running */
-    rc = dm_copy_module(ctx, tmp_session, module_name, SR_DS_CANDIDATE, SR_DS_RUNNING, subscription);
+    rc = dm_copy_module(ctx, tmp_session, module_name, SR_DS_CANDIDATE, SR_DS_RUNNING, subscription, 0, NULL, NULL);
 
 cleanup:
     ly_set_free(nodes);
@@ -5612,7 +5585,7 @@ dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const cha
     rc = dm_get_module_and_lockw(ctx, module_name, &si);
     CHECK_RC_LOG_RETURN(rc, "Lock schema %s for write failed", module_name);
 
-    rc = dm_enable_module_subtree_running_internal(ctx, session, si, module_name, xpath);
+    rc = rp_dt_enable_xpath(ctx, session, si, xpath);
     pthread_rwlock_unlock(&si->model_lock);
     CHECK_RC_LOG_RETURN(rc, "Enabling of xpath %s failed", xpath);
 
@@ -5683,12 +5656,22 @@ cleanup:
 
 int
 dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst,
-        const np_subscription_t *subscription)
+        const np_subscription_t *subscription, bool nacm_on, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
     sr_list_t *module_list = NULL;
     dm_schema_info_t *schema_info = NULL;
     int rc = SR_ERR_OK;
+    bool enabled = false;
+
+    /* the module must be enabled */
+    rc = dm_has_enabled_subtree(dm_ctx, module_name, NULL, &enabled);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Has enabled subtree failed %s", module_name);
+    if (!enabled) {
+        SR_LOG_ERR("Cannot copy module '%s', it is not enabled.", module_name);
+        rc = SR_ERR_OPERATION_FAILED;
+        goto cleanup;
+    }
 
     rc = sr_list_init(&module_list);
     CHECK_RC_MSG_RETURN(rc, "List init failed");
@@ -5699,7 +5682,7 @@ dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name,
     rc = sr_list_add(module_list, (void *) module_name);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
 
-    rc = dm_copy_config(dm_ctx, session, module_list, src, dst, subscription);
+    rc = dm_copy_config(dm_ctx, session, module_list, src, dst, subscription, nacm_on, errors, err_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Dm copy config failed");
 
 cleanup:
@@ -5708,16 +5691,19 @@ cleanup:
 }
 
 int
-dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst)
+dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst, bool nacm_on,
+                   sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
     sr_list_t *enabled_modules = NULL;
     int rc = SR_ERR_OK;
 
-    rc = dm_get_all_modules(dm_ctx, session, (SR_DS_RUNNING == src || SR_DS_RUNNING == dst), &enabled_modules);
+    /* candidate and running do not have data from disabled modules and startup -> startup does nothing,
+     * so we only consider enabled modules */
+    rc = dm_get_all_modules(dm_ctx, session, true, &enabled_modules);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
 
-    rc = dm_copy_config(dm_ctx, session, enabled_modules, src, dst, NULL);
+    rc = dm_copy_config(dm_ctx, session, enabled_modules, src, dst, NULL, nacm_on, errors, err_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Dm copy config failed");
 
 cleanup:
