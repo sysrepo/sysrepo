@@ -1505,10 +1505,8 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
         } else {
             SR_LOG_WRN("Get schema info by lock file failed %s", (char *) session->locked_files->data[0]);
         }
+        dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
 
-        if (session->datastore != SR_DS_CANDIDATE) {
-            dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
-        }
         free(session->locked_files->data[0]);
         sr_list_rm_at(session->locked_files, 0);
     }
