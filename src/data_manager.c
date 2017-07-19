@@ -1420,7 +1420,7 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
                 SR_LOG_INF("Not allowed to lock %s, skipping", schemas[i].module_name);
                 continue;
             } else if (SR_ERR_LOCKED == rc) {
-                SR_LOG_ERR("Model %s is already locked by anther session", schemas[i].module_name);
+                SR_LOG_ERR("Model %s is already locked by another session", schemas[i].module_name);
             }
             for (size_t l = 0; l < locked->count; l++) {
                 dm_unlock_module(dm_ctx, session, (char *) locked->data[l]);
@@ -1490,11 +1490,13 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
     CHECK_NULL_ARG2(dm_ctx, session);
     SR_LOG_INF_MSG("Unlock datastore request");
     int rc = SR_ERR_OK;
+    char *file_path = NULL;
     dm_schema_info_t *si = NULL;
 
     while (session->locked_files->count > 0) {
         si = NULL;
-        rc = dm_get_schema_info_by_lock_file(dm_ctx, (char *) session->locked_files->data[0], &si);
+        file_path = (char *)session->locked_files->data[0];
+        rc = dm_get_schema_info_by_lock_file(dm_ctx, file_path, &si);
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Module_name %s", si->module_name);
             pthread_mutex_lock(&si->usage_count_mutex);
@@ -1503,9 +1505,12 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
             pthread_mutex_unlock(&si->usage_count_mutex);
             pthread_rwlock_unlock(&si->model_lock);
         } else {
-            SR_LOG_WRN("Get schema info by lock file failed %s", (char *) session->locked_files->data[0]);
+            SR_LOG_WRN("Get schema info by lock file failed %s", file_path);
         }
-        dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
+
+        if (strlen(file_path) < 15 || 0 != strcmp(file_path + strlen(file_path) - 15, ".candidate.lock")) {
+            dm_unlock_file(dm_ctx->locking_ctx, file_path);
+        }
 
         free(session->locked_files->data[0]);
         sr_list_rm_at(session->locked_files, 0);
