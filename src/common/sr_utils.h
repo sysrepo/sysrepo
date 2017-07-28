@@ -686,14 +686,16 @@ int sr_set_data_file_permissions(const char *target_file, bool target_is_dir, co
         const char *module_name, bool strict);
 
 /**
- * @brief Function encapsulates the lys_find_xpath for the use cases where the expected
- * result is one node. If result contains more than one node NULL is returned.
- * @param [in] node
- * @param [in] expr
- * @param [in] options
- * @return matched node or NULL in case of error or result containing multiple nodes
+ * @brief Function searches for a schema node based on a DATA path.
+ * @param [in] module
+ * @param [in] start
+ * @param [in] data_path
+ * @param [in] output Search output instead of input
+ * @param [out] ret Set with matched nodes.
+ * @return Error code.
  */
-struct lys_node * sr_find_schema_node(const struct lys_node *node, const char *expr, int options);
+int sr_find_schema_node(const struct lys_module *module, const struct lys_node *start, const char *data_path, bool output,
+                        struct ly_set **ret);
 
 /**
  * @brief Create directory and all its parent directories as needed.
@@ -796,15 +798,6 @@ int sr_time_to_str(time_t time, char *buff, size_t buff_size);
  * @return Error code (SR_ERR_OK on success)
  */
 int sr_str_to_time(char *time_str, time_t *time);
-
-/**
- * @brief Get any schema data node from a schema tree.
- *
- * @param [in] node Top-level tree node.
- *
- * @return Schema data node, NULL if not exists.
- */
-struct lys_node *sr_get_any_data_node(struct lys_node *node);
 
 /**@} utils */
 

@@ -72,7 +72,8 @@ rp_dt_validate_node_xpath_internal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
 
     char *namespace = NULL;
     const struct lys_module *module = NULL;
-    const struct lys_node *node = NULL;
+    struct ly_set *set = NULL;
+
     rc = sr_copy_first_ns(xpath, &namespace);
     CHECK_RC_MSG_RETURN(rc, "Namespace copy failed");
 
@@ -81,7 +82,6 @@ rp_dt_validate_node_xpath_internal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
     }
 
     module = ly_ctx_get_module(schema_info->ly_ctx, namespace, NULL);
-
     if (NULL == module) {
         if (NULL != session) {
             dm_report_error(session, NULL, xpath, SR_ERR_UNKNOWN_MODEL);
@@ -90,53 +90,21 @@ rp_dt_validate_node_xpath_internal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
         free(namespace);
         return SR_ERR_UNKNOWN_MODEL;
     }
-
-    node = sr_get_any_data_node(module->data);
-    if (NULL == node) {
-        SR_LOG_ERR("Module %s does not have any data", namespace);
-        free(namespace);
-        return SR_ERR_UNKNOWN_MODEL;
-    }
     free(namespace);
 
-    struct ly_set *set = lys_find_xpath(node, xpath, 0);
-    if (NULL != set) {
-        if(1 == set->number && NULL != match) {
-            *match = set->set.s[0];
+    rc = sr_find_schema_node(module, NULL, xpath, 0, &set);
+    if (SR_ERR_OK != rc) {
+        if (NULL != session) {
+            rc = dm_report_error(session, "Invalid expression.", xpath, rc);
         }
-        ly_set_free(set);
-    } else {
-        switch (ly_vecode) {
-        case LYVE_PATH_INKEY:
-            if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_BAD_ELEMENT);
-            } else {
-                rc = SR_ERR_BAD_ELEMENT;
-            }
-            break;
-        case LYVE_XPATH_INMOD:
-        case LYVE_PATH_INMOD:
-            if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_UNKNOWN_MODEL);
-            } else {
-                rc = SR_ERR_UNKNOWN_MODEL;
-            }
-            break;
-        case LYVE_XPATH_INSNODE:
-            if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), xpath, SR_ERR_BAD_ELEMENT);
-            } else {
-                rc = SR_ERR_BAD_ELEMENT;
-            }
-            break;
-        default:
-            if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_INVAL_ARG);
-            } else {
-                rc = SR_ERR_INVAL_ARG;
-            }
-        }
+        return rc;
     }
+
+    if (match && set->number == 1) {
+        *match = set->set.s[0];
+    }
+    ly_set_free(set);
+
     return rc;
 }
 

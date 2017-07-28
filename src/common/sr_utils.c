@@ -1701,7 +1701,6 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
     const struct lys_node *sch_node = NULL;
     sr_node_t *sr_subtree = NULL;
     char *string_val = NULL, *relative_xpath = NULL;
-    struct lys_node *start_node = NULL;
 
     CHECK_NULL_ARG3(ly_ctx, sr_tree, data_tree);
 
@@ -1716,20 +1715,16 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
         } else {
             module = lyd_node_module(parent);
         }
-        if (NULL == module) {
-            SR_LOG_ERR("Failed to obtain module schema for node: %s.", sr_tree->name);
-            return SR_ERR_INTERNAL;
-        }
     } else {
         char *ns = NULL;
         ret = sr_copy_first_ns(xpath, &ns);
         CHECK_RC_MSG_RETURN(ret, "Copy first ns failed");
         module = ly_ctx_get_module(ly_ctx, ns, NULL);
         free(ns);
-        if (NULL != module) {
-            start_node = module->data;
-            module = NULL;
-        }
+    }
+    if (NULL == module) {
+        SR_LOG_ERR("Failed to obtain module schema for node: %s.", sr_tree->name);
+        return SR_ERR_INTERNAL;
     }
 
     switch (sr_tree->type) {
@@ -1747,7 +1742,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
                     return SR_ERR_INTERNAL;
                 }
                 node = NULL;
-                nodeset = lyd_find_xpath(*data_tree, xpath);
+                nodeset = lyd_find_path(*data_tree, xpath);
                 if (NULL != nodeset && 1 == nodeset->number) {
                     node = nodeset->set.d[0];
                 }
@@ -1778,21 +1773,31 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
             }
             /* get node schema */
             if (NULL == parent) {
-                sch_node = sr_find_schema_node(start_node, xpath, output ? LYS_FIND_OUTPUT : 0);
+                ret = sr_find_schema_node(module, NULL, xpath, output, &nodeset);
+                if (SR_ERR_OK != ret) {
+                    SR_LOG_ERR("Failed to evaluate path '%s'.", xpath);
+                    return ret;
+                }
             } else {
                 relative_xpath = calloc(strlen(module->name) + strlen(sr_tree->name) + 2, sizeof(*relative_xpath));
                 CHECK_NULL_NOMEM_RETURN(relative_xpath);
-                strcat(relative_xpath, module->name);
-                strcat(relative_xpath, ":");
-                strcat(relative_xpath, sr_tree->name);
-                sch_node = sr_find_schema_node(parent->schema, relative_xpath, output ? LYS_FIND_OUTPUT : 0);
+                sprintf(relative_xpath, "%s:%s", module->name, sr_tree->name);
+                ret = sr_find_schema_node(NULL, parent->schema, relative_xpath, output, &nodeset);
+                if (SR_ERR_OK != ret) {
+                    SR_LOG_ERR("Failed to evaluate path '%s'.", relative_xpath);
+                    free(relative_xpath);
+                    return ret;
+                }
                 free(relative_xpath);
-                relative_xpath = NULL;
             }
-            if (NULL == sch_node) {
-                SR_LOG_ERR("Unable to get the schema node for a sysrepo node ('%s'): %s", sr_tree->name, ly_errmsg());
+            if (nodeset->number != 1) {
+                SR_LOG_ERR("Unable to get the schema node for a sysrepo node ('%s')", sr_tree->name);
+                ly_set_free(nodeset);
                 return SR_ERR_INTERNAL;
             }
+            sch_node = nodeset->set.s[0];
+            ly_set_free(nodeset);
+
             /* copy argument value to string */
             ret = sr_val_to_str_with_schema((sr_val_t *)sr_tree, sch_node, &string_val);
             if (SR_ERR_OK != ret) {
@@ -1840,10 +1845,7 @@ sr_tree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, const char *root_
     if (NULL == root_xpath) {
         xpath = calloc(strlen(sr_tree->name) + strlen(sr_tree->module_name) + 3, sizeof(*xpath));
         CHECK_NULL_NOMEM_RETURN(xpath);
-        strcat(xpath, "/");
-        strcat(xpath, sr_tree->module_name);
-        strcat(xpath, ":");
-        strcat(xpath, sr_tree->name);
+        sprintf(xpath, "/%s:%s", sr_tree->module_name, sr_tree->name);
     }
 
     rc = sr_subtree_to_dt(ly_ctx, sr_tree, output, NULL, NULL == root_xpath ? xpath : root_xpath, data_tree);
@@ -2320,16 +2322,281 @@ sr_clock_get_time(clockid_t clock_id, struct timespec *ts)
 #endif
 }
 
-struct lys_node *
-sr_find_schema_node(const struct lys_node *node, const char *expr, int options)
+static bool
+sr_has_parent(const struct lys_node *node, LYS_NODE type)
 {
-    struct lys_node *result = NULL;
-    struct ly_set *set = lys_find_xpath(node, expr, options);
-    if (NULL != set && 1 == set->number) {
-        result = set->set.s[0];
+    for (node = node->parent; node; node = node->parent) {
+        if (node->nodetype == type) {
+            return true;
+        }
     }
-    ly_set_free(set);
-    return result;
+
+    return false;
+}
+
+static bool
+sr_find_schema_node_valid_identifier(const char *identifier, size_t id_len)
+{
+    if (0 == id_len) {
+        id_len = strlen(identifier);
+    }
+
+    if (0 == id_len) {
+        return false;
+    } else if (!isalpha(identifier[0]) && (identifier[0] != '_')) {
+        return false;
+    }
+
+    --id_len;
+
+    for (size_t i = 1; i < id_len; ++i) {
+        if (!isalnum(identifier[0]) && (identifier[0] != '_') && (identifier[0] != '-') && (identifier[0] != '.')) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static int
+sr_find_schema_node_predicate(const struct lys_node *node, char *predicate, const struct lys_module *prev_mod)
+{
+    char *pred_end = NULL, *identifier = NULL;
+    size_t id_len = 0;
+    uint16_t i = 0;
+    struct lys_node_leaf *key = NULL;
+
+    if (!(node->nodetype & (LYS_LIST | LYS_LEAFLIST))) {
+        return -1;
+    }
+
+    for (; !pred_end || (pred_end[1] == '['); predicate = pred_end + 2) {
+        pred_end = strchr(predicate, ']');
+        if (NULL == pred_end) {
+            return SR_ERR_INVAL_ARG;
+        }
+
+        identifier = predicate;
+        while (isspace(identifier[0])) {
+            ++identifier;
+        }
+
+        id_len = 0;
+        while (!isspace(identifier[id_len]) && (identifier[id_len] != '=') && (identifier[id_len] != ']')) {
+            ++id_len;
+        }
+
+        /* check the identifier */
+        if (node->nodetype == LYS_LEAFLIST) {
+            if ((identifier[0] != '.') || (id_len != 1)) {
+                return SR_ERR_INVAL_ARG;
+            }
+            break;
+        } else {
+            if (isdigit(identifier[0])) {
+                /* position */
+                for (i = 1; i < id_len; ++i) {
+                    if (!isdigit(identifier[i])) {
+                        return SR_ERR_INVAL_ARG;
+                    }
+                }
+            } else {
+                if (!sr_find_schema_node_valid_identifier(identifier, id_len)) {
+                    return SR_ERR_INVAL_ARG;
+                }
+
+                for (i = 0; i < ((struct lys_node_list *)node)->keys_size; ++i) {
+                    key = ((struct lys_node_list *)node)->keys[i];
+                    if (0 == strncmp(key->name, identifier, id_len) && !key->name[id_len]) {
+                        break;
+                    }
+                }
+                if (i == ((struct lys_node_list *)node)->keys_size) {
+                    return -1;
+                }
+            }
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+sr_find_schema_node(const struct lys_module *module, const struct lys_node *start, const char *data_path, bool output,
+                    struct ly_set **ret)
+{
+    int rc = SR_ERR_OK, tmp_rc = SR_ERR_OK;
+    const struct lys_node *node = NULL, *next = NULL, *elem = NULL;
+    char *path = NULL, *name = NULL, *mod_name = NULL, *path_end = NULL, *predicate = NULL;
+    const struct lys_module *prev_mod = NULL;
+    bool all_desc = false, last_iter = false;
+
+    assert(module || start);
+    if (ret) {
+        *ret = NULL;
+    }
+
+    path = strdup(data_path);
+
+    path_end = path + strlen(path);
+    /* replace every '/' with 0 (but be careful with "//") and prepare for parsing */
+    for (name = strchr(path, '/'); name; name = strchr(name + 2, '/')) {
+        name[0] = '\0';
+        if (name[1] == '\0') {
+            rc = SR_ERR_INVAL_ARG;
+            goto error;
+        }
+    }
+    if (path[0] == '\0') {
+        /* absolute path */
+        if (NULL == module) {
+            module = lys_node_module(start);
+        }
+        start = NULL;
+
+        name = path + 1;
+    } else {
+        /* relative path */
+        if (NULL == start) {
+            rc = SR_ERR_INTERNAL;
+            goto error;
+        }
+        module = NULL;
+
+        name = path;
+        prev_mod = lys_node_module(start);
+    }
+
+    /* main loop */
+    while (1) {
+        mod_name = strchr(name, ':');
+        if (mod_name) {
+            mod_name[0] = '\0';
+            mod_name = name;
+            name = mod_name + strlen(mod_name) + 1;
+
+            if (mod_name[0] == '/') {
+                all_desc = 1;
+                ++mod_name;
+            }
+        } else if (name[0] == '/') {
+            all_desc = 1;
+            ++name;
+        }
+        if ((predicate = strchr(name, '['))) {
+            predicate[0] = '\0';
+            ++predicate;
+        }
+        if (all_desc && (0 != strcmp(name, ".")) && (0 != strcmp(name, "*"))) {
+            /* we do not support "node//node" */
+            rc = SR_ERR_UNSUPPORTED;
+            goto error;
+        } else if (!all_desc && (0 == strcmp(name, "."))) {
+            /* we do not support "node/." */
+            rc = SR_ERR_UNSUPPORTED;
+            goto error;
+        }
+        if ((0 != strcmp(name, ".") && 0 != strcmp(name, "*") && !sr_find_schema_node_valid_identifier(name, 0))
+                || (mod_name && !sr_find_schema_node_valid_identifier(mod_name, 0))) {
+            rc = SR_ERR_INVAL_ARG;
+            goto error;
+        }
+
+        /* last iteration, we are getting results */
+        if ((predicate ? predicate : name) + strlen(predicate ? predicate : name) == path_end && ret) {
+            last_iter = true;
+            *ret = ly_set_new();
+            if (0 == strcmp(name, ".")) {
+                /* handle "." */
+                ly_set_add(*ret, (void *)start, LY_SET_OPT_USEASLIST);
+                name[0] = '*';
+            }
+        }
+
+        node = NULL;
+        while ((node = lys_getnext(node, start, module, 0))) {
+            /* check input/output */
+            if (output && sr_has_parent(node, LYS_INPUT)) {
+                continue;
+            } else if (!output && sr_has_parent(node, LYS_OUTPUT)) {
+                continue;
+            }
+
+            /* check module */
+            if (mod_name) {
+                if (strcmp(mod_name, lys_node_module(node)->name)) {
+                    continue;
+                }
+            } else if (lys_node_module(node) != prev_mod && name[0] != '*') {
+                continue;
+            }
+
+            /* check name */
+            if (name[0] != '*') {
+                if (0 == strcmp(node->name, name)) {
+                    if (predicate) {
+                        tmp_rc = sr_find_schema_node_predicate(node, predicate, prev_mod);
+                        if (tmp_rc == -1) {
+                            continue;
+                        } else if (tmp_rc != SR_ERR_OK) {
+                            rc = tmp_rc;
+                            goto error;
+                        }
+                    }
+                    if (last_iter && ret) {
+                        if (all_desc) {
+                            LY_TREE_DFS_BEGIN(node, next, elem) {
+                                ly_set_add(*ret, (void *)elem, LY_SET_OPT_USEASLIST);
+                                LY_TREE_DFS_END(node, next, elem);
+                            }
+                        } else {
+                            ly_set_add(*ret, (void *)node, LY_SET_OPT_USEASLIST);
+                        }
+                    }
+                    break;
+                }
+            } else {
+                if (last_iter && ret) {
+                    if (all_desc) {
+                        LY_TREE_DFS_BEGIN(node, next, elem) {
+                            ly_set_add(*ret, (void *)elem, LY_SET_OPT_USEASLIST);
+                            LY_TREE_DFS_END(node, next, elem);
+                        }
+                    } else {
+                        ly_set_add(*ret, (void *)node, LY_SET_OPT_USEASLIST);
+                    }
+                }
+            }
+        }
+        if (NULL == node && name[0] != '*') {
+            rc = SR_ERR_BAD_ELEMENT;
+            goto error;
+        }
+
+        if (last_iter) {
+            /* finished */
+            break;
+        }
+
+        /* next iteration */
+        start = node;
+        prev_mod = lys_node_module(start);
+        if (predicate) {
+            name = predicate + strlen(predicate) + 1;
+        } else {
+            name += strlen(name) + 1;
+        }
+    }
+
+    free(path);
+    return rc;
+
+error:
+    if (ret) {
+        ly_set_free(*ret);
+    }
+    free(path);
+    return rc;
 }
 
 int
@@ -2822,24 +3089,4 @@ sr_str_to_time(char *time_str, time_t *time)
 cleanup:
     free(time_str_copy);
     return rc;
-}
-
-struct lys_node *
-sr_get_any_data_node(struct lys_node *node)
-{
-    struct lys_node *ret = NULL, *tmp = NULL;
-
-    LY_TREE_FOR(node, ret) {
-        if (ret->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_NOTIF | LYS_RPC)) {
-            break;
-        } else if (ret->nodetype == LYS_USES) {
-            tmp = sr_get_any_data_node(ret->child);
-            if (tmp) {
-                ret = tmp;
-                break;
-            }
-        }
-    }
-
-    return ret;
 }

@@ -2617,7 +2617,7 @@ cl_config_change_notif_test(void **state)
 
     assert_string_equal("/ietf-netconf-notifications:netconf-config-change/edit[1]/target", change.values[5].xpath);
     assert_int_equal(SR_INSTANCEID_T, change.values[5].type);
-    assert_string_equal(change.values[5].data.instanceid_val, "/example-module:container/example-module:list[example-module:key1='key1'][example-module:key2='key2']");
+    assert_string_equal(change.values[5].data.instanceid_val, "/example-module:container/list[key1='key1'][key2='key2']");
 
     assert_string_equal("/ietf-netconf-notifications:netconf-config-change/edit[1]/operation", change.values[6].xpath);
     assert_int_equal(SR_ENUM_T, change.values[6].type);
@@ -2841,7 +2841,7 @@ cl_config_change_replay_test(void **state)
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
 
-    rc = sr_event_notif_subscribe(session, "/ietf-netconf-notifications:*//.", test_replay_cb,
+    rc = sr_event_notif_subscribe(session, "ietf-netconf-notifications", test_replay_cb,
             &replay, SR_SUBSCR_NOTIF_REPLAY_FIRST | SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(SR_ERR_OK, rc);
 

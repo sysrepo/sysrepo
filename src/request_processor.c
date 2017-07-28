@@ -390,15 +390,15 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
             switch (dl->type[diff_index]) {
             case LYD_DIFF_CHANGED:
             case LYD_DIFF_MOVEDAFTER1:
-                path = lyd_qualified_path(dl->first[diff_index]);
+                path = lyd_path(dl->first[diff_index]);
                 operation = "merge";
                 break;
             case LYD_DIFF_DELETED:
-                path = lyd_qualified_path(dl->first[diff_index]);
+                path = lyd_path(dl->first[diff_index]);
                 operation = "delete";
                 break;
             case LYD_DIFF_CREATED:
-                path = lyd_qualified_path(dl->second[diff_index]);
+                path = lyd_path(dl->second[diff_index]);
                 operation = "create";
                 break;
             case LYD_DIFF_MOVEDAFTER2:
@@ -2369,7 +2369,7 @@ finalize:
  * @brief Checks if the received xpath was requested and find corresponding schema node
  */
 static int
-rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_val_t *values, size_t values_cnt, struct lys_node **sch_node)
+rp_data_provide_resp_validate(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_val_t *values, size_t values_cnt, struct lys_node **sch_node)
 {
     CHECK_NULL_ARG3(rp_ctx, session, sch_node);
     if (values_cnt > 0) {
@@ -2379,21 +2379,24 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
     bool found = false;
     dm_schema_info_t *si = NULL;
     struct lys_node *value_sch_node = NULL;
+    struct ly_set *set = NULL;
 
     rc = dm_get_module_and_lock(rp_ctx->dm_ctx, session->module_name, &si);
     CHECK_RC_MSG_RETURN(rc, "Get schema info failed");
 
     /* verify that provided xpath was requested */
     for (size_t i = 0; i < session->state_data_ctx.requested_xpaths->count; i++) {
-        char *xp = (char *) session->state_data_ctx.requested_xpaths->data[i];
+        char *xp = (char *)session->state_data_ctx.requested_xpaths->data[i];
         if (0 == strcmp(xp, xpath)) {
             found = true;
-            *sch_node = sr_find_schema_node(si->module->data, xp, 0);
-            if (NULL == *sch_node) {
+            rc = sr_find_schema_node(si->module, NULL, xp, 0, &set);
+            if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Schema node not found for %s", xp);
                 rc = SR_ERR_INVAL_ARG;
                 goto unlock;
             }
+            *sch_node = set->set.s[0];
+            ly_set_free(set);
             free(xp);
             sr_list_rm_at(session->state_data_ctx.requested_xpaths, i);
             break;
@@ -2407,15 +2410,17 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
 
     /* test that all values are under requested xpath */
     for (size_t i = 0; i < values_cnt; i++) {
-        value_sch_node = sr_find_schema_node(si->module->data, values[i].xpath, 0);
-        if (NULL == value_sch_node) {
+        rc = sr_find_schema_node(si->module, NULL, values[i].xpath, 0, &set);
+        if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Value with xpath %s received from provider doesn't correspond to any schema node",
                     values[i].xpath);
             rc = SR_ERR_INVAL_ARG;
             goto unlock;
-
         }
-        if (false == rp_dt_depth_under_subtree(*sch_node, value_sch_node, NULL)) {
+        value_sch_node = set->set.s[0];
+        ly_set_free(set);
+
+        if (!rp_dt_depth_under_subtree(*sch_node, value_sch_node, NULL)) {
             SR_LOG_ERR("Unexpected value with xpath %s received from provider", values[i].xpath);
             rc = SR_ERR_INVAL_ARG;
             goto unlock;

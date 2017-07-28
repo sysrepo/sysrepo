@@ -3509,9 +3509,15 @@ cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session
 
     cl_session_clear_errors(session);
 
-    /* extract module name from xpath */
-    rc = sr_copy_first_ns(xpath, &module_name);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+    if (xpath[0] != '/') {
+        /* it is the whole module */
+        module_name = strdup(xpath);
+        xpath = NULL;
+    } else {
+        /* extract module name from xpath */
+        rc = sr_copy_first_ns(xpath, &module_name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+    }
 
     /* Initialize the subscription */
     if (opts & SR_SUBSCR_CTX_REUSE) {
@@ -3521,7 +3527,7 @@ cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
-    sm_subscription->xpath = strdup(xpath);
+    sm_subscription->xpath = strdup(xpath ? xpath : module_name);
     CHECK_NULL_NOMEM_GOTO(sm_subscription->xpath, rc, cleanup);
 
     sm_subscription->callback = callback;
@@ -3531,8 +3537,10 @@ cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session
     msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS;
     sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->module_name, module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
-    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->xpath, xpath);
-    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
+    if (NULL != xpath) {
+        sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->xpath, xpath);
+        CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
+    }
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);

@@ -1,5 +1,5 @@
 /**
- * @file xpath_utils.h
+ * @file xpath.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Sysrepo helpers for node's address manipulation.
  *

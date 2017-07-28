@@ -1058,7 +1058,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
 {
     CHECK_NULL_ARG4(dm_ctx, schema_info, data_filename, data_info);
     int rc = SR_ERR_OK;
-    struct lyd_node *data_tree = NULL;
+    struct lyd_node *data_tree = NULL, *elem = NULL, *iter = NULL;
     *data_info = NULL;
 
     dm_data_info_t *data = NULL;
@@ -1134,6 +1134,18 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
                 lyd_free_withsiblings(data_tree);
                 data_tree = NULL;
             }
+        }
+    }
+
+    /* it is possible there are nodes here from another module (module was loaded for validation and has top-level container),
+     * remove them */
+    LY_TREE_FOR_SAFE(data_tree, elem, iter) {
+        if (lyd_node_module(iter) != schema_info->module) {
+            if (iter == data_tree) {
+                /* move the pointer so that it remains valid */
+                data_tree = iter->next;
+            }
+            lyd_free(iter);
         }
     }
 
@@ -2337,12 +2349,15 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
         id = (md_subtree_ref_t *) ll_node->data;
         ll_node = ll_node->next;
 
-        sch_node = sr_find_schema_node(di->schema->module->data, id->xpath, 0);
-        if (NULL == sch_node) {
+        rc = sr_find_schema_node(di->schema->module, NULL, id->xpath, 0, &set);
+        if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Sch node not found for xpath %s", id->xpath);
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
+
+        sch_node = set->set.s[0];
+        ly_set_free(set);
 
         /* find instance id nodes and check their content */
         set = lyd_find_instance(di->node, sch_node);
@@ -2350,7 +2365,7 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
             continue;
         }
 
-        /* loop through instance id nodes*/
+        /* loop through instance id nodes */
         for (unsigned int i = 0; i < set->number; i++) {
             id_val = ((struct lyd_node_leaf_list *) set->set.d[i])->value_str;
 
@@ -5018,16 +5033,18 @@ static int
 dm_remove_non_matching_diff(dm_model_subscription_t *ms, const np_subscription_t *subscription)
 {
     CHECK_NULL_ARG2(ms, subscription);
-
     int rc = SR_ERR_OK;
+    struct ly_set *set = NULL;
 
     if (NULL != subscription->xpath) {
-        const struct lys_node *sub_node = sr_find_schema_node(ms->schema_info->module->data, subscription->xpath, 0);
-        if (NULL == sub_node) {
+        rc = sr_find_schema_node(ms->schema_info->module, NULL, subscription->xpath, 0, &set);
+        if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Schema node not found for xpath %s", subscription->xpath);
             return SR_ERR_INTERNAL;
         }
 
+        const struct lys_node *sub_node = set->set.s[0];
+        ly_set_free(set);
         int diff_count = 0;
         while (LYD_DIFF_END != ms->difflist->type[diff_count++]);
 
@@ -5053,6 +5070,7 @@ dm_remove_non_matching_diff(dm_model_subscription_t *ms, const np_subscription_t
             }
         }
     }
+
     return SR_ERR_OK;
 }
 
@@ -5440,15 +5458,17 @@ dm_copy_mandatory_for_subtree(dm_ctx_t *dm_ctx, const char *xpath, dm_data_info_
 {
     CHECK_NULL_ARG4(dm_ctx, xpath, startup_info, candidate_info);
     int rc = SR_ERR_OK;
+    struct ly_set *set = NULL;
+    struct lys_node *node = NULL;
 
-    struct lys_node *node = NULL, *match = NULL;
-    match = sr_find_schema_node(startup_info->schema->module->data, xpath, 0);
-    if (NULL == match) {
+    rc = sr_find_schema_node(startup_info->schema->module, NULL, xpath, 0, &set);
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Schema node not found for %s", xpath);
         return SR_ERR_INTERNAL;
     }
+    node = set->set.s[0]->parent;
+    ly_set_free(set);
 
-    node = match->parent;
     while (NULL != node) {
         if (NULL == node->parent && LYS_AUGMENT == node->nodetype) {
             node = ((struct lys_node_augment *) node)->target;
@@ -5725,6 +5745,7 @@ dm_sr_val_node_to_ly_datatree(dm_session_t *session, dm_data_info_t *di, const c
     sr_node_t *args_tree = NULL;
     struct lyd_node *data_tree = NULL, *new_node = NULL;
     const struct lys_node *arg_node = NULL;
+    struct ly_set *set = NULL;
     char root_xpath[PATH_MAX] = { 0, };
     char *string_value = NULL;
     int allow_update = 0;
@@ -5750,12 +5771,14 @@ dm_sr_val_node_to_ly_datatree(dm_session_t *session, dm_data_info_t *di, const c
         /* convert from values */
         for (size_t i = 0; i < arg_cnt; i++) {
             /* get argument's schema node */
-            arg_node = sr_find_schema_node(di->schema->module->data, args[i].xpath, (input ? 0 : LYS_FIND_OUTPUT));
-            if (NULL == arg_node) {
-                SR_LOG_ERR("Unable to find the schema node for '%s': %s", args[i].xpath, ly_errmsg());
-                rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_VALIDATION_FAILED);
+            rc = sr_find_schema_node(di->schema->module, NULL, args[i].xpath, (input ? 0 : 1), &set);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Unable to find the schema node for '%s'", args[i].xpath);
+                rc = dm_report_error(session, "Unable to evaluate xpath", args[i].xpath, SR_ERR_VALIDATION_FAILED);
                 goto cleanup;
             }
+            arg_node = set->set.s[0];
+            ly_set_free(set);
             /* copy argument value to string */
             string_value = NULL;
             if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
@@ -5818,7 +5841,7 @@ dm_ly_datatree_to_sr_val_node(sr_mem_ctx_t *sr_mem, const char *xpath, const str
         if (NULL != tmp_xpath) {
             strcat(tmp_xpath, xpath);
             strcat(tmp_xpath, "//*");
-            nodeset = lyd_find_xpath(data_tree, tmp_xpath);
+            nodeset = lyd_find_path(data_tree, tmp_xpath);
             if (NULL != nodeset) {
                 if (nodeset->number > 0) {
                     rc = rp_dt_get_values_from_nodes(sr_mem, nodeset, (sr_val_t**)val_node_ptr, val_node_cnt);
@@ -5839,7 +5862,7 @@ dm_ly_datatree_to_sr_val_node(sr_mem_ctx_t *sr_mem, const char *xpath, const str
                 strcat(tmp_xpath, "./"); /* skip "input" / "output" */
             }
             strcat(tmp_xpath, "*");
-            nodeset = lyd_find_xpath(data_tree, tmp_xpath);
+            nodeset = lyd_find_path(data_tree, tmp_xpath);
             if (NULL != nodeset) {
                 if (nodeset->number > 0) {
                     rc = sr_nodes_to_trees(nodeset, sr_mem, NULL, NULL, (sr_node_t**)val_node_ptr, val_node_cnt);
@@ -6104,14 +6127,16 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     CHECK_RC_LOG_GOTO(rc, cleanup, "Dm_get_dat_info failed for module %s", module_name);
 
     /* test for the presence of the procedure in the schema tree */
-    proc_node = sr_find_schema_node(di->schema->module->data, xpath, 0);
-    if (NULL == proc_node) {
+    rc = sr_find_schema_node(di->schema->module, NULL, xpath, 0, &nodeset);
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("%s xpath validation failed ('%s'): the target node is not present in the schema tree.",
                 procedure_name, xpath);
         rc = dm_report_error(session, "target node is not present in the schema tree", xpath,
                 SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
+    proc_node = nodeset->set.s[0];
+    ly_set_free(nodeset);
 
     /* test for the presence of the procedure in the data tree */
     if (type == DM_PROCEDURE_EVENT_NOTIF || type == DM_PROCEDURE_ACTION) {
@@ -6126,7 +6151,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             tmp_xpath = calloc(last_delim - xpath + 1, sizeof(*tmp_xpath));
             CHECK_NULL_NOMEM_GOTO(tmp_xpath, rc, cleanup);
             strncat(tmp_xpath, xpath, last_delim - xpath);
-            nodeset = lyd_find_xpath(di->node, tmp_xpath);
+            nodeset = lyd_find_path(di->node, tmp_xpath);
             free(tmp_xpath);
             tmp_xpath = NULL;
             if (NULL == nodeset || 0 == nodeset->number) {
@@ -6258,6 +6283,7 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     const struct lys_node *proc_node = NULL;
     struct lyd_node *data_tree = NULL;
     struct lyxml_elem *xml = NULL;
+    struct ly_set *set = NULL;
     int rc = SR_ERR_OK;
     dm_tmp_ly_ctx_t *tmp_ctx = NULL;
     struct ly_ctx *ly_ctx = NULL, *tmp_ly_ctx = NULL;
@@ -6279,13 +6305,15 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     module_name = NULL;
 
     /* test for the presence of the procedure in the schema tree */
-    proc_node = sr_find_schema_node(di->schema->module->data, notification->xpath, 0);
-    if (NULL == proc_node) {
+    rc = sr_find_schema_node(di->schema->module, NULL, notification->xpath, 0, &set);
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Notification xpath validation failed ('%s'): the target node is not present in the schema tree.",
                 notification->xpath);
         rc = dm_report_error(session, ly_errmsg(), notification->xpath, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
+    proc_node = set->set.s[0];
+    ly_set_free(set);
 
     if (0 == strcmp("/ietf-netconf-notifications:netconf-config-change", notification->xpath)) {
         CHECK_NULL_ARG(notification->data.string);
@@ -6835,7 +6863,7 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
     module_name = NULL;
 
     /* loop through instance ids */
-    set = lyd_find_xpath(notif, "/ietf-netconf-notifications:netconf-config-change/edit/target");
+    set = lyd_find_path(notif, "/ietf-netconf-notifications:netconf-config-change/edit/target");
     for (unsigned int i = 0; i < set->number; i++) {
         rc = sr_copy_all_ns(((struct lyd_node_leaf_list *) set->set.d[i])->value_str, &module_names, &module_name_count);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to copy ns");

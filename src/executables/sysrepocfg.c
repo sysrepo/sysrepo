@@ -237,6 +237,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_nod
     sr_val_iter_t *iter = NULL;
     struct lyd_node *node = NULL;
     const struct lys_node *schema = NULL;
+    struct ly_set *set = NULL;
     char query[PATH_MAX] = { 0, };
     char *string_val = NULL;
     const struct lys_module *module_schema = NULL;
@@ -261,11 +262,13 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_nod
         }
 
         /* get node schema */
-        schema = sr_find_schema_node(module_schema->data, value->xpath, 0);
-        if (!schema) {
-            SR_LOG_ERR("Error by sr_find_schema_node: %s", ly_errmsg());
+        rc = sr_find_schema_node(module_schema, NULL, value->xpath, 0, &set);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Error by sr_find_schema_node '%s'.", value->xpath);
             goto fail;
         }
+        schema = set->set.s[0];
+        ly_set_free(set);
 
         /* skip default values */
         if ((schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && value->dflt) {
@@ -345,6 +348,7 @@ srcfg_get_xpath_data(struct ly_ctx *ly_ctx, md_module_t *module, const char *xpa
     sr_val_iter_t *iter = NULL;
     struct lyd_node *node = NULL;
     const struct lys_node *schema = NULL;
+    struct ly_set *set = NULL;
     char query[PATH_MAX] = { 0, };
     char *string_val = NULL;
     const struct lys_module *module_schema = NULL;
@@ -369,11 +373,13 @@ srcfg_get_xpath_data(struct ly_ctx *ly_ctx, md_module_t *module, const char *xpa
         }
 
         /* get node schema */
-        schema = sr_find_schema_node(module_schema->data, value->xpath, 0);
-        if (!schema) {
-            SR_LOG_ERR("Error by sr_find_schema_node: %s", ly_errmsg());
+        rc = sr_find_schema_node(module_schema, NULL, value->xpath, 0, &set);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Error by sr_find_schema_node '%s'.", value->xpath);
             goto fail;
         }
+        schema = set->set.s[0];
+        ly_set_free(set);
 
         /* skip default values */
         if ((schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && value->dflt) {
@@ -1056,18 +1062,11 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
         snode = current_dt->schema;
     } else {
         schema_module = ly_ctx_get_module(ly_ctx, module->name, module->revision_date);
-        if (NULL != schema_module) {
-            snode = sr_get_any_data_node(schema_module->data);
-        }
-        if (NULL == snode) {
-            rc = SR_ERR_BAD_ELEMENT;
-            goto cleanup;
-        }
     }
 
-    lyset = lys_find_xpath(snode, xpath, 0);
-    if (lyset && lyset->number) {
-        for (int j=0; j < lyset->number; j++) {
+    rc = sr_find_schema_node(schema_module, snode, xpath, 0, &lyset);
+    if (SR_ERR_OK == rc) {
+        for (int j = 0; j < lyset->number; j++) {
             //printf("node name %s,%s,%d nodetype %d\n", lyset->set.s[j]->name, lys_path(lyset->set.s[j]), lyset->number, lyset->set.s[j]->nodetype);
             if (lyset->set.s[j]) {
                 sr_type_t srtype = SR_UNKNOWN_T;
@@ -1118,8 +1117,6 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
         if (lyset) {
             ly_set_free(lyset);
         }
-    } else {
-        rc = SR_ERR_BAD_ELEMENT;
     }
 
     if (SR_ERR_OK == rc) {
