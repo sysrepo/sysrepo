@@ -1,15 +1,20 @@
 /**
-@page xp_page XPath Addressing
 
-The aim of this section is to describe the xpath syntax used for identification of yang nodes in sysrepo calls. 
-The xpath identifying a node contains the names of all hierarchically preceeding nodes up to the model top-level node. 
-The top-level node in xpath must be qualified with a namespace, which is the name of the module. 
-The module name must be also specified for the augment node. It is not required to specify module names for other 
-nodes explicitly. The xpath must start with the slash character.
+@page xp_page Path Addressing
 
-@section ex Examples
-@subsection container Container
-Following xpath expression identifies the @b container node inside the @b model.
+The aim of this section is to describe the syntax used for identification of yang nodes in sysrepo calls.
+The path identifying a node contains the names of all hierarchically preceeding nodes up to the model top-level node.
+there are two kinds of paths, @b data @b path and @b schema @b path.
+
+@section data Data Path
+
+Data path is used wherever it is worked with YANG data trees. It precisely follows JSON instance-identifier rules (see
+[RFC 7951](https://tools.ietf.org/html/rfc7951#section-6.11)). However, the definition is for single-node identification
+only, but sysrepo supports some more generic paths, specifically "/\asterisk", "//\asterisk", and "//.".
+
+@subsection data_ex Examples
+@subsubsection d_container Container
+Following expression identifies the @b container node inside the @b model.
 @code
 /model:container
 @endcode
@@ -25,8 +30,13 @@ use:
 /model:container//*
 @endcode
 
+To retrieve all nodes in container subtree including deeper levels and also
+the container itself use:
+@code
+/model:container//.
+@endcode
 
-@subsection list List
+@subsubsection d_list List
 Identification of the particular list instance
 @code
 /model:container/list[key1='a'][key2='b']
@@ -37,26 +47,61 @@ Identification of the list. It can be used to list all list instances.
 /model:container/list
 @endcode
 
-@subsection leaf Leaf (leaf-list)
+@subsubsection d_leaf Leaf (leaf-list)
 Identification of the leaf. All keys must be specified.
 @code
 /model:container/list[key1='a'][key2='b']/leaf
 @endcode
 
-Explicitely specified namespace for the augment node.
+Explicitly specified namespace for the augment node.
 @code
 /model:container/list[key1='a'][key2='b']/another-model:added-leaf
 @endcode
 
-@subsection module Whole module
-Following xpath expression can be used to retrieve all top-level nodes in a @b module.
+@subsubsection d_module Whole module
+Following xpath expression can be used to retrieve all top-level nodes in a @b model.
 @code
 /model:*
 @endcode
 
-If you want to retrieve all nodes in a @b module, including deeper levels (recursively) use:
+@section schema Schema Path
+
+Schema path is generally used for subscriptions because one subscribes to schema nodes rather than data nodes.
+It differs noticeably from the data path by adopting the principles from YANG augment target addressing (see
+[RFC 7950](https://tools.ietf.org/html/rfc7950#section-6.5)).
+
+Firstly, prefixes (module names) are required in different cases than in data paths. In schema paths there is
+always a @b current @b module, which is inherited by @b ALL unprefixed node names. All the nodes from foreign
+modules (imports, augments, ...) @b MUST have a prefix.
+
+Secondly, schema-only nodes @b MUST be included in the path. These nodes are in the schema but are ommited in
+the data tree modeled by the schema. They are choice, case, input, and output.
+
+Thirdly, predicates make no sense because there can never be more instances of a node with one name. Hence
+they are forbidden.
+
+@subsection schema_ex Examples
+@subsubsection s_container Container
+Schema path identifying the @b container node inside the @b model, which is the current model.
 @code
-/model:*//*
+/container
+@endcode
+
+Retrieving all nodes in the subtree is supported in the same way:
+@code
+/container//*
+@endcode
+
+@subsubsection s_list List
+Identification of a list in a case within a choice within a container:
+@code
+/container/choice/case/list
+@endcode
+
+@subsubsection s_leaf Leaf
+Addressing a leaf in a container added by a foreign augment:
+@code
+/container/augment-module:container/augment-module:leaf
 @endcode
 
 */
