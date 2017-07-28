@@ -1058,7 +1058,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
 {
     CHECK_NULL_ARG4(dm_ctx, schema_info, data_filename, data_info);
     int rc = SR_ERR_OK;
-    struct lyd_node *data_tree = NULL;
+    struct lyd_node *data_tree = NULL, *elem = NULL, *iter = NULL;
     *data_info = NULL;
 
     dm_data_info_t *data = NULL;
@@ -1134,6 +1134,18 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
                 lyd_free_withsiblings(data_tree);
                 data_tree = NULL;
             }
+        }
+    }
+
+    /* it is possible there are nodes here from another module (module was loaded for validation and has top-level container),
+     * remove them */
+    LY_TREE_FOR_SAFE(data_tree, elem, iter) {
+        if (lyd_node_module(iter) != schema_info->module) {
+            if (iter == data_tree) {
+                /* move the pointer so that it remains valid */
+                data_tree = iter->next;
+            }
+            lyd_free(iter);
         }
     }
 
