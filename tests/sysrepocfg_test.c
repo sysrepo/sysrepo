@@ -411,62 +411,62 @@ srcfg_test_xpath(void **state)
     rvalue = NULL;
 
     /* set a leaf value */
-    exec_shell_command("../src/sysrepocfg -d running -s \"/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:mtu\" -w 1600", ".*", true, 0);
+    exec_shell_command("../src/sysrepocfg -d running -s \"/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu\" -w 1600", ".*", true, 0);
     rc = sr_session_refresh(srcfg_test_session);
     if (rc != SR_ERR_OK) {
         printf("Error by sr_session_refresh %s\n", sr_strerror(rc));
     }
-    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:mtu", &rvalue);
+    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", &rvalue);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(SR_UINT16_T, rvalue->type);
-    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:mtu", rvalue->xpath);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", rvalue->xpath);
     assert_int_equal(1600, rvalue->data.uint16_val);
     sr_free_val(rvalue);
     rvalue = NULL;
 
     /* set a not existing leaf */
-    exec_shell_command("../src/sysrepocfg -d running -s \"/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:fakeleaf\" -w 'not existing leaf'", ".*", true, 1);
+    exec_shell_command("../src/sysrepocfg -d running -s \"/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/fakeleaf\" -w 'not existing leaf'", ".*", true, 1);
     rc = sr_session_refresh(srcfg_test_session);
     if (rc != SR_ERR_OK) {
         printf("Error by sr_session_refresh %s\n", sr_strerror(rc));
     }
-    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:fakeleaf", &rvalue);
+    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/fakeleaf", &rvalue);
     assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     sr_free_val(rvalue);
     rvalue = NULL;
 
     /* set a leaf without a value */
-    exec_shell_command("../src/sysrepocfg -d running -s \"/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:mtu\"", ".*", true, 1);
+    exec_shell_command("../src/sysrepocfg -d running -s \"/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu\"", ".*", true, 1);
     rc = sr_session_refresh(srcfg_test_session);
     if (rc != SR_ERR_OK) {
         printf("Error by sr_session_refresh %s\n", sr_strerror(rc));
     }
-    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:mtu", &rvalue);
+    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", &rvalue);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(SR_UINT16_T, rvalue->type);
-    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:mtu", rvalue->xpath);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", rvalue->xpath);
     assert_int_equal(1600, rvalue->data.uint16_val);
     sr_free_val(rvalue);
     rvalue = NULL;
 
     /* remove a leaf */
-    exec_shell_command("../src/sysrepocfg -d running -r \"/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:mtu\" ietf-interfaces", ".*", true, 0);
+    exec_shell_command("../src/sysrepocfg -d running -r \"/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu\" ietf-interfaces", ".*", true, 0);
     rc = sr_session_refresh(srcfg_test_session);
     if (rc != SR_ERR_OK) {
         printf("Error by sr_session_refresh %s\n", sr_strerror(rc));
     }
-    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:mtu", &rvalue);
+    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", &rvalue);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
     sr_free_val(rvalue);
     rvalue = NULL;
 
     /* remove multiple leaves in one shot */
-    exec_shell_command("../src/sysrepocfg -d running -r \"/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/ietf-ip:mtu\" -r \"/ietf-interfaces:interfaces/interface[name='eth1']/description\" ietf-interfaces", ".*", true, 0);
+    exec_shell_command("../src/sysrepocfg -d running -r \"/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/mtu\" -r \"/ietf-interfaces:interfaces/interface[name='eth1']/description\" ietf-interfaces", ".*", true, 0);
     rc = sr_session_refresh(srcfg_test_session);
     if (rc != SR_ERR_OK) {
         printf("Error by sr_session_refresh %s\n", sr_strerror(rc));
     }
-    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/ietf-ip:mtu", &rvalue);
+    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/mtu", &rvalue);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
     sr_free_val(rvalue);
     rvalue = NULL;
@@ -526,10 +526,10 @@ srcfg_test_merge(void **state)
     sr_free_val(rvalue);
     rvalue = NULL;
 
-    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:mtu", &rvalue);
+    rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", &rvalue);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(SR_UINT16_T, rvalue->type);
-    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:mtu", rvalue->xpath);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", rvalue->xpath);
     assert_int_equal(1600, rvalue->data.uint16_val);
     sr_free_val(rvalue);
     rvalue = NULL;
