@@ -588,7 +588,7 @@ rp_dt_get_tree_roots(dm_schema_info_t *schema_info, const char *xpath, struct ly
     rc = rp_dt_get_start_node(schema_info, xpath, &start_node);
     CHECK_RC_LOG_RETURN(rc, "Failed to get the start node for xpath %s", xpath);
 
-    *roots = lys_find_xpath(start_node, xpath, 0);
+    *roots = lys_find_path(NULL, start_node, xpath);
     if (NULL == *roots) {
         SR_LOG_ERR("Failed to get the set of tree roots for xpath %s", xpath);
         rc = SR_ERR_INVAL_ARG;
@@ -1063,7 +1063,7 @@ rp_dt_send_first_set_of_dp_requests(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
                         if (rp_dt_not_coverd_by_other_subs(rp_session->state_data_ctx.subscription_nodes, subs)) {
                             match = true;
 
-                            xp = lys_path(subs);
+                            xp = lys_data_path(subs);
                             CHECK_NULL_NOMEM_RETURN(xp);
 
                             rc = rp_dt_send_request_to_dp_subscription(rp_ctx, rp_session, j, subs, xp);

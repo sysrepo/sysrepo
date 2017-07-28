@@ -845,7 +845,7 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
     int rc = SR_ERR_OK, i;
     char *module_name = NULL;
     dm_schema_info_t *si = NULL;
-    struct lys_node *sch_node;
+    struct lys_node *sch_node, *next;
     struct ly_set *set = NULL;
     char *predicate = NULL;
 
@@ -860,55 +860,74 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
         }
         return rc;
     } else {
-        rc = sr_copy_first_ns(xpath, &module_name);
-        CHECK_RC_LOG_RETURN(rc, "Copying module name failed for xpath '%s'", xpath);
+        if (xpath[0] == '/') {
+            rc = sr_copy_first_ns(xpath, &module_name);
+            CHECK_RC_LOG_RETURN(rc, "Copying module name failed for xpath '%s'", xpath);
+        } else {
+            module_name = strdup(xpath);
+        }
 
         rc = dm_get_module_and_lock(np_ctx->rp_ctx->dm_ctx, module_name, &si);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to find module %s", module_name);
 
         if (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == type) {
-            set = lys_find_xpath(si->module->data, xpath, 0);
-            if (NULL == set || 0 == set->number) {
-                SR_LOG_ERR("Node identified by xpath %s was not found", xpath);
-                rc = SR_ERR_BAD_ELEMENT;
-                goto cleanup;
-            }
-            if (1 == set->number) {
-                if (set->set.s[0]->nodetype != LYS_NOTIF) {
-                    SR_LOG_ERR("Xpath %s doesn't identify event notification.", xpath);
+            if (xpath[0] == '/') {
+                set = lys_find_path(si->module, NULL, xpath);
+                if (NULL == set || 0 == set->number) {
+                    SR_LOG_ERR("Node identified by xpath %s was not found", xpath);
                     rc = SR_ERR_BAD_ELEMENT;
-                } else if (0 == strcmp(set->set.s[0]->module->name, "nc-notifications")) {
-                    if (0 == strcmp(set->set.s[0]->name, "replayComplete")) {
-                        SR_LOG_ERR_MSG("You cannot subscribe to the special \"replayComplete\" notification.");
+                    goto cleanup;
+                }
+                if (1 == set->number) {
+                    if (set->set.s[0]->nodetype != LYS_NOTIF) {
+                        SR_LOG_ERR("Xpath %s doesn't identify event notification.", xpath);
                         rc = SR_ERR_BAD_ELEMENT;
-                    } else if (0 == strcmp(set->set.s[0]->name, "notificationComplete")) {
-                        SR_LOG_ERR_MSG("You cannot subscribe to the special \"notificationComplete\" notification.");
-                        rc = SR_ERR_BAD_ELEMENT;
+                    } else if (0 == strcmp(set->set.s[0]->module->name, "nc-notifications")) {
+                        if (0 == strcmp(set->set.s[0]->name, "replayComplete")) {
+                            SR_LOG_ERR_MSG("You cannot subscribe to the special \"replayComplete\" notification.");
+                            rc = SR_ERR_BAD_ELEMENT;
+                        } else if (0 == strcmp(set->set.s[0]->name, "notificationComplete")) {
+                            SR_LOG_ERR_MSG("You cannot subscribe to the special \"notificationComplete\" notification.");
+                            rc = SR_ERR_BAD_ELEMENT;
+                        }
+                    }
+                    goto cleanup;
+                }
+
+                /* subscription for more nodes */
+                for (i = 0; i < set->number; ++i) {
+                    if (set->set.s[i]->nodetype == LYS_NOTIF) {
+                        break;
                     }
                 }
-                goto cleanup;
-            }
-
-            /* subscription for the whole module */
-            for (i = 0; i < set->number; ++i) {
-                if (set->set.s[i]->nodetype == LYS_NOTIF) {
-                    break;
+                if (i == set->number) {
+                    SR_LOG_ERR("No notifications identified by xpath %s were found", xpath);
+                    rc = SR_ERR_UNSUPPORTED;
+                    goto cleanup;
                 }
-            }
-            if (i == set->number) {
-                SR_LOG_ERR("No notifications identified by xpath %s were found", xpath);
-                rc = SR_ERR_UNSUPPORTED;
-                goto cleanup;
+            } else {
+                LY_TREE_DFS_BEGIN(si->module->data, next, sch_node) {
+                    if (sch_node->nodetype == LYS_NOTIF) {
+                        break;
+                    }
+                    LY_TREE_DFS_END(si->module->data, next, sch_node);
+                }
+                if (NULL == sch_node) {
+                    SR_LOG_ERR("No notifications found in model %s", xpath);
+                    rc = SR_ERR_UNSUPPORTED;
+                    goto cleanup;
+                }
             }
             goto cleanup;
         }
 
-        sch_node = sr_find_schema_node(si->module->data, xpath, 0);
-        if (NULL == sch_node) {
+        set = lys_find_path(si->module, NULL, xpath);
+        if (NULL == set || 1 != set->number) {
             SR_LOG_ERR("Node identified by xpath %s was not found", xpath);
             rc = SR_ERR_BAD_ELEMENT;
             goto cleanup;
         }
+        sch_node = set->set.s[0];
 
         if (SR__SUBSCRIPTION_TYPE__RPC_SUBS == type && !(LYS_RPC & sch_node->nodetype)) {
             SR_LOG_ERR("Xpath %s doesn't identify RPC.", xpath);
@@ -932,7 +951,6 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
             }
         }
     }
-
 
 cleanup:
     free(module_name);
@@ -1757,8 +1775,13 @@ np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, con
     SR_LOG_DBG("Loading notifications '%s' generated between '%ld' and '%ld'.", xpath, start_time, effective_stop_time);
 
     /* extract module name from xpath */
-    rc = sr_copy_first_ns(xpath, &module_name);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+    if (xpath[0] != '/') {
+        module_name = strdup(xpath);
+        xpath = NULL;
+    } else {
+        rc = sr_copy_first_ns(xpath, &module_name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+    }
 
     /* get all notification files matching module name and time interval */
     rc = sr_list_init(&file_list);
@@ -1784,11 +1807,11 @@ np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, con
     }
 
     /* get all notifications matching the xpath */
-    if (xpath[strlen(xpath) - 1] == '.') {
-        node_set = lyd_find_xpath(main_tree, "/*/*");
+    if (NULL == xpath) {
+        node_set = lyd_find_path(main_tree, "/*/*");
     } else {
         snprintf(req_xpath, PATH_MAX, NP_NS_XPATH_NOTIFICATION_BY_XPATH, xpath);
-        node_set = lyd_find_xpath(main_tree, req_xpath);
+        node_set = lyd_find_path(main_tree, req_xpath);
     }
 
     if (NULL != node_set && node_set->number > 0) {

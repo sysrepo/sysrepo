@@ -324,7 +324,7 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const
         }
     } else {
         /* delete persistent data */
-        node_set = lyd_find_xpath(*data_tree, xpath);
+        node_set = lyd_find_path(*data_tree, xpath);
         if (NULL == node_set || LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Unable to find requested persistent data (xpath=%s): %s.", xpath, ly_errmsg());
             rc = SR_ERR_INTERNAL;
@@ -833,7 +833,7 @@ pm_dt_has_running_enable_susbscriptions(struct lyd_node *data_tree, const char *
     CHECK_NULL_ARG3(data_tree, module_name, result);
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING, module_name);
-    node_set = lyd_find_xpath(data_tree, xpath);
+    node_set = lyd_find_path(data_tree, xpath);
     if (NULL == node_set || 0 == node_set->number) {
         *result = false;
     } else {
@@ -1002,7 +1002,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mo
 
     /* get all enabled features */
     snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES, module_name);
-    node_set = lyd_find_xpath(data_tree, xpath);
+    node_set = lyd_find_path(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
         features = sr_calloc(sr_mem_features, node_set->number, sizeof(*features));
@@ -1023,7 +1023,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mo
 
     /* get all subscriptions that enable running */
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING, module_name);
-    node_set = lyd_find_xpath(data_tree, xpath);
+    node_set = lyd_find_path(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
         for (size_t i = 0; i < node_set->number; i++) {
@@ -1307,7 +1307,7 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *
     }
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_subscription_type_gpb_to_str(type));
-    node_set = lyd_find_xpath(data_tree, xpath);
+    node_set = lyd_find_path(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
         rc = sr_list_init(&subscriptions_list);

@@ -988,6 +988,7 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
     nacm_group_t **nacm_ext_groups = NULL;
     dm_schema_info_t *schema_info = NULL;
     struct lys_node *sch_node = NULL;
+    struct ly_set *set = NULL;
     char *rule_name = NULL, *rule_info = NULL;
     bool disjoint = false, bit_val = false, matches = false;
     nacm_user_t *nacm_user = NULL;
@@ -1015,12 +1016,10 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
     rc = dm_get_module_and_lock(nacm_ctx->dm_ctx, module_name, &schema_info);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get schema info failed for %s", module_name);
-    sch_node = sr_find_schema_node(schema_info->module->data, xpath, 0);
-    if (NULL == sch_node) {
-        SR_LOG_ERR("Schema node not found for RPC: %s.", xpath);
-        rc = SR_ERR_INVAL_ARG;
-        goto unlock_schema;
-    }
+    rc = sr_find_schema_node(schema_info->module, NULL, xpath, 0, &set);
+    CHECK_RC_LOG_GOTO(rc, unlock_schema, "Schema node not found for RPC: %s.", xpath);
+    sch_node = set->set.s[0];
+    ly_set_free(set);
     if (LYS_RPC != sch_node->nodetype && LYS_ACTION != sch_node->nodetype) {
         SR_LOG_ERR("XPath '%s' does not resolve to RPC or Action node.", xpath);
         rc = SR_ERR_INVAL_ARG;
@@ -1200,6 +1199,7 @@ nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const char *username, const char *x
     nacm_group_t **nacm_ext_groups = NULL;
     dm_schema_info_t *schema_info = NULL;
     struct lys_node *sch_node = NULL;
+    struct ly_set *set = NULL;
     char *rule_name = NULL, *rule_info = NULL;
     bool disjoint = false, bit_val = false, matches = false;
     nacm_user_t *nacm_user = NULL;
@@ -1218,12 +1218,10 @@ nacm_check_event_notif(nacm_ctx_t *nacm_ctx, const char *username, const char *x
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
     rc = dm_get_module_and_lock(nacm_ctx->dm_ctx, module_name, &schema_info);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get schema info failed for %s", module_name);
-    sch_node = sr_find_schema_node(schema_info->module->data, xpath, 0);
-    if (NULL == sch_node) {
-        SR_LOG_ERR("Schema node not found for Event notification: %s.", xpath);
-        rc = SR_ERR_INVAL_ARG;
-        goto unlock_schema;
-    }
+    rc = sr_find_schema_node(schema_info->module, NULL, xpath, 0, &set);
+    CHECK_RC_LOG_GOTO(rc, unlock_schema, "Schema node not found for Event notification: %s.", xpath);
+    sch_node = set->set.s[0];
+    ly_set_free(set);
     if (LYS_NOTIF != sch_node->nodetype) {
         SR_LOG_ERR("XPath '%s' does not resolve to Event notification node.", xpath);
         rc = SR_ERR_INVAL_ARG;
@@ -1691,7 +1689,7 @@ nacm_check_data(nacm_data_val_ctx_t *nacm_data_val_ctx, nacm_access_flag_t acces
                                                                      &nacm_data_targets->orig_dt);
                     if (NULL == *targets_p) {
                         /* resolve path to get the matching data nodes */
-                        nodeset = lyd_find_xpath(node, nacm_rule->data.path);
+                        nodeset = lyd_find_path(node, nacm_rule->data.path);
                         if (NULL == nodeset) {
                             SR_LOG_WRN("Failed to resolve data node instance identifier for rule '%s'.",
                                        nacm_rule->name);
