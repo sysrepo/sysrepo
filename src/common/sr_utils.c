@@ -2382,7 +2382,7 @@ sr_find_schema_node_predicate(const struct lys_node *node, char *predicate, cons
         }
 
         id_len = 0;
-        while (!isspace(identifier[id_len]) && (identifier[id_len] != '=')) {
+        while (!isspace(identifier[id_len]) && (identifier[id_len] != '=') && (identifier[id_len] != ']')) {
             ++id_len;
         }
 
@@ -2393,18 +2393,27 @@ sr_find_schema_node_predicate(const struct lys_node *node, char *predicate, cons
             }
             break;
         } else {
-            if (!sr_find_schema_node_valid_identifier(identifier, id_len)) {
-                return SR_ERR_INVAL_ARG;
-            }
-
-            for (i = 0; i < ((struct lys_node_list *)node)->keys_size; ++i) {
-                key = ((struct lys_node_list *)node)->keys[i];
-                if (0 == strncmp(key->name, identifier, id_len) && !key->name[id_len]) {
-                    break;
+            if (isdigit(identifier[0])) {
+                /* position */
+                for (i = 1; i < id_len; ++i) {
+                    if (!isdigit(identifier[i])) {
+                        return SR_ERR_INVAL_ARG;
+                    }
                 }
-            }
-            if (i == ((struct lys_node_list *)node)->keys_size) {
-                return -1;
+            } else {
+                if (!sr_find_schema_node_valid_identifier(identifier, id_len)) {
+                    return SR_ERR_INVAL_ARG;
+                }
+
+                for (i = 0; i < ((struct lys_node_list *)node)->keys_size; ++i) {
+                    key = ((struct lys_node_list *)node)->keys[i];
+                    if (0 == strncmp(key->name, identifier, id_len) && !key->name[id_len]) {
+                        break;
+                    }
+                }
+                if (i == ((struct lys_node_list *)node)->keys_size) {
+                    return -1;
+                }
             }
         }
     }
