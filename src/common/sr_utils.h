@@ -23,6 +23,7 @@
 #ifndef SR_UTILS_H_
 #define SR_UTILS_H_
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdbool.h>
 #define __USE_XOPEN
