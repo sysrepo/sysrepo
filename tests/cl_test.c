@@ -5618,7 +5618,7 @@ cl_inst_id_to_known_deps_test (void **state)
     rc = sr_set_item_str(session, "/test-module:list[key='abc']/instance_id", "/referenced-data:magic_number", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/test-module:main/test-module:i8", SR_EDIT_DEFAULT);
+    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/test-module:main/i8", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_set_item_str(session, "/referenced-data:magic_number", "42", SR_EDIT_DEFAULT);
@@ -5644,7 +5644,7 @@ cl_inst_id_to_one_module_test (void **state)
     rc = sr_set_item_str(session, "/test-module:list[key='abc']/instance_id", "/referenced-data:magic_number", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/example-module:container/example-module:list[example-module:key1='key1'][example-module:key2='key2']", SR_EDIT_DEFAULT);
+    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/example-module:container/list[key1='key1'][key2='key2']", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_set_item_str(session, "/referenced-data:magic_number", "42", SR_EDIT_DEFAULT);
@@ -5660,7 +5660,7 @@ cl_inst_id_to_one_module_test (void **state)
 
     assert_non_null(val);
     assert_int_equal(SR_INSTANCEID_T, val->type);
-    assert_string_equal("/example-module:container/example-module:list[example-module:key1='key1'][example-module:key2='key2']", val->data.instanceid_val);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']", val->data.instanceid_val);
 
     sr_free_val(val);
 
@@ -5669,7 +5669,7 @@ cl_inst_id_to_one_module_test (void **state)
     rc = sr_set_item_str(session, "/ietf-interfaces:interfaces/interface[name='ifA']/type", "iana-if-type:ethernetCsmacd", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/ietf-interfaces:interfaces/ietf-interfaces:interface[ietf-interfaces:name='ifA']", SR_EDIT_DEFAULT);
+    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/ietf-interfaces:interfaces/interface[name='ifA']", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_commit(session);
@@ -5682,7 +5682,7 @@ cl_inst_id_to_one_module_test (void **state)
 
     assert_non_null(val);
     assert_int_equal(SR_INSTANCEID_T, val->type);
-    assert_string_equal("/ietf-interfaces:interfaces/ietf-interfaces:interface[ietf-interfaces:name='ifA']", val->data.instanceid_val);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='ifA']", val->data.instanceid_val);
 
     sr_free_val(val);
 
@@ -5715,7 +5715,7 @@ cl_inst_id_to_more_modules_test (void **state)
     rc = sr_set_item_str(session, "/test-module:list[key='abc']/instance_id", "/referenced-data:magic_number", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/example-module:container/example-module:list[example-module:key1='key1'][example-module:key2='key2']", SR_EDIT_DEFAULT);
+    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/example-module:container/list[key1='key1'][key2='key2']", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_set_item_str(session, "/referenced-data:magic_number", "1", SR_EDIT_DEFAULT);
@@ -5724,7 +5724,7 @@ cl_inst_id_to_more_modules_test (void **state)
     rc = sr_set_item_str(session, "/ietf-interfaces:interfaces/interface[name='ifA']/type", "iana-if-type:ethernetCsmacd", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = sr_set_item_str(session, "/test-module:list[key='def']/instance_id", "/ietf-interfaces:interfaces/ietf-interfaces:interface[ietf-interfaces:name='ifA']", SR_EDIT_DEFAULT);
+    rc = sr_set_item_str(session, "/test-module:list[key='def']/instance_id", "/ietf-interfaces:interfaces/interface[name='ifA']", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_commit(session);
@@ -5737,7 +5737,7 @@ cl_inst_id_to_more_modules_test (void **state)
 
     assert_non_null(val);
     assert_int_equal(SR_INSTANCEID_T, val->type);
-    assert_string_equal("/example-module:container/example-module:list[example-module:key1='key1'][example-module:key2='key2']", val->data.instanceid_val);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']", val->data.instanceid_val);
     sr_free_val(val);
 
 
@@ -5752,7 +5752,7 @@ cl_inst_id_to_more_modules_test (void **state)
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_int_equal(SR_INSTANCEID_T, val->type);
-    assert_string_equal("/ietf-interfaces:interfaces/ietf-interfaces:interface[ietf-interfaces:name='ifA']", val->data.instanceid_val);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='ifA']", val->data.instanceid_val);
     sr_free_val(val);
 
     sr_unsubscribe(session, subs);
