@@ -1163,7 +1163,7 @@ void edit_instance_id_test(void **state) {
     rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/test-module:main/instance_id", &new_val);
     assert_int_equal(SR_ERR_OK, rc);
 
-    assert_string_equal("/test-module:main/test-module:string", new_val->data.instanceid_val);
+    assert_string_equal("/test-module:main/string", new_val->data.instanceid_val);
     sr_free_val(new_val);
 
     /* container */
@@ -1209,14 +1209,14 @@ void edit_instance_id_test(void **state) {
     rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/test-module:main/instance_id", &new_val);
     assert_int_equal(SR_ERR_OK, rc);
 
-    assert_string_equal("/test-module:list[test-module:key='k1']", new_val->data.instanceid_val);
+    assert_string_equal("/test-module:list[key='k1']", new_val->data.instanceid_val);
     sr_free_val(new_val);
 
     /* leaf-list */
     value = calloc(1, sizeof(*value));
     assert_non_null(value);
     value->type = SR_INSTANCEID_T;
-    value->data.instanceid_val = strdup("/test-module:main/test-module:numbers[.='42']");
+    value->data.instanceid_val = strdup("/test-module:main/numbers[.='42']");
     assert_non_null(value->data.instanceid_val);
 
     rc = rp_dt_set_item_wrapper(ctx, session, "/test-module:main/instance_id", value, NULL, SR_EDIT_DEFAULT);
@@ -1232,7 +1232,7 @@ void edit_instance_id_test(void **state) {
     rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/test-module:main/instance_id", &new_val);
     assert_int_equal(SR_ERR_OK, rc);
 
-    assert_string_equal("/test-module:main/test-module:numbers[.='42']", new_val->data.instanceid_val);
+    assert_string_equal("/test-module:main/numbers[.='42']", new_val->data.instanceid_val);
     sr_free_val(new_val);
 
     //TODO: node outside of the module
