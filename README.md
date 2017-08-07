@@ -24,13 +24,14 @@ Sysrepo can be easily integrated with management agents such as [NETCONF](https:
 -	plugins infrastructure for loosely-coupled integration with sysrepo
 -	YANG 1.1 support
 -	custom RPC, Event Notifications, YANG 1.1 Actions support
-- Python 2 & 3, Lua 5.1 & 5.2, Java bindigs
-- (TODO) notification store & notification replay
+-	Python 2 & 3, Lua 5.1 & 5.2, Java bindigs
+-	notification store & notification replay
+-	NACM (NETCONF Access Control Model) - disabled by default
 -	(TODO) confirmed commit support
--	(TODO) NACM (NETCONF Access Control Model)
 -	(TODO) native client libraries / plugins for other programming languages (Python, Java, ...)
 
 ## Status
+- May 2017: sysrepo [version 0.6.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.6.0) realeased with many bugfixes and improvements including event notification replay.
 - November 2016: sysrepo [version 0.5.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.5.0) realeased with many bugfixes and some minor improvements.
 - October 2016: sysrepo [version 0.4.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.4.0) realeased with lots of new features such as: operational data support, commit verifiers, YANG 1.1 support, subtree-based data retrieval or RPC / event notifications support.
 - July 2016: new features added into the [devel branch](https://github.com/sysrepo/sysrepo/tree/devel): experimental operational data support and event notifications support
