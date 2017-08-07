@@ -148,7 +148,7 @@ CHECK_FUNCTION_EXISTS(fsetxattr HAVE_FSETXATTR)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
 # user options
-set(ENABLE_NACM 1 CACHE BOOL
+set(ENABLE_NACM 0 CACHE BOOL
     "Enable NETCONF Access Control Model (RFC 6536).")
 
 set(NACM_RECOVERY_UID 0 CACHE INTEGER
