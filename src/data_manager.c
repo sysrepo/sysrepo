@@ -3803,6 +3803,28 @@ cleanup:
 }
 
 int
+dm_commit_load_session_module_deps(dm_ctx_t *dm_ctx, dm_session_t *session)
+{
+    CHECK_NULL_ARG2(dm_ctx, session);
+    dm_data_info_t *info = NULL;
+    size_t i = 0;
+    int rc = SR_ERR_OK;
+
+    i = 0;
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
+        if (!info->modified) {
+            continue;
+        }
+
+        /* get the list of required modules */
+        rc = dm_requires_tmp_context(dm_ctx, session, info, NULL, &info->required_modules);
+        CHECK_RC_LOG_RETURN(rc, "Failed to get module dependencies of '%s'.", info->schema->module->name);
+    }
+
+    return SR_ERR_OK;
+}
+
+int
 dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx,
         bool force_copy_uptodate, sr_error_info_t **errors, size_t *err_cnt)
 {
@@ -3923,6 +3945,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             SR_LOG_DBG("Usage count %s incremented (value=%zu)", info->schema->module_name, info->schema->usage_count);
             pthread_mutex_unlock(&info->schema->usage_count_mutex);
             di->schema = info->schema;
+            di->modified = info->modified;
 
             /* duplicate also the list of required modules */
             rc = dm_dup_required_models_list(info, di);
