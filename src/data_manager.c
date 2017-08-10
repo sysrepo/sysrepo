@@ -1128,8 +1128,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
         } else {
             rc = lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx);
             if (rc) {
-                SR_LOG_INF("lyd_validate failed, maybe empty data is illegal but no initial data? data_file: %s",
-                        data_filename);
+                SR_LOG_WRN("Validation of '%s' failed because empty data are not valid, ignoring.", data_filename);
                 rc = SR_ERR_OK;
                 lyd_free_withsiblings(data_tree);
                 data_tree = NULL;
@@ -3652,7 +3651,8 @@ dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 }
 
 static int
-dm_create_commit_ctx_id(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx) {
+dm_create_commit_ctx_id(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
+{
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
 
     pthread_rwlock_rdlock(&dm_ctx->commit_ctxs.lock);

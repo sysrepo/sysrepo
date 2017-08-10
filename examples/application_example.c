@@ -79,11 +79,6 @@ main(int argc, char **argv)
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
 
-    if (argc == 1) {
-        fprintf(stderr, "No modules specified.\n");
-        return 1;
-    }
-
     /* connect to sysrepo */
     rc = sr_connect("example_application", SR_CONN_DEFAULT, &connection);
     if (SR_ERR_OK != rc) {
@@ -98,21 +93,11 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-    for (int i = 1; i < argc; ++i) {
-        /* read startup config */
-        printf("\n\n ========== READING STARTUP CONFIG %s: ==========\n\n", argv[i]);
-        print_current_config(session, argv[i]);
-
-        /* subscribe for changes in running config */
-        rc = sr_module_change_subscribe(session, argv[i], module_change_cb, NULL,
-                0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
-        if (SR_ERR_OK != rc) {
-            fprintf(stderr, "Error by sr_module_change_subscribe: %s\n", sr_strerror(rc));
-            goto cleanup;
-        }
-
-        printf("\n\n ========== STARTUP CONFIG %s APPLIED AS RUNNING ==========\n\n", argv[i]);
-    }
+   rc = sr_subtree_change_subscribe(session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", module_change_cb, NULL, 0, 0, &subscription);
+   if (SR_ERR_OK != rc) {
+        fprintf(stderr, "Error by change subscribe: %s\n", sr_strerror(rc));
+        goto cleanup;
+   }
 
     /* loop until ctrl-c is pressed / SIGINT is received */
     signal(SIGINT, sigint_handler);

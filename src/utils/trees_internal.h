@@ -46,7 +46,7 @@ void sr_node_insert_child(sr_node_t *parent, sr_node_t *child);
  * into a new instance of Sysrepo tree with memory context.
  * It is possible to specify the destination memory context or let the function to create a new one.
  *
- * @param [in] root Root of a Sysrepo tree to duplicate.
+ * @param [in] tree Root of a Sysrepo tree to duplicate.
  * @param [in] sr_mem_dest Destination memory context.
  *                         If NULL, a new context will be created.
  * @param [out] tree_dup_p Returned duplicate of the input tree.

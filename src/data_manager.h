@@ -199,7 +199,7 @@ typedef struct dm_model_subscription_s {
 }dm_model_subscription_t;
 
 /**
- * @brief A set of changes to be commited (as seen by ::lyd_diff) */
+ * @brief A set of changes to be commited (returned by \b lyd_diff) */
 typedef struct dm_module_difflist_s {
     dm_schema_info_t *schema_info;      /**< schema info identifying the module to which the difflist is tied to */
     struct lyd_difflist *difflist;      /**< diff list */
@@ -269,6 +269,7 @@ typedef struct dm_commit_context_s {
  * @param [in] ac_ctx Access Control module context
  * @param [in] np_ctx Notification Processor context
  * @param [in] pm_ctx Persistence Manager context
+ * @param [in] conn_mode Connection mode
  * @param [in] schema_search_dir - location where schema files are located
  * @param [in] data_search_dir - location where data files are located
  * @param [out] dm_ctx
@@ -527,12 +528,10 @@ void dm_free_commit_context(void *commit_ctx);
  * @brief Logs operation into session operation list. The operation list is used
  * during the commit. Passed allocated arguments are freed in case of error also.
  * @param [in] session
- * @param [in] op
  * @param [in] xpath
  * @param [in] val - must be allocated, will be free with operation list
+ * @param [in] str_val
  * @param [in] opts
- * @param [in] pos - applicable only with move operation
- * @param [in] rel_item - option of move operation
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_add_set_operation(dm_session_t *session, const char *xpath, sr_val_t *val, char *str_val, sr_edit_options_t opts);
@@ -794,7 +793,6 @@ int dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const
  * @param [in] ctx
  * @param [in] session
  * @param [in] module_name
- * @param [in] module (optional can be NULL)
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name);

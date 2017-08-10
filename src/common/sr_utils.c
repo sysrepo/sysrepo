@@ -42,7 +42,9 @@
 
 #define MAX_BUF_REALLOC_ATEMPTS   10
 
-/* used for sr_buff_to_uint32 and sr_uint32_to_buff conversions */
+/**
+ * @brief used for sr_buff_to_uint32 and sr_uint32_to_buff conversions
+ */
 typedef union {
    uint32_t value;
    uint8_t data[sizeof(uint32_t)];

@@ -241,7 +241,7 @@ int np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const rp_session_t *rp_
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] subscription Subscription context acquired by ::np_get_module_change_subscriptions call.
- * @param[in] type of event to be sent to subscription
+ * @param[in] event type of event to be sent to subscription
  * @param[in] commit_id ID of the commit to be used for starting a new notification session from client library.
  *
  * @return Error code (SR_ERR_OK on success).
@@ -278,7 +278,7 @@ int np_commit_notifications_sent(np_ctx_t *np_ctx, uint32_t commit_id,  bool com
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] commit_id Commit identifier.
- * @param[in] timout TRUE is commit timeout has expired.
+ * @param[in] timeout_expired TRUE is commit timeout has expired.
  * @return Error code (SR_ERR_OK on success).
  */
 int np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool timeout_expired);
@@ -293,7 +293,7 @@ int np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool 
  * @param[in] result Result of the processing by the subscriber.
  * @param[in] do_not_send_abort if true the xpath will be added to the list of subscriptions that do no want abort
  * @param[in] err_msg Error message (in case that result != SR_ERR_OK and it was provided).
- * @param[in] xpath XPath to the node where the error occured (in case that result != SR_ERR_OK and it was provided).
+ * @param[in] err_xpath XPath to the node where the error occured (in case that result != SR_ERR_OK and it was provided).
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -340,11 +340,10 @@ int np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, c
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] rp_session Request Processor session context.
- * @param[in] sr_mem Sysrepo memory context.
  * @param[in] xpath XPath of the notification to be retrieved.
  * @param[in] start_time Start time of the time window.
  * @param[in] stop_time Stop time of the time window.
- * @param[in] Requested API variant (values/trees) of the data to be retrieved.
+ * @param[in] api_variant Requested API variant (values/trees) of the data to be retrieved.
  * @param[out] notifications List with all notifications matching requested parameters.
  *
  * @return Error code (SR_ERR_OK on success).

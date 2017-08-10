@@ -171,7 +171,7 @@ typedef struct sr_val_s {
 /**
  * @brief A data element stored in the sysrepo datastore represented as a tree node.
  *
- * @note Can be safely casted to sr_val_t, only *xpath* member will point to node name rather
+ * @note Can be safely casted to ::sr_val_t, only *xpath* member will point to node name rather
  * than to an actual xpath.
  */
 typedef struct sr_node_s {
@@ -802,8 +802,8 @@ typedef enum sr_get_subtree_flag_e {
      * ::sr_node_get_parent from "sysrepo/trees.h". This behaviour gives much better
      * performance than the default one if only a small portion of matched subtree(s) is
      * actually iterated through.
-     * @note It is considered a programming error to access ::next, ::prev, ::parent,
-     * ::first_child and ::last_child data members of sr_node_t on a partially loaded tree.
+     * @note It is considered a programming error to access \p next, \p prev, \p parent,
+     * \p first_child and \p last_child data members of ::sr_node_t on a partially loaded tree.
      */
     SR_GET_SUBTREE_ITERATIVE = 1
 } sr_get_subtree_flag_t;
@@ -1173,7 +1173,7 @@ typedef enum sr_subscr_flag_e {
 
     /**
      * @brief No real-time notifications will be delivered until ::sr_event_notif_replay is called
-     * and replay has finished (::SR_EV_NOTIF_REPLAY_COMPLETE is delivered).
+     * and replay has finished (::SR_EV_NOTIF_T_REPLAY_COMPLETE is delivered).
      */
     SR_SUBSCR_NOTIF_REPLAY_FIRST = 32,
 } sr_subscr_flag_t;
@@ -1778,7 +1778,7 @@ int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_v
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath @ref xp_page "Data Path" identifying the RPC.
- * @param[in] tree Array of subtrees carrying event notification data.
+ * @param[in] trees Array of subtrees carrying event notification data.
  * @param[in] tree_cnt Number of subtrees with data.
  * @param[in] opts Options overriding default handling of the notification, it is supposed to be
  * a bitwise OR-ed value of any ::sr_ev_notif_flag_t flags.
@@ -1792,14 +1792,14 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath, const
  * @brief Replays already generated notifications stored in the notification store related to
  * the provided notification subscription (or subscriptions, in case that ::SR_SUBSCR_CTX_REUSE
  * was used). Notification callbacks of the given susbscriptions will be called with the type set to
- * ::SR_EV_NOTIF_REPLAY, ::SR_EV_NOTIF_REPLAY_COMPLETE or ::SR_EV_NOTIF_REPLAY_STOP.
+ * ::SR_EV_NOTIF_T_REPLAY, ::SR_EV_NOTIF_T_REPLAY_COMPLETE or ::SR_EV_NOTIF_T_REPLAY_STOP.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] subscription Session context acquired with ::sr_session_start call.
  * @param[in] start_time Starting time of the desired time window for notification replay.
  * @param[in] stop_time End time of the desired time window for notification replay. If set to 0,
  * no stop time will be applied (all notifications up to the current time will be delivered,
- * ::SR_EV_NOTIF_REPLAY_STOP notification won't be delivered).
+ * ::SR_EV_NOTIF_T_REPLAY_STOP notification won't be delivered).
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -1915,13 +1915,13 @@ void sr_fd_watcher_cleanup();
 /**
  * @brief Processes an event that has occurred on one of the file descriptors that the application is monitoring for
  * sysrepo client library purposes. As a result of this event, another file descriptors may need to be started or
- * stopped monitoring by the application. These are returned as ::fd_change_set array.
+ * stopped monitoring by the application. These are returned as \p fd_change_set array.
  *
  * @param[in] fd File descriptor where an event occurred.
  * @param[in] event Type of the event that occurred on the given file descriptor.
  * @param[out] fd_change_set Array of file descriptors that need to be started or stopped monitoring for specified event
  * by the application. The application is supposed to free this array after it processes it.
- * @param[out] fd_change_set_cnt Count of the items in the ::fd_change_set array.
+ * @param[out] fd_change_set_cnt Count of the items in the \p fd_change_set array.
  *
  * @return Error code (SR_ERR_OK on success).
  */

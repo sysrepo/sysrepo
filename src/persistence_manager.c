@@ -74,7 +74,7 @@ typedef struct pm_ctx_s {
     const char *data_search_dir;        /**< Directory containing the data files. */
     sr_locking_set_t *lock_ctx;         /**< Context for locking persist data files. */
     sr_btree_t *module_data;            /**< Binary tree holding cached data of a module. */
-    pthread_rwlock_t module_data_lock;  /**< RW lock for accessing ::module_data. */
+    pthread_rwlock_t module_data_lock;  /**< RW lock for accessing module_data. */
 } pm_ctx_t;
 
 /**
