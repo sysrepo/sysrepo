@@ -455,14 +455,14 @@ sr_fd_set_nonblock(int fd)
 
 #if defined(SO_PEERCRED)
 
-#if !defined(__USE_GNU)
+#if !defined(SCM_CREDENTIALS)
 /* struct ucred is ifdefined behind __USE_GNU, but __USE_GNU is not defined */
 struct ucred {
     pid_t pid;    /* process ID of the sending process */
     uid_t uid;    /* user ID of the sending process */
     gid_t gid;    /* group ID of the sending process */
 };
-#endif /* !defined(__USE_GNU) */
+#endif /* !defined(SCM_CREDENTIALS) */
 
 int
 sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
