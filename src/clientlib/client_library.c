@@ -1496,11 +1496,14 @@ cleanup:
     return cl_session_return(session, rc);
 }
 
+//! @cond doxygen_suppress
+#define BUF_LEN 12
+//! @endcond
+
 int
 sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
 {
-#define BUFFER_LEN  12
-    typedef char buffer_t[BUFFER_LEN];
+    typedef char buffer_t[BUF_LEN];
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
     sr_node_t *chunk = NULL;
@@ -1612,7 +1615,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
             }
             prev = prev->prev;
         }
-        snprintf(indices[i], BUFFER_LEN, "%lu", index);
+        snprintf(indices[i], BUF_LEN, "%lu", index);
         node = node->parent;
     }
     /* -> xpath length */
@@ -1796,7 +1799,7 @@ cleanup:
     }
     sr_free_tree(chunk);
     return cl_session_return(session, rc);
-#undef BUFFER_LEN
+#undef BUF_LEN
 }
 
 int

@@ -39,6 +39,7 @@
 
 #define PM_SCHEMA_FILE "sysrepo-persistent-data.yang"  /**< Schema of module's persistent data. */
 
+//! @cond doxygen_suppress
 #define PM_XPATH_MODULE                      "/sysrepo-persistent-data:module[name='%s']"
 
 #define PM_XPATH_FEATURES                     PM_XPATH_MODULE "/enabled-features/feature-name"
@@ -60,6 +61,7 @@
 #define PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR    PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s']"
 #define PM_XPATH_SUBSCRIPTIONS_BY_DST_ID      PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s'][destination-id='%"PRIu32"']"
 #define PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING PM_XPATH_SUBSCRIPTION_LIST "[enable-running=true()]"
+//! @endcond
 
 #define PM_XATTR_NAME "user.write_time" /**< Extended attribute used to store file timestamps. */
 #define PM_BILLION 1000000000L          /**< one billion, used for time calculations. */
@@ -74,7 +76,7 @@ typedef struct pm_ctx_s {
     const char *data_search_dir;        /**< Directory containing the data files. */
     sr_locking_set_t *lock_ctx;         /**< Context for locking persist data files. */
     sr_btree_t *module_data;            /**< Binary tree holding cached data of a module. */
-    pthread_rwlock_t module_data_lock;  /**< RW lock for accessing ::module_data. */
+    pthread_rwlock_t module_data_lock;  /**< RW lock for accessing module_data. */
 } pm_ctx_t;
 
 /**

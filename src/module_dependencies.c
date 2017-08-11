@@ -31,11 +31,14 @@
 #include "module_dependencies.h"
 
 /* Internal Sysrepo module persistently storing all dependencies between modules */
+//! @cond doxygen_suppress
 #define MD_MODULE_NAME      "sysrepo-module-dependencies"
 #define MD_SCHEMA_FILENAME  MD_MODULE_NAME ".yang"
 #define MD_DATA_FILENAME    MD_MODULE_NAME ".xml"
+//! @endcond
 
 /* A list of frequently used xpaths for the internal module with dependency info */
+//! @cond doxygen_suppress
 #define MD_XPATH_MODULE                      "/sysrepo-module-dependencies:module[name='%s'][revision='%s']"
 #define MD_XPATH_MODULE_PREFIX               MD_XPATH_MODULE "/prefix"
 #define MD_XPATH_MODULE_NAMESPACE            MD_XPATH_MODULE "/namespace"
@@ -53,8 +56,9 @@
 #define MD_XPATH_MODULE_INST_ID              MD_XPATH_MODULE_INST_ID_LIST "instance-identifier"
 #define MD_XPATH_MODULE_OP_DATA_SUBTREE_LIST MD_XPATH_MODULE "/op-data-subtrees/"
 #define MD_XPATH_MODULE_OP_DATA_SUBTREE      MD_XPATH_MODULE_OP_DATA_SUBTREE_LIST "op-data-subtree"
+//! @endcond
 
-/* Initial allocated size of an array */
+/** Initial allocated size of an array */
 #define MD_INIT_ARRAY_SIZE  8
 
 /**
@@ -1677,8 +1681,10 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, md_module_t *main
             }
 
             /* operational data subtrees */
+//! @cond doxygen_suppress
 #define PRIV_OP_SUBTREE  1
 #define PRIV_CFG_SUBTREE 2
+//! @endcond
             rc = SR_ERR_OK;
             if (LYS_USES == node->nodetype) {
                 /* skip */
