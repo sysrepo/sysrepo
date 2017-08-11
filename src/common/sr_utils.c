@@ -31,7 +31,9 @@
 #include <stdarg.h>
 #include <pwd.h>
 #include <grp.h>
+//! @cond doxygen_suppress
 #define __USE_XOPEN
+//! @endcond
 #include <time.h>
 #include <libyang/libyang.h>
 
@@ -40,9 +42,12 @@
 
 #include "data_manager.h"
 
+/** maximum number of buffer reallocation attempts */
 #define MAX_BUF_REALLOC_ATEMPTS   10
 
-/* used for sr_buff_to_uint32 and sr_uint32_to_buff conversions */
+/**
+ * @brief used for sr_buff_to_uint32 and sr_uint32_to_buff conversions
+ */
 typedef union {
    uint32_t value;
    uint8_t data[sizeof(uint32_t)];
@@ -1003,7 +1008,7 @@ matching_done:
     return type == value->type ? SR_ERR_OK : SR_ERR_INVAL_ARG;
 }
 
-int
+static int
 sr_libyang_val_str_to_sr_val(const char *val_str, sr_type_t type, sr_val_t *value)
 {
     CHECK_NULL_ARG2(val_str, value);
@@ -1266,6 +1271,9 @@ sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *val
     return SR_ERR_OK;
 }
 
+/** max dec64 format string length */
+#define MAX_FMT_LEN 6
+
 static int
 sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
 {
@@ -1284,7 +1292,6 @@ sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
         return SR_ERR_INVAL_ARG;
     }
     /* format string for double string conversion "%.XXf", where XX is corresponding number of fraction digits 1-18 */
-#define MAX_FMT_LEN 6 /**< max dec64 format string length */
     char format_string [MAX_FMT_LEN] = {0,};
     snprintf(format_string, MAX_FMT_LEN, "%%.%zuf", fraction_digits);
 

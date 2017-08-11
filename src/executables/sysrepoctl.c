@@ -45,18 +45,18 @@ typedef struct srctl_module_owner_s {
     gid_t group;
 } srctl_module_owner_t;
 
-int srctl_log_level = -1;
+static int srctl_log_level = -1;
 static char *srctl_schema_search_dir = SR_SCHEMA_SEARCH_DIR;
 static char *srctl_data_search_dir = SR_DATA_SEARCH_DIR;
 static char *srctl_internal_schema_search_dir = SR_INTERNAL_SCHEMA_SEARCH_DIR;
 static char *srctl_internal_data_search_dir = SR_INTERNAL_DATA_SEARCH_DIR;
 static bool custom_repository = false;
 
-const char * const data_files_ext[] = { SR_STARTUP_FILE_EXT,
-                                        SR_RUNNING_FILE_EXT,
-                                        SR_STARTUP_FILE_EXT SR_LOCK_FILE_EXT,
-                                        SR_RUNNING_FILE_EXT SR_LOCK_FILE_EXT,
-                                        SR_PERSIST_FILE_EXT};
+static const char * const data_files_ext[] = { SR_STARTUP_FILE_EXT,
+                                               SR_RUNNING_FILE_EXT,
+                                               SR_STARTUP_FILE_EXT SR_LOCK_FILE_EXT,
+                                               SR_RUNNING_FILE_EXT SR_LOCK_FILE_EXT,
+                                               SR_PERSIST_FILE_EXT};
 
 
 

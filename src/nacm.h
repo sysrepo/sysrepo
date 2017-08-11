@@ -275,7 +275,7 @@ void nacm_data_validation_stop(nacm_data_val_ctx_t *nacm_data_val_ctx);
 /**
  * @brief Check if there is a permission to read/create/update/delete the given data node.
  *
- * @param [in] nacm_data_val_ctx_t NACM data validation context.
+ * @param [in] nacm_data_val_ctx NACM data validation context.
  * @param [in] access_type Type of the requested access. All types except for NACM_ACCESS_EXEC are valid.
  * @param [in] node Data node to be accessed in the given way.
  * @param [out] action Action to take based on the NACM rules.
@@ -345,7 +345,7 @@ int nacm_report_read_access_denied(const ac_ucred_t *user_credentials, const str
  * @param [in] user_credentials Credentials of the user whom the access to edit the node was not granted.
  * @param [in] dm_session Data manager session to store the error into.
  * @param [in] node Node which the user is not allowed to edit.
- * @param [in] access_tyoe Which type of access was not allowed.
+ * @param [in] access_type Which type of access was not allowed.
  * @param [in] rule_name Name of the nacm rule that blocked the access.
  * @param [in] rule_info Description of the rule that blocked the access.
  */

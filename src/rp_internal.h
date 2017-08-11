@@ -93,6 +93,9 @@ typedef enum rp_request_state_e {
     RP_REQ_FINISHED                     /**< Request processing finished, request can be freed */
 } rp_request_state_t;
 
+/**
+ * @brief Request processor state data context.
+ */
 typedef struct rp_state_data_ctx_s {
     sr_list_t *subscriptions;          /**< List of subscriptions from np for a module */
     sr_list_t *subtrees;               /**< List of state data subtrees to be loaded*/

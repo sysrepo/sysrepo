@@ -54,12 +54,16 @@ typedef struct rp_request_s {
     Sr__Msg *msg;           /**< Message to be processed. */
 } rp_request_t;
 
+/**
+ * @brief Capability change type
+ */
 typedef enum rp_capability_change_type_e {
     SR_CAPABILITY_ADDED,
     SR_CAPABILITY_DELETED,
     SR_CAPABILITY_MODIFIED,
 }rp_capability_change_type_t;
 
+//! @cond doxygen_suppress
 #define CAPABILITY_CHANGE_NOTIFICATION_XPATH "/ietf-netconf-notifications:netconf-capability-change"
 #define CAPABILITY_ADDED_XPATH "/ietf-netconf-notifications:netconf-capability-change/added-capability"
 #define CAPABILITY_DELETED_XPATH "/ietf-netconf-notifications:netconf-capability-change/deleted-capability"
@@ -72,6 +76,7 @@ typedef enum rp_capability_change_type_e {
 #define CONFIG_CHANGE_DATASTORE_XPATH "/ietf-netconf-notifications:netconf-config-change/datastore"
 #define CONFIG_CHANGE_TARGET_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%d]/target"
 #define CONFIG_CHANGE_OPERATION_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%d]/operation"
+//! @endcond
 
 /**
  * @brief Copy errors saved in the Data Manager session into the GPB response.

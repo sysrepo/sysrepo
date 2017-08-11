@@ -31,7 +31,9 @@
 #include "notification_processor.h"
 #include "sysrepo/xpath.h"
 
+/** NACM module name */
 #define NACM_MODULE_NAME    "ietf-netconf-acm"
+/** count of access bits */
 #define ACCESS_BIT_COUNT    5
 
 /* Forward declaration */

@@ -1128,8 +1128,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
         } else {
             rc = lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx);
             if (rc) {
-                SR_LOG_INF("lyd_validate failed, maybe empty data is illegal but no initial data? data_file: %s",
-                        data_filename);
+                SR_LOG_WRN("Validation of '%s' failed because empty data are not valid, ignoring.", data_filename);
                 rc = SR_ERR_OK;
                 lyd_free_withsiblings(data_tree);
                 data_tree = NULL;
@@ -2251,7 +2250,7 @@ cleanup:
     return rc;
 }
 
-int
+static int
 dm_string_cmp(void *a, void *b)
 {
     assert(a);
@@ -3652,7 +3651,8 @@ dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 }
 
 static int
-dm_create_commit_ctx_id(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx) {
+dm_create_commit_ctx_id(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
+{
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
 
     pthread_rwlock_rdlock(&dm_ctx->commit_ctxs.lock);
@@ -3817,7 +3817,9 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             rc = dm_has_not_enabled_nodes(info, &has_not_enabled);
             CHECK_RC_LOG_RETURN(rc, "Has not enabled check failed for module %s", info->schema->module->name);
             if (has_not_enabled) {
+//! @cond doxygen_suppress
 #define ERR_FMT "There is a not enabled node in %s module, it can not be committed to the running"
+//! @endcond
                 if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, info->schema->module->name)) {
                     SR_LOG_WRN_MSG("Failed to record commit operation error");
                 }
@@ -3845,7 +3847,9 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             if (-1 == c_ctx->fds[count]) {
                 SR_LOG_DBG("File %s can not be opened for read write", file_name);
                 if (EACCES == errno) {
+//! @cond doxygen_suppress
 #define ERR_FMT "File %s can not be opened because of authorization"
+//! @endcond
                     if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name)) {
                         SR_LOG_WRN_MSG("Failed to record commit operation error");
                     }
@@ -3868,7 +3872,9 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             /* try to lock for read, non-blocking */
             rc = sr_lock_fd(c_ctx->fds[count], false, false);
             if (SR_ERR_OK != rc) {
+//! @cond doxygen_suppress
 #define ERR_FMT "Locking of file '%s' failed: %s."
+//! @endcond
                 if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name, sr_strerror(rc))) {
                     SR_LOG_WRN_MSG("Failed to record commit operation error");
                 }

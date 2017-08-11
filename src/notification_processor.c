@@ -38,8 +38,8 @@
 #include "data_manager.h"
 
 #define NP_NS_SCHEMA_FILE                  "sysrepo-notification-store.yang"  /**< Schema of notification store. */
-#define NP_NS_XPATH_NOTIFICATION           "/sysrepo-notification-store:notifications/notification[xpath='%s'][generated-time='%s'][logged-time='%u']"
-#define NP_NS_XPATH_NOTIFICATION_BY_XPATH  "/sysrepo-notification-store:notifications/notification[xpath='%s']"
+#define NP_NS_XPATH_NOTIFICATION           "/sysrepo-notification-store:notifications/notification[xpath='%s'][generated-time='%s'][logged-time='%u']"  /**< XPath of one notification entry */
+#define NP_NS_XPATH_NOTIFICATION_BY_XPATH  "/sysrepo-notification-store:notifications/notification[xpath='%s']" /**< XPath of notification entry identified only by xpath */
 
 /**
  * @brief Information about a notification destination.
@@ -1653,7 +1653,9 @@ int
 np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *xpath, const time_t generated_time,
         struct lyd_node *notif_data_tree)
 {
+//! @cond doxygen_suppress
 #define TIME_BUF_SIZE 64
+//! @endcond
 
     char *module_name = NULL, *tmp_xpath = NULL, *ptr;
     char data_filename[PATH_MAX] = { 0, };
