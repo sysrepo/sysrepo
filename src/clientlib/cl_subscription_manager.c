@@ -1454,22 +1454,17 @@ cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, c
     /* append temporary file name part */
     strncat(path, ".XXXXXX.sock", PATH_MAX - strlen(path) - 1);
     fd = mkstemps(path, 5);
-    if (-1 == fd) {
-        close(fd);
-        unlink(path);
-    }
 #else
     /* append temporary file name part */
     strncat(path, ".XXXXXX", PATH_MAX - strlen(path) - 1);
-    if (mktemp(path)) {
-        strncat(path, ".sock", PATH_MAX - strlen(path) - 1);
-        fd = open(path, O_RDWR | O_CREAT | O_EXCL, 0600);
-        if (-1 == fd) {
-            close(fd);
-            unlink(path);
-        }
-    }
+    /* cannot fail */
+    mktemp(path);
+    strncat(path, ".sock", PATH_MAX - strlen(path) - 1);
+    fd = open(path, O_RDWR | O_CREAT | O_EXCL, 0600);
 #endif
+    CHECK_NOT_MINUS1_LOG_RETURN(fd, -1, "Failed to open unique temporary file: %s", strerror(errno));  
+    close(fd);
+    unlink(path);
 
     *socket_path = strdup(path);
     CHECK_NULL_NOMEM_RETURN(*socket_path);
