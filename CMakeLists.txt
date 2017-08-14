@@ -5,7 +5,7 @@ include(GNUInstallDirs)
 
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
-set(SYSREPO_MINOR_VERSION 6)
+set(SYSREPO_MINOR_VERSION 7)
 set(SYSREPO_MICRO_VERSION 0)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION})
@@ -32,7 +32,7 @@ string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
-set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -Wall -Wpedantic -std=gnu11")
+set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -Wall -Wpedantic -std=gnu11 -Wno-language-extension-token")
 if(CMAKE_COMPILER_IS_GNUCC)
     # disable strict aliasing in GCC, since it produces false alarams in libev
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-strict-aliasing")
@@ -49,21 +49,23 @@ endif()
 
 set(PLUGINS_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
 
-if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug" AND NOT CMAKE_BUILD_TYPE_LOWER MATCHES "^rel")
-    set(IS_DEBUG_BUILD true)
-else()
-    set(IS_DEBUG_BUILD false)
+if(NOT DEFINED IS_DEVELOPER_CONFIGURATION)
+    if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug" AND NOT CMAKE_BUILD_TYPE_LOWER MATCHES "^rel")
+        set(IS_DEVELOPER_CONFIGURATION true)
+    else()
+        set(IS_DEVELOPER_CONFIGURATION false)
+    endif()
 endif()
 
 # set build-type specific settings
-if(${IS_DEBUG_BUILD})
-    MESSAGE(STATUS "Preparing debug build of sysrepo v. ${SYSREPO_VERSION}")
+if(${IS_DEVELOPER_CONFIGURATION})
+    MESSAGE(STATUS "Preparing developer's build of sysrepo v. ${SYSREPO_VERSION}")
     set(DAEMON_PID_FILE "/tmp/sysrepod.pid" CACHE PATH "Sysrepo daemon PID file.")
     set(DAEMON_SOCKET "/tmp/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
     set(PLUGIN_DAEMON_PID_FILE "/tmp/sysrepo-plugind.pid" CACHE PATH "Sysrepo plugin daemon PID file.")
     set(SUBSCRIPTIONS_SOCKET_DIR "/tmp/sysrepo-subscriptions" CACHE PATH "Sysrepo subscriptions socket directory.")
 else()
-    MESSAGE(STATUS "Preparing release build of sysrepo v. ${SYSREPO_VERSION}")
+    MESSAGE(STATUS "Preparing systemwide build of sysrepo v. ${SYSREPO_VERSION}")
     set(DAEMON_PID_FILE "/var/run/sysrepod.pid" CACHE PATH "Sysrepo daemon PID file.")
     set(DAEMON_SOCKET "/var/run/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
     set(PLUGIN_DAEMON_PID_FILE "/var/run/sysrepo-plugind.pid" CACHE PATH "Sysrepo plugin daemon PID file.")
@@ -71,7 +73,7 @@ else()
 endif()
 
 # location of system repository
-if(${IS_DEBUG_BUILD})
+if(${IS_DEVELOPER_CONFIGURATION})
     set(REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository" CACHE PATH "System repository location, contains configuration schema and data files.")
 else()
     set(REPOSITORY_LOC "/etc/sysrepo" CACHE PATH "System repository location, contains configuration schema and data files.")
@@ -143,10 +145,14 @@ CHECK_INCLUDE_FILES(ucred.h HAVE_UCRED_H)
 CHECK_FUNCTION_EXISTS(pthread_mutex_timedlock HAVE_TIMED_LOCK)
 CHECK_FUNCTION_EXISTS(setfsuid HAVE_SETFSUID)
 CHECK_FUNCTION_EXISTS(fsetxattr HAVE_FSETXATTR)
+CHECK_FUNCTION_EXISTS(mkstemps HAVE_MKSTEMPS)
+if(HAVE_MKSTEMPS)
+    set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -DHAVE_MKSTEMPS")
+endif(HAVE_MKSTEMPS)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
 # user options
-set(ENABLE_NACM 1 CACHE BOOL
+set(ENABLE_NACM 0 CACHE BOOL
     "Enable NETCONF Access Control Model (RFC 6536).")
 
 set(NACM_RECOVERY_UID 0 CACHE INTEGER

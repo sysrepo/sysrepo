@@ -50,26 +50,6 @@ rp_dt_create_xpath_for_node(sr_mem_ctx_t *sr_mem, const struct lyd_node *node, c
     return rc;
 }
 
-static struct lys_node *
-rp_dt_validate_node_xpath_get_data_node(struct lys_node *node)
-{
-    struct lys_node *ret = NULL, *tmp = NULL;
-
-    LY_TREE_FOR(node, ret) {
-        if (ret->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_NOTIF | LYS_RPC)) {
-            break;
-        } else if (ret->nodetype == LYS_USES) {
-            tmp = rp_dt_validate_node_xpath_get_data_node(ret->child);
-            if (tmp) {
-                ret = tmp;
-                break;
-            }
-        }
-    }
-
-    return ret;
-}
-
 /**
  *
  * @brief Function tries to validate the xpath and to find the corresponding
@@ -85,14 +65,15 @@ rp_dt_validate_node_xpath_get_data_node(struct lys_node *node)
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *schema_info, const char *xpath, struct lys_node **match)
+rp_dt_validate_node_xpath_internal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *schema_info, const char *xpath, struct lys_node **match)
 {
     CHECK_NULL_ARG3(dm_ctx, xpath, schema_info); /* match can be NULL */
     int rc = SR_ERR_OK;
 
     char *namespace = NULL;
     const struct lys_module *module = NULL;
-    const struct lys_node *node = NULL;
+    struct ly_set *set = NULL;
+
     rc = sr_copy_first_ns(xpath, &namespace);
     CHECK_RC_MSG_RETURN(rc, "Namespace copy failed");
 
@@ -101,7 +82,6 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
     }
 
     module = ly_ctx_get_module(schema_info->ly_ctx, namespace, NULL);
-
     if (NULL == module) {
         if (NULL != session) {
             dm_report_error(session, NULL, xpath, SR_ERR_UNKNOWN_MODEL);
@@ -110,53 +90,21 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
         free(namespace);
         return SR_ERR_UNKNOWN_MODEL;
     }
-
-    node = rp_dt_validate_node_xpath_get_data_node(module->data);
-    if (NULL == node) {
-        SR_LOG_ERR("Module %s does not have any data", namespace);
-        free(namespace);
-        return SR_ERR_UNKNOWN_MODEL;
-    }
     free(namespace);
 
-    struct ly_set *set = lys_find_xpath(NULL, node, xpath, 0);
-    if (NULL != set) {
-        if(1 == set->number && NULL != match) {
-            *match = set->set.s[0];
+    rc = sr_find_schema_node(module, NULL, xpath, 0, &set);
+    if (SR_ERR_OK != rc) {
+        if (NULL != session) {
+            rc = dm_report_error(session, "Invalid expression.", xpath, rc);
         }
-        ly_set_free(set);
-    } else {
-        switch (ly_vecode) {
-        case LYVE_PATH_INKEY:
-            if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_BAD_ELEMENT);
-            } else {
-                rc = SR_ERR_BAD_ELEMENT;
-            }
-            break;
-        case LYVE_XPATH_INMOD:
-        case LYVE_PATH_INMOD:
-            if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_UNKNOWN_MODEL);
-            } else {
-                rc = SR_ERR_UNKNOWN_MODEL;
-            }
-            break;
-        case LYVE_XPATH_INSNODE:
-            if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), xpath, SR_ERR_BAD_ELEMENT);
-            } else {
-                rc = SR_ERR_BAD_ELEMENT;
-            }
-            break;
-        default:
-            if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_INVAL_ARG);
-            } else {
-                rc = SR_ERR_INVAL_ARG;
-            }
-        }
+        return rc;
     }
+
+    if (match && set->number == 1) {
+        *match = set->set.s[0];
+    }
+    ly_set_free(set);
+
     return rc;
 }
 
@@ -178,7 +126,7 @@ rp_dt_validate_node_xpath_lock(dm_ctx_t *dm_ctx, dm_session_t *session, const ch
     }
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s failed", namespace);
 
-    rc = rp_dt_validate_node_xpath_intrenal(dm_ctx, session, si, xpath, match);
+    rc = rp_dt_validate_node_xpath_internal(dm_ctx, session, si, xpath, match);
 
 cleanup:
     *schema_info = si;
@@ -259,7 +207,7 @@ rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *sc
     CHECK_NULL_ARG2(dm_ctx, xpath);
     int rc = SR_ERR_OK;
     struct lys_node *match = NULL, *node = NULL;
-    rc = rp_dt_validate_node_xpath_intrenal(dm_ctx, session, schema_info, xpath, &match);
+    rc = rp_dt_validate_node_xpath_internal(dm_ctx, session, schema_info, xpath, &match);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Xpath validation failed %s", xpath);
         return rc;

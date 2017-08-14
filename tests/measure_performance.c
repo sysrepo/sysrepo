@@ -897,7 +897,7 @@ perf_libyang_get_node(void **state, int op_num, int *items)
     for (size_t i = 0; i<op_num; i++){
 
         /* existing leaf */
-        struct ly_set *set = lyd_find_xpath(root, "/example-module:container/list[key1='key1'][key2='key2']/leaf");
+        struct ly_set *set = lyd_find_path(root, "/example-module:container/list[key1='key1'][key2='key2']/leaf");
         assert_non_null(set);
         ly_set_free(set);
     }
@@ -919,7 +919,7 @@ perf_libyang_get_all_list(void **state, int op_num, int *items)
     for (size_t i = 0; i<op_num; i++){
 
         /* existing leaf */
-        struct ly_set *set = lyd_find_xpath(root, "/example-module:container/list/leaf");
+        struct ly_set *set = lyd_find_path(root, "/example-module:container/list/leaf");
         *items = set->number;
         assert_non_null(set);
         ly_set_free(set);

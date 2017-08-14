@@ -79,15 +79,15 @@
         if (strlen(RULE) && strlen(RULE_INFO)) { \
             assert_int_equal(SR_ERR_OK, \
                              sr_asprintf(&regex, "\\[DBG\\] .* Delivery of the notification '%s' for subscription '[^']+' @ [0-9]+ " \
-                                                 "was blocked by the NACM rule '%s' \\(%s\\).\n", escaped_xpath, RULE, RULE_INFO)); \
+                                                 "was blocked by the NACM rule '%s' \\(%s\\).", escaped_xpath, RULE, RULE_INFO)); \
         } else if (strlen(RULE)) { \
             assert_int_equal(SR_ERR_OK, \
                              sr_asprintf(&regex, "\\[DBG\\] .* Delivery of the notification '%s' for subscription '[^']+' @ [0-9]+ " \
-                                                 "was blocked by the NACM rule '%s'.\n", escaped_xpath, RULE)); \
+                                                 "was blocked by the NACM rule '%s'.", escaped_xpath, RULE)); \
         } else { \
             assert_int_equal(SR_ERR_OK, \
                              sr_asprintf(&regex, "\\[DBG\\] .* Delivery of the notification '%s' for subscription '[^']+' @ [0-9]+ " \
-                                                 "was blocked by NACM.\n", escaped_xpath)); \
+                                                 "was blocked by NACM.", escaped_xpath)); \
         }\
         verify_existence_of_log_msg(regex, true); \
         free(regex); regex = NULL; \
@@ -533,7 +533,7 @@ daemon_log_reader(void *arg)
 {
     (void)arg;
     char *line = NULL, *msg = NULL;
-    size_t len = 0;
+    size_t buflen = 0, len;
     bool running = false;
 
     do {
@@ -548,9 +548,12 @@ daemon_log_reader(void *arg)
 
     while (running) {
         pthread_mutex_lock(&log_history.lock);
-        while (readline(daemon_stderr, &line, &len)) {
+        while ((len = readline(daemon_stderr, &line, &buflen))) {
             msg = strdup(line);
             assert_non_null_bt(msg);
+            if (msg[len - 1] == '\n') {
+                msg[len - 1] = '\0';
+            }
             SR_LOG_DBG("DAEMON: %s", msg);
             assert_int_equal_bt(SR_ERR_OK, sr_list_add(log_history.logs, msg));
         }
@@ -705,8 +708,8 @@ verify_existence_of_log_msg(const char *msg_re, bool should_exist)
 
     do {
         pthread_mutex_lock(&log_history.lock);
-        for (size_t i = already_checked; !exists && (i < log_history.logs->count); ++i) {
-            char *message = (char *)log_history.logs->data[i];
+        for (; !exists && (already_checked < log_history.logs->count); ++already_checked) {
+            char *message = (char *)log_history.logs->data[already_checked];
             regex_t re;
             /* Compile regular expression */
             assert_int_equal_bt(0, regcomp(&re, msg_re, REG_NOSUB | REG_EXTENDED));
@@ -722,7 +725,6 @@ verify_existence_of_log_msg(const char *msg_re, bool should_exist)
 #endif
             regfree(&re);
         }
-        already_checked = log_history.logs->count;
         pthread_mutex_unlock(&log_history.lock);
         ++attempt;
         if (should_exist && !exists) {
@@ -862,6 +864,43 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
     /*    -> any, test-module: */
     add_nacm_rule(nacm_config, "acl3", "deny-test-module", "test-module", NACM_RULE_NOTSET,
             NULL, "*", "deny", "Deny everything not explicitly permitted in test-module.");
+}
+
+static void
+copy_config_nacm_config(test_nacm_cfg_t *nacm_config)
+{
+    /* groups & users */
+    add_nacm_user(nacm_config, "sysrepo-user1", "group1");
+    /* access lists */
+    add_nacm_rule_list(nacm_config, "acl1", "group1", NULL);
+    /*  -> acl1: */
+    add_nacm_rule(nacm_config, "acl1", "deny-boolean", "test-module", NACM_RULE_DATA,
+            XP_TEST_MODULE_BOOL, "read", "deny", "Forbid reading the 'boolean' leaf.");
+    add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
+            "/test-module:main/numbers[.>10]", "read", "deny", "Forbid reading 'numbers' higher than 10.");
+    add_nacm_rule(nacm_config, "acl1", "deny-read-interface-status", "*", NACM_RULE_DATA,
+            "/ietf-interfaces:interfaces/interface/enabled", "read", "deny", "Forbid reading interface 'status'.");
+    add_nacm_rule(nacm_config, "acl1", "deny-read-acm", "ietf-netconf-acm", NACM_RULE_DATA,
+            "/ietf-netconf-acm:*//.", "read", "deny", "Forbid reading NACM configuration.");
+}
+
+static int
+sysrepo_setup_for_copy_config(void **state)
+{
+    sr_conn_ctx_t *conn = NULL;
+    test_nacm_cfg_t *nacm_config = NULL;
+
+    /* NACM startup config */
+    new_nacm_config(&nacm_config);
+    set_nacm_write_dflt(nacm_config, "permit");
+    copy_config_nacm_config(nacm_config);
+    save_nacm_config(nacm_config);
+    delete_nacm_config(nacm_config);
+
+    start_sysrepo_daemon(&conn);
+
+    *state = (void*)conn;
+    return 0;
 }
 
 static int
@@ -1061,12 +1100,6 @@ subscribe_dummy_rpc_callback(sr_session_ctx_t *handler_session, void *private_ct
     rc = sr_rpc_subscribe(handler_session, "/test-module:activate-software-image", dummy_rpc_cb, private_ctx,
             SR_SUBSCR_DEFAULT, subscription);
     assert_int_equal_bt(rc, SR_ERR_OK);
-    rc = sr_rpc_subscribe(handler_session, "/ietf-netconf:close-session", dummy_rpc_cb, private_ctx,
-            SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal_bt(rc, SR_ERR_OK);
-    rc = sr_rpc_subscribe(handler_session, "/ietf-netconf:kill-session", dummy_rpc_cb, private_ctx,
-            SR_SUBSCR_CTX_REUSE, subscription);
-    assert_int_equal_bt(rc, SR_ERR_OK);
     rc = sr_rpc_subscribe(handler_session, "/turing-machine:initialize", dummy_rpc_cb, private_ctx,
             SR_SUBSCR_CTX_REUSE, subscription);
     assert_int_equal_bt(rc, SR_ERR_OK);
@@ -1126,8 +1159,6 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
     bool permitted = true;
     sr_val_t *input = NULL;
     sr_node_t *input_tree = NULL;
-    const sr_error_info_t *error_info = NULL;
-    char *error_msg = NULL;
 
     if (!satisfied_requirements) {
         skip();
@@ -1152,46 +1183,6 @@ nacm_cl_test_rpc_nacm_with_empty_nacm_cfg(void **state)
     /*  -> sysrepo-user4 */
     RPC_PERMITED(3, RPC_XPATH, NULL, 0, 2);
     RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 2);
-
-    /* test NETCONF operation "close-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:close-session"
-    /*  -> sysrepo-user1 */
-    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
-
-    /* test NETCONF operation "kill-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:kill-session"
-    assert_int_equal(SR_ERR_OK, sr_new_val(RPC_XPATH "/session-id", &input));
-    input->type = SR_UINT32_T;
-    input->data.uint32_val = 12;
-    assert_int_equal(SR_ERR_OK, sr_new_tree("session-id", "ietf-netconf", &input_tree));
-    input_tree->type = SR_UINT32_T;
-    input_tree->data.uint32_val = 12;
-    /*  -> sysrepo-user1 */
-    RPC_DENIED(0, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(0, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user2 */
-    RPC_DENIED(1, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(1, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user3 */
-    RPC_DENIED(2, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(2, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, input_tree, 1, 0);
-    sr_free_val(input);
-    sr_free_tree(input_tree);
 
     /* test RPC "initialize" from turing-machine */
 #undef RPC_XPATH
@@ -1303,46 +1294,6 @@ nacm_cl_test_rpc_nacm(void **state)
     RPC_PERMITED(3, RPC_XPATH, NULL, 0, 2);
     RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 2);
 
-    /* test NETCONF operation "close-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:close-session"
-    /*  -> sysrepo-user1 */
-    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
-
-    /* test NETCONF operation "kill-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:kill-session"
-    assert_int_equal(SR_ERR_OK, sr_new_val(RPC_XPATH "/session-id", &input));
-    input->type = SR_UINT32_T;
-    input->data.uint32_val = 12;
-    assert_int_equal(SR_ERR_OK, sr_new_tree("session-id", "ietf-netconf", &input_tree));
-    input_tree->type = SR_UINT32_T;
-    input_tree->data.uint32_val = 12;
-    /*  -> sysrepo-user1 */
-    RPC_DENIED(0, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(0, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, input_tree, 1, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, input_tree, 1, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, input_tree, 1, 0);
-    sr_free_val(input);
-    sr_free_tree(input_tree);
-
     /* test RPC "initialize" from turing-machine */
 #undef RPC_XPATH
 #define RPC_XPATH "/turing-machine:initialize"
@@ -1453,46 +1404,6 @@ nacm_cl_test_rpc_nacm_with_denied_exec_by_dflt(void **state)
     RPC_PERMITED(3, RPC_XPATH, NULL, 0, 2);
     RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 2);
 
-    /* test NETCONF operation "close-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:close-session"
-    /*  -> sysrepo-user1 */
-    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
-
-    /* test NETCONF operation "kill-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:kill-session"
-    assert_int_equal(SR_ERR_OK, sr_new_val(RPC_XPATH "/session-id", &input));
-    input->type = SR_UINT32_T;
-    input->data.uint32_val = 12;
-    assert_int_equal(SR_ERR_OK, sr_new_tree("session-id", "ietf-netconf", &input_tree));
-    input_tree->type = SR_UINT32_T;
-    input_tree->data.uint32_val = 12;
-    /*  -> sysrepo-user1 */
-    RPC_DENIED(0, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(0, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, input_tree, 1, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, input_tree, 1, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, input_tree, 1, 0);
-    sr_free_val(input);
-    sr_free_tree(input_tree);
-
     /* test RPC "initialize" from turing-machine */
 #undef RPC_XPATH
 #define RPC_XPATH "/turing-machine:initialize"
@@ -1602,46 +1513,6 @@ nacm_cl_test_rpc_nacm_with_ext_groups(void **state)
     /*  -> sysrepo-user4 */
     RPC_PERMITED(3, RPC_XPATH, NULL, 0, 2);
     RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 2);
-
-    /* test NETCONF operation "close-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:close-session"
-    /*  -> sysrepo-user1 */
-    RPC_PERMITED(0, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(0, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, NULL, 0, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, NULL, 0, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, NULL, 0, 0);
-
-    /* test NETCONF operation "kill-session" */
-#undef RPC_XPATH
-#define RPC_XPATH "/ietf-netconf:kill-session"
-    assert_int_equal(SR_ERR_OK, sr_new_val(RPC_XPATH "/session-id", &input));
-    input->type = SR_UINT32_T;
-    input->data.uint32_val = 12;
-    assert_int_equal(SR_ERR_OK, sr_new_tree("session-id", "ietf-netconf", &input_tree));
-    input_tree->type = SR_UINT32_T;
-    input_tree->data.uint32_val = 12;
-    /*  -> sysrepo-user1 */
-    RPC_DENIED(0, RPC_XPATH, input, 1, "", "");
-    RPC_DENIED_TREE(0, RPC_XPATH, input_tree, 1, "", "");
-    /*  -> sysrepo-user2 */
-    RPC_PERMITED(1, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(1, RPC_XPATH, input_tree, 1, 0);
-    /*  -> sysrepo-user3 */
-    RPC_PERMITED(2, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(2, RPC_XPATH, input_tree, 1, 0);
-    /*  -> sysrepo-user4 */
-    RPC_PERMITED(3, RPC_XPATH, input, 1, 0);
-    RPC_PERMITED_TREE(3, RPC_XPATH, input_tree, 1, 0);
-    sr_free_val(input);
-    sr_free_tree(input_tree);
 
     /* test RPC "initialize" from turing-machine */
 #undef RPC_XPATH
@@ -3876,6 +3747,137 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     }
 }
 
+static int
+module_change_empty_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
+{
+    return SR_ERR_OK;
+}
+
+static void
+nacm_cl_test_copy_config(void **state, sr_datastore_t src_ds, sr_datastore_t dst_ds)
+{
+    int rc = 0;
+    sr_conn_ctx_t *conn = *state;
+    user_sessions_t sessions = {NULL};
+    sr_session_ctx_t *handler_session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_val_t *val = NULL;
+
+    if (!satisfied_requirements) {
+        skip();
+    }
+
+    /* start a session for each user */
+    start_user_sessions(conn, &handler_session, &sessions);
+
+    /* enable running datastore */
+    rc = sr_module_change_subscribe(handler_session, "test-module", module_change_empty_cb, NULL,
+            0, SR_SUBSCR_APPLY_ONLY, &subscription);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_module_change_subscribe(handler_session, "ietf-interfaces", module_change_empty_cb, NULL,
+            0, SR_SUBSCR_APPLY_ONLY | SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* copy-config to src_ds */
+    rc = sr_copy_config(sessions[0], NULL, dst_ds, src_ds);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* change the same values in src_ds with user1 */
+    rc = sr_session_switch_ds(sessions[0], src_ds);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val = calloc(1, sizeof *val);
+    assert_ptr_not_equal(val, NULL);
+    val->type = SR_BOOL_T;
+    val->data.bool_val = 0;
+    rc = sr_set_item(sessions[0], XP_TEST_MODULE_BOOL, val, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val->type = SR_UINT8_T;
+    val->data.uint8_val = 20;
+    rc = sr_set_item(sessions[0], "/test-module:main/numbers", val, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val->type = SR_BOOL_T;
+    val->data.bool_val = 0;
+    rc = sr_set_item(sessions[0], "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", val, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val->type = SR_BOOL_T;
+    val->data.bool_val = 1;
+    rc = sr_set_item(sessions[0], "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled", val, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val(val);
+    val = NULL;
+
+    rc = sr_commit(sessions[0]);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* copy-config back */
+    rc = sr_copy_config(sessions[0], NULL, dst_ds, src_ds);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* refresh handler_session session dst_ds */
+    rc = sr_session_switch_ds(handler_session, dst_ds);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = sr_session_refresh(handler_session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* check the result, that no data was actually changed */
+    rc = sr_get_item(handler_session, XP_TEST_MODULE_BOOL, &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_ptr_not_equal(val, NULL);
+    assert_int_equal(val->data.bool_val, 1);
+    sr_free_val(val);
+    val = NULL;
+
+    rc = sr_get_item(handler_session, "/test-module:main/numbers[.='20']", &val);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_ptr_equal(val, NULL);
+
+    rc = sr_get_item(handler_session, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_ptr_not_equal(val, NULL);
+    assert_int_equal(val->data.bool_val, 1);
+    sr_free_val(val);
+    val = NULL;
+
+    rc = sr_get_item(handler_session, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_ptr_not_equal(val, NULL);
+    assert_int_equal(val->data.bool_val, 0);
+    sr_free_val(val);
+    val = NULL;
+
+    /* stop sessions */
+    for (int i = 0; i < NUM_OF_USERS; ++i) {
+        rc = sr_session_stop(sessions[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+    rc = sr_unsubscribe(handler_session, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(handler_session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+nacm_cl_test_copy_config_cand_to_run(void **state)
+{
+    nacm_cl_test_copy_config(state, SR_DS_CANDIDATE, SR_DS_RUNNING);
+}
+
+static void
+nacm_cl_test_copy_config_cand_to_start(void **state)
+{
+    nacm_cl_test_copy_config(state, SR_DS_CANDIDATE, SR_DS_STARTUP);
+}
+
+static void
+nacm_cl_test_copy_config_run_to_start(void **state)
+{
+    nacm_cl_test_copy_config(state, SR_DS_RUNNING, SR_DS_STARTUP);
+}
+
 static void
 nacm_cl_test_reload_nacm(void **state)
 {
@@ -4171,6 +4173,10 @@ main() {
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_permitted_write_by_dflt, sysrepo_setup_with_permitted_write_by_dflt, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(nacm_cl_test_commit_nacm_with_ext_groups, sysrepo_setup_with_ext_groups, sysrepo_teardown),
+        /* Copy-config */
+            cmocka_unit_test_setup_teardown(nacm_cl_test_copy_config_cand_to_run, sysrepo_setup_for_copy_config, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_copy_config_cand_to_start, sysrepo_setup_for_copy_config, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(nacm_cl_test_copy_config_run_to_start, sysrepo_setup_for_copy_config, sysrepo_teardown),
         /* NACM reload */
             cmocka_unit_test_setup_teardown(nacm_cl_test_reload_nacm, sysrepo_setup, sysrepo_teardown),
     };

@@ -1,5 +1,5 @@
 /**
- * @file plugin_utils.h
+ * @file plugins.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Sysrepo helpers for plugin integrations.
  *
@@ -67,20 +67,26 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifdef NDEBUG
-    #define SRP_LOG_PRINT_FUNCTION_NAMES (0)
+    #define SRP_LOG_PRINT_FUNCTION_NAMES (0)    /**< Do not print function names in messages */
 #else
-    #define SRP_LOG_PRINT_FUNCTION_NAMES (1)
+    #define SRP_LOG_PRINT_FUNCTION_NAMES (1)    /**< Every message will include the function that generated the output */
 #endif
 
 extern volatile uint8_t sr_ll_stderr;       /**< Holds current level of stderr debugs. */
 extern volatile uint8_t sr_ll_syslog;       /**< Holds current level of syslog debugs. */
 
+/**
+ * @brief Matching log level to message beginning
+ */
 #define SRP_LOG__LL_STR(LL) \
     ((SR_LL_DBG == LL) ? "DBG" : \
      (SR_LL_INF == LL) ? "INF" : \
      (SR_LL_WRN == LL) ? "WRN" : \
      "ERR")
 
+/**
+ * @brief Matching log level to message macros
+ */
 #define SRP_LOG__LL_FACILITY(LL) \
     ((SR_LL_DBG == LL) ? LOG_DEBUG : \
      (SR_LL_INF == LL) ? LOG_INFO : \
@@ -88,17 +94,32 @@ extern volatile uint8_t sr_ll_syslog;       /**< Holds current level of syslog d
       LOG_ERR)
 
 #if SRP_LOG_PRINT_FUNCTION_NAMES
+/**
+ * @brief Syslog output macro with function names.
+ */
 #define SRP_LOG__SYSLOG(LL, MSG, ...) \
         syslog(SRP_LOG__LL_FACILITY(LL), "[%s] (%s:%d) " MSG, SRP_LOG__LL_STR(LL), __func__, __LINE__, __VA_ARGS__);
+/**
+ * @brief Stderr output macro with function names.
+ */
 #define SRP_LOG__STDERR(LL, MSG, ...) \
         fprintf(stderr, "[%s] (%s:%d) " MSG "\n", SRP_LOG__LL_STR(LL), __func__, __LINE__, __VA_ARGS__);
 #else
+/**
+ * @brief Syslog output macro without function names.
+ */
 #define SRP_LOG__SYSLOG(LL, MSG, ...) \
         syslog(SRP_LOG__LL_FACILITY(LL), "[%s] " MSG, SRP_LOG__LL_STR(LL), __VA_ARGS__);
+/**
+ * @brief Stderr output macro without function names.
+ */
 #define SRP_LOG__STDERR(LL, MSG, ...) \
         fprintf(stderr, "[%s] " MSG "\n", SRP_LOG__LL_STR(LL), __VA_ARGS__);
 #endif
 
+/**
+ * @brief Internal outptu macro.
+ */
 #define SRP_LOG__INTERNAL(LL, MSG, ...) \
     do { \
         if (sr_ll_stderr >= LL) \

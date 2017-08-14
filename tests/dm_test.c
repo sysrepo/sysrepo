@@ -433,18 +433,21 @@ dm_copy_module_test(void **state)
    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &sessionA);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = dm_copy_module(ctx, sessionA, "example-module", SR_DS_STARTUP, SR_DS_RUNNING, NULL);
-   assert_int_equal(SR_ERR_OK, rc);
+   /* not enabled */
+   rc = dm_copy_module(ctx, sessionA, "test-module", SR_DS_STARTUP, SR_DS_RUNNING, NULL, 0, NULL, NULL);
+   assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
-   rc = dm_get_module_and_lockw(ctx, "test-module", &si);
+   rc = dm_get_module_without_lock(ctx, "test-module", &si);
    assert_int_equal(SR_ERR_OK, rc);
 
    rc = rp_dt_enable_xpath(ctx, sessionA, si, "/test-module:main");
    assert_int_equal(SR_ERR_OK, rc);
 
-   pthread_rwlock_unlock(&si->model_lock);
+   /* now enabled */
+   rc = dm_copy_module(ctx, sessionA, "test-module", SR_DS_STARTUP, SR_DS_RUNNING, NULL, 0, NULL, NULL);
+   assert_int_equal(SR_ERR_OK, rc);
 
-   rc = dm_copy_all_models(ctx, sessionA, SR_DS_STARTUP, SR_DS_RUNNING);
+   rc = dm_copy_all_models(ctx, sessionA, SR_DS_STARTUP, SR_DS_RUNNING, 0, NULL, NULL);
    assert_int_equal(SR_ERR_OK, rc);
 
    dm_session_stop(ctx, sessionA);
@@ -644,7 +647,7 @@ dm_event_notif_test(void **state)
             NULL, NULL, NULL, NULL, NULL, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     dm_copy_errors(session, NULL, &error_msg, &error_xpath);
-    assert_string_equal("Resolving XPath expression \"/test-module:link-removed/non-existing-node\" failed.", error_msg);
+    assert_string_equal("Unable to evaluate xpath", error_msg);
     assert_string_equal("/test-module:link-removed/non-existing-node", error_xpath);
     free(error_msg);
     free(error_xpath);
@@ -998,7 +1001,7 @@ get_single_node(struct lyd_node *data_tree, const char *xpath)
     assert_non_null(data_tree);
     assert_non_null(xpath);
 
-    res = lyd_find_xpath(data_tree, xpath);
+    res = lyd_find_path(data_tree, xpath);
     assert_non_null(res);
     assert_int_equal(1, res->number);
     node = res->set.d[0];

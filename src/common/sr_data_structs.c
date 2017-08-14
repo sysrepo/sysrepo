@@ -873,7 +873,7 @@ cleanup:
     return rc;
 }
 
-#define UINT32_STORAGE_SIZE(bits) (((bits - 1) >> 5) + 1)
+#define UINT32_STORAGE_SIZE(bits) (((bits - 1) >> 5) + 1) /**< Number of uint32 needed to hold bits */
 
 int
 sr_bitset_init(size_t bit_count, sr_bitset_t **bitset_p)

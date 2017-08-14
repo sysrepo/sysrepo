@@ -153,12 +153,12 @@ int rp_dt_get_subtree_chunk(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct l
  * @param [in] sr_mem
  * @param [in] xpath
  * @param [in] check_enable
- * @param [out] values
+ * @param [out] subtrees
  * @param [out] count
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_get_subtrees(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enable,
-        sr_node_t **subtrees, size_t *count);
+int rp_dt_get_subtrees(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem,
+                       const char *xpath, bool check_enable, sr_node_t **subtrees, size_t *count);
 
 /**
  * @brief Retrieves all subtree *chunks* with root nodes matching the specified xpath.
@@ -172,7 +172,7 @@ int rp_dt_get_subtrees(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_no
  * @param [in] child_limit
  * @param [in] depth_limit
  * @param [in] check_enable
- * @param [out] values
+ * @param [out] chunks
  * @param [out] count
  * @param [out] chunk_ids
  * @return Error code (SR_ERR_OK on success)
@@ -297,7 +297,7 @@ bool rp_dt_depth_under_subtree(struct lys_node *subtree, struct lys_node *node, 
 bool rp_dt_find_subscription_covering_subtree(rp_session_t *rp_session, struct lys_node *subtree_node, size_t *found_index);
 
 /**
- * @brief Similar to the ::bool rp_dt_find_subscription_covering_subtree however looks up
+ * @brief Similar to the ::rp_dt_find_subscription_covering_subtree however looks up
  * only exact match
  * @param [in] rp_session
  * @param [in] node

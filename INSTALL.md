@@ -76,8 +76,8 @@ $ make
 ```
 $ git clone https://github.com/protobuf-c/protobuf-c.git
 $ cd protobuf-c
-$ ./autogen.sh && ./configure --prefix=/usr 
-$ make 
+$ ./autogen.sh && ./configure --prefix=/usr
+$ make
 # make install
 ```
 
@@ -105,6 +105,10 @@ $ cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
 ```
 $ cmake -DCMAKE_BUILD_TYPE=Debug ..
 ```
+By default, a debug build results in a prefixed installation.
+The repository is placed in the build directory, and so are the PID files and other runtime data.
+To enable a debug build while still using the systemwide installation of sysrepo, pass the ``-DIS_DEVELOPER_CONFIGURATION=OFF`` to CMake.
+
 3) Build:
 ```
 $ make
@@ -166,6 +170,9 @@ CMake variable              | Default value | Description
 `OPER_DATA_PROVIDE_TIMEOUT` | 2 sec         | Timeout (in seconds) that a request can wait for operational data from data providers.
 `NOTIF_AGE_TIMEOUT`         | 60 min        | Timeout (in minutes) after which stored notifications will be aged out and erased from notification store.
 `NOTIF_TIME_WINDOW`         | 10 min        | Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files).
+
+#### Enabling NACM
+By default Netconf Access Control Model is disabled and only system access right are checked. To enable NACM use `cmake -DENABLE_NACM:BOOL=ON ..`. Another useful option is `cmake -DNACM_RECOVERY_UID:INTEGER=0 ..` where you can specify the system UID of the user that will act as the recovery session which is a session that can perform any operation disregarding the data in NACM.
 
 ## Using sysrepo
 By installation, three main parts of sysrepo are installed on the system: **sysrepoctl tool**, **sysrepo library** and **sysrepo daemon**.

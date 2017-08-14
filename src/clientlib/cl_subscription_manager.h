@@ -45,6 +45,9 @@ typedef struct cl_sm_ctx_s cl_sm_ctx_t;
  */
 typedef struct cl_sm_server_ctx_s cl_sm_server_ctx_t;
 
+/**
+ * @brief Subscription Manager clabback structure.
+ */
 typedef union cl_sm_callback_u {
         sr_feature_enable_cb feature_enable_cb;  /**< Callback to be called by feature enable/disable event. */
         sr_module_install_cb module_install_cb;  /**< Callback to be called by module (un)install event. */

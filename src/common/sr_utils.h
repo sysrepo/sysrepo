@@ -23,9 +23,12 @@
 #ifndef SR_UTILS_H_
 #define SR_UTILS_H_
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdbool.h>
+//! @cond doxygen_suppress
 #define __USE_XOPEN
+//! @endcond
 #include <time.h>
 
 #ifdef __APPLE__
@@ -39,10 +42,12 @@ typedef int clockid_t;
 
 #include <libyang/libyang.h>
 
+/** get the larger item */
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
+/** get the smaller item */
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-/* Return main module of a libyang's scheme element. */
+/** Return main module of a libyang's scheme element. */
 #define LYS_MAIN_MODULE(lys_elem)  \
             (lys_elem->module->type ? ((struct lys_submodule *)lys_elem->module)->belongsto : lys_elem->module)
 
@@ -203,18 +208,9 @@ int sr_asprintf(char **strp, const char *fmt, ...);
 int sr_copy_first_ns(const char *xpath, char **namespace);
 
 /**
- * @brief Returns an allocated C-array of all top-most namespaces found in the given expression.
- *
- * @param [in] expr
- * @param [out] namespaces
- * @param [out] namespace_cnt
- */
-int sr_copy_first_ns_from_expr(const char *expr, char ***namespaces, size_t *namespace_cnt);
-
-/**
  * @brief Returns an allocated C-array of all namespaces found in the given expression.
  *
- * @param [in] expr
+ * @param [in] xpath
  * @param [out] namespaces
  * @param [out] ns_count
  */
@@ -399,7 +395,7 @@ struct lyd_node* sr_dup_datatree(struct lyd_node *root);
  *
  * @note duplication might fails if the data tree contains a node that uses a schema
  * not loaded in destination context (unresolved instance ids do not cause problem).
- * consider calling ::dm_remove_added_data_trees_by_module_name or ::dm_remove_added_data_trees
+ * consider calling \b dm_remove_added_data_trees_by_module_name or \b dm_remove_added_data_trees
  *
  * @param [in] root Data tree to be duplicated
  * @param [in] ctx Destination context where the data tree should be duplicated to
@@ -446,7 +442,7 @@ sr_type_t sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf);
 /**
  * @brief Checks if the provided value can be set to the specified schema node.
  * @param [in] node
- * @parma [in] value
+ * @param [in] value
  * @return Error code (SR_ERR_OK on success)
  */
 int sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *value);
@@ -461,7 +457,7 @@ int sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *
 
 /**
  * @brief Copies value from lyd_node_anydata to the sr_val_t.
- * @param [in] input which is copied
+ * @param [in] node input which is copied
  * @param [in] value where the content is copied to
  * @return Error code (SR_ERR_OK on success)
  */
@@ -695,14 +691,16 @@ int sr_set_data_file_permissions(const char *target_file, bool target_is_dir, co
         const char *module_name, bool strict);
 
 /**
- * @brief Function encapsulates the lys_find_xpath for the use cases where the expected
- * result is one node. If result contains more than one node NULL is returned.
- * @param [in] node
- * @param [in] expr
- * @param [in] options
- * @return matched node or NULL in case of error or result containing multiple nodes
+ * @brief Function searches for a schema node based on a DATA path.
+ * @param [in] module
+ * @param [in] start
+ * @param [in] data_path
+ * @param [in] output Search output instead of input
+ * @param [out] ret Set with matched nodes.
+ * @return Error code.
  */
-struct lys_node * sr_find_schema_node(const struct lys_node *node, const char *expr, int options);
+int sr_find_schema_node(const struct lys_module *module, const struct lys_node *start, const char *data_path, bool output,
+                        struct ly_set **ret);
 
 /**
  * @brief Create directory and all its parent directories as needed.
@@ -741,7 +739,7 @@ int sr_create_uri_for_module(const struct lys_module *module, char **uri);
  * @brief Get username from UID.
  *
  * @param [in] uid UID of the user to get the name of.
- * @param [out] username Returned username. Deallocate with ::free.
+ * @param [out] username Returned username. Deallocate with \b free.
  */
 int sr_get_user_name(uid_t uid, char **username);
 
@@ -758,9 +756,9 @@ int sr_get_user_id(const char *username, uid_t *uid, gid_t *gid);
  * @brief Get groupname from GID.
  *
  * @param [in] gid GID of the group to get the name of.
- * @param [out] groupname Returned groupname. Deallocate with ::free.
+ * @param [out] groupname_p Returned groupname. Deallocate with \b free.
  */
-int sr_get_group_name(uid_t uid, char **groupname);
+int sr_get_group_name(gid_t gid, char **groupname_p);
 
 /**
  * @brief Lookup GID in the group database by groupname.
@@ -785,7 +783,7 @@ int sr_get_user_groups(const char *username, char ***groups, size_t *group_cnt);
  */
 void sr_free_list_of_strings(sr_list_t *list);
 
-/*
+/**
  * @brief Converts time_t into string formatted as date-and-time type defined in RFC 6991.
  *
  * @param [in] time Time to be coverted into string.

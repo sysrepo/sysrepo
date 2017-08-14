@@ -800,7 +800,7 @@ sr_node_t_test(void **state)
     createDataTree(ly_ctx, &data_tree);
 
     /* convert complete data tree to sysrepo trees */
-    nodeset = lyd_find_xpath(data_tree, "/*");
+    nodeset = lyd_find_path(data_tree, "/*");
     assert_non_null(nodeset);
     assert_int_equal(4, nodeset->number);
 
@@ -956,7 +956,7 @@ sr_node_t_with_augments_test(void **state)
     createDataTreeWithAugments(ly_ctx, &data_tree);
 
     /* convert complete data tree to sysrepo trees */
-    nodeset = lyd_find_xpath(data_tree, "/*");
+    nodeset = lyd_find_path(data_tree, "/*");
     assert_non_null(nodeset);
     assert_int_equal(2, nodeset->number);
 
@@ -1056,7 +1056,7 @@ sr_node_t_rpc_input_test(void **state)
     assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_RPC, NULL));
 
     /* convert RPC input back to sysrepo trees */
-    nodeset = lyd_find_xpath(data_tree, "/test-module:activate-software-image/./*");
+    nodeset = lyd_find_path(data_tree, "/test-module:activate-software-image/./*");
     assert_non_null(nodeset);
     assert_int_equal(2, nodeset->number);
 
@@ -1146,7 +1146,7 @@ sr_node_t_rpc_output_test(void **state)
     lyd_print_fd(STDOUT_FILENO, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
 
     /* convert RPC input back to sysrepo trees */
-    nodeset = lyd_find_xpath(data_tree, "/test-module:activate-software-image/./*");
+    nodeset = lyd_find_path(data_tree, "/test-module:activate-software-image/./*");
     assert_non_null(nodeset);
     assert_int_equal(3, nodeset->number);
 
@@ -1275,109 +1275,6 @@ sr_free_schema_test(void **state)
 
     sr_free_schema(schema);
     free(schema);
-}
-
-static void
-sr_free_strings(char ***strings_p, size_t *string_cnt_p)
-{
-    for (size_t i = 0; i < *string_cnt_p; ++i) {
-        free((*strings_p)[i]);
-    }
-    free(*strings_p);
-    *strings_p = NULL;
-    *string_cnt_p = 0;
-}
-
-static void
-sr_copy_first_ns_from_expr_test(void **state)
-{
-    int rc = SR_ERR_OK;
-    char **namespaces;
-    size_t namespace_cnt = 0;
-
-    rc = sr_copy_first_ns_from_expr("", &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(0, namespace_cnt);
-
-    rc = sr_copy_first_ns_from_expr("/abc:item", &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(1, namespace_cnt);
-    assert_string_equal("abc", namespaces[0]);
-    sr_free_strings(&namespaces, &namespace_cnt);
-
-    rc = sr_copy_first_ns_from_expr("/abc:node/def:leaf", &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(1, namespace_cnt);
-    assert_string_equal("abc", namespaces[0]);
-    sr_free_strings(&namespaces, &namespace_cnt);
-
-    rc = sr_copy_first_ns_from_expr("param1 <= /abc:node/def:leaf and param2 <= /ghijkl:item", &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(2, namespace_cnt);
-    assert_string_equal("abc", namespaces[0]);
-    assert_string_equal("ghijkl", namespaces[1]);
-    sr_free_strings(&namespaces, &namespace_cnt);
-
-    rc = sr_copy_first_ns_from_expr("param1 <= /abc:node/def:list[mn:node/value >= 78]/opr:container and param2 <= /ghijkl:item",
-            &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(3, namespace_cnt);
-    assert_string_equal("abc", namespaces[0]);
-    assert_string_equal("mn", namespaces[1]);
-    assert_string_equal("ghijkl", namespaces[2]);
-    sr_free_strings(&namespaces, &namespace_cnt);
-
-    rc = sr_copy_first_ns_from_expr("param1 <= /abc:node/def:node[/mn:node/value == 25 or /node2/ext:augment/value == /abc:value]"
-                                    "/opr:container and param2 <= /ghijkl:item", &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(3, namespace_cnt);
-    assert_string_equal("abc", namespaces[0]);
-    assert_string_equal("mn", namespaces[1]);
-    assert_string_equal("ghijkl", namespaces[2]);
-    sr_free_strings(&namespaces, &namespace_cnt);
-
-    rc = sr_copy_first_ns_from_expr("/if:interfaces/if:interface[if:name = current()]/vlan:vlan-tagging = 'true'",
-            &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(1, namespace_cnt);
-    assert_string_equal("if", namespaces[0]);
-    sr_free_strings(&namespaces, &namespace_cnt);
-
-    rc = sr_copy_first_ns_from_expr("bbf-fastdsl:configured-mode = 'bbf-ghs:mode-ghs'",
-            &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(2, namespace_cnt);
-    assert_string_equal("bbf-fastdsl", namespaces[0]);
-    assert_string_equal("bbf-ghs", namespaces[1]);
-    sr_free_strings(&namespaces, &namespace_cnt);
-
-    rc = sr_copy_first_ns_from_expr("/ent:physical-entity/ent:alarm-status", &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(1, namespace_cnt);
-    assert_string_equal("ent", namespaces[0]);
-    sr_free_strings(&namespaces, &namespace_cnt);
-
-    rc = sr_copy_first_ns_from_expr("/nodes/node/id", &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(0, namespace_cnt);
-    sr_free_strings(&namespaces, &namespace_cnt);
-
-    rc = sr_copy_first_ns_from_expr("//*", &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(0, namespace_cnt);
-    sr_free_strings(&namespaces, &namespace_cnt);
-
-    rc = sr_copy_first_ns_from_expr("/if:interfaces/if:interface[if:name=/system:interfaces[id = /config:trunk/id]/name]/vlan:vlan-tagging = 'true'",
-            &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(3, namespace_cnt);
-    assert_string_equal("if", namespaces[0]);
-    assert_string_equal("system", namespaces[1]);
-    assert_string_equal("config", namespaces[2]);
-    sr_free_strings(&namespaces, &namespace_cnt);
-
-    rc = sr_copy_first_ns_from_expr(NULL, &namespaces, &namespace_cnt);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 }
 
 static void
@@ -1547,7 +1444,6 @@ main() {
             cmocka_unit_test_setup_teardown(sr_node_t_rpc_input_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_node_t_rpc_output_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_free_schema_test, logging_setup, logging_cleanup),
-            cmocka_unit_test_setup_teardown(sr_copy_first_ns_from_expr_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_error_info_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_create_uri_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_get_system_groups_test, logging_setup, logging_cleanup),

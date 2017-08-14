@@ -2446,51 +2446,6 @@ cl_all_state_data(void **state)
 }
 
 static void
-cl_failed_to_atomize_data(void **state)
-{
-    sr_conn_ctx_t *conn = *state;
-    assert_non_null(conn);
-    sr_session_ctx_t *session = NULL;
-    sr_subscription_ctx_t *subscription = NULL;
-    sr_list_t *xpath_retrieved = NULL;
-    sr_val_iter_t *iter = NULL;
-    int rc = SR_ERR_OK;
-
-    rc = sr_list_init(&xpath_retrieved);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* start session */
-    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
-            0, SR_SUBSCR_DEFAULT, &subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* subscribe data providers */
-    rc = sr_dp_get_items_subscribe(session, "/state-module:cpu_load", cl_dp_cpu_load, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* xpath atomize fails*/
-    rc = sr_get_items_iter(session, "/state-module:cpu_load//*", &iter);
-    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
-
-    sr_free_val_iter(iter);
-
-    /* check xpath that were retrieved */
-    assert_int_equal(0, xpath_retrieved->count);
-
-    /* cleanup */
-    sr_unsubscribe(session, subscription);
-    sr_session_stop(session);
-
-    for (size_t i = 0; i < xpath_retrieved->count; i++) {
-        free(xpath_retrieved->data[i]);
-    }
-    sr_list_cleanup(xpath_retrieved);
-}
-
-static void
 cl_partial_covered_dp_subtree(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -3117,7 +3072,6 @@ main()
         cmocka_unit_test_setup_teardown(cl_nested_data_subscription2, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_nested_data_subscription2_tree, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_all_state_data, sysrepo_setup, sysrepo_teardown),
-        cmocka_unit_test_setup_teardown(cl_failed_to_atomize_data, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_partial_covered_dp_subtree, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_missing_list_dp, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subscribe_list_in_state_container_dp, sysrepo_setup, sysrepo_teardown),

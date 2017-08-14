@@ -408,7 +408,7 @@ void ietf_interfaces_test(void **state){
     }
     sr_free_values(values, count);
 
-#define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:address[ietf-ip:ip='192.168.2.100']"
+#define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
     rc = rp_dt_get_values(dm_ctx, rp_session, root, NULL, INTERFACE_ETH0_IPV4_IP, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_addr_values(values, count);
@@ -481,19 +481,19 @@ void ietf_interfaces_tree_test(void **state){
     rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_GIGAETH0_IPV4, false, &tree);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
-#define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:address[ietf-ip:ip='192.168.2.100']"
+#define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
     rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_ETH0_IPV4_IP, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_addr_tree(tree, 0, true, true);
     sr_free_tree(tree);
 
-#define INTERFACE_ETH1_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/ietf-ip:address[ietf-ip:ip='10.10.1.5']"
+#define INTERFACE_ETH1_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/address[ip='10.10.1.5']"
     rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_ETH1_IPV4_IP, false, &tree);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_addr_tree(tree, 1, true, true);
     sr_free_tree(tree);
 
-#define INTERFACE_GIGAETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4/ietf-ip:address"
+#define INTERFACE_GIGAETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4/address"
     rc = rp_dt_get_subtree(dm_ctx, rp_session, root, NULL, INTERFACE_GIGAETH0_IPV4_IP, false, &tree);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
@@ -1535,7 +1535,7 @@ default_nodes_test(void **state)
     /* cleanup - remove all list instances */
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:with_def", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, ses_ctx, NULL, false, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
 
@@ -1710,7 +1710,7 @@ default_nodes_test(void **state)
     assert_false(tree->dflt);
     sr_free_tree(tree);
 
-    rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, ses_ctx, NULL, false, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* check after commit */
@@ -1801,7 +1801,7 @@ default_nodes_test(void **state)
     /* clean up*/
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:with_def", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, ses_ctx, NULL, false, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     test_rp_session_cleanup(ctx, ses_ctx);
@@ -1849,7 +1849,7 @@ default_nodes_toplevel_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/referenced-data:*", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, ses_ctx, NULL, false, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;

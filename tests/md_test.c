@@ -675,46 +675,61 @@ md_test_init_and_destroy(void **state)
     md_destroy(md_ctx);
 }
 
+/*
+ * presence_type flag: 0 - inserted modules, 1 - implemented modules
+ */
 static bool
-inserted_module(const char *module_name)
+present_module(const char *module_name, int presence_type)
 {
+    md_test_inserted_modules_t *presence;
+
+    if (presence_type) {
+        presence = &implemented;
+    } else {
+        presence = &inserted;
+    }
+
     if (0 == strcmp("A", module_name)) {
-        return inserted.A;
+        return presence->A;
     } else if (0 == strcmp("B", module_name)   ||
                0 == strcmp("Bs1", module_name) ||
                0 == strcmp("Bs2", module_name) ||
                0 == strcmp("Bs3", module_name)){
-        return inserted.B;
+        return presence->B;
     } else if (0 == strcmp("C", module_name)) {
-        return inserted.C;
+        return presence->C;
     } else if (0 == strcmp("D@2016-06-10", module_name)) {
-        return inserted.D_rev1;
+        return presence->D_rev1;
     } else if (0 == strcmp("D@2016-06-20", module_name)) {
-        return inserted.D_rev2;
+        return presence->D_rev2;
     } else if (0 == strcmp("Dcommon@2016-06-10", module_name)) {
-        return inserted.D_rev1 || inserted.D_rev2;
+        return presence->D_rev1 || presence->D_rev2;
     } else if (0 == strcmp("E@2016-06-11", module_name)) {
-        return inserted.E;
+        return presence->E;
     } else if (0 == strcmp("F@2016-06-21", module_name)) {
-        return inserted.F;
+        return presence->F;
     }
     return false;
 }
 
 static bool
-inserted_edge(md_test_dep_t *dep, const char *dest_module)
+dependency_edge(md_test_dep_t *dep, const char *dest_module)
 {
+    int presence_type = 0;
+
     if (MD_DEP_NONE == dep->type) {
         return false;
+    } else if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
+        presence_type = 1;
     }
 
-    if (!inserted_module(dest_module)) {
+    if (!present_module(dest_module, presence_type)) {
         return false;
     }
 
     if (MD_DEP_DATA == dep->type && 0 < dep->orig_modules->count) {
         for (int i = 0; i < dep->orig_modules->count; ++i) {
-            if (inserted_module((const char *)(dep->orig_modules->data[i]))) {
+            if (present_module((const char *)(dep->orig_modules->data[i]), presence_type)) {
                 return true;
             }
         }
@@ -749,7 +764,7 @@ compare_orig_modules(sr_llist_t *orig_modules, sr_list_t *expected)
     size_t expected_cnt = 0;
 
     for (int i = 0; i < expected->count; ++i) {
-        if (inserted_module(expected->data[i])) {
+        if (present_module(expected->data[i], 1)) {
             ++expected_cnt;
             found = false;
             node = orig_modules->first;
@@ -786,7 +801,7 @@ validate_dependency(const sr_llist_t *deps, const char *module_name, int count, 
 
     for (int i = 0; i < count; ++i) {
         test_dep = va_arg(va, md_test_dep_t *);
-        in = inserted_edge(test_dep, module_name);
+        in = dependency_edge(test_dep, module_name);
         in_cnt += in;
         /* try to find the expected dependency */
         found = false;
@@ -853,11 +868,12 @@ validate_subtree_ref(md_ctx_t *md_ctx, sr_llist_t *list, const char *xpath,
 
     /* test if the module is inserted */
     snprintf(full_module_name, PATH_MAX, "%s%s", TEST_MODULE_PREFIX, orig_name_cpy);
-    int rc = md_get_module_info(md_ctx, full_module_name, at, &orig);
+    int rc = md_get_module_info(md_ctx, full_module_name, at, NULL, &orig);
 
     while (node) {
         subtree_ref = (md_subtree_ref_t *)node->data;
-        if (0 == strcmp(subtree_ref->xpath, xpath)) {
+        if (0 == strcmp(subtree_ref->xpath, xpath) && orig == subtree_ref->orig) {
+            assert_true_bt(orig->implemented);
             assert_string_equal_bt(subtree_ref->orig->name, full_module_name);
             if (0 == strcmp(subtree_ref->orig->revision_date, at)) {
                 assert_int_equal_bt(SR_ERR_OK, rc);
@@ -867,7 +883,11 @@ validate_subtree_ref(md_ctx_t *md_ctx, sr_llist_t *list, const char *xpath,
         }
         node = node->next;
     }
-    assert_int_equal_bt(SR_ERR_NOT_FOUND, rc);
+    if (SR_ERR_OK == rc) {
+        assert_false_bt(orig->implemented);
+    } else {
+        assert_int_equal_bt(SR_ERR_NOT_FOUND, rc);
+    }
     free(orig_name_cpy);
 }
 
@@ -881,7 +901,7 @@ validate_context(md_ctx_t *md_ctx)
     md_module_t *module = NULL;
 
     /* validate module A */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "A", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "A", NULL, NULL, &module);
     if (inserted.A) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -899,7 +919,7 @@ validate_context(md_ctx_t *md_ctx)
         }
         assert_true_bt(module->has_data);
         /* inst_ids */
-        check_list_size(module->inst_ids, inserted.B + inserted.D_rev1 + 2*inserted.D_rev2);
+        check_list_size(module->inst_ids, implemented.B + implemented.D_rev1 + 2*implemented.D_rev2);
         validate_subtree_ref(md_ctx, module->inst_ids,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "B:B-ext-inst-id", "B");
@@ -916,7 +936,7 @@ validate_context(md_ctx_t *md_ctx)
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
                                      "/" TEST_MODULE_PREFIX "D:D-ext-inst-id2", "D@2016-06-20");
         /* op_data_subtrees */
-        check_list_size(module->op_data_subtrees, inserted.B + inserted.D_rev1 + inserted.D_rev2);
+        check_list_size(module->op_data_subtrees, implemented.B + implemented.D_rev1 + implemented.D_rev2);
         validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "B:B-ext-op-data", "B");
@@ -954,11 +974,15 @@ validate_context(md_ctx_t *md_ctx)
         validate_dependency(module->inv_deps, "Bs1", 0);
         validate_dependency(module->inv_deps, "Bs2", 0);
         validate_dependency(module->inv_deps, "Bs3", 0);
-        validate_dependency(module->inv_deps, "C", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "C"));
-        validate_dependency(module->inv_deps, "D@2016-06-10", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, false, 0));
+        validate_dependency(module->inv_deps, "C", 3, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "C"), md_test_dep(MD_DEP_EXTENSION, true));
+        validate_dependency(module->inv_deps, "D@2016-06-10", 3, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, false, 0), md_test_dep(MD_DEP_EXTENSION, false));
         validate_dependency(module->inv_deps, "D@2016-06-20", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, false, 0));
         validate_dependency(module->inv_deps, "Dcommon@2016-06-10", 0);
-        validate_dependency(module->inv_deps, "E@2016-06-11", 2, md_test_dep(MD_DEP_IMPORT, false), md_test_dep(MD_DEP_DATA, false, 0));
+        if (implemented.D_rev1) {
+            validate_dependency(module->inv_deps, "E@2016-06-11", 3, md_test_dep(MD_DEP_IMPORT, false), md_test_dep(MD_DEP_DATA, false, 0), md_test_dep(MD_DEP_IMPORT, false));
+        } else {
+            validate_dependency(module->inv_deps, "E@2016-06-11", 2, md_test_dep(MD_DEP_IMPORT, false), md_test_dep(MD_DEP_DATA, false, 0));
+        }
         validate_dependency(module->inv_deps, "F@2016-06-21", 1, md_test_dep(MD_DEP_IMPORT, false));
     } else {
         assert_int_equal_bt(SR_ERR_NOT_FOUND, rc);
@@ -966,7 +990,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate module B */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "B", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "B", NULL, NULL, &module);
     if (inserted.B) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1009,19 +1033,19 @@ validate_context(md_ctx_t *md_ctx)
         validate_dependency(module->inv_deps, "Bs1", 0);
         validate_dependency(module->inv_deps, "Bs2", 0);
         validate_dependency(module->inv_deps, "Bs3", 0);
-        if (inserted.D_rev2) {
+        if (implemented.D_rev2) {
             validate_dependency(module->inv_deps, "C", 1, md_test_dep(MD_DEP_DATA, false, 0));
         } else {
-            validate_dependency(module->inv_deps, "C", 0);
+            validate_dependency(module->inv_deps, "C", 1, md_test_dep(MD_DEP_EXTENSION, false));
         }
-        if (inserted.D_rev2) {
+        if (implemented.D_rev2) {
             validate_dependency(module->inv_deps, "D@2016-06-10", 1, md_test_dep(MD_DEP_DATA, false, 0));
         } else {
-            validate_dependency(module->inv_deps, "D@2016-06-10", 0);
+            validate_dependency(module->inv_deps, "D@2016-06-10", 1, md_test_dep(MD_DEP_EXTENSION, false));
         }
         validate_dependency(module->inv_deps, "D@2016-06-20", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-20"));
         validate_dependency(module->inv_deps, "Dcommon@2016-06-10", 0);
-        if (inserted.D_rev2) {
+        if (implemented.D_rev2) {
             validate_dependency(module->inv_deps, "E", 1, md_test_dep(MD_DEP_DATA, false, 0));
             validate_dependency(module->inv_deps, "F", 2, md_test_dep(MD_DEP_IMPORT, false), md_test_dep(MD_DEP_DATA, false, 0));
         } else {
@@ -1034,7 +1058,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate submodule Bs1 */
-    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs1", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs1", NULL, NULL, &module);
     if (inserted.B) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1068,7 +1092,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate submodule Bs2 */
-    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs2", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs2", NULL, NULL, &module);
     if (inserted.B) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1102,7 +1126,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate submodule Bs3 */
-    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs3", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs3", NULL, NULL, &module);
     if (inserted.B) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1136,7 +1160,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate module C */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "C", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "C", NULL, NULL, &module);
     if (inserted.C) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1164,11 +1188,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_non_null_bt(module->ly_data);
         assert_non_null_bt(module->ll_node);
         /* dependencies */
-        validate_dependency(module->deps, "A", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "C"));
-        if (inserted.D_rev2) {
+        validate_dependency(module->deps, "A", 3, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "C"), md_test_dep(MD_DEP_EXTENSION, true));
+        if (implemented.D_rev2) {
             validate_dependency(module->deps, "B", 1, md_test_dep(MD_DEP_DATA, false, 0));
         } else {
-            validate_dependency(module->deps, "B", 0);
+            validate_dependency(module->deps, "B", 1, md_test_dep(MD_DEP_EXTENSION, false));
         }
         validate_dependency(module->deps, "Bs1", 0);
         validate_dependency(module->deps, "Bs2", 0);
@@ -1185,7 +1209,11 @@ validate_context(md_ctx_t *md_ctx)
         validate_dependency(module->inv_deps, "Bs2", 0);
         validate_dependency(module->inv_deps, "Bs3", 0);
         validate_dependency(module->inv_deps, "C", 0);
-        validate_dependency(module->inv_deps, "D@2016-06-10", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-10"));
+        if (implemented.D_rev1) {
+            validate_dependency(module->inv_deps, "D@2016-06-10", 3, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-10"), md_test_dep(MD_DEP_IMPORT, true));
+        } else {
+            validate_dependency(module->inv_deps, "D@2016-06-10", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-10"));
+        }
         validate_dependency(module->inv_deps, "D@2016-06-20", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-20"));
         validate_dependency(module->inv_deps, "Dcommon@2016-06-10", 0);
         validate_dependency(module->inv_deps, "E", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "E@2016-06-11"));
@@ -1196,7 +1224,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate module D-rev1 */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", NULL, &module);
     if (inserted.D_rev1) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1225,27 +1253,41 @@ validate_context(md_ctx_t *md_ctx)
         assert_non_null_bt(module->ly_data);
         assert_non_null_bt(module->ll_node);
         /* dependencies */
-        validate_dependency(module->deps, "A", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, false, 0));
-        if (inserted.D_rev2) {
+        if (implemented.D_rev1) {
+            validate_dependency(module->deps, "A", 3, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, false, 0), md_test_dep(MD_DEP_IMPORT, true));
+        } else {
+            validate_dependency(module->deps, "A", 1, md_test_dep(MD_DEP_IMPORT, true));
+        }
+        if (implemented.D_rev2) {
             validate_dependency(module->deps, "B", 1, md_test_dep(MD_DEP_DATA, false, 0));
+        } else if (implemented.D_rev1) {
+            validate_dependency(module->deps, "B", 1, md_test_dep(MD_DEP_EXTENSION, false));
         } else {
             validate_dependency(module->deps, "B", 0);
         }
         validate_dependency(module->deps, "Bs1", 0);
         validate_dependency(module->deps, "Bs2", 0);
         validate_dependency(module->deps, "Bs3", 0);
-        validate_dependency(module->deps, "C", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-10"));
+        if (implemented.D_rev1) {
+            validate_dependency(module->deps, "C", 3, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-10"), md_test_dep(MD_DEP_EXTENSION, true));
+        } else {
+            validate_dependency(module->deps, "C", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-10"));
+        }
         validate_dependency(module->deps, "D@2016-06-10", 0);
         validate_dependency(module->deps, "D@2016-06-20", 0);
         validate_dependency(module->deps, "Dcommon@2016-06-10", 1, md_test_dep(MD_DEP_INCLUDE, true));
         validate_dependency(module->deps, "E", 0);
         validate_dependency(module->deps, "F", 0);
-        validate_dependency(module->inv_deps, "A", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        if (implemented.D_rev1) {
+            validate_dependency(module->inv_deps, "A", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        }
         validate_dependency(module->inv_deps, "B", 0);
         validate_dependency(module->inv_deps, "Bs1", 0);
         validate_dependency(module->inv_deps, "Bs2", 0);
         validate_dependency(module->inv_deps, "Bs3", 0);
-        validate_dependency(module->inv_deps, "C", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        if (implemented.D_rev1) {
+            validate_dependency(module->inv_deps, "C", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        }
         validate_dependency(module->inv_deps, "D@2016-06-10", 0);
         validate_dependency(module->inv_deps, "D@2016-06-20", 0);
         validate_dependency(module->inv_deps, "Dcommon@2016-06-10", 0);
@@ -1257,7 +1299,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate module D-rev2 */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-20", &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-20", NULL, &module);
     if (inserted.D_rev2) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1282,23 +1324,41 @@ validate_context(md_ctx_t *md_ctx)
         assert_non_null_bt(module->ly_data);
         assert_non_null_bt(module->ll_node);
         /* dependencies */
-        validate_dependency(module->deps, "A", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, false, 0));
-        validate_dependency(module->deps, "B", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-20"));
+        if (implemented.D_rev2) {
+            validate_dependency(module->deps, "A", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, false, 0));
+            validate_dependency(module->deps, "B", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-20"));
+        } else {
+            validate_dependency(module->deps, "A", 1, md_test_dep(MD_DEP_IMPORT, true));
+            validate_dependency(module->deps, "B", 1, md_test_dep(MD_DEP_IMPORT, true));
+        }
         validate_dependency(module->deps, "Bs1", 0);
         validate_dependency(module->deps, "Bs2", 0);
         validate_dependency(module->deps, "Bs3", 0);
-        validate_dependency(module->deps, "C", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-20"));
+        if (implemented.D_rev2) {
+            validate_dependency(module->deps, "C", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "D@2016-06-20"));
+        } else {
+            validate_dependency(module->deps, "C", 1, md_test_dep(MD_DEP_IMPORT, true));
+        }
         validate_dependency(module->deps, "D@2016-06-10", 0);
         validate_dependency(module->deps, "D@2016-06-20", 0);
         validate_dependency(module->deps, "Dcommon@2016-06-10", 1, md_test_dep(MD_DEP_INCLUDE, true));
         validate_dependency(module->deps, "E", 0);
         validate_dependency(module->deps, "F", 0);
-        validate_dependency(module->inv_deps, "A", 1, md_test_dep(MD_DEP_EXTENSION, false));
-        validate_dependency(module->inv_deps, "B", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        if (implemented.D_rev2) {
+            validate_dependency(module->inv_deps, "A", 1, md_test_dep(MD_DEP_EXTENSION, false));
+            validate_dependency(module->inv_deps, "B", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        } else {
+            validate_dependency(module->inv_deps, "A", 0);
+            validate_dependency(module->inv_deps, "B", 0);
+        }
         validate_dependency(module->inv_deps, "Bs1", 0);
         validate_dependency(module->inv_deps, "Bs2", 0);
         validate_dependency(module->inv_deps, "Bs3", 0);
-        validate_dependency(module->inv_deps, "C", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        if (implemented.D_rev2) {
+            validate_dependency(module->inv_deps, "C", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        } else {
+            validate_dependency(module->inv_deps, "C", 0);
+        }
         validate_dependency(module->inv_deps, "D@2016-06-10", 0);
         validate_dependency(module->inv_deps, "D@2016-06-20", 0);
         validate_dependency(module->inv_deps, "Dcommon@2016-06-10", 0);
@@ -1310,7 +1370,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate submodule Dcommon */
-    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Dcommon", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Dcommon", NULL, NULL, &module);
     if (inserted.D_rev1 || inserted.D_rev2) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1345,7 +1405,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate module E */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "E", "2016-06-11", &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "E", "2016-06-11", NULL, &module);
     if (inserted.E) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1375,17 +1435,31 @@ validate_context(md_ctx_t *md_ctx)
         assert_non_null_bt(module->ly_data);
         assert_non_null_bt(module->ll_node);
         /* dependencies */
-        validate_dependency(module->deps, "A", 2, md_test_dep(MD_DEP_IMPORT, false), md_test_dep(MD_DEP_DATA, false, 0));
-        if (inserted.D_rev2) {
+        if (implemented.D_rev1) {
+            validate_dependency(module->deps, "A", 3, md_test_dep(MD_DEP_IMPORT, false), md_test_dep(MD_DEP_DATA, false, 0), md_test_dep(MD_DEP_IMPORT, false));
+        } else {
+            validate_dependency(module->deps, "A", 2, md_test_dep(MD_DEP_IMPORT, false), md_test_dep(MD_DEP_DATA, false, 0));
+        }
+        if (implemented.D_rev2) {
             validate_dependency(module->deps, "B", 1, md_test_dep(MD_DEP_DATA, false, 0));
+        } else if (implemented.D_rev1) {
+            validate_dependency(module->deps, "B", 1, md_test_dep(MD_DEP_EXTENSION, false));
         } else {
             validate_dependency(module->deps, "B", 0);
         }
         validate_dependency(module->deps, "Bs1", 0);
         validate_dependency(module->deps, "Bs2", 0);
         validate_dependency(module->deps, "Bs3", 0);
-        validate_dependency(module->deps, "C", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1, "E@2016-06-11"));
-        validate_dependency(module->deps, "D@2016-06-10", 1, md_test_dep(MD_DEP_IMPORT, true));
+        if (implemented.D_rev1) {
+            validate_dependency(module->deps, "C", 3, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1,  "E@2016-06-11"), md_test_dep(MD_DEP_IMPORT, true));
+        } else {
+            validate_dependency(module->deps, "C", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1,  "E@2016-06-11"));
+        }
+        if (implemented.D_rev1) {
+            validate_dependency(module->deps, "D@2016-06-10", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_IMPORT, true));
+        } else {
+            validate_dependency(module->deps, "D@2016-06-10", 1, md_test_dep(MD_DEP_IMPORT, true));
+        }
         validate_dependency(module->deps, "D@2016-06-20", 0);
         validate_dependency(module->deps, "Dcommon@2016-06-10", 0);
         validate_dependency(module->deps, "E", 0);
@@ -1407,7 +1481,7 @@ validate_context(md_ctx_t *md_ctx)
     }
 
     /* validate module F */
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "F", "2016-06-21", &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "F", "2016-06-21", NULL, &module);
     if (inserted.F) {
         assert_int_equal_bt(SR_ERR_OK, rc);
         assert_non_null_bt(module);
@@ -1730,7 +1804,7 @@ md_test_grouping_and_uses(void **state)
     /* insert module X */
     rc = md_insert_module(md_ctx, md_module_X_filepath, &implicitly_inserted);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "X", NULL, &module);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "X", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* validate op_data_subtrees */
@@ -1771,51 +1845,51 @@ md_test_has_data(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* test modules installed by default */
-    rc = md_get_module_info(md_ctx, "example-module", NULL, &module);
+    rc = md_get_module_info(md_ctx, "example-module", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "iana-if-type", NULL, &module);
+    rc = md_get_module_info(md_ctx, "iana-if-type", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module->has_data);
-    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
+    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
     check_list_size(module->op_data_subtrees, 1); /* Bug #569 */
-    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
+    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module->has_data);
-    rc = md_get_module_info(md_ctx, "module-a", "2016-02-02", &module);
+    rc = md_get_module_info(md_ctx, "module-a", "2016-02-02", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "module-a", "2016-02-10", &module);
+    rc = md_get_module_info(md_ctx, "module-a", "2016-02-10", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "module-b", "2016-02-05", &module);
+    rc = md_get_module_info(md_ctx, "module-b", "2016-02-05", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "small-module", NULL, &module);
+    rc = md_get_module_info(md_ctx, "small-module", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "state-module", "2016-07-01", &module);
+    rc = md_get_module_info(md_ctx, "state-module", "2016-07-01", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "sub-a-one", "2016-02-02", &module);
+    rc = md_get_module_info(md_ctx, "sub-a-one", "2016-02-02", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module->has_data);
-    rc = md_get_module_info(md_ctx, "sub-a-one", "2016-02-10", &module);
+    rc = md_get_module_info(md_ctx, "sub-a-one", "2016-02-10", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module->has_data);
-    rc = md_get_module_info(md_ctx, "sub-a-two", "2016-02-02", &module);
+    rc = md_get_module_info(md_ctx, "sub-a-two", "2016-02-02", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module->has_data);
-    rc = md_get_module_info(md_ctx, "test-module", NULL, &module);
+    rc = md_get_module_info(md_ctx, "test-module", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
-    rc = md_get_module_info(md_ctx, "top-level-mandatory", NULL, &module);
+    rc = md_get_module_info(md_ctx, "top-level-mandatory", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
     /*If top-level node is an USES node, it's data-carrying*/
-    rc = md_get_module_info(md_ctx, "servers", NULL, &module);
+    rc = md_get_module_info(md_ctx, "servers", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(module->has_data);
 
