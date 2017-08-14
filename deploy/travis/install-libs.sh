@@ -24,11 +24,11 @@ if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
     make -j2 > /dev/null && make install
     cd ../..
 
-    # protobuf 
+    # protobuf
     wget https://github.com/google/protobuf/archive/v3.2.0.tar.gz
     tar -xzf v3.2.0.tar.gz
     cd protobuf-3.2.0
-    ./autogen.sh && ./configure --prefix=$INSTALL_PREFIX_DIR 
+    ./autogen.sh && ./configure --prefix=$INSTALL_PREFIX_DIR
     make -j2 > /dev/null && make install
     cd ..
 
