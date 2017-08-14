@@ -201,6 +201,8 @@ cl_get_changes_create_test(void **state)
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -282,6 +284,8 @@ cl_get_changes_modified_test(void **state)
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -349,6 +353,8 @@ cl_get_changes_deleted_test(void **state)
     /* save changes to running */
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
@@ -449,6 +455,8 @@ cl_get_changes_moved_test(void **state)
     /* save changes to running */
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
@@ -558,6 +566,8 @@ cl_get_changes_deleted_default_test(void **state)
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -639,6 +649,8 @@ cl_get_changes_create_default_test(void **state)
     /* save changes to running */
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
@@ -723,6 +735,8 @@ cl_get_changes_parents_test(void **state)
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -790,6 +804,8 @@ cl_get_changes_parents_test(void **state)
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -853,6 +869,8 @@ cl_get_changes_parents_test(void **state)
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -911,6 +929,8 @@ cl_get_changes_parents_test(void **state)
     /* save changes to running */
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
@@ -1431,6 +1451,8 @@ cl_basic_verifier(void **state)
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -1519,6 +1541,8 @@ cl_combined_subscribers(void **state)
     /* save changes to running */
     pthread_mutex_lock(&changesV.mutex);
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
@@ -1637,6 +1661,8 @@ cl_successful_verifiers(void **state)
     /* save changes to running */
     pthread_mutex_lock(&changesA.mutex);
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
@@ -1757,6 +1783,8 @@ cl_refused_by_verifier(void **state)
     /* save changes to running */
     pthread_mutex_lock(&changesA.mutex);
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
@@ -1863,6 +1891,8 @@ cl_no_abort_notifications(void **state)
 
     /* save changes to running */
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
 
     assert_int_equal(changes.cnt, 0);
@@ -1935,6 +1965,8 @@ cl_one_abort_notification(void **state)
     /* save changes to running */
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
@@ -2006,6 +2038,8 @@ cl_subtree_verifier(void **state)
     /* save changes to running */
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
@@ -2394,7 +2428,7 @@ cl_auto_enable_manadatory_nodes(void **state)
     rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_subtree_change_subscribe(session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", cl_empty_module_cb, NULL,
+    rc = sr_subtree_change_subscribe(session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/ietf-ip:address", cl_empty_module_cb, NULL,
             0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -2583,7 +2617,7 @@ cl_config_change_notif_test(void **state)
 
     assert_string_equal("/ietf-netconf-notifications:netconf-config-change/edit[1]/target", change.values[5].xpath);
     assert_int_equal(SR_INSTANCEID_T, change.values[5].type);
-    assert_string_equal(change.values[5].data.instanceid_val, "/example-module:container/example-module:list[example-module:key1='key1'][example-module:key2='key2']");
+    assert_string_equal(change.values[5].data.instanceid_val, "/example-module:container/list[key1='key1'][key2='key2']");
 
     assert_string_equal("/ietf-netconf-notifications:netconf-config-change/edit[1]/operation", change.values[6].xpath);
     assert_int_equal(SR_ENUM_T, change.values[6].type);
@@ -2681,6 +2715,8 @@ cl_read_old_config_in_verify_test(void **state)
     /* save changes to running */
     pthread_mutex_lock(&old_cfg.mutex);
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
@@ -2783,6 +2819,8 @@ cl_config_change_replay_test(void **state)
     pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -2803,7 +2841,7 @@ cl_config_change_replay_test(void **state)
     pthread_mutex_destroy(&changes.mutex);
     pthread_cond_destroy(&changes.cv);
 
-    rc = sr_event_notif_subscribe(session, "/ietf-netconf-notifications:*//.", test_replay_cb,
+    rc = sr_event_notif_subscribe(session, "ietf-netconf-notifications", test_replay_cb,
             &replay, SR_SUBSCR_NOTIF_REPLAY_FIRST | SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(SR_ERR_OK, rc);
 

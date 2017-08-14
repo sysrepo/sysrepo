@@ -25,6 +25,9 @@
 #include <pthread.h>
 #include "sr_common.h"
 
+/**
+ * @brief Definition in connection_manager.c
+ */
 typedef struct cm_ctx_s cm_ctx_t;
 
 /**

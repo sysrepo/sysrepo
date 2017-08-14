@@ -79,7 +79,7 @@ int pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const c
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
  * @param[in] user_cred User credentials.
  * @param[in] module_name Name of the module.
- * @paran[in] sr_mem_features Memory context to use to store the array of features. Can be NULL.
+ * @param[in] sr_mem_features Memory context to use to store the array of features. Can be NULL.
  * @param[out] module_enabled TRUE if running datastore is enabled for whole module.
  * @param[out] subtrees_enabled Array of subtrees (XPaths) that are enabled in running datastore.
  * @param[out] subtrees_enabled_cnt Count of enabled subtrees.

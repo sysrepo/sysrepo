@@ -30,20 +30,20 @@
 
 #include "sr_common.h"
 
-/*
- * @ brief Type of a dependency.
+/**
+ * @brief Type of a dependency.
  */
 typedef enum md_dep_type_e {
     MD_DEP_NONE,        /**< Invalid/Uninitialized dependency */
     MD_DEP_INCLUDE,     /**< Include */
     MD_DEP_IMPORT,      /**< Import */
-    MD_DEP_EXTENSION,   /**< Extension (augment, derived identity, ...) */
-    MD_DEP_DATA         /**< Cross-module data reference */
+    MD_DEP_EXTENSION,   /**< Extension (augment, derived identity, identityref) */
+    MD_DEP_DATA         /**< Cross-module data reference (instance-identifier, leafref) */
 } md_dep_type_t;
 
 typedef struct md_module_s md_module_t; /**< Forward declaration */
 
-/*
+/**
  * @brief Structure holding information about a module dependency.
  */
 typedef struct md_dep_s {
@@ -55,7 +55,7 @@ typedef struct md_dep_s {
                                    Items are of type (md_module_t *) */
 } md_dep_t;
 
-/*
+/**
  * @brief Structure referencing a subtree in the schema tree.
  */
 typedef struct md_subtree_ref_s {
@@ -63,7 +63,7 @@ typedef struct md_subtree_ref_s {
     md_module_t *orig; /**< Module which defines this subtree. */
 } md_subtree_ref_t;
 
-/*
+/**
  * @brief Data structure describing a single (sub)module in the context of inter-module dependencies.
  */
 typedef struct md_module_s {
@@ -102,7 +102,7 @@ typedef struct md_module_s {
 } md_module_t;
 
 /**
- * brief A string based reference to a module (which may or may not be inserted in the dependency graph),
+ * @brief A string based reference to a module (which may or may not be inserted in the dependency graph),
  * used by ::md_insert_module and ::md_remove_module.
  */
 typedef struct md_module_key_s {
@@ -111,7 +111,7 @@ typedef struct md_module_key_s {
     char *filepath;
 } md_module_key_t;
 
-/*
+/**
  * @brief Context used to represent complete, transitively-closed, module dependency graph in-memory (using adjacency lists).
  *        If the context is accessed from multiple threads, use ::md_ctx_lock and ::md_ctx_unlock to protect it.
  */
@@ -137,7 +137,7 @@ typedef struct md_ctx_s {
 } md_ctx_t;
 
 
-/*
+/**
  * @brief Create context and load the internal data file with module dependencies.
  * Caller should eventually release the context using ::md_destroy.
  *
@@ -201,10 +201,11 @@ void md_free_module_key_list(sr_list_t *module_key_list);
  * @param [in] md_ctx Module Dependencies context
  * @param [in] name Name of the (sub)module
  * @param [in] revision Revision of the (sub)module, can be empty string
+ * @param [in] being_parsed Optional, in case some modules are just being parsed, look through them as well.
  * @param [out] module Output location for the pointer referencing the module info.
  */
 int md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision,
-                       md_module_t **module);
+                       sr_list_t *being_parsed, md_module_t **module);
 
 /**
  * @brief Get dependency-related information for a given (sub)module.

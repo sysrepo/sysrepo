@@ -475,7 +475,7 @@ srcfg_test_xpath(void **state)
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
     sr_free_val(rvalue);
     rvalue = NULL;
-    
+
     /* create a new list entry */
     exec_shell_command("../src/sysrepocfg -d running -s \"/ietf-interfaces:interfaces/interface[name='eth6']/type\" -w 'iana-if-type:ethernetCsmacd'", ".*", true, 0);
     rc = sr_session_refresh(srcfg_test_session);
@@ -507,7 +507,7 @@ srcfg_test_merge(void **state)
 {
     sr_val_t *rvalue = { 0 };
     int rc = 0;
-    
+
     exec_shell_command("../src/sysrepocfg -d running -g /ietf-interfaces:*//*", "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("ietf-interfaces"));
     exec_shell_command("../src/sysrepocfg -m " TEST_DATA_SEARCH_DIR "ietf-interfaces.merge.xml -d running ietf-interfaces", ".*", true, 0);
@@ -583,7 +583,7 @@ srcfg_test_import(void **state)
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
     assert_int_equal(0, rc);
-    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
+    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     md_destroy(md_ctx);
 
@@ -611,7 +611,7 @@ srcfg_test_import(void **state)
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
     assert_int_equal(0, rc);
-    rc = md_get_module_info(md_ctx, "test-module", "", &module);
+    rc = md_get_module_info(md_ctx, "test-module", "", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     md_destroy(md_ctx);
     assert_int_equal(0, srcfg_test_unsubscribe("referenced-data"));
@@ -637,7 +637,7 @@ srcfg_test_import(void **state)
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
     assert_int_equal(0, rc);
-    rc = md_get_module_info(md_ctx, "example-module", "", &module);
+    rc = md_get_module_info(md_ctx, "example-module", "", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     md_destroy(md_ctx);
 
@@ -665,7 +665,7 @@ srcfg_test_import(void **state)
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
     assert_int_equal(0, rc);
-    rc = md_get_module_info(md_ctx, "cross-module", "", &module);
+    rc = md_get_module_info(md_ctx, "cross-module", "", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     md_destroy(md_ctx);
     assert_int_equal(0, srcfg_test_unsubscribe("referenced-data"));
@@ -691,7 +691,7 @@ srcfg_test_import(void **state)
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
     assert_int_equal(0, rc);
-    rc = md_get_module_info(md_ctx, "referenced-data", "", &module);
+    rc = md_get_module_info(md_ctx, "referenced-data", "", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     md_destroy(md_ctx);
 
@@ -1224,7 +1224,7 @@ main() {
             cmocka_unit_test_setup_teardown(srcfg_test_editing, srcfg_test_set_startup_datastore, srcfg_test_teardown),
             cmocka_unit_test_setup_teardown(srcfg_test_editing, srcfg_test_set_running_datastore, srcfg_test_teardown),
             cmocka_unit_test_setup_teardown(srcfg_test_import, srcfg_test_init_datastore_content, NULL),
-            cmocka_unit_test_setup_teardown(srcfg_test_xpath, srcfg_test_set_running_datastore, NULL),
+            cmocka_unit_test_setup_teardown(srcfg_test_xpath, srcfg_test_set_running_datastore, srcfg_test_teardown),
             cmocka_unit_test_setup_teardown(srcfg_test_merge, srcfg_test_set_running_datastore_merge, NULL)
     };
 

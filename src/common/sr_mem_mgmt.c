@@ -29,6 +29,7 @@
 #include "sr_mem_mgmt.h"
 #include "sr_common.h"
 
+/** Get previous item queue position */
 #define QUEUE_PREV(head, len) ((head) == 0 ? ((len)-1) : ((head)-1))
 
 /**

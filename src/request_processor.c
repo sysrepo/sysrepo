@@ -54,12 +54,16 @@ typedef struct rp_request_s {
     Sr__Msg *msg;           /**< Message to be processed. */
 } rp_request_t;
 
+/**
+ * @brief Capability change type
+ */
 typedef enum rp_capability_change_type_e {
     SR_CAPABILITY_ADDED,
     SR_CAPABILITY_DELETED,
     SR_CAPABILITY_MODIFIED,
 }rp_capability_change_type_t;
 
+//! @cond doxygen_suppress
 #define CAPABILITY_CHANGE_NOTIFICATION_XPATH "/ietf-netconf-notifications:netconf-capability-change"
 #define CAPABILITY_ADDED_XPATH "/ietf-netconf-notifications:netconf-capability-change/added-capability"
 #define CAPABILITY_DELETED_XPATH "/ietf-netconf-notifications:netconf-capability-change/deleted-capability"
@@ -72,6 +76,7 @@ typedef enum rp_capability_change_type_e {
 #define CONFIG_CHANGE_DATASTORE_XPATH "/ietf-netconf-notifications:netconf-config-change/datastore"
 #define CONFIG_CHANGE_TARGET_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%d]/target"
 #define CONFIG_CHANGE_OPERATION_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%d]/operation"
+//! @endcond
 
 /**
  * @brief Copy errors saved in the Data Manager session into the GPB response.
@@ -335,6 +340,9 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
 
     size_t diff_count = rp_count_changes_in_difflists(diff_lists);
     SR_LOG_DBG("%zu instance of /ietf-netconf-notifications/netconf-config-change/edit list will be created", diff_count);
+    if (0 == diff_count) {
+        return SR_ERR_OK;
+    }
 
     /* target + operation */
     val_cnt += diff_count * 2;
@@ -387,15 +395,15 @@ rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, 
             switch (dl->type[diff_index]) {
             case LYD_DIFF_CHANGED:
             case LYD_DIFF_MOVEDAFTER1:
-                path = lyd_qualified_path(dl->first[diff_index]);
+                path = lyd_path(dl->first[diff_index]);
                 operation = "merge";
                 break;
             case LYD_DIFF_DELETED:
-                path = lyd_qualified_path(dl->first[diff_index]);
+                path = lyd_path(dl->first[diff_index]);
                 operation = "delete";
                 break;
             case LYD_DIFF_CREATED:
-                path = lyd_qualified_path(dl->second[diff_index]);
+                path = lyd_path(dl->second[diff_index]);
                 operation = "create";
                 break;
             case LYD_DIFF_MOVEDAFTER2:
@@ -1456,10 +1464,10 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
 
     if (SR_ERR_OK == rc ) {
         session->req = msg;
-        rc = rp_dt_commit(rp_ctx, session, c_ctx, &errors, &err_cnt);
+        rc = rp_dt_commit(rp_ctx, session, c_ctx, false, &errors, &err_cnt);
     }
     if (SR_ERR_OK == rc && RP_REQ_WAITING_FOR_VERIFIERS == session->state) {
-        SR_LOG_DBG_MSG("Request paused, waiting for verifiers");
+        SR_LOG_DBG_MSG("Commit request paused, waiting for verifiers");
         /* we are waiting for verifiers data do not free the request */
         *skip_msg_cleanup = true;
         sr_msg_free(resp);
@@ -1531,11 +1539,14 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
  * @brief Processes a copy-config request.
  */
 static int
-rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *skip_msg_cleanup)
 {
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
+    sr_error_info_t *errors = NULL;
+    size_t err_cnt = 0;
+    bool locked = false;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->copy_config_req);
 
@@ -1551,21 +1562,49 @@ rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
         return SR_ERR_NOMEM;
     }
 
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&rp_ctx->commit_block_mutex, rc, cleanup);
+    /* do this check only if this really will be a commit */
+    if (SR__DATA_STORE__RUNNING == msg->request->copy_config_req->dst_datastore && rp_ctx->block_further_commits) {
+        rc = SR_ERR_OPERATION_FAILED;
+    }
+    pthread_mutex_unlock(&rp_ctx->commit_block_mutex);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Stop requested, commits are blocked.");
+
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
+    locked = true;
+
+    session->req = msg;
     rc = rp_dt_copy_config(rp_ctx, session, msg->request->copy_config_req->module_name,
                 sr_datastore_gpb_to_sr(msg->request->copy_config_req->src_datastore),
-                sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore));
+                sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore), &errors, &err_cnt);
 
+    if (SR_ERR_OK == rc && RP_REQ_WAITING_FOR_VERIFIERS == session->state) {
+        SR_LOG_DBG_MSG("Copy_config request paused, waiting for verifiers");
+        /* we are waiting for verifiers data do not free the request */
+        *skip_msg_cleanup = true;
+        sr_msg_free(resp);
+        pthread_mutex_unlock(&session->cur_req_mutex);
+        return SR_ERR_OK;
+    }
+
+cleanup:
+    session->state = RP_REQ_FINISHED;
+    session->req = NULL;
+    if (locked) {
+        pthread_mutex_unlock(&session->cur_req_mutex);
+    }
     /* set response code */
     resp->response->result = rc;
 
-    rc = rp_resp_fill_errors(resp, session->dm_session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    /* copy error information to GPB  (if any) */
+    if (err_cnt > 0) {
+        sr_gpb_fill_errors(errors, err_cnt, sr_mem, &resp->response->copy_config_resp->errors,
+                &resp->response->copy_config_resp->n_errors);
+        sr_free_errors(errors, err_cnt);
     }
 
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
-
     return rc;
 }
 
@@ -2335,7 +2374,7 @@ finalize:
  * @brief Checks if the received xpath was requested and find corresponding schema node
  */
 static int
-rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_val_t *values, size_t values_cnt, struct lys_node **sch_node)
+rp_data_provide_resp_validate(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_val_t *values, size_t values_cnt, struct lys_node **sch_node)
 {
     CHECK_NULL_ARG3(rp_ctx, session, sch_node);
     if (values_cnt > 0) {
@@ -2345,21 +2384,24 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
     bool found = false;
     dm_schema_info_t *si = NULL;
     struct lys_node *value_sch_node = NULL;
+    struct ly_set *set = NULL;
 
     rc = dm_get_module_and_lock(rp_ctx->dm_ctx, session->module_name, &si);
     CHECK_RC_MSG_RETURN(rc, "Get schema info failed");
 
     /* verify that provided xpath was requested */
     for (size_t i = 0; i < session->state_data_ctx.requested_xpaths->count; i++) {
-        char *xp = (char *) session->state_data_ctx.requested_xpaths->data[i];
+        char *xp = (char *)session->state_data_ctx.requested_xpaths->data[i];
         if (0 == strcmp(xp, xpath)) {
             found = true;
-            *sch_node = sr_find_schema_node(si->module->data, xp, 0);
-            if (NULL == *sch_node) {
+            rc = sr_find_schema_node(si->module, NULL, xp, 0, &set);
+            if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Schema node not found for %s", xp);
                 rc = SR_ERR_INVAL_ARG;
                 goto unlock;
             }
+            *sch_node = set->set.s[0];
+            ly_set_free(set);
             free(xp);
             sr_list_rm_at(session->state_data_ctx.requested_xpaths, i);
             break;
@@ -2373,15 +2415,17 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
 
     /* test that all values are under requested xpath */
     for (size_t i = 0; i < values_cnt; i++) {
-        value_sch_node = sr_find_schema_node(si->module->data, values[i].xpath, 0);
-        if (NULL == value_sch_node) {
+        rc = sr_find_schema_node(si->module, NULL, values[i].xpath, 0, &set);
+        if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Value with xpath %s received from provider doesn't correspond to any schema node",
                     values[i].xpath);
             rc = SR_ERR_INVAL_ARG;
             goto unlock;
-
         }
-        if (false == rp_dt_depth_under_subtree(*sch_node, value_sch_node, NULL)) {
+        value_sch_node = set->set.s[0];
+        ly_set_free(set);
+
+        if (!rp_dt_depth_under_subtree(*sch_node, value_sch_node, NULL)) {
             SR_LOG_ERR("Unexpected value with xpath %s received from provider", values[i].xpath);
             rc = SR_ERR_INVAL_ARG;
             goto unlock;
@@ -2438,10 +2482,19 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
         if (subs_index < session->state_data_ctx.subscription_nodes->count) {
             for (size_t i = 0; i < xp_count; i++) {
                 size_t len = strlen(xpaths[i]) + strlen(iter->name) + 2 /* slash + zero byte */;
+
+                if (lys_node_module(sch_node) != lys_node_module(iter)) {
+                    len += strlen(lys_node_module(iter)->name) + 1;
+                }
+
                 request_xp = calloc(len, sizeof(*request_xp));
                 CHECK_NULL_NOMEM_GOTO(request_xp, rc, cleanup);
 
-                snprintf(request_xp, len, "%s/%s", xpaths[i], iter->name);
+                if (lys_node_module(sch_node) == lys_node_module(iter)) {
+                    snprintf(request_xp, len, "%s/%s", xpaths[i], iter->name);
+                } else {
+                    snprintf(request_xp, len, "%s/%s:%s", xpaths[i], lys_node_module(iter)->name, iter->name);
+                }
 
                 rc = np_data_provider_request(rp_ctx->np_ctx, session->state_data_ctx.subscriptions->data[subs_index],
                         session, request_xp);
@@ -2781,7 +2834,8 @@ cleanup:
         rp_dt_free_state_data_ctx_content(&session->state_data_ctx);
         if (RP_REQ_WAITING_FOR_DATA == session->state) {
             SR_LOG_DBG("All data from data providers has been received session id = %u, "
-                    "re-enqueue the request (id=%" PRIu64 ")", session->id, session->req->request->_id);
+                    "re-enqueue the request (id=%" PRIu64 ")", session->id,
+                    session->req ? session->req->request->_id : 0);
             session->state = RP_REQ_DATA_LOADED;
             rp_msg_process(rp_ctx, session, session->req);
             session->req = NULL;
@@ -3356,7 +3410,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             rc = rp_discard_changes_req_process(rp_ctx, session, msg);
             break;
         case SR__OPERATION__COPY_CONFIG:
-            rc = rp_copy_config_req_process(rp_ctx, session, msg);
+            rc = rp_copy_config_req_process(rp_ctx, session, msg, skip_msg_cleanup);
             break;
         case SR__OPERATION__SESSION_REFRESH:
             rc = rp_session_refresh_req_process(rp_ctx, session, msg);
@@ -4104,6 +4158,7 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finishe
 {
     CHECK_NULL_ARG(rp_ctx);
     int rc = SR_ERR_OK;
+    const char *op_str;
     dm_commit_context_t *c_ctx = NULL;
     dm_commit_ctxs_t *dm_ctxs = NULL;
     bool locked = false;
@@ -4122,7 +4177,18 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finishe
     if (!finished && DM_COMMIT_WAIT_FOR_NOTIFICATIONS == c_ctx->state &&
         NULL != c_ctx->init_session) {
 
-        SR_LOG_INF("Resuming commit with id %"PRIu32" continue with %s", commit_id, SR_ERR_OK == result ? "write" : "abort");
+        switch (c_ctx->init_session->req->request->operation) {
+        case SR__OPERATION__COPY_CONFIG:
+            op_str = "copy_config";
+            break;
+        case SR__OPERATION__COMMIT:
+            op_str = "commit";
+            break;
+        default:
+            SR_LOG_ERR_MSG("Invalid operation of a resumed commit request");
+            goto cleanup;
+        }
+        SR_LOG_INF("Resuming %s with id %"PRIu32" continue with %s", op_str, commit_id, SR_ERR_OK == result ? "write" : "abort");
         c_ctx->state = SR_ERR_OK == result ? DM_COMMIT_WRITE : DM_COMMIT_NOTIFY_ABORT;
         c_ctx->err_subs_xpaths = err_subs_xpaths;
 
