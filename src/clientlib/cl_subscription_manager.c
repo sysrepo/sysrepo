@@ -96,6 +96,8 @@ typedef struct cl_sm_ctx_s {
     ev_async stop_watcher;
     /** Watcher for changes in server context list. */
     ev_async server_ctx_watcher;
+    /** Blocking synchronization of processing of all pending events */
+    sr_fd_sm_terminated_cb local_watcher_terminate_cb;
 } cl_sm_ctx_t;
 
 /**
@@ -1654,7 +1656,7 @@ cl_sm_event_loop_threaded(void *sm_ctx_p)
 }
 
 int
-cl_sm_init(bool local_fd_watcher, int notify_pipe[2], cl_sm_ctx_t **sm_ctx_p)
+cl_sm_init(bool local_fd_watcher, sr_fd_sm_terminated_cb local_sm_terminate_cb, int notify_pipe[2], cl_sm_ctx_t **sm_ctx_p)
 {
     cl_sm_ctx_t *ctx = NULL;
     int ret = 0, rc = SR_ERR_OK;
@@ -1668,6 +1670,7 @@ cl_sm_init(bool local_fd_watcher, int notify_pipe[2], cl_sm_ctx_t **sm_ctx_p)
     CHECK_NULL_NOMEM_RETURN(ctx);
 
     ctx->local_fd_watcher = local_fd_watcher;
+    ctx->local_watcher_terminate_cb = local_sm_terminate_cb;
     ctx->fd_changeset_notify_pipe[0] = notify_pipe[0];
     ctx->fd_changeset_notify_pipe[1] = notify_pipe[1];
 
@@ -1738,8 +1741,12 @@ void
 cl_sm_cleanup(cl_sm_ctx_t *sm_ctx, bool join)
 {
     if (NULL != sm_ctx) {
-        if (!sm_ctx->local_fd_watcher) {
-            if (join) {
+        if (join) {
+            if (sm_ctx->local_fd_watcher) {
+                if (sm_ctx->local_watcher_terminate_cb) {
+                    sm_ctx->local_watcher_terminate_cb();
+                }
+            } else {
                 ev_async_send(sm_ctx->event_loop, &sm_ctx->stop_watcher);
                 pthread_join(sm_ctx->event_loop_thread, NULL);
             }
