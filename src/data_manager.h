@@ -150,7 +150,7 @@ typedef enum dm_operation_e {
  */
 typedef enum dm_commit_state_e {
     DM_COMMIT_STARTED,
-    DM_COMMIT_VALIDATION,
+    DM_COMMIT_LOAD_MODEL_DEPS,
     DM_COMMIT_LOAD_MODIFIED_MODELS,
     DM_COMMIT_REPLAY_OPS,
     DM_COMMIT_VALIDATE_MERGED,
@@ -458,6 +458,15 @@ int dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_lis
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t **c_ctx);
+
+/**
+ * @brief Fill required modules for all modules loaded in the session for the current session datastore.
+ *
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_commit_load_session_module_deps(dm_ctx_t *dm_ctx, dm_session_t *session);
 
 /**
  * @brief Loads the data tree which has been modified in the session to the commit context. If the session copy has

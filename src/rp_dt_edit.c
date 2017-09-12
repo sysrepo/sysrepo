@@ -813,15 +813,15 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
         switch (state) {
         case DM_COMMIT_STARTED:
             SR_LOG_DBG_MSG("Commit (1/10): process started");
-            state = DM_COMMIT_VALIDATION;
+            state = DM_COMMIT_LOAD_MODEL_DEPS;
             break;
-        case DM_COMMIT_VALIDATION:
-            rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, session->dm_session, errors, err_cnt);
+        case DM_COMMIT_LOAD_MODEL_DEPS:
+            rc = dm_commit_load_session_module_deps(rp_ctx->dm_ctx, session->dm_session);
             if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Data validation failed: %s", *err_cnt > 0 ? errors[0]->message : "(no error)");
-                return SR_ERR_VALIDATION_FAILED;
+                SR_LOG_ERR_MSG("Loading module dependencies failed.");
+                return SR_ERR_INTERNAL;
             }
-            SR_LOG_DBG_MSG("Commit (2/10): validation succeeded");
+            SR_LOG_DBG_MSG("Commit (2/10): loading module dependencies succeeded");
             state = DM_COMMIT_LOAD_MODIFIED_MODELS;
             break;
         case DM_COMMIT_LOAD_MODIFIED_MODELS:

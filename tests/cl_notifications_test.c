@@ -878,21 +878,21 @@ cl_get_changes_parents_test(void **state)
 
     assert_int_equal(changes.cnt, 4);
 
-    /* /test-module:presence-container/child2/grandchild2/grandchild2-leaf1 */
+    /* /test-module:presence-container/child2/child2-leaf */
     assert_int_equal(changes.oper[0], SR_OP_DELETED);
     assert_non_null(changes.old_values[0]);
-    assert_string_equal(GRANDCHILD2_LEAF1, changes.old_values[0]->xpath);
+    assert_string_equal(CHILD2_LEAF, changes.old_values[0]->xpath);
     assert_int_equal(SR_INT8_T, changes.old_values[0]->type);
-    assert_int_equal(13, changes.old_values[0]->data.int8_val);
+    assert_int_equal(12, changes.old_values[0]->data.int8_val);
     assert_false(changes.old_values[0]->dflt);
     assert_null(changes.new_values[0]);
 
-    /* /test-module:presence-container/child2/child2-leaf */
+    /* /test-module:presence-container/child2/grandchild2/grandchild2-leaf1 */
     assert_int_equal(changes.oper[1], SR_OP_DELETED);
     assert_non_null(changes.old_values[1]);
-    assert_string_equal(CHILD2_LEAF, changes.old_values[1]->xpath);
+    assert_string_equal(GRANDCHILD2_LEAF1, changes.old_values[1]->xpath);
     assert_int_equal(SR_INT8_T, changes.old_values[1]->type);
-    assert_int_equal(12, changes.old_values[1]->data.int8_val);
+    assert_int_equal(13, changes.old_values[1]->data.int8_val);
     assert_false(changes.old_values[1]->dflt);
     assert_null(changes.new_values[1]);
 

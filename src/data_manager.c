@@ -416,7 +416,7 @@ cleanup:
  * @brief The function is called to load the requested module into the context.
  */
 const struct lys_module *
-dm_module_clb (struct ly_ctx *ctx, const char *name, const char *ns, int options, void *user_data)
+dm_module_clb(struct ly_ctx *ctx, const char *name, const char *ns, int options, void *user_data)
 {
     SR_LOG_DBG("CALLBACK FOR MODULE %s %s", name, ns);
     dm_ctx_t *dm_ctx = (dm_ctx_t *) user_data;
@@ -2281,7 +2281,7 @@ dm_string_cmp(void *a, void *b)
 static int
 dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *di, sr_list_t **required_data, sr_list_t **required_modules)
 {
-    CHECK_NULL_ARG5(dm_ctx, session, di, required_data, required_modules);
+    CHECK_NULL_ARG4(dm_ctx, session, di, required_modules);
 
     int rc = SR_ERR_OK;
     md_module_t *module = NULL;
@@ -2294,7 +2294,7 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
     md_dep_t *dep = NULL;
     char *namespace = NULL;
     char *inserted_namespace = NULL;
-    bool inserted = false;
+    bool inserted = false, must_be_freed = false;
     char *module_name = NULL;
     dm_data_info_t *recursive_info = NULL;
 
@@ -2311,26 +2311,29 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
             /* installation time dependencies */
             ll_dep = module->deps->first;
             while (ll_dep) {
-               dep = (md_dep_t *) ll_dep->data;
-               ll_dep = ll_dep->next;
+                dep = (md_dep_t *) ll_dep->data;
+                ll_dep = ll_dep->next;
 
-               module_name = strdup(dep->dest->name);
-               CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
+                module_name = strdup(dep->dest->name);
+                CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
 
-               rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
-               CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+                rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
 
-               /* if dep has instanced id and it was inserted call recursively */
-               if (inserted && NULL != dep->dest->inst_ids->first) {
-                   rc = dm_get_data_info(dm_ctx, session, dep->dest->name, &recursive_info);
-                   CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
+                /* if dep has instanced id and it was inserted call recursively */
+                if (inserted && NULL != dep->dest->inst_ids->first) {
+                    rc = dm_get_data_info_internal(dm_ctx, session, dep->dest->name, true, &must_be_freed, &recursive_info);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
 
-                   rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
-                   CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
+                    rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
 
-               } else if (!inserted){
-                   free(module_name);
-               }
+                    if (must_be_freed) {
+                        dm_data_info_free(recursive_info);
+                    }
+                } else if (!inserted){
+                    free(module_name);
+                }
             }
 
         }
@@ -2398,8 +2401,10 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
                     rc = sr_list_init(required_modules);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "List initialization failed");
 
-                    rc = sr_list_init(required_data);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "List initialization failed");
+                    if (required_data) {
+                        rc = sr_list_init(required_data);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "List initialization failed");
+                    }
 
                     /* insert module itself */
                     module_name = strdup(di->schema->module_name);
@@ -2408,37 +2413,42 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
                     rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
 
-                    rc = sr_list_add(*required_data, module_name);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+                    if (required_data) {
+                        rc = sr_list_add(*required_data, module_name);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+                    }
 
                     /* add installation time dependencies */
                     ll_dep = module->deps->first;
                     while (ll_dep) {
-                       dep = (md_dep_t *) ll_dep->data;
-                       ll_dep = ll_dep->next;
+                        dep = (md_dep_t *) ll_dep->data;
+                        ll_dep = ll_dep->next;
 
-                       module_name = strdup(dep->dest->name);
-                       CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
+                        module_name = strdup(dep->dest->name);
+                        CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
 
-                       rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
-                       CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+                        rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
 
-                       if (inserted && dep->dest->has_data) {
-                           rc = sr_list_add(*required_data, module_name);
-                           CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into the list");
-                       }
+                        if (inserted && dep->dest->has_data && required_data) {
+                            rc = sr_list_add(*required_data, module_name);
+                            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into the list");
+                        }
 
-                       /* if dep has instanced id and it was inserted call recursively */
-                       if (inserted && NULL != dep->dest->inst_ids->first) {
-                           rc = dm_get_data_info(dm_ctx, session, dep->dest->name, &recursive_info);
-                           CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
+                        /* if dep has instanced id and it was inserted call recursively */
+                        if (inserted && NULL != dep->dest->inst_ids->first) {
+                            rc = dm_get_data_info_internal(dm_ctx, session, dep->dest->name, true, &must_be_freed, &recursive_info);
+                            CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
 
-                           rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
-                           CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
+                            rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
+                            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
 
-                       } else if (!inserted){
-                           free(module_name);
-                       }
+                            if (must_be_freed) {
+                                dm_data_info_free(recursive_info);
+                            }
+                        } else if (!inserted){
+                            free(module_name);
+                        }
                     }
                 }
                 inserted = false;
@@ -2448,15 +2458,21 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
                 namespace = NULL; /* do not free namespace in this function case of cleanup */
 
                 if (inserted) {
-                    rc = sr_list_add(*required_data, inserted_namespace);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert an item into the list");
+                    if (required_data) {
+                        rc = sr_list_add(*required_data, inserted_namespace);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert an item into the list");
+                    }
 
                     /* call recursively */
-                    rc = dm_get_data_info(dm_ctx, session, inserted_namespace, &recursive_info);
+                    rc = dm_get_data_info_internal(dm_ctx, session, inserted_namespace, true, &must_be_freed, &recursive_info);
                     CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", inserted_namespace);
 
                     rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
                     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
+
+                    if (must_be_freed) {
+                        dm_data_info_free(recursive_info);
+                    }
                 }
             }
         }
@@ -3787,6 +3803,28 @@ cleanup:
 }
 
 int
+dm_commit_load_session_module_deps(dm_ctx_t *dm_ctx, dm_session_t *session)
+{
+    CHECK_NULL_ARG2(dm_ctx, session);
+    dm_data_info_t *info = NULL;
+    size_t i = 0;
+    int rc = SR_ERR_OK;
+
+    i = 0;
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
+        if (!info->modified) {
+            continue;
+        }
+
+        /* get the list of required modules */
+        rc = dm_requires_tmp_context(dm_ctx, session, info, NULL, &info->required_modules);
+        CHECK_RC_LOG_RETURN(rc, "Failed to get module dependencies of '%s'.", info->schema->module->name);
+    }
+
+    return SR_ERR_OK;
+}
+
+int
 dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx,
         bool force_copy_uptodate, sr_error_info_t **errors, size_t *err_cnt)
 {
@@ -3913,6 +3951,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             SR_LOG_DBG("Usage count %s incremented (value=%zu)", info->schema->module_name, info->schema->usage_count);
             pthread_mutex_unlock(&info->schema->usage_count_mutex);
             di->schema = info->schema;
+            di->modified = info->modified;
 
             /* duplicate also the list of required modules */
             rc = dm_dup_required_models_list(info, di);
