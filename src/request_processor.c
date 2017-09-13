@@ -3093,7 +3093,8 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     if (NULL != subscriptions_list) {
         for (size_t i = 0; i < subscriptions_list->count; i++) {
             subscription = subscriptions_list->data[i];
-            if (NULL != subscription->xpath && rp_event_notif_match_subscr(msg->request->event_notif_req->xpath, subscription->xpath)) {
+            if ((NULL != subscription->xpath && rp_event_notif_match_subscr(msg->request->event_notif_req->xpath, subscription->xpath))
+                    || (NULL == subscription->xpath && 0 == sr_cmp_first_ns(msg->request->event_notif_req->xpath, subscription->module_name))) {
                 /* duplicate msg into req with values and subscription details
                  * @note we are not using memory context for the *req* message because with so many
                  * duplications it would be actually less efficient than normally.

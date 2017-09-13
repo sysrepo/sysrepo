@@ -1104,12 +1104,17 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
         SR_LOG_DBG("Removing all existing %s subscriptions from '%s' persist data tree.",
                 sr_subscription_type_gpb_to_str(subscription->type), module_name);
 
-        /* make sure there will be no illegal quotes */
-        if (strchr(subscription->xpath, '\'')) {
-            tmp_xpath = strdup(subscription->xpath);
-            for (ptr = strchr(tmp_xpath, '\''); ptr; ptr = strchr(ptr + 1, '\'')) {
-                *ptr = '"';
+        if (subscription->xpath) {
+            /* make sure there will be no illegal quotes */
+            if (strchr(subscription->xpath, '\'')) {
+                tmp_xpath = strdup(subscription->xpath);
+                for (ptr = strchr(tmp_xpath, '\''); ptr; ptr = strchr(ptr + 1, '\'')) {
+                    *ptr = '"';
+                }
             }
+        } else {
+            tmp_xpath = malloc(1 + strlen(module_name) + 6);
+            sprintf(tmp_xpath, "/%s:*//.", module_name);
         }
 
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH, module_name,
@@ -1187,7 +1192,11 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
     rc = pm_save_data_tree(data_tree, fd);
 
     if (SR_ERR_OK == rc) {
-        SR_LOG_DBG("Subscription entry '%s' successfully added into '%s' persist data tree.", subscription->xpath, module_name);
+        if (subscription->xpath) {
+            SR_LOG_DBG("Subscription entry '%s' successfully added into '%s' persist data tree.", subscription->xpath, module_name);
+        } else {
+            SR_LOG_DBG("All module notifications subscription entry successfully added into '%s' persist data tree.", module_name);
+        }
     }
 
 cleanup:
