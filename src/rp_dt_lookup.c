@@ -42,7 +42,7 @@ rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
     }
     struct ly_set *res = lyd_find_path(data_tree, xpath);
     if (NULL == res) {
-        SR_LOG_ERR_MSG("Lyd get node failed");
+        SR_LOG_ERR_MSG("Lyd find path failed");
         return LY_EINVAL == ly_errno || LY_EVALID == ly_errno ? SR_ERR_INVAL_ARG : SR_ERR_INTERNAL;
     }
 
