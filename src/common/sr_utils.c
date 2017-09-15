@@ -2476,6 +2476,10 @@ sr_find_schema_node(const struct lys_module *module, const struct lys_node *star
 
     /* main loop */
     while (1) {
+        if ((predicate = strchr(name, '['))) {
+            predicate[0] = '\0';
+            ++predicate;
+        }
         mod_name = strchr(name, ':');
         if (mod_name) {
             mod_name[0] = '\0';
@@ -2489,10 +2493,6 @@ sr_find_schema_node(const struct lys_module *module, const struct lys_node *star
         } else if (name[0] == '/') {
             all_desc = 1;
             ++name;
-        }
-        if ((predicate = strchr(name, '['))) {
-            predicate[0] = '\0';
-            ++predicate;
         }
         if (all_desc && (0 != strcmp(name, ".")) && (0 != strcmp(name, "*"))) {
             /* we do not support "node//node" */
