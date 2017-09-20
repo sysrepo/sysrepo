@@ -1088,7 +1088,7 @@ rp_dt_copy_config_to_running(rp_ctx_t *rp_ctx, rp_session_t *session, const char
         rc = dm_move_session_tree_and_ops_all_ds(rp_ctx->dm_ctx, session->dm_session, backup);
         CHECK_RC_MSG_GOTO(rc, cleanup_sess_stop, "Moving session data trees failed");
 
-        rc = rp_dt_switch_datastore(rp_ctx, session, src);
+        rp_dt_switch_datastore(rp_ctx, session, src);
 
         /* load models to be committed to the session */
         if (NULL != module_name) {
@@ -1167,8 +1167,7 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
     }
 
     if ((SR_DS_CANDIDATE == src || SR_DS_CANDIDATE == dst) && SR_DS_CANDIDATE != session->datastore) {
-        rc = rp_dt_switch_datastore(rp_ctx, session, SR_DS_CANDIDATE);
-        CHECK_RC_MSG_RETURN(rc, "Datastore switch failed");
+        rp_dt_switch_datastore(rp_ctx, session, SR_DS_CANDIDATE);
     }
 
     if (SR_DS_RUNNING != dst) {
@@ -1190,15 +1189,13 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
     return rc;
 }
 
-int
+void
 rp_dt_switch_datastore(rp_ctx_t *rp_ctx, rp_session_t *session, sr_datastore_t ds)
 {
-    CHECK_NULL_ARG3(rp_ctx, session, session->dm_session);
-    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_VOID3(rp_ctx, session, session->dm_session);
     SR_LOG_INF("Switch datastore request %s -> %s", sr_ds_to_str(session->datastore), sr_ds_to_str(ds));
     session->datastore = ds;
-    rc = dm_session_switch_ds(session->dm_session, ds);
-    return rc;
+    dm_session_switch_ds(session->dm_session, ds);
 }
 
 int

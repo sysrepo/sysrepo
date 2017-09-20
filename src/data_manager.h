@@ -1039,9 +1039,8 @@ int dm_copy_if_not_loaded(dm_ctx_t *dm_ctx, dm_session_t *from_session, dm_sessi
  * will work on the selected datastore.
  * @param [in] session
  * @param [in] ds
- * @return Error code (SR_ERR_OK on success)
  */
-int dm_session_switch_ds(dm_session_t *session, sr_datastore_t ds);
+void dm_session_switch_ds(dm_session_t *session, sr_datastore_t ds);
 
 /**
  * @brief Moves session data trees and operations (for all datastores) from one session to another.

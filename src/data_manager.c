@@ -6704,16 +6704,15 @@ dm_move_session_trees_in_session(dm_ctx_t *dm_ctx, dm_session_t *session, sr_dat
     rc = dm_discard_changes(dm_ctx, session, NULL);
     CHECK_RC_MSG_RETURN(rc, "Discard changes failed");
 
-    rc = dm_session_switch_ds(session, prev_ds);
+    dm_session_switch_ds(session, prev_ds);
     return rc;
 }
 
-int
+void
 dm_session_switch_ds(dm_session_t *session, sr_datastore_t ds)
 {
-    CHECK_NULL_ARG(session);
+    CHECK_NULL_ARG_VOID(session);
     session->datastore = ds;
-    return SR_ERR_OK;
 }
 
 int
