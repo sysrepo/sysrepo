@@ -3135,20 +3135,42 @@ cleanup:
 }
 
 int
-dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
+dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, i;
+    dm_data_info_t *info = NULL;
 
-    sr_btree_cleanup(session->session_modules[session->datastore]);
-    session->session_modules[session->datastore] = NULL;
+    if (NULL == module_name) {
+        sr_btree_cleanup(session->session_modules[session->datastore]);
+        session->session_modules[session->datastore] = NULL;
 
-    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &session->session_modules[session->datastore]);
-    CHECK_RC_MSG_RETURN(rc, "Binary tree allocation failed");
-    dm_free_sess_operations(session->operations[session->datastore], session->oper_count[session->datastore]);
-    session->operations[session->datastore] = NULL;
-    session->oper_count[session->datastore] = 0;
-    session->oper_size[session->datastore] = 0;
+        rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &session->session_modules[session->datastore]);
+        CHECK_RC_MSG_RETURN(rc, "Binary tree allocation failed");
+        dm_free_sess_operations(session->operations[session->datastore], session->oper_count[session->datastore]);
+        session->operations[session->datastore] = NULL;
+        session->oper_count[session->datastore] = 0;
+        session->oper_size[session->datastore] = 0;
+    } else {
+        i = 0;
+        while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
+            if (0 == strcmp(info->schema->module->name, module_name)) {
+                sr_btree_delete(session->session_modules[session->datastore], info);
+                break;
+            }
+        }
+
+        for (i = session->oper_count[session->datastore] - 1; i >= 0; i--) {
+            dm_sess_op_t *op = &session->operations[session->datastore][i];
+            if (0 == sr_cmp_first_ns(op->xpath, module_name)) {
+                dm_free_sess_op(op);
+                memmove(&session->operations[session->datastore][i],
+                        &session->operations[session->datastore][i + 1],
+                        (session->oper_count[session->datastore] - i - 1) * sizeof(*op));
+                session->oper_count[session->datastore]--;
+            }
+        }
+    }
 
     return SR_ERR_OK;
 }
@@ -6679,7 +6701,7 @@ dm_move_session_trees_in_session(dm_ctx_t *dm_ctx, dm_session_t *session, sr_dat
 
     /* initialize the from datastore binary tree*/
     dm_session_switch_ds(session, from);
-    rc = dm_discard_changes(dm_ctx, session);
+    rc = dm_discard_changes(dm_ctx, session, NULL);
     CHECK_RC_MSG_RETURN(rc, "Discard changes failed");
 
     rc = dm_session_switch_ds(session, prev_ds);

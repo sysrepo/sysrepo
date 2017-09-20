@@ -1519,7 +1519,7 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
         return SR_ERR_NOMEM;
     }
 
-    rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
+    rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session, NULL);
 
     /* set response code */
     resp->response->result = rc;

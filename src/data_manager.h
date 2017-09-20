@@ -417,9 +417,10 @@ int dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_e
  * call ::dm_get_data_info will load fresh data.
  * @param [in] dm_ctx
  * @param [in] session
+ * @param [in] module_name Optional module name.
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
+int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name);
 
 /**
  * @brief Removes the modified flags from session copies of data trees.
