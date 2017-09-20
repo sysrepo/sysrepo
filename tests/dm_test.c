@@ -308,7 +308,7 @@ dm_discard_changes_test(void **state)
     rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = dm_discard_changes(ctx, ses_ctx);
+    rc = dm_discard_changes(ctx, ses_ctx, "test-module");
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
@@ -330,7 +330,7 @@ dm_discard_changes_test(void **state)
     assert_int_equal(100, ((struct lyd_node_leaf_list *)info->node->child->next->next->next->next)->value.int8);
 
     /* discard changes to get current datastore value*/
-    rc = dm_discard_changes(ctx, ses_ctx);
+    rc = dm_discard_changes(ctx, ses_ctx, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
@@ -433,18 +433,21 @@ dm_copy_module_test(void **state)
    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &sessionA);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = dm_copy_module(ctx, sessionA, "example-module", SR_DS_STARTUP, SR_DS_RUNNING, NULL);
-   assert_int_equal(SR_ERR_OK, rc);
+   /* not enabled */
+   rc = dm_copy_module(ctx, sessionA, "test-module", SR_DS_STARTUP, SR_DS_RUNNING, NULL, 0, NULL, NULL);
+   assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
-   rc = dm_get_module_and_lockw(ctx, "test-module", &si);
+   rc = dm_get_module_without_lock(ctx, "test-module", &si);
    assert_int_equal(SR_ERR_OK, rc);
 
    rc = rp_dt_enable_xpath(ctx, sessionA, si, "/test-module:main");
    assert_int_equal(SR_ERR_OK, rc);
 
-   pthread_rwlock_unlock(&si->model_lock);
+   /* now enabled */
+   rc = dm_copy_module(ctx, sessionA, "test-module", SR_DS_STARTUP, SR_DS_RUNNING, NULL, 0, NULL, NULL);
+   assert_int_equal(SR_ERR_OK, rc);
 
-   rc = dm_copy_all_models(ctx, sessionA, SR_DS_STARTUP, SR_DS_RUNNING);
+   rc = dm_copy_all_models(ctx, sessionA, SR_DS_STARTUP, SR_DS_RUNNING, 0, NULL, NULL);
    assert_int_equal(SR_ERR_OK, rc);
 
    dm_session_stop(ctx, sessionA);
@@ -644,7 +647,7 @@ dm_event_notif_test(void **state)
             NULL, NULL, NULL, NULL, NULL, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     dm_copy_errors(session, NULL, &error_msg, &error_xpath);
-    assert_string_equal("Resolving XPath expression \"/test-module:link-removed/non-existing-node\" failed.", error_msg);
+    assert_string_equal("Unable to evaluate xpath", error_msg);
     assert_string_equal("/test-module:link-removed/non-existing-node", error_xpath);
     free(error_msg);
     free(error_xpath);
@@ -998,7 +1001,7 @@ get_single_node(struct lyd_node *data_tree, const char *xpath)
     assert_non_null(data_tree);
     assert_non_null(xpath);
 
-    res = lyd_find_xpath(data_tree, xpath);
+    res = lyd_find_path(data_tree, xpath);
     assert_non_null(res);
     assert_int_equal(1, res->number);
     node = res->set.d[0];
@@ -1055,13 +1058,13 @@ dm_schema_node_xpath_hash(void **state)
     verify_xpath_hash(node, hash);
     verify_data_depth(node, 2);
 
-    node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled");
+    node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:enabled");
     hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface")
            + sr_str_hash("ietf-ip:ipv4") + sr_str_hash("ietf-ip:enabled");
     verify_xpath_hash(node, hash);
     verify_data_depth(node, 3);
 
-    node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/ip");
+    node = get_single_node(data_tree, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:address[ietf-ip:ip='192.168.2.100']/ietf-ip:ip");
     hash = sr_str_hash("ietf-interfaces:interfaces") + sr_str_hash("ietf-interfaces:interface")
            + sr_str_hash("ietf-ip:ipv4") + sr_str_hash("ietf-ip:address") + sr_str_hash("ietf-ip:ip");
     verify_xpath_hash(node, hash);

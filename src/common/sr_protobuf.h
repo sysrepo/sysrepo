@@ -341,9 +341,9 @@ Sr__NotificationEvent sr_notification_event_sr_to_gpb(sr_notif_event_t event);
 Sr__NotificationEvent sr_notification_event_str_to_gpb(const char *event_name);
 
 /**
- * @brief Converts notification event type from GPB to sysrepo type.
+ * @brief Converts notification event from GPB to sysrepo type.
  *
- * @param[in] event GPB notification event type.
+ * @param[in] event GPB notification event.
  * @return Sysrepo notification event type.
  */
 sr_notif_event_t sr_notification_event_gpb_to_sr(Sr__NotificationEvent event);
@@ -351,7 +351,7 @@ sr_notif_event_t sr_notification_event_gpb_to_sr(Sr__NotificationEvent event);
 /**
  * @brief Converts event notification type from GPB to sysrepo type.
  *
- * @param[in] event GPB event notification type.
+ * @param[in] ev_notif_type GPB event notification type.
  * @return Sysrepo event notification type.
  */
 sr_ev_notif_type_t sr_ev_notification_type_gpb_to_sr(Sr__EventNotifReq__NotifType ev_notif_type);

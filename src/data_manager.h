@@ -46,9 +46,45 @@
 #define DM_DATASTORE_COUNT 3
 
 /**
- * @brief Structure that holds the context of an instance of Data Manager.
+ * @brief Structure holds commit contexts for the purposes of notification
+ * session.
  */
-typedef struct dm_ctx_s dm_ctx_t;
+typedef struct dm_c_ctxs_s {
+    sr_btree_t *tree;      /**< Tree of commit context used for notifications */
+    pthread_rwlock_t lock; /**< rwlock to access c_ctxs */
+    pthread_mutex_t empty_mutex; /**< guards empty and commits_blocked */
+    pthread_cond_t empty_cond;   /**< can be used to wait for empty to be true */
+    bool empty;                  /**< flag that is set to true if there is no commit ctx stored */
+    bool commits_blocked;        /**< flag that decides whether a new commit context cane be inserted into the tree */
+} dm_commit_ctxs_t;
+
+/** defined in data_manager.c */
+typedef struct dm_tmp_ly_ctx_s dm_tmp_ly_ctx_t;
+
+/**
+ * @brief Data manager context holding loaded schemas, data trees
+ * and corresponding locks
+ */
+typedef struct dm_ctx_s {
+    ac_ctx_t *ac_ctx;             /**< Access Control module context */
+    np_ctx_t *np_ctx;             /**< Notification Processor context */
+    pm_ctx_t *pm_ctx;             /**< Persistence Manager context */
+    md_ctx_t *md_ctx;             /**< Module Dependencies context */
+    nacm_ctx_t *nacm_ctx;         /**< NACM context */
+    cm_connection_mode_t conn_mode;  /**< Mode in which Connection Manager operates */
+    char *schema_search_dir;      /**< location where schema files are located */
+    char *data_search_dir;        /**< location where data files are located */
+    sr_locking_set_t *locking_ctx;/**< lock context for lock/unlock/commit operations */
+    bool *ds_lock;                /**< Flags if the ds lock is hold by a session*/
+    pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
+    sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas */
+    pthread_rwlock_t schema_tree_lock;  /**< rwlock for access schema_info_tree */
+    dm_commit_ctxs_t commit_ctxs; /**< Structure holding commit contexts and corresponding lock */
+    struct timespec last_commit_time;  /**< Time of the last commit */
+    dm_tmp_ly_ctx_t *tmp_ly_ctx;  /**< Structure wrapping libyang context that is used to validate/print/parse date
+                                   * where the set of required yang module can vary */
+
+} dm_ctx_t;
 
 /**
  * @brief Structure that holds Data Manager's per-session context.
@@ -114,7 +150,7 @@ typedef enum dm_operation_e {
  */
 typedef enum dm_commit_state_e {
     DM_COMMIT_STARTED,
-    DM_COMMIT_VALIDATION,
+    DM_COMMIT_LOAD_MODEL_DEPS,
     DM_COMMIT_LOAD_MODIFIED_MODELS,
     DM_COMMIT_REPLAY_OPS,
     DM_COMMIT_VALIDATE_MERGED,
@@ -164,7 +200,7 @@ typedef struct dm_model_subscription_s {
 }dm_model_subscription_t;
 
 /**
- * @brief A set of changes to be commited (as seen by ::lyd_diff) */
+ * @brief A set of changes to be commited (returned by \b lyd_diff) */
 typedef struct dm_module_difflist_s {
     dm_schema_info_t *schema_info;      /**< schema info identifying the module to which the difflist is tied to */
     struct lyd_difflist *difflist;      /**< diff list */
@@ -196,19 +232,6 @@ typedef struct dm_commit_context_s {
     bool in_btree;              /**< set to tree if the context was inserted into btree */
     bool should_be_removed;     /**< flag denoting whether c_ctx can be removed from btree */
 } dm_commit_context_t;
-
-/**
- * @brief Structure holds commit contexts for the purposes of notification
- * session.
- */
-typedef struct dm_c_ctxs_s {
-    sr_btree_t *tree;      /**< Tree of commit context used for notifications */
-    pthread_rwlock_t lock; /**< rwlock to access c_ctxs */
-    pthread_mutex_t empty_mutex; /**< guards empty and commits_blocked */
-    pthread_cond_t empty_cond;   /**< can be used to wait for empty to be true */
-    bool empty;                  /**< flag that is set to true if there is no commit ctx stored */
-    bool commits_blocked;        /**< flag that decides whether a new commit context cane be inserted into the tree */
-} dm_commit_ctxs_t;
 
 /**
  * @brief End macro for data child iteration
@@ -247,6 +270,7 @@ typedef struct dm_c_ctxs_s {
  * @param [in] ac_ctx Access Control module context
  * @param [in] np_ctx Notification Processor context
  * @param [in] pm_ctx Persistence Manager context
+ * @param [in] conn_mode Connection mode
  * @param [in] schema_search_dir - location where schema files are located
  * @param [in] data_search_dir - location where data files are located
  * @param [out] dm_ctx
@@ -393,9 +417,10 @@ int dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_e
  * call ::dm_get_data_info will load fresh data.
  * @param [in] dm_ctx
  * @param [in] session
+ * @param [in] module_name Optional module name.
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
+int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name);
 
 /**
  * @brief Removes the modified flags from session copies of data trees.
@@ -436,18 +461,30 @@ int dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_lis
 int dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t **c_ctx);
 
 /**
+ * @brief Fill required modules for all modules loaded in the session for the current session datastore.
+ *
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_commit_load_session_module_deps(dm_ctx_t *dm_ctx, dm_session_t *session);
+
+/**
  * @brief Loads the data tree which has been modified in the session to the commit context. If the session copy has
  * the same timestamp as the file system file it is copied otherwise, data tree is loaded from file and the changes
  * made in the session are applied.
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] c_ctx - commit context
+ * @param [in] force_copy_uptodate True if timestamp check of session info datatree and datastore file should be
+ * skipped and session info datatree should be always used (otherwise if the timestamp of session datatrees is older
+ * than of datastore file, the datatrees are overwritten with data loaded from the datastore file)
  * @param [out] errors
  * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx,
-        sr_error_info_t **errors, size_t *err_cnt);
+        bool force_copy_uptodate, sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Tries to acquire write locks on opened fds
@@ -470,15 +507,16 @@ int dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx);
  * @brief Execute NETCONF access control (NACM) to determine if the user is allowed
  * to perform all the data modifications included in the commit.
  *
- * @param [in] dm_ctx
+ * @param [in] nacm_ctx
  * @param [in] session
  * @param [in] c_ctx
+ * @param [in] copy_config
  * @param [out] errors
  * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED in case of insufficient access rights)
  */
-int dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
-        sr_error_info_t **errors, size_t *err_cnt);
+int dm_commit_netconf_access_control(nacm_ctx_t *nacm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
+                                     bool copy_config, sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Notifies about the changes made within the running commit. It is
@@ -498,29 +536,36 @@ int dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t e
 void dm_free_commit_context(void *commit_ctx);
 
 /**
- * @brief Saves commit context to be used for notifications. Releases acquired locks
- * and closes opened files.
- * @param [in] dm_ctx
- * @param [in] c_ctx
- */
-int dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx);
-
-/**
- * @brief Logs operation into session operation list. The operation list is used
+ * @brief Logs add operation into session operation list. The operation list is used
  * during the commit. Passed allocated arguments are freed in case of error also.
  * @param [in] session
- * @param [in] op
  * @param [in] xpath
  * @param [in] val - must be allocated, will be free with operation list
+ * @param [in] str_val
  * @param [in] opts
- * @param [in] pos - applicable only with move operation
- * @param [in] rel_item - option of move operation
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_add_set_operation(dm_session_t *session, const char *xpath, sr_val_t *val, char *str_val, sr_edit_options_t opts);
 
+/**
+ * @brief Logs del operation into session operation list. The operation list is used
+ * during the commit. Passed allocated arguments are freed in case of error also.
+ * @param [in] session
+ * @param [in] xpath
+ * @param [in] opts
+ * @return Error code (SR_ERR_OK on success)
+ */
 int dm_add_del_operation(dm_session_t *session, const char *xpath, sr_edit_options_t opts);
 
+/**
+ * @brief Logs move operation into session operation list. The operation list is used
+ * during the commit. Passed allocated arguments are freed in case of error also.
+ * @param [in] session
+ * @param [in] xpath
+ * @param [in] pos
+ * @param [in] rel_item
+ * @return Error code (SR_ERR_OK on success)
+ */
 int dm_add_move_operation(dm_session_t *session, const char *xpath, sr_move_position_t pos, const char *rel_item);
 
 /**
@@ -776,7 +821,6 @@ int dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const
  * @param [in] ctx
  * @param [in] session
  * @param [in] module_name
- * @param [in] module (optional can be NULL)
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name);
@@ -789,10 +833,13 @@ int dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *
  * @param [in] source
  * @param [in] destination
  * @param [in] subscription if the subscription is not NULL SR_EV_ENABLED notification is sent to the subscription.
+ * @param [in] nacm_on
+ * @param [out] errors
+ * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, sr_datastore_t source, sr_datastore_t destination,
-        const np_subscription_t *subscription);
+        const np_subscription_t *subscription, bool nacm_on, sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Copies all enabled modules from one datastore to the another.
@@ -800,9 +847,13 @@ int dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_n
  * @param [in] session
  * @param [in] src
  * @param [in] dst
+ * @param [in] nacm_on
+ * @param [out] errors
+ * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst);
+int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst, bool nacm_on,
+                       sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Validates content of a RPC request or reply.
@@ -988,18 +1039,18 @@ int dm_copy_if_not_loaded(dm_ctx_t *dm_ctx, dm_session_t *from_session, dm_sessi
  * will work on the selected datastore.
  * @param [in] session
  * @param [in] ds
- * @return Error code (SR_ERR_OK on success)
  */
-int dm_session_switch_ds(dm_session_t *session, sr_datastore_t ds);
+void dm_session_switch_ds(dm_session_t *session, sr_datastore_t ds);
 
 /**
  * @brief Moves session data trees and operations (for all datastores) from one session to another.
  * @param [in] dm_ctx
  * @param [in] from
  * @param [in] to
+ * @param [in] ds
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_move_session_tree_and_ops_all_ds(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to);
+int dm_move_session_tree_and_ops(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, sr_datastore_t ds);
 
 /**
  * @brief Moves data trees from one datastore to another in the session

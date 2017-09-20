@@ -31,11 +31,14 @@
 #include "module_dependencies.h"
 
 /* Internal Sysrepo module persistently storing all dependencies between modules */
+//! @cond doxygen_suppress
 #define MD_MODULE_NAME      "sysrepo-module-dependencies"
 #define MD_SCHEMA_FILENAME  MD_MODULE_NAME ".yang"
 #define MD_DATA_FILENAME    MD_MODULE_NAME ".xml"
+//! @endcond
 
 /* A list of frequently used xpaths for the internal module with dependency info */
+//! @cond doxygen_suppress
 #define MD_XPATH_MODULE                      "/sysrepo-module-dependencies:module[name='%s'][revision='%s']"
 #define MD_XPATH_MODULE_PREFIX               MD_XPATH_MODULE "/prefix"
 #define MD_XPATH_MODULE_NAMESPACE            MD_XPATH_MODULE "/namespace"
@@ -53,8 +56,9 @@
 #define MD_XPATH_MODULE_INST_ID              MD_XPATH_MODULE_INST_ID_LIST "instance-identifier"
 #define MD_XPATH_MODULE_OP_DATA_SUBTREE_LIST MD_XPATH_MODULE "/op-data-subtrees/"
 #define MD_XPATH_MODULE_OP_DATA_SUBTREE      MD_XPATH_MODULE_OP_DATA_SUBTREE_LIST "op-data-subtree"
+//! @endcond
 
-/* Initial allocated size of an array */
+/** Initial allocated size of an array */
 #define MD_INIT_ARRAY_SIZE  8
 
 /**
@@ -745,6 +749,7 @@ md_add_subtree_ref(md_ctx_t *md_ctx, md_module_t *dest_module, sr_llist_t *dest_
     char *root_xpath = NULL;
     bool inserted = false;
     md_subtree_ref_t *subtree_ref = NULL;
+    sr_llist_node_t *llnode = NULL;
 
     CHECK_NULL_ARG5(md_ctx, dest_module, dest_llist, orig_module, root);
     CHECK_NULL_ARG(output_xpath);
@@ -759,6 +764,17 @@ md_add_subtree_ref(md_ctx_t *md_ctx, md_module_t *dest_module, sr_llist_t *dest_
     /* get and save xpath to this node */
     rc = md_construct_lys_xpath(root, &root_xpath);
     CHECK_RC_MSG_GOTO(rc, fail, "Failed to construct XPath to a subtree.");
+
+    /* check for duplicities */
+    for (llnode = dest_llist->first; llnode; llnode = llnode->next) {
+        subtree_ref = (md_subtree_ref_t *)llnode->data;
+        if (0 == strcmp(subtree_ref->xpath, root_xpath) && subtree_ref->orig == orig_module) {
+            /* already there */
+            free(root_xpath);
+            return SR_ERR_OK;
+        }
+    }
+
     subtree_ref = calloc(1, sizeof(md_subtree_ref_t));
     CHECK_NULL_NOMEM_GOTO(subtree_ref, rc, fail);
     subtree_ref->xpath = root_xpath;
@@ -1291,20 +1307,35 @@ md_free_module_key_list(sr_list_t *module_key_list)
 
 int
 md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision,
-                   md_module_t **module)
+                   sr_list_t *being_parsed, md_module_t **module)
 {
     md_module_t module_lkp;
+
+    *module = NULL;
+
+    for (size_t i = 0; being_parsed && (i < being_parsed->count); ++i) {
+        if (0 == strcmp(name, ((md_module_t *)being_parsed->data[i])->name)) {
+            if (!revision) {
+                *module = (md_module_t *)being_parsed->data[i];
+                return SR_ERR_OK;
+            } else if (0 == strcmp(revision, ((md_module_t *)being_parsed->data[i])->revision_date)) {
+                *module = (md_module_t *)being_parsed->data[i];
+                return SR_ERR_OK;
+            }
+        }
+    }
+
     module_lkp.name = (char *)name;
     module_lkp.revision_date = (char *)revision;
 
     *module = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
-    if (NULL == *module) {
-        SR_LOG_ERR("Module '%s@%s' is not present in the dependency graph.",
-                   name, revision ? revision : "<latest>");
-        return SR_ERR_NOT_FOUND;
+    if (*module) {
+        return SR_ERR_OK;
     }
 
-    return SR_ERR_OK;
+    SR_LOG_ERR("Module '%s@%s' is not present in the dependency graph.",
+               name, revision ? revision : "<latest>");
+    return SR_ERR_NOT_FOUND;
 }
 
 int
@@ -1351,21 +1382,12 @@ md_collect_data_dependencies(md_ctx_t *md_ctx, const char *ref, md_module_t *mod
         for (parent = set->set.s[i]; lys_parent(parent); parent = lys_parent(parent));
         module2 = NULL;
 
-        /* first traverse currently parsed modules */
-        for (size_t j = 0; j < being_parsed->count; ++j) {
-            if (0 == strcmp(lys_node_module(parent)->name, ((md_module_t *)being_parsed->data[j])->name)) {
-                module2 = (md_module_t *)being_parsed->data[j];
-                break;
-            }
-        }
         /* then try the whole md context */
-        if (!module2) {
-            rc = md_get_module_info(md_ctx, lys_node_module(parent)->name,
-                    (lys_node_module(parent)->rev_size ? lys_node_module(parent)->rev[0].date : NULL), &module2);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_WRN_MSG("Failed to get the module schema based on the prefix");
-                continue;
-            }
+        rc = md_get_module_info(md_ctx, lys_node_module(parent)->name,
+                (lys_node_module(parent)->rev_size ? lys_node_module(parent)->rev[0].date : NULL), being_parsed, &module2);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN_MSG("Failed to get the module schema based on the prefix");
+            continue;
         }
         if (module == module2) {
             continue;
@@ -1402,12 +1424,60 @@ cleanup:
     return rc;
 }
 
+static int
+md_collect_identity_dependencies(md_ctx_t *md_ctx, const struct lys_ident *ident, md_module_t *module,
+        sr_list_t *being_parsed)
+{
+    int rc = SR_ERR_OK;
+    md_module_t *module2 = NULL;
+
+    rc = md_get_module_info(md_ctx, lys_main_module(ident->module)->name,
+            (lys_main_module(ident->module)->rev_size ? lys_main_module(ident->module)->rev[0].date : NULL), being_parsed, &module2);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN_MSG("Failed to get the module schema based on the prefix");
+    }
+
+    /* modules are different, add the dependency */
+    if (module2 && (module != module2)) {
+        if (!module2->implemented) {
+            /* this identity or any derived identities cannot be used as the module is not implemented */
+            return SR_ERR_OK;
+        }
+
+        if (SR_ERR_OK != md_add_dependency(module->deps, MD_DEP_EXTENSION, module2, true, NULL) ||
+                SR_ERR_OK != md_add_dependency(module2->inv_deps, MD_DEP_EXTENSION, module, true, NULL)) {
+            SR_LOG_ERR_MSG("Failed to add an edge into the dependency graph.");
+            return SR_ERR_INTERNAL;
+        }
+        /* add entry also into data_tree */
+        rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_DEPENDENCY, NULL, module2,
+                            "add (extension) dependency into the data tree", NULL,
+                            module->name, module->revision_date,
+                            module2->name, module2->revision_date,
+                            md_get_dep_type_to_str(MD_DEP_EXTENSION));
+        if (SR_ERR_OK != rc) {
+            return rc;
+        }
+    }
+
+    /* also go through derived identities */
+    for (int i = 0; ident->der && (i < ident->der->number); ++i) {
+        rc = md_collect_identity_dependencies(md_ctx, (struct lys_ident *)ident->der->set.g[i], module, being_parsed);
+        if (SR_ERR_OK != rc) {
+            return rc;
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
 /**
  * @brief Traverse schema tree and collect instance identifiers, operational data subtrees
  *        and data dependencies (and maybe more in the future as needed).
  */
 static int
-md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *root, sr_list_t *being_parsed)
+md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, md_module_t *main_module, struct lys_node *root,
+        sr_list_t *being_parsed)
 {
     int rc = SR_ERR_OK;
     struct lys_node *node = NULL, *child = NULL, *parent = NULL;
@@ -1573,6 +1643,16 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                         }
                     }
                     break;
+                case LY_TYPE_IDENT:
+                    /* identityref */
+                    for (int i = 0; i < leaf->type.info.ident.count; ++i) {
+                        rc = md_collect_identity_dependencies(md_ctx, leaf->type.info.ident.ref[i], main_module,
+                                                              being_parsed);
+                        if (SR_ERR_OK != rc) {
+                            return rc;
+                        }
+                    }
+                    break;
                 default:
                     break;
                 }
@@ -1601,8 +1681,10 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
             }
 
             /* operational data subtrees */
+//! @cond doxygen_suppress
 #define PRIV_OP_SUBTREE  1
 #define PRIV_CFG_SUBTREE 2
+//! @endcond
             rc = SR_ERR_OK;
             if (LYS_USES == node->nodetype) {
                 /* skip */
@@ -1717,24 +1799,25 @@ next_node:
  */
 static int
 md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, const char *revision, bool installed,
-                     bool implemented, md_module_t *belongsto, sr_list_t *implicitly_inserted, sr_list_t *being_parsed)
+                     md_module_t *belongsto, sr_list_t *implicitly_inserted, sr_list_t *being_parsed)
 {
     int rc = SR_ERR_INTERNAL;
-    struct ly_ctx *tmp_ly_ctx = NULL;
-    const struct lys_module *imp_module_schema = NULL;
-    bool already_installed = false;
+    bool already_present = false;
     md_module_t *module = NULL, *module2 = NULL, *main_module = NULL, *match_implemented, *match_latest_rev, *match_revision;
+    md_dep_t *dep = NULL;
     sr_llist_node_t *module_ll_node = NULL;
     struct lys_import *imp = NULL;
     struct lys_include *inc = NULL;
     struct lys_ident *ident = NULL;
     struct lys_node_augment *augment = NULL;
+    struct ly_ctx *tmp_ly_ctx = NULL;
+    const struct lys_module *tmp_module_schema = NULL;
     md_module_t module_lkp = { 0, };
     md_module_key_t *module_key = NULL;
 
     CHECK_NULL_ARG3(md_ctx, module_schema, revision);
-    if (installed && !implemented) {
-        SR_LOG_ERR_MSG("Invalid arguments to install module.");
+    if (installed && !lys_main_module(module_schema)->implemented) {
+        SR_LOG_ERR("Invalid arguments to install module '%s'.", module_schema->name);
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
@@ -1773,7 +1856,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     module->filepath = strdup(module_schema->filepath);
     CHECK_NULL_NOMEM_GOTO(module->filepath, rc, cleanup);
     module->installed = installed;
-    module->implemented = implemented;
+    module->implemented = module->submodule ? belongsto->implemented : module_schema->implemented;
 
     /* Go through all the modules and collect information about existing modules */
     match_implemented = NULL;
@@ -1797,12 +1880,28 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     /* Can we modify modules the way needed? */
     if (match_implemented) {
         if (match_revision == match_implemented) {
-            SR_LOG_INF("Module '%s' is already installed.", md_get_module_fullname(module));
-            if (!module->submodule) {
-                rc = SR_ERR_OK;
-                goto cleanup;
+            if (match_implemented->installed) {
+                SR_LOG_INF("Module '%s' is already installed.", md_get_module_fullname(module));
+            } else if (installed) {
+                SR_LOG_INF("Module '%s' is now explicitly installed.", md_get_module_fullname(module));
+                /* update install flag */
+                match_implemented->installed = true;
+                rc = md_lyd_new_path(md_ctx, MD_XPATH_INSTALLED_FLAG, "true", match_implemented, "set installed flag",
+                                     NULL, match_implemented->name, match_implemented->revision_date);
+                if (SR_ERR_OK != rc) {
+                    goto cleanup;
+                }
             }
-        } else if (implemented) {
+            if (module->submodule) {
+                /* update submodules */
+                md_free_module(module);
+                module = match_revision;
+                already_present = true;
+                goto dependencies;
+            }
+            rc = SR_ERR_OK;
+            goto cleanup;
+        } else if (module_schema->implemented) {
             SR_LOG_ERR("Module '%s' is already implemented in revision '%s'.", module->name, match_implemented->revision_date);
             rc = SR_ERR_DATA_EXISTS;
             goto cleanup;
@@ -1829,8 +1928,8 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
         }
 
         /* submodules need to always be processed again */
-        if ((implemented && !match_revision->implemented) || match_revision->submodule) {
-            if (implemented && !match_revision->implemented) {
+        if ((module_schema->implemented && !match_revision->implemented) || match_revision->submodule) {
+            if (module_schema->implemented && !match_revision->implemented) {
                 /* update implemented flag */
                 match_revision->implemented = true;
                 rc = md_lyd_new_path(md_ctx, MD_XPATH_IMPLEMENTED_FLAG, "true", match_revision, "set implemented flag",
@@ -1842,7 +1941,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
             /* update submodules */
             md_free_module(module);
             module = match_revision;
-            already_installed = true;
+            already_present = true;
             goto dependencies;
         }
 
@@ -1925,6 +2024,8 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     CHECK_RC_MSG_GOTO(rc, cleanup, "sr_list_add failed");
 
 dependencies:
+    main_module = (module->submodule ? belongsto : module);
+
     /* Recursivelly insert all include-based dependencies. */
     for (size_t i = 0; i < module_schema->inc_size; i++) {
         inc = module_schema->inc + i;
@@ -1932,16 +2033,17 @@ dependencies:
             continue;
         }
         rc = md_insert_lys_module(md_ctx, (struct lys_module *)inc->submodule, md_get_inc_revision(inc), installed,
-                                  implemented, module->submodule ? belongsto : module, implicitly_inserted, being_parsed);
+                                  module->submodule ? belongsto : module, implicitly_inserted, being_parsed);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
     }
 
-    if (!module->submodule && already_installed) {
-        /* we only needed to update submodules */
-        rc = SR_ERR_OK;
-        goto cleanup;
+    if (!module->submodule && already_present) {
+        /* skip processing imports/includes which were already processed even for
+         * only imported modules and go directly into processing dependencies introduced
+         * only by the implemented modules */
+        goto implemented_dependencies;
     }
 
     /* Recursivelly insert all import-based dependencies. */
@@ -1951,30 +2053,12 @@ dependencies:
             /* skip libyang's internal modules */
             continue;
         }
-        /* Use a separate context in which the imported module will be implemented. */
-        tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir);
-        if (NULL == tmp_ly_ctx) {
-            rc = SR_ERR_INTERNAL;
-            SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
-            goto cleanup;
-        }
-        /* load module schema into the temporary context. */
-        imp_module_schema = lys_parse_path(tmp_ly_ctx, imp->module->filepath,
-                                           sr_str_ends_with(imp->module->filepath,
-                                                            SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG);
-        if (NULL == imp_module_schema) {
-            rc = SR_ERR_INTERNAL;
-            SR_LOG_ERR("Unable to parse '%s' schema file: %s", imp->module->filepath, ly_errmsg());
-            goto cleanup;
-        }
-        /* non-implemented dependency will have all dependencies only imported */
-        rc = md_insert_lys_module(md_ctx, imp_module_schema, md_get_module_revision(imp_module_schema), false,
-                                  implemented ? imp->module->implemented : false, NULL, implicitly_inserted, being_parsed);
+
+        rc = md_insert_lys_module(md_ctx, imp->module, md_get_module_revision(imp->module),
+                                  false, NULL, implicitly_inserted, being_parsed);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
-        ly_ctx_destroy(tmp_ly_ctx, NULL);
-        tmp_ly_ctx = NULL;
     }
 
     /**
@@ -2001,7 +2085,6 @@ dependencies:
     /**
      * Note: all submodule dependencies are inherited by the module that it belongs to.
      */
-    main_module = (module->submodule ? belongsto : module);
 
     /* process dependencies introduces directly by imports */
     for (uint8_t i = 0; i < module_schema->imp_size; ++i) {
@@ -2010,9 +2093,7 @@ dependencies:
             /* skip libyang's internal modules */
             continue;
         }
-        module_lkp.name = (char *)imp->module->name;
-        module_lkp.revision_date = (char *)md_get_imp_revision(imp);
-        module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
+        md_get_module_info(md_ctx, imp->module->name, md_get_imp_revision(imp), being_parsed, &module2);
         if (NULL == module2) {
             SR_LOG_ERR_MSG("Unable to resolve import dependency.");
             rc = SR_ERR_INTERNAL;
@@ -2034,18 +2115,59 @@ dependencies:
         }
     }
 
-    /* process dependencies introduced by identities */
-    for (uint32_t i = 0; i < module_schema->ident_size; ++i) {
-        ident = module_schema->ident + i;
-        for (uint8_t b = 0; b < ident->base_size; b++) {
-            if (ident->base && module_schema != lys_node_module((struct lys_node *)ident->base[b])) {
-                module_lkp.name = (char *)lys_node_module((struct lys_node *)ident->base[b])->name;
-                module_lkp.revision_date = (char *)md_get_module_revision(lys_node_module((struct lys_node *)ident->base[b]));
+implemented_dependencies:
+
+    /* the following dependencies are introduced only by implemented modules */
+    if (module_schema->implemented) {
+        /* process dependencies introduced by identities */
+        for (uint32_t i = 0; i < module_schema->ident_size; ++i) {
+            ident = module_schema->ident + i;
+            for (uint8_t b = 0; b < ident->base_size; b++) {
+                if (ident->base && module_schema != lys_node_module((struct lys_node *)ident->base[b])) {
+                    md_get_module_info(md_ctx, lys_node_module((struct lys_node *)ident->base[b])->name,
+                                       md_get_module_revision(lys_node_module((struct lys_node *)ident->base[b])),
+                                       being_parsed, &module2);
+                    if (NULL == module2) {
+                        SR_LOG_ERR_MSG("Unable to resolve dependency induced by a derived identity.");
+                        rc = SR_ERR_INTERNAL;
+                        goto cleanup;
+                    }
+                    if (SR_ERR_OK != md_add_dependency(module2->deps, MD_DEP_EXTENSION, main_module, true, NULL) ||
+                        SR_ERR_OK != md_add_dependency(main_module->inv_deps, MD_DEP_EXTENSION, module2, true, NULL)) {
+                        SR_LOG_ERR_MSG("Failed to add an edge into the dependency graph.");
+                        rc = SR_ERR_INTERNAL;
+                        goto cleanup;
+                    }
+                    /* add entry also into data_tree */
+                    rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_DEPENDENCY, NULL, main_module,
+                                        "add (extension) dependency into the data tree", NULL,
+                                        module2->name, module2->revision_date,
+                                        main_module->name, main_module->revision_date,
+                                        md_get_dep_type_to_str(MD_DEP_EXTENSION));
+                    if (SR_ERR_OK != rc) {
+                        goto cleanup;
+                    }
+                }
+            }
+        }
+
+        /* process dependencies introduced by augments */
+        for (uint32_t i = 0; i < module_schema->augment_size; ++i) {
+            augment = module_schema->augment + i;
+            if (module_schema != lys_node_module(augment->target)) {
+                module_lkp.name = (char *)lys_node_module(augment->target)->name;
+                module_lkp.revision_date = (char *)md_get_module_revision(lys_node_module(augment->target));
                 module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
                 if (NULL == module2) {
-                    SR_LOG_ERR_MSG("Unable to resolve dependency induced by a derived identity.");
-                    rc = SR_ERR_INTERNAL;
-                    goto cleanup;
+                    if (module->submodule && NULL != belongsto &&
+                        0 == strcmp(belongsto->name, module_lkp.name) &&
+                        0 == strcmp(belongsto->revision_date, module_lkp.revision_date)) {
+                        continue;
+                    } else {
+                        SR_LOG_ERR_MSG("Unable to resolve dependency induced by an augment.");
+                        rc = SR_ERR_INTERNAL;
+                        goto cleanup;
+                    }
                 }
                 if (SR_ERR_OK != md_add_dependency(module2->deps, MD_DEP_EXTENSION, main_module, true, NULL) ||
                     SR_ERR_OK != md_add_dependency(main_module->inv_deps, MD_DEP_EXTENSION, module2, true, NULL)) {
@@ -2055,93 +2177,92 @@ dependencies:
                 }
                 /* add entry also into data_tree */
                 rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_DEPENDENCY, NULL, main_module,
-                                     "add (extension) dependency into the data tree", NULL,
-                                     module2->name, module2->revision_date,
-                                     main_module->name, main_module->revision_date,
-                                     md_get_dep_type_to_str(MD_DEP_EXTENSION));
+                                    "add (extension) dependency into the data tree", NULL,
+                                    module2->name, module2->revision_date,
+                                    main_module->name, main_module->revision_date,
+                                    md_get_dep_type_to_str(MD_DEP_EXTENSION));
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
                 }
             }
         }
-    }
 
-    /* process dependencies introduced by augments */
-    for (uint32_t i = 0; i < module_schema->augment_size; ++i) {
-        augment = module_schema->augment + i;
-        if (augment->target && module_schema != lys_node_module(augment->target)) {
-            module_lkp.name = (char *)lys_node_module(augment->target)->name;
-            module_lkp.revision_date = (char *)md_get_module_revision(lys_node_module(augment->target));
-            module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
-            if (NULL == module2) {
-                if (module->submodule && NULL != belongsto &&
-                    0 == strcmp(belongsto->name, module_lkp.name) &&
-                    0 == strcmp(belongsto->revision_date, module_lkp.revision_date)) {
-                    continue;
-                } else {
-                    SR_LOG_ERR_MSG("Unable to resolve dependency induced by an augment.");
-                    rc = SR_ERR_INTERNAL;
-                    goto cleanup;
-                }
-            }
-            if (SR_ERR_OK != md_add_dependency(module2->deps, MD_DEP_EXTENSION, main_module, true, NULL) ||
-                SR_ERR_OK != md_add_dependency(main_module->inv_deps, MD_DEP_EXTENSION, module2, true, NULL)) {
-                SR_LOG_ERR_MSG("Failed to add an edge into the dependency graph.");
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            }
-            /* add entry also into data_tree */
-            rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_DEPENDENCY, NULL, main_module,
-                                 "add (extension) dependency into the data tree", NULL,
-                                 module2->name, module2->revision_date,
-                                 main_module->name, main_module->revision_date,
-                                 md_get_dep_type_to_str(MD_DEP_EXTENSION));
+        /* collect instance identifiers and operational data subtrees */
+        if (!module->submodule) {
+            rc = md_traverse_schema_tree(md_ctx, module, main_module, module_schema->data, being_parsed);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
         }
-    }
 
-    /* collect instance identifiers and operational data subtrees */
-    if (!module->submodule) {
-        rc = md_traverse_schema_tree(md_ctx, module, module_schema->data, being_parsed);
-        if (SR_ERR_OK != rc) {
-            goto cleanup;
-        }
-    }
-    for (uint32_t i = 0; i < module_schema->augment_size; ++i) {
-        augment = module_schema->augment + i;
-        rc = md_traverse_schema_tree(md_ctx, main_module, (struct lys_node *)augment, being_parsed);
-        if (SR_ERR_OK != rc) {
-            goto cleanup;
-        }
-    }
+        /* we also need to go through every module that has an import dependency on this module */
+        for (module_ll_node = main_module->inv_deps->first; module_ll_node; module_ll_node = module_ll_node->next) {
+            dep = (md_dep_t *)module_ll_node->data;
+            if (dep->type != MD_DEP_IMPORT) {
+                continue;
+            }
 
-    /* process dependencies introduced by deviations */
-    for (uint32_t i = 0; i < module_schema->deviation_size; ++i) {
-        struct lys_deviate *deviate = module_schema->deviation[i].deviate;
-        if (NULL != deviate) {
-            for (size_t j = 0; j < deviate->must_size; ++j) {
-                /* orig_node will fail to be traversed further for relative paths, lets hope it will not come to that */
-                rc = md_collect_data_dependencies(md_ctx, deviate->must[j].expr, main_module, main_module,
-                                                  being_parsed, module_schema->deviation[i].orig_node, LYXP_MUST);
-                if (SR_ERR_OK != rc) {
-                    goto cleanup;
+            /* Use a separate context for module schema processing */
+            tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir);
+            if (NULL == tmp_ly_ctx) {
+                rc = SR_ERR_INTERNAL;
+                SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
+                goto cleanup;
+            }
+
+            /* load module schema into the temporary context. */
+            tmp_module_schema = lys_parse_path(tmp_ly_ctx, dep->dest->filepath, sr_str_ends_with(dep->dest->filepath,
+                                               SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG);
+            if (NULL == tmp_module_schema) {
+                rc = SR_ERR_INTERNAL;
+                SR_LOG_ERR("Unable to parse '%s' schema file: %s", dep->dest->filepath, ly_errmsg());
+                goto cleanup;
+            }
+
+            rc = md_traverse_schema_tree(md_ctx, dep->dest, dep->dest, tmp_module_schema->data, being_parsed);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+
+            tmp_module_schema = NULL;
+            ly_ctx_destroy(tmp_ly_ctx, NULL);
+            tmp_ly_ctx = NULL;
+        }
+
+        for (uint32_t i = 0; i < module_schema->augment_size; ++i) {
+            augment = module_schema->augment + i;
+            rc = md_traverse_schema_tree(md_ctx, main_module, main_module, (struct lys_node *)augment, being_parsed);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+        }
+
+        /* process dependencies introduced by deviations */
+        for (uint32_t i = 0; i < module_schema->deviation_size; ++i) {
+            struct lys_deviate *deviate = module_schema->deviation[i].deviate;
+            if (NULL != deviate) {
+                for (size_t j = 0; j < deviate->must_size; ++j) {
+                    /* orig_node will fail to be traversed further for relative paths, lets hope it will not come to that */
+                    rc = md_collect_data_dependencies(md_ctx, deviate->must[j].expr, main_module, main_module,
+                                                      being_parsed, module_schema->deviation[i].orig_node, LYXP_MUST);
+                    if (SR_ERR_OK != rc) {
+                        goto cleanup;
+                    }
                 }
             }
         }
     }
 
-    /* inform caller about implicitly installed modules */
-    if (!module->submodule && !installed) {
-        rc = md_get_module_key(module, &module_key);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "md_get_module_key failed");
-        rc = sr_list_add(implicitly_inserted, module_key);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "sr_list_add failed");
-        module_key = NULL;
-    }
+    if (!already_present) {
+        /* inform caller about implicitly inserted modules */
+        if (!module->submodule && !installed) {
+            rc = md_get_module_key(module, &module_key);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "md_get_module_key failed");
+            rc = sr_list_add(implicitly_inserted, module_key);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "sr_list_add failed");
+            module_key = NULL;
+        }
 
-    if (!already_installed) {
         /* insert the new module into the linked list */
         rc = sr_llist_add_new(md_ctx->modules, module);
         if (SR_ERR_OK != rc) {
@@ -2171,7 +2292,7 @@ dependencies:
 
 cleanup:
     md_free_module_key(module_key);
-    if (!already_installed && module) { /*< not inserted into the btree */
+    if (!already_present && module) { /*< not inserted into the btree */
         md_free_module(module);
     }
     if (tmp_ly_ctx) {
@@ -2212,7 +2333,7 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath, sr_list_t **implicitly_
     }
 
     /* insert module into the dependency graph */
-    rc = md_insert_lys_module(md_ctx, module_schema, md_get_module_revision(module_schema), true, true, NULL,
+    rc = md_insert_lys_module(md_ctx, module_schema, md_get_module_revision(module_schema), true, NULL,
                               implicitly_inserted, being_parsed);
     sr_list_cleanup(being_parsed);
     being_parsed = NULL;

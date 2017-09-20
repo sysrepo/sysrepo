@@ -55,31 +55,6 @@ typedef struct dm_tmp_ly_ctx_s {
 } dm_tmp_ly_ctx_t;
 
 /**
- * @brief Data manager context holding loaded schemas, data trees
- * and corresponding locks
- */
-typedef struct dm_ctx_s {
-    ac_ctx_t *ac_ctx;             /**< Access Control module context */
-    np_ctx_t *np_ctx;             /**< Notification Processor context */
-    pm_ctx_t *pm_ctx;             /**< Persistence Manager context */
-    md_ctx_t *md_ctx;             /**< Module Dependencies context */
-    nacm_ctx_t *nacm_ctx;         /**< NACM context */
-    cm_connection_mode_t conn_mode;  /**< Mode in which Connection Manager operates */
-    char *schema_search_dir;      /**< location where schema files are located */
-    char *data_search_dir;        /**< location where data files are located */
-    sr_locking_set_t *locking_ctx;/**< lock context for lock/unlock/commit operations */
-    bool *ds_lock;                /**< Flags if the ds lock is hold by a session*/
-    pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
-    sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas */
-    pthread_rwlock_t schema_tree_lock;  /**< rwlock for access schema_info_tree */
-    dm_commit_ctxs_t commit_ctxs; /**< Structure holding commit contexts and corresponding lock */
-    struct timespec last_commit_time;  /**< Time of the last commit */
-    dm_tmp_ly_ctx_t *tmp_ly_ctx;  /**< Structure wrapping libyang context that is used to validate/print/parse date
-                                   * where the set of required yang module can vary */
-
-} dm_ctx_t;
-
-/**
  * @brief Structure that holds Data Manager's per-session context.
  */
 typedef struct dm_session_s {
@@ -441,7 +416,7 @@ cleanup:
  * @brief The function is called to load the requested module into the context.
  */
 const struct lys_module *
-dm_module_clb (struct ly_ctx *ctx, const char *name, const char *ns, int options, void *user_data)
+dm_module_clb(struct ly_ctx *ctx, const char *name, const char *ns, int options, void *user_data)
 {
     SR_LOG_DBG("CALLBACK FOR MODULE %s %s", name, ns);
     dm_ctx_t *dm_ctx = (dm_ctx_t *) user_data;
@@ -457,7 +432,7 @@ dm_module_clb (struct ly_ctx *ctx, const char *name, const char *ns, int options
             return NULL;
         }
     } else if (NULL != name) {
-        rc = md_get_module_info(md_ctx, name, NULL, &module);
+        rc = md_get_module_info(md_ctx, name, NULL, NULL, &module);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Module '%s' was not found", name);
             return NULL;
@@ -524,7 +499,7 @@ dm_get_tmp_ly_ctx(dm_ctx_t *dm_ctx, sr_list_t *models_to_be_loaded, dm_tmp_ly_ct
         locked = true;
         for (size_t i = 0; i < models_to_be_loaded->count; i++) {
             module_name = (char *) models_to_be_loaded->data[i];
-            rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, &module);
+            rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, NULL, &module);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get md_get_info for %s", module_name);
 
             ly_module = lys_parse_path(t_ctx->ctx, module->filepath, LYS_IN_YANG);
@@ -795,30 +770,6 @@ dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schem
     return rc;
 }
 
-/**
- *
- * @note Function expects that a schema info is locked for writing.
- *
- * @param [in] ctx
- * @param [in] session
- * @param [in] module_name
- * @param [in] xpath
- * @param [in] schema_info
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-dm_enable_module_subtree_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schema_info_t *schema_info, const char *module_name, const char *xpath)
-{
-    CHECK_NULL_ARG3(ctx, module_name, xpath); /* session can be NULL */
-    int rc = SR_ERR_OK;
-
-    /* enable the subtree specified by xpath */
-    rc = rp_dt_enable_xpath(ctx, session, schema_info, xpath);
-    CHECK_RC_LOG_RETURN(rc, "Enabling of xpath %s failed", xpath);
-
-    return rc;
-}
-
 static int
 dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, dm_schema_info_t *si,
                                 bool features_only)
@@ -854,7 +805,7 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const c
             } else {
                 /* enable running datastore for specified subtrees */
                 for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
-                    rc = dm_enable_module_subtree_running_internal(dm_ctx, NULL, si, module_name, enabled_subtrees[i]);
+                    rc = rp_dt_enable_xpath(dm_ctx, NULL, si, enabled_subtrees[i]);
                     if (SR_ERR_OK != rc) {
                         SR_LOG_WRN("Unable to enable subtree '%s' in module '%s' in running ds.", enabled_subtrees[i], module_name);
                     }
@@ -954,7 +905,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
 
     /* search for the module to use */
     md_ctx_lock(dm_ctx->md_ctx, false);
-    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, NULL, &module);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Module '%s:%s' is not installed.", module_name, revision ? revision : "<latest>");
         *schema_info = NULL;
@@ -998,7 +949,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
 
     /* compute xpath hashes for all schema nodes (referenced from data tree) */
     rc = dm_init_missing_node_priv_data(si);
-    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", module->name);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to initialize private data for module %s", module->name);
 
     /* apply persist data enable features, running datastore */
     if (module->has_persist) {
@@ -1107,7 +1058,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
 {
     CHECK_NULL_ARG4(dm_ctx, schema_info, data_filename, data_info);
     int rc = SR_ERR_OK;
-    struct lyd_node *data_tree = NULL;
+    struct lyd_node *data_tree = NULL, *elem = NULL, *iter = NULL;
     *data_info = NULL;
 
     dm_data_info_t *data = NULL;
@@ -1177,12 +1128,23 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
         } else {
             rc = lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx);
             if (rc) {
-                SR_LOG_INF("lyd_validate failed, maybe empty data is illegal but no initial data? data_file: %s",
-                        data_filename);
+                SR_LOG_WRN("Validation of '%s' failed because empty data are not valid, ignoring.", data_filename);
                 rc = SR_ERR_OK;
                 lyd_free_withsiblings(data_tree);
                 data_tree = NULL;
             }
+        }
+    }
+
+    /* it is possible there are nodes here from another module (module was loaded for validation and has top-level container),
+     * remove them */
+    LY_TREE_FOR_SAFE(data_tree, elem, iter) {
+        if (lyd_node_module(iter) != schema_info->module) {
+            if (iter == data_tree) {
+                /* move the pointer so that it remains valid */
+                data_tree = iter->next;
+            }
+            lyd_free(iter);
         }
     }
 
@@ -1356,13 +1318,15 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
         }
     }
 
-    /* switch identity */
-    ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
+    if (session->datastore != SR_DS_CANDIDATE) {
+        /* switch identity */
+        ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
-    rc = dm_lock_file(dm_ctx->locking_ctx, lock_file);
+        rc = dm_lock_file(dm_ctx->locking_ctx, lock_file);
 
-    /* switch identity back */
-    ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
+        /* switch identity back */
+        ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
+    }
 
     /* log information about locked model */
     if (SR_ERR_OK != rc) {
@@ -1411,7 +1375,9 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
         SR_LOG_ERR("File %s has not been locked in this context", lock_file);
         rc = SR_ERR_INVAL_ARG;
     } else {
-        rc = dm_unlock_file(dm_ctx->locking_ctx, lock_file);
+        if (session->datastore != SR_DS_CANDIDATE) {
+            rc = dm_unlock_file(dm_ctx->locking_ctx, lock_file);
+        }
         free(session->locked_files->data[i]);
         sr_list_rm_at(session->locked_files, i);
         pthread_mutex_lock(&si->usage_count_mutex);
@@ -1440,25 +1406,32 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
     rc = dm_list_schemas(dm_ctx, session, &schemas, &schema_count);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List schemas failed");
 
-    pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
-    if (dm_ctx->ds_lock[session->datastore]) {
-        SR_LOG_ERR_MSG("Datastore lock is hold by other session");
-        rc = SR_ERR_LOCKED;
+    if (session->datastore != SR_DS_CANDIDATE) {
+        pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
+        if (dm_ctx->ds_lock[session->datastore]) {
+            SR_LOG_ERR_MSG("Datastore lock is held by another session");
+            rc = SR_ERR_LOCKED;
+            pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
+            goto cleanup;
+        }
+        dm_ctx->ds_lock[session->datastore] = true;
         pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
-        goto cleanup;
     }
-    dm_ctx->ds_lock[session->datastore] = true;
-    pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
     session->holds_ds_lock[session->datastore] = true;
 
     for (size_t i = 0; i < schema_count; i++) {
+        if (!schemas[i].implemented) {
+            /* nothing to lock */
+            continue;
+        }
+
         rc = dm_lock_module(dm_ctx, session, (char *) schemas[i].module_name);
         if (SR_ERR_OK != rc) {
             if (SR_ERR_UNAUTHORIZED == rc) {
                 SR_LOG_INF("Not allowed to lock %s, skipping", schemas[i].module_name);
                 continue;
             } else if (SR_ERR_LOCKED == rc) {
-                SR_LOG_ERR("Model %s is already locked by other session", schemas[i].module_name);
+                SR_LOG_ERR("Model %s is already locked by another session", schemas[i].module_name);
             }
             for (size_t l = 0; l < locked->count; l++) {
                 dm_unlock_module(dm_ctx, session, (char *) locked->data[l]);
@@ -1528,11 +1501,13 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
     CHECK_NULL_ARG2(dm_ctx, session);
     SR_LOG_INF_MSG("Unlock datastore request");
     int rc = SR_ERR_OK;
+    char *file_path = NULL;
     dm_schema_info_t *si = NULL;
 
     while (session->locked_files->count > 0) {
         si = NULL;
-        rc = dm_get_schema_info_by_lock_file(dm_ctx, (char *) session->locked_files->data[0], &si);
+        file_path = (char *)session->locked_files->data[0];
+        rc = dm_get_schema_info_by_lock_file(dm_ctx, file_path, &si);
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Module_name %s", si->module_name);
             pthread_mutex_lock(&si->usage_count_mutex);
@@ -1541,10 +1516,13 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
             pthread_mutex_unlock(&si->usage_count_mutex);
             pthread_rwlock_unlock(&si->model_lock);
         } else {
-            SR_LOG_WRN("Get schema info by lock file failed %s", (char *) session->locked_files->data[0]);
+            SR_LOG_WRN("Get schema info by lock file failed %s", file_path);
         }
 
-        dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
+        if (strlen(file_path) < 15 || 0 != strcmp(file_path + strlen(file_path) - 15, ".candidate.lock")) {
+            dm_unlock_file(dm_ctx->locking_ctx, file_path);
+        }
+
         free(session->locked_files->data[0]);
         sr_list_rm_at(session->locked_files, 0);
     }
@@ -1924,7 +1902,7 @@ dm_load_dependant_data(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *
 
     if (info->schema->cross_module_data_dependency) {
         md_ctx_lock(dm_ctx->md_ctx, false);
-        rc = md_get_module_info(dm_ctx->md_ctx, info->schema->module_name, NULL, &module);
+        rc = md_get_module_info(dm_ctx->md_ctx, info->schema->module_name, NULL, NULL, &module);
         CHECK_RC_LOG_GOTO(rc, unlock, "Unable to get the list of dependencies for module '%s'.", info->schema->module_name);
         ll_node = module->deps->first;
         while (ll_node) {
@@ -2272,7 +2250,7 @@ cleanup:
     return rc;
 }
 
-int
+static int
 dm_string_cmp(void *a, void *b)
 {
     assert(a);
@@ -2303,7 +2281,7 @@ dm_string_cmp(void *a, void *b)
 static int
 dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *di, sr_list_t **required_data, sr_list_t **required_modules)
 {
-    CHECK_NULL_ARG5(dm_ctx, session, di, required_data, required_modules);
+    CHECK_NULL_ARG4(dm_ctx, session, di, required_modules);
 
     int rc = SR_ERR_OK;
     md_module_t *module = NULL;
@@ -2316,7 +2294,7 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
     md_dep_t *dep = NULL;
     char *namespace = NULL;
     char *inserted_namespace = NULL;
-    bool inserted = false;
+    bool inserted = false, must_be_freed = false;
     char *module_name = NULL;
     dm_data_info_t *recursive_info = NULL;
 
@@ -2327,32 +2305,35 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
 
         if (NULL != *required_modules) {
             /* list is already initialized that means we'll use temp ctx, append install time deps */
-            rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, &module);
+            rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, NULL, &module);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve md info for %s module", di->schema->module_name);
 
             /* installation time dependencies */
             ll_dep = module->deps->first;
             while (ll_dep) {
-               dep = (md_dep_t *) ll_dep->data;
-               ll_dep = ll_dep->next;
+                dep = (md_dep_t *) ll_dep->data;
+                ll_dep = ll_dep->next;
 
-               module_name = strdup(dep->dest->name);
-               CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
+                module_name = strdup(dep->dest->name);
+                CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
 
-               rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
-               CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+                rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
 
-               /* if dep has instanced id and it was inserted call recursively */
-               if (inserted && NULL != dep->dest->inst_ids->first) {
-                   rc = dm_get_data_info(dm_ctx, session, dep->dest->name, &recursive_info);
-                   CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
+                /* if dep has instanced id and it was inserted call recursively */
+                if (inserted && NULL != dep->dest->inst_ids->first) {
+                    rc = dm_get_data_info_internal(dm_ctx, session, dep->dest->name, true, &must_be_freed, &recursive_info);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
 
-                   rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
-                   CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
+                    rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
 
-               } else if (!inserted){
-                   free(module_name);
-               }
+                    if (must_be_freed) {
+                        dm_data_info_free(recursive_info);
+                    }
+                } else if (!inserted){
+                    free(module_name);
+                }
             }
 
         }
@@ -2360,7 +2341,7 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
     }
 
 
-    rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, &module);
+    rc = md_get_module_info(dm_ctx->md_ctx, di->schema->module_name, NULL, NULL, &module);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to retrieve md info for %s module", di->schema->module_name);
 
     /* loop through instance ids */
@@ -2370,12 +2351,15 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
         id = (md_subtree_ref_t *) ll_node->data;
         ll_node = ll_node->next;
 
-        sch_node = sr_find_schema_node(di->schema->module->data, id->xpath, 0);
-        if (NULL == sch_node) {
+        rc = sr_find_schema_node(di->schema->module, NULL, id->xpath, 0, &set);
+        if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Sch node not found for xpath %s", id->xpath);
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
+
+        sch_node = set->set.s[0];
+        ly_set_free(set);
 
         /* find instance id nodes and check their content */
         set = lyd_find_instance(di->node, sch_node);
@@ -2383,7 +2367,7 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
             continue;
         }
 
-        /* loop through instance id nodes*/
+        /* loop through instance id nodes */
         for (unsigned int i = 0; i < set->number; i++) {
             id_val = ((struct lyd_node_leaf_list *) set->set.d[i])->value_str;
 
@@ -2417,8 +2401,10 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
                     rc = sr_list_init(required_modules);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "List initialization failed");
 
-                    rc = sr_list_init(required_data);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "List initialization failed");
+                    if (required_data) {
+                        rc = sr_list_init(required_data);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "List initialization failed");
+                    }
 
                     /* insert module itself */
                     module_name = strdup(di->schema->module_name);
@@ -2427,37 +2413,42 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
                     rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
 
-                    rc = sr_list_add(*required_data, module_name);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+                    if (required_data) {
+                        rc = sr_list_add(*required_data, module_name);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+                    }
 
                     /* add installation time dependencies */
                     ll_dep = module->deps->first;
                     while (ll_dep) {
-                       dep = (md_dep_t *) ll_dep->data;
-                       ll_dep = ll_dep->next;
+                        dep = (md_dep_t *) ll_dep->data;
+                        ll_dep = ll_dep->next;
 
-                       module_name = strdup(dep->dest->name);
-                       CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
+                        module_name = strdup(dep->dest->name);
+                        CHECK_NULL_NOMEM_GOTO(module_name, rc, cleanup);
 
-                       rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
-                       CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
+                        rc = sr_list_insert_unique_ord(*required_modules, module_name, dm_string_cmp, &inserted);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert item into the list");
 
-                       if (inserted && dep->dest->has_data) {
-                           rc = sr_list_add(*required_data, module_name);
-                           CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into the list");
-                       }
+                        if (inserted && dep->dest->has_data && required_data) {
+                            rc = sr_list_add(*required_data, module_name);
+                            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add item into the list");
+                        }
 
-                       /* if dep has instanced id and it was inserted call recursively */
-                       if (inserted && NULL != dep->dest->inst_ids->first) {
-                           rc = dm_get_data_info(dm_ctx, session, dep->dest->name, &recursive_info);
-                           CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
+                        /* if dep has instanced id and it was inserted call recursively */
+                        if (inserted && NULL != dep->dest->inst_ids->first) {
+                            rc = dm_get_data_info_internal(dm_ctx, session, dep->dest->name, true, &must_be_freed, &recursive_info);
+                            CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", dep->dest->name);
 
-                           rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
-                           CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
+                            rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
+                            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
 
-                       } else if (!inserted){
-                           free(module_name);
-                       }
+                            if (must_be_freed) {
+                                dm_data_info_free(recursive_info);
+                            }
+                        } else if (!inserted){
+                            free(module_name);
+                        }
                     }
                 }
                 inserted = false;
@@ -2467,15 +2458,21 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
                 namespace = NULL; /* do not free namespace in this function case of cleanup */
 
                 if (inserted) {
-                    rc = sr_list_add(*required_data, inserted_namespace);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert an item into the list");
+                    if (required_data) {
+                        rc = sr_list_add(*required_data, inserted_namespace);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert an item into the list");
+                    }
 
                     /* call recursively */
-                    rc = dm_get_data_info(dm_ctx, session, inserted_namespace, &recursive_info);
+                    rc = dm_get_data_info_internal(dm_ctx, session, inserted_namespace, true, &must_be_freed, &recursive_info);
                     CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed for %s", inserted_namespace);
 
                     rc = dm_requires_tmp_context(dm_ctx, session, recursive_info, required_data, required_modules);
                     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resolve recusrive deps in %s", recursive_info->schema->module_name);
+
+                    if (must_be_freed) {
+                        dm_data_info_free(recursive_info);
+                    }
                 }
             }
         }
@@ -3022,7 +3019,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
 
     md_ctx_lock(dm_ctx->md_ctx, false);
     if (submodule_revision || !module_name) {
-        rc = md_get_module_info(dm_ctx->md_ctx, submodule_name, submodule_revision, &md_module);
+        rc = md_get_module_info(dm_ctx->md_ctx, submodule_name, submodule_revision, NULL, &md_module);
 
         /* find the top main module */
         while ((NULL != md_module) && (NULL != md_module->inv_deps->first)) {
@@ -3048,7 +3045,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
         md_ctx_unlock(dm_ctx->md_ctx);
         CHECK_RC_LOG_RETURN(rc, "Submodule %s in revision %s not found", submodule_name, submodule_revision);
     } else {
-        rc = md_get_module_info(dm_ctx->md_ctx, module_name, module_revision, &md_module);
+        rc = md_get_module_info(dm_ctx->md_ctx, module_name, module_revision, NULL, &md_module);
 
         if (NULL != md_module && !md_module->latest_revision) {
             /* find a module in latest revision that includes the requested module
@@ -3138,20 +3135,42 @@ cleanup:
 }
 
 int
-dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
+dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, i;
+    dm_data_info_t *info = NULL;
 
-    sr_btree_cleanup(session->session_modules[session->datastore]);
-    session->session_modules[session->datastore] = NULL;
+    if (NULL == module_name) {
+        sr_btree_cleanup(session->session_modules[session->datastore]);
+        session->session_modules[session->datastore] = NULL;
 
-    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &session->session_modules[session->datastore]);
-    CHECK_RC_MSG_RETURN(rc, "Binary tree allocation failed");
-    dm_free_sess_operations(session->operations[session->datastore], session->oper_count[session->datastore]);
-    session->operations[session->datastore] = NULL;
-    session->oper_count[session->datastore] = 0;
-    session->oper_size[session->datastore] = 0;
+        rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &session->session_modules[session->datastore]);
+        CHECK_RC_MSG_RETURN(rc, "Binary tree allocation failed");
+        dm_free_sess_operations(session->operations[session->datastore], session->oper_count[session->datastore]);
+        session->operations[session->datastore] = NULL;
+        session->oper_count[session->datastore] = 0;
+        session->oper_size[session->datastore] = 0;
+    } else {
+        i = 0;
+        while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
+            if (0 == strcmp(info->schema->module->name, module_name)) {
+                sr_btree_delete(session->session_modules[session->datastore], info);
+                break;
+            }
+        }
+
+        for (i = session->oper_count[session->datastore] - 1; i >= 0; i--) {
+            dm_sess_op_t *op = &session->operations[session->datastore][i];
+            if (0 == sr_cmp_first_ns(op->xpath, module_name)) {
+                dm_free_sess_op(op);
+                memmove(&session->operations[session->datastore][i],
+                        &session->operations[session->datastore][i + 1],
+                        (session->oper_count[session->datastore] - i - 1) * sizeof(*op));
+                session->oper_count[session->datastore]--;
+            }
+        }
+    }
 
     return SR_ERR_OK;
 }
@@ -3657,7 +3676,7 @@ dm_release_resources_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx
     return SR_ERR_OK;
 }
 
-int
+static int
 dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 {
     CHECK_NULL_ARG(c_ctx);
@@ -3670,7 +3689,8 @@ dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 }
 
 static int
-dm_create_commit_ctx_id(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx) {
+dm_create_commit_ctx_id(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
+{
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
 
     pthread_rwlock_rdlock(&dm_ctx->commit_ctxs.lock);
@@ -3725,7 +3745,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
         if (info->modified) {
             c_ctx->modif_count++;
 
-            if (SR_DS_STARTUP != session->datastore) {
+            if (SR_DS_RUNNING == session->datastore) {
                 rc = dm_prepare_module_subscriptions(dm_ctx, session, info->schema, &ms);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Prepare module subscription failed %s", info->schema->module->name);
 
@@ -3739,7 +3759,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
 
     SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models", c_ctx->modif_count, i);
 
-    if (0 == session->oper_count[session->datastore] && 0 != c_ctx->modif_count && SR_DS_CANDIDATE != session->datastore) {
+    if (0 == session->oper_count[session->datastore] && 0 != c_ctx->modif_count && SR_DS_RUNNING != session->datastore) {
         SR_LOG_WRN_MSG("No operation logged, however data tree marked as modified");
         c_ctx->modif_count = 0;
         *commit_ctx = c_ctx;
@@ -3756,7 +3776,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     CHECK_NULL_NOMEM_GOTO(c_ctx->existed, rc, cleanup);
 
     /* create commit session */
-    rc = dm_session_start(dm_ctx, session->user_credentials, SR_DS_CANDIDATE == session->datastore ? SR_DS_RUNNING : session->datastore, &c_ctx->session);
+    rc = dm_session_start(dm_ctx, session->user_credentials, session->datastore, &c_ctx->session);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Commit session initialization failed");
 
     rc = sr_list_init(&c_ctx->up_to_date_models);
@@ -3773,49 +3793,6 @@ cleanup:
     c_ctx->modif_count = 0; /* no fd to be closed*/
     dm_model_subscription_free(ms);
     dm_free_commit_context(c_ctx);
-    return rc;
-}
-
-/**
- * @brief Acquires locks that are needed to commit changes into the datastore
- * @param [in] dm_ctx
- * @param [in] session
- * @param [in] c_ctx
- * @param [in] module_name
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-dm_commit_lock_model(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx, const char *module_name)
-{
-    CHECK_NULL_ARG4(dm_ctx, session, c_ctx, module_name);
-    int rc = SR_ERR_OK;
-    if (SR_DS_CANDIDATE == session->datastore) {
-        /* acquire candidate lock*/
-        dm_session_switch_ds(c_ctx->session, SR_DS_CANDIDATE);
-        rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
-        if (SR_ERR_LOCKED == rc) {
-            /* check if the lock is hold by session that issued commit */
-            rc = dm_lock_module(dm_ctx, session, module_name);
-        }
-        dm_session_switch_ds(c_ctx->session, SR_DS_RUNNING);
-        CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in candidate ds", module_name);
-        /* acquire running lock*/
-        rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
-        if (SR_ERR_LOCKED == rc) {
-            /* check if the lock is hold by session that issued commit */
-            dm_session_switch_ds(session, SR_DS_RUNNING);
-            rc = dm_lock_module(dm_ctx, session, module_name);
-            dm_session_switch_ds(session, SR_DS_CANDIDATE);
-        }
-        CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in running ds", module_name);
-    } else {
-        /* in case of startup/running ds acquire only startup/running */
-        rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
-        if (SR_ERR_LOCKED == rc) {
-            /* check if the lock is hold by session that issued commit */
-            rc = dm_lock_module(dm_ctx, session, module_name);
-        }
-    }
     return rc;
 }
 
@@ -3848,13 +3825,35 @@ cleanup:
 }
 
 int
+dm_commit_load_session_module_deps(dm_ctx_t *dm_ctx, dm_session_t *session)
+{
+    CHECK_NULL_ARG2(dm_ctx, session);
+    dm_data_info_t *info = NULL;
+    size_t i = 0;
+    int rc = SR_ERR_OK;
+
+    i = 0;
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
+        if (!info->modified) {
+            continue;
+        }
+
+        /* get the list of required modules */
+        rc = dm_requires_tmp_context(dm_ctx, session, info, NULL, &info->required_modules);
+        CHECK_RC_LOG_RETURN(rc, "Failed to get module dependencies of '%s'.", info->schema->module->name);
+    }
+
+    return SR_ERR_OK;
+}
+
+int
 dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx,
-        sr_error_info_t **errors, size_t *err_cnt)
+        bool force_copy_uptodate, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG3(c_ctx, errors, err_cnt);
     CHECK_NULL_ARG5(dm_ctx, session, c_ctx->session, c_ctx->fds, c_ctx->existed);
     CHECK_NULL_ARG(c_ctx->up_to_date_models);
-    dm_data_info_t *info = NULL;
+    dm_data_info_t *info = NULL, *di = NULL;
     size_t i = 0;
     size_t count = 0;
     int rc = SR_ERR_OK;
@@ -3866,15 +3865,21 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         if (!info->modified) {
             continue;
         }
-        rc = dm_commit_lock_model(dm_ctx, (dm_session_t *) session, c_ctx, info->schema->module->name);
+        rc = dm_lock_module(dm_ctx, c_ctx->session, info->schema->module->name);
+        if (SR_ERR_LOCKED == rc) {
+            /* check if the lock is hold by session that issued commit */
+            rc = dm_lock_module(dm_ctx, (dm_session_t *)session, info->schema->module->name);
+        }
         CHECK_RC_LOG_RETURN(rc, "Module %s can not be locked", info->schema->module->name);
-        if (SR_DS_CANDIDATE == session->datastore) {
+        if (SR_DS_RUNNING == session->datastore) {
             /* check if all subtrees are enabled */
             bool has_not_enabled = true;
             rc = dm_has_not_enabled_nodes(info, &has_not_enabled);
             CHECK_RC_LOG_RETURN(rc, "Has not enabled check failed for module %s", info->schema->module->name);
             if (has_not_enabled) {
+//! @cond doxygen_suppress
 #define ERR_FMT "There is a not enabled node in %s module, it can not be committed to the running"
+//! @endcond
                 if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, info->schema->module->name)) {
                     SR_LOG_WRN_MSG("Failed to record commit operation error");
                 }
@@ -3884,63 +3889,74 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             }
         }
     }
-    i = 0;
 
     ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
+    i = 0;
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         if (!info->modified) {
             continue;
         }
-        rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->schema->module->name, c_ctx->session->datastore, &file_name);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
 
-        c_ctx->fds[count] = open(file_name, O_RDWR);
-        if (-1 == c_ctx->fds[count]) {
-            SR_LOG_DBG("File %s can not be opened for read write", file_name);
-            if (EACCES == errno) {
+        /* do not create or do anything with candidate data file, it does not exist and never should */
+        if (session->datastore != SR_DS_CANDIDATE) {
+            rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->schema->module->name, c_ctx->session->datastore, &file_name);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
+
+            c_ctx->fds[count] = open(file_name, O_RDWR);
+            if (-1 == c_ctx->fds[count]) {
+                SR_LOG_DBG("File %s can not be opened for read write", file_name);
+                if (EACCES == errno) {
+//! @cond doxygen_suppress
 #define ERR_FMT "File %s can not be opened because of authorization"
-                if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name)) {
+//! @endcond
+                    if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name)) {
+                        SR_LOG_WRN_MSG("Failed to record commit operation error");
+                    }
+                    SR_LOG_ERR(ERR_FMT, file_name);
+                    rc = SR_ERR_UNAUTHORIZED;
+                    goto cleanup;
+#undef ERR_FMT
+                }
+
+                if (ENOENT == errno) {
+                    SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
+                    c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+                    CHECK_NOT_MINUS1_LOG_GOTO(c_ctx->fds[count], rc, SR_ERR_IO, cleanup, "File %s can not be created", file_name);
+                }
+            } else {
+                c_ctx->existed[count] = true;
+            }
+            /* file was opened successfully increment the number of files to be closed */
+            c_ctx->modif_count++;
+            /* try to lock for read, non-blocking */
+            rc = sr_lock_fd(c_ctx->fds[count], false, false);
+            if (SR_ERR_OK != rc) {
+//! @cond doxygen_suppress
+#define ERR_FMT "Locking of file '%s' failed: %s."
+//! @endcond
+                if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name, sr_strerror(rc))) {
                     SR_LOG_WRN_MSG("Failed to record commit operation error");
                 }
-                SR_LOG_ERR(ERR_FMT, file_name);
-                rc = SR_ERR_UNAUTHORIZED;
+                SR_LOG_ERR(ERR_FMT, file_name, sr_strerror(rc));
+                rc = SR_ERR_OPERATION_FAILED;
                 goto cleanup;
 #undef ERR_FMT
             }
+        }
 
-            if (ENOENT == errno) {
-                SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
-                c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                CHECK_NOT_MINUS1_LOG_GOTO(c_ctx->fds[count], rc, SR_ERR_IO, cleanup, "File %s can not be created", file_name);
-            }
+        bool copy_uptodate;
+        if (session->datastore == SR_DS_CANDIDATE || force_copy_uptodate) {
+            /* candidate datatree is always up-to-date, there is only one copy */
+            copy_uptodate = true;
         } else {
-            c_ctx->existed[count] = true;
+            rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "File up to date check failed");
         }
-        /* file was opened successfully increment the number of files to be closed */
-        c_ctx->modif_count++;
-        /* try to lock for read, non-blocking */
-        rc = sr_lock_fd(c_ctx->fds[count], false, false);
-        if (SR_ERR_OK != rc) {
-#define ERR_FMT "Locking of file '%s' failed: %s."
-            if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name, sr_strerror(rc))) {
-                SR_LOG_WRN_MSG("Failed to record commit operation error");
-            }
-            SR_LOG_ERR(ERR_FMT, file_name, sr_strerror(rc));
-            rc = SR_ERR_OPERATION_FAILED;
-            goto cleanup;
-#undef ERR_FMT
-        }
-        dm_data_info_t *di = NULL;
 
-        bool copy_uptodate = false;
-        rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "File up to date check failed");
-
-        /* ops are skipped also when candidate is committed to the running */
-        if (copy_uptodate || SR_DS_CANDIDATE == session->datastore) {
+        if (session->datastore == SR_DS_CANDIDATE || copy_uptodate) {
             SR_LOG_DBG("Timestamp for the model %s matches, ops will be skipped", info->schema->module->name);
-            rc = sr_list_add(c_ctx->up_to_date_models, (void *) info->schema->module->name);
+            rc = sr_list_add(c_ctx->up_to_date_models, (void *)info->schema->module->name);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
 
             di = calloc(1, sizeof(*di));
@@ -3957,6 +3973,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             SR_LOG_DBG("Usage count %s incremented (value=%zu)", info->schema->module_name, info->schema->usage_count);
             pthread_mutex_unlock(&info->schema->usage_count_mutex);
             di->schema = info->schema;
+            di->modified = info->modified;
 
             /* duplicate also the list of required modules */
             rc = dm_dup_required_models_list(info, di);
@@ -3972,7 +3989,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             CHECK_RC_MSG_GOTO(rc, cleanup, "Loading data file failed");
         }
 
-        rc = sr_btree_insert(c_ctx->session->session_modules[c_ctx->session->datastore], (void *) di);
+        rc = sr_btree_insert(c_ctx->session->session_modules[c_ctx->session->datastore], (void *)di);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Insert into commit session avl failed module %s", info->schema->module->name);
             dm_data_info_free(di);
@@ -3982,16 +3999,16 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         if (SR_DS_STARTUP != session->datastore || !c_ctx->disabled_config_change ||
                 (NULL != dm_ctx->nacm_ctx && (c_ctx->init_session->options & SR_SESS_ENABLE_NACM))) {
             /**
-             * For candidate and running we save prev state.
+             * For running and candidate we save previous state.
              * If config change notifications are generated we have to save prev state for startup as well.
              * if NACM is enabled, we need to get the previous state in any case.
              */
-            if (SR_DS_CANDIDATE == session->datastore || copy_uptodate) {
+            if (session->datastore != SR_DS_CANDIDATE && copy_uptodate) {
                 /* load data tree from file system */
                 rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->schema, &di);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Loading data file failed");
 
-                rc = sr_btree_insert(c_ctx->prev_data_trees, (void *) di);
+                rc = sr_btree_insert(c_ctx->prev_data_trees, (void *)di);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR("Insert into prev data trees failed module %s", info->schema->module->name);
                     dm_data_info_free(di);
@@ -4120,6 +4137,188 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
 }
 
 /**
+ * @brief Find equal \p node instance in \p data tree. Be careful, this implementation
+ * is tailored for use on 2 diffed trees, so some additional assumptions hold that are
+ * taken into consideration.
+ */
+static struct lyd_node *
+dm_find_data_instance(const struct lyd_node *data, const struct lyd_node *node)
+{
+    struct ly_set *set = NULL;
+    struct lyd_node *ret = NULL;
+    struct lyd_node_leaf_list *k1, *k2;
+    uint32_t i, j;
+
+    set = lyd_find_instance(data, node->schema);
+    if (!set) {
+        return NULL;
+    }
+
+    for (i = 0; !ret && (i < set->number); ++i) {
+        switch (node->schema->nodetype) {
+        case LYS_CONTAINER:
+        case LYS_LEAF:
+        case LYS_ANYXML:
+        case LYS_ANYDATA:
+            /* it is assumed that if leaf, anyxml, anydata exist, they have the same value */
+            ret = set->set.d[0];
+            break;
+        case LYS_LEAFLIST:
+            if (!strcmp(((struct lyd_node_leaf_list *)node)->value_str,
+                        ((struct lyd_node_leaf_list *)set->set.d[i])->value_str)) {
+                ret = set->set.d[i];
+            }
+            break;
+        case LYS_LIST:
+            k1 = (struct lyd_node_leaf_list *)node->child;
+            k2 = (struct lyd_node_leaf_list *)set->set.d[i]->child;
+            for (j = 0; j < ((struct lys_node_list *)node->schema)->keys_size; ++j) {
+                if (strcmp(k1->value_str, k2->value_str)) {
+                    break;
+                }
+                k1 = (struct lyd_node_leaf_list *)k1->next;
+                k2 = (struct lyd_node_leaf_list *)k2->next;
+            }
+            if (j < ((struct lys_node_list *)node->schema)->keys_size) {
+                ret = set->set.d[i];
+            }
+            break;
+        default:
+            assert(0);
+        }
+    }
+
+    return ret;
+}
+
+/**
+ * @brief Perform read NACM check on a single node, revert it if read access is not granted.
+ */
+static int
+dm_copy_config_read_nacm_single_node(dm_session_t *session, nacm_data_val_ctx_t *nacm_data_val_ctx,
+        const struct lyd_node *node, struct lyd_difflist *diff, size_t diff_idx, size_t *diff_size,
+        struct lyd_node *cc_tree, bool *denied)
+{
+    int rc = SR_ERR_OK;
+    nacm_action_t nacm_action = NACM_ACTION_PERMIT;
+    const char *rule_name = NULL, *rule_info = NULL;
+    void *tmp = NULL;
+    struct lyd_node_anydata *tmp_node = NULL;
+    struct lyd_node *cc_first = NULL, *cc_second = NULL;
+
+    rc = nacm_check_data(nacm_data_val_ctx, NACM_ACCESS_READ, node, &nacm_action, &rule_name, &rule_info);
+    CHECK_RC_LOG_RETURN(rc, "NACM data validation failed for node: %s.", node->schema->name);
+
+    if (NACM_ACTION_DENY == nacm_action) {
+        /* report check fail */
+        nacm_report_read_access_denied(session->user_credentials, node, rule_name, rule_info);
+
+        /* revert the change in the copy-config (cc)tree */
+        switch (diff->type[diff_idx]) {
+        case LYD_DIFF_CHANGED:
+            if (node->schema->nodetype == LYS_LEAF) {
+                if (lyd_change_leaf((struct lyd_node_leaf_list *)diff->second[diff_idx],
+                            ((struct lyd_node_leaf_list *)diff->first[diff_idx])->value_str) < 0) {
+                    return SR_ERR_INTERNAL;
+                }
+            } else { /* LYS_ANYXML, LYS_ANYDATA */
+                tmp_node = (struct lyd_node_anydata *)lyd_dup(diff->first[diff_idx], 0);
+                /* switch values and free the copy */
+                tmp = (void *)((struct lyd_node_anydata *)diff->second[diff_idx])->value_type;
+                ((struct lyd_node_anydata *)diff->second[diff_idx])->value_type = tmp_node->value_type;
+                tmp_node->value_type = (LYD_ANYDATA_VALUETYPE)tmp;
+
+                memcpy(&tmp, &((struct lyd_node_anydata *)diff->second[diff_idx])->value, sizeof tmp);
+                ((struct lyd_node_anydata *)diff->second[diff_idx])->value = tmp_node->value;
+                memcpy(&tmp_node->value, &tmp, sizeof tmp);
+
+                lyd_free((struct lyd_node *)tmp_node);
+            }
+            break;
+        case LYD_DIFF_MOVEDAFTER1:
+            cc_first = dm_find_data_instance(cc_tree, diff->first[diff_idx]);
+            if (diff->first[diff_idx]->prev != diff->first[diff_idx]) {
+                cc_second = dm_find_data_instance(cc_tree, diff->first[diff_idx]->prev);
+                lyd_insert_after(cc_second, cc_first);
+            } else {
+                cc_second = dm_find_data_instance(cc_tree, diff->first[diff_idx]->next);
+                lyd_insert_before(cc_second, cc_first);
+            }
+            break;
+        case LYD_DIFF_DELETED:
+            if (diff->first[diff_idx]->parent) {
+                cc_first = dm_find_data_instance(cc_tree, diff->first[diff_idx]->parent);
+                lyd_insert(cc_first, lyd_dup(diff->first[diff_idx], 1));
+            } else {
+                lyd_insert_sibling(&cc_tree, lyd_dup(diff->first[diff_idx], 1));
+            }
+            break;
+        case LYD_DIFF_CREATED:
+            lyd_free(diff->second[diff_idx]);
+            break;
+        default:
+            /* LYD_DIFF_MOVEDAFTER2 should not be passed to this function,
+             * access control performed already for LYD_DIFF_CREATED of this node */
+            assert(0);
+        }
+
+        /* remove this diff item */
+        --(*diff_size);
+        memmove(&diff->type[diff_idx], &diff->type[diff_idx + 1], (*diff_size - diff_idx) * sizeof *diff->type);
+        memmove(&diff->first[diff_idx], &diff->first[diff_idx + 1], (*diff_size - diff_idx) * sizeof *diff->first);
+        memmove(&diff->second[diff_idx], &diff->second[diff_idx + 1], (*diff_size - diff_idx) * sizeof *diff->second);
+
+        if (denied) {
+            *denied = true;
+        }
+    } else if (denied) {
+        *denied = false;
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Perform read NACM check on every node in the subtree, revert any subtrees with read access not granted.
+ */
+static int
+dm_copy_config_read_nacm_subtree(dm_session_t *session, nacm_data_val_ctx_t *nacm_data_val_ctx,
+        const struct lyd_node *root, struct lyd_difflist *diff, size_t diff_idx, size_t *diff_size)
+{
+    int rc = SR_ERR_OK;
+    bool backtracking = false, denied = false;
+    const struct lyd_node *node = NULL;
+
+    assert(diff->type[diff_idx] == LYD_DIFF_CREATED);
+
+    node = root;
+    while (!backtracking || node != root) {
+        if (false == backtracking) {
+            rc = dm_copy_config_read_nacm_single_node(session, nacm_data_val_ctx, node, diff, diff_idx, diff_size, NULL, &denied);
+            if (SR_ERR_OK != rc) {
+                return rc;
+            }
+            if (!denied && !(node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) && node->child) {
+                node = node->child;
+            } else if (node->next && node != root) {
+                node = node->next;
+            } else {
+                backtracking = true;
+            }
+        } else {
+            if (node->next) {
+                node = node->next;
+                backtracking = false;
+            } else {
+                node = node->parent;
+            }
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
  * @brief Perform NETCONF access control for a single node.
  */
 static int
@@ -4188,23 +4387,140 @@ dm_commit_nacm_subtree(dm_session_t *session, nacm_data_val_ctx_t *nacm_data_val
     return SR_ERR_OK;
 }
 
-int
-dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
-        sr_error_info_t **errors, size_t *err_cnt)
+static int
+dm_perform_netconf_access_control(nacm_ctx_t *nacm_ctx, dm_session_t *session, dm_data_info_t *prev_info,
+                                  dm_data_info_t *new_info, bool copy_config, sr_error_info_t **errors, size_t *err_cnt,
+                                  dm_commit_context_t *c_ctx)
 {
-    CHECK_NULL_ARG3(dm_ctx, session, c_ctx);
+    CHECK_NULL_ARG4(nacm_ctx, session, prev_info, new_info);
     int rc = SR_ERR_OK;
-    size_t i = 0, d_cnt = 0;
+    size_t d_cnt = 0, d_idx = 0;
     bool denied = false, saved_diff = false;
     int denied_cnt = 0;
     nacm_data_val_ctx_t *nacm_data_val_ctx = NULL;
     struct lyd_difflist *diff = NULL;
     dm_module_difflist_t *module_difflist = NULL;
-    dm_data_info_t *info = NULL, *commit_info = NULL, *prev_info = NULL, lookup_info = {0};
 
-    if (NULL == dm_ctx->nacm_ctx || !(c_ctx->init_session->options & SR_SESS_ENABLE_NACM)) {
+    /* get the set of changes */
+    saved_diff = false;
+    diff = lyd_diff(prev_info->node, new_info->node, LYD_DIFFOPT_WITHDEFAULTS);
+    if (NULL == diff) {
+        SR_LOG_ERR("Lyd diff failed for module %s", prev_info->schema->module->name);
+        rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
+
+    if (NULL != c_ctx) {
+        /* save diff for VERIFY notifications (even if the set is empty) */
+        module_difflist = calloc(1, sizeof *module_difflist);
+        CHECK_NULL_NOMEM_GOTO(module_difflist, rc, cleanup);
+        module_difflist->schema_info = prev_info->schema;
+        module_difflist->difflist = diff;
+        saved_diff = true;
+        rc = sr_btree_insert(c_ctx->difflists, (void *)module_difflist);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to insert diff-list for module %s into the binary tree",
+                    prev_info->schema->module->name);
+        module_difflist = NULL;
+    }
+
+    if (diff->type[0] == LYD_DIFF_END) {
+        SR_LOG_DBG("No changes in module %s", prev_info->schema->module->name);
+        return SR_ERR_OK;
+    }
+
+    /* start NACM data access validation for this module */
+    rc = nacm_data_validation_start(nacm_ctx, session->user_credentials, new_info->node->schema,
+            &nacm_data_val_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to start NACM data validation.");
+
+    if (copy_config) {
+        /* count diff items */
+        for (d_cnt = 0; LYD_DIFF_END != diff->type[d_cnt]; ++d_cnt);
+        ++d_cnt;
+
+        /* for copy_config perform read access checks */
+        d_idx = d_cnt - 1;
+        do {
+            --d_idx;
+            switch (diff->type[d_idx]) {
+            case LYD_DIFF_CHANGED:
+            case LYD_DIFF_MOVEDAFTER1:
+            case LYD_DIFF_DELETED:
+                rc = dm_copy_config_read_nacm_single_node(session, nacm_data_val_ctx, diff->first[d_idx],
+                        diff, d_idx, &d_cnt, new_info->node, NULL);
+                break;
+            case LYD_DIFF_CREATED:
+                rc = dm_copy_config_read_nacm_subtree(session, nacm_data_val_ctx, diff->second[d_idx],
+                        diff, d_idx, &d_cnt);
+                break;
+            case LYD_DIFF_MOVEDAFTER2:
+                break;
+            default:
+                assert(0 && "not reachable");
+            }
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+        } while (d_idx > 0);
+
+        if (diff->type[0] == LYD_DIFF_END) {
+            SR_LOG_DBG("No changes in module %s", prev_info->schema->module->name);
+            rc = SR_ERR_OK;
+            goto cleanup;
+        }
+    }
+
+    /* Iterate over all changes. Some changes may include whole subtrees. */
+    for (d_idx = 0; LYD_DIFF_END != diff->type[d_idx]; d_idx++) {
+        /* get node, access_type */
+        switch (diff->type[d_idx]) {
+        case LYD_DIFF_CHANGED:
+        case LYD_DIFF_MOVEDAFTER1:
+            rc = dm_commit_nacm_single_node(session, nacm_data_val_ctx, diff->first[d_idx],
+                    NACM_ACCESS_UPDATE, &denied, errors, err_cnt);
+            denied_cnt += denied;
+            break;
+        case LYD_DIFF_DELETED:
+            rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->first[d_idx],
+                    NACM_ACCESS_DELETE, &denied_cnt, errors, err_cnt);
+            break;
+        case LYD_DIFF_CREATED:
+            rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->second[d_idx],
+                    NACM_ACCESS_CREATE, &denied_cnt, errors, err_cnt);
+            break;
+        case LYD_DIFF_MOVEDAFTER2:
+            continue; /* access control performed already for LYD_DIFF_CREATED of this node */
+            break;
+        default:
+            assert(0 && "not reachable");
+        }
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    if (SR_ERR_OK == rc && denied_cnt > 0) {
+        rc = SR_ERR_UNAUTHORIZED;
+        /* update NACM stats */
+        (void)nacm_stats_add_denied_data_write(nacm_ctx);
+    }
+    if (!saved_diff && NULL != diff) {
+        lyd_free_diff(diff);
+    }
+    dm_module_difflist_free(module_difflist);
+    nacm_data_validation_stop(nacm_data_val_ctx);
+    return rc;
+}
+
+int
+dm_commit_netconf_access_control(nacm_ctx_t *nacm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx, bool copy_config,
+                                 sr_error_info_t **errors, size_t *err_cnt)
+{
+    CHECK_NULL_ARG3(nacm_ctx, session, c_ctx);
+    int rc = SR_ERR_OK;
+    size_t i = 0;
+    dm_data_info_t *info = NULL, *new_info = NULL, *prev_info = NULL, lookup_info = {0};
 
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         lookup_info.schema = info->schema;
@@ -4216,93 +4532,24 @@ dm_commit_netconf_access_control(dm_ctx_t *dm_ctx, dm_session_t *session, dm_com
         prev_info = sr_btree_search(c_ctx->prev_data_trees, &lookup_info);
         if (NULL == prev_info) {
             SR_LOG_ERR("Current data tree for module %s not found", info->schema->module->name);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
+            return SR_ERR_INTERNAL;
         }
 
         /* configuration after commit */
-        commit_info = sr_btree_search(c_ctx->session->session_modules[c_ctx->session->datastore], &lookup_info);
-        if (NULL == commit_info) {
+        new_info = sr_btree_search(c_ctx->session->session_modules[c_ctx->session->datastore], &lookup_info);
+        if (NULL == new_info) {
             SR_LOG_ERR("Commit data tree for module %s not found", info->schema->module->name);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
+            return SR_ERR_INTERNAL;
         }
 
-        /* get the set of changes */
-        saved_diff = false;
-        diff = lyd_diff(prev_info->node, commit_info->node, LYD_DIFFOPT_WITHDEFAULTS);
-        if (NULL == diff) {
-            SR_LOG_ERR("Lyd diff failed for module %s", info->schema->module->name);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
+        rc = dm_perform_netconf_access_control(nacm_ctx, session, prev_info, new_info, copy_config, errors, err_cnt, c_ctx);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("NACM access check failed");
+            return rc;
         }
-
-        /* save diff for VERIFY notifications (even if the set is empty) */
-        module_difflist = calloc(1, sizeof *module_difflist);
-        CHECK_NULL_NOMEM_GOTO(module_difflist, rc, cleanup);
-        module_difflist->schema_info = info->schema;
-        module_difflist->difflist = diff;
-        saved_diff = true;
-        rc = sr_btree_insert(c_ctx->difflists, (void *)module_difflist);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to insert diff-list for module %s into the binary tree",
-                info->schema->module->name);
-        module_difflist = NULL;
-
-        if (diff->type[d_cnt] == LYD_DIFF_END) {
-            SR_LOG_DBG("No changes in module %s", info->schema->module->name);
-            continue;
-        }
-
-        /* start NACM data access validation for this module */
-        rc = nacm_data_validation_start(dm_ctx->nacm_ctx, session->user_credentials, commit_info->node->schema,
-                &nacm_data_val_ctx);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to start NACM data validation.");
-
-        /* Iterate over all changes. Some changes may include whole subtrees. */
-        for (d_cnt = 0; LYD_DIFF_END != diff->type[d_cnt]; d_cnt++) {
-            /* get node, access_type */
-            switch (diff->type[d_cnt]) {
-                case LYD_DIFF_CHANGED:
-                case LYD_DIFF_MOVEDAFTER1:
-                    rc = dm_commit_nacm_single_node(session, nacm_data_val_ctx, diff->first[d_cnt],
-                            NACM_ACCESS_UPDATE, &denied, errors, err_cnt);
-                    denied_cnt += denied;
-                    break;
-                case LYD_DIFF_DELETED:
-                    rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->first[d_cnt],
-                            NACM_ACCESS_DELETE, &denied_cnt, errors, err_cnt);
-                    break;
-                case LYD_DIFF_CREATED:
-                    rc = dm_commit_nacm_subtree(session, nacm_data_val_ctx, diff->second[d_cnt],
-                            NACM_ACCESS_CREATE, &denied_cnt, errors, err_cnt);
-                    break;
-                case LYD_DIFF_MOVEDAFTER2:
-                    continue; /* access control performed already for LYD_DIFF_CREATED of this node */
-                    break;
-                default:
-                    assert(0 && "not reachable");
-            }
-            if (SR_ERR_OK != rc) {
-                goto cleanup;
-            }
-        }
-
-        nacm_data_validation_stop(nacm_data_val_ctx);
-        nacm_data_val_ctx = NULL;
     }
 
-cleanup:
-    if (SR_ERR_OK == rc && denied_cnt > 0) {
-        rc = SR_ERR_UNAUTHORIZED;
-        /* update NACM stats */
-        (void)nacm_stats_add_denied_data_write(dm_ctx->nacm_ctx);
-    }
-    if (!saved_diff && NULL != diff) {
-        lyd_free_diff(diff);
-    }
-    dm_module_difflist_free(module_difflist);
-    nacm_data_validation_stop(nacm_data_val_ctx);
-    return rc;
+    return SR_ERR_OK;
 }
 
 /**
@@ -4563,7 +4810,7 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
     /* apply the change in all loaded schema infos */
     md_ctx_lock(dm_ctx->md_ctx, true);
     pthread_rwlock_wrlock(&dm_ctx->schema_tree_lock);
-    rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, &module);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, NULL, &module);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s info failed", module_name);
 
     /* enable feature in all modules augmented by this module */
@@ -4613,7 +4860,7 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
     rc = md_insert_module(dm_ctx->md_ctx, file_name, &implicitly_installed);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert module into the dependency graph");
 
-    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, NULL, &module);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s info failed", module_name);
 
     lookup.module_name = (char *) module_name;
@@ -4782,7 +5029,7 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
     }
 
     md_ctx_lock(dm_ctx->md_ctx, true);
-    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, NULL, &module);
 
     /* remove module from the dependency graph */
     if (NULL == module) {
@@ -4853,16 +5100,18 @@ static int
 dm_remove_non_matching_diff(dm_model_subscription_t *ms, const np_subscription_t *subscription)
 {
     CHECK_NULL_ARG2(ms, subscription);
-
     int rc = SR_ERR_OK;
+    struct ly_set *set = NULL;
 
     if (NULL != subscription->xpath) {
-        const struct lys_node *sub_node = sr_find_schema_node(ms->schema_info->module->data, subscription->xpath, 0);
-        if (NULL == sub_node) {
+        rc = sr_find_schema_node(ms->schema_info->module, NULL, subscription->xpath, 0, &set);
+        if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Schema node not found for xpath %s", subscription->xpath);
             return SR_ERR_INTERNAL;
         }
 
+        const struct lys_node *sub_node = set->set.s[0];
+        ly_set_free(set);
         int diff_count = 0;
         while (LYD_DIFF_END != ms->difflist->type[diff_count++]);
 
@@ -4888,6 +5137,7 @@ dm_remove_non_matching_diff(dm_model_subscription_t *ms, const np_subscription_t
             }
         }
     }
+
     return SR_ERR_OK;
 }
 
@@ -4905,7 +5155,8 @@ dm_remove_non_matching_diff(dm_model_subscription_t *ms, const np_subscription_t
  */
 static int
 dm_create_difflist_for_enabled_notif(dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, dm_session_t *src_session,
-        const char *module_name, const np_subscription_t *subscription, dm_commit_context_t *c_ctx) {
+        const char *module_name, const np_subscription_t *subscription, dm_commit_context_t *c_ctx)
+{
 
     CHECK_NULL_ARG5(dm_ctx, src_session, module_name, subscription, c_ctx);
 
@@ -4934,21 +5185,16 @@ dm_create_difflist_for_enabled_notif(dm_ctx_t *dm_ctx, const ac_ucred_t *user_cr
     if (NULL == ms->difflist) {
         SR_LOG_ERR_MSG("Error while generating diff");
         rc = SR_ERR_INTERNAL;
-        dm_model_subscription_free(ms);
         goto cleanup;
     }
 
     rc = dm_remove_non_matching_diff(ms, subscription);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Dm remove non match diff failed");
-        dm_model_subscription_free(ms);
         goto cleanup;
     }
 
     rc = sr_btree_insert(c_ctx->subscriptions, ms);
-    if (SR_ERR_OK != rc) {
-        dm_model_subscription_free(ms);
-    }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert model subscription structure");
     return rc;
 
@@ -4966,7 +5212,8 @@ cleanup:
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_send_enabled_notification(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx, const np_subscription_t *subscription) {
+dm_send_enabled_notification(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx, const np_subscription_t *subscription)
+{
     int rc = SR_ERR_OK;
     sr_list_t *notif_list = NULL;
 
@@ -5003,14 +5250,15 @@ cleanup:
 }
 
 static int
-dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_names, sr_datastore_t src, sr_datastore_t dst, const np_subscription_t *subscription)
+dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_names, sr_datastore_t src,
+               sr_datastore_t dst, const np_subscription_t *subscription, bool nacm_on, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG2(dm_ctx, module_names);
     int rc = SR_ERR_OK;
     dm_session_t *src_session = NULL;
     dm_session_t *dst_session = NULL;
     char *module_name = NULL;
-    dm_data_info_t **src_infos = NULL;
+    dm_data_info_t **src_infos = NULL, *dst_info = NULL;
     size_t opened_files = 0;
     char *file_name = NULL;
     int *fds = NULL;
@@ -5023,7 +5271,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
 
     if (NULL != subscription) {
         if (SR_DS_RUNNING != dst) {
-            SR_LOG_ERR_MSG("Notification can no be sent for datastore different from running");
+            SR_LOG_ERR_MSG("Notification cannot be sent for datastore different from running");
             return SR_ERR_INVAL_ARG;
         }
         rc = dm_prepare_c_ctx_for_enable_notification(dm_ctx, &c_ctx);
@@ -5083,9 +5331,18 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
             CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s can not be locked in destination datastore", module_name);
         }
 
-        /* load data tree to be copied*/
+        /* load data tree to be copied */
         rc = dm_get_data_info(dm_ctx, src_session, module_name, &(src_infos[i]));
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
+
+        if (NULL != session && NULL != dm_ctx->nacm_ctx && nacm_on) {
+            /* load data tree to be replaced */
+            rc = dm_get_data_info(dm_ctx, session, module_name, &dst_info);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
+
+            rc = dm_perform_netconf_access_control(dm_ctx->nacm_ctx, session, dst_info, src_infos[i], true, errors, err_cnt, NULL);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Checking NACM failed");
+        }
 
         if (NULL != subscription && 0 == i) {
             /* subscription is supposed to be used when only one module/subtree is copied */
@@ -5119,7 +5376,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
     for (size_t i = 0; i < module_names->count; i++) {
         module_name = module_names->data[i];
         if (SR_DS_CANDIDATE != dst) {
-            /* write dest file, dst is either startup or running*/
+            /* write dest file, dst is either startup or running */
             if (0 != lyd_print_fd(fds[i], src_infos[i]->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)) {
                 SR_LOG_ERR("Copy of module %s failed", module_name);
                 rc = SR_ERR_INTERNAL;
@@ -5184,7 +5441,7 @@ dm_has_state_data(dm_ctx_t *ctx, const char *module_name, bool *res)
     int rc = SR_ERR_OK;
 
     md_ctx_lock(ctx->md_ctx, false);
-    rc = md_get_module_info(ctx->md_ctx, module_name, NULL, &module);
+    rc = md_get_module_info(ctx->md_ctx, module_name, NULL, NULL, &module);
     if (SR_ERR_OK == rc) {
         *res = (module->op_data_subtrees->first != NULL);
     }
@@ -5236,7 +5493,7 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
     pthread_rwlock_unlock(&si->model_lock);
     CHECK_RC_LOG_RETURN(rc, "Enable module %s running failed", module_name);
 
-    rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING, subscription);
+    rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING, subscription, 0, NULL, NULL);
 
     return rc;
 }
@@ -5268,15 +5525,17 @@ dm_copy_mandatory_for_subtree(dm_ctx_t *dm_ctx, const char *xpath, dm_data_info_
 {
     CHECK_NULL_ARG4(dm_ctx, xpath, startup_info, candidate_info);
     int rc = SR_ERR_OK;
+    struct ly_set *set = NULL;
+    struct lys_node *node = NULL;
 
-    struct lys_node *node = NULL, *match = NULL;
-    match = sr_find_schema_node(startup_info->schema->module->data, xpath, 0);
-    if (NULL == match) {
+    rc = sr_find_schema_node(startup_info->schema->module, NULL, xpath, 0, &set);
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Schema node not found for %s", xpath);
         return SR_ERR_INTERNAL;
     }
+    node = set->set.s[0]->parent;
+    ly_set_free(set);
 
-    node = match->parent;
     while (NULL != node) {
         if (NULL == node->parent && LYS_AUGMENT == node->nodetype) {
             node = ((struct lys_node_augment *) node)->target;
@@ -5396,7 +5655,7 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to copy mandatory nodes for subtree");
 
     /* copy module candidate -> running */
-    rc = dm_copy_module(ctx, tmp_session, module_name, SR_DS_CANDIDATE, SR_DS_RUNNING, subscription);
+    rc = dm_copy_module(ctx, tmp_session, module_name, SR_DS_CANDIDATE, SR_DS_RUNNING, subscription, 0, NULL, NULL);
 
 cleanup:
     ly_set_free(nodes);
@@ -5416,7 +5675,7 @@ dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const cha
     rc = dm_get_module_and_lockw(ctx, module_name, &si);
     CHECK_RC_LOG_RETURN(rc, "Lock schema %s for write failed", module_name);
 
-    rc = dm_enable_module_subtree_running_internal(ctx, session, si, module_name, xpath);
+    rc = rp_dt_enable_xpath(ctx, session, si, xpath);
     pthread_rwlock_unlock(&si->model_lock);
     CHECK_RC_LOG_RETURN(rc, "Enabling of xpath %s failed", xpath);
 
@@ -5487,12 +5746,22 @@ cleanup:
 
 int
 dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst,
-        const np_subscription_t *subscription)
+        const np_subscription_t *subscription, bool nacm_on, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
     sr_list_t *module_list = NULL;
     dm_schema_info_t *schema_info = NULL;
     int rc = SR_ERR_OK;
+    bool enabled = false;
+
+    /* the module must be enabled */
+    rc = dm_has_enabled_subtree(dm_ctx, module_name, NULL, &enabled);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Has enabled subtree failed %s", module_name);
+    if (!enabled) {
+        SR_LOG_ERR("Cannot copy module '%s', it is not enabled.", module_name);
+        rc = SR_ERR_OPERATION_FAILED;
+        goto cleanup;
+    }
 
     rc = sr_list_init(&module_list);
     CHECK_RC_MSG_RETURN(rc, "List init failed");
@@ -5503,7 +5772,7 @@ dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name,
     rc = sr_list_add(module_list, (void *) module_name);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
 
-    rc = dm_copy_config(dm_ctx, session, module_list, src, dst, subscription);
+    rc = dm_copy_config(dm_ctx, session, module_list, src, dst, subscription, nacm_on, errors, err_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Dm copy config failed");
 
 cleanup:
@@ -5512,16 +5781,19 @@ cleanup:
 }
 
 int
-dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst)
+dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst, bool nacm_on,
+                   sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
     sr_list_t *enabled_modules = NULL;
     int rc = SR_ERR_OK;
 
-    rc = dm_get_all_modules(dm_ctx, session, (SR_DS_RUNNING == src || SR_DS_RUNNING == dst), &enabled_modules);
+    /* candidate and running do not have data from disabled modules and startup -> startup does nothing,
+     * so we only consider enabled modules */
+    rc = dm_get_all_modules(dm_ctx, session, true, &enabled_modules);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
 
-    rc = dm_copy_config(dm_ctx, session, enabled_modules, src, dst, NULL);
+    rc = dm_copy_config(dm_ctx, session, enabled_modules, src, dst, NULL, nacm_on, errors, err_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Dm copy config failed");
 
 cleanup:
@@ -5540,6 +5812,7 @@ dm_sr_val_node_to_ly_datatree(dm_session_t *session, dm_data_info_t *di, const c
     sr_node_t *args_tree = NULL;
     struct lyd_node *data_tree = NULL, *new_node = NULL;
     const struct lys_node *arg_node = NULL;
+    struct ly_set *set = NULL;
     char root_xpath[PATH_MAX] = { 0, };
     char *string_value = NULL;
     int allow_update = 0;
@@ -5565,12 +5838,14 @@ dm_sr_val_node_to_ly_datatree(dm_session_t *session, dm_data_info_t *di, const c
         /* convert from values */
         for (size_t i = 0; i < arg_cnt; i++) {
             /* get argument's schema node */
-            arg_node = sr_find_schema_node(di->schema->module->data, args[i].xpath, (input ? 0 : LYS_FIND_OUTPUT));
-            if (NULL == arg_node) {
-                SR_LOG_ERR("Unable to find the schema node for '%s': %s", args[i].xpath, ly_errmsg());
-                rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_VALIDATION_FAILED);
+            rc = sr_find_schema_node(di->schema->module, NULL, args[i].xpath, (input ? 0 : 1), &set);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Unable to find the schema node for '%s'", args[i].xpath);
+                rc = dm_report_error(session, "Unable to evaluate xpath", args[i].xpath, SR_ERR_VALIDATION_FAILED);
                 goto cleanup;
             }
+            arg_node = set->set.s[0];
+            ly_set_free(set);
             /* copy argument value to string */
             string_value = NULL;
             if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
@@ -5633,7 +5908,7 @@ dm_ly_datatree_to_sr_val_node(sr_mem_ctx_t *sr_mem, const char *xpath, const str
         if (NULL != tmp_xpath) {
             strcat(tmp_xpath, xpath);
             strcat(tmp_xpath, "//*");
-            nodeset = lyd_find_xpath(data_tree, tmp_xpath);
+            nodeset = lyd_find_path(data_tree, tmp_xpath);
             if (NULL != nodeset) {
                 if (nodeset->number > 0) {
                     rc = rp_dt_get_values_from_nodes(sr_mem, nodeset, (sr_val_t**)val_node_ptr, val_node_cnt);
@@ -5654,7 +5929,7 @@ dm_ly_datatree_to_sr_val_node(sr_mem_ctx_t *sr_mem, const char *xpath, const str
                 strcat(tmp_xpath, "./"); /* skip "input" / "output" */
             }
             strcat(tmp_xpath, "*");
-            nodeset = lyd_find_xpath(data_tree, tmp_xpath);
+            nodeset = lyd_find_path(data_tree, tmp_xpath);
             if (NULL != nodeset) {
                 if (nodeset->number > 0) {
                     rc = sr_nodes_to_trees(nodeset, sr_mem, NULL, NULL, (sr_node_t**)val_node_ptr, val_node_cnt);
@@ -5919,14 +6194,16 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     CHECK_RC_LOG_GOTO(rc, cleanup, "Dm_get_dat_info failed for module %s", module_name);
 
     /* test for the presence of the procedure in the schema tree */
-    proc_node = sr_find_schema_node(di->schema->module->data, xpath, 0);
-    if (NULL == proc_node) {
+    rc = sr_find_schema_node(di->schema->module, NULL, xpath, 0, &nodeset);
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("%s xpath validation failed ('%s'): the target node is not present in the schema tree.",
                 procedure_name, xpath);
         rc = dm_report_error(session, "target node is not present in the schema tree", xpath,
                 SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
+    proc_node = nodeset->set.s[0];
+    ly_set_free(nodeset);
 
     /* test for the presence of the procedure in the data tree */
     if (type == DM_PROCEDURE_EVENT_NOTIF || type == DM_PROCEDURE_ACTION) {
@@ -5941,7 +6218,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             tmp_xpath = calloc(last_delim - xpath + 1, sizeof(*tmp_xpath));
             CHECK_NULL_NOMEM_GOTO(tmp_xpath, rc, cleanup);
             strncat(tmp_xpath, xpath, last_delim - xpath);
-            nodeset = lyd_find_xpath(di->node, tmp_xpath);
+            nodeset = lyd_find_path(di->node, tmp_xpath);
             free(tmp_xpath);
             tmp_xpath = NULL;
             if (NULL == nodeset || 0 == nodeset->number) {
@@ -6073,6 +6350,7 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     const struct lys_node *proc_node = NULL;
     struct lyd_node *data_tree = NULL;
     struct lyxml_elem *xml = NULL;
+    struct ly_set *set = NULL;
     int rc = SR_ERR_OK;
     dm_tmp_ly_ctx_t *tmp_ctx = NULL;
     struct ly_ctx *ly_ctx = NULL, *tmp_ly_ctx = NULL;
@@ -6094,13 +6372,15 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     module_name = NULL;
 
     /* test for the presence of the procedure in the schema tree */
-    proc_node = sr_find_schema_node(di->schema->module->data, notification->xpath, 0);
-    if (NULL == proc_node) {
+    rc = sr_find_schema_node(di->schema->module, NULL, notification->xpath, 0, &set);
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Notification xpath validation failed ('%s'): the target node is not present in the schema tree.",
                 notification->xpath);
         rc = dm_report_error(session, ly_errmsg(), notification->xpath, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
+    proc_node = set->set.s[0];
+    ly_set_free(set);
 
     if (0 == strcmp("/ietf-netconf-notifications:netconf-config-change", notification->xpath)) {
         CHECK_NULL_ARG(notification->data.string);
@@ -6356,39 +6636,30 @@ dm_copy_if_not_loaded(dm_ctx_t *dm_ctx, dm_session_t *from_session, dm_session_t
 }
 
 int
-dm_move_session_tree_and_ops_all_ds(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to)
+dm_move_session_tree_and_ops(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, sr_datastore_t ds)
 {
     CHECK_NULL_ARG3(dm_ctx, from, to);
     CHECK_NULL_ARG(from->session_modules);
     int rc = SR_ERR_OK;
 
-    int from_ds = from->datastore;
-    int to_ds = to->datastore;
-    for (int ds = 0; ds < DM_DATASTORE_COUNT; ds++) {
-        dm_session_switch_ds(from, ds);
-        dm_session_switch_ds(to, ds);
-        sr_btree_cleanup(to->session_modules[ds]);
-        dm_free_sess_operations(to->operations[ds], to->oper_count[ds]);
+    sr_btree_cleanup(to->session_modules[ds]);
+    dm_free_sess_operations(to->operations[ds], to->oper_count[ds]);
 
-        to->session_modules[ds] = from->session_modules[ds];
-        to->oper_count[ds] = from->oper_count[ds];
-        to->oper_size[ds] = from->oper_size[ds];
-        to->operations[ds] = from->operations[ds];
+    to->session_modules[ds] = from->session_modules[ds];
+    to->oper_count[ds] = from->oper_count[ds];
+    to->oper_size[ds] = from->oper_size[ds];
+    to->operations[ds] = from->operations[ds];
 
-        from->session_modules[ds] = NULL;
-        from->operations[ds] = NULL;
-        from->oper_count[ds] = 0;
-        from->oper_size[ds] = 0;
+    from->session_modules[ds] = NULL;
+    from->operations[ds] = NULL;
+    from->oper_count[ds] = 0;
+    from->oper_size[ds] = 0;
 
-        dm_session_switch_ds(from, ds);
-        rc = dm_discard_changes(dm_ctx, from);
-    }
-    dm_session_switch_ds(from, from_ds);
-    dm_session_switch_ds(to, to_ds);
-    CHECK_RC_MSG_RETURN(rc, "Discard changes failed");
+    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &from->session_modules[ds]);
+    CHECK_RC_MSG_RETURN(rc, "Binary tree allocation failed");
+
     return rc;
 }
-
 
 int
 dm_move_session_trees_in_session(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t from, sr_datastore_t to)
@@ -6421,19 +6692,18 @@ dm_move_session_trees_in_session(dm_ctx_t *dm_ctx, dm_session_t *session, sr_dat
 
     /* initialize the from datastore binary tree*/
     dm_session_switch_ds(session, from);
-    rc = dm_discard_changes(dm_ctx, session);
+    rc = dm_discard_changes(dm_ctx, session, NULL);
     CHECK_RC_MSG_RETURN(rc, "Discard changes failed");
 
-    rc = dm_session_switch_ds(session, prev_ds);
+    dm_session_switch_ds(session, prev_ds);
     return rc;
 }
 
-int
+void
 dm_session_switch_ds(dm_session_t *session, sr_datastore_t ds)
 {
-    CHECK_NULL_ARG(session);
+    CHECK_NULL_ARG_VOID(session);
     session->datastore = ds;
-    return SR_ERR_OK;
 }
 
 int
@@ -6650,7 +6920,7 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
     module_name = NULL;
 
     /* loop through instance ids */
-    set = lyd_find_xpath(notif, "/ietf-netconf-notifications:netconf-config-change/edit/target");
+    set = lyd_find_path(notif, "/ietf-netconf-notifications:netconf-config-change/edit/target");
     for (unsigned int i = 0; i < set->number; i++) {
         rc = sr_copy_all_ns(((struct lyd_node_leaf_list *) set->set.d[i])->value_str, &module_names, &module_name_count);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to copy ns");

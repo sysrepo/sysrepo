@@ -89,7 +89,6 @@ sysrepoctl_test_uninstall(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", true);
-    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces", true, 0);
 
@@ -97,7 +96,7 @@ sysrepoctl_test_uninstall(void **state)
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
-    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
+    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", NULL, &module);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     md_destroy(md_ctx);
 
@@ -108,7 +107,6 @@ sysrepoctl_test_uninstall(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", true);
-    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces", true, 0);
 
@@ -124,7 +122,6 @@ sysrepoctl_test_uninstall(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", false);
-    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", false);
     exec_shell_command("../src/sysrepoctl -l", "!ietf-interfaces", true, 0);
 
@@ -132,7 +129,7 @@ sysrepoctl_test_uninstall(void **state)
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
-    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
+    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", NULL, &module);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     md_destroy(md_ctx);
 }
@@ -159,7 +156,7 @@ sysrepoctl_test_install(void **state)
     exec_shell_command(buff, ".*", true, 1);
 
     /* install ietf-ip */
-    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/ietf-ip@2014-06-16.yang "
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/ietf-ip@2014-06-16.yang "
             "--owner=%s --permissions=644", user);
     exec_shell_command(buff, ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-ip@2014-06-16.yang", true);
@@ -169,7 +166,6 @@ sysrepoctl_test_install(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.startup.lock", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.running", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.running.lock", false);
-    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.candidate.lock", false);
     /* since file contains feature definition persist file is created */
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.persist", true);
 
@@ -179,18 +175,16 @@ sysrepoctl_test_install(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", true);
-    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
     snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Implemented[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 644[[:space:]]*\\|", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
-    exec_shell_command("../src/sysrepoctl --install --yang=../../tests/yang/inner/test-dep-installed.yang "
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/inner/test-dep-installed.yang "
             "--search-installed  --permissions=644", ".*", true, 0);
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.startup", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.startup.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.running", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.running.lock", true);
-    test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.candidate.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.persist", true);
     snprintf(buff, PATH_MAX, "test-dep-installed[[:space:]]*\\|[[:space:]]*\\| Installed[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 644[[:space:]]*\\|", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
@@ -199,11 +193,11 @@ sysrepoctl_test_install(void **state)
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
-    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
+    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
+    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = md_get_module_info(md_ctx, "test-dep-installed", NULL, &module);
+    rc = md_get_module_info(md_ctx, "test-dep-installed", NULL, NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
     md_destroy(md_ctx);
 
@@ -212,8 +206,12 @@ sysrepoctl_test_install(void **state)
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "test-dep-installed.yang", false);
     exec_shell_command("../src/sysrepoctl -l", "!test-dep-installed", true, 0);
 
-    /* finally install back iana-if-type to restore the pre-test state */
-    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/iana-if-type.yang "
+    /* finally install back ietf-interfaces and iana-if-type to restore the pre-test state */
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/ietf-interfaces@2014-05-08.yang "
+            "--owner=%s --permissions=644", user);
+    exec_shell_command(buff, ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang", true);
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/iana-if-type.yang "
             "--owner=%s --permissions=644", user);
     exec_shell_command(buff, ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "iana-if-type@2014-05-08.yang", true);
@@ -240,14 +238,13 @@ sysrepoctl_test_change(void **state)
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --change --module=ietf-interfaces --owner=%s --permissions=664", user);
     exec_shell_command(buff, ".*", true, 0);
 
-    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Implemented[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|", user);
+    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Installed[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", user);
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", user);
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", user);
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", user);
-    test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", user);
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", user);
 
     mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
@@ -255,7 +252,6 @@ sysrepoctl_test_change(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", mode);
-    test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
 }
 
@@ -281,7 +277,7 @@ sysrepoctl_test_feature(void **state)
                        "Operation completed successfully.", true, 0);
     test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
                       "<enabled-features>.*<feature-name>if-mib</feature-name>.*</enabled-features>", true);
-    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Implemented[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\| if-mib[[:space:]]*\n", user);
+    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Installed[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\| if-mib[[:space:]]*\n", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
     /* already enabled, shouldn't throw an error */
@@ -298,7 +294,7 @@ sysrepoctl_test_feature(void **state)
                        "Operation completed successfully.", true, 0);
     test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
                       "!<enabled-features>.*<feature-name>if-mib</feature-name>.*</enabled-features>", true);
-    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Implemented[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n", user);
+    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Installed[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
     /* already disabled, shouldn't throw an error */

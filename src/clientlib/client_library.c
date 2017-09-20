@@ -1496,11 +1496,14 @@ cleanup:
     return cl_session_return(session, rc);
 }
 
+//! @cond doxygen_suppress
+#define BUF_LEN 12
+//! @endcond
+
 int
 sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
 {
-#define BUFFER_LEN  12
-    typedef char buffer_t[BUFFER_LEN];
+    typedef char buffer_t[BUF_LEN];
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
     sr_node_t *chunk = NULL;
@@ -1612,7 +1615,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
             }
             prev = prev->prev;
         }
-        snprintf(indices[i], BUFFER_LEN, "%lu", index);
+        snprintf(indices[i], BUF_LEN, "%lu", index);
         node = node->parent;
     }
     /* -> xpath length */
@@ -1796,7 +1799,7 @@ cleanup:
     }
     sr_free_tree(chunk);
     return cl_session_return(session, rc);
-#undef BUFFER_LEN
+#undef BUF_LEN
 }
 
 int
@@ -2156,6 +2159,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name,
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
+    Sr__CopyConfigResp *copy_config_resp = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
@@ -2178,12 +2182,26 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name,
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__COPY_CONFIG);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+    if ((SR_ERR_OK != rc) && (SR_ERR_OPERATION_FAILED != rc) && (SR_ERR_VALIDATION_FAILED != rc) &&
+        (SR_ERR_UNAUTHORIZED != rc)) {
+        SR_LOG_ERR_MSG("Error by processing of copy_config request.");
+        goto cleanup;
+    }
+
+    copy_config_resp = msg_resp->response->copy_config_resp;
+    if ((SR_ERR_OPERATION_FAILED == rc) || (SR_ERR_VALIDATION_FAILED == rc) || (SR_ERR_UNAUTHORIZED == rc)) {
+        SR_LOG_ERR("Copy_config operation failed with %zu error(s).", copy_config_resp->n_errors);
+
+        /* store commit errors within the session */
+        if (copy_config_resp->n_errors > 0) {
+            cl_session_set_errors(session, copy_config_resp->errors, copy_config_resp->n_errors);
+        }
+    }
 
     sr_msg_free(msg_req);
     sr_msg_free(msg_resp);
 
-    return cl_session_return(session, SR_ERR_OK);
+    return cl_session_return(session, rc);
 
 cleanup:
     if (NULL != msg_req) {
@@ -3494,9 +3512,15 @@ cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session
 
     cl_session_clear_errors(session);
 
-    /* extract module name from xpath */
-    rc = sr_copy_first_ns(xpath, &module_name);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+    if (xpath[0] != '/') {
+        /* it is the whole module */
+        module_name = strdup(xpath);
+        xpath = NULL;
+    } else {
+        /* extract module name from xpath */
+        rc = sr_copy_first_ns(xpath, &module_name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+    }
 
     /* Initialize the subscription */
     if (opts & SR_SUBSCR_CTX_REUSE) {
@@ -3506,7 +3530,7 @@ cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
-    sm_subscription->xpath = strdup(xpath);
+    sm_subscription->xpath = strdup(xpath ? xpath : module_name);
     CHECK_NULL_NOMEM_GOTO(sm_subscription->xpath, rc, cleanup);
 
     sm_subscription->callback = callback;
@@ -3516,8 +3540,10 @@ cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session
     msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS;
     sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->module_name, module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
-    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->xpath, xpath);
-    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
+    if (NULL != xpath) {
+        sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->xpath, xpath);
+        CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
+    }
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);

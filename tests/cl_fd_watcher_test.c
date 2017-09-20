@@ -87,7 +87,7 @@ cl_fd_start_watching(int fd, int events)
     for (size_t j = 0; j < poll_fd_cnt; j++) {
         if (fd == poll_fd_set[j].fd) {
             /* fond existing entry */
-            poll_fd_set[poll_fd_cnt].events |= (SR_FD_INPUT_READY == events) ? POLLIN : POLLOUT;
+            poll_fd_set[j].events |= (SR_FD_INPUT_READY == events) ? POLLIN : POLLOUT;
             matched = true;
         }
     }
@@ -171,6 +171,8 @@ cl_fd_poll_test(void **state)
 
     /* commit changes */
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     do {

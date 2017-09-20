@@ -74,12 +74,18 @@ extern volatile uint8_t sr_ll_syslog;       /**< Holds current level of syslog d
 extern volatile sr_log_cb sr_log_callback;  /**< Holds pointer to logging callback, if set. */
 extern __thread char strerror_buf [SR_MAX_STRERROR_LEN]; /**< thread local buffer for strerror_r message */
 
+/**
+ * Matching log level to message beginning
+ */
 #define SR_LOG__LL_STR(LL) \
     ((SR_LL_DBG == LL) ? "DBG" : \
      (SR_LL_INF == LL) ? "INF" : \
      (SR_LL_WRN == LL) ? "WRN" : \
      "ERR")
 
+/**
+ * Matching log level to message macros
+ */
 #define SR_LOG__LL_FACILITY(LL) \
     ((SR_LL_DBG == LL) ? LOG_DEBUG : \
      (SR_LL_INF == LL) ? LOG_INFO : \
@@ -88,30 +94,67 @@ extern __thread char strerror_buf [SR_MAX_STRERROR_LEN]; /**< thread local buffe
 
 #ifdef LOG_THREAD_ID
 /* print thread IDs and function names */
+
+/**
+ * Syslog output macro
+ */
 #define SR_LOG__SYSLOG(LL, MSG, ...) \
         syslog(SR_LOG__LL_FACILITY(LL), "[%s] [%lu] (%s:%d) " MSG, SR_LOG__LL_STR(LL), (unsigned long)pthread_self(), __func__, __LINE__, __VA_ARGS__);
+/**
+ * Stderr output macro
+ */
 #define SR_LOG__STDERR(LL, MSG, ...) \
         fprintf(stderr, "[%s] [%lu] (%s:%d) " MSG "\n", SR_LOG__LL_STR(LL), (unsigned long)pthread_self(), __func__, __LINE__, __VA_ARGS__);
+/**
+ * Callback output macro
+ */
 #define SR_LOG__CALLBACK(LL, MSG, ...) \
         sr_log_to_cb(LL, "[%lu] (%s:%d) " MSG, (unsigned long)pthread_self(), __func__, __LINE__, __VA_ARGS__);
+
 #elif SR_LOG_PRINT_FUNCTION_NAMES
 /* print function names (without thread IDs) */
+
+/**
+ * Syslog output macro
+ */
 #define SR_LOG__SYSLOG(LL, MSG, ...) \
         syslog(SR_LOG__LL_FACILITY(LL), "[%s] (%s:%d) " MSG, SR_LOG__LL_STR(LL), __func__, __LINE__, __VA_ARGS__);
+/**
+ * Stderr output macro
+ */
 #define SR_LOG__STDERR(LL, MSG, ...) \
         fprintf(stderr, "[%s] (%s:%d) " MSG "\n", SR_LOG__LL_STR(LL), __func__, __LINE__, __VA_ARGS__);
+/**
+ * Callback output macro
+ */
 #define SR_LOG__CALLBACK(LL, MSG, ...) \
         sr_log_to_cb(LL, "(%s:%d) " MSG, __func__, __LINE__, __VA_ARGS__);
+
 #else
 /* do not print function names nor thread IDs */
+
+/**
+ * Syslog output macro
+ */
 #define SR_LOG__SYSLOG(LL, MSG, ...) \
         syslog(SR_LOG__LL_FACILITY(LL), "[%s] " MSG, SR_LOG__LL_STR(LL), __VA_ARGS__);
+
+/**
+ * Stderr output macro
+ */
 #define SR_LOG__STDERR(LL, MSG, ...) \
         fprintf(stderr, "[%s] " MSG "\n", SR_LOG__LL_STR(LL), __VA_ARGS__);
+
+/**
+ * Callback output macro
+ */
 #define SR_LOG__CALLBACK(LL, MSG, ...) \
         sr_log_to_cb(LL, MSG, __VA_ARGS__);
 #endif
 
+/**
+ * Internal output macro
+ */
 #define SR_LOG__INTERNAL(LL, MSG, ...) \
     do { \
         if (sr_ll_stderr >= LL) \

@@ -1,5 +1,5 @@
 /**
- * @file xpath_utils.h
+ * @file xpath.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Sysrepo helpers for node's address manipulation.
  *
@@ -30,7 +30,7 @@
  *
  *  @brief Set of helpers working on a subset of xpath expressions used of node identification
  *  Functions modify inputs arguments by placing termination zero at appropriate places to save up
- *  string duplication. The state of processing is stored in ::sr_address_state_t opaque for user.
+ *  string duplication. The state of processing is stored in ::sr_xpath_ctx_t opaque for user.
  *  It allows to continue in processing where the processing stopped or recover processed input.
  *
  *  Similarly to strtok function in all subsequent calls that is supposed to work with the same
@@ -61,7 +61,7 @@ typedef struct sr_xpath_ctx_s {
  *
  * @note It writes terminating zero at the and of the node name.
  *
- * @note Skips the namespace if it is present to get node name qualified by namespace use ::sr_get_next_node_with_ns
+ * @note Skips the namespace if it is present to get node name qualified by namespace use ::sr_xpath_next_node_with_ns
  *
  * @param [in] xpath - xpath to be processed, can be NULL
  * @param [in] state
@@ -78,7 +78,7 @@ char *sr_xpath_next_node(char *xpath, sr_xpath_ctx_t *state);
 char *sr_xpath_last_node(char *xpath, sr_xpath_ctx_t *state);
 
 /**
- * @brief Same as ::sr_get_next_node with the difference that namespace is included in result if present in xpath
+ * @brief Same as ::sr_xpath_next_node with the difference that namespace is included in result if present in xpath
  *
  * @param [in] xpath - xpath to be processed, can be NULL if the user wants to continue in processing of previous input
  * @param [in] state

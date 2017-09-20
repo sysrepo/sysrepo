@@ -886,7 +886,7 @@ nacm_test_rules(void **state)
     add_nacm_rule(nacm_config, "admin-acl", "rule5", "example-module", NACM_RULE_DATA,
             "/example-module:container", "read", "permit", "This is rule5.");
     add_nacm_rule(nacm_config, "admin-acl", "rule6", "fake-module", NACM_RULE_DATA,
-            "/module1:container/module2:list[key='key-value']/container/module3:leaf", "read", "permit",
+            "/module1:container/module2:list[module2:key='key-value']/module2:container/module3:leaf", "read", "permit",
             "This is rule6.");
     save_nacm_config(nacm_config);
 
@@ -995,7 +995,7 @@ nacm_test_rules(void **state)
     assert_string_equal("rule6", rule->name);
     assert_string_equal("fake-module", rule->module);
     assert_int_equal(NACM_RULE_DATA, rule->type);
-    assert_string_equal("/module1:container/module2:list[key='key-value']/container/module3:leaf", rule->data.path);
+    assert_string_equal("/module1:container/module2:list[module2:key='key-value']/module2:container/module3:leaf", rule->data.path);
     hash = sr_str_hash("module1:container") + sr_str_hash("module2:list") + sr_str_hash("module2:container")
            + sr_str_hash("module3:leaf");
     assert_int_equal(hash, rule->data_hash);
@@ -1049,7 +1049,7 @@ nacm_config_for_basic_read_access_tests(bool disable_nacm, const char *read_dflt
     add_nacm_rule(nacm_config, "acl2", "deny-low-numbers", "test-module", NACM_RULE_DATA,
             "/test-module:main/numbers[.<10]", "*", "deny", NULL);
     add_nacm_rule(nacm_config, "acl2", "deny-interface-mtu", "ietf-ip", NACM_RULE_DATA,
-            "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/mtu", "*", "deny", NULL);
+            "/ietf-interfaces:interfaces/ietf-interfaces:interface/ietf-ip:ipv4/ietf-ip:mtu", "*", "deny", NULL);
     add_nacm_rule(nacm_config, "acl2", "deny-change-interface-status", "ietf-interfaces", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface/enabled", "update delete create", "deny", NULL);
     /*  -> acl3 */
@@ -1211,8 +1211,8 @@ nacm_test_read_access_single_value(void **state)
     rc = rp_dt_get_value(dm_ctx, rp_session[4], data_tree[4], NULL, IETF_INTERFACES, false, &value);
     assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
     sr_free_val(value);
-    /* -> /ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address/ip */
-#define ETH0_IP_ADDRESS "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address/ip"
+    /* -> /ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:address/ietf-ip:ip */
+#define ETH0_IP_ADDRESS "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:address/ietf-ip:ip"
     rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, ETH0_IP_ADDRESS, false, &value);
     assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
     sr_free_val(value);
@@ -1275,8 +1275,8 @@ nacm_test_read_access_single_value(void **state)
     rc = rp_dt_get_value(dm_ctx, rp_session[4], data_tree[4], NULL, GIGAETH0_ENABLED, false, &value);
     assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
     sr_free_val(value);
-    /* -> /ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu */
-#define ETH0_MTU    "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu"
+    /* -> /ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:mtu */
+#define ETH0_MTU    "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ietf-ip:mtu"
     rc = rp_dt_get_value(dm_ctx, rp_session[0], data_tree[0], NULL, ETH0_MTU, false, &value);
     assert_int_equal(SR_ERR_OK, rc);        /* access allowed */
     sr_free_val(value);

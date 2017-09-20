@@ -39,8 +39,8 @@
  *  with sysrepo very often and becomes very annoying to write.
  *  Secondly, the programmer may actually forget to copy or give-up on the ownership
  *  of a string passed to sysrepo value which will then get unexpectedly deallocated
- *  in ::sr_free_value or ::sr_free_values.
- *  The third benefit is that the values created using ::sr_new_value
+ *  in ::sr_free_val or ::sr_free_values.
+ *  The third benefit is that the values created using ::sr_new_val
  *  and ::sr_new_values will be allocated using the Sysrepo's own memory management
  *  (if enabled) which was proven to be more efficient for larger data sets
  *  (far less copying, quicker conversion to/from google protocol buffer messages,

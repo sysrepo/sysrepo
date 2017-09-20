@@ -72,10 +72,6 @@ void rp_dt_validate_fail(void **state)
     rc = validate_node_wrapper(ctx, session, "/example-module:container/unknown", NULL);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
 
-    /* non existing element in existing model*/
-    rc = validate_node_wrapper(ctx, session, "/example-module:container/unknown", NULL);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
-
     /* key specified for a container*/
     rc = validate_node_wrapper(ctx, session, "/example-module:container[key='abc']", NULL);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
@@ -83,7 +79,6 @@ void rp_dt_validate_fail(void **state)
     /* key names do not match */
     rc = validate_node_wrapper(ctx, session, "/example-module:container/list[key1='a'][asf='sf']", NULL);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
-
 
     /* key count does not match */
     rc = validate_node_wrapper(ctx, session, "/example-module:container/list[key1='a'][key2='b'][unkn='as']", NULL);
@@ -169,7 +164,7 @@ check_error_reporting(void **state)
     assert_true(dm_has_error(session));
     rc = dm_copy_errors(session, NULL, &err_msg, &err_xpath);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_string_equal("Resolving XPath expression \"/example-module:container/unknown/unknown2\" failed.", err_msg);
+    assert_string_equal("Invalid expression.", err_msg);
     assert_string_equal("/example-module:container/unknown/unknown2", err_xpath);
 
     free(err_msg);
@@ -193,16 +188,16 @@ check_error_reporting(void **state)
 
     dm_clear_session_errors(session);
 
-    /* unknown augment*/
+    /* unknown augment */
     rc = validate_node_wrapper(ctx, session, "/example-module:container/unknown-augment:unknown", NULL);
-    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
 
     err_msg = NULL;
     err_xpath = NULL;
     rc = dm_copy_errors(session, NULL, &err_msg, &err_xpath);
     assert_int_equal(SR_ERR_OK, rc);
 
-    assert_string_equal("/example-module:container", err_xpath);
+    assert_string_equal("/example-module:container/unknown-augment:unknown", err_xpath);
 
     assert_true(dm_has_error(session));
     free(err_msg);
