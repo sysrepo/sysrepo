@@ -1321,10 +1321,10 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_
 
     rc = rp_dt_get_values(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath,
             dm_is_running_ds_session(rp_session->dm_session), values, count);
-    if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
-        SR_LOG_ERR("Get values failed for xpath '%s'", xpath);
-    } else if (SR_ERR_UNAUTHORIZED == rc) {
+    if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+        SR_LOG_ERR("Get values failed for xpath '%s'", xpath);
     }
 
 cleanup:
@@ -1487,10 +1487,10 @@ rp_dt_get_subtrees_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ct
 
     rc = rp_dt_get_subtrees(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath,
                             dm_is_running_ds_session(rp_session->dm_session), subtrees, count);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get subtrees failed for xpath '%s'", xpath);
-    } else if (SR_ERR_UNAUTHORIZED == rc) {
+    if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Get subtrees failed for xpath '%s'", xpath);
     }
 
 cleanup:
@@ -1527,10 +1527,10 @@ rp_dt_get_subtrees_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session,
 
     rc = rp_dt_get_subtrees_chunks(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath, slice_offset, slice_width,
             child_limit, depth_limit, dm_is_running_ds_session(rp_session->dm_session), subtrees, count, subtree_ids);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get subtrees failed for xpath '%s'", xpath);
-    } else if (SR_ERR_UNAUTHORIZED == rc) {
+    if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Get subtrees failed for xpath '%s'", xpath);
     }
 
 cleanup:
