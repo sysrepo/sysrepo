@@ -442,21 +442,16 @@ cl_get_item_test(void **state)
 
     /* bad element in existing module */
     rc = sr_get_item(session, "/example-module:unknown/next", &value);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(value);
-
-    const sr_error_info_t *err = NULL;
-    sr_get_last_error(session, &err);
-    assert_non_null(err->xpath);
-    assert_string_equal("/example-module:unknown/next", err->xpath);
 
     /* unknown key node */
     rc = sr_get_item(session, "/example-module:container/list[key1='abc'][unknownKey='def']/leaf", &value);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* bad element in augment */
     rc = sr_get_item(session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/unknown", &value);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* existing leaf */
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
@@ -529,7 +524,7 @@ cl_get_subtree_test(void **state)
 
     /* bad element in existing module */
     rc = sr_get_subtree(session, "/example-module:unknown/next", 0, &tree);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(tree);
 
     /* existing leaf */
@@ -682,7 +677,7 @@ cl_get_items_test(void **state)
 
     /* bad element in existing */
     rc = sr_get_items(session, "/example-module:unknown", &values, &values_cnt);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* container */
     rc = sr_get_items(session, "/ietf-interfaces:interfaces/*", &values, &values_cnt);
@@ -752,7 +747,7 @@ cl_get_subtrees_test(void **state)
 
     /* bad element in existing module produces */
     rc = sr_get_subtrees(session, "/example-module:unknown", 0, &trees, &tree_cnt);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* container */
     rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/*", 0, &trees, &tree_cnt);
@@ -1945,18 +1940,18 @@ cl_get_error_test(void **state)
 
     /* attempt to get item on bad element in existing module */
     rc = sr_get_item(session, "/example-module:container/unknown", &value);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(value);
 
     /* retrieve last error information */
     rc = sr_get_last_error(session, &error_info);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_non_null(error_info);
     assert_non_null(error_info->message);
 
     /* retrieve last error information */
     rc = sr_get_last_errors(session, &error_info, &error_cnt);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_non_null(error_info);
     assert_int_equal(error_cnt, 1);
     assert_non_null(error_info[0].message);

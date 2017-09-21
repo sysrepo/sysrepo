@@ -1519,7 +1519,7 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
         return SR_ERR_NOMEM;
     }
 
-    rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
+    rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session, NULL);
 
     /* set response code */
     resp->response->result = rc;
@@ -1674,7 +1674,7 @@ rp_switch_datastore_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg
         return SR_ERR_NOMEM;
     }
 
-    rc = rp_dt_switch_datastore(rp_ctx, session, sr_datastore_gpb_to_sr(msg->request->session_switch_ds_req->datastore));
+    rp_dt_switch_datastore(rp_ctx, session, sr_datastore_gpb_to_sr(msg->request->session_switch_ds_req->datastore));
 
     /* set response code */
     resp->response->result = rc;
@@ -3093,7 +3093,8 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     if (NULL != subscriptions_list) {
         for (size_t i = 0; i < subscriptions_list->count; i++) {
             subscription = subscriptions_list->data[i];
-            if (NULL != subscription->xpath && rp_event_notif_match_subscr(msg->request->event_notif_req->xpath, subscription->xpath)) {
+            if ((NULL != subscription->xpath && rp_event_notif_match_subscr(msg->request->event_notif_req->xpath, subscription->xpath))
+                    || (NULL == subscription->xpath && 0 == sr_cmp_first_ns(msg->request->event_notif_req->xpath, subscription->module_name))) {
                 /* duplicate msg into req with values and subscription details
                  * @note we are not using memory context for the *req* message because with so many
                  * duplications it would be actually less efficient than normally.
@@ -4186,6 +4187,7 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finishe
             break;
         default:
             SR_LOG_ERR_MSG("Invalid operation of a resumed commit request");
+            rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
         SR_LOG_INF("Resuming %s with id %"PRIu32" continue with %s", op_str, commit_id, SR_ERR_OK == result ? "write" : "abort");

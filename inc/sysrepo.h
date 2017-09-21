@@ -1041,6 +1041,8 @@ int sr_discard_changes(sr_session_ctx_t *session);
  * @note Operation may fail, if it tries to copy a not enabled configuration to the
  * running datastore.
  *
+ * @note \p session \p dst_datastore uncommitted changes will get discarded.
+ *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] module_name If specified, only limits the copy operation only to
  * one specified module.
