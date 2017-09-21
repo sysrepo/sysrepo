@@ -1114,9 +1114,7 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
                 }
             }
         }
-        if (lyset) {
-            ly_set_free(lyset);
-        }
+        ly_set_free(lyset);
     }
 
     if (SR_ERR_OK == rc) {

@@ -4187,6 +4187,7 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finishe
             break;
         default:
             SR_LOG_ERR_MSG("Invalid operation of a resumed commit request");
+            rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
         SR_LOG_INF("Resuming %s with id %"PRIu32" continue with %s", op_str, commit_id, SR_ERR_OK == result ? "write" : "abort");
