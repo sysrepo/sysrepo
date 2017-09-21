@@ -417,9 +417,10 @@ int dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_e
  * call ::dm_get_data_info will load fresh data.
  * @param [in] dm_ctx
  * @param [in] session
+ * @param [in] module_name Optional module name.
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
+int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name);
 
 /**
  * @brief Removes the modified flags from session copies of data trees.
@@ -1038,18 +1039,18 @@ int dm_copy_if_not_loaded(dm_ctx_t *dm_ctx, dm_session_t *from_session, dm_sessi
  * will work on the selected datastore.
  * @param [in] session
  * @param [in] ds
- * @return Error code (SR_ERR_OK on success)
  */
-int dm_session_switch_ds(dm_session_t *session, sr_datastore_t ds);
+void dm_session_switch_ds(dm_session_t *session, sr_datastore_t ds);
 
 /**
  * @brief Moves session data trees and operations (for all datastores) from one session to another.
  * @param [in] dm_ctx
  * @param [in] from
  * @param [in] to
+ * @param [in] ds
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_move_session_tree_and_ops_all_ds(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to);
+int dm_move_session_tree_and_ops(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, sr_datastore_t ds);
 
 /**
  * @brief Moves data trees from one datastore to another in the session

@@ -1621,7 +1621,7 @@ edit_discard_changes_test(void **state)
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
     sr_free_val(valueB);
 
-    rc = dm_discard_changes(ctx->dm_ctx, sessionA->dm_session);
+    rc = dm_discard_changes(ctx->dm_ctx, sessionA->dm_session, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     sessionA->state = RP_REQ_NEW;
@@ -2316,7 +2316,7 @@ candidate_edit_test(void **state)
     errors = NULL;
     e_cnt = 0;
 
-    rc = dm_discard_changes(ctx->dm_ctx, sessionA->dm_session);
+    rc = dm_discard_changes(ctx->dm_ctx, sessionA->dm_session, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     sr_val_t *v = NULL;

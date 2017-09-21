@@ -1519,7 +1519,7 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
         return SR_ERR_NOMEM;
     }
 
-    rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
+    rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session, NULL);
 
     /* set response code */
     resp->response->result = rc;
@@ -1674,7 +1674,7 @@ rp_switch_datastore_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg
         return SR_ERR_NOMEM;
     }
 
-    rc = rp_dt_switch_datastore(rp_ctx, session, sr_datastore_gpb_to_sr(msg->request->session_switch_ds_req->datastore));
+    rp_dt_switch_datastore(rp_ctx, session, sr_datastore_gpb_to_sr(msg->request->session_switch_ds_req->datastore));
 
     /* set response code */
     resp->response->result = rc;

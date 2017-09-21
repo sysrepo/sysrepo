@@ -963,7 +963,7 @@ cleanup:
     if (SR_ERR_OK == rc) {
         /* discard changes in session in next get_data_tree call newly committed content will be loaded */
         if (SR_DS_CANDIDATE != session->datastore) {
-            rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
+            rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session, NULL);
         }
         SR_LOG_DBG_MSG("Commit (10/10): finished successfully");
     } else {
@@ -1068,11 +1068,10 @@ rp_dt_copy_config_to_running(rp_ctx_t *rp_ctx, rp_session_t *session, const char
     int rc = SR_ERR_OK;
     sr_list_t *modules = NULL;
     dm_session_t *backup = NULL;
-    sr_datastore_t prev_ds = session->datastore;
     dm_commit_context_t *c_ctx = NULL;
     dm_data_info_t *info = NULL;
     int first_err = SR_ERR_OK;
-    bool enabled = false;
+    bool enabled = false, changes_backed = false, trees_moved = false;
 
     /* are we resuming a copy_config commit? */
     if (RP_REQ_RESUMED == session->state) {
@@ -1084,11 +1083,12 @@ rp_dt_copy_config_to_running(rp_ctx_t *rp_ctx, rp_session_t *session, const char
         rc = dm_session_start(rp_ctx->dm_ctx, session->user_credentials, src, &backup);
         CHECK_RC_MSG_RETURN(rc, "Session start of temporary session failed");
 
-        /* move datatrees & session ops -> backup */
-        rc = dm_move_session_tree_and_ops_all_ds(rp_ctx->dm_ctx, session->dm_session, backup);
-        CHECK_RC_MSG_GOTO(rc, cleanup_sess_stop, "Moving session data trees failed");
+        /* backup the running ds changes to restore them if something goes wrong */
+        rc = dm_move_session_tree_and_ops(rp_ctx->dm_ctx, session->dm_session, backup, SR_DS_RUNNING);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Moving session data trees failed");
+        changes_backed = true;
 
-        rc = rp_dt_switch_datastore(rp_ctx, session, src);
+        rp_dt_switch_datastore(rp_ctx, session, src);
 
         /* load models to be committed to the session */
         if (NULL != module_name) {
@@ -1101,21 +1101,12 @@ rp_dt_copy_config_to_running(rp_ctx_t *rp_ctx, rp_session_t *session, const char
                 goto cleanup;
             }
 
-            if (SR_DS_CANDIDATE == src) {
-                rc = dm_copy_session_tree(rp_ctx->dm_ctx, backup, session->dm_session, module_name);
-                CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
-            }
             /* load data tree if it was not copied from backup session */
             rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module_name, &info);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
             info->modified = true;
         } else {
-
             /* load all enabled models */
-            if (SR_DS_CANDIDATE == src) {
-                rc = dm_copy_modified_session_trees(rp_ctx->dm_ctx, backup, session->dm_session);
-                CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
-            }
             rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
             for (size_t i = 0; i < modules->count; i++) {
@@ -1126,30 +1117,32 @@ rp_dt_copy_config_to_running(rp_ctx_t *rp_ctx, rp_session_t *session, const char
             }
         }
 
-        /* move changes to running datastore, then commit them */
-        rc = rp_dt_switch_datastore(rp_ctx, session, SR_DS_RUNNING);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree switch failed");
+        /* move changes to running datastore */
         rc = dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, src, SR_DS_RUNNING);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree move failed");
+        trees_moved = true;
     }
 
-    /* commit */
+    /* commit running changes */
+    rp_dt_switch_datastore(rp_ctx, session, SR_DS_RUNNING);
     rc = rp_dt_commit(rp_ctx, session, c_ctx, true, errors, err_cnt);
 
 cleanup:
     first_err = rc;
-    if (backup) {
-        /* move datatrees & ops backup -> session */
-        rc = dm_move_session_tree_and_ops_all_ds(rp_ctx->dm_ctx, backup, session->dm_session);
-    }
-    /* change session to prev type */
-    rc = rp_dt_switch_datastore(rp_ctx, session, prev_ds);
-    sr_list_cleanup(modules);
-
-cleanup_sess_stop:
-    if (backup) {
+    rc = SR_ERR_OK;
+    if (NULL != backup) {
+        if (changes_backed && SR_ERR_OK != first_err) {
+            /* restore the session running changes if something went wrong */
+            if (trees_moved) {
+                rc = dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, SR_DS_RUNNING, src);
+            }
+            if (SR_ERR_OK == rc) {
+                rc = dm_move_session_tree_and_ops(rp_ctx->dm_ctx, backup, session->dm_session, SR_DS_RUNNING);
+            }
+        }
         dm_session_stop(rp_ctx->dm_ctx, backup);
     }
+    sr_list_cleanup(modules);
 
     return first_err == SR_ERR_OK ? rc : first_err;
 }
@@ -1167,8 +1160,7 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
     }
 
     if ((SR_DS_CANDIDATE == src || SR_DS_CANDIDATE == dst) && SR_DS_CANDIDATE != session->datastore) {
-        rc = rp_dt_switch_datastore(rp_ctx, session, SR_DS_CANDIDATE);
-        CHECK_RC_MSG_RETURN(rc, "Datastore switch failed");
+        rp_dt_switch_datastore(rp_ctx, session, SR_DS_CANDIDATE);
     }
 
     if (SR_DS_RUNNING != dst) {
@@ -1190,15 +1182,13 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
     return rc;
 }
 
-int
+void
 rp_dt_switch_datastore(rp_ctx_t *rp_ctx, rp_session_t *session, sr_datastore_t ds)
 {
-    CHECK_NULL_ARG3(rp_ctx, session, session->dm_session);
-    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_VOID3(rp_ctx, session, session->dm_session);
     SR_LOG_INF("Switch datastore request %s -> %s", sr_ds_to_str(session->datastore), sr_ds_to_str(ds));
     session->datastore = ds;
-    rc = dm_session_switch_ds(session->dm_session, ds);
-    return rc;
+    dm_session_switch_ds(session->dm_session, ds);
 }
 
 int

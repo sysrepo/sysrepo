@@ -308,7 +308,7 @@ dm_discard_changes_test(void **state)
     rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = dm_discard_changes(ctx, ses_ctx);
+    rc = dm_discard_changes(ctx, ses_ctx, "test-module");
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
@@ -330,7 +330,7 @@ dm_discard_changes_test(void **state)
     assert_int_equal(100, ((struct lyd_node_leaf_list *)info->node->child->next->next->next->next)->value.int8);
 
     /* discard changes to get current datastore value*/
-    rc = dm_discard_changes(ctx, ses_ctx);
+    rc = dm_discard_changes(ctx, ses_ctx, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
