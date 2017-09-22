@@ -598,7 +598,6 @@ srctl_uninstall(const char *module_name, const char *revision)
     int rc = SR_ERR_INTERNAL;
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
-    struct ly_ctx *ly_ctx = NULL;
     md_ctx_t *md_ctx = NULL;
     md_module_t *module = NULL;
     char *filepath = NULL;
@@ -610,13 +609,6 @@ srctl_uninstall(const char *module_name, const char *revision)
         return SR_ERR_INVAL_ARG;
     }
     printf("Uninstalling the module '%s'...\n", module_name);
-
-    /* init libyang context */
-    ly_ctx = ly_ctx_new(srctl_schema_search_dir);
-    if (NULL == ly_ctx) {
-        fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
-        goto fail;
-    }
 
     /* init module dependencies context */
     rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
@@ -711,9 +703,6 @@ fail:
 cleanup:
     free(filepath);
     md_destroy(md_ctx);
-    if (ly_ctx) {
-        ly_ctx_destroy(ly_ctx, NULL);
-    }
     md_free_module_key_list(implicitly_removed);
     return rc;
 }
@@ -930,7 +919,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     }
 
     /* init libyang context */
-    ly_ctx = ly_ctx_new(search_dir);
+    ly_ctx = ly_ctx_new(search_dir, 0);
     if (NULL == ly_ctx) {
         fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
         goto fail;

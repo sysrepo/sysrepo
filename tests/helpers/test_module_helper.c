@@ -37,7 +37,7 @@ createDataTreeTestModule()
     struct lyd_node *n = NULL;
     struct lyd_node *r = NULL;
 
-    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     assert_non_null(ctx);
 
     const struct lys_module *module = ly_ctx_load_module(ctx, "test-module", NULL);
@@ -292,7 +292,7 @@ createDataTreeExampleModule()
     struct ly_ctx *ctx = NULL;
     struct lyd_node *root = NULL;
 
-    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     assert_non_null(ctx);
 
     const struct lys_module *module = ly_ctx_load_module(ctx, "example-module", NULL);
@@ -314,7 +314,7 @@ createDataTreeLargeExampleModule(int list_count)
     struct ly_ctx *ctx = NULL;
     struct lyd_node *root = NULL, *node = NULL;
 
-    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     assert_non_null(ctx);
 
     const struct lys_module *module = ly_ctx_load_module(ctx, "example-module", NULL);
@@ -345,7 +345,7 @@ void
 createDataTreeLargeIETFinterfacesModule(size_t if_count)
 {
 
-    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     assert_non_null(ctx);
 
     struct lyd_node *root = NULL;
@@ -401,7 +401,7 @@ createDataTreeLargeIETFinterfacesModule(size_t if_count)
 void
 createDataTreeIETFinterfacesModule(){
 
-    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     assert_non_null(ctx);
 
     struct lyd_node *root = NULL;
@@ -453,7 +453,7 @@ createDataTreeIETFinterfacesModule(){
 void
 createDataTreeIETFinterfacesModuleMerge(){
 
-    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     assert_non_null(ctx);
 
     struct lyd_node *root = NULL;
@@ -496,7 +496,7 @@ createDataTreeReferencedModule(int8_t magic_number)
     struct ly_ctx *ctx = NULL;
     struct lyd_node *r1 = NULL, *r2 = NULL, *leaf = NULL;
 
-    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     assert_non_null(ctx);
 
     const struct lys_module *module = ly_ctx_load_module(ctx, "referenced-data", NULL);
@@ -527,7 +527,7 @@ createDataTreeStateModule()
     struct ly_ctx *ctx = NULL;
     struct lyd_node *r1 = NULL, *r2 = NULL, *leaf = NULL;
 
-    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     assert_non_null(ctx);
 
     const struct lys_module *module = ly_ctx_load_module(ctx, "state-module@2016-07-01", NULL);

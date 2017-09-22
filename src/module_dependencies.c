@@ -1036,7 +1036,7 @@ md_init(const char *schema_search_dir,
     pthread_rwlock_init(&ctx->lock, NULL);
 
     /* Create libyang context */
-    ctx->ly_ctx = ly_ctx_new(schema_search_dir);
+    ctx->ly_ctx = ly_ctx_new(schema_search_dir, 0);
     CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, fail);
 
     /* Copy schema search directory */
@@ -2203,7 +2203,7 @@ implemented_dependencies:
             }
 
             /* Use a separate context for module schema processing */
-            tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir);
+            tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir, 0);
             if (NULL == tmp_ly_ctx) {
                 rc = SR_ERR_INTERNAL;
                 SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
@@ -2316,7 +2316,7 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath, sr_list_t **implicitly_
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     /* Use a separate context for module schema processing */
-    tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir);
+    tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir, 0);
     if (NULL == tmp_ly_ctx) {
         rc = SR_ERR_INTERNAL;
         SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
@@ -2331,7 +2331,6 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath, sr_list_t **implicitly_
         SR_LOG_ERR("Unable to parse '%s' schema file: %s", filepath, ly_errmsg());
         goto cleanup;
     }
-
     /* insert module into the dependency graph */
     rc = md_insert_lys_module(md_ctx, module_schema, md_get_module_revision(module_schema), true, NULL,
                               implicitly_inserted, being_parsed);
