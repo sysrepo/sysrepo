@@ -188,6 +188,12 @@ event_loop()
     } while ((SR_ERR_OK == rc) && !exit_application);
 }
 
+void
+flush_all_events()
+{
+    printf("We are single-threaded, no reason to wait for all pending events to be processed\n");
+}
+
 int
 main(int argc, char **argv)
 {
@@ -202,7 +208,7 @@ main(int argc, char **argv)
     }
 
     /* init app-local fd watcher */
-    rc = sr_fd_watcher_init(&poll_fd_set[0].fd);
+    rc = sr_fd_watcher_init(&poll_fd_set[0].fd, &flush_all_events);
     poll_fd_set[0].events = POLLIN;
     poll_fd_cnt = 1;
 
