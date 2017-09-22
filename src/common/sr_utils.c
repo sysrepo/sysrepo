@@ -1718,7 +1718,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
     if (NULL != parent) {
         /* get module */
         if (NULL != sr_tree->module_name) {
-            module = ly_ctx_get_module(ly_ctx, sr_tree->module_name, NULL);
+            module = ly_ctx_get_module(ly_ctx, sr_tree->module_name, NULL, 1);
         } else {
             module = lyd_node_module(parent);
         }
@@ -1726,7 +1726,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
         char *ns = NULL;
         ret = sr_copy_first_ns(xpath, &ns);
         CHECK_RC_MSG_RETURN(ret, "Copy first ns failed");
-        module = ly_ctx_get_module(ly_ctx, ns, NULL);
+        module = ly_ctx_get_module(ly_ctx, ns, NULL, 1);
         free(ns);
     }
     if (NULL == module) {

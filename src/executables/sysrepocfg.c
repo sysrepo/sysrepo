@@ -194,7 +194,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, md_module_t *module)
     CHECK_NULL_ARG2(ly_ctx, module);
 
     /* init libyang context */
-    *ly_ctx = ly_ctx_new(srcfg_schema_search_dir);
+    *ly_ctx = ly_ctx_new(srcfg_schema_search_dir, 0);
     if (NULL == *ly_ctx) {
         SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
         return SR_ERR_INTERNAL;
@@ -250,7 +250,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_nod
 
     *data_tree = NULL;
     ly_errno = LY_SUCCESS;
-    module_schema = ly_ctx_get_module(ly_ctx, module->name, NULL);
+    module_schema = ly_ctx_get_module(ly_ctx, module->name, NULL, 1);
     if (NULL == module_schema) {
         SR_LOG_ERR("Module %s not found", module->name);
         goto cleanup;
@@ -361,7 +361,7 @@ srcfg_get_xpath_data(struct ly_ctx *ly_ctx, md_module_t *module, const char *xpa
 
     *data_tree = NULL;
     ly_errno = LY_SUCCESS;
-    module_schema = ly_ctx_get_module(ly_ctx, module->name, NULL);
+    module_schema = ly_ctx_get_module(ly_ctx, module->name, NULL, 1);
     if (NULL == module_schema) {
         SR_LOG_ERR("Module %s not found", module->name);
         goto cleanup;
@@ -1061,7 +1061,7 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
     if (NULL != current_dt) {
         snode = current_dt->schema;
     } else {
-        schema_module = ly_ctx_get_module(ly_ctx, module->name, module->revision_date);
+        schema_module = ly_ctx_get_module(ly_ctx, module->name, module->revision_date, 0);
     }
 
     rc = sr_find_schema_node(schema_module, snode, xpath, 0, &lyset);

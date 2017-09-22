@@ -759,7 +759,7 @@ np_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
 
     /* init libyang ctx */
-    ctx->ly_ctx = ly_ctx_new(schema_search_dir);
+    ctx->ly_ctx = ly_ctx_new(schema_search_dir, 0);
     if (NULL == ctx->ly_ctx) {
         SR_LOG_ERR("libyang initialization failed: %s", ly_errmsg());
         rc = SR_ERR_INIT_FAILED;

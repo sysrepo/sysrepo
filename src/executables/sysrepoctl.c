@@ -919,7 +919,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     }
 
     /* init libyang context */
-    ly_ctx = ly_ctx_new(search_dir);
+    ly_ctx = ly_ctx_new(search_dir, 0);
     if (NULL == ly_ctx) {
         fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
         goto fail;
