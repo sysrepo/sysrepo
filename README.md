@@ -31,6 +31,8 @@ Sysrepo can be easily integrated with management agents such as [NETCONF](https:
 -	(TODO) native client libraries / plugins for other programming languages (Python, Java, ...)
 
 ## Status
+- September 2017: sysrepo [version 0.7.1](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.1) released with many bugfixes and optimizations
+- August 2017: sysrepo [version 0.7.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.0) released with several important improvements and changes: full NACM support, (X)Paths for subscriptions unified, candidate datastore changes, `sr_commit` functionality change and many bugfixes and enhancements
 - May 2017: sysrepo [version 0.6.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.6.0) realeased with many bugfixes and improvements including event notification replay.
 - November 2016: sysrepo [version 0.5.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.5.0) realeased with many bugfixes and some minor improvements.
 - October 2016: sysrepo [version 0.4.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.4.0) realeased with lots of new features such as: operational data support, commit verifiers, YANG 1.1 support, subtree-based data retrieval or RPC / event notifications support.
