@@ -1,5 +1,5 @@
 /**
- * @file set_item_example.cpp
+ * @file cpp_set_item_example.cpp
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
  * @brief Example usage of set_item_example function.
  *

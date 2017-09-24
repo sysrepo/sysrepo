@@ -1,5 +1,5 @@
 /**
- * @file get_items_iter_example.cpp
+ * @file cpp_get_items_iter_example.cpp
  * @author Mislav Novakovic <mislav.novakovic@gmail.com>
  * @brief Example usage of get_items_iter function
  *
