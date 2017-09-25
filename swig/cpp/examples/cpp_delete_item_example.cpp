@@ -1,5 +1,5 @@
 /**
- * @file delete_item_example.cpp
+ * @file cpp_delete_item_example.cpp
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
  * @brief Example usage of delete_item_example function.
  *

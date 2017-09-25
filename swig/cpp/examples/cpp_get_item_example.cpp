@@ -1,5 +1,5 @@
 /**
- * @file get_item_example.cpp
+ * @file cpp_get_item_example.cpp
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
  * @brief Example usage of get_item method
  *
