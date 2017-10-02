@@ -2444,14 +2444,41 @@ sr_find_schema_node(const struct lys_module *module, const struct lys_node *star
     }
 
     path = strdup(data_path);
-
     path_end = path + strlen(path);
-    /* replace every '/' with 0 (but be careful with "//") and prepare for parsing */
-    for (name = strchr(path, '/'); name; name = strchr(name + 2, '/')) {
-        name[0] = '\0';
-        if (name[1] == '\0') {
-            rc = SR_ERR_INVAL_ARG;
-            goto error;
+
+    for (name = path; name[0]; ++name) {
+        switch (name[0]) {
+        case '/':
+            /* replace every '/' with 0 (but be careful with "//") */
+            name[0] = '\0';
+            if (name[1] == '\0') {
+                rc = SR_ERR_INVAL_ARG;
+                goto error;
+            }
+            ++name;
+            break;
+        case '\'':
+            /* skip quoted values */
+            do {
+                ++name;
+            } while (name[0] && (name[0] != '\''));
+            if (!name[0]) {
+                rc = SR_ERR_INVAL_ARG;
+                goto error;
+            }
+            break;
+        case '\"':
+            /* skip quoted values */
+            do {
+                ++name;
+            } while (name[0] && ((name[0] != '\"') || (name[-1] == '\\')));
+            if (!name[0]) {
+                rc = SR_ERR_INVAL_ARG;
+                goto error;
+            }
+            break;
+        default:
+            break;
         }
     }
     if (path[0] == '\0') {
