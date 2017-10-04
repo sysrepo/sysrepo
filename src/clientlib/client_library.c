@@ -1617,7 +1617,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
             }
             prev = prev->prev;
         }
-        snprintf(indices[i], BUF_LEN, "%lu", index);
+        snprintf(indices[i], BUF_LEN, "%zu", index);
         node = node->parent;
     }
     /* -> xpath length */
