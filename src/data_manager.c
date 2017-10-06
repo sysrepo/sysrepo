@@ -1830,6 +1830,8 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
 
     /* transform data from one ctx to another */
     if (NULL != di->node) {
+        ly_ctx_set_module_data_clb(data_info->schema->ly_ctx, dm_module_clb, dm_ctx);
+
         if (NULL == data_info->node) {
             data_info->node = sr_dup_datatree_to_ctx(di->node, data_info->schema->ly_ctx);
         } else {
