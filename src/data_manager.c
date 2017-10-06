@@ -1834,6 +1834,10 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
 
         if (NULL == data_info->node) {
             data_info->node = sr_dup_datatree_to_ctx(di->node, data_info->schema->ly_ctx);
+            if (NULL == data_info->node) {
+                SR_LOG_ERR("Failed to duplicate %s data tree into another context", di->schema->module->name);
+                return SR_ERR_INTERNAL;
+            }
         } else {
             ret = lyd_merge_to_ctx(&data_info->node, di->node, LYD_OPT_EXPLICIT, data_info->schema->ly_ctx);
             CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Failed to merge %s data tree", di->schema->module->name);
