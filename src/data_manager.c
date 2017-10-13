@@ -4893,14 +4893,10 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
         ll_node = module->deps->first;
         while (ll_node) {
             dep = (md_dep_t *)ll_node->data;
-            if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
-                /* Note: imports are automatically loaded by libyang */
-                rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, true, &si);
-                CHECK_RC_LOG_GOTO(rc, unlock, "Loading of %s was not successfull", dep->dest->name);
-            }
             if (dep->type == MD_DEP_DATA) {
                 /* mark this module as dependent on data from other modules */
                 si->cross_module_data_dependency = true;
+                break;
             }
             ll_node = ll_node->next;
         }
@@ -4912,21 +4908,6 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
         if (module->has_persist) {
             rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si, false);
             CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
-        }
-
-        ll_node = module->deps->first;
-        while (ll_node) {
-            dep = (md_dep_t *) ll_node->data;
-            if (dep->dest->has_persist) {
-                if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
-                    rc = dm_apply_persist_data_for_model(dm_ctx, session, dep->dest->name, si, false);
-                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", dep->dest->name);
-                } else if (dep->type == MD_DEP_IMPORT) {
-                    rc = dm_apply_persist_data_for_model(dm_ctx, session, dep->dest->name, si, true);
-                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply features from persist data for %s", dep->dest->name);
-                }
-            }
-            ll_node = ll_node->next;
         }
 
         /* distinguish between modules that can and cannot be locked */
