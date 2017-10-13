@@ -1830,8 +1830,14 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
 
     /* transform data from one ctx to another */
     if (NULL != di->node) {
+        ly_ctx_set_module_data_clb(data_info->schema->ly_ctx, dm_module_clb, dm_ctx);
+
         if (NULL == data_info->node) {
             data_info->node = sr_dup_datatree_to_ctx(di->node, data_info->schema->ly_ctx);
+            if (NULL == data_info->node) {
+                SR_LOG_ERR("Failed to duplicate %s data tree into another context", di->schema->module->name);
+                return SR_ERR_INTERNAL;
+            }
         } else {
             ret = lyd_merge_to_ctx(&data_info->node, di->node, LYD_OPT_EXPLICIT, data_info->schema->ly_ctx);
             CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Failed to merge %s data tree", di->schema->module->name);
@@ -4887,14 +4893,10 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
         ll_node = module->deps->first;
         while (ll_node) {
             dep = (md_dep_t *)ll_node->data;
-            if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
-                /* Note: imports are automatically loaded by libyang */
-                rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, true, &si);
-                CHECK_RC_LOG_GOTO(rc, unlock, "Loading of %s was not successfull", dep->dest->name);
-            }
             if (dep->type == MD_DEP_DATA) {
                 /* mark this module as dependent on data from other modules */
                 si->cross_module_data_dependency = true;
+                break;
             }
             ll_node = ll_node->next;
         }
@@ -4906,21 +4908,6 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
         if (module->has_persist) {
             rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si, false);
             CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
-        }
-
-        ll_node = module->deps->first;
-        while (ll_node) {
-            dep = (md_dep_t *) ll_node->data;
-            if (dep->dest->has_persist) {
-                if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
-                    rc = dm_apply_persist_data_for_model(dm_ctx, session, dep->dest->name, si, false);
-                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", dep->dest->name);
-                } else if (dep->type == MD_DEP_IMPORT) {
-                    rc = dm_apply_persist_data_for_model(dm_ctx, session, dep->dest->name, si, true);
-                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply features from persist data for %s", dep->dest->name);
-                }
-            }
-            ll_node = ll_node->next;
         }
 
         /* distinguish between modules that can and cannot be locked */
@@ -5293,8 +5280,10 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
         size_t e_cnt = 0;
         rc = dm_validate_session_data_trees(dm_ctx, session, &errors, &e_cnt);
         if (SR_ERR_OK != rc) {
-            rc = dm_report_error(session, errors[0].message, errors[0].xpath, SR_ERR_VALIDATION_FAILED);
-            sr_free_errors(errors, e_cnt);
+            if (NULL != errors) {
+                rc = dm_report_error(session, errors[0].message, errors[0].xpath, SR_ERR_VALIDATION_FAILED);
+                sr_free_errors(errors, e_cnt);
+            }
             SR_LOG_ERR_MSG("There is a invalid data tree, can not be copied");
             goto cleanup;
         }
