@@ -175,6 +175,8 @@ INSTALL_YANG_FOR_TESTS("turing-machine")
 INSTALL_YANG_FOR_TESTS("ietf-netconf-notifications")
 INSTALL_YANG_FOR_TESTS("nc-notifications")
 INSTALL_YANG_FOR_TESTS("servers")
+INSTALL_YANG_FOR_TESTS("identityref-mod1")
+
 
 # dummy testing plugins
 add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)
