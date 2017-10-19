@@ -23,6 +23,8 @@
 #ifndef SYSREPO_VALUES_H_
 #define SYSREPO_VALUES_H_
 
+#include <stdio.h>
+
 /**
  * @defgroup values Value Manipulation Utilities
  * @{
