@@ -237,6 +237,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_nod
     sr_val_iter_t *iter = NULL;
     struct lyd_node *node = NULL;
     const struct lys_node *schema = NULL;
+    struct ly_set *set = NULL;
     char query[PATH_MAX] = { 0, };
     char *string_val = NULL;
     const struct lys_module *module_schema = NULL;
@@ -261,14 +262,16 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_nod
         }
 
         /* get node schema */
-        schema = sr_find_schema_node(module_schema->data, value->xpath, 0);
-        if (!schema) {
-            SR_LOG_ERR("Error by sr_find_schema_node: %s", ly_errmsg());
+        rc = sr_find_schema_node(module_schema, NULL, value->xpath, 0, &set);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Error by sr_find_schema_node '%s'.", value->xpath);
             goto fail;
         }
+        schema = set->set.s[0];
+        ly_set_free(set);
 
         /* skip default values */
-        if (schema->nodetype == LYS_LEAF && value->dflt) {
+        if ((schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && value->dflt) {
             goto next;
         }
 
@@ -345,6 +348,7 @@ srcfg_get_xpath_data(struct ly_ctx *ly_ctx, md_module_t *module, const char *xpa
     sr_val_iter_t *iter = NULL;
     struct lyd_node *node = NULL;
     const struct lys_node *schema = NULL;
+    struct ly_set *set = NULL;
     char query[PATH_MAX] = { 0, };
     char *string_val = NULL;
     const struct lys_module *module_schema = NULL;
@@ -369,14 +373,16 @@ srcfg_get_xpath_data(struct ly_ctx *ly_ctx, md_module_t *module, const char *xpa
         }
 
         /* get node schema */
-        schema = sr_find_schema_node(module_schema->data, value->xpath, 0);
-        if (!schema) {
-            SR_LOG_ERR("Error by sr_find_schema_node: %s", ly_errmsg());
+        rc = sr_find_schema_node(module_schema, NULL, value->xpath, 0, &set);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Error by sr_find_schema_node '%s'.", value->xpath);
             goto fail;
         }
+        schema = set->set.s[0];
+        ly_set_free(set);
 
         /* skip default values */
-        if (schema->nodetype == LYS_LEAF && value->dflt) {
+        if ((schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && value->dflt) {
             goto next;
         }
 
@@ -479,7 +485,7 @@ srcfg_get_data_deps(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_node*
     ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *)ll_node->data;
-        if (MD_DEP_DATA == dep->type && dep->dest->latest_revision && dep->dest->has_data) {
+        if (MD_DEP_DATA == dep->type && dep->dest->implemented && dep->dest->has_data) {
             rc = srcfg_get_module_data(ly_ctx, dep->dest, &dep_data_tree);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
@@ -761,7 +767,7 @@ srcfg_convert_lydiff_movedafter(const char *target_xpath, const char *after_xpat
  */
 static int
 srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, srcfg_datastore_t datastore,
-                       LYD_FORMAT format, bool permanent, bool merge)
+                       LYD_FORMAT format, bool permanent, bool merge, bool strict)
 {
     int rc = SR_ERR_INTERNAL;
     unsigned i = 0;
@@ -783,13 +789,13 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, sr
     ly_errno = LY_SUCCESS;
     if (S_ISREG(info.st_mode)) {
         /* load (using mmap) and parse the input data in one step */
-        new_dt = lyd_parse_fd(ly_ctx, fd_in, format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+        new_dt = lyd_parse_fd(ly_ctx, fd_in, format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG | (strict ? LYD_OPT_STRICT : 0));
     } else { /* most likely STDIN */
         /* load input data into the memory first */
         ret = srcfg_read_file_content(fd_in, &input_data);
         CHECK_RC_MSG_GOTO(ret, cleanup, "Unable to read the input data.");
         /* parse the input data stored inside memory buffer */
-        new_dt = lyd_parse_mem(ly_ctx, input_data, format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+        new_dt = lyd_parse_mem(ly_ctx, input_data, format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG | (strict ? LYD_OPT_STRICT : 0));
     }
     if (NULL == new_dt && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Unable to parse the input data: %s (%s)", ly_errmsg(), ly_errpath());
@@ -817,15 +823,23 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, sr
 
     /* get data tree of currently stored configuration and validate it */
     rc = srcfg_get_module_data(ly_ctx, module, &current_dt);
-    if (SR_ERR_OK == rc) {
-        rc = srcfg_merge_data_trees(&current_dt, deps_dt);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
     }
-    if (SR_ERR_OK == rc) {
+    if (NULL != current_dt) {
+        rc = srcfg_merge_data_trees(&current_dt, deps_dt);
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
         ret = lyd_validate(&current_dt, LYD_OPT_STRICT | LYD_OPT_CONFIG, ly_ctx);
         CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Data returned by sysrepo are not valid: %s (%s)",
                             ly_errmsg(), ly_errpath());
     } else {
-        goto cleanup;
+        /* if current datastore is empty, do not validate it, it is likely a fresh install */
+        rc = srcfg_merge_data_trees(&current_dt, deps_dt);
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
     }
 
     /* get the list of changes made by the user */
@@ -990,78 +1004,22 @@ sr_type_t srcfg_convert_format(struct lys_node_leaf* leaf)
 static int
 srcfg_write_xpath_value(sr_type_t srtype, const char *xpath, const char *xpathvalue)
 {
-    int rc = SR_ERR_INTERNAL;
-    sr_val_t value = { 0 };
-
-    if (srtype != SR_LIST_T) {
-        value.type = srtype;
-        rc = sr_val_set_xpath(&value, xpath);
-        if (SR_ERR_OK != rc) {
-            printf("Error by sr_val_set_xpath: %s for %s\n", strerror(rc), xpath);
-            goto cleanup;
-        }
-
-        switch (srtype) {
-            case SR_BINARY_T:
-            case SR_BITS_T:
-            case SR_ENUM_T:
-            case SR_IDENTITYREF_T:
-            case SR_INSTANCEID_T:
-            case SR_STRING_T:
-                rc = sr_val_set_str_data(&value, srtype, xpathvalue);
-                if (SR_ERR_OK != rc) {
-                    printf("Error by sr_val_set_str_data: %s for %s\n", strerror(rc), xpath);
-                    goto cleanup;
-                }
-                break;
-            case SR_BOOL_T:
-                value.data.bool_val = atoi(xpathvalue);
-                break;
-            case SR_UINT8_T:
-                value.data.uint8_val = atoi(xpathvalue);
-                break;
-            case SR_UINT16_T:
-                value.data.uint16_val = atoi(xpathvalue);
-                break;
-            case SR_UINT32_T:
-                value.data.uint32_val = atoi(xpathvalue);
-                break;
-            case SR_UINT64_T:
-                value.data.uint64_val = atoll(xpathvalue);
-                break;
-            case SR_INT8_T:
-                value.data.int8_val = atoi(xpathvalue);
-                break;
-            case SR_INT16_T:
-                value.data.int16_val = atoi(xpathvalue);
-                break;
-            case SR_INT32_T:
-                value.data.int32_val = atoi(xpathvalue);
-                break;
-            case SR_INT64_T:
-                value.data.int64_val = atoll(xpathvalue);
-                break;
-            default:
-                printf("%s type %d not supported\n", __FUNCTION__, srtype);
-                goto cleanup;
-                break;
-        }
-        if (xpathvalue) {
-            rc = sr_set_item(srcfg_session, xpath, &value, SR_EDIT_DEFAULT);
-            if (SR_ERR_OK != rc) {
-                printf("Error by sr_set_item: %s for %s\n", strerror(rc), xpath);
-                goto cleanup;
-            }
-        }
-    } else {
-        rc = sr_set_item(srcfg_session, xpath, NULL, SR_EDIT_DEFAULT);
+    if (srtype == SR_LIST_T) {
+        int rc = sr_set_item(srcfg_session, xpath, NULL, SR_EDIT_DEFAULT);
         if (SR_ERR_OK != rc) {
             printf("Error by sr_set_item: %s for %s\n", strerror(rc), xpath);
-            goto cleanup;
+            return rc;
+        }
+    } else if (!xpathvalue) {
+        return SR_ERR_INTERNAL;
+    } else {
+        int rc = sr_set_item_str(srcfg_session, xpath, xpathvalue, SR_EDIT_DEFAULT);
+        if (SR_ERR_OK != rc) {
+            printf("Error by sr_set_item_str: %s for %s\n", strerror(rc), xpath);
+            return rc;
         }
     }
-cleanup:
-    return rc;
+    return 0;
 }
 
 /**
@@ -1071,10 +1029,10 @@ static int
 srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathvalue, md_module_t *module, srcfg_datastore_t datastore, bool permanent)
 {
     int rc = SR_ERR_INTERNAL;
-    //struct lyd_node *new_dt = NULL;
+    struct lys_node *snode = NULL;
     struct lyd_node *current_dt = NULL;
     struct lyd_node *deps_dt = NULL;
-    int ret = 0, j = 0;
+    const struct lys_module *schema_module = NULL;
     struct ly_set *lyset;
 
     CHECK_NULL_ARG2(ly_ctx, module);
@@ -1096,17 +1054,19 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
     if (SR_ERR_OK == rc) {
         rc = srcfg_merge_data_trees(&current_dt, deps_dt);
     }
-    if (SR_ERR_OK == rc) {
-        ret = lyd_validate(&current_dt, LYD_OPT_STRICT | LYD_OPT_CONFIG, ly_ctx);
-        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Data returned by sysrepo are not valid: %s (%s)",
-                            ly_errmsg(), ly_errpath());
-    } else {
+    if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
-    lyset = lys_find_xpath(ly_ctx, current_dt->schema, xpath, 0);
-    if (lyset && lyset->number) {
-        for (j=0; j < lyset->number; j++) {
+    if (NULL != current_dt) {
+        snode = current_dt->schema;
+    } else {
+        schema_module = ly_ctx_get_module(ly_ctx, module->name, module->revision_date);
+    }
+
+    rc = sr_find_schema_node(schema_module, snode, xpath, 0, &lyset);
+    if (SR_ERR_OK == rc) {
+        for (int j = 0; j < lyset->number; j++) {
             //printf("node name %s,%s,%d nodetype %d\n", lyset->set.s[j]->name, lys_path(lyset->set.s[j]), lyset->number, lyset->set.s[j]->nodetype);
             if (lyset->set.s[j]) {
                 sr_type_t srtype = SR_UNKNOWN_T;
@@ -1154,11 +1114,7 @@ srcfg_import_xpath(struct ly_ctx *ly_ctx, const char *xpath, const char *xpathva
                 }
             }
         }
-        if (lyset) {
-            ly_set_free(lyset);
-        }
-    } else {
-        rc = SR_ERR_BAD_ELEMENT;
+        ly_set_free(lyset);
     }
 
     if (SR_ERR_OK == rc) {
@@ -1200,7 +1156,7 @@ cleanup:
  */
 static int
 srcfg_import_operation(md_module_t *module, srcfg_datastore_t datastore, const char *filepath,
-                       LYD_FORMAT format, bool permanent, bool merge)
+                       LYD_FORMAT format, bool permanent, bool merge, bool strict)
 {
     int rc = SR_ERR_INTERNAL, ret = 0;
     struct ly_ctx *ly_ctx = NULL;
@@ -1223,7 +1179,7 @@ srcfg_import_operation(md_module_t *module, srcfg_datastore_t datastore, const c
     }
 
     /* import datastore data */
-    ret = srcfg_import_datastore(ly_ctx, fd_in, module, datastore, format, permanent, merge);
+    ret = srcfg_import_datastore(ly_ctx, fd_in, module, datastore, format, permanent, merge, strict);
     if (SR_ERR_OK != ret) {
         goto fail;
     }
@@ -1447,7 +1403,7 @@ srcfg_delete_xpath_operation(const char **xpath, int xpathdel_count)
 {
     int rc = SR_ERR_INTERNAL;
     int i = 0;
-    
+
     CHECK_NULL_ARG(xpath);
 
     for (i = 0; i < xpathdel_count; i++) {
@@ -1507,7 +1463,7 @@ srcfg_prompt(const char *question, const char *positive, const char *negative)
  */
 static int
 srcfg_edit_operation(md_module_t *module, srcfg_datastore_t datastore, LYD_FORMAT format,
-                     const char *editor, bool keep, bool permanent, bool merge)
+                     const char *editor, bool keep, bool permanent, bool merge, bool strict)
 {
     int rc = SR_ERR_INTERNAL, ret = 0;
     struct ly_ctx *ly_ctx = NULL;
@@ -1594,7 +1550,7 @@ edit:
                               "Unable to re-open the configuration after it was edited using the text editor.");
 
     /* import temporary file content into the datastore */
-    ret = srcfg_import_datastore(ly_ctx, fd_tmp, module, datastore, format, permanent, merge);
+    ret = srcfg_import_datastore(ly_ctx, fd_tmp, module, datastore, format, permanent, merge, strict);
     close(fd_tmp);
     fd_tmp = -1;
     if (SR_ERR_OK != ret) {
@@ -1707,6 +1663,7 @@ srcfg_print_help()
     printf("  -g, --get <xpath>            Flag used to specify an XPATH to be read\n");
     printf("  -r, --del <xpath>            Flag used to specify an XPATH to be deleted\n");
     printf("  -m, --merge <path>           Flag used to merge a configuration from a supplied file\n");
+    printf("  -n, --not-strict             Flag used to silently ignore unknown data from any supplied data file\n");
     printf("\n");
     printf("Examples:\n");
     printf("  1) Edit *ietf-interfaces* module's *running config* in *xml format* in *default editor*:\n");
@@ -1736,7 +1693,7 @@ main(int argc, char* argv[])
     char *filepath = NULL;
     srcfg_datastore_t datastore = SRCFG_STORE_RUNNING;
     LYD_FORMAT format = LYD_XML;
-    bool enabled = false, keep = false, permanent = false;
+    bool enabled = false, keep = false, permanent = false, strict = true;
     int log_level = -1;
     char local_schema_search_dir[PATH_MAX] = { 0, }, local_internal_schema_search_dir[PATH_MAX] = { 0, };
     char local_internal_data_search_dir[PATH_MAX] = { 0, };
@@ -1750,8 +1707,9 @@ main(int argc, char* argv[])
     char module_name_xpath[PATH_MAX];
     char *xpathvalue = NULL;
     char **xpathdel = NULL;
+    void *reallocated;
     int xpathdel_count = 0;
-    
+
     struct option longopts[] = {
        { "help",      no_argument,       NULL, 'h' },
        { "version",   no_argument,       NULL, 'v' },
@@ -1759,6 +1717,7 @@ main(int argc, char* argv[])
        { "format",    required_argument, NULL, 'f' },
        { "editor",    required_argument, NULL, 'e' },
        { "import",    optional_argument, NULL, 'i' },
+       { "not-strict",no_argument,       NULL, 'n' },
        { "export",    optional_argument, NULL, 'x' },
        { "keep",      no_argument,       NULL, 'k' },
        { "permanent", no_argument,       NULL, 'p' },
@@ -1775,7 +1734,7 @@ main(int argc, char* argv[])
     /* parse options */
     int curind = optind;
 
-    while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpol:0:g:s:g:s:w:r:m:", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, ":hvd:f:e:i:nx:kpol:0:g:s:g:s:w:r:m:", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srcfg_print_help();
@@ -1803,6 +1762,9 @@ main(int argc, char* argv[])
                 if (NULL != optarg && 0 != strcmp("-", optarg)) {
                     filepath = optarg;
                 }
+                break;
+            case 'n':
+                strict = false;
                 break;
             case 'm':
                 operation = SRCFG_OP_MERGE;
@@ -1843,7 +1805,9 @@ main(int argc, char* argv[])
             case 'r':
                 operation = SRCFG_OP_DELETE_XPATH;
                 if (NULL != optarg && 0 != strcmp("-", optarg)) {
-                    xpathdel = realloc(xpathdel, sizeof(char *) * (xpathdel_count + 1));
+                    reallocated = realloc(xpathdel, sizeof(char *) * (xpathdel_count + 1));
+                    CHECK_NULL_NOMEM_GOTO(reallocated, rc, terminate);
+                    xpathdel = reallocated;
                     xpathdel[xpathdel_count] = strdup(optarg);
                     xpathdel_count++;
                 }
@@ -1973,7 +1937,7 @@ main(int argc, char* argv[])
     }
 
     /* search for the module to use */
-    rc = md_get_module_info(md_ctx, module_name, NULL, &module);
+    rc = md_get_module_info(md_ctx, module_name, NULL, NULL, &module);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "%s: Module '%s' is not installed.\n", argv[0], module_name);
         goto terminate;
@@ -2004,7 +1968,7 @@ main(int argc, char* argv[])
             ll_node = module->deps->first;
             while (SR_ERR_OK == rc && ll_node) {
                 dep = (md_dep_t *)ll_node->data;
-                if (MD_DEP_DATA == dep->type && dep->dest->latest_revision) {
+                if (MD_DEP_DATA == dep->type && dep->dest->implemented) {
                     rc = sr_check_enabled_running(srcfg_session, dep->dest->name, &enabled);
                     if (SR_ERR_OK == rc && !enabled) {
                         printf("Cannot read data from module '%s' (referenced by target module '%s') "
@@ -2027,10 +1991,10 @@ main(int argc, char* argv[])
     /* call selected operation */
     switch (operation) {
         case SRCFG_OP_EDIT:
-            rc = srcfg_edit_operation(module, datastore, format, editor, keep, permanent, false);
+            rc = srcfg_edit_operation(module, datastore, format, editor, keep, permanent, false, strict);
             break;
         case SRCFG_OP_IMPORT:
-            rc = srcfg_import_operation(module, datastore, filepath, format, permanent, false);
+            rc = srcfg_import_operation(module, datastore, filepath, format, permanent, false, strict);
             break;
         case SRCFG_OP_EXPORT:
             rc = srcfg_export_operation(module, filepath, format);
@@ -2048,7 +2012,7 @@ main(int argc, char* argv[])
             free(xpathdel);
             break;
         case SRCFG_OP_MERGE:
-            rc = srcfg_import_operation(module, datastore, filepath, format, permanent, true);
+            rc = srcfg_import_operation(module, datastore, filepath, format, permanent, true, strict);
             break;
     }
 

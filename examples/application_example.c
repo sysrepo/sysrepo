@@ -58,7 +58,7 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
 static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
-    printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
+    printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG %s: ==========\n\n", module_name);
 
     print_current_config(session, module_name);
 
@@ -79,9 +79,9 @@ main(int argc, char **argv)
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
 
-    char *module_name = "ietf-interfaces";
-    if (argc > 1) {
-        module_name = argv[1];
+    if (argc == 1) {
+        fprintf(stderr, "No modules specified.\n");
+        return 1;
     }
 
     /* connect to sysrepo */
@@ -98,19 +98,21 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-    /* read startup config */
-    printf("\n\n ========== READING STARTUP CONFIG: ==========\n\n");
-    print_current_config(session, module_name);
+    for (int i = 1; i < argc; ++i) {
+        /* read startup config */
+        printf("\n\n ========== READING STARTUP CONFIG %s: ==========\n\n", argv[i]);
+        print_current_config(session, argv[i]);
 
-    /* subscribe for changes in running config */
-    rc = sr_module_change_subscribe(session, module_name, module_change_cb, NULL,
-            0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
-    if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error by sr_module_change_subscribe: %s\n", sr_strerror(rc));
-        goto cleanup;
+        /* subscribe for changes in running config */
+        rc = sr_module_change_subscribe(session, argv[i], module_change_cb, NULL,
+                0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
+        if (SR_ERR_OK != rc) {
+            fprintf(stderr, "Error by sr_module_change_subscribe: %s\n", sr_strerror(rc));
+            goto cleanup;
+        }
+
+        printf("\n\n ========== STARTUP CONFIG %s APPLIED AS RUNNING ==========\n\n", argv[i]);
     }
-
-    printf("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n");
 
     /* loop until ctrl-c is pressed / SIGINT is received */
     signal(SIGINT, sigint_handler);

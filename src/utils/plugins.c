@@ -1,5 +1,5 @@
 /**
- * @file plugin_utils.c
+ * @file plugins.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Sysrepo helpers for plugin integrations.
  *

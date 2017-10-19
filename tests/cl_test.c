@@ -442,21 +442,16 @@ cl_get_item_test(void **state)
 
     /* bad element in existing module */
     rc = sr_get_item(session, "/example-module:unknown/next", &value);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(value);
-
-    const sr_error_info_t *err = NULL;
-    sr_get_last_error(session, &err);
-    assert_non_null(err->xpath);
-    assert_string_equal("/example-module:unknown/next", err->xpath);
 
     /* unknown key node */
     rc = sr_get_item(session, "/example-module:container/list[key1='abc'][unknownKey='def']/leaf", &value);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* bad element in augment */
     rc = sr_get_item(session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/unknown", &value);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* existing leaf */
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
@@ -529,7 +524,7 @@ cl_get_subtree_test(void **state)
 
     /* bad element in existing module */
     rc = sr_get_subtree(session, "/example-module:unknown/next", 0, &tree);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(tree);
 
     /* existing leaf */
@@ -682,7 +677,7 @@ cl_get_items_test(void **state)
 
     /* bad element in existing */
     rc = sr_get_items(session, "/example-module:unknown", &values, &values_cnt);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* container */
     rc = sr_get_items(session, "/ietf-interfaces:interfaces/*", &values, &values_cnt);
@@ -752,7 +747,7 @@ cl_get_subtrees_test(void **state)
 
     /* bad element in existing module produces */
     rc = sr_get_subtrees(session, "/example-module:unknown", 0, &trees, &tree_cnt);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* container */
     rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/*", 0, &trees, &tree_cnt);
@@ -1685,6 +1680,19 @@ cl_locking_test(void **state)
     assert_string_equal("test-module", error->xpath);
     assert_string_equal("Module has been modified, it can not be locked. Discard or commit changes", error->message);
 
+    /* try locking one candidate module from 2 sessions */
+    rc = sr_session_switch_ds(sessionA, SR_DS_CANDIDATE);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_switch_ds(sessionB, SR_DS_CANDIDATE);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_lock_module(sessionA, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_lock_module(sessionB, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop the sessions */
     rc = sr_session_stop(sessionA);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1715,7 +1723,7 @@ cl_ds_locking_test(void **state)
     rc = sr_lock_datastore(sessionB);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* switch and lock candidate*/
+    /* switch and lock candidate */
     rc = sr_unlock_datastore(sessionA);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1725,12 +1733,12 @@ cl_ds_locking_test(void **state)
     rc = sr_lock_datastore(sessionA);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* try to lock candidate from different session*/
+    /* try to lock candidate from different session, should succeed */
     rc = sr_session_switch_ds(sessionB, SR_DS_CANDIDATE);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_lock_datastore(sessionB);
-    assert_int_equal(rc, SR_ERR_LOCKED);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the sessions */
     rc = sr_session_stop(sessionA);
@@ -1932,18 +1940,18 @@ cl_get_error_test(void **state)
 
     /* attempt to get item on bad element in existing module */
     rc = sr_get_item(session, "/example-module:container/unknown", &value);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(value);
 
     /* retrieve last error information */
     rc = sr_get_last_error(session, &error_info);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_non_null(error_info);
     assert_non_null(error_info->message);
 
     /* retrieve last error information */
     rc = sr_get_last_errors(session, &error_info, &error_cnt);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_non_null(error_info);
     assert_int_equal(error_cnt, 1);
     assert_non_null(error_info[0].message);
@@ -3674,20 +3682,10 @@ candidate_ds_test(void **state)
     assert_string_equal(value.data.string_val, val->data.string_val);
     sr_free_val(val);
 
-    rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_STARTUP);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* get-config from startup, candidate should be copied to the startup */
-    rc = sr_get_item(session_startup, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
-    assert_int_equal(rc, SR_ERR_OK);
-    assert_int_equal(value.type, val->type);
-    assert_string_equal(value.data.string_val, val->data.string_val);
-    sr_free_val(val);
-
-    /* commit should fail because non enabled nodes are modified */
     rc = sr_commit(session_candidate);
-    assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
+    assert_int_equal(SR_ERR_OK, rc);
 
+    /* copy-config should fail because non enabled nodes are modified */
     rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
@@ -3696,8 +3694,11 @@ candidate_ds_test(void **state)
             &callback_called, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* commit should pass */
-    rc = sr_commit(session_candidate);
+    /* copy-config should pass */
+    rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_session_refresh(session_running);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_get_item(session_running, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
@@ -3706,7 +3707,7 @@ candidate_ds_test(void **state)
     assert_string_equal(value.data.string_val, val->data.string_val);
     sr_free_val(val);
 
-    /* copy config should work as well*/
+    /* another copy-config should work as well*/
     value.data.string_val = "xyz";
     rc = sr_set_item(session_candidate, value.xpath, &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -3945,6 +3946,8 @@ cl_get_changes_iter_test(void **state)
     /* save changes to running */
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -4004,6 +4007,8 @@ cl_get_changes_iter_multi_test(void **state)
     /* save changes to running */
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -4030,6 +4035,8 @@ cl_get_changes_iter_multi_test(void **state)
     /* save changes to running */
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -4051,6 +4058,8 @@ cl_get_changes_iter_multi_test(void **state)
 
     /* save changes to running */
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
@@ -4322,13 +4331,6 @@ test_event_notif_link_removed_cb(const sr_ev_notif_type_t notif_type, const char
 }
 
 static void
-test_event_notif_link_overutilized_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
-{
-    assert_true(0 && "This callback should not get called");
-}
-
-static void
 test_event_notif_status_change_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
@@ -4393,13 +4395,6 @@ cl_event_notif_test(void **state)
         rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-removed", test_event_notif_link_removed_cb,
                 &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lr);
         assert_int_equal(rc, SR_ERR_OK);
-    }
-
-    /* subscribe for nonexistent notification in every session */
-    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
-        rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-overutilized", test_event_notif_link_overutilized_cb,
-                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
-        assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     }
 
     /* subscribe for status-change in every session */
@@ -4475,7 +4470,7 @@ cl_event_notif_test(void **state)
     /* wait at most 5 seconds for all callbacks to get called */
     struct timespec ts;
     sr_clock_get_time(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 5;
+    ts.tv_sec += COND_WAIT_SEC;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
             && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS ||
                 cb_status.status_change < CL_TEST_EN_NUM_SESSIONS));
@@ -4654,13 +4649,6 @@ test_event_notif_link_removed_tree_cb(const sr_ev_notif_type_t notif_type, const
 }
 
 static void
-test_event_notif_link_overutilized_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
-{
-    assert_true(0 && "This callback should not get called");
-}
-
-static void
 test_event_notif_status_change_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
@@ -4705,6 +4693,7 @@ cl_event_notif_tree_test(void **state)
     cl_test_en_cb_status_t cb_status;
     sr_node_t *trees = NULL;
     sr_node_t *tree = NULL;
+    sr_subscription_ctx_t *subscr = NULL;
     size_t tree_cnt = 0;
     size_t i;
     int rc = SR_ERR_OK;
@@ -4724,6 +4713,11 @@ cl_event_notif_tree_test(void **state)
         assert_int_equal(rc, SR_ERR_OK);
     }
 
+    /* enable module */
+    rc = sr_module_change_subscribe(notif_session, "test-module", empty_module_change_cb, NULL,
+            0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscr);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* subscribe for link discovery in every session */
     for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
         rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-discovered",
@@ -4738,14 +4732,6 @@ cl_event_notif_tree_test(void **state)
                 test_event_notif_link_removed_tree_cb,
                 &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lr);
         assert_int_equal(rc, SR_ERR_OK);
-    }
-
-    /* subscribe for nonexistent notification in every session */
-    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
-        rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-overutilized",
-                test_event_notif_link_overutilized_tree_cb,
-                &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
-        assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     }
 
     /* subscribe for status change in every session */
@@ -4862,7 +4848,7 @@ cl_event_notif_tree_test(void **state)
     /* wait at most 5 seconds for all callbacks to get called */
     struct timespec ts;
     sr_clock_get_time(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 5;
+    ts.tv_sec += COND_WAIT_SEC;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
             && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS ||
                 cb_status.status_change < CL_TEST_EN_NUM_SESSIONS));
@@ -4882,6 +4868,8 @@ cl_event_notif_tree_test(void **state)
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_st);
         assert_int_equal(rc, SR_ERR_OK);
     }
+    rc = sr_unsubscribe(NULL, subscr);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop sessions */
     rc = sr_session_stop(notif_session);
@@ -4908,6 +4896,7 @@ cl_event_notif_combo_test(void **state)
     cl_test_en_cb_status_t cb_status;
     sr_node_t *trees = NULL;
     sr_node_t *tree = NULL;
+    sr_subscription_ctx_t *subscr = NULL;
     sr_val_t values[4];
     size_t tree_cnt = 0;
     size_t i;
@@ -4928,6 +4917,11 @@ cl_event_notif_combo_test(void **state)
         rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sub_session[i].session);
         assert_int_equal(rc, SR_ERR_OK);
     }
+
+    /* enable module */
+    rc = sr_module_change_subscribe(notif_session, "test-module", empty_module_change_cb, NULL,
+            0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscr);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe for link discovery in every session (mix of values and nodes) */
     for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
@@ -4955,20 +4949,6 @@ cl_event_notif_combo_test(void **state)
                     &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lr);
         }
         assert_int_equal(rc, SR_ERR_OK);
-    }
-
-    /* subscribe for nonexistent notification in every session (mix of values and nodes) */
-    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
-        if (0 == i % 2) {
-            rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-overutilized",
-                    test_event_notif_link_overutilized_cb,
-                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
-        } else {
-            rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-overutilized",
-                    test_event_notif_link_overutilized_tree_cb,
-                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
-        }
-        assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     }
 
     /* subscribe for status-change in every session (mix of values and nodes) */
@@ -5094,7 +5074,7 @@ cl_event_notif_combo_test(void **state)
     /* wait at most 5 seconds for all callbacks to get called */
     struct timespec ts;
     sr_clock_get_time(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 5;
+    ts.tv_sec += COND_WAIT_SEC;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
             && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS ||
                 cb_status.status_change < 2*CL_TEST_EN_NUM_SESSIONS));
@@ -5114,6 +5094,8 @@ cl_event_notif_combo_test(void **state)
         rc = sr_unsubscribe(NULL, sub_session[i].subscription_st);
         assert_int_equal(rc, SR_ERR_OK);
     }
+    rc = sr_unsubscribe(NULL, subscr);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop sessions */
     rc = sr_session_stop(notif_session);
@@ -5335,7 +5317,7 @@ cl_event_notif_replay_test(void **state)
     /* wait at most 5 seconds for all callbacks to get called */
     struct timespec ts;
     sr_clock_get_time(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 5;
+    ts.tv_sec += COND_WAIT_SEC;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
             && (cb_status.link_removed < 3 || cb_status.link_discovered < 3));
     assert_true(cb_status.link_discovered >= 3);
@@ -5631,7 +5613,7 @@ cl_inst_id_to_known_deps_test (void **state)
     rc = sr_set_item_str(session, "/test-module:list[key='abc']/instance_id", "/referenced-data:magic_number", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/test-module:main/test-module:i8", SR_EDIT_DEFAULT);
+    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/test-module:main/i8", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_set_item_str(session, "/referenced-data:magic_number", "42", SR_EDIT_DEFAULT);
@@ -5657,7 +5639,7 @@ cl_inst_id_to_one_module_test (void **state)
     rc = sr_set_item_str(session, "/test-module:list[key='abc']/instance_id", "/referenced-data:magic_number", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/example-module:container/example-module:list[example-module:key1='key1'][example-module:key2='key2']", SR_EDIT_DEFAULT);
+    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/example-module:container/list[key1='key1'][key2='key2']", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_set_item_str(session, "/referenced-data:magic_number", "42", SR_EDIT_DEFAULT);
@@ -5673,7 +5655,7 @@ cl_inst_id_to_one_module_test (void **state)
 
     assert_non_null(val);
     assert_int_equal(SR_INSTANCEID_T, val->type);
-    assert_string_equal("/example-module:container/example-module:list[example-module:key1='key1'][example-module:key2='key2']", val->data.instanceid_val);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']", val->data.instanceid_val);
 
     sr_free_val(val);
 
@@ -5682,7 +5664,7 @@ cl_inst_id_to_one_module_test (void **state)
     rc = sr_set_item_str(session, "/ietf-interfaces:interfaces/interface[name='ifA']/type", "iana-if-type:ethernetCsmacd", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/ietf-interfaces:interfaces/ietf-interfaces:interface[ietf-interfaces:name='ifA']", SR_EDIT_DEFAULT);
+    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/ietf-interfaces:interfaces/interface[name='ifA']", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_commit(session);
@@ -5695,7 +5677,7 @@ cl_inst_id_to_one_module_test (void **state)
 
     assert_non_null(val);
     assert_int_equal(SR_INSTANCEID_T, val->type);
-    assert_string_equal("/ietf-interfaces:interfaces/ietf-interfaces:interface[ietf-interfaces:name='ifA']", val->data.instanceid_val);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='ifA']", val->data.instanceid_val);
 
     sr_free_val(val);
 
@@ -5728,7 +5710,7 @@ cl_inst_id_to_more_modules_test (void **state)
     rc = sr_set_item_str(session, "/test-module:list[key='abc']/instance_id", "/referenced-data:magic_number", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/example-module:container/example-module:list[example-module:key1='key1'][example-module:key2='key2']", SR_EDIT_DEFAULT);
+    rc = sr_set_item_str(session, "/test-module:main/instance_id", "/example-module:container/list[key1='key1'][key2='key2']", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_set_item_str(session, "/referenced-data:magic_number", "1", SR_EDIT_DEFAULT);
@@ -5737,7 +5719,7 @@ cl_inst_id_to_more_modules_test (void **state)
     rc = sr_set_item_str(session, "/ietf-interfaces:interfaces/interface[name='ifA']/type", "iana-if-type:ethernetCsmacd", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = sr_set_item_str(session, "/test-module:list[key='def']/instance_id", "/ietf-interfaces:interfaces/ietf-interfaces:interface[ietf-interfaces:name='ifA']", SR_EDIT_DEFAULT);
+    rc = sr_set_item_str(session, "/test-module:list[key='def']/instance_id", "/ietf-interfaces:interfaces/interface[name='ifA']", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = sr_commit(session);
@@ -5750,7 +5732,7 @@ cl_inst_id_to_more_modules_test (void **state)
 
     assert_non_null(val);
     assert_int_equal(SR_INSTANCEID_T, val->type);
-    assert_string_equal("/example-module:container/example-module:list[example-module:key1='key1'][example-module:key2='key2']", val->data.instanceid_val);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']", val->data.instanceid_val);
     sr_free_val(val);
 
 
@@ -5765,7 +5747,7 @@ cl_inst_id_to_more_modules_test (void **state)
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_int_equal(SR_INSTANCEID_T, val->type);
-    assert_string_equal("/ietf-interfaces:interfaces/ietf-interfaces:interface[ietf-interfaces:name='ifA']", val->data.instanceid_val);
+    assert_string_equal("/ietf-interfaces:interfaces/interface[name='ifA']", val->data.instanceid_val);
     sr_free_val(val);
 
     sr_unsubscribe(session, subs);

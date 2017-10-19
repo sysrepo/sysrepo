@@ -2,14 +2,12 @@
 
 Run `sysrepod` and `netopeer2-server` in the container:
 ```
-docker run -it --name sysrepo --rm sysrepo/sysrepo-netopeer2:latest
+docker run -it --name sysrepo -p 830:830 --rm sysrepo/sysrepo-netopeer2:latest
 ```
 
-Connect to the NETCONF server via SSH to port `6001` (username / password is `netconf`):
+Connect to the NETCONF server via SSH to port `830` (username / password is `netconf`):
 ```
-docker inspect sysrepo | grep -w "IPAddress"
-# assuming output of the above commnd is 172.17.0.2
-ssh netconf@172.17.0.2 -p 6001 -s netconf 
+ssh netconf@localhost -p 830 -s netconf
 ```
 
 In order to get running config via the SSH session use the following snippet:

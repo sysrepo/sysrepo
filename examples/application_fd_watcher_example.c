@@ -94,7 +94,7 @@ fd_start_watching(int fd, int events)
     for (size_t j = 0; j < poll_fd_cnt; j++) {
         if (fd == poll_fd_set[j].fd) {
             /* fond existing entry */
-            poll_fd_set[poll_fd_cnt].events |= (SR_FD_INPUT_READY == events) ? POLLIN : POLLOUT;
+            poll_fd_set[j].events |= (SR_FD_INPUT_READY == events) ? POLLIN : POLLOUT;
             matched = true;
         }
     }
@@ -260,4 +260,3 @@ cleanup:
 
     return rc;
 }
-

@@ -39,6 +39,7 @@
 
 #define PM_SCHEMA_FILE "sysrepo-persistent-data.yang"  /**< Schema of module's persistent data. */
 
+//! @cond doxygen_suppress
 #define PM_XPATH_MODULE                      "/sysrepo-persistent-data:module[name='%s']"
 
 #define PM_XPATH_FEATURES                     PM_XPATH_MODULE "/enabled-features/feature-name"
@@ -60,6 +61,7 @@
 #define PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR    PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s']"
 #define PM_XPATH_SUBSCRIPTIONS_BY_DST_ID      PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s'][destination-id='%"PRIu32"']"
 #define PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING PM_XPATH_SUBSCRIPTION_LIST "[enable-running=true()]"
+//! @endcond
 
 #define PM_XATTR_NAME "user.write_time" /**< Extended attribute used to store file timestamps. */
 #define PM_BILLION 1000000000L          /**< one billion, used for time calculations. */
@@ -74,7 +76,7 @@ typedef struct pm_ctx_s {
     const char *data_search_dir;        /**< Directory containing the data files. */
     sr_locking_set_t *lock_ctx;         /**< Context for locking persist data files. */
     sr_btree_t *module_data;            /**< Binary tree holding cached data of a module. */
-    pthread_rwlock_t module_data_lock;  /**< RW lock for accessing ::module_data. */
+    pthread_rwlock_t module_data_lock;  /**< RW lock for accessing module_data. */
 } pm_ctx_t;
 
 /**
@@ -324,7 +326,7 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const
         }
     } else {
         /* delete persistent data */
-        node_set = lyd_find_xpath(*data_tree, xpath);
+        node_set = lyd_find_path(*data_tree, xpath);
         if (NULL == node_set || LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Unable to find requested persistent data (xpath=%s): %s.", xpath, ly_errmsg());
             rc = SR_ERR_INTERNAL;
@@ -833,7 +835,7 @@ pm_dt_has_running_enable_susbscriptions(struct lyd_node *data_tree, const char *
     CHECK_NULL_ARG3(data_tree, module_name, result);
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING, module_name);
-    node_set = lyd_find_xpath(data_tree, xpath);
+    node_set = lyd_find_path(data_tree, xpath);
     if (NULL == node_set || 0 == node_set->number) {
         *result = false;
     } else {
@@ -1002,7 +1004,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mo
 
     /* get all enabled features */
     snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES, module_name);
-    node_set = lyd_find_xpath(data_tree, xpath);
+    node_set = lyd_find_path(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
         features = sr_calloc(sr_mem_features, node_set->number, sizeof(*features));
@@ -1023,7 +1025,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mo
 
     /* get all subscriptions that enable running */
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING, module_name);
-    node_set = lyd_find_xpath(data_tree, xpath);
+    node_set = lyd_find_path(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
         for (size_t i = 0; i < node_set->number; i++) {
@@ -1088,7 +1090,7 @@ int
 pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         const np_subscription_t *subscription, const bool exclusive)
 {
-    char xpath[PATH_MAX] = { 0, }, buff[15] = { 0, };
+    char xpath[PATH_MAX] = { 0, }, buff[15] = { 0, }, *tmp_xpath = NULL, *ptr;
     const char *value = NULL;
     struct lyd_node *data_tree = NULL;
     int fd = -1;
@@ -1102,8 +1104,23 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
         SR_LOG_DBG("Removing all existing %s subscriptions from '%s' persist data tree.",
                 sr_subscription_type_gpb_to_str(subscription->type), module_name);
 
+        if (subscription->xpath) {
+            /* make sure there will be no illegal quotes */
+            if (strchr(subscription->xpath, '\'')) {
+                tmp_xpath = strdup(subscription->xpath);
+                for (ptr = strchr(tmp_xpath, '\''); ptr; ptr = strchr(ptr + 1, '\'')) {
+                    *ptr = '"';
+                }
+            }
+        } else {
+            tmp_xpath = malloc(1 + strlen(module_name) + 6);
+            sprintf(tmp_xpath, "/%s:*//.", module_name);
+        }
+
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH, module_name,
-                sr_subscription_type_gpb_to_str(subscription->type), subscription->xpath);
+                sr_subscription_type_gpb_to_str(subscription->type), tmp_xpath ? tmp_xpath : subscription->xpath);
+        free(tmp_xpath);
+
         rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, false, true, NULL);
         if (SR_ERR_OK != rc) {
             SR_LOG_WRN("Unable to delete existing %s subscriptions.", sr_subscription_type_gpb_to_str(subscription->type));
@@ -1175,7 +1192,11 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
     rc = pm_save_data_tree(data_tree, fd);
 
     if (SR_ERR_OK == rc) {
-        SR_LOG_DBG("Subscription entry successfully added into '%s' persist data tree.", module_name);
+        if (subscription->xpath) {
+            SR_LOG_DBG("Subscription entry '%s' successfully added into '%s' persist data tree.", subscription->xpath, module_name);
+        } else {
+            SR_LOG_DBG("All module notifications subscription entry successfully added into '%s' persist data tree.", module_name);
+        }
     }
 
 cleanup:
@@ -1297,7 +1318,7 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *
     }
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_subscription_type_gpb_to_str(type));
-    node_set = lyd_find_xpath(data_tree, xpath);
+    node_set = lyd_find_path(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
         rc = sr_list_init(&subscriptions_list);

@@ -105,6 +105,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
         break;
     case LYS_LEAFLIST:
         data_leaf = (struct lyd_node_leaf_list *) node;
+        val->dflt = node->dflt;
         val->type = sr_libyang_leaf_get_type(data_leaf);
         rc = sr_libyang_leaf_copy_value(data_leaf, val);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Copying of value failed");
@@ -587,7 +588,7 @@ rp_dt_get_tree_roots(dm_schema_info_t *schema_info, const char *xpath, struct ly
     rc = rp_dt_get_start_node(schema_info, xpath, &start_node);
     CHECK_RC_LOG_RETURN(rc, "Failed to get the start node for xpath %s", xpath);
 
-    *roots = lys_find_xpath(NULL, start_node, xpath, 0);
+    *roots = lys_find_path(NULL, start_node, xpath);
     if (NULL == *roots) {
         SR_LOG_ERR("Failed to get the set of tree roots for xpath %s", xpath);
         rc = SR_ERR_INVAL_ARG;
@@ -709,7 +710,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     rc = sr_list_init(&state_data_ctx->subtrees);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
-    rc = md_get_module_info(md_ctx, schema_info->module_name, NULL, &module);
+    rc = md_get_module_info(md_ctx, schema_info->module_name, NULL, NULL, &module);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s was not found in module dependency", schema_info->module_name);
 
     /* loop through operational node subtrees */
@@ -1062,7 +1063,7 @@ rp_dt_send_first_set_of_dp_requests(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
                         if (rp_dt_not_coverd_by_other_subs(rp_session->state_data_ctx.subscription_nodes, subs)) {
                             match = true;
 
-                            xp = lys_path(subs);
+                            xp = lys_data_path(subs);
                             CHECK_NULL_NOMEM_RETURN(xp);
 
                             rc = rp_dt_send_request_to_dp_subscription(rp_ctx, rp_session, j, subs, xp);
@@ -1275,25 +1276,19 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t
     }
 
     if (NULL == data_tree) {
+        rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }
 
     rc = rp_dt_get_value(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath,
             dm_is_running_ds_session(rp_session->dm_session), value);
-cleanup:
-    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && NULL == data_tree)) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
-        } else {
-            rc = SR_ERR_NOT_FOUND;
-        }
-    } else if (SR_ERR_UNAUTHORIZED == rc) {
+    if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get value failed for xpath '%s'", xpath);
     }
 
+cleanup:
     rp_session->state = RP_REQ_FINISHED;
     free(rp_session->module_name);
     rp_session->module_name = NULL;
@@ -1320,26 +1315,19 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_
     }
 
     if (NULL == data_tree) {
+        rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }
 
     rc = rp_dt_get_values(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath,
             dm_is_running_ds_session(rp_session->dm_session), values, count);
-    if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+    if (SR_ERR_UNAUTHORIZED == rc) {
+        rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
         SR_LOG_ERR("Get values failed for xpath '%s'", xpath);
     }
 
 cleanup:
-    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
-        } else {
-            rc = SR_ERR_NOT_FOUND;
-        }
-    } else if (SR_ERR_UNAUTHORIZED == rc) {
-        rc = SR_ERR_NOT_FOUND;
-    }
     rp_session->state = RP_REQ_FINISHED;
     free(rp_session->module_name);
     rp_session->module_name = NULL;
@@ -1373,32 +1361,26 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
     }
 
     if (NULL == data_tree) {
+        rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }
 
     rc = rp_dt_find_nodes_with_opts(rp_ctx->dm_ctx, rp_session, get_items_ctx, data_tree, xpath, offset, limit, &nodes);
     if (SR_ERR_OK != rc) {
-        if (SR_ERR_NOT_FOUND != rc) {
+        if (SR_ERR_UNAUTHORIZED == rc) {
+            rc = SR_ERR_NOT_FOUND;
+        } else if (SR_ERR_NOT_FOUND != rc) {
             SR_LOG_ERR("Get nodes for xpath %s failed (%d)", xpath, rc);
         }
         goto cleanup;
     }
 
     rc = rp_dt_get_values_from_nodes(sr_mem, nodes, values, count);
-cleanup:
-    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
-        } else {
-            rc = SR_ERR_NOT_FOUND;
-        }
-    } else if (SR_ERR_UNAUTHORIZED == rc) {
-        rc = SR_ERR_NOT_FOUND;
-    } else if (SR_ERR_OK != rc) {
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
     }
 
+cleanup:
     ly_set_free(nodes);
     rp_session->state = RP_REQ_FINISHED;
     return rc;
@@ -1423,25 +1405,18 @@ rp_dt_get_subtree_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx
     }
 
     if (NULL == data_tree) {
+        rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }
 
     rc = rp_dt_get_subtree(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath,
-                           dm_is_running_ds_session(rp_session->dm_session), subtree);
-cleanup:
-    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && NULL == data_tree)) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
-        } else {
-            rc = SR_ERR_NOT_FOUND;
-        }
-    } else if (SR_ERR_UNAUTHORIZED == rc) {
+            dm_is_running_ds_session(rp_session->dm_session), subtree);
+    if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get subtree failed for xpath '%s'", xpath);
     }
-
+cleanup:
     rp_session->state = RP_REQ_FINISHED;
     free(rp_session->module_name);
     rp_session->module_name = NULL;
@@ -1468,25 +1443,19 @@ rp_dt_get_subtree_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, 
     }
 
     if (NULL == data_tree) {
+        rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }
 
     rc = rp_dt_get_subtree_chunk(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath, slice_offset, slice_width,
             child_limit, depth_limit, dm_is_running_ds_session(rp_session->dm_session), subtree, subtree_id);
-cleanup:
-    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && NULL == data_tree)) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
-        } else {
-            rc = SR_ERR_NOT_FOUND;
-        }
-    } else if (SR_ERR_UNAUTHORIZED == rc) {
+    if (SR_ERR_UNAUTHORIZED == rc) {
         rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get subtree failed for xpath '%s'", xpath);
     }
 
+cleanup:
     rp_session->state = RP_REQ_FINISHED;
     free(rp_session->module_name);
     rp_session->module_name = NULL;
@@ -1512,26 +1481,19 @@ rp_dt_get_subtrees_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ct
     }
 
     if (NULL == data_tree) {
+        rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }
 
     rc = rp_dt_get_subtrees(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath,
                             dm_is_running_ds_session(rp_session->dm_session), subtrees, count);
-    if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+    if (SR_ERR_UNAUTHORIZED == rc) {
+        rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get subtrees failed for xpath '%s'", xpath);
     }
 
 cleanup:
-    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
-        } else {
-            rc = SR_ERR_NOT_FOUND;
-        }
-    } else if (SR_ERR_UNAUTHORIZED == rc) {
-        rc = SR_ERR_NOT_FOUND;
-    }
     rp_session->state = RP_REQ_FINISHED;
     free(rp_session->module_name);
     rp_session->module_name = NULL;
@@ -1559,26 +1521,19 @@ rp_dt_get_subtrees_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session,
     }
 
     if (NULL == data_tree) {
+        rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }
 
     rc = rp_dt_get_subtrees_chunks(rp_ctx->dm_ctx, rp_session, data_tree, sr_mem, xpath, slice_offset, slice_width,
             child_limit, depth_limit, dm_is_running_ds_session(rp_session->dm_session), subtrees, count, subtree_ids);
-    if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+    if (SR_ERR_UNAUTHORIZED == rc) {
+        rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get subtrees failed for xpath '%s'", xpath);
     }
 
 cleanup:
-    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Validation of xpath %s failed.", xpath);
-        } else {
-            rc = SR_ERR_NOT_FOUND;
-        }
-    } else if (SR_ERR_UNAUTHORIZED == rc) {
-        rc = SR_ERR_NOT_FOUND;
-    }
     rp_session->state = RP_REQ_FINISHED;
     free(rp_session->module_name);
     rp_session->module_name = NULL;

@@ -8,7 +8,7 @@ sudo apt-get install --reinstall ca-certificates
 sudo apt-get install software-properties-common # add-apt-repository tool
 sudo add-apt-repository --yes ppa:stefanklug/swig
 sudo apt-get update -qq
-sudo apt-get install -y --force-yes libavl-dev libev-dev valgrind coreutils swig3.0 python-dev gdb
+sudo apt-get install -y --force-yes libavl-dev libev-dev valgrind coreutils swig3.0 python-dev gdb acl
 pip install --user codecov
 echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-certificates.crt
 
@@ -21,15 +21,15 @@ if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
     git clone git://git.cryptomilk.org/projects/cmocka.git
     cd cmocka ; mkdir build; cd build
     cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX_DIR -DCMAKE_C_FLAGS="-DUNIT_TESTING_DEBUG" ..
-    make -j2 && make install
+    make -j2 > /dev/null && make install
     cd ../..
 
-    # protobuf 
+    # protobuf
     wget https://github.com/google/protobuf/archive/v3.2.0.tar.gz
     tar -xzf v3.2.0.tar.gz
     cd protobuf-3.2.0
-    ./autogen.sh && ./configure --prefix=$INSTALL_PREFIX_DIR 
-    make -j2 && make install
+    ./autogen.sh && ./configure --prefix=$INSTALL_PREFIX_DIR
+    make -j2 > /dev/null && make install
     cd ..
 
     # protobuf-c
@@ -37,7 +37,7 @@ if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
     tar -xzf v1.2.1.tar.gz
     cd protobuf-c-1.2.1
     ./autogen.sh && ./configure --prefix=$INSTALL_PREFIX_DIR
-    make -j2 && make install
+    make -j2 > /dev/null && make install
     cd ..
 
 else
@@ -54,6 +54,6 @@ else
 fi
 cd libyang ; mkdir build ; cd build
 cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
-make -j2 && sudo make install
+make -j2 > /dev/null && sudo make install
 cd ../..
 
