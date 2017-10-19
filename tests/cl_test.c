@@ -5929,6 +5929,9 @@ cl_identityref_test (void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
+    rc = sr_module_install(session, "identityref-mod1", NULL, TEST_SOURCE_DIR "/yang/identityref-mod1.yang", true);
+    assert_int_equal(rc, SR_ERR_OK);
+
     cl_identityref_test_register_callbacks(session, &subscription, &set_cnt);
 
     memset(&value, 0, sizeof(sr_val_t));
@@ -5983,6 +5986,9 @@ cl_identityref_test (void **state)
     cl_identityref_test_unregister_callbacks(session, subscription);
 
     assert_int_equal(2, set_cnt);
+
+    rc = sr_module_install(session, "identityref-mod1", NULL, TEST_SOURCE_DIR "/yang/identityref-mod1.yang", false);
+    assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
