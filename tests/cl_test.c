@@ -29,6 +29,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <semaphore.h>
 
 #include "sr_constants.h"
 #include "sysrepo.h"
@@ -43,7 +44,8 @@
 static int
 logging_setup(void **state)
 {
-    sr_log_stderr(SR_LL_DBG);
+    //sr_log_stderr(SR_LL_DBG);
+    sr_log_stderr(SR_LL_NONE);
     return 0;
 }
 
@@ -5854,13 +5856,29 @@ cl_neg_subscribe_test (void **state)
     sr_session_stop(session);
 }
 
+/* preparation for cl_identityref_test:
+   separate module installation/deinstallation from test case,
+   i.o. to have a clean setup afterwards, no matter of sucess
+   or failure of the test
+ */
+static int
+cl_identityref_test_pre (void **state) {
+
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/identityref-mod1.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "identityref-mod1.yang", true);
+
+    sysrepo_setup(state);
+
+    return 0;
+}
+
 /* callback for any db change made in cl_identityref_test()
    - counts the "apply" changes for /identityref-mod1:cont/list i.o to check later on the success of the test
  */
 static int
 cl_identityref_test_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx) {
 
-    if ( SR_EV_APPLY == event && strcmp(module_name,"/identityref-mod1:cont/list")==0) {
+    if ( SR_EV_APPLY == event && strcmp(module_name,"/identityref-mod1:cont/list")==0 && private_ctx ) {
 
         *((int*)private_ctx) += 1;
     }
@@ -5875,17 +5893,8 @@ static void
 cl_identityref_test_register_callbacks(sr_session_ctx_t *session, sr_subscription_ctx_t **subscription, int *set_cnt ) {
 
     int rc = SR_ERR_OK;
-    char *schema = NULL;
 
-    rc = sr_get_schema( session, "ietf-interfaces", NULL, NULL, SR_SCHEMA_YIN, &schema);
-    assert_int_equal(rc, SR_ERR_OK);
-    free(schema);
-
-    rc = sr_get_schema( session, "identityref-mod1", NULL, NULL, SR_SCHEMA_YIN, &schema);
-    assert_int_equal(rc, SR_ERR_OK);
-    free(schema);
-
-    /* enable running DS */
+    /* enable access to running DS */
     rc = sr_module_change_subscribe(session, "ietf-interfaces", cl_identityref_test_change_cb, set_cnt, 0, SR_SUBSCR_DEFAULT, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -5907,6 +5916,7 @@ cl_identityref_test_unregister_callbacks(sr_session_ctx_t *session, sr_subscript
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+
 /* this test addresses the behaviour as described in sysrepo issue #950:
    The module "identityref-mod1" has a leaf which refers to a certain interface
    instance using the type if:interface-ref of ietf-interfaces. The test case
@@ -5916,8 +5926,8 @@ cl_identityref_test_unregister_callbacks(sr_session_ctx_t *session, sr_subscript
    resolve_identref().
  */
 static void
-cl_identityref_test (void **state)
-{
+cl_identityref_test (void **state) {
+
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
     sr_val_t value;
@@ -5927,9 +5937,6 @@ cl_identityref_test (void **state)
     sr_subscription_ctx_t *subscription = NULL;
 
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_module_install(session, "identityref-mod1", NULL, TEST_SOURCE_DIR "/yang/identityref-mod1.yang", true);
     assert_int_equal(rc, SR_ERR_OK);
 
     cl_identityref_test_register_callbacks(session, &subscription, &set_cnt);
@@ -5987,11 +5994,23 @@ cl_identityref_test (void **state)
 
     assert_int_equal(2, set_cnt);
 
-    rc = sr_module_install(session, "identityref-mod1", NULL, TEST_SOURCE_DIR "/yang/identityref-mod1.yang", false);
-    assert_int_equal(rc, SR_ERR_OK);
-
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
+}
+
+/* cleanup for cl_identityref_test
+   - ensure, that identityref-mod1 will be deinstalled even if an assert happened
+     in the test case (which wouldn't be done, if the cleanup is at the end of cl_identityref_test ())
+ */
+static int
+cl_identityref_test_post(void **state) {
+
+    sysrepo_teardown(state);
+
+    exec_shell_command("../src/sysrepoctl --uninstall --module=identityref-mod1", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "identityref-mod1.yang", false);
+
+    return 0;
 }
 
 int
@@ -6055,7 +6074,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_inst_id_to_one_module_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_inst_id_to_more_modules_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_neg_subscribe_test, sysrepo_setup, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(cl_identityref_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_identityref_test, cl_identityref_test_pre, cl_identityref_test_post),
     };
 
     watchdog_start(300);
