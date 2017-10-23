@@ -5950,7 +5950,7 @@ cl_identityref_test (void **state) {
     memset(&value, 0, sizeof(sr_val_t));
 
     value.type = SR_IDENTITYREF_T;
-    value.data.identityref_val = strdup("iana-if-type:ethernetCsmacd");
+    value.data.identityref_val = "iana-if-type:ethernetCsmacd";
     assert_non_null(value.data.identityref_val);
     rc = sr_set_item(session, "/ietf-interfaces:interfaces/interface[name='if01']/type", &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -5974,7 +5974,7 @@ cl_identityref_test (void **state) {
     memset(&value, 0, sizeof(sr_val_t));
 
     value.type = SR_STRING_T;
-    value.data.string_val = strdup("if01");
+    value.data.string_val = "if01";
     rc = sr_set_item(session, "/identityref-mod1:cont/list[keyleaf='777']/anyleaf", &value, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
 
