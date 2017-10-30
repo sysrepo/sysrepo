@@ -1386,8 +1386,8 @@ md_collect_data_dependencies(md_ctx_t *md_ctx, const char *ref, md_module_t *mod
         rc = md_get_module_info(md_ctx, lys_node_module(parent)->name,
                 (lys_node_module(parent)->rev_size ? lys_node_module(parent)->rev[0].date : NULL), being_parsed, &module2);
         if (SR_ERR_OK != rc) {
-            SR_LOG_WRN_MSG("Failed to get the module schema based on the prefix");
-            continue;
+            SR_LOG_ERR_MSG("Failed to get the module schema based on the prefix.");
+            goto cleanup;
         }
         if (module == module2) {
             continue;
