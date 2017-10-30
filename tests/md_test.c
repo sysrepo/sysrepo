@@ -1662,13 +1662,12 @@ md_test_insert_module_2(void **state)
 
     rc = md_insert_module(md_ctx, md_test_insert_module_2_mod1, &implicitly_inserted);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(0, implicitly_inserted->count);
-    sr_list_cleanup(implicitly_inserted);
-    implicitly_inserted = NULL;
+    assert_int_equal(3, implicitly_inserted->count);
+    md_free_module_key_list(implicitly_inserted);
     validate_context(md_ctx);
 
     rc = md_flush(md_ctx);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_OK, rc);
 
     md_destroy(md_ctx);
 }
@@ -1793,6 +1792,20 @@ md_test_remove_module(void **state)
     sr_list_cleanup(implicitly_removed);
     implicitly_removed = NULL;
     inserted.A = implemented.A = false;
+    validate_context(md_ctx);
+
+    /* remove all augm modules */
+    rc = md_remove_module(md_ctx, "augm_by_incl_m1", NULL, &implicitly_removed);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, implicitly_removed->count);
+    md_free_module_key_list(implicitly_removed);
+    implicitly_removed = NULL;
+
+    rc = md_remove_module(md_ctx, "augm_by_incl_m4", NULL, &implicitly_removed);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(0, implicitly_removed->count);
+    sr_list_cleanup(implicitly_removed);
+    implicitly_removed = NULL;
     validate_context(md_ctx);
 
     /* flush changes into the internal data file */
