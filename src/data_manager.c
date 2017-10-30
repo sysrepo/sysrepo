@@ -639,7 +639,7 @@ dm_feature_enable_internal(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info, cons
         return SR_ERR_OPERATION_FAILED;
     }
 
-    const struct lys_module *module = ly_ctx_get_module(schema_info->ly_ctx, module_name, NULL, 1);
+    const struct lys_module *module = ly_ctx_get_module(schema_info->ly_ctx, module_name, NULL, 0);
     if (NULL != module) {
         rc = enable ? lys_features_enable(module, feature_name) : lys_features_disable(module, feature_name);
         SR_LOG_DBG("%s feature '%s' in module '%s'", enable ? "Enabling" : "Disabling", feature_name, module_name);
