@@ -1,0 +1,8 @@
+submodule augm_by_incl_s1 {
+  belongs-to augm_by_incl_m3 {
+    prefix abi_m3;
+  }
+
+  container cont1 {
+  }
+}

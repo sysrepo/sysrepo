@@ -682,7 +682,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     struct ly_set *atoms = NULL;
     struct ly_set *tree_roots = NULL;
     sr_list_t *subtree_nodes = NULL;
-    char *xp = NULL;
+    char *xp = NULL, *schema_xpath = NULL;
 
     rc = dm_get_md_ctx(rp_ctx->dm_ctx, &md_ctx);
     CHECK_RC_MSG_RETURN(rc,"Failed to retrieve md_ctx");
@@ -692,7 +692,14 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     rc = sr_list_init(&subtree_nodes);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
-    rc = rp_dt_xpath_atomize(schema_info, xpath, &atoms);
+    schema_xpath = ly_path_data2schema(schema_info->ly_ctx, xpath);
+    if (NULL == schema_xpath) {
+        SR_LOG_ERR("Failed to transform data path '%s' to schema path", xpath);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    rc = rp_dt_xpath_atomize(schema_info, schema_xpath, &atoms);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Failed to atomize xpath '%s'", xpath);
         SR_LOG_WRN_MSG("Request will continue without retrieving state data");
@@ -703,7 +710,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     }
 
     if (SR_API_TREES == api_variant) {
-        rc = rp_dt_get_tree_roots(schema_info, xpath, &tree_roots);
+        rc = rp_dt_get_tree_roots(schema_info, schema_xpath, &tree_roots);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get the set of tree roots matching xpath %s", xpath);
     }
 
@@ -777,6 +784,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
 
 cleanup:
     free(xp);
+    free(schema_xpath);
     ly_set_free(atoms);
     ly_set_free(tree_roots);
     md_ctx_unlock(md_ctx);
