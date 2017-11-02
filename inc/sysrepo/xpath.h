@@ -35,9 +35,6 @@
  *
  *  Similarly to strtok function in all subsequent calls that is supposed to work with the same
  *  input xpath must be NULL.
- *
- *  @note Functions expects that key values do not contain
- *  characters like '[=/. If any yes it can lead to undefined behavior.
  */
 
 /**
