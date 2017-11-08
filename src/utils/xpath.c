@@ -26,7 +26,8 @@
 static char *
 sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, bool skip_namespace)
 {
-    char *index = NULL;
+    char *index = NULL, *quot = NULL;
+
     if (NULL == state) {
         SR_LOG_ERR_MSG("NULL passed as state argument");
         return NULL;
@@ -42,8 +43,17 @@ sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, bool skip_namespac
     }
 
     index = state->replaced_position;
+    if (state->replaced_char == '\'' || state->replaced_char == '\"') {
+        index++;
+    }
 
-    while (*index != 0 && *index != '/') {
+    while (*index != 0 && (quot != NULL || *index != '/')) {
+        if (quot != NULL && *index == *quot) {
+            /* quote ended */
+            quot = NULL;
+        } else if (quot == NULL && (*index == '\'' || *index == '\"')) {
+            quot = index;
+        }
         index++;
     }
 
@@ -55,7 +65,7 @@ sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, bool skip_namespac
     state->current_node = index + 1;
     index++;
 
-    while (*index != 0 && *index != '/' && *index != ':' && *index != '[') {
+    while (*index != 0 && (quot != NULL || (*index != '/' && *index != ':' && *index != '['))) {
         index++;
     }
 
@@ -66,7 +76,7 @@ sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, bool skip_namespac
             index++;
         }
 
-        while (*index != 0 && *index != '/' && *index != '[') {
+        while (*index != 0 && (quot != NULL || (*index != '/' && *index != '['))) {
             index++;
         }
     }
@@ -94,7 +104,8 @@ sr_xpath_next_node_with_ns(char *xpath, sr_xpath_ctx_t *state)
 char *
 sr_xpath_next_key_name(char *xpath, sr_xpath_ctx_t *state)
 {
-    char *index = NULL, *key = NULL;
+    char *index = NULL, *key = NULL, *quot = NULL;
+
     if (NULL == state) {
         SR_LOG_ERR_MSG("NULL passed as state argument");
         return NULL;
@@ -110,9 +121,17 @@ sr_xpath_next_key_name(char *xpath, sr_xpath_ctx_t *state)
     }
 
     index = state->replaced_position;
+    if (state->replaced_char == '\'' || state->replaced_char == '\"') {
+        index++;
+    }
 
-
-    while (*index != 0 && *index != '[' && *index != '/') {
+    while (*index != 0 && (quot != NULL || (*index != '[' && *index != '/'))) {
+        if (quot != NULL && *index == *quot) {
+            /* quote ended */
+            quot = NULL;
+        } else if (quot == NULL && (*index == '\'' || *index == '\"')) {
+            quot = index;
+        }
         index++;
     }
 
@@ -139,7 +158,8 @@ sr_xpath_next_key_name(char *xpath, sr_xpath_ctx_t *state)
 char *
 sr_xpath_next_key_value(char *xpath, sr_xpath_ctx_t *state)
 {
-    char *index = NULL, *value = NULL;
+    char *index = NULL, *value = NULL, *val_quot = NULL;
+
     if (NULL == state) {
         SR_LOG_ERR_MSG("NULL passed as state argument");
         return NULL;
@@ -155,13 +175,11 @@ sr_xpath_next_key_value(char *xpath, sr_xpath_ctx_t *state)
     }
 
     index = state->replaced_position;
-
-    if (state->replaced_char == '\'') {
+    if (state->replaced_char == '\'' || state->replaced_char == '\"') {
         index++;
     }
 
-
-    while (*index != 0 && *index != '\'' && *index != '/') {
+    while (*index != 0 && *index != '\'' && *index != '\"' && *index != '/') {
         index++;
     }
 
@@ -170,13 +188,14 @@ sr_xpath_next_key_value(char *xpath, sr_xpath_ctx_t *state)
         return NULL;
     }
 
+    val_quot = index;
     value = ++index;
 
-    while (*index != 0 && *index != '\'') {
+    while (*index != 0 && *index != *val_quot) {
         index++;
     }
 
-    if (*index == '\'') {
+    if (*index == *val_quot) {
         state->replaced_char = *index;
         state->replaced_position = index;
         (*index) = 0;
@@ -538,14 +557,27 @@ void sr_xpath_recover(sr_xpath_ctx_t *state)
 char *
 sr_xpath_node_name(const char *xpath)
 {
-    char *res = NULL;
+    const char *res = NULL, *quot = NULL;
+
     if (NULL != xpath) {
-        res = rindex(xpath, '/');
-        if (NULL != res) {
-            res++;
+        res = xpath + strlen(xpath) - 1;
+        while (res != xpath && (quot != NULL || *res != '/')) {
+            if (quot != NULL && *res == *quot) {
+                /* quote ended */
+                quot = NULL;
+            } else if (quot == NULL && (*res == '\'' || *res == '\"')) {
+                quot = res;
+            }
+            --res;
+        }
+        if (res == xpath) {
+            res = NULL;
+        } else {
+            ++res;
         }
     }
-    return res;
+
+    return (char *)res;
 }
 
 bool
