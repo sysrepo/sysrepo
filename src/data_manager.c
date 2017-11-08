@@ -5589,7 +5589,7 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char
 
     /* remove previous config from running */
     SR_LOG_DBG("Remove previous content of running configuration under %s.", xpath);
-    rc = rp_dt_delete_item(ctx, tmp_session, xpath, SR_EDIT_DEFAULT);
+    rc = rp_dt_delete_item(ctx, tmp_session, xpath, SR_EDIT_DEFAULT, false);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Delete of previous values in running failed xpath %s", xpath);
 
     /* select a part of configuration to be enabled */
