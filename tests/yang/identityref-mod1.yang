@@ -1,0 +1,26 @@
+module identityref-mod1 {
+
+  namespace "urn:fri:params:xml:ns:yang:identityref-mod1";
+  prefix idr-m1;
+
+  import iana-if-type {
+    prefix ianaift;
+  }
+
+  import ietf-interfaces {
+    prefix if;
+  }
+
+  container cont {
+    list list {
+      key keyleaf;
+      leaf keyleaf {
+        type uint32;
+      }
+      leaf anyleaf {
+        type if:interface-ref;
+        mandatory true;
+      }
+    }
+  }
+}

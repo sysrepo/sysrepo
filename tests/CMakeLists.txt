@@ -176,6 +176,7 @@ INSTALL_YANG_FOR_TESTS("ietf-netconf-notifications")
 INSTALL_YANG_FOR_TESTS("nc-notifications")
 INSTALL_YANG_FOR_TESTS("servers")
 
+
 # dummy testing plugins
 add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)
 target_link_libraries(dummy-plugin-1 sysrepo)
