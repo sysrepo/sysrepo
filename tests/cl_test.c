@@ -44,8 +44,7 @@
 static int
 logging_setup(void **state)
 {
-    //sr_log_stderr(SR_LL_DBG);
-    sr_log_stderr(SR_LL_NONE);
+    sr_log_stderr(SR_LL_DBG);
     return 0;
 }
 
