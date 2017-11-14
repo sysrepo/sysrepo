@@ -831,7 +831,12 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             if (0 == commit_ctx->modif_count) {
                 SR_LOG_DBG_MSG("Commit: Finished - no model modified");
                 dm_free_commit_context(commit_ctx);
-                return SR_ERR_OK;
+                if (SR_DS_CANDIDATE != session->datastore) {
+                    /* we still need to discard changes (operations), it is possible there are some operations that
+                     * did not modify the data (so no model was modified) */
+                    rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session, NULL);
+                }
+                return rc;
             }
             pthread_mutex_lock(&commit_ctx->mutex);
             commit_ctx->disabled_config_change = rp_ctx->do_not_generate_config_change;
