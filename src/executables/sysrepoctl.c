@@ -1047,7 +1047,10 @@ cleanup:
     md_destroy(md_ctx);
     ly_ctx_destroy(ly_ctx, NULL);
     if (local_search_dir) {
-        free((char*)search_dirs);
+        for (int i = 0; i < search_dir_count; ++i) {
+            free(search_dirs[i]);
+        }
+        free(search_dirs);
     }
     return rc;
 }
