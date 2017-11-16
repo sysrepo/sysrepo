@@ -62,7 +62,7 @@ sysrepoctl_test_list(void **state)
                         "Module Name[[:space:]]*\\| Revision[[:space:]]*\\| Conformance[[:space:]]*\\| Data Owner[[:space:]]*\\| Permissions[[:space:]]*\\| Submodules[[:space:]]*\\| Enabled Features[[:space:]]*\n"
                         "--*[[:space:]]*\n"
                         ".*"
-                        "test-module[[:space:]]*\\|[[:space:]]*\\| Installed[[:space:]]| [-[:alpha:]]*:[-[:alpha:]]*[[:space:]]*\\| [0-9]*[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n",
+                        "test-module[[:space:]]*\\|[[:space:]]*\\| Installed[[:space:]]| [-_[:alnum:]]*:[-_[:alnum:]]*[[:space:]]*\\| [0-9]*[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n",
                        true, 0);
 }
 
@@ -176,7 +176,7 @@ sysrepoctl_test_install(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
-    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Implemented[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 644[[:space:]]*\\|", user);
+    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Implemented[[:space:]]*\\| %s:[-_[:alnum:]]*[[:space:]]*\\| 644[[:space:]]*\\|", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
     exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/inner/test-dep-installed.yang "
@@ -186,7 +186,7 @@ sysrepoctl_test_install(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.running", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.running.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "test-dep-installed.persist", true);
-    snprintf(buff, PATH_MAX, "test-dep-installed[[:space:]]*\\|[[:space:]]*\\| Installed[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 644[[:space:]]*\\|", user);
+    snprintf(buff, PATH_MAX, "test-dep-installed[[:space:]]*\\|[[:space:]]*\\| Installed[[:space:]]*\\| %s:[-_[:alnum:]]*[[:space:]]*\\| 644[[:space:]]*\\|", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
     /* check the internal data file with module dependencies */
@@ -238,7 +238,7 @@ sysrepoctl_test_change(void **state)
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --change --module=ietf-interfaces --owner=%s --permissions=664", user);
     exec_shell_command(buff, ".*", true, 0);
 
-    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Installed[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|", user);
+    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Installed[[:space:]]*\\| %s:[-_[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", user);
@@ -277,7 +277,7 @@ sysrepoctl_test_feature(void **state)
                        "Operation completed successfully.", true, 0);
     test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
                       "<enabled-features>.*<feature-name>if-mib</feature-name>.*</enabled-features>", true);
-    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Installed[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\| if-mib[[:space:]]*\n", user);
+    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Installed[[:space:]]*\\| %s:[-_[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\| if-mib[[:space:]]*\n", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
     /* already enabled, shouldn't throw an error */
@@ -294,7 +294,7 @@ sysrepoctl_test_feature(void **state)
                        "Operation completed successfully.", true, 0);
     test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
                       "!<enabled-features>.*<feature-name>if-mib</feature-name>.*</enabled-features>", true);
-    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Installed[[:space:]]*\\| %s:[[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n", user);
+    snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Installed[[:space:]]*\\| %s:[-_[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
     /* already disabled, shouldn't throw an error */
