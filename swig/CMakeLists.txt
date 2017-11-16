@@ -86,7 +86,7 @@ set(SYSREPO_CPP_SOURCES
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Tree.cpp
     ${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.cpp)
 
-set(SYSREPO_H_SOURCES
+set(SYSREPO_HPP_SOURCES
     ${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.h
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Connection.h
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Session.h
@@ -108,8 +108,7 @@ target_link_libraries(Sysrepo-cpp sysrepo)
 
 # install binary
 install(TARGETS Sysrepo-cpp DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo-cpp
-    FILES_MATCHING PATTERN "*.h")
+install(FILES ${SYSREPO_HPP_SOURCES} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo-cpp)
 
 # Examples
 if(GEN_CPP_BINDINGS AND BUILD_CPP_EXAMPLES)
