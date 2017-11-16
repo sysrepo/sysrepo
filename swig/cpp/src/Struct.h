@@ -32,7 +32,6 @@ extern "C" {
 #include "sysrepo.h"
 }
 
-using namespace std;
 
 // class for sysrepo C union sr_data_t
 class Data

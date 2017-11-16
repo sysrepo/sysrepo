@@ -28,7 +28,6 @@ extern "C" {
 #include "sysrepo/xpath.h"
 }
 
-using namespace std;
 
 class Xpath_Ctx
 {
