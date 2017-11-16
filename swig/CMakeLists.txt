@@ -78,22 +78,22 @@ endif()
 
 project(Sysrepo-cpp)
 set(SYSREPO_CPP_SOURCES
-	${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.cpp
+    ${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.cpp
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Connection.cpp
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Session.cpp
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Struct.cpp
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Xpath.cpp
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Tree.cpp
-	${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.cpp)
+    ${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.cpp)
 
 set(SYSREPO_H_SOURCES
-	${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.h
+    ${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.h
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Connection.h
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Session.h
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Struct.h
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Xpath.h
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Tree.h
-	${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.h)
+    ${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.h)
 
 add_library(Sysrepo-cpp SHARED ${SYSREPO_CPP_SOURCES})
 SET_TARGET_PROPERTIES(Sysrepo-cpp PROPERTIES
@@ -113,14 +113,14 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src/" DESTINATION ${CMAKE_INS
 
 # Examples
 if(GEN_CPP_BINDINGS AND BUILD_CPP_EXAMPLES)
-	add_subdirectory(cpp/examples)
+    add_subdirectory(cpp/examples)
 
     if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
         add_subdirectory(cpp/tests)
 
         # make Sysrepo-cpp depend on sysrepoctl
         add_dependencies(Sysrepo-cpp sysrepoctl)
-	
+
         macro(INSTALL_YANG MODULE_NAME MODULE_REVISION)
 
           set(CPP_TEST_MODULE ${MODULE_NAME})
