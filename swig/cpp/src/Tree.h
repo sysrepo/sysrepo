@@ -30,8 +30,6 @@ extern "C" {
 #include "sysrepo/trees.h"
 }
 
-using namespace std;
-
 class Tree
 {
 public:

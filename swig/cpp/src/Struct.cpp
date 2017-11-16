@@ -33,8 +33,6 @@ extern "C" {
 #include "sysrepo/trees.h"
 }
 
-using namespace std;
-
 // Data
 Data::Data(sr_data_t data, sr_type_t type, S_Deleter deleter) {_d = data; _t = type; _deleter = deleter;}
 Data::~Data() {}

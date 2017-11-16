@@ -38,8 +38,6 @@ extern "C" {
 #include "sysrepo.h"
 }
 
-using namespace std;
-
 class Session
 {
 

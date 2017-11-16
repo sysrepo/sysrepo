@@ -36,8 +36,6 @@ extern "C" {
 #include "sysrepo/trees.h"
 }
 
-using namespace std;
-
 Session::Session(S_Connection conn, sr_datastore_t datastore, const sr_sess_options_t opts, \
 		 const char *user_name)
 {

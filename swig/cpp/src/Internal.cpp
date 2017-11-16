@@ -28,8 +28,6 @@ extern "C" {
 #include "sysrepo/trees.h"
 }
 
-using namespace std;
-
 Deleter::Deleter(sr_val_t *val) {
     v._val = val;
     _t = VAL;

@@ -25,8 +25,6 @@
 
 #include <string.h>
 
-using namespace std;
-
 extern "C" {
 #include "sysrepo.h"
 #include "sysrepo/trees.h"

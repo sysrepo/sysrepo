@@ -144,10 +144,10 @@ public:
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
 
-        shared_ptr<Vals> *shared_in_vals = in_vals ? new shared_ptr<Vals>(in_vals) : 0;
+        std::shared_ptr<Vals> *shared_in_vals = in_vals ? new std::shared_ptr<Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Vals_t, SWIG_POINTER_DISOWN);
 
-        shared_ptr<Vals_Holder> *shared_out_vals = out_vals ? new shared_ptr<Vals_Holder>(out_vals) : 0;
+        std::shared_ptr<Vals_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<Vals_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Vals_Holder_t, SWIG_POINTER_DISOWN);
 
         arglist = Py_BuildValue("(sOOO)", xpath, in, out, private_ctx);
@@ -176,10 +176,10 @@ public:
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
 
-        shared_ptr<Vals> *shared_in_vals = in_vals ? new shared_ptr<Vals>(in_vals) : 0;
+        std::shared_ptr<Vals> *shared_in_vals = in_vals ? new std::shared_ptr<Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Vals_t, SWIG_POINTER_DISOWN);
 
-        shared_ptr<Vals_Holder> *shared_out_vals = out_vals ? new shared_ptr<Vals_Holder>(out_vals) : 0;
+        std::shared_ptr<Vals_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<Vals_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Vals_Holder_t, SWIG_POINTER_DISOWN);
 
         arglist = Py_BuildValue("(sOOO)", xpath, in, out, private_ctx);
@@ -207,10 +207,10 @@ public:
 
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
         Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
-        shared_ptr<Trees> *shared_in_vals = in_vals ? new shared_ptr<Trees>(in_vals) : 0;
+        std::shared_ptr<Trees> *shared_in_vals = in_vals ? new std::shared_ptr<Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Trees_t, SWIG_POINTER_DISOWN);
 
-        shared_ptr<Trees_Holder> *shared_out_vals = out_vals ? new shared_ptr<Trees_Holder>(out_vals) : 0;
+        std::shared_ptr<Trees_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<Trees_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Trees_Holder_t, SWIG_POINTER_DISOWN);
 
         arglist = Py_BuildValue("(sOOO)", xpath, in, out, private_ctx);
@@ -238,10 +238,10 @@ public:
 
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
         Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
-        shared_ptr<Trees> *shared_in_vals = in_vals ? new shared_ptr<Trees>(in_vals) : 0;
+        std::shared_ptr<Trees> *shared_in_vals = in_vals ? new std::shared_ptr<Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Trees_t, SWIG_POINTER_DISOWN);
 
-        shared_ptr<Trees_Holder> *shared_out_vals = out_vals ? new shared_ptr<Trees_Holder>(out_vals) : 0;
+        std::shared_ptr<Trees_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<Trees_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Trees_Holder_t, SWIG_POINTER_DISOWN);
 
         arglist = Py_BuildValue("(sOOO)", xpath, in, out, private_ctx);
@@ -268,7 +268,7 @@ public:
         PyObject *arglist;
 
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(values, values_cnt);
-        shared_ptr<Vals_Holder> *shared_out_vals = out_vals ? new shared_ptr<Vals_Holder>(out_vals) : 0;
+        std::shared_ptr<Vals_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<Vals_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Vals_Holder_t, SWIG_POINTER_DISOWN);
 
         arglist = Py_BuildValue("(sOO)", xpath, out, private_ctx);
@@ -292,7 +292,7 @@ public:
         PyObject *arglist;
 
         Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
-        shared_ptr<Vals> *shared_in_vals = in_vals ? new shared_ptr<Vals>(in_vals) : 0;
+        std::shared_ptr<Vals> *shared_in_vals = in_vals ? new std::shared_ptr<Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Vals_t, SWIG_POINTER_DISOWN);
 
         arglist = Py_BuildValue("(sOO)", xpath, in, timestamp, private_ctx);
@@ -311,7 +311,7 @@ public:
         PyObject *arglist;
 
         Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, NULL);
-        shared_ptr<Trees> *shared_in_vals = in_vals ? new shared_ptr<Trees>(in_vals) : 0;
+        std::shared_ptr<Trees> *shared_in_vals = in_vals ? new std::shared_ptr<Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Trees_t, SWIG_POINTER_DISOWN);
 
         arglist = Py_BuildValue("(sOO)", xpath, in, timestamp, private_ctx);
