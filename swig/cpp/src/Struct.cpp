@@ -36,67 +36,67 @@ extern "C" {
 // Data
 Data::Data(sr_data_t data, sr_type_t type, S_Deleter deleter) {_d = data; _t = type; _deleter = deleter;}
 Data::~Data() {}
-char *Data::get_binary() {
+char *Data::get_binary() const {
     if (_t != SR_BINARY_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.binary_val;
 }
-char *Data::get_bits() {
+char *Data::get_bits() const {
     if (_t != SR_BITS_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.bits_val;
 }
-bool Data::get_bool() {
+bool Data::get_bool() const {
     if (_t != SR_BOOL_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.bool_val;
 }
-double Data::get_decimal64() {
+double Data::get_decimal64() const {
     if (_t != SR_DECIMAL64_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.decimal64_val;
 }
-char *Data::get_enum() {
+char *Data::get_enum() const {
     if (_t != SR_ENUM_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.enum_val;
 }
-char *Data::get_identityref() {
+char *Data::get_identityref() const {
     if (_t != SR_IDENTITYREF_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.identityref_val;
 }
-char *Data::get_instanceid() {
+char *Data::get_instanceid() const {
     if (_t != SR_INSTANCEID_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.instanceid_val;
 }
-int8_t Data::get_int8() {
+int8_t Data::get_int8() const {
     if (_t != SR_INT8_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.int8_val;
 }
-int16_t Data::get_int16() {
+int16_t Data::get_int16() const {
     if (_t != SR_INT16_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.uint32_val;
 }
-int32_t Data::get_int32() {
+int32_t Data::get_int32() const {
     if (_t != SR_INT32_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.int32_val;
 }
-int64_t Data::get_int64() {
+int64_t Data::get_int64() const {
     if (_t != SR_INT64_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.int64_val;
 }
-char *Data::get_string() {
+char *Data::get_string() const {
     if (_t != SR_STRING_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.string_val;
 }
-uint8_t Data::get_uint8() {
+uint8_t Data::get_uint8() const {
     if (_t != SR_UINT8_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.uint32_val;
 }
-uint16_t Data::get_uint16() {
+uint16_t Data::get_uint16() const {
     if (_t != SR_UINT16_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.uint16_val;
 }
-uint32_t Data::get_uint32() {
+uint32_t Data::get_uint32() const {
     if (_t != SR_UINT32_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.uint32_val;
 }
-uint64_t Data::get_uint64() {
+uint64_t Data::get_uint64() const {
     if (_t != SR_UINT64_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.uint64_val;
 }
