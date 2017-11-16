@@ -71,31 +71,31 @@ Deleter::~Deleter() {
     switch(_t) {
     case VAL:
         if (v._val) sr_free_val(v._val);
-	v._val = NULL;
+	v._val = nullptr;
     break;
     case VALS:
         if (v._val) sr_free_values(v._val, c._cnt);
-	v._val = NULL;
+	v._val = nullptr;
     break;
     case VALS_POINTER:
         if (*v.p_vals) sr_free_values(*v.p_vals, *c.p_cnt);
-	*v.p_vals = NULL;
+	*v.p_vals = nullptr;
     break;
     case TREE:
         if (v._tree) sr_free_tree(v._tree);
-	v._tree = NULL;
+	v._tree = nullptr;
     break;
     case TREES:
         if (v._tree) sr_free_trees(v._tree, c._cnt);
-	v._tree = NULL;
+	v._tree = nullptr;
     break;
     case TREES_POINTER:
         if (*v.p_trees) sr_free_trees(*v.p_trees, *c.p_cnt);
-	*v.p_trees = NULL;
+	*v.p_trees = nullptr;
     break;
     case SCHEMAS:
         if (v._sch) sr_free_schemas(v._sch, c._cnt);
-	v._sch = NULL;
+	v._sch = nullptr;
     break;
     case SESSION:
         if (!v._sess) break;
@@ -104,7 +104,7 @@ Deleter::~Deleter() {
             //this exception can't be catched
             //throw_exception(ret);
         }
-	v._sess = NULL;
+	v._sess = nullptr;
     break;
     }
     return;

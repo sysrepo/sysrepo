@@ -77,7 +77,7 @@ main(int argc, char **argv)
         const char *xpath = "/ietf-interfaces:interfaces/interface//*";
 
 	auto iter = sess->get_items_iter(xpath);
-        if (iter == NULL)
+        if (iter == nullptr)
             return 0;
 
         while (auto value = sess->get_item_next(iter)) {

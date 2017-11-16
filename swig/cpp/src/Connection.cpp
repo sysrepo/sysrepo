@@ -52,7 +52,7 @@ cleanup:
 
 Connection::~Connection()
 {
-    if (NULL != _conn) {
+    if (nullptr != _conn) {
         sr_disconnect(_conn);
     }
 }

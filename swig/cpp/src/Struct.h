@@ -114,8 +114,8 @@ private:
 class Vals
 {
 public:
-    Vals(const sr_val_t *vals, const size_t cnt, S_Deleter deleter = NULL);
-    Vals(sr_val_t **vals, size_t *cnt, S_Deleter deleter = NULL);
+    Vals(const sr_val_t *vals, const size_t cnt, S_Deleter deleter = nullptr);
+    Vals(sr_val_t **vals, size_t *cnt, S_Deleter deleter = nullptr);
     Vals(size_t cnt);
     Vals();
     ~Vals();
@@ -149,7 +149,7 @@ private:
 class Val_Iter
 {
 public:
-    Val_Iter(sr_val_iter_t *iter = NULL);
+    Val_Iter(sr_val_iter_t *iter = nullptr);
     ~Val_Iter();
     sr_val_iter_t *iter() {return _iter;};
 
@@ -160,7 +160,7 @@ private:
 class Change_Iter
 {
 public:
-    Change_Iter(sr_change_iter_t *iter = NULL);
+    Change_Iter(sr_change_iter_t *iter = nullptr);
     ~Change_Iter();
     sr_change_iter_t *iter() {return _iter;};
 
@@ -175,8 +175,8 @@ public:
     Error();
     Error(const sr_error_info_t *info);
     ~Error();
-    const char *message() {if (_info) return _info->message; else return NULL;};
-    const char *xpath() {if (_info) return _info->message; else return NULL;};
+    const char *message() {if (_info) return _info->message; else return nullptr;};
+    const char *xpath() {if (_info) return _info->message; else return nullptr;};
 
     friend class Session;
 
@@ -299,7 +299,7 @@ class Iter_Value
 {
 
 public:
-    Iter_Value(sr_val_iter_t *iter = NULL);
+    Iter_Value(sr_val_iter_t *iter = nullptr);
     ~Iter_Value();
     void Set(sr_val_iter_t *iter);
 
@@ -313,7 +313,7 @@ class Iter_Change
 {
 
 public:
-    Iter_Change(sr_change_iter_t *iter = NULL);
+    Iter_Change(sr_change_iter_t *iter = nullptr);
     ~Iter_Change();
 
     friend class Session;

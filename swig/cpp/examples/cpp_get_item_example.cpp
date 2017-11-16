@@ -40,7 +40,7 @@ main(int argc, char **argv)
         const char *xpath = "/ietf-interfaces:interfaces/interface[name='eth0']/enabled";
 
         auto value = sess->get_item(xpath);
-        if (value == NULL)
+        if (value == nullptr)
             return 0;
 
         cout << endl << "Value on xpath: " << value->xpath() << " = "\

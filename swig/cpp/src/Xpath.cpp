@@ -29,15 +29,15 @@ extern "C" {
 using namespace std;
 
 Xpath_Ctx::Xpath_Ctx() {
-    sr_xpath_ctx_t *state = NULL;
+    sr_xpath_ctx_t *state = nullptr;
     state = (sr_xpath_ctx_t *) calloc(1, sizeof(*state));
 
-    if (state == NULL)
+    if (state == nullptr)
         throw_exception(SR_ERR_NOMEM);
 
     _state = state;
 }
 Xpath_Ctx::~Xpath_Ctx() {
-    if (_state != NULL)
+    if (_state != nullptr)
         free(_state);
 }

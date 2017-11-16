@@ -40,19 +40,19 @@ print_change(S_Change change) {
     cout << endl;
     switch(change->oper()) {
     case SR_OP_CREATED:
-        if (NULL != change->new_val()) {
+        if (nullptr != change->new_val()) {
            cout <<"CREATED: ";
            cout << change->new_val()->to_string();
         }
         break;
     case SR_OP_DELETED:
-        if (NULL != change->old_val()) {
+        if (nullptr != change->old_val()) {
            cout << "DELETED: ";
            cout << change->old_val()->to_string();
         }
 	break;
     case SR_OP_MODIFIED:
-        if (NULL != change->old_val() && NULL != change->new_val()) {
+        if (nullptr != change->old_val() && nullptr != change->new_val()) {
            cout << "MODIFIED: ";
            cout << "old value ";
            cout << change->old_val()->to_string();
@@ -61,7 +61,7 @@ print_change(S_Change change) {
         }
 	break;
     case SR_OP_MOVED:
-        if (NULL != change->new_val()) {
+        if (nullptr != change->new_val()) {
 	    cout<<"MOVED: " << change->new_val()->xpath() << " after " << change->old_val()->xpath() << endl;
         }
 	break;
@@ -78,7 +78,7 @@ print_current_config(S_Session session, const char *module_name)
         snprintf(select_xpath, MAX_LEN, "/%s:*//*", module_name);
 
         auto values = session->get_items(&select_xpath[0]);
-        if (values == NULL)
+        if (values == nullptr)
             return;
 
         for(unsigned int i = 0; i < values->val_cnt(); i++)
