@@ -876,7 +876,7 @@ static bool
 rp_dt_has_parent_list(struct lys_node *node, struct lys_node **found_list, size_t *depth)
 {
     if (NULL != node) {
-        struct lys_node *n = node->parent;
+        struct lys_node *n = lys_parent(node);
         size_t dep = 0;
 
         while (NULL != n) {
