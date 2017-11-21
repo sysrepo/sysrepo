@@ -29,8 +29,6 @@ extern "C" {
 #include "sysrepo.h"
 }
 
-using namespace std;
-
 Connection::Connection(const char *app_name, const sr_conn_options_t opts)
 {
     int ret;
@@ -52,7 +50,7 @@ cleanup:
 
 Connection::~Connection()
 {
-    if (NULL != _conn) {
+    if (nullptr != _conn) {
         sr_disconnect(_conn);
     }
 }

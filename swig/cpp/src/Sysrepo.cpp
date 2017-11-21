@@ -29,8 +29,6 @@ extern "C" {
 #include "sysrepo.h"
 }
 
-using namespace std;
-
 sysrepo_exception::sysrepo_exception(const sr_error_t error_code)
     : std::runtime_error(sr_strerror(error_code))
     , m_error_code(error_code)

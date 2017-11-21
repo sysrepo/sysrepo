@@ -36,7 +36,7 @@ main(int argc, char **argv)
         const char *xpath = "/ietf-interfaces:interfaces/interface";
 
 	auto values = sess->get_items(xpath);
-        if (values == NULL)
+        if (values == nullptr)
             return 0;
 
 	for(unsigned int i = 0; i < values->val_cnt(); i++)
