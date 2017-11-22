@@ -2555,7 +2555,7 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
 
     for (size_t i = 0; i < values_cnt; i++) {
         SR_LOG_DBG("Received value from data provider for xpath '%s'.", values[i].xpath);
-        rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, values[i].xpath, SR_EDIT_DEFAULT, &values[i], NULL);
+        rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, values[i].xpath, SR_EDIT_DEFAULT, &values[i], NULL, true);
         if (SR_ERR_OK != rc) {
             //TODO: maybe validate if this path corresponds to the operational data
             SR_LOG_WRN("Failed to set operational data for xpath '%s'.", values[i].xpath);
@@ -2803,7 +2803,7 @@ rp_internal_state_data_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__
     if (0 == strcmp(xpath, "/ietf-netconf-acm:nacm/denied-operations")) {
         if (NULL != nacm_ctx) {
             (void)nacm_get_stats(nacm_ctx, &nacm_stats.data.uint32_val, NULL, NULL);
-            rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, &nacm_stats, NULL);
+            rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, &nacm_stats, NULL, false);
             if (SR_ERR_OK != rc) {
                 SR_LOG_WRN("Failed to set operational data for xpath '%s'.", xpath);
             }
@@ -2811,7 +2811,7 @@ rp_internal_state_data_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__
     } else if (0 == strcmp(xpath, "/ietf-netconf-acm:nacm/denied-data-writes")) {
         if (NULL != nacm_ctx) {
             (void)nacm_get_stats(nacm_ctx, NULL, NULL, &nacm_stats.data.uint32_val);
-            rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, &nacm_stats, NULL);
+            rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, &nacm_stats, NULL, false);
             if (SR_ERR_OK != rc) {
                 SR_LOG_WRN("Failed to set operational data for xpath '%s'.", xpath);
             }
@@ -2819,7 +2819,7 @@ rp_internal_state_data_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__
     } else if (0 == strcmp(xpath, "/ietf-netconf-acm:nacm/denied-notifications")) {
         if (NULL != nacm_ctx) {
             (void)nacm_get_stats(nacm_ctx, NULL, &nacm_stats.data.uint32_val, NULL);
-            rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, &nacm_stats, NULL);
+            rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, &nacm_stats, NULL, false);
             if (SR_ERR_OK != rc) {
                 SR_LOG_WRN("Failed to set operational data for xpath '%s'.", xpath);
             }
