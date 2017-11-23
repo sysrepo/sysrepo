@@ -636,7 +636,7 @@ rp_dt_no_parent_list_until(struct lys_node *until, struct lys_node *node)
         return false;
     }
 
-    struct lys_node *n = node->parent;
+    struct lys_node *n = lys_parent(node);
 
     while (NULL != n) {
         if (until == n) {
