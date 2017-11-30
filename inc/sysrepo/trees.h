@@ -66,6 +66,15 @@ int sr_new_tree(const char *root_name, const char *root_module_name, sr_node_t *
 int sr_new_trees(size_t tree_cnt, sr_node_t **trees);
 
 /**
+ * @brief Reallocate an array of sysrepo trees (uninitialized tree roots).
+ *
+ * @param [in] old_tree_cnt Current length of the tree array.
+ * @param [in] new_tree_cnt Desired length of the tree array.
+ * @param [in,out] trees Returned newly allocated/enlarged array of trees.
+ */
+int sr_realloc_trees(size_t old_tree_cnt, size_t new_tree_cnt, sr_node_t **trees);
+
+/**
  * @brief Set/change name of a Sysrepo node.
  *
  * @param [in] node Sysrepo node to change the name of.

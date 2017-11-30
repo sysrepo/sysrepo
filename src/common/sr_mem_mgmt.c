@@ -282,6 +282,89 @@ cleanup:
 }
 
 void *
+sr_realloc(sr_mem_ctx_t *sr_mem, void *ptr, size_t old_size, size_t new_size)
+{
+    size_t used_head = 0, i = 0;
+    sr_llist_node_t *node_ll = NULL;
+    sr_mem_block_t *mem_block = NULL;
+    bool free_end_block = 0;
+    void *new_ptr = NULL;
+
+    if (NULL == sr_mem) {
+        return realloc(ptr, new_size);
+    }
+
+    if (NULL == ptr || old_size == 0) {
+        return sr_malloc(sr_mem, new_size);
+    }
+
+    if (0 == new_size || old_size > new_size) {
+        return NULL;
+    }
+
+    /* find the memory block of ptr */
+    node_ll = sr_mem->cursor;
+    used_head = sr_mem->used_head;
+    for (size_t i = 0; node_ll && i < MAX_BLOCKS_AVAIL_FOR_ALLOC-1;
+         ++i, node_ll = node_ll->prev, used_head = QUEUE_PREV(used_head, MAX_BLOCKS_AVAIL_FOR_ALLOC)) {
+
+        mem_block = (sr_mem_block_t *)node_ll->data;
+        /* found it */
+        if ((char *)ptr >= mem_block->mem && (char *)ptr < mem_block->mem + mem_block->size) {
+            /* good case - the memory is currently at the end of a memory block */
+            if ((char *)ptr + old_size == mem_block->mem + sr_mem->used[used_head]) {
+                /* great case - we can simply extend the current memory */
+                if (mem_block->size >= sr_mem->used[used_head] + (new_size - old_size)) {
+                    sr_mem->used[used_head] += new_size - old_size;
+                    if (used_head == sr_mem->used_head) {
+                        /* current block */
+                        sr_mem->used_total += new_size - old_size;
+                        sr_mem->peak = MAX(sr_mem->used_total, sr_mem->peak);
+                    } /* else previous block, already counted as used_total */
+                    return ptr;
+
+                /* well, we can at least "free" the current memory, but after malloc
+                 * so that this block does not get freed (if it remains empty) */
+                } else {
+                    free_end_block = 1;
+                }
+            }
+            break;
+        }
+    }
+
+    /* it must have been found, otherwise the input was invalid */
+    assert(node_ll && i < MAX_BLOCKS_AVAIL_FOR_ALLOC-1);
+
+    /* bad case - we must move the memory somewhere else */
+    new_ptr = sr_malloc(sr_mem, new_size);
+    if (NULL == new_ptr) {
+        return NULL;
+    }
+
+    /* copy the current data */
+    memcpy(new_ptr, ptr, old_size);
+
+    /* "free" the previous memory chunk, if possible */
+    if (free_end_block) {
+        sr_mem->used[used_head] -= old_size;
+        sr_mem->used_total -= old_size;
+        /* the old memory took a whole block, we can actually free it now */
+        if (0 == sr_mem->used[used_head]) {
+            sr_mem->size_total -= mem_block->size;
+            free(mem_block);
+            sr_llist_rm(sr_mem->mem_blocks, node_ll);
+            memmove(sr_mem->used + used_head, sr_mem->used + used_head + 1, (MAX_BLOCKS_AVAIL_FOR_ALLOC - used_head - 1) * sizeof *sr_mem->used);
+            sr_mem->used[MAX_BLOCKS_AVAIL_FOR_ALLOC - 1] = 0;
+            assert(sr_mem->used_head);
+            --sr_mem->used_head;
+        }
+    }
+
+    return new_ptr;
+}
+
+void *
 sr_calloc(sr_mem_ctx_t *sr_mem, size_t nmemb, size_t size)
 {
     void *mem = NULL;
