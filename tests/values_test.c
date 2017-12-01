@@ -156,6 +156,72 @@ sr_new_values_test(void **state)
 }
 
 static void
+sr_realloc_values_test(void **state)
+{
+    int rc = 0;
+    sr_val_t *values = NULL;
+
+    rc = sr_realloc_values(0, 0, &values);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_null(values);
+    sr_free_values(values, 0);
+
+    rc = sr_realloc_values(0, 5, &values);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(values);
+#ifdef USE_SR_MEM_MGMT
+    assert_non_null(values->_sr_mem);
+    assert_int_equal(1, values->_sr_mem->obj_count);
+    assert_true(0 < values->_sr_mem->used_total);
+#else
+    assert_null(values->_sr_mem);
+#endif
+    for (int i = 0; i < 5; ++i) {
+#ifdef USE_SR_MEM_MGMT
+        if (0 < i) {
+            assert_ptr_equal(values[i-1]._sr_mem, values[i]._sr_mem);
+        }
+#endif
+        assert_null(values[i].xpath);
+        assert_false(values[i].dflt);
+        assert_int_equal(SR_UNKNOWN_T, values[i].type);
+        assert_int_equal(0, values[i].data.uint64_val);
+    }
+
+    for (int i = 0; i < 5; ++i) {
+        values[i].data.uint64_val = i;
+    }
+
+    rc = sr_realloc_values(5, 10, &values);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(values);
+#ifdef USE_SR_MEM_MGMT
+    assert_non_null(values->_sr_mem);
+    assert_int_equal(1, values->_sr_mem->obj_count);
+    assert_true(0 < values->_sr_mem->used_total);
+#else
+    assert_null(values->_sr_mem);
+#endif
+    for (int i = 0; i < 10; ++i) {
+        if (i < 5) {
+            assert_int_equal(i, values[i].data.uint64_val);
+        } else {
+#ifdef USE_SR_MEM_MGMT
+            if (0 < i) {
+                assert_ptr_equal(values[i-1]._sr_mem, values[i]._sr_mem);
+            }
+#endif
+            assert_null(values[i].xpath);
+            assert_false(values[i].dflt);
+            assert_int_equal(SR_UNKNOWN_T, values[i].type);
+            assert_int_equal(0, values[i].data.uint64_val);
+        }
+    }
+
+    sr_free_values(values, 10);
+}
+
+static void
 sr_val_set_xpath_test(void **state)
 {
     int rc = 0;
@@ -866,6 +932,7 @@ main() {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(sr_new_val_test),
         cmocka_unit_test(sr_new_values_test),
+        cmocka_unit_test(sr_realloc_values_test),
         cmocka_unit_test(sr_val_set_xpath_test),
         cmocka_unit_test(sr_val_build_xpath_test),
         cmocka_unit_test(sr_val_set_str_data_test),
