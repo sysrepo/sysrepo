@@ -209,6 +209,9 @@ sr_realloc_trees(size_t old_tree_cnt, size_t new_tree_cnt, sr_node_t **trees_p)
         for (size_t i = old_tree_cnt; i < new_tree_cnt; ++i) {
             trees[i]._sr_mem = sr_mem;
         }
+        if (0 == old_tree_cnt) {
+            sr_mem->obj_count += 1; /* 1 for the entire array */
+        }
     }
 
     *trees_p = trees;

@@ -208,6 +208,9 @@ sr_realloc_values(size_t old_value_cnt, size_t new_value_cnt, sr_val_t **values_
         for (size_t i = old_value_cnt; i < new_value_cnt; ++i) {
             values[i]._sr_mem = sr_mem;
         }
+        if (0 == old_value_cnt) {
+            sr_mem->obj_count += 1; /* 1 for the entire array */
+        }
     }
 
     *values_p = values;
