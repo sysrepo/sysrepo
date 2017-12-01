@@ -201,6 +201,10 @@ sr_realloc_trees(size_t old_tree_cnt, size_t new_tree_cnt, sr_node_t **trees_p)
         }
         return SR_ERR_INTERNAL;
     }
+
+    /* zero the new memory */
+    memset(trees + old_tree_cnt, 0, (new_tree_cnt - old_tree_cnt) * sizeof *trees);
+
     if (sr_mem) {
         for (size_t i = old_tree_cnt; i < new_tree_cnt; ++i) {
             trees[i]._sr_mem = sr_mem;

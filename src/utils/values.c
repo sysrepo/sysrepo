@@ -200,6 +200,10 @@ sr_realloc_values(size_t old_value_cnt, size_t new_value_cnt, sr_val_t **values_
         }
         return SR_ERR_INTERNAL;
     }
+
+    /* zero the new memory */
+    memset(values + old_value_cnt, 0, (new_value_cnt - old_value_cnt) * sizeof *values);
+
     if (sr_mem) {
         for (size_t i = old_value_cnt; i < new_value_cnt; ++i) {
             values[i]._sr_mem = sr_mem;
