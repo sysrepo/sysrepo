@@ -186,7 +186,7 @@ sr_realloc_values(size_t old_value_cnt, size_t new_value_cnt, sr_val_t **values_
         CHECK_RC_MSG_RETURN(ret, "Failed to obtain new sysrepo memory.");
         new_ctx = true;
     } else {
-        sr_mem = values[0]._sr_mem;
+        sr_mem = values_p[0]->_sr_mem;
     }
 
     values = (sr_val_t *)sr_realloc(sr_mem, *values_p, old_value_cnt * sizeof *values, new_value_cnt * sizeof *values);

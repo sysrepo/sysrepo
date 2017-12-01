@@ -114,7 +114,6 @@ sr_new_tree(const char *name, const char *module_name, sr_node_t **node_p)
     return sr_new_tree_ctx(NULL, name, module_name, node_p);
 }
 
-
 /**
  * @brief Create a new array of sysrepo trees.
  */
@@ -188,7 +187,7 @@ sr_realloc_trees(size_t old_tree_cnt, size_t new_tree_cnt, sr_node_t **trees_p)
         CHECK_RC_MSG_RETURN(ret, "Failed to obtain new sysrepo memory.");
         new_ctx = true;
     } else {
-        sr_mem = trees[0]._sr_mem;
+        sr_mem = trees_p[0]->_sr_mem;
     }
 
     trees = (sr_node_t *)sr_realloc(sr_mem, *trees_p, old_tree_cnt * sizeof *trees, new_tree_cnt * sizeof *trees);
