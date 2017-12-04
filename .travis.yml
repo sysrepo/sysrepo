@@ -18,7 +18,6 @@ matrix:
             compiler: clang
         -   os: osx
             compiler: gcc
-            sudo: required
 
 cache:
   pip: true
