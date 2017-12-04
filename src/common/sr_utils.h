@@ -35,9 +35,6 @@
 /* OS X get_time */
 #include <mach/clock.h>
 #include <mach/mach.h>
-#define CLOCK_REALTIME CALENDAR_CLOCK
-#define CLOCK_MONOTONIC SYSTEM_CLOCK
-typedef int clockid_t;
 #endif
 
 #include <libyang/libyang.h>
