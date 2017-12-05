@@ -31,12 +31,6 @@
 //! @endcond
 #include <time.h>
 
-#ifdef __APPLE__
-/* OS X get_time */
-#include <mach/clock.h>
-#include <mach/mach.h>
-#endif
-
 #include <libyang/libyang.h>
 
 /** get the larger item */
