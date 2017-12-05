@@ -24,7 +24,7 @@ if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
 
     #libredblack
     git clone https://github.com/sysrepo/libredblack.git
-    cd libredblack; ./configure && make && make install
+    cd libredblack; ./configure --mandir=/tmp && make && make install
 else
     echo "Using cached libraries from $INSTALL_PREFIX_DIR"
 fi
