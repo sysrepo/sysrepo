@@ -3041,19 +3041,19 @@ nacm_cl_test_commit_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[0], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(0, 12);
     /*  -> sysrepo-user2 */
     rc = sr_set_item_str(sessions[1], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[1], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(1, 12);
     /*  -> sysrepo-user3 */
     rc = sr_set_item_str(sessions[2], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(2, 12);
     /*  -> sysrepo-user4 */
     rc = sr_set_item_str(sessions[3], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -3355,7 +3355,7 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED(2, NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(2, 9);
     /*  -> sysrepo-user4 */
     rc = sr_set_item_str(sessions[3], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -3640,19 +3640,19 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[0], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(0, 12);
     /*  -> sysrepo-user2 */
     rc = sr_set_item_str(sessions[1], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[1], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(1, 12);
     /*  -> sysrepo-user3 */
     rc = sr_set_item_str(sessions[2], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(2, 12);
     /*  -> sysrepo-user4 */
     rc = sr_set_item_str(sessions[3], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
