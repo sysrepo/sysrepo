@@ -780,6 +780,7 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
     /*    -> data, test-module: */
     add_nacm_rule(nacm_config, "acl1", "allow-to-modify-i8", "test-module", NACM_RULE_DATA,
             "/test-module:main/i8", "update", "permit", "Allow to modify 8-bit signed integer in the main container");
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "test-module", NULL));
     add_nacm_rule(nacm_config, "acl1", "permit-low-numbers", "test-module", NACM_RULE_DATA,
             "/test-module:main/numbers[.<10]", "create delete", "permit", "Allow to create/delete low numbers.");
     add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
@@ -792,12 +793,14 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
     add_nacm_rule(nacm_config, "acl1", "deny-specific-list-item", "example-module", NACM_RULE_DATA,
             "/example-module:container/list[key1='new-item-key1'][key2='new-item-key2']", "create", "deny",
             "Not allowed to create this specific list item.");
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "example-module", NULL));
     add_nacm_rule(nacm_config, "acl1", "permit-specific-list-item", "example-module", NACM_RULE_DATA,
             "/example-module:container/list[key1='new-item2-key1'][key2='new-item2-key2']", "create", "permit",
             "Allowed to create this specific list item.");
     /*    -> data, ietf-interfaces: */
     add_nacm_rule(nacm_config, "acl1", "deny-interface-status-change", "ietf-interfaces", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface/enabled", "update", "deny", "Not allowed to change status of interface");
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "ietf-interfaces", NULL));
     add_nacm_rule(nacm_config, "acl1", "allow-new-interfaces", "ietf-interfaces", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface", "create", "permit", "Allowed to create new interface");
     /*  -> acl2: */
@@ -878,8 +881,10 @@ copy_config_nacm_config(test_nacm_cfg_t *nacm_config)
             XP_TEST_MODULE_BOOL, "read", "deny", "Forbid reading the 'boolean' leaf.");
     add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
             "/test-module:main/numbers[.>10]", "read", "deny", "Forbid reading 'numbers' higher than 10.");
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "test-module", NULL));
     add_nacm_rule(nacm_config, "acl1", "deny-read-interface-status", "*", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface/enabled", "read", "deny", "Forbid reading interface 'status'.");
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "ietf-interfaces", NULL));
     add_nacm_rule(nacm_config, "acl1", "deny-read-acm", "ietf-netconf-acm", NACM_RULE_DATA,
             "/ietf-netconf-acm:*//.", "read", "deny", "Forbid reading NACM configuration.");
 }
