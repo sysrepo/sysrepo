@@ -1891,6 +1891,11 @@ typedef struct sr_fd_change_s {
 } sr_fd_change_t;
 
 /**
+ * @brief Callback when the subscription manager is terminated
+ */
+typedef void (*sr_fd_sm_terminated_cb)();
+
+/**
  * @brief Initializes application-local file descriptor watcher.
  *
  * This can be used in those applications that subscribe for changes or providing data in sysrepo, which have their
@@ -1905,9 +1910,14 @@ typedef struct sr_fd_change_s {
  * @param[out] fd Initial file descriptor that is supposed to be monitored for readable events by the application.
  * Once there is an event detected on this file descriptor, the application is supposed to call ::sr_fd_event_process.
  *
+ * @param[in] sm_terminate_cb Function to be called when the subscription manager is terminated. If this callback is provided,
+ * it shall block until all pending events on any file descriptor associated with sysrepo have been handled. I.e., ensure that
+ * the event loop has called sr_fd_event_process() for all pending events before returning from this callback. If this callback
+ * doesn't block, errors will be shown in the log.
+ *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_fd_watcher_init(int *fd);
+int sr_fd_watcher_init(int *fd, sr_fd_sm_terminated_cb sm_terminate_cb);
 
 /**
  * @brief Cleans-up the application-local file descriptor watcher previously initiated by ::sr_fd_watcher_init.

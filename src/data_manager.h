@@ -265,6 +265,11 @@ typedef struct dm_commit_context_s {
     }while(0)
 
 /**
+ * @brief The function is called to load the requested module into the context.
+ */
+const struct lys_module *dm_module_clb(struct ly_ctx *ctx, const char *name, const char *ns, int options, void *user_data);
+
+/**
  * @brief Initializes the data manager context, which will be passed in further
  * data manager related calls.
  * @param [in] ac_ctx Access Control module context

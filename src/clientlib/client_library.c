@@ -100,6 +100,8 @@ static int subscriptions_cnt = 0;             /**< Number of active subscription
 static cm_ctx_t *local_cm_ctx = NULL;         /**< Local Connection Manager context in case of library mode. */
 static cl_sm_ctx_t *cl_sm_ctx = NULL;         /**< Subscription Manager context. */
 static int local_watcher_fd[2] = { -1, -1 };  /**< File descriptor pair of an application-local file descriptor watcher. */
+static sr_fd_sm_terminated_cb local_watcher_terminate_cb = NULL;
+                                              /**< Callback for blocking upon an exit of the last subscription manager */
 static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking shared global variables. */
 
 /**
@@ -292,7 +294,7 @@ cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
     pthread_mutex_lock(&global_lock);
     if (0 == subscriptions_cnt) {
         /* this is the first subscription - initialize subscription manager */
-        rc = cl_sm_init((-1 != local_watcher_fd[0]), local_watcher_fd, &cl_sm_ctx);
+        rc = cl_sm_init((-1 != local_watcher_fd[0]), local_watcher_terminate_cb, local_watcher_fd, &cl_sm_ctx);
     }
     subscriptions_cnt++;
     if (SR_ERR_OK == rc) {
@@ -1615,7 +1617,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
             }
             prev = prev->prev;
         }
-        snprintf(indices[i], BUF_LEN, "%lu", index);
+        snprintf(indices[i], BUF_LEN, "%zu", index);
         node = node->parent;
     }
     /* -> xpath length */
@@ -3782,7 +3784,7 @@ cleanup:
 }
 
 int
-sr_fd_watcher_init(int *fd_p)
+sr_fd_watcher_init(int *fd_p, sr_fd_sm_terminated_cb sm_terminate_cb)
 {
     int pipefd[2] = { 0, };
     int ret = 0, rc = SR_ERR_OK;
@@ -3801,6 +3803,7 @@ sr_fd_watcher_init(int *fd_p)
     pthread_mutex_lock(&global_lock);
     local_watcher_fd[0] = pipefd[0];
     local_watcher_fd[1] = pipefd[1];
+    local_watcher_terminate_cb = sm_terminate_cb;
     pthread_mutex_unlock(&global_lock);
 
     *fd_p = pipefd[0]; /* return read end of the pipe */

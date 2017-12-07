@@ -114,7 +114,6 @@ sr_new_tree(const char *name, const char *module_name, sr_node_t **node_p)
     return sr_new_tree_ctx(NULL, name, module_name, node_p);
 }
 
-
 /**
  * @brief Create a new array of sysrepo trees.
  */
@@ -166,6 +165,57 @@ int
 sr_new_trees(size_t count, sr_node_t **trees_p)
 {
     return sr_new_trees_ctx(NULL, count, trees_p);
+}
+
+int
+sr_realloc_trees(size_t old_tree_cnt, size_t new_tree_cnt, sr_node_t **trees_p)
+{
+    int ret = SR_ERR_OK;
+    bool new_ctx = false;
+    sr_node_t *trees = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+
+    CHECK_NULL_ARG(trees_p);
+
+    if (0 == new_tree_cnt) {
+        *trees_p = NULL;
+        return SR_ERR_OK;
+    }
+
+    if (0 == old_tree_cnt) {
+        ret = sr_mem_new((sizeof *trees) * new_tree_cnt, &sr_mem);
+        CHECK_RC_MSG_RETURN(ret, "Failed to obtain new sysrepo memory.");
+        new_ctx = true;
+    } else {
+        sr_mem = trees_p[0]->_sr_mem;
+    }
+
+    trees = (sr_node_t *)sr_realloc(sr_mem, *trees_p, old_tree_cnt * sizeof *trees, new_tree_cnt * sizeof *trees);
+    if (NULL == trees) {
+        if (new_ctx) {
+            if (sr_mem) {
+                sr_mem_free(sr_mem);
+            } else {
+                free(trees);
+            }
+        }
+        return SR_ERR_INTERNAL;
+    }
+
+    /* zero the new memory */
+    memset(trees + old_tree_cnt, 0, (new_tree_cnt - old_tree_cnt) * sizeof *trees);
+
+    if (sr_mem) {
+        for (size_t i = old_tree_cnt; i < new_tree_cnt; ++i) {
+            trees[i]._sr_mem = sr_mem;
+        }
+        if (0 == old_tree_cnt) {
+            sr_mem->obj_count += 1; /* 1 for the entire array */
+        }
+    }
+
+    *trees_p = trees;
+    return SR_ERR_OK;
 }
 
 int

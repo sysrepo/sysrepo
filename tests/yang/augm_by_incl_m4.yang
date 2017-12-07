@@ -1,0 +1,18 @@
+module augm_by_incl_m4 {
+  namespace "urn:fri:params:xml:ns:yang:augm_by_incl_m4";
+  prefix abi_m4;
+
+  typedef reftype {
+  type leafref {
+    path "/abi_m4:cont1/abi_m4:cont11/abi_m4:leaf11";
+    }
+  }
+
+  container cont1 {
+    container cont11 {
+       leaf leaf11 {
+          type string;
+      }
+    }
+  }
+}

@@ -37,7 +37,7 @@ new_nacm_config(test_nacm_cfg_t **nacm_config_p)
     nacm_config = calloc(1, sizeof *nacm_config);
     assert_non_null(nacm_config);
 
-    nacm_config->ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    nacm_config->ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     assert_non_null(nacm_config->ly_ctx);
 
     assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "ietf-netconf-acm@2012-02-22", NULL));

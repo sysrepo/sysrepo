@@ -1643,6 +1643,36 @@ md_test_insert_module(void **state)
 }
 
 /*
+ * @brief Test md_insert_module().
+ */
+
+static const char * const md_test_insert_module_2_mod1 = TEST_SOURCE_DIR "/yang/augm_by_incl_m1" TEST_MODULE_EXT;
+
+static void
+md_test_insert_module_2(void **state)
+{
+    int rc;
+    md_ctx_t *md_ctx = NULL;
+    sr_list_t *implicitly_inserted = NULL;
+
+    rc = md_init(TEST_SOURCE_DIR "/yang", TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", true, &md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+    validate_context(md_ctx);
+
+    rc = md_insert_module(md_ctx, md_test_insert_module_2_mod1, &implicitly_inserted);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, implicitly_inserted->count);
+    md_free_module_key_list(implicitly_inserted);
+    validate_context(md_ctx);
+
+    rc = md_flush(md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    md_destroy(md_ctx);
+}
+
+/*
  * @brief Test md_remove_module().
  */
 static void
@@ -1762,6 +1792,20 @@ md_test_remove_module(void **state)
     sr_list_cleanup(implicitly_removed);
     implicitly_removed = NULL;
     inserted.A = implemented.A = false;
+    validate_context(md_ctx);
+
+    /* remove all augm modules */
+    rc = md_remove_module(md_ctx, "augm_by_incl_m1", NULL, &implicitly_removed);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, implicitly_removed->count);
+    md_free_module_key_list(implicitly_removed);
+    implicitly_removed = NULL;
+
+    rc = md_remove_module(md_ctx, "augm_by_incl_m4", NULL, &implicitly_removed);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(0, implicitly_removed->count);
+    sr_list_cleanup(implicitly_removed);
+    implicitly_removed = NULL;
     validate_context(md_ctx);
 
     /* flush changes into the internal data file */
@@ -1901,6 +1945,7 @@ int main(){
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(md_test_init_and_destroy),
             cmocka_unit_test(md_test_insert_module),
+            cmocka_unit_test(md_test_insert_module_2),
             cmocka_unit_test(md_test_remove_module),
             cmocka_unit_test(md_test_grouping_and_uses),
             cmocka_unit_test(md_test_has_data),

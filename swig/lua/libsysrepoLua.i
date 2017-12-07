@@ -110,7 +110,7 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
+        Vals *in_vals =(Vals *)new Vals(input, input_cnt, nullptr);
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
@@ -132,7 +132,7 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
+        Vals *in_vals =(Vals *)new Vals(input, input_cnt, nullptr);
         Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
@@ -154,7 +154,7 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
+        Trees *in_vals =(Trees *)new Trees(input, input_cnt, nullptr);
         Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
@@ -176,7 +176,7 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
+        Trees *in_vals =(Trees *)new Trees(input, input_cnt, nullptr);
         Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
@@ -215,7 +215,7 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Vals *in_vals =(Vals *)new Vals(values, values_cnt, NULL);
+        Vals *in_vals =(Vals *)new Vals(values, values_cnt, nullptr);
         lua_pushnumber(fn.L, (lua_Number)(int)(notif_type));
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
@@ -231,7 +231,7 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, NULL);
+        Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, nullptr);
         lua_pushnumber(fn.L, (lua_Number)(int)(notif_type));
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
@@ -342,11 +342,11 @@ static void global_loop() {
 
 %extend Subscribe {
 
-    void module_change_subscribe(const char *module_name, Callback_lua *cb, void *private_ctx = NULL, \
+    void module_change_subscribe(const char *module_name, Callback_lua *cb, void *private_ctx = nullptr, \
                                  uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = NULL;
+        Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
@@ -359,11 +359,11 @@ static void global_loop() {
         }
     };
 
-    void subtree_change_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
+    void subtree_change_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                                  uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = NULL;
+        Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
@@ -376,11 +376,11 @@ static void global_loop() {
         }
     }
 
-    void module_install_subscribe(Callback_lua *cb, void *private_ctx = NULL,\
+    void module_install_subscribe(Callback_lua *cb, void *private_ctx = nullptr,\
                                   sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = NULL;
+        Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
@@ -394,11 +394,11 @@ static void global_loop() {
         }
     }
 
-    void feature_enable_subscribe(Callback_lua *cb, void *private_ctx = NULL,\
+    void feature_enable_subscribe(Callback_lua *cb, void *private_ctx = nullptr,\
                                   sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = NULL;
+        Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
@@ -412,10 +412,10 @@ static void global_loop() {
         }
     }
 
-    void rpc_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
+    void rpc_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = NULL;
+        Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
@@ -429,10 +429,10 @@ static void global_loop() {
         }
     }
 
-    void action_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
+    void action_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = NULL;
+        Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
@@ -446,10 +446,10 @@ static void global_loop() {
         }
     }
 
-    void rpc_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
+    void rpc_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = NULL;
+        Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
@@ -463,10 +463,10 @@ static void global_loop() {
         }
     }
 
-    void action_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
+    void action_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = NULL;
+        Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
@@ -480,10 +480,10 @@ static void global_loop() {
         }
     }
 
-    void event_notif_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
+    void event_notif_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = NULL;
+        Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
@@ -497,10 +497,10 @@ static void global_loop() {
         }
     }
 
-    void event_notif_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
+    void event_notif_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = NULL;
+        Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
@@ -514,10 +514,10 @@ static void global_loop() {
         }
     }
 
-    void dp_get_items_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = NULL, \
+    void dp_get_items_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr, \
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = NULL;
+        Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);

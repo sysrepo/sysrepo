@@ -877,17 +877,18 @@ nacm_test_rules(void **state)
     add_nacm_rule_list(nacm_config, "admin-acl", "group3", "group4", "group5", "group6", NULL);
     add_nacm_rule(nacm_config, "admin-acl", "rule1", "ietf-interfaces", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface[name='eth0']", "update delete", "deny", "This is rule1.");
+    /* add required modules into context */
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "ietf-interfaces@2014-05-08", NULL));
     add_nacm_rule(nacm_config, "admin-acl", "rule2", "test-module", NACM_RULE_RPC,
             "/test-module:activate-software-image", "exec", "deny", "This is rule2.");
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "test-module", NULL));
     add_nacm_rule(nacm_config, "admin-acl", "rule3", "test-module", NACM_RULE_NOTIF,
             "/test-module:link-discovered", "exec", "permit", "This is rule3.");
     add_nacm_rule(nacm_config, "admin-acl", "rule4", "*", NACM_RULE_NOTSET,
             NULL, "read create delete", "permit", "This is rule4.");
     add_nacm_rule(nacm_config, "admin-acl", "rule5", "example-module", NACM_RULE_DATA,
             "/example-module:container", "read", "permit", "This is rule5.");
-    add_nacm_rule(nacm_config, "admin-acl", "rule6", "fake-module", NACM_RULE_DATA,
-            "/module1:container/module2:list[module2:key='key-value']/module2:container/module3:leaf", "read", "permit",
-            "This is rule6.");
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "example-module", NULL));
     save_nacm_config(nacm_config);
 
     /* test NACM context */
@@ -926,7 +927,7 @@ nacm_test_rules(void **state)
     /*  -> rule list: admin-acl */
     rule_list = nacm_get_rule_list(nacm_ctx, 1);
     assert_string_equal("admin-acl", rule_list->name);
-    verify_sr_list_size(rule_list->rules, 6);
+    verify_sr_list_size(rule_list->rules, 5);
     /*  -> rule: rule1 */
     rule = nacm_get_rule(rule_list, 0);
     assert_int_equal(2, rule->id);
@@ -989,20 +990,6 @@ nacm_test_rules(void **state)
     assert_int_equal(NACM_ACCESS_READ, rule->access);
     assert_int_equal(NACM_ACTION_PERMIT, rule->action);
     assert_string_equal("This is rule5.", rule->comment);
-    /*  -> rule: rule6 */
-    rule = nacm_get_rule(rule_list, 5);
-    assert_int_equal(7, rule->id);
-    assert_string_equal("rule6", rule->name);
-    assert_string_equal("fake-module", rule->module);
-    assert_int_equal(NACM_RULE_DATA, rule->type);
-    assert_string_equal("/module1:container/module2:list[module2:key='key-value']/module2:container/module3:leaf", rule->data.path);
-    hash = sr_str_hash("module1:container") + sr_str_hash("module2:list") + sr_str_hash("module2:container")
-           + sr_str_hash("module3:leaf");
-    assert_int_equal(hash, rule->data_hash);
-    assert_int_equal(3, rule->data_depth);
-    assert_int_equal(NACM_ACCESS_READ, rule->access);
-    assert_int_equal(NACM_ACTION_PERMIT, rule->action);
-    assert_string_equal("This is rule6.", rule->comment);
 
     /* deallocate NACM config */
     delete_nacm_config(nacm_config);
@@ -1037,10 +1024,12 @@ nacm_config_for_basic_read_access_tests(bool disable_nacm, const char *read_dflt
             XP_TEST_MODULE_BOOL, "*", "deny", "Do not allow any access to the 'boolean' leaf.");
     add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
             "/test-module:main/numbers[.>10]", "*", "deny", NULL);
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "test-module", NULL));
     add_nacm_rule(nacm_config, "acl1", "permit-access-to-list-k1", "test-module", NACM_RULE_DATA,
             "/test-module:list[key='k1']", "*", "permit", NULL);
     add_nacm_rule(nacm_config, "acl1", "deny-read-interface-status", "*", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface/enabled", "read update", "deny", NULL);
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "ietf-interfaces@2014-05-08", NULL));
     /*  -> acl2: */
     add_nacm_rule(nacm_config, "acl2", "deny-k1-union-read", "test-module", NACM_RULE_DATA,
             "/test-module:list[key='k1']/union", "read", "deny", NULL);
@@ -1050,6 +1039,7 @@ nacm_config_for_basic_read_access_tests(bool disable_nacm, const char *read_dflt
             "/test-module:main/numbers[.<10]", "*", "deny", NULL);
     add_nacm_rule(nacm_config, "acl2", "deny-interface-mtu", "ietf-ip", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/ietf-interfaces:interface/ietf-ip:ipv4/ietf-ip:mtu", "*", "deny", NULL);
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "ietf-ip@2014-06-16", NULL));
     add_nacm_rule(nacm_config, "acl2", "deny-change-interface-status", "ietf-interfaces", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface/enabled", "update delete create", "deny", NULL);
     /*  -> acl3 */
