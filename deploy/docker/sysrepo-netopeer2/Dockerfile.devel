@@ -100,7 +100,6 @@ RUN \
       make -j2 && \
       make install && \
       cd ../../cli && mkdir build && cd build && \
-      git checkout devel-cli && \
       cmake -DCMAKE_BUILD_TYPE:String="Debug" .. && \
       make -j2 && \
       make install
