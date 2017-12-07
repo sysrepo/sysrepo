@@ -81,7 +81,7 @@ rp_dt_validate_node_xpath_internal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
         *match = NULL;
     }
 
-    module = ly_ctx_get_module(schema_info->ly_ctx, namespace, NULL);
+    module = ly_ctx_get_module(schema_info->ly_ctx, namespace, NULL, 1);
     if (NULL == module) {
         if (NULL != session) {
             dm_report_error(session, NULL, xpath, SR_ERR_UNKNOWN_MODEL);

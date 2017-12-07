@@ -794,7 +794,7 @@ sr_node_t_test(void **state)
     sr_node_t *trees = NULL, *sr_node = NULL;
     size_t tree_cnt = 0, diff_cnt = 0;
 
-    ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
 
     /* example-module */
     createDataTree(ly_ctx, &data_tree);
@@ -950,7 +950,7 @@ sr_node_t_with_augments_test(void **state)
     sr_node_t *trees = NULL, *sr_node = NULL;
     size_t tree_cnt = 0, diff_cnt = 0;
 
-    ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
 
     /* small-module + info-module */
     createDataTreeWithAugments(ly_ctx, &data_tree);
@@ -1038,7 +1038,7 @@ sr_node_t_rpc_input_test(void **state)
     sr_node_t *trees = NULL, *sr_node = NULL;
     size_t tree_cnt = 0;
 
-    ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     ly_ctx_load_module(ly_ctx, "test-module", NULL);
 
     /* RPC input */
@@ -1100,7 +1100,7 @@ sr_node_t_rpc_output_test(void **state)
     sr_node_t *trees = NULL, *sr_node = NULL, *child = NULL;
     size_t tree_cnt = 0;
 
-    ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     ly_ctx_load_module(ly_ctx, "test-module", NULL);
 
     /* RPC output */
@@ -1322,7 +1322,7 @@ sr_error_info_test(void **state)
 static void
 sr_create_uri_test(void **state)
 {
-    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     char *buffer = NULL;
     int rc = SR_ERR_OK;
     const struct lys_module *module = ly_ctx_load_module(ctx, "test-module", NULL);
@@ -1398,8 +1398,8 @@ sr_free_list_of_strings_test(void **state)
 static void
 sr_dup_data_tree_to_ctx_test(void **state)
 {
-    struct ly_ctx *ctx_A = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
-    struct ly_ctx *ctx_B = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    struct ly_ctx *ctx_A = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
+    struct ly_ctx *ctx_B = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     struct lyd_node *data_tree_A = NULL, *data_tree_B = NULL;
 
     ly_ctx_load_module(ctx_A, "test-module", NULL);

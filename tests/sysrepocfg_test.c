@@ -1229,7 +1229,7 @@ main() {
     };
 
     /* create libyang context */
-    srcfg_test_libyang_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    srcfg_test_libyang_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     if (NULL == srcfg_test_libyang_ctx) {
         fprintf(stderr, "Unable to initialize libyang context: %s", ly_errmsg());
         goto terminate;

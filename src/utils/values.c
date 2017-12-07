@@ -167,6 +167,57 @@ sr_new_values(size_t count, sr_val_t **values_p)
 }
 
 int
+sr_realloc_values(size_t old_value_cnt, size_t new_value_cnt, sr_val_t **values_p)
+{
+    int ret = SR_ERR_OK;
+    bool new_ctx = false;
+    sr_val_t *values = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+
+    CHECK_NULL_ARG(values_p);
+
+    if (0 == new_value_cnt) {
+        *values_p = NULL;
+        return SR_ERR_OK;
+    }
+
+    if (0 == old_value_cnt) {
+        ret = sr_mem_new((sizeof *values) * new_value_cnt, &sr_mem);
+        CHECK_RC_MSG_RETURN(ret, "Failed to obtain new sysrepo memory.");
+        new_ctx = true;
+    } else {
+        sr_mem = values_p[0]->_sr_mem;
+    }
+
+    values = (sr_val_t *)sr_realloc(sr_mem, *values_p, old_value_cnt * sizeof *values, new_value_cnt * sizeof *values);
+    if (NULL == values) {
+        if (new_ctx) {
+            if (sr_mem) {
+                sr_mem_free(sr_mem);
+            } else {
+                free(values);
+            }
+        }
+        return SR_ERR_INTERNAL;
+    }
+
+    /* zero the new memory */
+    memset(values + old_value_cnt, 0, (new_value_cnt - old_value_cnt) * sizeof *values);
+
+    if (sr_mem) {
+        for (size_t i = old_value_cnt; i < new_value_cnt; ++i) {
+            values[i]._sr_mem = sr_mem;
+        }
+        if (0 == old_value_cnt) {
+            sr_mem->obj_count += 1; /* 1 for the entire array */
+        }
+    }
+
+    *values_p = values;
+    return SR_ERR_OK;
+}
+
+int
 sr_val_set_xpath(sr_val_t *value, const char *xpath)
 {
     CHECK_NULL_ARG2(value, xpath);

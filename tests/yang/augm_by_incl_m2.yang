@@ -1,0 +1,13 @@
+module augm_by_incl_m2 {
+  namespace "urn:fri:params:xml:ns:yang:augm_by_incl_m2";
+  prefix abi_m2;
+
+  import augm_by_incl_m3 {
+    prefix abi_m3;
+  }
+
+  augment "/abi_m3:cont1/abi_m3:cont11/abi_m3:cont111" {
+    container cont1111 {
+    }
+  }
+}

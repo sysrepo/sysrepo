@@ -780,6 +780,7 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
     /*    -> data, test-module: */
     add_nacm_rule(nacm_config, "acl1", "allow-to-modify-i8", "test-module", NACM_RULE_DATA,
             "/test-module:main/i8", "update", "permit", "Allow to modify 8-bit signed integer in the main container");
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "test-module", NULL));
     add_nacm_rule(nacm_config, "acl1", "permit-low-numbers", "test-module", NACM_RULE_DATA,
             "/test-module:main/numbers[.<10]", "create delete", "permit", "Allow to create/delete low numbers.");
     add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
@@ -792,12 +793,14 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
     add_nacm_rule(nacm_config, "acl1", "deny-specific-list-item", "example-module", NACM_RULE_DATA,
             "/example-module:container/list[key1='new-item-key1'][key2='new-item-key2']", "create", "deny",
             "Not allowed to create this specific list item.");
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "example-module", NULL));
     add_nacm_rule(nacm_config, "acl1", "permit-specific-list-item", "example-module", NACM_RULE_DATA,
             "/example-module:container/list[key1='new-item2-key1'][key2='new-item2-key2']", "create", "permit",
             "Allowed to create this specific list item.");
     /*    -> data, ietf-interfaces: */
     add_nacm_rule(nacm_config, "acl1", "deny-interface-status-change", "ietf-interfaces", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface/enabled", "update", "deny", "Not allowed to change status of interface");
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "ietf-interfaces", NULL));
     add_nacm_rule(nacm_config, "acl1", "allow-new-interfaces", "ietf-interfaces", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface", "create", "permit", "Allowed to create new interface");
     /*  -> acl2: */
@@ -878,8 +881,10 @@ copy_config_nacm_config(test_nacm_cfg_t *nacm_config)
             XP_TEST_MODULE_BOOL, "read", "deny", "Forbid reading the 'boolean' leaf.");
     add_nacm_rule(nacm_config, "acl1", "deny-high-numbers", "test-module", NACM_RULE_DATA,
             "/test-module:main/numbers[.>10]", "read", "deny", "Forbid reading 'numbers' higher than 10.");
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "test-module", NULL));
     add_nacm_rule(nacm_config, "acl1", "deny-read-interface-status", "*", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface/enabled", "read", "deny", "Forbid reading interface 'status'.");
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "ietf-interfaces", NULL));
     add_nacm_rule(nacm_config, "acl1", "deny-read-acm", "ietf-netconf-acm", NACM_RULE_DATA,
             "/ietf-netconf-acm:*//.", "read", "deny", "Forbid reading NACM configuration.");
 }
@@ -3036,19 +3041,19 @@ nacm_cl_test_commit_nacm(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[0], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(0, 12);
     /*  -> sysrepo-user2 */
     rc = sr_set_item_str(sessions[1], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[1], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(1, 12);
     /*  -> sysrepo-user3 */
     rc = sr_set_item_str(sessions[2], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(2, 12);
     /*  -> sysrepo-user4 */
     rc = sr_set_item_str(sessions[3], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -3350,7 +3355,7 @@ nacm_cl_test_commit_nacm_with_permitted_write_by_dflt(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED(2, NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(2, 9);
     /*  -> sysrepo-user4 */
     rc = sr_set_item_str(sessions[3], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -3635,19 +3640,19 @@ nacm_cl_test_commit_nacm_with_ext_groups(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[0], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(0, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(0, 12);
     /*  -> sysrepo-user2 */
     rc = sr_set_item_str(sessions[1], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[1], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(1, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(1, 12);
     /*  -> sysrepo-user3 */
     rc = sr_set_item_str(sessions[2], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_set_item_str(sessions[2], NODE2_XPATH "/user-name", "Me", SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    COMMIT_DENIED2(2, NODE_XPATH, NACM_ACCESS_UPDATE, "", "", NODE2_XPATH, NACM_ACCESS_CREATE, "", "");
+    COMMIT_DENIED_N(2, 12);
     /*  -> sysrepo-user4 */
     rc = sr_set_item_str(sessions[3], NODE_XPATH, "permit", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);

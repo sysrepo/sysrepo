@@ -36,19 +36,17 @@ extern "C" {
 #include "sysrepo/trees.h"
 }
 
-using namespace std;
-
 Session::Session(S_Connection conn, sr_datastore_t datastore, const sr_sess_options_t opts, \
 		 const char *user_name)
 {
     int ret;
     _opts = opts;
     _datastore = datastore;
-    _conn = NULL;
-    _sess = NULL;
+    _conn = nullptr;
+    _sess = nullptr;
     S_Deleter deleter(new Deleter(_sess));
 
-    if (user_name == NULL) {
+    if (user_name == nullptr) {
         /* start session */
         ret = sr_session_start(conn->_conn, _datastore, _opts, &_sess);
         if (SR_ERR_OK != ret) {
@@ -75,7 +73,7 @@ Session::Session(sr_session_ctx_t *sess, sr_sess_options_t opts, S_Deleter delet
 {
     _sess = sess;
     _opts = opts;
-    _conn = NULL;
+    _conn = nullptr;
     _datastore = SR_DS_RUNNING;
     _deleter = deleter;
 }
@@ -104,10 +102,10 @@ S_Error Session::get_last_error()
     if (SR_ERR_OK == ret) {
         return error;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-        return NULL;
+        return nullptr;
     }
 }
 
@@ -119,10 +117,10 @@ S_Errors Session::get_last_errors()
     if (SR_ERR_OK == ret) {
         return errors;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-        return NULL;
+        return nullptr;
     }
 }
 
@@ -135,30 +133,30 @@ S_Yang_Schemas Session::list_schemas()
         schema->_deleter = std::make_shared<Deleter>(schema->_sch, schema->_cnt);
         return schema;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-        return NULL;
+        return nullptr;
     }
 }
 
 S_String Session::get_schema(const char *module_name, const char *revision,\
                                const char *submodule_name, sr_schema_format_t format)
 {
-    char *mem = NULL;
+    char *mem = nullptr;
 
     int ret = sr_get_schema(_sess, module_name, revision, submodule_name, format, &mem);
     if (SR_ERR_OK == ret) {
-        if (mem == NULL)
-            return NULL;
+        if (mem == nullptr)
+            return nullptr;
         S_String string_val = mem;
         free(mem);
         return string_val;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-        return NULL;
+        return nullptr;
     }
 }
 
@@ -171,10 +169,10 @@ S_Val Session::get_item(const char *xpath)
         value->_deleter = std::make_shared<Deleter>(value->_val);
         return value;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-        return NULL;
+        return nullptr;
     }
 }
 S_Vals Session::get_items(const char *xpath)
@@ -186,10 +184,10 @@ S_Vals Session::get_items(const char *xpath)
         values->_deleter = std::make_shared<Deleter>(values->_vals, values->_cnt);
         return values;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-        return NULL;
+        return nullptr;
     }
 }
 
@@ -201,10 +199,10 @@ S_Iter_Value Session::get_items_iter(const char *xpath)
     if (SR_ERR_OK == ret) {
         return iter;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-        return NULL;
+        return nullptr;
     }
 }
 
@@ -217,10 +215,10 @@ S_Val Session::get_item_next(S_Iter_Value iter)
         value->_deleter = std::make_shared<Deleter>(value->_val);
         return value;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-	return NULL;
+	return nullptr;
     }
 }
 
@@ -233,10 +231,10 @@ S_Tree Session::get_subtree(const char *xpath, sr_get_subtree_options_t opts)
         tree->_deleter = std::make_shared<Deleter>(tree->_node);
         return tree;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-	return NULL;
+	return nullptr;
     }
 
     return tree;
@@ -251,10 +249,10 @@ S_Trees Session::get_subtrees(const char *xpath, sr_get_subtree_options_t opts)
         trees->_deleter = std::make_shared<Deleter>(trees->_trees, trees->_cnt);
         return trees;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-	return NULL;
+	return nullptr;
     }
 
     return trees;
@@ -263,39 +261,39 @@ S_Trees Session::get_subtrees(const char *xpath, sr_get_subtree_options_t opts)
 S_Tree Session::get_child(S_Tree in_tree)
 {
     sr_node_t *node = sr_node_get_child(_sess, in_tree->_node);
-    if (node == NULL) {
-        return NULL;
+    if (node == nullptr) {
+        return nullptr;
     }
 
-    S_Tree out_tree(new Tree(node, NULL));
+    S_Tree out_tree(new Tree(node, nullptr));
     return out_tree;
 }
 
 S_Tree Session::get_next_sibling(S_Tree in_tree)
 {
     sr_node_t *node = sr_node_get_next_sibling(_sess, in_tree->_node);
-    if (node == NULL) {
-        return NULL;
+    if (node == nullptr) {
+        return nullptr;
     }
 
-    S_Tree out_tree(new Tree(node, NULL));
+    S_Tree out_tree(new Tree(node, nullptr));
     return out_tree;
 }
 
 S_Tree Session::get_parent(S_Tree in_tree)
 {
     sr_node_t *node = sr_node_get_parent(_sess, in_tree->_node);
-    if (node == NULL) {
-        return NULL;
+    if (node == nullptr) {
+        return nullptr;
     }
 
-    S_Tree out_tree(new Tree(node, NULL));
+    S_Tree out_tree(new Tree(node, nullptr));
     return out_tree;
 }
 
 void Session::set_item(const char *xpath, S_Val value, const sr_edit_options_t opts)
 {
-    sr_val_t *val = value ? value->_val : NULL;
+    sr_val_t *val = value ? value->_val : nullptr;
 
     int ret = sr_set_item(_sess, xpath, val, opts);
     if (ret != SR_ERR_OK) {
@@ -399,10 +397,10 @@ S_Iter_Change Session::get_changes_iter(const char *xpath)
     if (SR_ERR_OK == ret) {
         return iter;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-        return NULL;
+        return nullptr;
     }
 }
 
@@ -414,10 +412,10 @@ S_Change Session::get_change_next(S_Iter_Change iter)
     if (SR_ERR_OK == ret) {
         return change;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-        return NULL;
+        return nullptr;
     }
 }
 
@@ -441,7 +439,7 @@ void Session::set_options(const sr_sess_options_t opts)
 
 Subscribe::Subscribe(S_Session sess)
 {
-    _sub = NULL;
+    _sub = nullptr;
     _sess = sess;
     sess_deleter = sess->_deleter;
 }
@@ -454,7 +452,7 @@ Subscribe::~Subscribe()
             //this exception can't be catched
             //throw_exception(ret);
         }
-	_sub = NULL;
+	_sub = nullptr;
     }
 
     for(unsigned int i=0; i < wrap_cb_l.size(); i++){
@@ -484,36 +482,36 @@ static int subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_no
     return wrap->subtree_change(sess, xpath, event, wrap->private_ctx["subtree_change"]);
 }
 static int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx) {
-    S_Vals in_vals(new Vals(input, input_cnt, NULL));
+    S_Vals in_vals(new Vals(input, input_cnt, nullptr));
     S_Vals_Holder out_vals(new Vals_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->rpc(xpath, in_vals, out_vals, wrap->private_ctx["rpc_cb"]);
 }
 static int action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx) {
-    S_Vals in_vals(new Vals(input, input_cnt, NULL));
+    S_Vals in_vals(new Vals(input, input_cnt, nullptr));
     S_Vals_Holder out_vals(new Vals_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->action(xpath, in_vals, out_vals, wrap->private_ctx["action_cb"]);
 }
 static int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx) {
-    S_Trees in_tree(new Trees(input, input_cnt, NULL));
+    S_Trees in_tree(new Trees(input, input_cnt, nullptr));
     S_Trees_Holder out_tree(new Trees_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->rpc_tree(xpath, in_tree, out_tree, wrap->private_ctx["rpc_tree"]);
 }
 static int action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx) {
-    S_Trees in_tree(new Trees(input, input_cnt, NULL));
+    S_Trees in_tree(new Trees(input, input_cnt, nullptr));
     S_Trees_Holder out_tree(new Trees_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->action_tree(xpath, in_tree, out_tree, wrap->private_ctx["action_tree"]);
 }
 static void event_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
-    S_Vals vals(new Vals(values, values_cnt, NULL));
+    S_Vals vals(new Vals(values, values_cnt, nullptr));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->event_notif(notif_type, xpath, vals, timestamp, wrap->private_ctx["event_notif"]);
 }
 static void event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
-    S_Trees vals(new Trees(trees, tree_cnt, NULL));
+    S_Trees vals(new Trees(trees, tree_cnt, nullptr));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->event_notif_tree(notif_type, xpath, vals, timestamp, wrap->private_ctx["event_notif_tree"]);
 }
@@ -655,7 +653,7 @@ void Subscribe::unsubscribe()
         throw_exception(ret);
     }
 
-    _sub = NULL;
+    _sub = nullptr;
 }
 
 S_Vals Session::rpc_send(const char *xpath, S_Vals input)
@@ -668,7 +666,7 @@ S_Vals Session::rpc_send(const char *xpath, S_Vals input)
     }
 
     // ensure that the class is not freed before
-    if (input->_vals == NULL) {
+    if (input->_vals == nullptr) {
         throw_exception(SR_ERR_INTERNAL);
     }
 
@@ -686,7 +684,7 @@ S_Trees Session::rpc_send(const char *xpath, S_Trees input)
     }
 
     // ensure that the class is not freed before
-    if (input == NULL) {
+    if (input == nullptr) {
         throw_exception(SR_ERR_INTERNAL);
     }
 
@@ -705,7 +703,7 @@ S_Vals Session::action_send(const char *xpath, S_Vals input)
     }
 
     // ensure that the class is not freed before
-    if (input->_vals == NULL) {
+    if (input->_vals == nullptr) {
         throw_exception(SR_ERR_INTERNAL);
     }
 
@@ -723,7 +721,7 @@ S_Trees Session::action_send(const char *xpath, S_Trees input)
     }
 
     // ensure that the class is not freed before
-    if (input == NULL) {
+    if (input == nullptr) {
         throw_exception(SR_ERR_INTERNAL);
     }
 

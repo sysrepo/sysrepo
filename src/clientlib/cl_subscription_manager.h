@@ -85,13 +85,14 @@ typedef struct cl_sm_subscription_ctx_s {
  *
  * @param[in] local_fd_watcher TRUE in case that the application wants to use an application-local file descriptor
  * watcher instead of auto-created thread and event loop.
+ * @param[in] local_sm_terminate_cb Callback for synchronous flushing of event queue if using an application-local FD
  * @param[in] notify_pipe Pipe used for notifications about fd set changes towards application-local
  * file descriptor watcher.
  * @param[out] sm_ctx Subscription Manager context that can be used in subsequent SM API calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cl_sm_init(bool local_fd_watcher, int notify_pipe[2], cl_sm_ctx_t **sm_ctx);
+int cl_sm_init(bool local_fd_watcher, sr_fd_sm_terminated_cb local_sm_terminate_cb, int notify_pipe[2], cl_sm_ctx_t **sm_ctx);
 
 /**
  * @brief Cleans up the Subscription Manager.

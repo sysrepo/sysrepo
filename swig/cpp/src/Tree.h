@@ -30,8 +30,6 @@ extern "C" {
 #include "sysrepo/trees.h"
 }
 
-using namespace std;
-
 class Tree
 {
 public:
@@ -82,8 +80,8 @@ class Trees
 public:
     Trees();
     Trees(size_t n);
-    Trees(sr_node_t **trees, size_t *cnt, S_Deleter deleter = NULL);
-    Trees(const sr_node_t *trees, const size_t n, S_Deleter deleter = NULL);
+    Trees(sr_node_t **trees, size_t *cnt, S_Deleter deleter = nullptr);
+    Trees(const sr_node_t *trees, const size_t n, S_Deleter deleter = nullptr);
     S_Tree tree(size_t n);
     S_Trees dup();
     size_t tree_cnt() {return _cnt;};

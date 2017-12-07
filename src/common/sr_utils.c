@@ -1718,7 +1718,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
     if (NULL != parent) {
         /* get module */
         if (NULL != sr_tree->module_name) {
-            module = ly_ctx_get_module(ly_ctx, sr_tree->module_name, NULL);
+            module = ly_ctx_get_module(ly_ctx, sr_tree->module_name, NULL, 1);
         } else {
             module = lyd_node_module(parent);
         }
@@ -1726,7 +1726,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
         char *ns = NULL;
         ret = sr_copy_first_ns(xpath, &ns);
         CHECK_RC_MSG_RETURN(ret, "Copy first ns failed");
-        module = ly_ctx_get_module(ly_ctx, ns, NULL);
+        module = ly_ctx_get_module(ly_ctx, ns, NULL, 1);
         free(ns);
     }
     if (NULL == module) {
@@ -2314,19 +2314,7 @@ int
 sr_clock_get_time(clockid_t clock_id, struct timespec *ts)
 {
     CHECK_NULL_ARG(ts);
-#ifdef __APPLE__
-    /* OS X */
-    clock_serv_t cclock = {0};
-    mach_timespec_t mts = {0};
-    host_get_clock_service(mach_host_self(), clock_id, &cclock);
-    clock_get_time(cclock, &mts);
-    mach_port_deallocate(mach_task_self(), cclock);
-    ts->tv_sec = mts.tv_sec;
-    ts->tv_nsec = mts.tv_nsec;
-    return 0;
-#else
     return clock_gettime(clock_id, ts);
-#endif
 }
 
 static bool
@@ -2444,14 +2432,41 @@ sr_find_schema_node(const struct lys_module *module, const struct lys_node *star
     }
 
     path = strdup(data_path);
-
     path_end = path + strlen(path);
-    /* replace every '/' with 0 (but be careful with "//") and prepare for parsing */
-    for (name = strchr(path, '/'); name; name = strchr(name + 2, '/')) {
-        name[0] = '\0';
-        if (name[1] == '\0') {
-            rc = SR_ERR_INVAL_ARG;
-            goto error;
+
+    for (name = path; name[0]; ++name) {
+        switch (name[0]) {
+        case '/':
+            /* replace every '/' with 0 (but be careful with "//") */
+            name[0] = '\0';
+            if (name[1] == '\0') {
+                rc = SR_ERR_INVAL_ARG;
+                goto error;
+            }
+            ++name;
+            break;
+        case '\'':
+            /* skip quoted values */
+            do {
+                ++name;
+            } while (name[0] && (name[0] != '\''));
+            if (!name[0]) {
+                rc = SR_ERR_INVAL_ARG;
+                goto error;
+            }
+            break;
+        case '\"':
+            /* skip quoted values */
+            do {
+                ++name;
+            } while (name[0] && ((name[0] != '\"') || (name[-1] == '\\')));
+            if (!name[0]) {
+                rc = SR_ERR_INVAL_ARG;
+                goto error;
+            }
+            break;
+        default:
+            break;
         }
     }
     if (path[0] == '\0') {

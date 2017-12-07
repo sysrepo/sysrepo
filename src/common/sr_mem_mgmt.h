@@ -90,6 +90,17 @@ int sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem);
 void *sr_malloc(sr_mem_ctx_t *sr_mem, size_t size);
 
 /**
+ * @brief Reallocate *new_size* instead *old_size* bytes from the *sr_mem* memory context.
+ *
+ * @param [in] sr_mem Sysrepo memory context to allocate memory from.
+ *                    If NULL then malloc is called instead.
+ * @param [in] ptr Current memory held.
+ * @param [in] old_size Size of the current memory in bytes.
+ * @param [in] new_size Size of the new memory in bytes.
+ */
+void *sr_realloc(sr_mem_ctx_t *sr_mem, void *ptr, size_t old_size, size_t new_size);
+
+/**
  * @brief Allocate zeroed memory for *nmemb* items, each having *size* bytes
  * from the *sr_mem* memory context.
  *

@@ -598,7 +598,6 @@ srctl_uninstall(const char *module_name, const char *revision)
     int rc = SR_ERR_INTERNAL;
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
-    struct ly_ctx *ly_ctx = NULL;
     md_ctx_t *md_ctx = NULL;
     md_module_t *module = NULL;
     char *filepath = NULL;
@@ -610,13 +609,6 @@ srctl_uninstall(const char *module_name, const char *revision)
         return SR_ERR_INVAL_ARG;
     }
     printf("Uninstalling the module '%s'...\n", module_name);
-
-    /* init libyang context */
-    ly_ctx = ly_ctx_new(srctl_schema_search_dir);
-    if (NULL == ly_ctx) {
-        fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
-        goto fail;
-    }
 
     /* init module dependencies context */
     rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
@@ -711,9 +703,6 @@ fail:
 cleanup:
     free(filepath);
     md_destroy(md_ctx);
-    if (ly_ctx) {
-        ly_ctx_destroy(ly_ctx, NULL);
-    }
     md_free_module_key_list(implicitly_removed);
     return rc;
 }
@@ -902,7 +891,7 @@ cleanup:
  * @brief Performs the --install operation.
  */
 static int
-srctl_install(const char *yang, const char *yin, const char *owner, const char *permissions, const char *search_dir)
+srctl_install(const char *yang, const char *yin, const char *owner, const char *permissions, char **search_dirs, int search_dir_count)
 {
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
@@ -920,20 +909,25 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     printf("Installing a new module from file '%s'...\n", (NULL != yang) ? yang : yin);
 
     /* extract the search directory path */
-    if (NULL == search_dir) {
-        search_dir = srctl_get_dir_path((NULL != yang) ? yang : yin);
-        if (NULL == search_dir) {
+    if (NULL == search_dirs) {
+        search_dirs = calloc(1, sizeof *search_dirs);
+        search_dirs[0] = srctl_get_dir_path((NULL != yang) ? yang : yin);
+        if (NULL == search_dirs[0]) {
             fprintf(stderr, "Error: Unable to extract search directory path.\n");
             goto fail;
         }
+        search_dir_count = 1;
         local_search_dir = true;
     }
 
     /* init libyang context */
-    ly_ctx = ly_ctx_new(search_dir);
+    ly_ctx = ly_ctx_new(search_dirs[0], 0);
     if (NULL == ly_ctx) {
         fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
         goto fail;
+    }
+    for (int i = 1; i < search_dir_count; ++i) {
+        ly_ctx_set_searchdir(ly_ctx, search_dirs[i]);
     }
 
     /* init module dependencies context */
@@ -1053,7 +1047,10 @@ cleanup:
     md_destroy(md_ctx);
     ly_ctx_destroy(ly_ctx, NULL);
     if (local_search_dir) {
-        free((char*)search_dir);
+        for (int i = 0; i < search_dir_count; ++i) {
+            free(search_dirs[i]);
+        }
+        free(search_dirs);
     }
     return rc;
 }
@@ -1129,6 +1126,7 @@ srctl_print_help()
     printf("  -o, --owner            Owner user and group of the module's data in chown format (--install, --change operations).\n");
     printf("  -p, --permissions      Access permissions of the module's data in chmod format (--install, --change operations).\n");
     printf("  -s, --search-dir       Directory to search for included/imported modules. Defaults to the directory with the YANG file being installed. (--install operation).\n");
+    printf("                         Can be specified multiple times.\n");
     printf("  -S, --search-installed Search for included/imported modules in sysrepo schema directory. (--install operation).\n");
     printf("\n");
     printf("Examples:\n");
@@ -1150,7 +1148,8 @@ main(int argc, char* argv[])
     char *feature_name = NULL;
     char *yang = NULL, *yin = NULL, *module = NULL, *revision = NULL;
     char *owner = NULL, *permissions = NULL;
-    char *search_dir = NULL;
+    char **search_dirs = NULL;
+    int search_dir_count = 0;
     char local_schema_search_dir[PATH_MAX] = { 0, }, local_data_search_dir[PATH_MAX] = { 0, };
     char local_internal_schema_search_dir[PATH_MAX] = { 0, }, local_internal_data_search_dir[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
@@ -1222,7 +1221,9 @@ main(int argc, char* argv[])
                 permissions = optarg;
                 break;
             case 's':
-                search_dir = optarg;
+                ++search_dir_count;
+                search_dirs = realloc(search_dirs, search_dir_count * sizeof *search_dirs);
+                search_dirs[search_dir_count - 1] = optarg;
                 break;
             case 'S':
                 search_installed = 1;
@@ -1257,7 +1258,9 @@ main(int argc, char* argv[])
     }
 
     if (search_installed) {
-        search_dir = srctl_schema_search_dir;
+        search_dirs = calloc(1, sizeof *search_dirs);
+        search_dirs[0] = srctl_schema_search_dir;
+        search_dir_count = 1;
     }
 
     /* set log levels */
@@ -1274,7 +1277,7 @@ main(int argc, char* argv[])
             rc = srctl_list_modules();
             break;
         case 'i':
-            rc = srctl_install(yang, yin, owner, permissions, search_dir);
+            rc = srctl_install(yang, yin, owner, permissions, search_dirs, search_dir_count);
             break;
         case 'u':
             rc = srctl_uninstall(module, revision);
@@ -1292,5 +1295,6 @@ main(int argc, char* argv[])
             srctl_print_help();
     }
 
+    free(search_dirs);
     return (SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

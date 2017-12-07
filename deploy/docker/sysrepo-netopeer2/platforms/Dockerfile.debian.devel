@@ -105,7 +105,6 @@ RUN \
       make -j2 && \
       make install && \
       cd ../../cli && mkdir build && cd build && \
-      git checkout devel-cli && \
       cmake .. && \
       make -j2 && \
       make install

@@ -176,7 +176,7 @@ rp_dt_contains_non_default_node(struct ly_set *nodes)
 }
 
 int
-rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options)
+rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options, bool is_state)
 {
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
 
@@ -302,12 +302,14 @@ cleanup:
     ly_set_free(parents);
     ly_set_free(nodes);
     /* mark to session copy that some change has been made */
-    info->modified = SR_ERR_OK == rc ? true : info->modified;
+    if (SR_ERR_OK == rc && !is_state) {
+        info->modified = true;
+    }
     return rc;
 }
 
 int
-rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value, const char *str_val)
+rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value, const char *str_val, bool is_state)
 {
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
     /* value can be NULL if the list is created */
@@ -448,7 +450,9 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
 cleanup:
     free(new_value);
     if (NULL != info) {
-        info->modified = SR_ERR_OK == rc ? true : info->modified;
+        if (SR_ERR_OK == rc && !is_state) {
+            info->modified = true;
+        }
     }
     return rc;
 }
@@ -587,7 +591,7 @@ rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpat
     /* val and str_val is freed by dm_add_operation */
     CHECK_RC_MSG_RETURN(rc, "Adding operation to session op list failed");
 
-    rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, opt, val, str_val);
+    rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, opt, val, str_val, false);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Set item failed");
         dm_remove_last_operation(session->dm_session);
@@ -609,7 +613,7 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
     rc = dm_add_del_operation(session->dm_session, xpath, opts);
     CHECK_RC_MSG_RETURN(rc, "Adding operation to session op list failed");
 
-    rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session, xpath, opts);
+    rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session, xpath, opts, false);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("List delete failed");
         dm_remove_last_operation(session->dm_session);
@@ -658,10 +662,10 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
 
         switch (op->op) {
         case DM_SET_OP:
-            rc = rp_dt_set_item(ctx, session, op->xpath, op->detail.set.options, op->detail.set.val, op->detail.set.str_val);
+            rc = rp_dt_set_item(ctx, session, op->xpath, op->detail.set.options, op->detail.set.val, op->detail.set.str_val, false);
             break;
         case DM_DELETE_OP:
-            rc = rp_dt_delete_item(ctx, session, op->xpath, op->detail.del.options);
+            rc = rp_dt_delete_item(ctx, session, op->xpath, op->detail.del.options, false);
             break;
         case DM_MOVE_OP:
             rc = rp_dt_move_list(ctx, session, op->xpath, op->detail.mov.position, op->detail.mov.relative_item);
@@ -831,7 +835,12 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             if (0 == commit_ctx->modif_count) {
                 SR_LOG_DBG_MSG("Commit: Finished - no model modified");
                 dm_free_commit_context(commit_ctx);
-                return SR_ERR_OK;
+                if (SR_DS_CANDIDATE != session->datastore) {
+                    /* we still need to discard changes (operations), it is possible there are some operations that
+                     * did not modify the data (so no model was modified) */
+                    rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session, NULL);
+                }
+                return rc;
             }
             pthread_mutex_lock(&commit_ctx->mutex);
             commit_ctx->disabled_config_change = rp_ctx->do_not_generate_config_change;

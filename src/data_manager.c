@@ -382,7 +382,7 @@ dm_enable_features_in_tmp_module(dm_ctx_t *dm_ctx, md_module_t *md_module, const
     CHECK_RC_LOG_RETURN(rc, "Schema '%s' not found", main_module_name);
     locked = true;
 
-    module_to_read_from = main_module_name == module->name ? si->module : ly_ctx_get_module(si->ly_ctx, module->name, NULL);
+    module_to_read_from = main_module_name == module->name ? si->module : ly_ctx_get_module(si->ly_ctx, module->name, NULL, 1);
     if (NULL == module_to_read_from) {
         SR_LOG_ERR("Module %s not found", main_module_name);
         rc = SR_ERR_INTERNAL;
@@ -539,7 +539,7 @@ dm_release_tmp_ly_ctx(dm_ctx_t *dm_ctx, dm_tmp_ly_ctx_t *tmp_ctx)
 {
     CHECK_NULL_ARG2(dm_ctx, tmp_ctx);
     int rc = SR_ERR_OK;
-    uint32_t idx = LY_INTERNAL_MODULE_COUNT;
+    uint32_t idx = ly_ctx_internal_modules_count(tmp_ctx->ctx);
     const struct lys_module *module = NULL;
 
     /* disable all modules */
@@ -563,7 +563,7 @@ dm_schema_info_init(const char *schema_search_dir, dm_schema_info_t **schema_inf
     si = calloc(1, sizeof(*si));
     CHECK_NULL_NOMEM_RETURN(si);
 
-    si->ly_ctx = ly_ctx_new(schema_search_dir);
+    si->ly_ctx = ly_ctx_new(schema_search_dir, 0);
     CHECK_NULL_NOMEM_GOTO(si->ly_ctx, rc, cleanup);
 
     pthread_rwlock_init(&si->model_lock, NULL);
@@ -639,7 +639,7 @@ dm_feature_enable_internal(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info, cons
         return SR_ERR_OPERATION_FAILED;
     }
 
-    const struct lys_module *module = ly_ctx_get_module(schema_info->ly_ctx, module_name, NULL);
+    const struct lys_module *module = ly_ctx_get_module(schema_info->ly_ctx, module_name, NULL, 0);
     if (NULL != module) {
         rc = enable ? lys_features_enable(module, feature_name) : lys_features_disable(module, feature_name);
         SR_LOG_DBG("%s feature '%s' in module '%s'", enable ? "Enabling" : "Disabling", feature_name, module_name);
@@ -747,7 +747,7 @@ dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schem
     const struct lys_node *node = NULL;
 
     /* enable each subtree within the module */
-    const struct lys_module *module = ly_ctx_get_module(schema_info->ly_ctx, module_name, NULL);
+    const struct lys_module *module = ly_ctx_get_module(schema_info->ly_ctx, module_name, NULL, 1);
     if (NULL != module) {
         /* Use lys_getnext to get real nodes, for rfc6020 7.12.1 support */
         while (NULL != (node = lys_getnext(node, NULL, module, 0)))
@@ -1019,7 +1019,7 @@ dm_remove_added_data_trees_by_module_name(const char *module_name, struct lyd_no
     int rc = SR_ERR_OK;
     if (NULL != *root) {
         struct ly_ctx *ctx = (*root)->schema->module->ctx;
-        const struct lys_module *module = ly_ctx_get_module(ctx, module_name, NULL);
+        const struct lys_module *module = ly_ctx_get_module(ctx, module_name, NULL, 1);
         if (NULL == module) {
             SR_LOG_ERR("Module %s not found", module_name);
             return SR_ERR_INTERNAL;
@@ -1830,8 +1830,14 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
 
     /* transform data from one ctx to another */
     if (NULL != di->node) {
+        ly_ctx_set_module_data_clb(data_info->schema->ly_ctx, dm_module_clb, dm_ctx);
+
         if (NULL == data_info->node) {
             data_info->node = sr_dup_datatree_to_ctx(di->node, data_info->schema->ly_ctx);
+            if (NULL == data_info->node) {
+                SR_LOG_ERR("Failed to duplicate %s data tree into another context", di->schema->module->name);
+                return SR_ERR_INTERNAL;
+            }
         } else {
             ret = lyd_merge_to_ctx(&data_info->node, di->node, LYD_OPT_EXPLICIT, data_info->schema->ly_ctx);
             CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Failed to merge %s data tree", di->schema->module->name);
@@ -2005,7 +2011,7 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     rc = sr_list_init(&t_ctx->loaded_modules);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize a list");
 
-    t_ctx->ctx = ly_ctx_new(ctx->schema_search_dir);
+    t_ctx->ctx = ly_ctx_new(ctx->schema_search_dir, 0);
     CHECK_NULL_NOMEM_GOTO(t_ctx->ctx, rc, cleanup);
 
     ctx->tmp_ly_ctx = t_ctx;
@@ -3071,7 +3077,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
     if (NULL != submodule_name) {
         module = (const struct lys_module *) ly_ctx_get_submodule(si->ly_ctx, module_name, module_revision, submodule_name, submodule_revision);
     } else {
-        module = ly_ctx_get_module(si->ly_ctx, module_name, module_revision);
+        module = ly_ctx_get_module(si->ly_ctx, module_name, module_revision, 0);
     }
 
     if (NULL == module) {
@@ -4872,13 +4878,13 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
             goto unlock;
         }
         /* load module and its dependencies into si */
-        si->ly_ctx = ly_ctx_new(dm_ctx->schema_search_dir);
+        si->ly_ctx = ly_ctx_new(dm_ctx->schema_search_dir, 0);
         CHECK_NULL_NOMEM_GOTO(si->ly_ctx, rc, unlock);
 
         rc = dm_load_schema_file(dm_ctx, module->filepath, true, &si);
         CHECK_RC_LOG_GOTO(rc, unlock, "Failed to load schema %s", module->filepath);
 
-        si->module = ly_ctx_get_module(si->ly_ctx, module_name, NULL);
+        si->module = ly_ctx_get_module(si->ly_ctx, module_name, NULL, 1);
         if (NULL == si->module){
             rc = SR_ERR_INTERNAL;
             goto unlock;
@@ -4887,14 +4893,10 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
         ll_node = module->deps->first;
         while (ll_node) {
             dep = (md_dep_t *)ll_node->data;
-            if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
-                /* Note: imports are automatically loaded by libyang */
-                rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, true, &si);
-                CHECK_RC_LOG_GOTO(rc, unlock, "Loading of %s was not successfull", dep->dest->name);
-            }
             if (dep->type == MD_DEP_DATA) {
                 /* mark this module as dependent on data from other modules */
                 si->cross_module_data_dependency = true;
+                break;
             }
             ll_node = ll_node->next;
         }
@@ -4906,21 +4908,6 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
         if (module->has_persist) {
             rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si, false);
             CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
-        }
-
-        ll_node = module->deps->first;
-        while (ll_node) {
-            dep = (md_dep_t *) ll_node->data;
-            if (dep->dest->has_persist) {
-                if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
-                    rc = dm_apply_persist_data_for_model(dm_ctx, session, dep->dest->name, si, false);
-                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", dep->dest->name);
-                } else if (dep->type == MD_DEP_IMPORT) {
-                    rc = dm_apply_persist_data_for_model(dm_ctx, session, dep->dest->name, si, true);
-                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply features from persist data for %s", dep->dest->name);
-                }
-            }
-            ll_node = ll_node->next;
         }
 
         /* distinguish between modules that can and cannot be locked */
@@ -5293,8 +5280,10 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
         size_t e_cnt = 0;
         rc = dm_validate_session_data_trees(dm_ctx, session, &errors, &e_cnt);
         if (SR_ERR_OK != rc) {
-            rc = dm_report_error(session, errors[0].message, errors[0].xpath, SR_ERR_VALIDATION_FAILED);
-            sr_free_errors(errors, e_cnt);
+            if (NULL != errors) {
+                rc = dm_report_error(session, errors[0].message, errors[0].xpath, SR_ERR_VALIDATION_FAILED);
+                sr_free_errors(errors, e_cnt);
+            }
             SR_LOG_ERR_MSG("There is a invalid data tree, can not be copied");
             goto cleanup;
         }
@@ -5600,7 +5589,7 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char
 
     /* remove previous config from running */
     SR_LOG_DBG("Remove previous content of running configuration under %s.", xpath);
-    rc = rp_dt_delete_item(ctx, tmp_session, xpath, SR_EDIT_DEFAULT);
+    rc = rp_dt_delete_item(ctx, tmp_session, xpath, SR_EDIT_DEFAULT, false);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Delete of previous values in running failed xpath %s", xpath);
 
     /* select a part of configuration to be enabled */

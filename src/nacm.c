@@ -488,6 +488,10 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
     fd = open(ds_filepath, O_RDONLY);
     CHECK_NOT_MINUS1_LOG_GOTO(fd, rc, SR_ERR_IO, cleanup, "Unable to open the NACM startup datastore ('%s'): %s.",
                               ds_filepath, sr_strerror_safe(errno));
+
+    /* we may require some additional modules */
+    ly_ctx_set_module_data_clb(nacm_ctx->schema_info->ly_ctx, dm_module_clb, nacm_ctx->dm_ctx);
+
     ly_errno = 0;
     data_tree = lyd_parse_fd(nacm_ctx->schema_info->ly_ctx, fd, LYD_XML, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
     if (NULL == data_tree && LY_SUCCESS != ly_errno) {

@@ -43,7 +43,7 @@ print_current_config(S_Session session, const char *module_name)
         snprintf(select_xpath, MAX_LEN, "/%s:*//*", module_name);
 
         auto values = session->get_items(&select_xpath[0]);
-        if (values == NULL)
+        if (values == nullptr)
             return;
 
         for(unsigned int i = 0; i < values->val_cnt(); i++)
@@ -95,7 +95,7 @@ main(int argc, char **argv)
         S_Subscribe subscribe(new Subscribe(sess));
 	S_Callback cb(new My_Callback());
 
-        subscribe->module_change_subscribe(module_name, cb, NULL, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY);
+        subscribe->module_change_subscribe(module_name, cb, nullptr, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY);
 
         print_current_config(sess, module_name);
 
