@@ -1742,12 +1742,18 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, md_module_t *main
                         /* all children carry operational data */
                         rc = SR_ERR_NOT_FOUND;
                         if (augment) {
-                            rc = md_check_op_data_subtree(dest_module, node);
+                            if (node->nodetype == LYS_AUGMENT) {
+                                child = node->child;
+                                assert((intptr_t)child->priv & PRIV_OP_SUBTREE);
+                            }
+                            rc = md_check_op_data_subtree(dest_module, child);
+                        } else {
+                            child = node;
                         }
                         if (SR_ERR_DATA_EXISTS == rc) {
                             rc = SR_ERR_OK;
                         } else if (SR_ERR_NOT_FOUND == rc) {
-                            rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module, node,
+                            rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module, child,
                                                     MD_XPATH_MODULE_OP_DATA_SUBTREE);
                         }
                     }
