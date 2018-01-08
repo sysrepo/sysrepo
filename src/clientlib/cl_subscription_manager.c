@@ -1472,7 +1472,7 @@ cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, c
     strncat(path, ".sock", PATH_MAX - strlen(path) - 1);
     fd = open(path, O_RDWR | O_CREAT | O_EXCL, 0600);
 #endif
-    CHECK_NOT_MINUS1_LOG_RETURN(fd, -1, "Failed to open unique temporary file: %s", strerror(errno));  
+    CHECK_NOT_MINUS1_LOG_RETURN(fd, -1, "Failed to open unique temporary file: %s", strerror(errno));
     close(fd);
     unlink(path);
 
@@ -1668,6 +1668,7 @@ cl_sm_init(bool local_fd_watcher, sr_fd_sm_terminated_cb local_sm_terminate_cb, 
 {
     cl_sm_ctx_t *ctx = NULL;
     int ret = 0, rc = SR_ERR_OK;
+    pthread_mutexattr_t mattr;
 
     CHECK_NULL_ARG(sm_ctx_p);
 
@@ -1704,7 +1705,11 @@ cl_sm_init(bool local_fd_watcher, sr_fd_sm_terminated_cb local_sm_terminate_cb, 
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions server contexts mutex.");
     ret = pthread_mutex_init(&ctx->fd_changeset_lock, NULL);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize fd changeset mutex.");
-    ret = pthread_mutex_init(&ctx->subscriptions_lock, NULL);
+    ret = pthread_mutexattr_init(&mattr);
+    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize mutex attribute.");
+    pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
+    ret = pthread_mutex_init(&ctx->subscriptions_lock, &mattr);
+    pthread_mutexattr_destroy(&mattr);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions mutex.");
 
     srand(time(NULL));
