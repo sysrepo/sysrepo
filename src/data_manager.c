@@ -3602,6 +3602,9 @@ dm_free_commit_context(void *commit_ctx)
         }
         c_ctx->session = NULL;
         sr_btree_cleanup(c_ctx->difflists);
+        if (NULL != c_ctx->backup_session) {
+            dm_session_stop(c_ctx->backup_session->dm_ctx, c_ctx->backup_session);
+        }
         free(c_ctx);
     }
 }

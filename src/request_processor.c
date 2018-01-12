@@ -1464,7 +1464,7 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
 
     if (SR_ERR_OK == rc ) {
         session->req = msg;
-        rc = rp_dt_commit(rp_ctx, session, c_ctx, false, &errors, &err_cnt);
+        rc = rp_dt_commit(rp_ctx, session, &c_ctx, false, &errors, &err_cnt);
     }
     if (SR_ERR_OK == rc && RP_REQ_WAITING_FOR_VERIFIERS == session->state) {
         SR_LOG_DBG_MSG("Commit request paused, waiting for verifiers");
