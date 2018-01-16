@@ -6012,6 +6012,70 @@ cl_identityref_test_post(void **state) {
     return 0;
 }
 
+/* The module mutual-leafref-augment augments the module mutual-leafref-base in
+   a way that a leaf in mutual-leafref-base refers to a leaf in mutual-leafref-augment
+   and vice versa. When performing a get on one of those modules this leads to
+   an endless recursive call sequence in data_manager.c which causes a stack overflow
+   (segmentation fault).
+ */
+static int
+cl_mutual_leafref_test_pre (void **state) {
+
+    sr_conn_ctx_t *conn = NULL;
+    int rc = SR_ERR_OK;
+
+    sr_log_stderr(SR_LL_DBG);
+
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/mutual-leafref-augment.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "mutual-leafref-augment@2018-01-11.yang", true);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "mutual-leafref-base@2018-01-11.yang", true);
+
+    /* connect to sysrepo */
+    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    *state = (void*)conn;
+
+    return 0;
+}
+
+static void
+cl_mutual_leafref_test (void **state) {
+
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_val_t *value;
+    int rc = 0;
+    sr_session_ctx_t *session = NULL;
+
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // the purpose of this sr_get_item() is just to trigger the circular dependency
+    // resolution process which success we want to verify. So we don't care about any value.
+    rc = sr_get_item(session, "/mutual-leafref-base:box/item[name='noname']/xyz", &value);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static int
+cl_mutual_leafref_test_post(void **state) {
+
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    /* disconnect from sysrepo */
+    sr_disconnect(conn);
+
+//    exec_shell_command("../src/sysrepoctl --uninstall --module=mutual-leafref-base", ".*", true, 0);
+//    test_file_exists(TEST_SCHEMA_SEARCH_DIR "mutual-leafref-augment2018-01-11.yang", false);
+//    test_file_exists(TEST_SCHEMA_SEARCH_DIR "mutual-leafref-base2018-01-11.yang", false);
+
+    return 0;
+}
+
 int
 main()
 {
@@ -6074,6 +6138,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_inst_id_to_more_modules_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_neg_subscribe_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_identityref_test, cl_identityref_test_pre, cl_identityref_test_post),
+            cmocka_unit_test_setup_teardown(cl_mutual_leafref_test, cl_mutual_leafref_test_pre, cl_mutual_leafref_test_post),
     };
 
     watchdog_start(300);
