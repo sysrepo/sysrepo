@@ -1824,8 +1824,9 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
     int rc = SR_ERR_OK;
     int ret = 0;
     dm_data_info_t *di = NULL;
+    bool must_be_freed = false;
 
-    rc = dm_get_data_info(dm_ctx, session, module_name, &di);
+    rc = dm_get_data_info_internal(dm_ctx, session, module_name, true, &must_be_freed, &di);
     CHECK_RC_LOG_RETURN(rc, "Get data info failed for module %s", module_name);
 
     /* transform data from one ctx to another */
@@ -1844,6 +1845,10 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
         }
     } else {
         SR_LOG_DBG("Dependant module %s is empty", di->schema->module->name);
+    }
+
+    if (must_be_freed) {
+        dm_data_info_free(di);
     }
 
     return rc;
