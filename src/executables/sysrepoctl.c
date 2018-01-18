@@ -604,7 +604,7 @@ srctl_uninstall(char **module_names, char **revisions, int count)
     md_module_key_t *module_key = NULL;
     sr_list_t *implicitly_removed = NULL;
 
-    if (NULL == module_names) {
+    if (NULL == module_names || NULL == module_names[0]) {
         fprintf(stderr, "Error: Modules must be specified for --uninstall operation.\n");
         return SR_ERR_INVAL_ARG;
     }
@@ -1303,7 +1303,7 @@ main(int argc, char* argv[])
             rc = srctl_install(yang, yin, owner, permissions, search_dirs, search_dir_count);
             break;
         case 'u':
-            if (!strchr(module, ',')) {
+            if (!module || !strchr(module, ',')) {
                 rc = srctl_uninstall(&module, &revision, 1);
             } else {
                 count = 1;
