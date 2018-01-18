@@ -257,12 +257,13 @@ int md_insert_module(md_ctx_t *md_ctx, const char *filepath, sr_list_t **implici
  * @note O(|V| * (d_max)^3) where d_max is the maximum degree in both dependency and inverted dependency graph.
  *
  * @param [in] md_ctx Module Dependencies context
- * @param [in] name Name of the module to remove
- * @param [in] revision Revision of the module to remove, can be empty string
+ * @param [in] names Names of the modules to remove
+ * @param [in] revisions Revisions of the modules to remove, can be empty strings
+ * @param [in] count Number of modules to be removed
  * @param [out] implicitly_removed A list of modules (not submodules) that were automatically removed
  *              (previous import-based dependencies). Items are pointers to md_module_key_t.
  */
-int md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision, sr_list_t **implicitly_removed);
+int md_remove_modules(md_ctx_t *md_ctx, const char * const *names, const char * const *revisions, int count, sr_list_t **implicitly_removed);
 
 /**
  * @brief Output the in-memory stored dependency graph from the given context into the internal data file

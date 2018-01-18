@@ -593,22 +593,27 @@ srctl_data_uninstall(const char *module_name)
  * @brief Performs the --uninstall operation.
  */
 static int
-srctl_uninstall(const char *module_name, const char *revision)
+srctl_uninstall(char **module_names, char **revisions, int count)
 {
-    int rc = SR_ERR_INTERNAL;
+    int rc = SR_ERR_INTERNAL, i;
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
     md_ctx_t *md_ctx = NULL;
     md_module_t *module = NULL;
-    char *filepath = NULL;
+    char **filepaths = NULL;
     md_module_key_t *module_key = NULL;
     sr_list_t *implicitly_removed = NULL;
 
-    if (NULL == module_name) {
-        fprintf(stderr, "Error: Module must be specified for --uninstall operation.\n");
+    if (NULL == module_names) {
+        fprintf(stderr, "Error: Modules must be specified for --uninstall operation.\n");
         return SR_ERR_INVAL_ARG;
     }
-    printf("Uninstalling the module '%s'...\n", module_name);
+
+    printf("Uninstalling the module ");
+    for (i = 0; i < count; ++i) {
+        printf("%s", module_names[i]);
+    }
+    printf("...\n");
 
     /* init module dependencies context */
     rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
@@ -618,24 +623,28 @@ srctl_uninstall(const char *module_name, const char *revision)
         goto fail;
     }
 
-    /* search for the module to uninstall */
-    rc = md_get_module_info(md_ctx, module_name, revision, NULL, &module);
-    if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Module '%s@%s' is not installed.\n", module_name,
-                revision ? revision : "<latest>");
-        goto fail;
-    }
-
     /**
      * Note: Module should be removed from the dependency graph before the schema files so
      * that the repository will remain in correct state even if the uninstallation fails
      * in-progress.
      */
+    filepaths = calloc(count, sizeof *filepaths);
+    CHECK_NULL_NOMEM_GOTO(filepaths, rc, fail);
+    for (i = 0; i < count; ++i) {
+        /* search for the module to uninstall */
+        rc = md_get_module_info(md_ctx, module_names[i], revisions[i], NULL, &module);
+        if (SR_ERR_OK != rc) {
+            fprintf(stderr, "Error: Module '%s@%s' is not installed.\n", module_names[i],
+                    revisions[i] ? revisions[i] : "<latest>");
+            goto fail;
+        }
+
+        filepaths[i] = strdup(module->filepath);
+        CHECK_NULL_NOMEM_GOTO(filepaths[i], rc, fail);
+    }
 
     /* try to remove the module from the dependency graph */
-    filepath = strdup(module->filepath);
-    CHECK_NULL_NOMEM_GOTO(filepath, rc, fail);
-    rc = md_remove_module(md_ctx, module_name, revision, &implicitly_removed);
+    rc = md_remove_modules(md_ctx, (const char * const *)module_names, (const char * const *)revisions, count, &implicitly_removed);
     if (SR_ERR_INVAL_ARG == rc) {
         fprintf(stderr, "Error: Uninstalling the module would leave the repository in a state "
                                "with unresolved inter-module dependencies.\n");
@@ -645,18 +654,21 @@ srctl_uninstall(const char *module_name, const char *revision)
         fprintf(stderr, "Error: Unable to remove the module from the dependency graph.\n");
         goto fail;
     }
+
     /* notify sysrepo about the change */
-    if (!custom_repository) {
-        /* disable in sysrepo */
-        rc = srctl_open_session(true, &connection, &session);
-        if (SR_ERR_OK == rc) {
-            rc = sr_module_install(session, module_name, revision, NULL, false);
-            if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
-                srctl_report_error(session, rc);
-                fprintf(stderr, "Module can not be uninstalled because it is being used.\n");
+    for (i = 0; i < count; ++i) {
+        if (!custom_repository) {
+            /* disable in sysrepo */
+            rc = srctl_open_session(true, &connection, &session);
+            if (SR_ERR_OK == rc) {
+                rc = sr_module_install(session, module_names[i], revisions[i], NULL, false);
+                if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+                    srctl_report_error(session, rc);
+                    fprintf(stderr, "Module can not be uninstalled because it is being used.\n");
+                }
+                sr_disconnect(connection);
+                CHECK_RC_LOG_GOTO(rc, fail, "Failed to uninstall module %s", module_names[i]);
             }
-            sr_disconnect(connection);
-            CHECK_RC_LOG_GOTO(rc, fail, "Failed to uninstall module %s", module->name);
         }
     }
 
@@ -670,16 +682,18 @@ srctl_uninstall(const char *module_name, const char *revision)
     md_destroy(md_ctx);
     md_ctx = NULL;
 
-    /* uninstall the module */
-    rc = srctl_schema_file_delete(filepath);
-    if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Warning: Module schema delete was unsuccessful, continuing.\n");
-    }
+    for (i = 0; i < count; ++i) {
+        /* uninstall the module */
+        rc = srctl_schema_file_delete(filepaths[i]);
+        if (SR_ERR_OK != rc) {
+            fprintf(stderr, "Warning: Module schema delete was unsuccessful, continuing.\n");
+        }
 
-    /* delete data files */
-    rc = srctl_data_uninstall(module_name);
-    if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Warning: data files removal was unsuccessful, continuing.\n");
+        /* delete data files */
+        rc = srctl_data_uninstall(module_names[i]);
+        if (SR_ERR_OK != rc) {
+            fprintf(stderr, "Warning: data files removal was unsuccessful, continuing.\n");
+        }
     }
 
     /* uninstall (sub)modules that are no longer needed */
@@ -701,7 +715,12 @@ fail:
     printf("Uninstall operation failed.\n");
 
 cleanup:
-    free(filepath);
+    if (filepaths) {
+        for (i = 0; i < count; ++i) {
+            free(filepaths[i]);
+        }
+    }
+    free(filepaths);
     md_destroy(md_ctx);
     md_free_module_key_list(implicitly_removed);
     return rc;
@@ -1007,7 +1026,7 @@ fail_data:
     rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir,
                  srctl_internal_data_search_dir, true, &md_ctx);
     if (SR_ERR_OK == rc) {
-        rc = md_remove_module(md_ctx, module->name, module->rev[0].date, NULL);
+        rc = md_remove_modules(md_ctx, &module->name, (const char * const *)&module->rev[0].date, 1, NULL);
     }
     if (SR_ERR_OK == rc) {
         md_flush(md_ctx);
@@ -1121,8 +1140,10 @@ srctl_print_help()
     printf("  -L, --level            Set verbosity level of logging ([0 - 4], 0 = all logging turned off).\n");
     printf("  -g, --yang             Path to the file with schema in YANG format (--install operation).\n");
     printf("  -n, --yin              Path to the file with schema in YIN format (--install operation).\n");
-    printf("  -m, --module           Name of the module to be operated on (--uninstall, --change, --feature-enable, --feature-disable operations).\n");
-    printf("  -r, --revision         Revision of the module to be operated on (--uninstall operations).\n");
+    printf("  -m, --module           Name of the module to be operated on (--change, --feature-enable, --feature-disable operations,\n");
+    printf("                         --uninstall - several modules can be delimited with \',\').\n");
+    printf("  -r, --revision         Revision of the module to be operated on (--uninstall operations - several revisions\n");
+    printf("                         can be delimited with \',\', for no revision use \'-\').\n");
     printf("  -o, --owner            Owner user and group of the module's data in chown format (--install, --change operations).\n");
     printf("  -p, --permissions      Access permissions of the module's data in chmod format (--install, --change operations).\n");
     printf("  -s, --search-dir       Directory to search for included/imported modules. Defaults to the directory with the YANG file being installed. (--install operation).\n");
@@ -1136,6 +1157,8 @@ srctl_print_help()
     printf("     sysrepoctl --change --module=ietf-interfaces --owner=admin:admin --permissions=644\n\n");
     printf("  3) Enable a feature within a YANG module:\n");
     printf("     sysrepoctl --feature-enable=if-mib --module=ietf-interfaces\n\n");
+    printf("  4) Uninstall 2 modules, second one is without revision:\n");
+    printf("     sysrepoctl --uninstall --module=mod-a,mod-b --revision=2035-05-05,-\n\n");
 }
 
 /**
@@ -1144,11 +1167,11 @@ srctl_print_help()
 int
 main(int argc, char* argv[])
 {
-    int c = 0, operation = 0;
-    char *feature_name = NULL;
+    int c = 0, operation = 0, count = 0;
+    char *feature_name = NULL, *ptr = NULL;
     char *yang = NULL, *yin = NULL, *module = NULL, *revision = NULL;
     char *owner = NULL, *permissions = NULL;
-    char **search_dirs = NULL;
+    char **search_dirs = NULL, **modules = NULL, **revisions = NULL;
     int search_dir_count = 0;
     char local_schema_search_dir[PATH_MAX] = { 0, }, local_data_search_dir[PATH_MAX] = { 0, };
     char local_internal_schema_search_dir[PATH_MAX] = { 0, }, local_internal_data_search_dir[PATH_MAX] = { 0, };
@@ -1280,7 +1303,57 @@ main(int argc, char* argv[])
             rc = srctl_install(yang, yin, owner, permissions, search_dirs, search_dir_count);
             break;
         case 'u':
-            rc = srctl_uninstall(module, revision);
+            if (!strchr(module, ',')) {
+                rc = srctl_uninstall(&module, &revision, 1);
+            } else {
+                count = 1;
+                for (ptr = module; ptr[0]; ++ptr) {
+                    if (ptr[0] == ',') {
+                        ++count;
+                    }
+                }
+
+                modules = calloc(count, sizeof *modules);
+                revisions = calloc(count, sizeof *revisions);
+                if (!modules || !revisions) {
+                    fprintf(stderr, "%s: memory allocation failed. Exiting.\n", argv[0]);
+                    return EXIT_FAILURE;
+                }
+
+                for (ptr = strtok(module, ","), c = 0; ptr; ptr = strtok(NULL, ","), ++c) {
+                    modules[c] = strdup(ptr);
+                    if (!modules[c]) {
+                        fprintf(stderr, "%s: memory allocation failed. Exiting.\n", argv[0]);
+                        rc = SR_ERR_INTERNAL;
+                        goto fail;
+                    }
+                }
+
+                if (revision) {
+                    for (ptr = strtok(revision, ","), c = 0; ptr; ptr = strtok(NULL, ","), ++c) {
+                        if (c == count) {
+                            /* too many revisions, invalid write */
+                            ++c;
+                            break;
+                        }
+                        if (strcmp(ptr, "-") != 0) {
+                            revisions[c] = strdup(ptr);
+                            if (!revisions[c]) {
+                                fprintf(stderr, "%s: memory allocation failed. Exiting.\n", argv[0]);
+                                rc = SR_ERR_INTERNAL;
+                                goto fail;
+                            }
+                        }
+                    }
+                    if (c != count) {
+                        fprintf(stderr, "%s: option `--revision' includes different number of revisions than modules. Exiting.\n", argv[0]);
+                        rc = SR_ERR_INTERNAL;
+                        goto fail;
+                    }
+                }
+
+                rc = srctl_uninstall(modules, revisions, count);
+            }
             break;
         case 'c':
             rc = srctl_change(module, owner, permissions);
@@ -1295,6 +1368,19 @@ main(int argc, char* argv[])
             srctl_print_help();
     }
 
+fail:
+    if (modules) {
+        for (c = 0; c < count; ++c) {
+            free(modules[c]);
+        }
+        free(modules);
+    }
+    if (revisions) {
+        for (c = 0; c < count; ++c) {
+            free(revisions[c]);
+        }
+        free(revisions);
+    }
     free(search_dirs);
     return (SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

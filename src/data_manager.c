@@ -5031,7 +5031,7 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
         SR_LOG_ERR("Module %s with revision %s was not found", module_name, revision);
         rc = SR_ERR_NOT_FOUND;
     } else {
-        rc = md_remove_module(dm_ctx->md_ctx, module_name, revision, &implicitly_removed);
+        rc = md_remove_modules(dm_ctx->md_ctx, &module_name, &revision, 1, &implicitly_removed);
     }
 
     /* uninstall also modules that were "silently" removed */
