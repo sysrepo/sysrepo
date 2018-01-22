@@ -2372,13 +2372,13 @@ cleanup:
 }
 
 /**
- * @brief Try to remove module from the dependency graph and update all the edges.
+ * @brief Try to remove module(s) from the dependency graph and update all the edges.
  */
 static int
-md_remove_module_internal(md_ctx_t *md_ctx, const char *name, const char *revision, bool force,
+md_remove_modules_internal(md_ctx_t *md_ctx, const char * const *names, const char * const *revisions, int count, bool force,
         sr_list_t *implicitly_removed)
 {
-    int ret = 0;
+    int ret = 0, i, j;
     bool submodule = false;
     md_module_t *module = NULL, *module2 = NULL, *latest = NULL, *orig = NULL;
     md_module_t module_lkp = { 0, };
@@ -2392,264 +2392,49 @@ md_remove_module_internal(md_ctx_t *md_ctx, const char *name, const char *revisi
     size_t orig_module_cnt = 0;
     md_dep_type_t dep_type = MD_DEP_NONE;
     int usage_cnt = 0;
-    CHECK_NULL_ARG2(md_ctx, name);
+    CHECK_NULL_ARG3(md_ctx, names, revisions);
 
-    /* search for the module */
-    module_lkp.name = (char *)name;
-    module_lkp.revision_date = (char *)revision;
-    module = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
-    if (NULL == module) {
-        SR_LOG_ERR("Module '%s@%s' is not present in the dependency graph.",
-                   name, revision ? revision : "<latest>");
-        return SR_ERR_NOT_FOUND;
-    }
-    submodule = module->submodule;
-
-    /* check if this module can be removed */
-    dep_node = module->inv_deps->first;
-    while (!force && dep_node) {
-        dep = (md_dep_t *)dep_node->data;
-        if (dep->type == MD_DEP_IMPORT || dep->type == MD_DEP_INCLUDE || dep->type == MD_DEP_DATA) {
-            SR_LOG_ERR("Module '%s' cannot be removed as module '%s' depends on it.",
-                       md_get_module_fullname(module), md_get_module_fullname(dep->dest));
-            return SR_ERR_INVAL_ARG;
+    for (i = 0; i < count; ++i) {
+        /* search for the module */
+        module_lkp.name = (char *)names[i];
+        module_lkp.revision_date = (char *)revisions[i];
+        module = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
+        if (NULL == module) {
+            SR_LOG_ERR("Module '%s@%s' is not present in the dependency graph.",
+                    names[i], revisions[i] ? revisions[i] : "<latest>");
+            return SR_ERR_NOT_FOUND;
         }
-        dep_node = dep_node->next;
-    }
+        submodule = module->submodule;
 
-    /* remove all direct edges pointing to this node */
-    dep_node = module->inv_deps->first;
-    while (dep_node) {
-        dep = (md_dep_t *)dep_node->data;
-        if (dep->direct) {
-            dep_node2 = dep->dest->deps->first;
-            while (dep_node2) {
-                dep2 = (md_dep_t *)dep_node2->data;
-                if (module == dep2->dest) {
-                    sr_llist_cleanup(dep2->orig_modules);
-                    free(dep2);
-                    tmp_ll_node = dep_node2;
-                    dep_node2 = dep_node2->next;
-                    sr_llist_rm(dep->dest->deps, tmp_ll_node);
-                    continue;
-                }
-                dep_node2 = dep_node2->next;
-            }
-        }
-        dep_node = dep_node->next;
-    }
-
-    /* remove edges pointing to this module in data_tree */
-    dep_node = module->inv_deps->first;
-    while (dep_node) {
-        dep = (md_dep_t *)dep_node->data;
-        if (dep->direct) {
-            node_data = dep->dest->ly_data;
-            if (node_data) {
-                node_data = node_data->child;
-                while (node_data) {
-                    if (node_data->schema->name && 0 == strcmp("dependencies", node_data->schema->name)) {
-                        node_data = node_data->child;
+        /* check if this module can be removed */
+        dep_node = module->inv_deps->first;
+        while (!force && dep_node) {
+            dep = (md_dep_t *)dep_node->data;
+            if (dep->type == MD_DEP_IMPORT || dep->type == MD_DEP_INCLUDE || dep->type == MD_DEP_DATA) {
+                /* check that the module is not going to also be removed */
+                for (j = i + 1; j < count; ++j) {
+                    if ((strcmp(dep->dest->name, names[j]) == 0)
+                            && ((!revisions[j] && (!dep->dest->revision_date || dep->dest->latest_revision))
+                            || (revisions[j] && strcmp(dep->dest->revision_date, revisions[j]) == 0))) {
                         break;
                     }
-                    node_data = node_data->next; /*< next child of "module" */
                 }
-                while (node_data) {
-                    if (node_data->schema->name && 0 == strcmp("dependency", node_data->schema->name)) {
-                        dep_name = NULL;
-                        dep_rev = NULL;
-                        leaf = (struct lyd_node_leaf_list *)node_data->child;
-                        while (leaf) {
-                            if (LYS_LEAF & leaf->schema->nodetype) {
-                                if (leaf->schema->name && 0 == strcmp("module-name", leaf->schema->name)) {
-                                    dep_name = leaf->value.string;
-                                } else if (leaf->schema->name && 0 == strcmp("module-revision", leaf->schema->name)) {
-                                    dep_rev = leaf->value.string;
-                                }
-                            }
-                            leaf = (struct lyd_node_leaf_list *)leaf->next;
-                        }
-                        if (dep_name && dep_rev && 0 == strcmp(dep_name, module->name) &&
-                            0 == strcmp(dep_rev, module->revision_date)) {
-                            for_removal = node_data;
-                            node_data = node_data->next;
-                            lyd_free(for_removal);
-                            continue;
-                        }
-                    }
-                    node_data = node_data->next; /*< next "dependency" */
-                }
-            }
-        }
-        dep_node = dep_node->next; /*< next inverse dependency */
-    }
 
-    /**
-     * Remove all direct edges that were introduced by this module even though they
-     * do not directly connect to it.
-     */
-    dep_node = module->deps->first;
-    while (dep_node) {
-        dep = (md_dep_t *)dep_node->data;
-        if (dep->direct && MD_DEP_IMPORT == dep->type) {
-            dep_node2 = dep->dest->deps->first;
-            while (dep_node2) {
-                dep2 = (md_dep_t *)dep_node2->data;
-                if (dep2->direct && MD_DEP_DATA == dep2->type) {
-                    orig_node = dep2->orig_modules->first;
-                    while (orig_node) {
-                        orig = (md_module_t *)orig_node->data;
-                        if (module == orig) {
-                            sr_llist_rm(dep2->orig_modules, orig_node);
-                            break;
-                        }
-                        orig_node = orig_node->next;
-                    }
-                    if (NULL == dep2->orig_modules->first) {
-                        sr_llist_cleanup(dep2->orig_modules);
-                        free(dep2);
-                        tmp_ll_node = dep_node2;
-                        dep_node2 = dep_node2->next;
-                        sr_llist_rm(dep->dest->deps, tmp_ll_node);
-                        continue;
-                    }
+                if (j == count) {
+                    SR_LOG_ERR("Module '%s' cannot be removed as module '%s' depends on it.",
+                               md_get_module_fullname(module), md_get_module_fullname(dep->dest));
+                    return SR_ERR_INVAL_ARG;
                 }
-                dep_node2 = dep_node2->next;
             }
-            /* also in the inverse graph */
-            dep_node2 = dep->dest->inv_deps->first;
-            while (dep_node2) {
-                dep2 = (md_dep_t *)dep_node2->data;
-                if (dep2->direct && MD_DEP_DATA == dep2->type) {
-                    orig_node = dep2->orig_modules->first;
-                    while (orig_node) {
-                        orig = (md_module_t *)orig_node->data;
-                        if (module == orig) {
-                            sr_llist_rm(dep2->orig_modules, orig_node);
-                            break;
-                        }
-                        orig_node = orig_node->next;
-                    }
-                    if (NULL == dep2->orig_modules->first) {
-                        sr_llist_cleanup(dep2->orig_modules);
-                        free(dep2);
-                        tmp_ll_node = dep_node2;
-                        dep_node2 = dep_node2->next;
-                        sr_llist_rm(dep->dest->inv_deps, tmp_ll_node);
-                        continue;
-                    }
-                }
-                dep_node2 = dep_node2->next;
-            }
+            dep_node = dep_node->next;
         }
-        dep_node = dep_node->next;
-    }
 
-    /* remove edges from data_tree introduced by this module but not pointing to it */
-    dep_node = module->deps->first;
-    while (dep_node) {
-        dep = (md_dep_t *)dep_node->data;
-        if (dep->direct && MD_DEP_IMPORT == dep->type) {
-            node_data = dep->dest->ly_data;
-            if (node_data) {
-                node_data = node_data->child;
-                while (node_data) {
-                    if (node_data->schema->name && 0 == strcmp("dependencies", node_data->schema->name)) {
-                        node_data = node_data->child;
-                        break;
-                    }
-                    node_data = node_data->next; /*< next child of "module" */
-                }
-                while (node_data) {
-                    if (node_data->schema->name && 0 == strcmp("dependency", node_data->schema->name)) {
-                        node_data2 = NULL;
-                        dep_type = MD_DEP_NONE;
-                        leaf = (struct lyd_node_leaf_list *)node_data->child;
-                        while (leaf) {
-                            if (leaf->schema->name && 0 == strcmp("orig-modules", leaf->schema->name)) {
-                                node_data2 = (struct lyd_node *)leaf;
-                                node_data2 = node_data2->child;
-                            } else if (leaf->schema->name && 0 == strcmp("type", leaf->schema->name)) {
-                                dep_type = md_get_dep_type_from_ly(leaf->value.enm);
-                            }
-                            leaf = (struct lyd_node_leaf_list *)leaf->next; /* next child of dependency */
-                        }
-                        orig_module_cnt = 0;
-                        while (node_data2) {
-                            if (node_data2->schema->name && 0 == strcmp("orig-module", node_data2->schema->name)) {
-                                orig_name = NULL;
-                                orig_rev = NULL;
-                                leaf = (struct lyd_node_leaf_list *)node_data2->child;
-                                while (leaf) {
-                                    if (LYS_LEAF & leaf->schema->nodetype) {
-                                        if (leaf->schema->name && 0 == strcmp("orig-module-name", leaf->schema->name)) {
-                                            orig_name = leaf->value.string;
-                                        } else if (leaf->schema->name && 0 == strcmp("orig-module-revision", leaf->schema->name)) {
-                                            orig_rev = leaf->value.string;
-                                        }
-                                    }
-                                    leaf = (struct lyd_node_leaf_list *)leaf->next;
-                                }
-                                if (orig_name && orig_rev && 0 == strcmp(orig_name, module->name) &&
-                                    0 == strcmp(orig_rev, module->revision_date)) {
-                                    for_removal = node_data2;
-                                    node_data2 = node_data2->next;
-                                    lyd_free(for_removal);
-                                    continue;
-                                } else {
-                                    ++orig_module_cnt;
-                                }
-                            }
-                            node_data2 = node_data2->next;
-                        }
-                        if (MD_DEP_DATA == dep_type && 0 == orig_module_cnt) {
-                            for_removal = node_data;
-                            node_data = node_data->next;
-                            lyd_free(for_removal); /* remove dependency */
-                            continue;
-                        }
-                    }
-                    node_data = node_data->next; /*< next "dependency" */
-                }
-            }
-        }
-        dep_node = dep_node->next; /*< next import dependency */
-    }
-
-    /**
-     * Remove all direct edges pointing to this node in the inverse graph.
-     * Also, automatically remove no longer needed (sub)modules.
-     */
-    dep_node = module->deps->first;
-    while (dep_node) {
-        dep = (md_dep_t *)dep_node->data;
-        if (dep->direct) {
-            usage_cnt = 0;
-            /* get usage count after the removal */
-            dep_node2 = dep->dest->inv_deps->first;
-            while (dep_node2) {
-                dep2 = (md_dep_t *)dep_node2->data;
-                if (module != dep2->dest && MD_DEP_EXTENSION != dep2->type) {
-                    ++usage_cnt;
-                }
-                dep_node2 = dep_node2->next;
-            }
-            if (0 == usage_cnt && (dep->dest->submodule || !dep->dest->installed)) {
-                /* no longer needed (sub)module */
-                if (!dep->dest->submodule) {
-                    ret = md_get_module_key(dep->dest, &module_key);
-                    if (SR_ERR_OK == ret) {
-                        if (SR_ERR_OK != sr_list_add(implicitly_removed, module_key)) {
-                            /* ignore any errors here */
-                            md_free_module_key(module_key);
-                        }
-                    }
-                }
-                md_remove_module_internal(md_ctx, dep->dest->name, dep->dest->revision_date, true,
-                        implicitly_removed);
-            } else {
-                /* just remove edges pointing to this module and this dependency */
-                dep_node2 = dep->dest->inv_deps->first;
+        /* remove all direct edges pointing to this node */
+        dep_node = module->inv_deps->first;
+        while (dep_node) {
+            dep = (md_dep_t *)dep_node->data;
+            if (dep->direct) {
+                dep_node2 = dep->dest->deps->first;
                 while (dep_node2) {
                     dep2 = (md_dep_t *)dep_node2->data;
                     if (module == dep2->dest) {
@@ -2657,107 +2442,335 @@ md_remove_module_internal(md_ctx_t *md_ctx, const char *name, const char *revisi
                         free(dep2);
                         tmp_ll_node = dep_node2;
                         dep_node2 = dep_node2->next;
-                        sr_llist_rm(dep->dest->inv_deps, tmp_ll_node);
+                        sr_llist_rm(dep->dest->deps, tmp_ll_node);
                         continue;
                     }
                     dep_node2 = dep_node2->next;
                 }
-
-                sr_llist_cleanup(dep->orig_modules);
-                free(dep);
-                sr_llist_rm(module->deps, dep_node);
             }
-
-            dep_node = module->deps->first;
-        } else {
             dep_node = dep_node->next;
         }
-    }
 
-    /* What is the latest revision for this module now? */
-    if (module->latest_revision) {
-        module_ll_node = md_ctx->modules->first;
-        while (module_ll_node) {
-            module2 = (md_module_t *)module_ll_node->data;
-            if (module != module2 && 0 == strcmp(module->name, module2->name)) {
-                if (NULL == latest) {
-                    latest = module2;
-                } else {
-                    ret = strcmp(latest->revision_date, module2->revision_date);
-                    if (0 > ret) {
-                        latest = module2;
+        /* remove edges pointing to this module in data_tree */
+        dep_node = module->inv_deps->first;
+        while (dep_node) {
+            dep = (md_dep_t *)dep_node->data;
+            if (dep->direct) {
+                node_data = dep->dest->ly_data;
+                if (node_data) {
+                    node_data = node_data->child;
+                    while (node_data) {
+                        if (node_data->schema->name && 0 == strcmp("dependencies", node_data->schema->name)) {
+                            node_data = node_data->child;
+                            break;
+                        }
+                        node_data = node_data->next; /*< next child of "module" */
                     }
+                    while (node_data) {
+                        if (node_data->schema->name && 0 == strcmp("dependency", node_data->schema->name)) {
+                            dep_name = NULL;
+                            dep_rev = NULL;
+                            leaf = (struct lyd_node_leaf_list *)node_data->child;
+                            while (leaf) {
+                                if (LYS_LEAF & leaf->schema->nodetype) {
+                                    if (leaf->schema->name && 0 == strcmp("module-name", leaf->schema->name)) {
+                                        dep_name = leaf->value.string;
+                                    } else if (leaf->schema->name && 0 == strcmp("module-revision", leaf->schema->name)) {
+                                        dep_rev = leaf->value.string;
+                                    }
+                                }
+                                leaf = (struct lyd_node_leaf_list *)leaf->next;
+                            }
+                            if (dep_name && dep_rev && 0 == strcmp(dep_name, module->name) &&
+                                0 == strcmp(dep_rev, module->revision_date)) {
+                                for_removal = node_data;
+                                node_data = node_data->next;
+                                lyd_free(for_removal);
+                                continue;
+                            }
+                        }
+                        node_data = node_data->next; /*< next "dependency" */
+                    }
+                }
+            }
+            dep_node = dep_node->next; /*< next inverse dependency */
+        }
+
+        /**
+        * Remove all direct edges that were introduced by this module even though they
+        * do not directly connect to it.
+        */
+        dep_node = module->deps->first;
+        while (dep_node) {
+            dep = (md_dep_t *)dep_node->data;
+            if (dep->direct && MD_DEP_IMPORT == dep->type) {
+                dep_node2 = dep->dest->deps->first;
+                while (dep_node2) {
+                    dep2 = (md_dep_t *)dep_node2->data;
+                    if (dep2->direct && MD_DEP_DATA == dep2->type) {
+                        orig_node = dep2->orig_modules->first;
+                        while (orig_node) {
+                            orig = (md_module_t *)orig_node->data;
+                            if (module == orig) {
+                                sr_llist_rm(dep2->orig_modules, orig_node);
+                                break;
+                            }
+                            orig_node = orig_node->next;
+                        }
+                        if (NULL == dep2->orig_modules->first) {
+                            sr_llist_cleanup(dep2->orig_modules);
+                            free(dep2);
+                            tmp_ll_node = dep_node2;
+                            dep_node2 = dep_node2->next;
+                            sr_llist_rm(dep->dest->deps, tmp_ll_node);
+                            continue;
+                        }
+                    }
+                    dep_node2 = dep_node2->next;
+                }
+                /* also in the inverse graph */
+                dep_node2 = dep->dest->inv_deps->first;
+                while (dep_node2) {
+                    dep2 = (md_dep_t *)dep_node2->data;
+                    if (dep2->direct && MD_DEP_DATA == dep2->type) {
+                        orig_node = dep2->orig_modules->first;
+                        while (orig_node) {
+                            orig = (md_module_t *)orig_node->data;
+                            if (module == orig) {
+                                sr_llist_rm(dep2->orig_modules, orig_node);
+                                break;
+                            }
+                            orig_node = orig_node->next;
+                        }
+                        if (NULL == dep2->orig_modules->first) {
+                            sr_llist_cleanup(dep2->orig_modules);
+                            free(dep2);
+                            tmp_ll_node = dep_node2;
+                            dep_node2 = dep_node2->next;
+                            sr_llist_rm(dep->dest->inv_deps, tmp_ll_node);
+                            continue;
+                        }
+                    }
+                    dep_node2 = dep_node2->next;
+                }
+            }
+            dep_node = dep_node->next;
+        }
+
+        /* remove edges from data_tree introduced by this module but not pointing to it */
+        dep_node = module->deps->first;
+        while (dep_node) {
+            dep = (md_dep_t *)dep_node->data;
+            if (dep->direct && MD_DEP_IMPORT == dep->type) {
+                node_data = dep->dest->ly_data;
+                if (node_data) {
+                    node_data = node_data->child;
+                    while (node_data) {
+                        if (node_data->schema->name && 0 == strcmp("dependencies", node_data->schema->name)) {
+                            node_data = node_data->child;
+                            break;
+                        }
+                        node_data = node_data->next; /*< next child of "module" */
+                    }
+                    while (node_data) {
+                        if (node_data->schema->name && 0 == strcmp("dependency", node_data->schema->name)) {
+                            node_data2 = NULL;
+                            dep_type = MD_DEP_NONE;
+                            leaf = (struct lyd_node_leaf_list *)node_data->child;
+                            while (leaf) {
+                                if (leaf->schema->name && 0 == strcmp("orig-modules", leaf->schema->name)) {
+                                    node_data2 = (struct lyd_node *)leaf;
+                                    node_data2 = node_data2->child;
+                                } else if (leaf->schema->name && 0 == strcmp("type", leaf->schema->name)) {
+                                    dep_type = md_get_dep_type_from_ly(leaf->value.enm);
+                                }
+                                leaf = (struct lyd_node_leaf_list *)leaf->next; /* next child of dependency */
+                            }
+                            orig_module_cnt = 0;
+                            while (node_data2) {
+                                if (node_data2->schema->name && 0 == strcmp("orig-module", node_data2->schema->name)) {
+                                    orig_name = NULL;
+                                    orig_rev = NULL;
+                                    leaf = (struct lyd_node_leaf_list *)node_data2->child;
+                                    while (leaf) {
+                                        if (LYS_LEAF & leaf->schema->nodetype) {
+                                            if (leaf->schema->name && 0 == strcmp("orig-module-name", leaf->schema->name)) {
+                                                orig_name = leaf->value.string;
+                                            } else if (leaf->schema->name && 0 == strcmp("orig-module-revision", leaf->schema->name)) {
+                                                orig_rev = leaf->value.string;
+                                            }
+                                        }
+                                        leaf = (struct lyd_node_leaf_list *)leaf->next;
+                                    }
+                                    if (orig_name && orig_rev && 0 == strcmp(orig_name, module->name) &&
+                                        0 == strcmp(orig_rev, module->revision_date)) {
+                                        for_removal = node_data2;
+                                        node_data2 = node_data2->next;
+                                        lyd_free(for_removal);
+                                        continue;
+                                    } else {
+                                        ++orig_module_cnt;
+                                    }
+                                }
+                                node_data2 = node_data2->next;
+                            }
+                            if (MD_DEP_DATA == dep_type && 0 == orig_module_cnt) {
+                                for_removal = node_data;
+                                node_data = node_data->next;
+                                lyd_free(for_removal); /* remove dependency */
+                                continue;
+                            }
+                        }
+                        node_data = node_data->next; /*< next "dependency" */
+                    }
+                }
+            }
+            dep_node = dep_node->next; /*< next import dependency */
+        }
+
+        /**
+        * Remove all direct edges pointing to this node in the inverse graph.
+        * Also, automatically remove no longer needed (sub)modules.
+        */
+        dep_node = module->deps->first;
+        while (dep_node) {
+            dep = (md_dep_t *)dep_node->data;
+            if (dep->direct) {
+                usage_cnt = 0;
+                /* get usage count after the removal */
+                dep_node2 = dep->dest->inv_deps->first;
+                while (dep_node2) {
+                    dep2 = (md_dep_t *)dep_node2->data;
+                    if (module != dep2->dest && MD_DEP_EXTENSION != dep2->type) {
+                        ++usage_cnt;
+                    }
+                    dep_node2 = dep_node2->next;
+                }
+                if (0 == usage_cnt && (dep->dest->submodule || !dep->dest->installed)) {
+                    /* no longer needed (sub)module */
+                    if (!dep->dest->submodule) {
+                        ret = md_get_module_key(dep->dest, &module_key);
+                        if (SR_ERR_OK == ret) {
+                            if (SR_ERR_OK != sr_list_add(implicitly_removed, module_key)) {
+                                /* ignore any errors here */
+                                md_free_module_key(module_key);
+                            }
+                        }
+                    }
+                    md_remove_modules_internal(md_ctx, (const char * const *)&dep->dest->name,
+                                               (const char * const *)&dep->dest->revision_date, 1, true, implicitly_removed);
+                } else {
+                    /* just remove edges pointing to this module and this dependency */
+                    dep_node2 = dep->dest->inv_deps->first;
+                    while (dep_node2) {
+                        dep2 = (md_dep_t *)dep_node2->data;
+                        if (module == dep2->dest) {
+                            sr_llist_cleanup(dep2->orig_modules);
+                            free(dep2);
+                            tmp_ll_node = dep_node2;
+                            dep_node2 = dep_node2->next;
+                            sr_llist_rm(dep->dest->inv_deps, tmp_ll_node);
+                            continue;
+                        }
+                        dep_node2 = dep_node2->next;
+                    }
+
+                    sr_llist_cleanup(dep->orig_modules);
+                    free(dep);
+                    sr_llist_rm(module->deps, dep_node);
+                }
+
+                dep_node = module->deps->first;
+            } else {
+                dep_node = dep_node->next;
+            }
+        }
+
+        /* What is the latest revision for this module now? */
+        if (module->latest_revision) {
+            module_ll_node = md_ctx->modules->first;
+            while (module_ll_node) {
+                module2 = (md_module_t *)module_ll_node->data;
+                if (module != module2 && 0 == strcmp(module->name, module2->name)) {
+                    if (NULL == latest) {
+                        latest = module2;
+                    } else {
+                        ret = strcmp(latest->revision_date, module2->revision_date);
+                        if (0 > ret) {
+                            latest = module2;
+                        }
+                    }
+                }
+                module_ll_node = module_ll_node->next;
+            }
+        }
+        /* also update the latest_revision flag in data_tree if needed */
+        if (NULL != latest) {
+            latest->latest_revision = true;
+            ret = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_LATEST_REV_FLAG, "true", latest,
+                                "set latest-revision flag", NULL, latest->name, latest->revision_date);
+            if (SR_ERR_OK != ret) {
+                return SR_ERR_INTERNAL;
+            }
+        }
+
+        /* remove all subtree references related to this module (skip for submodules) */
+        module_ll_node = md_ctx->modules->first;
+        while (!submodule && module_ll_node) {
+            module2 = (md_module_t *)module_ll_node->data;
+            if (module != module2) {
+                /* instance identifiers */
+                node_data = module2->ly_data;
+                if (node_data) {
+                    node_data = node_data->child;
+                    while (node_data) {
+                        if (node_data->schema->name && 0 == strcmp("instance-identifiers", node_data->schema->name)) {
+                            node_data = node_data->child;
+                            break;
+                        }
+                        node_data = node_data->next; /*< next child of "module" */
+                    }
+                }
+                if (node_data) {
+                    md_remove_all_subtree_refs(md_ctx, module, module2->inst_ids, node_data, "instance-identifier");
+                }
+                /* operational data subtrees */
+                node_data = module2->ly_data;
+                if (node_data) {
+                    node_data = node_data->child;
+                    while (node_data) {
+                        if (node_data->schema->name && 0 == strcmp("op-data-subtrees", node_data->schema->name)) {
+                            node_data = node_data->child;
+                            break;
+                        }
+                        node_data = node_data->next; /*< next child of "module" */
+                    }
+                }
+                if (node_data) {
+                    md_remove_all_subtree_refs(md_ctx, module, module2->op_data_subtrees, node_data, "op-data-subtree");
                 }
             }
             module_ll_node = module_ll_node->next;
         }
-    }
-    /* also update the latest_revision flag in data_tree if needed */
-    if (NULL != latest) {
-        latest->latest_revision = true;
-        ret = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_LATEST_REV_FLAG, "true", latest,
-                              "set latest-revision flag", NULL, latest->name, latest->revision_date);
-        if (SR_ERR_OK != ret) {
-            return SR_ERR_INTERNAL;
+
+        /* now remove the module entry from the data tree */
+        node_data = module->ly_data;
+        if (md_ctx->data_tree == node_data) {
+            md_ctx->data_tree = node_data->next;
         }
-    }
+        lyd_free(node_data);
 
-    /* remove all subtree references related to this module (skip for submodules) */
-    module_ll_node = md_ctx->modules->first;
-    while (!submodule && module_ll_node) {
-        module2 = (md_module_t *)module_ll_node->data;
-        if (module != module2) {
-            /* instance identifiers */
-            node_data = module2->ly_data;
-            if (node_data) {
-                node_data = node_data->child;
-                while (node_data) {
-                    if (node_data->schema->name && 0 == strcmp("instance-identifiers", node_data->schema->name)) {
-                        node_data = node_data->child;
-                        break;
-                    }
-                    node_data = node_data->next; /*< next child of "module" */
-                }
-            }
-            if (node_data) {
-                md_remove_all_subtree_refs(md_ctx, module, module2->inst_ids, node_data, "instance-identifier");
-            }
-            /* operational data subtrees */
-            node_data = module2->ly_data;
-            if (node_data) {
-                node_data = node_data->child;
-                while (node_data) {
-                    if (node_data->schema->name && 0 == strcmp("op-data-subtrees", node_data->schema->name)) {
-                        node_data = node_data->child;
-                        break;
-                    }
-                    node_data = node_data->next; /*< next child of "module" */
-                }
-            }
-            if (node_data) {
-                md_remove_all_subtree_refs(md_ctx, module, module2->op_data_subtrees, node_data, "op-data-subtree");
-            }
-        }
-        module_ll_node = module_ll_node->next;
-    }
+        /* finally remove the module itself */
+        sr_llist_rm(md_ctx->modules, module->ll_node);
+        sr_btree_delete(md_ctx->modules_btree_by_ns, module);
+        sr_btree_delete(md_ctx->modules_btree, module);
 
-    /* now remove the module entry from the data tree */
-    node_data = module->ly_data;
-    if (md_ctx->data_tree == node_data) {
-        md_ctx->data_tree = node_data->next;
-    }
-    lyd_free(node_data);
-
-    /* finally remove the module itself */
-    sr_llist_rm(md_ctx->modules, module->ll_node);
-    sr_btree_delete(md_ctx->modules_btree_by_ns, module);
-    sr_btree_delete(md_ctx->modules_btree, module);
-
-    /* execute transitive closure (unless this was only submodule) */
-    if (!submodule) {
-        ret = md_transitive_closure(md_ctx);
-        if (SR_ERR_OK != ret) {
-            return SR_ERR_INTERNAL;
+        /* execute transitive closure (unless this was only submodule) */
+        if (!submodule) {
+            ret = md_transitive_closure(md_ctx);
+            if (SR_ERR_OK != ret) {
+                return SR_ERR_INTERNAL;
+            }
         }
     }
 
@@ -2765,7 +2778,7 @@ md_remove_module_internal(md_ctx_t *md_ctx, const char *name, const char *revisi
 }
 
 int
-md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision, sr_list_t **implicitly_removed_p)
+md_remove_modules(md_ctx_t *md_ctx, const char * const *names, const char * const *revisions, int count, sr_list_t **implicitly_removed_p)
 {
     int rc = SR_ERR_OK;
     sr_list_t *implicitly_removed = NULL;
@@ -2773,7 +2786,7 @@ md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision, sr_li
     rc = sr_list_init(&implicitly_removed);
     CHECK_RC_MSG_RETURN(rc, "List init failed");
 
-    rc = md_remove_module_internal(md_ctx, name, revision, false, implicitly_removed);
+    rc = md_remove_modules_internal(md_ctx, names, revisions, count, false, implicitly_removed);
 
     if (SR_ERR_OK == rc && implicitly_removed_p) {
         *implicitly_removed_p = implicitly_removed;

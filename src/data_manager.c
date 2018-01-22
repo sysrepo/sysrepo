@@ -1824,8 +1824,9 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
     int rc = SR_ERR_OK;
     int ret = 0;
     dm_data_info_t *di = NULL;
+    bool must_be_freed = false;
 
-    rc = dm_get_data_info(dm_ctx, session, module_name, &di);
+    rc = dm_get_data_info_internal(dm_ctx, session, module_name, true, &must_be_freed, &di);
     CHECK_RC_LOG_RETURN(rc, "Get data info failed for module %s", module_name);
 
     /* transform data from one ctx to another */
@@ -1844,6 +1845,10 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
         }
     } else {
         SR_LOG_DBG("Dependant module %s is empty", di->schema->module->name);
+    }
+
+    if (must_be_freed) {
+        dm_data_info_free(di);
     }
 
     return rc;
@@ -3602,6 +3607,9 @@ dm_free_commit_context(void *commit_ctx)
         }
         c_ctx->session = NULL;
         sr_btree_cleanup(c_ctx->difflists);
+        if (NULL != c_ctx->backup_session) {
+            dm_session_stop(c_ctx->backup_session->dm_ctx, c_ctx->backup_session);
+        }
         free(c_ctx);
     }
 }
@@ -5023,7 +5031,7 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
         SR_LOG_ERR("Module %s with revision %s was not found", module_name, revision);
         rc = SR_ERR_NOT_FOUND;
     } else {
-        rc = md_remove_module(dm_ctx->md_ctx, module_name, revision, &implicitly_removed);
+        rc = md_remove_modules(dm_ctx->md_ctx, &module_name, &revision, 1, &implicitly_removed);
     }
 
     /* uninstall also modules that were "silently" removed */
