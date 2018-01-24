@@ -6026,7 +6026,13 @@ cl_mutual_leafref_test_pre (void **state) {
 
     sr_log_stderr(SR_LL_DBG);
 
-    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/mutual-leafref-augment.yang", ".*", true, 0);
+    // unfortuately, it's not (yet) possible to uninstall both modules later on, therefore
+    // we keep a copy of sysrepo-module-dependencies.xml as it was before the test i.o. to
+    // restore it later on (see cl_mutual_leafref_test_post())
+    exec_shell_command("cp " TEST_DATA_SEARCH_DIR "internal/sysrepo-module-dependencies.xml "
+                             TEST_DATA_SEARCH_DIR "internal/_sysrepo-module-dependencies.xml && \
+                             ../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/mutual-leafref-augment.yang", ".*", true, 0);
+
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "mutual-leafref-augment@2018-01-11.yang", true);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "mutual-leafref-base@2018-01-11.yang", true);
 
@@ -6069,9 +6075,10 @@ cl_mutual_leafref_test_post(void **state) {
     /* disconnect from sysrepo */
     sr_disconnect(conn);
 
-//    exec_shell_command("../src/sysrepoctl --uninstall --module=mutual-leafref-base", ".*", true, 0);
-//    test_file_exists(TEST_SCHEMA_SEARCH_DIR "mutual-leafref-augment2018-01-11.yang", false);
-//    test_file_exists(TEST_SCHEMA_SEARCH_DIR "mutual-leafref-base2018-01-11.yang", false);
+    // unfortuately, it's not (yet) possible to uninstall both modules, therefore this ugly workaround:
+    exec_shell_command("mv " TEST_DATA_SEARCH_DIR "internal/_sysrepo-module-dependencies.xml "
+                             TEST_DATA_SEARCH_DIR "internal/sysrepo-module-dependencies.xml", ".*", true, 0);
+    exec_shell_command("rm " TEST_SCHEMA_SEARCH_DIR "mutual-leafref-*.yang", ".*", true, 0);
 
     return 0;
 }
