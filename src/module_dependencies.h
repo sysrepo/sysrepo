@@ -103,7 +103,7 @@ typedef struct md_module_s {
 
 /**
  * @brief A string based reference to a module (which may or may not be inserted in the dependency graph),
- * used by ::md_insert_module and ::md_remove_module.
+ * used by ::md_insert_module and ::md_remove_modules.
  */
 typedef struct md_module_key_s {
     char *name;
@@ -125,7 +125,7 @@ typedef struct md_ctx_s {
     struct ly_ctx *ly_ctx;           /**< libyang context used for manipulation with the internal data file for dependencies. */
 
     struct lyd_node *data_tree;      /**< Graph data as loaded by libyang (not transitively closed).
-                                          Also reflects changes made using ::md_insert_module and ::md_remove_module */
+                                          Also reflects changes made using ::md_insert_module and ::md_remove_modules */
 
     sr_llist_t *modules;             /**< List of all installed modules and submodules with their dependencies.
                                           Items are of type (md_module_t *) */

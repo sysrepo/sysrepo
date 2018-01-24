@@ -2,7 +2,8 @@
 *.o
 *.pyc
 build/
-doc/
+doc/html/
+doc/latex
 .idea/
 nbproject/
 CMakeCache.txt
