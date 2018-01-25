@@ -2395,6 +2395,19 @@ md_remove_modules_internal(md_ctx_t *md_ctx, const char * const *names, const ch
     CHECK_NULL_ARG3(md_ctx, names, revisions);
 
     for (i = 0; i < count; ++i) {
+        /* wasn't the module already implicitly removed? */
+        for (j = 0; j < implicitly_removed->count; ++j) {
+            module_key = implicitly_removed->data[j];
+            if ((strcmp(module_key->name, names[i]) == 0) && (!revisions[i]
+                    || (revisions[i] && strcmp(module_key->revision_date, revisions[i]) == 0))) {
+                break;
+            }
+        }
+        if (j < implicitly_removed->count) {
+            /* yep, already removed */
+            continue;
+        }
+
         /* search for the module */
         module_lkp.name = (char *)names[i];
         module_lkp.revision_date = (char *)revisions[i];
@@ -2648,17 +2661,19 @@ md_remove_modules_internal(md_ctx_t *md_ctx, const char * const *names, const ch
                 }
                 if (0 == usage_cnt && (dep->dest->submodule || !dep->dest->installed)) {
                     /* no longer needed (sub)module */
+                    module_key = NULL;
                     if (!dep->dest->submodule) {
                         ret = md_get_module_key(dep->dest, &module_key);
-                        if (SR_ERR_OK == ret) {
-                            if (SR_ERR_OK != sr_list_add(implicitly_removed, module_key)) {
-                                /* ignore any errors here */
-                                md_free_module_key(module_key);
-                            }
+                        if (SR_ERR_OK != ret) {
+                            module_key = NULL;
                         }
                     }
                     md_remove_modules_internal(md_ctx, (const char * const *)&dep->dest->name,
                                                (const char * const *)&dep->dest->revision_date, 1, true, implicitly_removed);
+                    if (module_key != NULL && sr_list_add(implicitly_removed, module_key) != SR_ERR_OK) {
+                        /* ignore any errors here */
+                        md_free_module_key(module_key);
+                    }
                 } else {
                     /* just remove edges pointing to this module and this dependency */
                     dep_node2 = dep->dest->inv_deps->first;
