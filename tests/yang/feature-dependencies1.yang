@@ -1,0 +1,19 @@
+module feature-dependencies1 {
+
+   namespace "urn:pfe:params:xml:ns:yang:feature-dependencies1";
+   prefix fd1;
+
+   import feature-dependencies2 {
+      prefix fd2;
+   }
+
+   feature issue1;
+
+   container box {
+      leaf abc {
+         if-feature fd2:abc;
+         type string;
+      }
+   }
+
+}
