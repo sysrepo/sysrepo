@@ -6077,6 +6077,65 @@ cl_mutual_leafref_test_post(void **state) {
     return 0;
 }
 
+static int
+cl_feature_dependencies_test_pre (void **state) {
+
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/feature-dependencies1.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "feature-dependencies1.yang", true);
+
+    exec_shell_command("../src/sysrepoctl --feature-enable=xyz --module=feature-dependencies3", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --feature-enable=abc --module=feature-dependencies2", ".*", true, 0);
+
+    exec_shell_command("../src/sysrepoctl --feature-enable=issue1 --module=feature-dependencies1", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --feature-enable=issue2 --module=feature-dependencies2", ".*", true, 0);
+
+    sysrepo_setup(state);
+
+    return 0;
+}
+
+/* In the YANG modules "feature-dependencies1/2/3" several features are defined.
+   The feature "abc" defined in "feature-dependencies2" depends on feature "xyz"
+   defined in "feature-dependency3". Both features can be enabled without problems.
+   But if afterwards one tries to enable other features without dependencies
+   e.g. "issue1" in "feature-dependencies1" or "issue2" in "feature-dependencies2"
+   an error occurs: Feature "abc" is disabled by its 1. if-feature condition.
+
+   The reason is the order in which the persistent data are loaded. The persistent
+   data of imported modules should always be loaded before the data of the importer.
+ */
+static void
+cl_feature_dependencies_test (void **state) {
+
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    int rc = 0;
+    sr_session_ctx_t *session = NULL;
+
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static int
+cl_feature_dependencies_test_post(void **state) {
+
+    sysrepo_teardown(state);
+
+    exec_shell_command("../src/sysrepoctl --feature-disable=issue2 --module=feature-dependencies2", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --feature-disable=issue1 --module=feature-dependencies1", ".*", true, 0);
+
+    exec_shell_command("../src/sysrepoctl --feature-disable=abc --module=feature-dependencies2", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --feature-disable=xyz --module=feature-dependencies3", ".*", true, 0);
+
+    exec_shell_command("../src/sysrepoctl --uninstall --module=feature-dependencies1", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "feature-dependencies1.yang", false);
+
+    return 0;
+}
+
 int
 main()
 {
@@ -6140,6 +6199,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_neg_subscribe_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_identityref_test, cl_identityref_test_pre, cl_identityref_test_post),
             cmocka_unit_test_setup_teardown(cl_mutual_leafref_test, cl_mutual_leafref_test_pre, cl_mutual_leafref_test_post),
+            cmocka_unit_test_setup_teardown(cl_feature_dependencies_test, cl_feature_dependencies_test_pre, cl_feature_dependencies_test_post),
     };
 
     watchdog_start(300);

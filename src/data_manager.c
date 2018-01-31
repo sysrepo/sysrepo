@@ -951,13 +951,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     rc = dm_init_missing_node_priv_data(si);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to initialize private data for module %s", module->name);
 
-    /* apply persist data enable features, running datastore */
-    if (module->has_persist) {
-        rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module_name, si, false); /* TODO: session should be known here */
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", module_name);
-    }
-
-    ll_node = module->deps->first;
+    ll_node = module->deps->last;
     while (ll_node) {
         dep = (md_dep_t *) ll_node->data;
         if (dep->dest->has_persist) {
@@ -970,7 +964,13 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
             }
         }
-        ll_node = ll_node->next;
+        ll_node = ll_node->prev;
+    }
+
+    /* apply persist data enable features, running datastore */
+    if (module->has_persist) {
+        rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module_name, si, false); /* TODO: session should be known here */
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", module_name);
     }
 
     /* distinguish between modules that can and cannot be locked */
@@ -3090,7 +3090,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
         rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }
-    ret = lys_print_mem(schema, module, yang_format ? LYS_OUT_YANG : LYS_OUT_YIN, NULL);
+    ret = lys_print_mem(schema, module, yang_format ? LYS_OUT_YANG : LYS_OUT_YIN, NULL, 0, 0);
     CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Module %s print failed.", si->module_name);
 
 cleanup:
