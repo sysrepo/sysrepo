@@ -1710,8 +1710,8 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, md_module_t *main
                         backtracking = false;
                         child = node->child;
                         while ((NULL != child) && (main_module_schema == lys_node_module(child)) && (child != node)) {
-                            assert(!backtracking || (LYS_USES == child->nodetype));
-                            if ((LYS_USES != child->nodetype) && (LYS_CONFIG_R & child->flags)) {
+                            assert(!backtracking || (LYS_USES == child->nodetype) || (LYS_CHOICE == child->nodetype) || (LYS_CASE == child->nodetype));
+                            if ((LYS_USES != child->nodetype && LYS_CHOICE != child->nodetype && LYS_CASE != child->nodetype) && (LYS_CONFIG_R & child->flags)) {
                                 /* child with state data */
                                 rc = SR_ERR_NOT_FOUND;
                                 if (augment) {
@@ -1728,7 +1728,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, md_module_t *main
                                 }
                             }
                             /* next child */
-                            if ((false == backtracking) && (LYS_USES == child->nodetype) && (NULL != child->child)) {
+                            if ((false == backtracking) && ((LYS_USES == child->nodetype) || (LYS_CHOICE == child->nodetype) || (LYS_CASE == child->nodetype)) && (NULL != child->child)) {
                                 child = child->child;
                             } else if (child->next) {
                                 backtracking = false;
