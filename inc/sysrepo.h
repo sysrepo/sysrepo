@@ -1847,7 +1847,7 @@ typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *
  * Subscribing as a data provider for configuration data does not have any effect.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath @ref xp_page "Schema Path" identifying the subtree under which the provider is able to provide
+ * @param[in] xpath @ref xp_page "Data Path" identifying the subtree under which the provider is able to provide
  * operational data.
  * @param[in] callback Callback to be called when the operational data nder given xpat is needed.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
