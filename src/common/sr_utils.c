@@ -2360,6 +2360,7 @@ sr_find_schema_node_predicate(const struct lys_node *node, char *predicate, cons
     size_t id_len = 0, mod_name_len = 0;
     uint16_t i = 0;
     struct lys_node_leaf *key = NULL;
+    const struct lys_module *key_mod;
 
     if (!(node->nodetype & (LYS_LIST | LYS_LEAFLIST))) {
         return -1;
@@ -2416,9 +2417,10 @@ sr_find_schema_node_predicate(const struct lys_node *node, char *predicate, cons
 
                 for (i = 0; i < ((struct lys_node_list *)node)->keys_size; ++i) {
                     key = ((struct lys_node_list *)node)->keys[i];
+                    key_mod = lys_node_module((struct lys_node *)key);
                     if (0 == strncmp(key->name, identifier, id_len) && !key->name[id_len]) {
-                        if ((mod_name == NULL && key->module == prev_mod) ||
-                            (mod_name != NULL && 0 == strncmp(key->module->name, mod_name, mod_name_len) && !key->module->name[mod_name_len])) {
+                        if ((mod_name == NULL && key_mod == prev_mod) ||
+                                (mod_name != NULL && 0 == strncmp(key_mod->name, mod_name, mod_name_len) && !key_mod->name[mod_name_len])) {
                             break;
                         }
                     }
