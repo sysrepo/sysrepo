@@ -416,7 +416,12 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
-        class_ctx->private_ctx = private_ctx;
+        if (private_ctx) {
+            class_ctx->private_ctx = private_ctx;
+        } else {
+            Py_INCREF(Py_None);
+            class_ctx->private_ctx = Py_None;
+        }
 
         int ret = sr_module_change_subscribe(self->swig_sess(), module_name, g_module_change_subscribe_cb, \
                                              class_ctx, priority, opts, self->swig_sub());
@@ -432,7 +437,12 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
-        class_ctx->private_ctx = private_ctx;
+        if (private_ctx) {
+            class_ctx->private_ctx = private_ctx;
+        } else {
+            Py_INCREF(Py_None);
+            class_ctx->private_ctx = Py_None;
+        }
 
         int ret = sr_subtree_change_subscribe(self->swig_sess(), xpath, g_subtree_change_cb, class_ctx,\
                                               priority, opts, self->swig_sub());
@@ -448,7 +458,12 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
-        class_ctx->private_ctx = private_ctx;
+        if (private_ctx) {
+            class_ctx->private_ctx = private_ctx;
+        } else {
+            Py_INCREF(Py_None);
+            class_ctx->private_ctx = Py_None;
+        }
 
         int ret =  sr_module_install_subscribe(self->swig_sess(), g_module_install_cb, class_ctx,
                                                opts, self->swig_sub());
@@ -465,7 +480,12 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
-        class_ctx->private_ctx = private_ctx;
+        if (private_ctx) {
+            class_ctx->private_ctx = private_ctx;
+        } else {
+            Py_INCREF(Py_None);
+            class_ctx->private_ctx = Py_None;
+        }
 
         int ret = sr_feature_enable_subscribe(self->swig_sess(), g_feature_enable_cb, class_ctx,
                                               opts, self->swig_sub());
@@ -481,7 +501,12 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
-        class_ctx->private_ctx = private_ctx;
+        if (private_ctx) {
+            class_ctx->private_ctx = private_ctx;
+        } else {
+            Py_INCREF(Py_None);
+            class_ctx->private_ctx = Py_None;
+        }
 
         int ret = sr_rpc_subscribe(self->swig_sess(), xpath, g_rpc_cb, class_ctx, opts,\
                                    self->swig_sub());
@@ -497,7 +522,12 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
-        class_ctx->private_ctx = private_ctx;
+        if (private_ctx) {
+            class_ctx->private_ctx = private_ctx;
+        } else {
+            Py_INCREF(Py_None);
+            class_ctx->private_ctx = Py_None;
+        }
 
         int ret = sr_action_subscribe(self->swig_sess(), xpath, g_action_cb, class_ctx, opts,\
                                    self->swig_sub());
@@ -513,7 +543,12 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
-        class_ctx->private_ctx = private_ctx;
+        if (private_ctx) {
+            class_ctx->private_ctx = private_ctx;
+        } else {
+            Py_INCREF(Py_None);
+            class_ctx->private_ctx = Py_None;
+        }
 
         int ret = sr_rpc_subscribe_tree(self->swig_sess(), xpath, g_rpc_tree_cb, class_ctx, opts,\
                                    self->swig_sub());
@@ -529,7 +564,12 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
-        class_ctx->private_ctx = private_ctx;
+        if (private_ctx) {
+            class_ctx->private_ctx = private_ctx;
+        } else {
+            Py_INCREF(Py_None);
+            class_ctx->private_ctx = Py_None;
+        }
 
         int ret = sr_action_subscribe_tree(self->swig_sess(), xpath, g_action_tree_cb, class_ctx, opts,\
                                    self->swig_sub());
@@ -545,7 +585,12 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
-        class_ctx->private_ctx = private_ctx;
+        if (private_ctx) {
+            class_ctx->private_ctx = private_ctx;
+        } else {
+            Py_INCREF(Py_None);
+            class_ctx->private_ctx = Py_None;
+        }
 
         int ret = sr_event_notif_subscribe(self->swig_sess(), xpath, g_event_notif_cb, class_ctx, opts,\
                                    self->swig_sub());
@@ -561,7 +606,12 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
-        class_ctx->private_ctx = private_ctx;
+        if (private_ctx) {
+            class_ctx->private_ctx = private_ctx;
+        } else {
+            Py_INCREF(Py_None);
+            class_ctx->private_ctx = Py_None;
+        }
 
         int ret = sr_event_notif_subscribe_tree(self->swig_sess(), xpath, g_event_notif_tree_cb,\
                                                 class_ctx, opts, self->swig_sub());
@@ -577,7 +627,12 @@ static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const cha
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
-        class_ctx->private_ctx = private_ctx;
+        if (private_ctx) {
+            class_ctx->private_ctx = private_ctx;
+        } else {
+            Py_INCREF(Py_None);
+            class_ctx->private_ctx = Py_None;
+        }
 
         int ret = sr_dp_get_items_subscribe(self->swig_sess(), xpath, g_dp_get_items_cb, class_ctx,\
                                             opts, self->swig_sub());
