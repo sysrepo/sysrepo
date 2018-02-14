@@ -161,7 +161,7 @@ pm_save_data_tree(struct lyd_node *data_tree, int fd)
 
     /* print data tree to file */
     ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving persist data tree failed: %s", ly_errmsg());
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving persist data tree failed: %s", ly_errmsg(data_tree->schema->module->ctx));
 
     /* flush in-core data to the disc */
     ret = fsync(fd);
@@ -257,9 +257,10 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     rc = sr_locking_set_lock_fd(pm_ctx->lock_ctx, fd, data_filename, (read_only ? false : true), true);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to lock persist data file for '%s'.", module_name);
 
+    ly_errno = LY_SUCCESS;
     *data_tree = lyd_parse_fd(pm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_OPT_NOAUTODEL);
     if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
-        SR_LOG_ERR("Parsing persist data from file '%s' failed: %s", data_filename, ly_errmsg());
+        SR_LOG_ERR("Parsing persist data from file '%s' failed: %s", data_filename, ly_errmsg(pm_ctx->ly_ctx));
         rc = SR_ERR_INTERNAL;
     } else {
         SR_LOG_DBG("Persist data successfully loaded from file '%s'.", data_filename);
@@ -314,13 +315,13 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const
             *data_tree = new_node;
         }
         if (NULL == new_node) {
-            if (LY_EVALID == ly_errno && LYVE_PATH_EXISTS == ly_vecode) {
+            if (LY_EVALID == ly_errno && LYVE_PATH_EXISTS == ly_vecode(pm_ctx->ly_ctx)) {
                 if (excl) {
                     SR_LOG_ERR("Persistent data already exist (xpath=%s).", xpath);
                 }
                 return SR_ERR_DATA_EXISTS;
             } else {
-                SR_LOG_ERR("Unable to add new persistent data (xpath=%s): %s.", xpath, ly_errmsg());
+                SR_LOG_ERR("Unable to add new persistent data (xpath=%s): %s.", xpath, ly_errmsg(pm_ctx->ly_ctx));
                 return SR_ERR_INTERNAL;
             }
         }
@@ -328,7 +329,8 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const
         /* delete persistent data */
         node_set = lyd_find_path(*data_tree, xpath);
         if (NULL == node_set || LY_SUCCESS != ly_errno) {
-            SR_LOG_ERR("Unable to find requested persistent data (xpath=%s): %s.", xpath, ly_errmsg());
+            SR_LOG_ERR("Unable to find requested persistent data (xpath=%s): %s.",
+                       xpath, ly_errmsg((*data_tree)->schema->module->ctx));
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
@@ -353,7 +355,8 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const
             }
             ret = lyd_unlink(node_set->set.d[i]);
             if (0 != ret) {
-                SR_LOG_ERR("Unable to delete persistent data (xpath=%s): %s.", xpath, ly_errmsg());
+                SR_LOG_ERR("Unable to delete persistent data (xpath=%s): %s.",
+                           xpath, ly_errmsg(node_set->set.d[i]->schema->module->ctx));
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
@@ -884,7 +887,7 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     /* initialize libyang */
     ctx->ly_ctx = ly_ctx_new(schema_search_dir, 0);
     if (NULL == ctx->ly_ctx) {
-        SR_LOG_ERR("libyang initialization failed: %s", ly_errmsg());
+        SR_LOG_ERR_MSG("libyang initialization failed");
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -900,7 +903,7 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     ctx->schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YANG);
     free(schema_filename);
     if (NULL == ctx->schema) {
-        SR_LOG_ERR("Unable to parse the schema file '%s': %s", PM_SCHEMA_FILE, ly_errmsg());
+        SR_LOG_ERR("Unable to parse the schema file '%s': %s", PM_SCHEMA_FILE, ly_errmsg(ctx->ly_ctx));
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }

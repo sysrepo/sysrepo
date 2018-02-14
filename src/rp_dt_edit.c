@@ -425,11 +425,11 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
 
 
     /* create or update */
-    ly_errno = 0;
+    ly_errno = LY_SUCCESS;
     node = dm_lyd_new_path(info, xpath, new_value, flags);
     if (NULL == node && LY_SUCCESS != ly_errno) {
-        SR_LOG_ERR("Setting of item failed %s %d", xpath, ly_vecode);
-        if (LYVE_PATH_EXISTS == ly_vecode) {
+        SR_LOG_ERR("Setting of item failed %s %d", xpath, ly_vecode(info->schema->module->ctx));
+        if (LYVE_PATH_EXISTS == ly_vecode(info->schema->module->ctx)) {
             rc = SR_ERR_DATA_EXISTS;
         } else if (LY_EVALID == ly_errno) {
             rc = SR_ERR_INVAL_ARG;

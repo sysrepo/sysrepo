@@ -414,7 +414,7 @@ md_lyd_new_path(md_ctx_t *md_ctx, const char *xpath_format, const char *value, m
     node_data = lyd_new_path(md_ctx->data_tree, md_ctx->ly_ctx, xpath, (void *)value, 0, LYD_PATH_OPT_UPDATE);
     if (!node_data && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Failed to %s for module '%s': %s",
-                   op_descr, md_get_module_fullname(dest_module), ly_errmsg());
+                   op_descr, md_get_module_fullname(dest_module), ly_errmsg(md_ctx->ly_ctx));
         return SR_ERR_INTERNAL;
     }
     if (NULL == md_ctx->data_tree) {
@@ -1069,7 +1069,7 @@ md_init(const char *schema_search_dir,
     /* load internal schema for model dependencies */
     module_schema = lys_parse_path(ctx->ly_ctx, schema_filepath, LYS_IN_YANG);
     if (NULL == module_schema) {
-        SR_LOG_ERR("Unable to parse " MD_SCHEMA_FILENAME " schema file: %s", ly_errmsg());
+        SR_LOG_ERR("Unable to parse " MD_SCHEMA_FILENAME " schema file: %s", ly_errmsg(ctx->ly_ctx));
         goto fail;
     }
 
@@ -1101,7 +1101,7 @@ md_init(const char *schema_search_dir,
     ly_errno = LY_SUCCESS;
     ctx->data_tree = lyd_parse_fd(ctx->ly_ctx, ctx->fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
     if (NULL == ctx->data_tree && LY_SUCCESS != ly_errno) {
-        SR_LOG_ERR("Unable to parse " MD_DATA_FILENAME " data file: %s", ly_errmsg());
+        SR_LOG_ERR("Unable to parse " MD_DATA_FILENAME " data file: %s", ly_errmsg(ctx->ly_ctx));
         goto fail;
     }
 
@@ -1369,9 +1369,9 @@ md_collect_data_dependencies(md_ctx_t *md_ctx, const char *ref, md_module_t *mod
     }
 
     /* we should have all the required schemas in cur_node context, but the expression may be invalid */
-    ly_verb(LY_LLSILENT);
+    ly_log_options(0);
     set = lys_xpath_atomize(cur_node, LYXP_NODE_ELEM, ref, lyxp_opts);
-    ly_verb(LY_LLERR);
+    ly_log_options(LY_LOLOG | LY_LOSTORE_LAST);
     if (NULL == set) {
         SR_LOG_WRN("Failed to evaluate expression %s, it will be ignored.", ref);
         goto cleanup;
@@ -2214,7 +2214,7 @@ implemented_dependencies:
             tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir, 0);
             if (NULL == tmp_ly_ctx) {
                 rc = SR_ERR_INTERNAL;
-                SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
+                SR_LOG_ERR_MSG("Unable to initialize libyang context");
                 goto cleanup;
             }
 
@@ -2223,7 +2223,7 @@ implemented_dependencies:
                                                SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG);
             if (NULL == tmp_module_schema) {
                 rc = SR_ERR_INTERNAL;
-                SR_LOG_ERR("Unable to parse '%s' schema file: %s", dep->dest->filepath, ly_errmsg());
+                SR_LOG_ERR("Unable to parse '%s' schema file: %s", dep->dest->filepath, ly_errmsg(tmp_ly_ctx));
                 goto cleanup;
             }
 
@@ -2327,7 +2327,7 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath, sr_list_t **implicitly_
     tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir, 0);
     if (NULL == tmp_ly_ctx) {
         rc = SR_ERR_INTERNAL;
-        SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
+        SR_LOG_ERR_MSG("Unable to initialize libyang context");
         goto cleanup;
     }
 
@@ -2336,7 +2336,7 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath, sr_list_t **implicitly_
                                    sr_str_ends_with(filepath, SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG);
     if (NULL == module_schema) {
         rc = SR_ERR_INTERNAL;
-        SR_LOG_ERR("Unable to parse '%s' schema file: %s", filepath, ly_errmsg());
+        SR_LOG_ERR("Unable to parse '%s' schema file: %s", filepath, ly_errmsg(tmp_ly_ctx));
         goto cleanup;
     }
     /* insert module into the dependency graph */
@@ -2827,7 +2827,7 @@ md_flush(md_ctx_t *md_ctx)
 
     ret = lyd_print_fd(md_ctx->fd, md_ctx->data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
     if (0 != ret) {
-        SR_LOG_ERR("Unable to export data tree with dependencies: %s", ly_errmsg());
+        SR_LOG_ERR("Unable to export data tree with dependencies: %s", ly_errmsg(md_ctx->data_tree->schema->module->ctx));
         return SR_ERR_INTERNAL;
     }
 

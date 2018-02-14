@@ -508,7 +508,6 @@ srctl_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
         case LY_LLDBG:
             SR_LOG_DBG("libyang: %s", msg);
             break;
-        case LY_LLSILENT:
         default:
             break;
     }
@@ -942,7 +941,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     /* init libyang context */
     ly_ctx = ly_ctx_new(search_dirs[0], 0);
     if (NULL == ly_ctx) {
-        fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
+        fprintf(stderr, "Error: Unable to initialize libyang context.\n");
         goto fail;
     }
     for (int i = 1; i < search_dir_count; ++i) {

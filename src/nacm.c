@@ -495,7 +495,7 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
     ly_errno = 0;
     data_tree = lyd_parse_fd(nacm_ctx->schema_info->ly_ctx, fd, LYD_XML, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
     if (NULL == data_tree && LY_SUCCESS != ly_errno) {
-        SR_LOG_ERR("Parsing of data tree from file %s failed: %s", ds_filepath, ly_errmsg());
+        SR_LOG_ERR("Parsing of data tree from file %s failed: %s", ds_filepath, ly_errmsg(nacm_ctx->schema_info->ly_ctx));
         goto cleanup;
     }
     close(fd);
