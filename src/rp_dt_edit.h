@@ -124,7 +124,7 @@ int rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const cha
  * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success), SR_ERR_COMMIT_FAILED, SR_ERR_VALIDATION_FAILED, SR_ERR_IO
  */
-int rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, bool copy_config,
+int rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t **c_ctx, bool copy_config,
         sr_error_info_t **errors, size_t *err_cnt);
 
 /**

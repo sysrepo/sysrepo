@@ -880,7 +880,7 @@ rp_dt_has_parent_list(struct lys_node *node, struct lys_node **found_list, size_
         size_t dep = 0;
 
         while (NULL != n) {
-            if (0 == (LYS_USES & n->nodetype)) {
+            if (0 == ((LYS_USES & n->nodetype) | (LYS_CHOICE & n->nodetype) | (LYS_CASE & n->nodetype))) {
                 dep++;
             }
             if (LYS_LIST & n->nodetype) {
