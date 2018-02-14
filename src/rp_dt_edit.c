@@ -794,14 +794,14 @@ rp_dt_reload_nacm(rp_ctx_t *rp_ctx)
 }
 
 int
-rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, bool copy_config,
+rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t **c_ctx, bool copy_config,
         sr_error_info_t **errors, size_t *err_cnt)
 {
     int rc = SR_ERR_OK;
-    CHECK_NULL_ARG_NORET4(rc, rp_ctx, session, errors, err_cnt);
+    CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, c_ctx, errors, err_cnt);
     if (SR_ERR_OK != rc) {
-        if (NULL != c_ctx) {
-            pthread_mutex_unlock(&c_ctx->mutex);
+        if (NULL != *c_ctx) {
+            pthread_mutex_unlock(&(*c_ctx)->mutex);
         }
         return rc;
     }
@@ -809,7 +809,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
     bool remove_ctx = false;
     bool free_ctx = false;
     uint32_t c_id = 0;
-    dm_commit_context_t *commit_ctx = c_ctx;
+    dm_commit_context_t *commit_ctx = *c_ctx;
     dm_commit_state_t state = NULL != commit_ctx ? commit_ctx->state : DM_COMMIT_STARTED;
     nacm_ctx_t *nacm_ctx = NULL;
 
@@ -838,9 +838,9 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 if (SR_DS_CANDIDATE != session->datastore) {
                     /* we still need to discard changes (operations), it is possible there are some operations that
                      * did not modify the data (so no model was modified) */
-                    rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session, NULL);
+                    dm_discard_changes(rp_ctx->dm_ctx, session->dm_session, NULL);
                 }
-                return rc;
+                return SR_ERR_OK;
             }
             pthread_mutex_lock(&commit_ctx->mutex);
             commit_ctx->disabled_config_change = rp_ctx->do_not_generate_config_change;
@@ -901,7 +901,8 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             SR_LOG_DBG("Commit %"PRIu32" processing paused waiting for replies from verifiers", commit_ctx->id);
             session->state = RP_REQ_WAITING_FOR_VERIFIERS;
             pthread_mutex_unlock(&commit_ctx->mutex);
-            return rc;
+            *c_ctx = commit_ctx;
+            return SR_ERR_OK;
         case DM_COMMIT_WRITE:
             rc = dm_commit_writelock_fds(session->dm_session, commit_ctx);
             if (SR_ERR_OK == rc ) {
@@ -932,10 +933,10 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
         case DM_COMMIT_NOTIFY_ABORT:
             rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_ABORT, commit_ctx);
             session->state = RP_REQ_FINISHED;
-            *errors = c_ctx->errors;
-            *err_cnt = c_ctx->err_cnt;
-            c_ctx->errors = NULL;
-            c_ctx->err_cnt = 0;
+            *errors = commit_ctx->errors;
+            *err_cnt = commit_ctx->err_cnt;
+            commit_ctx->errors = NULL;
+            commit_ctx->err_cnt = 0;
             SR_LOG_DBG_MSG("Commit (9/10): abort notifications sent");
             rc = SR_ERR_OPERATION_FAILED;
             goto cleanup;
@@ -943,6 +944,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             break;
         }
     }
+
 cleanup:
     if (NULL != commit_ctx) {
         remove_ctx = commit_ctx->should_be_removed;
@@ -972,7 +974,7 @@ cleanup:
     if (SR_ERR_OK == rc) {
         /* discard changes in session in next get_data_tree call newly committed content will be loaded */
         if (SR_DS_CANDIDATE != session->datastore) {
-            rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session, NULL);
+            dm_discard_changes(rp_ctx->dm_ctx, session->dm_session, NULL);
         }
         SR_LOG_DBG_MSG("Commit (10/10): finished successfully");
     } else {
@@ -1079,81 +1081,115 @@ rp_dt_copy_config_to_running(rp_ctx_t *rp_ctx, rp_session_t *session, const char
     dm_session_t *backup = NULL;
     dm_commit_context_t *c_ctx = NULL;
     dm_data_info_t *info = NULL;
-    int first_err = SR_ERR_OK;
-    bool enabled = false, changes_backed = false, trees_moved = false;
+    bool enabled = false;
 
-    /* are we resuming a copy_config commit? */
-    if (RP_REQ_RESUMED == session->state) {
-        rc = dm_get_commit_context(rp_ctx->dm_ctx, session->commit_id, &c_ctx);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resume copy_config, commit ctx with id %"PRIu32" not found.", session->commit_id);
-        pthread_mutex_lock(&c_ctx->mutex);
-    } else {
-        /* copy to running is running commit behind the scenes */
-        rc = dm_session_start(rp_ctx->dm_ctx, session->user_credentials, src, &backup);
-        CHECK_RC_MSG_RETURN(rc, "Session start of temporary session failed");
+    assert(RP_REQ_RESUMED != session->state);
 
-        /* backup the running ds changes to restore them if something goes wrong */
-        rc = dm_move_session_tree_and_ops(rp_ctx->dm_ctx, session->dm_session, backup, SR_DS_RUNNING);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Moving session data trees failed");
-        changes_backed = true;
+    /*
+     * copy to running is running commit behind the scenes
+     */
 
-        rp_dt_switch_datastore(rp_ctx, session, src);
+    /* backup the running ds changes to restore them if something goes wrong */
+    rc = dm_session_start(rp_ctx->dm_ctx, session->user_credentials, src, &backup);
+    CHECK_RC_MSG_GOTO(rc, cleanup1, "Session start of temporary session failed");
 
-        /* load models to be committed to the session */
-        if (NULL != module_name) {
-            /* is the module enabled? */
-            rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, module_name, NULL, &enabled);
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Has enabled subtree failed %s", module_name);
-            if (!enabled) {
-                SR_LOG_ERR("Cannot copy module '%s', it is not enabled.", module_name);
-                rc = SR_ERR_OPERATION_FAILED;
-                goto cleanup;
-            }
+    rc = dm_move_session_tree_and_ops(rp_ctx->dm_ctx, session->dm_session, backup, SR_DS_RUNNING);
+    CHECK_RC_MSG_GOTO(rc, cleanup2, "Moving session data trees failed");
 
-            /* load data tree if it was not copied from backup session */
-            rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module_name, &info);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
-            info->modified = true;
-        } else {
-            /* load all enabled models */
-            rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
-            for (size_t i = 0; i < modules->count; i++) {
-                char *module = modules->data[i];
-                rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module, &info);
-                CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed %s", module);
-                info->modified = true;
-            }
+    rp_dt_switch_datastore(rp_ctx, session, src);
+
+    /* load models to be committed to the session */
+    if (NULL != module_name) {
+        /* is the module enabled? */
+        rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, module_name, NULL, &enabled);
+        CHECK_RC_LOG_GOTO(rc, cleanup3, "Has enabled subtree failed %s", module_name);
+        if (!enabled) {
+            SR_LOG_ERR("Cannot copy module '%s', it is not enabled.", module_name);
+            rc = SR_ERR_OPERATION_FAILED;
+            goto cleanup3;
         }
 
-        /* move changes to running datastore */
-        rc = dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, src, SR_DS_RUNNING);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree move failed");
-        trees_moved = true;
+        /* load data tree if it was not copied from backup session */
+        rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module_name, &info);
+        CHECK_RC_MSG_GOTO(rc, cleanup3, "Get data info failed");
+        info->modified = true;
+    } else {
+        /* load all enabled models */
+        rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
+        CHECK_RC_MSG_GOTO(rc, cleanup3, "Get all modules failed");
+        for (size_t i = 0; i < modules->count; i++) {
+            char *module = modules->data[i];
+            rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module, &info);
+            CHECK_RC_LOG_GOTO(rc, cleanup3, "Get data info failed %s", module);
+            info->modified = true;
+        }
     }
+
+    /* move changes to running datastore */
+    rc = dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, src, SR_DS_RUNNING);
+    CHECK_RC_MSG_GOTO(rc, cleanup3, "Data tree move failed");
 
     /* commit running changes */
     rp_dt_switch_datastore(rp_ctx, session, SR_DS_RUNNING);
-    rc = rp_dt_commit(rp_ctx, session, c_ctx, true, errors, err_cnt);
+    rc = rp_dt_commit(rp_ctx, session, &c_ctx, true, errors, err_cnt);
 
-cleanup:
-    first_err = rc;
-    rc = SR_ERR_OK;
-    if (NULL != backup) {
-        if (changes_backed && SR_ERR_OK != first_err) {
-            /* restore the session running changes if something went wrong */
-            if (trees_moved) {
-                rc = dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, SR_DS_RUNNING, src);
-            }
-            if (SR_ERR_OK == rc) {
-                rc = dm_move_session_tree_and_ops(rp_ctx->dm_ctx, backup, session->dm_session, SR_DS_RUNNING);
-            }
-        }
-        dm_session_stop(rp_ctx->dm_ctx, backup);
+    if (c_ctx != NULL) {
+        /* waiting for notifications, store backup session */
+        c_ctx->backup_session = backup;
     }
-    sr_list_cleanup(modules);
 
-    return first_err == SR_ERR_OK ? rc : first_err;
+    if (rc == SR_ERR_OK) {
+        if (c_ctx != NULL) {
+            goto cleanup1;
+        } else {
+            /* commit succeeded and finished */
+            goto cleanup2;
+        }
+    }
+    /* else fail */
+
+    dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, SR_DS_RUNNING, src);
+cleanup3:
+    /* restore the session running changes if something went wrong */
+    dm_move_session_tree_and_ops(rp_ctx->dm_ctx, session->dm_session, backup, SR_DS_RUNNING);
+cleanup2:
+    dm_session_stop(rp_ctx->dm_ctx, backup);
+cleanup1:
+    sr_list_cleanup(modules);
+    return rc;
+}
+
+static int
+rp_dt_copy_config_to_running_resume(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src,
+                                    sr_error_info_t **errors, size_t *err_cnt)
+{
+    CHECK_NULL_ARG2(rp_ctx, session);
+    int rc = SR_ERR_OK;
+    dm_session_t *backup = NULL;
+    dm_commit_context_t *c_ctx = NULL;
+
+    assert(RP_REQ_RESUMED == session->state);
+
+    rc = dm_get_commit_context(rp_ctx->dm_ctx, session->commit_id, &c_ctx);
+    CHECK_RC_LOG_RETURN(rc, "Failed to resume copy_config, commit ctx with id %"PRIu32" not found.", session->commit_id);
+    pthread_mutex_lock(&c_ctx->mutex);
+
+    backup = c_ctx->backup_session;
+    c_ctx->backup_session = NULL;
+
+    /* commit running changes */
+    rp_dt_switch_datastore(rp_ctx, session, SR_DS_RUNNING);
+    rc = rp_dt_commit(rp_ctx, session, &c_ctx, true, errors, err_cnt);
+
+    if (rc != SR_ERR_OK) {
+        /* restore the session running changes if something went wrong */
+        dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, SR_DS_RUNNING, src);
+        dm_move_session_tree_and_ops(rp_ctx->dm_ctx, session->dm_session, backup, SR_DS_RUNNING);
+    } else {
+        dm_move_session_tree_and_ops(rp_ctx->dm_ctx, backup, session->dm_session, SR_DS_RUNNING);
+    }
+    dm_session_stop(rp_ctx->dm_ctx, backup);
+    return rc;
 }
 
 int
@@ -1184,7 +1220,11 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
         }
 
     } else {
-        rc = rp_dt_copy_config_to_running(rp_ctx, session, module_name, src, errors, err_cnt);
+        if (session->state == RP_REQ_RESUMED) {
+            rc = rp_dt_copy_config_to_running_resume(rp_ctx, session, module_name, src, errors, err_cnt);
+        } else {
+            rc = rp_dt_copy_config_to_running(rp_ctx, session, module_name, src, errors, err_cnt);
+        }
     }
 
     rp_dt_switch_datastore(rp_ctx, session, prev_ds);

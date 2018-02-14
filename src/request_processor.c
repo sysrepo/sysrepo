@@ -1464,7 +1464,7 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
 
     if (SR_ERR_OK == rc ) {
         session->req = msg;
-        rc = rp_dt_commit(rp_ctx, session, c_ctx, false, &errors, &err_cnt);
+        rc = rp_dt_commit(rp_ctx, session, &c_ctx, false, &errors, &err_cnt);
     }
     if (SR_ERR_OK == rc && RP_REQ_WAITING_FOR_VERIFIERS == session->state) {
         SR_LOG_DBG_MSG("Commit request paused, waiting for verifiers");
@@ -2999,7 +2999,8 @@ rp_event_notif_match_subscr(const char *ntf_xpath, const char *subscr_xpath)
 static int
 rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
-    const char *xpath = NULL;
+    dm_data_info_t *di = NULL;
+    char *xpath = NULL;
     char *module_name = NULL;
     struct lyd_node *notif_data_tree = NULL;
     struct ly_ctx *notif_ctx = NULL;
@@ -3023,8 +3024,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         goto finalize;
     }
 
-    xpath = msg->request->event_notif_req->xpath;
-    SR_LOG_DBG("Processing event notification request (%s).", xpath);
+    SR_LOG_DBG("Processing event notification request (%s).", msg->request->event_notif_req->xpath);
 
     if (NULL != session) {
         dm_session = session->dm_session;
@@ -3043,21 +3043,30 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         rc = sr_trees_gpb_to_sr(sr_mem_msg, msg->request->event_notif_req->trees,
                 msg->request->event_notif_req->n_trees, &trees, &tree_cnt);
     }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse event notification (%s) data trees from GPB message.", xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse event notification (%s) data trees from GPB message.",
+                      msg->request->event_notif_req->xpath);
 
     /* validate event-notification request */
     if (SR_API_VALUES == msg_api_variant) {
-        rc = dm_validate_event_notif(rp_ctx->dm_ctx, dm_session, xpath, values, values_cnt, NULL,
+        rc = dm_validate_event_notif(rp_ctx->dm_ctx, dm_session, msg->request->event_notif_req->xpath, values, values_cnt, NULL,
                 &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree, &notif_ctx);
     } else {
-        rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, dm_session, xpath, trees, tree_cnt, NULL,
+        rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, dm_session, msg->request->event_notif_req->xpath, trees, tree_cnt, NULL,
                 &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree, &notif_ctx);
     }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.", xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.", msg->request->event_notif_req->xpath);
 
-    /* get module name */
-    rc = sr_copy_first_ns(xpath, &module_name);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for event notification request (%s).", xpath);
+    rc = sr_copy_first_ns(msg->request->event_notif_req->xpath, &module_name);
+    CHECK_RC_MSG_RETURN(rc, "Error by extracting module name from xpath.");
+    rc = dm_get_data_info(rp_ctx->dm_ctx, dm_session, module_name, &di);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Dm_get_dat_info failed for module %s", module_name);
+
+    xpath = ly_path_data2schema(di->schema->ly_ctx, msg->request->event_notif_req->xpath);
+    if (NULL == xpath) {
+        SR_LOG_ERR_MSG("Failed to transform schema path to data path");
+        rc = SR_ERR_INTERNAL;
+        goto finalize;
+    }
 
     if (NULL != session) {
         /* authorize (write permissions are required to deliver the event-notification) */
@@ -3067,7 +3076,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 
 #ifdef ENABLE_NOTIF_STORE
 #ifndef STORE_CONFIG_CHANGE_NOTIF
-    if (0 != strcmp(msg->request->event_notif_req->xpath, "/ietf-netconf-notifications:netconf-config-change")) {
+    if (0 != strcmp(xpath, "/ietf-netconf-notifications:netconf-config-change")) {
 #endif /* STORE_CONFIG_CHANGE_NOTIF */
     if (!(msg->request->event_notif_req->options & SR__EVENT_NOTIF_REQ__NOTIF_FLAGS__EPHEMERAL)) {
         /* store the notification in the datastore */
@@ -3093,8 +3102,8 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     if (NULL != subscriptions_list) {
         for (size_t i = 0; i < subscriptions_list->count; i++) {
             subscription = subscriptions_list->data[i];
-            if ((NULL != subscription->xpath && rp_event_notif_match_subscr(msg->request->event_notif_req->xpath, subscription->xpath))
-                    || (NULL == subscription->xpath && 0 == sr_cmp_first_ns(msg->request->event_notif_req->xpath, subscription->module_name))) {
+            if ((NULL != subscription->xpath && rp_event_notif_match_subscr(xpath, subscription->xpath))
+                    || (NULL == subscription->xpath && 0 == sr_cmp_first_ns(xpath, subscription->module_name))) {
                 /* duplicate msg into req with values and subscription details
                  * @note we are not using memory context for the *req* message because with so many
                  * duplications it would be actually less efficient than normally.
@@ -3117,7 +3126,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
                 }
 
                 rc = rp_event_notif_send(rp_ctx, session, msg->request->event_notif_req->type,
-                        msg->request->event_notif_req->xpath, msg->request->event_notif_req->timestamp,
+                        xpath, msg->request->event_notif_req->timestamp,
                         subscription->api_variant, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt,
                         subscription->dst_address, subscription->dst_id, 0);
                 CHECK_RC_LOG_GOTO(rc, finalize, "Error by sending the notification '%s' to the subscriber '%s'.",
@@ -3142,8 +3151,7 @@ finalize:
 
     if (!sub_match && SR_ERR_OK == rc) {
         /* no subscription for this event notification */
-        SR_LOG_DBG("No subscription found for event notification delivery (xpath = '%s').",
-                   msg->request->event_notif_req->xpath);
+        SR_LOG_DBG("No subscription found for event notification delivery (xpath = '%s').", xpath);
     }
 
     /* send the response with return code */
@@ -3154,9 +3162,10 @@ finalize:
             rc = cm_msg_send(rp_ctx->cm_ctx, resp);
         }
     } else {
-        SR_LOG_DBG("Internally generated event notification %s response not sent", msg->request->event_notif_req->xpath);
+        SR_LOG_DBG("Internally generated event notification %s response not sent", xpath);
     }
 
+    free(xpath);
     sr_msg_free(msg);
 
     if (NULL == session) {

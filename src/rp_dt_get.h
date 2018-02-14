@@ -87,7 +87,7 @@ int rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_
  * to identify the matching nodes. The selection of returned values can be specified by limit and offset.
  * @param [in] rp_ctx
  * @param [in] rp_session
- * @param [in] get_items_ctx\
+ * @param [in] get_items_ctx
  * @param [in] sr_mem
  * @param [in] xpath
  * @param [in] offset - return the values with index and above

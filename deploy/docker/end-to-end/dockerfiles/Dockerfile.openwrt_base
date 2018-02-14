@@ -28,7 +28,7 @@ USER openwrt
 
 RUN \
       cd /home/openwrt && \
-      git clone https://git.lede-project.org/source.git openwrt && \
+      git clone https://github.com/openwrt/openwrt.git openwrt && \
       cd openwrt && \
       cp feeds.conf.default feeds.conf && \
       ./scripts/feeds update -a; ./scripts/feeds install -a

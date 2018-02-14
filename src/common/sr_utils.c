@@ -2356,10 +2356,11 @@ sr_find_schema_node_valid_identifier(const char *identifier, size_t id_len)
 static int
 sr_find_schema_node_predicate(const struct lys_node *node, char *predicate, const struct lys_module *prev_mod)
 {
-    char *pred_end = NULL, *identifier = NULL;
-    size_t id_len = 0;
+    char *ptr = NULL, *pred_end = NULL, *identifier = NULL, *mod_name = NULL;
+    size_t id_len = 0, mod_name_len = 0;
     uint16_t i = 0;
     struct lys_node_leaf *key = NULL;
+    const struct lys_module *key_mod;
 
     if (!(node->nodetype & (LYS_LIST | LYS_LEAFLIST))) {
         return -1;
@@ -2396,14 +2397,32 @@ sr_find_schema_node_predicate(const struct lys_node *node, char *predicate, cons
                     }
                 }
             } else {
+                /* prefix */
+                mod_name = NULL;
+                ptr = strchr(identifier, ':');
+                if (ptr != NULL && (ptr - identifier < id_len)) {
+                    mod_name = identifier;
+                    mod_name_len = ptr - identifier;
+                    identifier = ptr + 1;
+                    id_len -= mod_name_len + 1;
+
+                    if (!sr_find_schema_node_valid_identifier(mod_name, mod_name_len)) {
+                        return SR_ERR_INVAL_ARG;
+                    }
+                }
+
                 if (!sr_find_schema_node_valid_identifier(identifier, id_len)) {
                     return SR_ERR_INVAL_ARG;
                 }
 
                 for (i = 0; i < ((struct lys_node_list *)node)->keys_size; ++i) {
                     key = ((struct lys_node_list *)node)->keys[i];
+                    key_mod = lys_node_module((struct lys_node *)key);
                     if (0 == strncmp(key->name, identifier, id_len) && !key->name[id_len]) {
-                        break;
+                        if ((mod_name == NULL && key_mod == prev_mod) ||
+                                (mod_name != NULL && 0 == strncmp(key_mod->name, mod_name, mod_name_len) && !key_mod->name[mod_name_len])) {
+                            break;
+                        }
                     }
                 }
                 if (i == ((struct lys_node_list *)node)->keys_size) {
@@ -2557,7 +2576,7 @@ sr_find_schema_node(const struct lys_module *module, const struct lys_node *star
             if (name[0] != '*') {
                 if (0 == strcmp(node->name, name)) {
                     if (predicate) {
-                        tmp_rc = sr_find_schema_node_predicate(node, predicate, prev_mod);
+                        tmp_rc = sr_find_schema_node_predicate(node, predicate, lys_node_module(node));
                         if (tmp_rc == -1) {
                             continue;
                         } else if (tmp_rc != SR_ERR_OK) {

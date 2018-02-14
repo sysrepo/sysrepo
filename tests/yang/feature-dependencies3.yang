@@ -1,0 +1,8 @@
+module feature-dependencies3 {
+
+   namespace "urn:pfe:params:xml:ns:yang:feature-dependencies3";
+   prefix fd3;
+
+   feature xyz;
+
+}
