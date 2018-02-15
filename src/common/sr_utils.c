@@ -1819,14 +1819,14 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
                     *data_tree = node;
                 }
                 if (NULL == node) {
-                    SR_LOG_ERR("Failed to create tree root node (leaf) ('%s'): %s", xpath, ly_errmsg());
+                    SR_LOG_ERR("Failed to create tree root node (leaf) ('%s'): %s", xpath, ly_errmsg(ly_ctx));
                     return SR_ERR_INTERNAL;
                 }
             } else {
                 node = lyd_new_leaf(parent, module, sr_tree->name, string_val);
                 free(string_val);
                 if (NULL == node) {
-                    SR_LOG_ERR("Unable to add leaf node (named '%s'): %s", sr_tree->name, ly_errmsg());
+                    SR_LOG_ERR("Unable to add leaf node (named '%s'): %s", sr_tree->name, ly_errmsg(ly_ctx));
                     return SR_ERR_INTERNAL;
                 }
             }

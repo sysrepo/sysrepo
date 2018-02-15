@@ -1084,14 +1084,20 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
             dm_tmp_ly_ctx_t *tmp_ctx = NULL;
 
             rc = dm_get_tmp_ly_ctx(dm_ctx, NULL, &tmp_ctx);
+            if (rc != SR_ERR_OK) {
+                SR_LOG_ERR_MSG("Failed to create temporary context.");
+                free(data);
+                return rc;
+            }
             md_ctx_lock(dm_ctx->md_ctx, false);
             ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
 
+            ly_errno = LY_SUCCESS;
             tmp_node = lyd_parse_fd(tmp_ctx->ctx, fd, LYD_XML, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
             md_ctx_unlock(dm_ctx->md_ctx);
 
             if (NULL == tmp_node && LY_SUCCESS != ly_errno) {
-                SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg());
+                SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg(tmp_ctx->ctx));
                 free(data);
                 return SR_ERR_INTERNAL;
             }
@@ -1104,11 +1110,11 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
             lyd_free_withsiblings(tmp_node);
             dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
         } else {
-            ly_errno = 0;
+            ly_errno = LY_SUCCESS;
             /* use LYD_OPT_TRUSTED, validation will be done later */
             data_tree = lyd_parse_fd(schema_info->ly_ctx, fd, LYD_XML, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
             if (NULL == data_tree && LY_SUCCESS != ly_errno) {
-                SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg());
+                SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg(schema_info->ly_ctx));
                 free(data);
                 return SR_ERR_INTERNAL;
             }
@@ -3127,7 +3133,8 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
         if (info->modified) {
             rc = dm_validate_data_info(dm_ctx, session, info);
             if (SR_ERR_VALIDATION_FAILED == rc) {
-                if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(), "%s", ly_errmsg())) {
+                if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(info->schema->module->ctx), "%s",
+                        ly_errmsg(info->schema->module->ctx))) {
                     SR_LOG_WRN_MSG("Failed to record validation error");
                 }
                 validation_failed = true;
@@ -4083,6 +4090,7 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
     dm_data_info_t *info = NULL;
     dm_tmp_ly_ctx_t *tmp_ctx = NULL;
     struct lyd_node *tmp_data_tree = NULL;
+    struct ly_ctx *ly_ctx = NULL;
 
     /* write data trees */
     i = 0;
@@ -4130,8 +4138,12 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
                 ret = fsync(c_ctx->fds[count]);
             }
             if (0 != ret) {
+                if (ly_errno) {
+                    ly_ctx = (NULL == merged_info->required_modules ? merged_info->node->schema->module->ctx :
+                          tmp_data_tree->schema->module->ctx);
+                }
                 SR_LOG_ERR("Failed to write data of '%s' module: %s", info->schema->module->name,
-                        (ly_errno != LY_SUCCESS) ? ly_errmsg() : sr_strerror_safe(errno));
+                        (ly_errno != LY_SUCCESS) ? ly_errmsg(ly_ctx) : sr_strerror_safe(errno));
                 rc = SR_ERR_INTERNAL;
             } else {
                 SR_LOG_DBG("Data successfully written for module '%s'", info->schema->module->name);
@@ -5381,7 +5393,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
             ret = fsync(fds[i]);
             if (0 != ret) {
                 SR_LOG_ERR("Failed to write data of '%s' module: %s", src_infos[i]->schema->module->name,
-                        (ly_errno != LY_SUCCESS) ? ly_errmsg() : sr_strerror_safe(errno));
+                        (ly_errno != LY_SUCCESS) ? ly_errmsg(src_infos[i]->node->schema->module->ctx) : sr_strerror_safe(errno));
                 rc = SR_ERR_INTERNAL;
             }
         } else {
@@ -5826,8 +5838,8 @@ dm_sr_val_node_to_ly_datatree(dm_session_t *session, dm_data_info_t *di, const c
     /* create top-level node */
     data_tree = lyd_new_path(NULL, di->schema->ly_ctx, xpath, NULL, 0, 0);
     if (NULL == data_tree) {
-        SR_LOG_ERR("Unable to create the data tree node '%s': %s", xpath, ly_errmsg());
-        rc = dm_report_error(session, ly_errmsg(), xpath, SR_ERR_VALIDATION_FAILED);
+        SR_LOG_ERR("Unable to create the data tree node '%s': %s", xpath, ly_errmsg(di->schema->ly_ctx));
+        rc = dm_report_error(session, ly_errmsg(di->schema->ly_ctx), xpath, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
 
@@ -5861,8 +5873,8 @@ dm_sr_val_node_to_ly_datatree(dm_session_t *session, dm_data_info_t *di, const c
                                     (input ? allow_update : allow_update | LYD_PATH_OPT_OUTPUT));
             free(string_value);
             if (NULL == new_node && !allow_update) {
-                SR_LOG_ERR("Unable to add new data tree node '%s': %s.", args[i].xpath, ly_errmsg());
-                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
+                SR_LOG_ERR("Unable to add new data tree node '%s': %s.", args[i].xpath, ly_errmsg(di->schema->ly_ctx));
+                rc = dm_report_error(session, ly_errmsg(di->schema->ly_ctx), ly_errpath(di->schema->ly_ctx), SR_ERR_VALIDATION_FAILED);
                 goto cleanup;
             }
         }
@@ -5957,6 +5969,7 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
     int validation_options = 0;
     bool ext_ref = false, backtracking = false;
     const struct lys_node *node = NULL;
+    struct ly_ctx *err_ctx = NULL;
     int rc = SR_ERR_OK;
     sr_list_t *required_data = NULL;
     sr_list_t *data_for_validation = NULL;
@@ -6026,6 +6039,7 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
             if (0 != lyd_validate(data_tree, validation_options, di->node)) {
                 SR_LOG_DBG("Validation failed for %s module", di->schema->module->name);
                 validation_failed = true;
+                err_ctx = (*data_tree ? (*data_tree)->schema->module->ctx : di->node->schema->module->ctx);
             } else {
                 SR_LOG_DBG("Validation succeeded for '%s' module", di->schema->module->name);
             }
@@ -6087,6 +6101,7 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
             if (0 != lyd_validate(data_tree, validation_options, val_data_tree)) {
                 SR_LOG_DBG("Validation failed for %s module", di->schema->module->name);
                 validation_failed = true;
+                err_ctx = (*data_tree ? (*data_tree)->schema->module->ctx : val_data_tree->schema->module->ctx);
             } else {
                 SR_LOG_DBG("Validation succeeded for '%s' module", di->schema->module->name);
             }
@@ -6095,12 +6110,17 @@ dm_validate_procedure_content(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_i
         if (0 != lyd_validate(data_tree, validation_options, di->node)) {
             SR_LOG_DBG("Validation failed for %s module", di->schema->module->name);
             validation_failed = true;
+            err_ctx = (*data_tree ? (*data_tree)->schema->module->ctx : di->node->schema->module->ctx);
         } else {
             SR_LOG_DBG("Validation succeeded for '%s' module", di->schema->module->name);
         }
     }
 
 cleanup:
+    if (validation_failed) {
+        SR_LOG_ERR("%s content validation failed: %s", proc_node->name, ly_errmsg(err_ctx));
+        rc = dm_report_error(session, ly_errmsg(err_ctx), ly_errpath(err_ctx), SR_ERR_VALIDATION_FAILED);
+    }
     sr_list_cleanup(required_data);
     sr_list_cleanup(data_for_validation);
     free(should_be_freed);
@@ -6111,11 +6131,6 @@ cleanup:
     }
     if (tmp_ctx) {
         dm_release_tmp_ly_ctx(dm_ctx, tmp_ctx);
-    }
-
-    if (validation_failed) {
-        SR_LOG_ERR("%s content validation failed: %s", proc_node->name, ly_errmsg());
-        rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
     }
 
     return rc;
@@ -6373,7 +6388,7 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Notification xpath validation failed ('%s'): the target node is not present in the schema tree.",
                 notification->xpath);
-        rc = dm_report_error(session, ly_errmsg(), notification->xpath, SR_ERR_VALIDATION_FAILED);
+        rc = dm_report_error(session, ly_errmsg(di->schema->module->ctx), notification->xpath, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
     proc_node = set->set.s[0];
@@ -6389,7 +6404,7 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
 
         xml = lyxml_parse_mem(tmp_ctx->ctx, notification->data.string, 0);
         if (NULL == xml) {
-            SR_LOG_ERR("Error by parsing of the notification XML tree: %s", ly_errmsg());
+            SR_LOG_ERR("Error by parsing of the notification XML tree: %s", ly_errmsg(tmp_ctx->ctx));
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
@@ -6401,7 +6416,7 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
         /* duplicate the xml tree for use in the dm_ctx */
         xml = lyxml_dup(di->schema->ly_ctx, notification->data.xml);
         if (NULL == xml) {
-            SR_LOG_ERR("Error by duplicating of the notification XML tree: %s", ly_errmsg());
+            SR_LOG_ERR("Error by duplicating of the notification XML tree: %s", ly_errmsg(di->schema->ly_ctx));
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
@@ -6412,8 +6427,8 @@ dm_parse_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, sr_mem_ctx_t *sr_m
     /* parse the XML into the data tree */
     data_tree = lyd_parse_xml(ly_ctx, &xml, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
     if (NULL == data_tree) {
-        SR_LOG_ERR("Error by parsing notification data: %s", ly_errmsg());
-        rc = dm_report_error(session, ly_errmsg(), notification->xpath, SR_ERR_VALIDATION_FAILED);
+        SR_LOG_ERR("Error by parsing notification data: %s", ly_errmsg(ly_ctx));
+        rc = dm_report_error(session, ly_errmsg(ly_ctx), notification->xpath, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
 
