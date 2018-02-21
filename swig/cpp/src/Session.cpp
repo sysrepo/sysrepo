@@ -37,7 +37,7 @@ extern "C" {
 }
 
 Session::Session(S_Connection conn, sr_datastore_t datastore, const sr_sess_options_t opts, \
-		 const char *user_name)
+                 const char *user_name)
 {
     int ret;
     _opts = opts;
@@ -218,7 +218,7 @@ S_Val Session::get_item_next(S_Iter_Value iter)
         return nullptr;
     } else {
         throw_exception(ret);
-	return nullptr;
+    return nullptr;
     }
 }
 
@@ -234,7 +234,7 @@ S_Tree Session::get_subtree(const char *xpath, sr_get_subtree_options_t opts)
         return nullptr;
     } else {
         throw_exception(ret);
-	return nullptr;
+    return nullptr;
     }
 
     return tree;
@@ -252,7 +252,7 @@ S_Trees Session::get_subtrees(const char *xpath, sr_get_subtree_options_t opts)
         return nullptr;
     } else {
         throw_exception(ret);
-	return nullptr;
+    return nullptr;
     }
 
     return trees;
@@ -452,7 +452,7 @@ Subscribe::~Subscribe()
             //this exception can't be catched
             //throw_exception(ret);
         }
-	_sub = nullptr;
+    _sub = nullptr;
     }
 
     for(unsigned int i=0; i < wrap_cb_l.size(); i++){
@@ -628,7 +628,7 @@ void Subscribe::event_notif_subscribe_tree(const char *xpath, S_Callback callbac
     callback->private_ctx["event_notif_tree"] =  private_ctx;
     cb_list.push_back(callback);
 
-	int ret = sr_event_notif_subscribe_tree(_sess->_sess, xpath, event_notif_tree_cb, callback->get(), opts, &_sub);
+    int ret = sr_event_notif_subscribe_tree(_sess->_sess, xpath, event_notif_tree_cb, callback->get(), opts, &_sub);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
