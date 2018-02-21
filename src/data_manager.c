@@ -2377,10 +2377,10 @@ dm_requires_tmp_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t 
 
         sch_node = set->set.s[0];
         ly_set_free(set);
+        set = NULL;
 
         /* find instance id nodes and check their content */
-        set = lyd_find_instance(di->node, sch_node);
-        if (NULL == set) {
+        if (di->node == NULL || (set = lyd_find_instance(di->node, sch_node)) == NULL) {
             continue;
         }
 
@@ -4175,8 +4175,7 @@ dm_find_data_instance(const struct lyd_node *data, const struct lyd_node *node)
     struct lyd_node_leaf_list *k1, *k2;
     uint32_t i, j;
 
-    set = lyd_find_instance(data, node->schema);
-    if (!set) {
+    if (data == NULL || (set = lyd_find_instance(data, node->schema)) == NULL) {
         return NULL;
     }
 
@@ -5512,6 +5511,10 @@ dm_copy_instances_of_the_sch_node(dm_data_info_t *src_info, dm_data_info_t *dst_
 {
     CHECK_NULL_ARG3(src_info, dst_info, node);
     int rc = SR_ERR_OK;
+
+    if (src_info->node == NULL) {
+        return SR_ERR_OK;
+    }
 
     struct ly_set *set = lyd_find_instance(src_info->node, node);
     if (NULL != set) {
