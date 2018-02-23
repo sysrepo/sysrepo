@@ -1411,10 +1411,17 @@ sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_n
 bool
 sr_is_key_node(const struct lys_node *node)
 {
-    if (NULL == node || NULL == node->parent || LYS_LIST != node->parent->nodetype) {
+    if (NULL == node) {
         return false;
     }
-    struct lys_node_list *list  = (struct lys_node_list *) node->parent;
+
+    const struct lys_node *parent = NULL;
+    for (parent = lys_parent(node); parent && (parent->nodetype == LYS_USES); parent = lys_parent(parent));
+    if (NULL == parent || LYS_LIST != parent->nodetype) {
+        return false;
+    }
+
+    struct lys_node_list *list  = (struct lys_node_list *) parent;
     for (uint8_t i = 0;  i < list->keys_size; i++) {
         if (node == (struct lys_node *)list->keys[i]) {
             return true;
