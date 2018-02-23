@@ -829,6 +829,31 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const c
     return rc;
 }
 
+static int
+dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *si, md_module_t *module)
+{
+    int rc = SR_ERR_OK;
+    md_dep_t *dep = NULL;
+    sr_llist_node_t *ll_node = NULL;
+
+    ll_node = module->deps->first;
+    while (ll_node) {
+        dep = (md_dep_t *) ll_node->data;
+        if (dep->dest->has_persist) {
+            if (dep->type == MD_DEP_IMPORT) {
+                rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
+            }
+        }
+        ll_node = ll_node->next;
+    }
+    rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si, true);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", module->name);
+
+cleanup:
+    return rc;
+}
+
 /**
  * @brief Loads a schema file into the schema_info structure.
  *
@@ -951,26 +976,26 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     rc = dm_init_missing_node_priv_data(si);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to initialize private data for module %s", module->name);
 
-    ll_node = module->deps->last;
+    /* apply persist data enable features, running datastore */
+    if (module->has_persist) {
+        rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, module); /* TODO: session should be known here */
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for imports of module %s", module_name);
+        rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module_name, si, false); /* TODO: session should be known here */
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", module_name);
+    }
+
+    ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *) ll_node->data;
         if (dep->dest->has_persist) {
             if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
+                rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, dep->dest); /* TODO: session should be known here */
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for imports of module %s", dep->dest->name);
                 rc = dm_apply_persist_data_for_model(dm_ctx, NULL, dep->dest->name, si, false); /* TODO: session should be known here */
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", dep->dest->name);
-            } else if (dep->type == MD_DEP_IMPORT) {
-                /* we need to know features status from even imported modules */
-                rc = dm_apply_persist_data_for_model(dm_ctx, NULL, dep->dest->name, si, true);
-                CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
             }
         }
-        ll_node = ll_node->prev;
-    }
-
-    /* apply persist data enable features, running datastore */
-    if (module->has_persist) {
-        rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module_name, si, false); /* TODO: session should be known here */
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", module_name);
+        ll_node = ll_node->next;
     }
 
     /* distinguish between modules that can and cannot be locked */
