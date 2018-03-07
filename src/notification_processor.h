@@ -348,7 +348,7 @@ int np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, c
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, const char *xpath,
+int np_get_event_notifications(np_ctx_t *np_ctx, rp_session_t *rp_session, const char *xpath,
         const time_t start_time, const time_t stop_time, const sr_api_variant_t api_variant, sr_list_t **notifications);
 
 /**
