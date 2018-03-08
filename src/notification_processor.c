@@ -1664,7 +1664,7 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
     char data_xpath[PATH_MAX] = { 0, };
     char generated_time_buf[TIME_BUF_SIZE] = { 0, };
     struct timespec logged_time_spec = { 0, };
-    struct lyd_node *data_tree = NULL, *new_node = NULL, *dt_dup = NULL;
+    struct lyd_node *data_tree = NULL, *new_node = NULL;
     int fd = -1;
     int rc = SR_ERR_OK;
 
@@ -1731,20 +1731,16 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
         new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_STRING);
     } else {
         /* store notification data as anydata */
-        dt_dup = lyd_dup_to_ctx(notif_data_tree, 1, notif_data_tree->schema->module->ctx);
-        if (NULL == dt_dup) {
-            SR_LOG_ERR("Error duplicating notification data tree: %s.", ly_errmsg(notif_data_tree->schema->module->ctx));
+        if (lyd_print_mem(&ptr, notif_data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)) {
+            SR_LOG_ERR("Error printing notification data tree: %s.", ly_errmsg(notif_data_tree->schema->module->ctx));
             goto cleanup;
         }
-
-        new_node = lyd_new_anydata(new_node, NULL, "data", (void*)dt_dup, LYD_ANYDATA_DATATREE);
+        new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_STRING);
     }
     if (NULL == new_node) {
         SR_LOG_ERR("Error by adding notification content into notification store: %s.", ly_errmsg(notif_data_tree->schema->module->ctx));
         rc = SR_ERR_INTERNAL;
         goto cleanup;
-    } else {
-        dt_dup = NULL; /* data tree freed in lyd_new_anydata */
     }
 
     /* save notif. data */

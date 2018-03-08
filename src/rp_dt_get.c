@@ -730,7 +730,10 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
 
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL,
                     sub->xpath, NULL, &state_data_node);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to find schema node for %s", sub->xpath);
+        if (rc != SR_ERR_OK) {
+            SR_LOG_WRN("Unable to find schema node for %s (it may be disabled)", sub->xpath);
+            continue;
+        }
 
         rc = rp_dt_atoms_require_subtree(atoms, state_data_node, &subtree_needed);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Rp dt atoms require subtree failed");
