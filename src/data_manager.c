@@ -6472,12 +6472,22 @@ dm_parse_event_notif(rp_ctx_t *rp_ctx, rp_session_t *session, sr_mem_ctx_t *sr_m
 
         ly_ctx = tmp_ctx->ctx;
 
-    } else {
+    } else if (notification->data_type == NP_EV_NOTIF_DATA_XML) {
         CHECK_NULL_ARG(notification->data.xml);
         /* duplicate the xml tree for use in the dm_ctx */
         xml = lyxml_dup(di->schema->ly_ctx, notification->data.xml);
         if (NULL == xml) {
             SR_LOG_ERR("Error by duplicating of the notification XML tree: %s", ly_errmsg(di->schema->ly_ctx));
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+
+        ly_ctx = di->schema->ly_ctx;
+    } else {
+        CHECK_NULL_ARG(notification->data.string);
+        xml = lyxml_parse_mem(di->schema->ly_ctx, notification->data.string, 0);
+        if (NULL == xml) {
+            SR_LOG_ERR("Error by parsing of the notification XML tree: %s", ly_errmsg(di->schema->ly_ctx));
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
