@@ -1735,7 +1735,7 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
             SR_LOG_ERR("Error printing notification data tree: %s.", ly_errmsg(notif_data_tree->schema->module->ctx));
             goto cleanup;
         }
-        new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_STRING);
+        new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_SXMLD);
     }
     if (NULL == new_node) {
         SR_LOG_ERR("Error by adding notification content into notification store: %s.", ly_errmsg(notif_data_tree->schema->module->ctx));
