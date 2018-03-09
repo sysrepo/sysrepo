@@ -5995,7 +5995,7 @@ dm_validate_procedure_content(rp_ctx_t *rp_ctx, rp_session_t *session, dm_data_i
         const bool input, const struct lys_node *proc_node, struct lyd_node **data_tree, struct ly_ctx **ret_ctx)
 {
     int validation_options = 0;
-    bool ext_ref = false, backtracking = false;
+    bool ext_conf_ref = false, ext_state_ref = false, backtracking = false;
     const struct lys_node *node = NULL;
     struct ly_ctx *err_ctx = NULL;
     int rc = SR_ERR_OK;
@@ -6021,13 +6021,19 @@ dm_validate_procedure_content(rp_ctx_t *rp_ctx, rp_session_t *session, dm_data_i
     }
 
     /* load necessary data trees */
-    ext_ref = (proc_node->parent != NULL);
-    backtracking = false;
     node = proc_node;
-    while (false == ext_ref && (!backtracking || node != proc_node)) {
+    while (!backtracking || node != proc_node) {
         if (false == backtracking) {
-            if (node->flags & (LYS_XPATH_DEP | LYS_LEAFREF_DEP)) {
-                ext_ref = true; /* reference outside the procedure subtree */
+            if (node->flags & LYS_XPCONF_DEP) {
+                ext_conf_ref = true;
+            } else if (node->flags & LYS_XPSTATE_DEP) {
+                ext_state_ref = true;
+            } else if (node->flags & LYS_LEAFREF_DEP) {
+                if (((struct lys_node_leaf *)node)->type.info.lref.target->flags & LYS_CONFIG_W) {
+                    ext_conf_ref = true;
+                } else {
+                    ext_state_ref = true;
+                }
             }
             if (!(node->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) && node->child) {
                 node = node->child;
@@ -6051,7 +6057,7 @@ dm_validate_procedure_content(rp_ctx_t *rp_ctx, rp_session_t *session, dm_data_i
     di->required_modules = NULL;
 
     /* attach data dependant modules */
-    if (di->schema->has_instance_id || ext_ref) {
+    if (di->schema->has_instance_id || ext_conf_ref || ext_state_ref) {
 
         val_data_tree = di->node;
         di->node = *data_tree;
@@ -6065,7 +6071,7 @@ dm_validate_procedure_content(rp_ctx_t *rp_ctx, rp_session_t *session, dm_data_i
             rc = dm_load_dependant_data(rp_ctx->dm_ctx, session->dm_session, di);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", di->schema->module_name);
 
-            if (session->id != 0) {
+            if (session->id != 0 && ext_state_ref) {
                 /* load state data, redundant for internally generated notifications */
                 xpath = malloc(1 + strlen(di->schema->module->name) + 6);
                 CHECK_NULL_NOMEM_GOTO(xpath, rc, cleanup);
@@ -6115,14 +6121,16 @@ dm_validate_procedure_content(rp_ctx_t *rp_ctx, rp_session_t *session, dm_data_i
                 rc = sr_list_add(data_for_validation, dep_di);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "List insert failed");
 
-                /* load state data */
-                xpath = malloc(1 + strlen((char *)required_data->data[i]) + 6);
-                CHECK_NULL_NOMEM_GOTO(xpath, rc, cleanup);
-                sprintf(xpath, "/%s:*//.", (char *)required_data->data[i]);
+                if (session->id != 0 && ext_state_ref) {
+                    /* load state data */
+                    xpath = malloc(1 + strlen((char *)required_data->data[i]) + 6);
+                    CHECK_NULL_NOMEM_GOTO(xpath, rc, cleanup);
+                    sprintf(xpath, "/%s:*//.", (char *)required_data->data[i]);
 
-                rc = rp_dt_prepare_data(rp_ctx, session, xpath, SR_API_VALUES, 0, NULL);
-                free(xpath);
-                CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant state data failed for %s", (char *)required_data->data[i]);
+                    rc = rp_dt_prepare_data(rp_ctx, session, xpath, SR_API_VALUES, 0, NULL);
+                    free(xpath);
+                    CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant state data failed for %s", (char *)required_data->data[i]);
+                }
             }
 
             if (RP_REQ_WAITING_FOR_DATA == session->state) {
