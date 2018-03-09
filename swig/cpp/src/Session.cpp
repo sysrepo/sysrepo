@@ -729,20 +729,6 @@ S_Trees Session::action_send(const char *xpath, S_Trees input)
     return output;
 }
 
-void Session::send_event(const char *xpath, S_Vals values, const sr_ev_notif_flag_t options)
-{
-    int ret = sr_event_notif_send(_sess, xpath, values->_vals, values->val_cnt(), options);
-    if (ret != SR_ERR_OK)
-        throw_exception(ret);
-}
-
-void Session::send_event(const char *xpath, S_Trees trees, const sr_ev_notif_flag_t options)
-{
-    int ret = sr_event_notif_send_tree(_sess, xpath, trees->_trees, trees->tree_cnt(), options);
-    if (ret != SR_ERR_OK)
-        throw_exception(ret);
-}
-
 void Session::event_notif_send(const char *xpath, S_Vals values, const sr_ev_notif_flag_t options)
 {
     int ret = sr_event_notif_send(_sess, xpath, values->_vals, values->val_cnt(), options);
