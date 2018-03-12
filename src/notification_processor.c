@@ -1535,13 +1535,8 @@ np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, char *subs_xpat
     if (NULL != commit) {
         if (SR_EV_VERIFY == event && SR_ERR_OK != result) {
             /* error returned from the verifier */
-            if (SR_ERR_OK == commit->result) {
-                /* if there isn't any previous error stored within the commit context, store there this one */
-                commit->result = result;
-            }
-            if (SR_ERR_OK != result) {
-                np_commit_error_add(commit, subs_xpath, do_not_send_abort, err_msg, err_xpath);
-            }
+            commit->result = result;
+            np_commit_error_add(commit, subs_xpath, do_not_send_abort, err_msg, err_xpath);
             SR_LOG_ERR("Verifier for '%s' returned an error (msg: '%s', xpath: '%s'), commit will be aborted.",
                     subs_xpath, err_msg, err_xpath);
         }

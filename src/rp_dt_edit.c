@@ -938,7 +938,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t **c_ct
             commit_ctx->errors = NULL;
             commit_ctx->err_cnt = 0;
             SR_LOG_DBG_MSG("Commit (9/10): abort notifications sent");
-            rc = SR_ERR_OPERATION_FAILED;
+            rc = commit_ctx->result;
             goto cleanup;
         default:
             break;
