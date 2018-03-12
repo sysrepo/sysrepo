@@ -231,6 +231,7 @@ typedef struct dm_commit_context_s {
     bool nacm_edited;           /**< flag whether the running NACM configuration was edited. */
     bool in_btree;              /**< set to tree if the context was inserted into btree */
     bool should_be_removed;     /**< flag denoting whether c_ctx can be removed from btree */
+    int result;                 /**< result of verify or apply commit phase */
     dm_session_t *backup_session; /**< session with backed up modifications from before the commit */
 } dm_commit_context_t;
 

@@ -4247,10 +4247,9 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finishe
 
     pthread_mutex_lock(&c_ctx->mutex);
     SR_LOG_DBG("Commit context in state %d", c_ctx->state);
+    c_ctx->result = result;
 
-    if (!finished && DM_COMMIT_WAIT_FOR_NOTIFICATIONS == c_ctx->state &&
-        NULL != c_ctx->init_session) {
-
+    if (!finished && DM_COMMIT_WAIT_FOR_NOTIFICATIONS == c_ctx->state && NULL != c_ctx->init_session) {
         switch (c_ctx->init_session->req->request->operation) {
         case SR__OPERATION__COPY_CONFIG:
             op_str = "copy_config";
@@ -4291,7 +4290,7 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finishe
         c_ctx->init_session->req = NULL;
         pthread_mutex_unlock(&c_ctx->mutex);
         pthread_rwlock_unlock(&dm_ctxs->lock);
-    } else if (finished && DM_COMMIT_FINISHED == c_ctx->state){
+    } else if (finished && DM_COMMIT_FINISHED == c_ctx->state) {
         pthread_mutex_unlock(&c_ctx->mutex);
         pthread_rwlock_unlock(&dm_ctxs->lock);
         locked = false;
