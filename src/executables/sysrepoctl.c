@@ -158,7 +158,7 @@ srctl_list_modules()
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
     sr_schema_t *schemas = NULL;
-    size_t schema_cnt = 0;
+    size_t schema_cnt = 0, max_mod_name = 0, i;
     char buff[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
 
@@ -172,13 +172,19 @@ srctl_list_modules()
         rc = sr_list_schemas(session, &schemas, &schema_cnt);
     }
 
-    printf("\n%-30s| %-11s| %-12s| %-20s| %-12s| %-30s| %s\n",
-            "Module Name", "Revision", "Conformance", "Data Owner", "Permissions", "Submodules", "Enabled Features");
-    printf("-----------------------------------------------------------------------------------------------------------------------------------------------\n");
-
     if (SR_ERR_OK == rc) {
+        for (i = 0; i < schema_cnt; ++i) {
+            if (strlen(schemas[i].module_name) > max_mod_name) {
+                max_mod_name = strlen(schemas[i].module_name);
+            }
+        }
+
+        printf("\n%-*s| %-11s| %-12s| %-20s| %-12s| %-30s| %s\n", (int)max_mod_name + 1,
+               "Module Name", "Revision", "Conformance", "Data Owner", "Permissions", "Submodules", "Enabled Features");
+        printf("----------------------------------------------------------------------------------------------------"
+               "-------------------------------------------\n");
         for (size_t i = 0; i < schema_cnt; i++) {
-            printf("%-30s| %-11s| ", schemas[i].module_name,
+            printf("%-*s| %-11s| ", (int)max_mod_name + 1, schemas[i].module_name,
                     (NULL == schemas[i].revision.revision ? "" : schemas[i].revision.revision));
 
             /* print conformance */
