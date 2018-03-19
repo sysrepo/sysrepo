@@ -110,33 +110,40 @@ target_link_libraries(Sysrepo-cpp sysrepo)
 install(TARGETS Sysrepo-cpp DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES ${SYSREPO_HPP_SOURCES} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo-cpp)
 
-# Examples
-if(GEN_CPP_BINDINGS AND BUILD_CPP_EXAMPLES)
-    add_subdirectory(cpp/examples)
+# CPP bindings
+if(GEN_CPP_BINDINGS)
+    # generate and install pkg-config file
+    configure_file("cpp/libSysrepo-cpp.pc.in" "libSysrepo-cpp.pc" @ONLY)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libSysrepo-cpp.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
-    if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
-        add_subdirectory(cpp/tests)
+    # Examples
+    if(BUILD_CPP_EXAMPLES)
+        add_subdirectory(cpp/examples)
 
-        # make Sysrepo-cpp depend on sysrepoctl
-        add_dependencies(Sysrepo-cpp sysrepoctl)
+        if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
+            add_subdirectory(cpp/tests)
 
-        macro(INSTALL_YANG MODULE_NAME MODULE_REVISION)
+            # make Sysrepo-cpp depend on sysrepoctl
+            add_dependencies(Sysrepo-cpp sysrepoctl)
 
-          set(CPP_TEST_MODULE ${MODULE_NAME})
-          set(CPP_TEST_MODULE_REV ${MODULE_REVISION} )
-          set(CPP_SWIG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
-          set(CPP_TEST_DIR ${CPP_SWIG_DIR}/tests)
-          set(CPP_YANG_DIR ${CPP_TEST_DIR}/yang)
+            macro(INSTALL_YANG MODULE_NAME MODULE_REVISION)
 
-          ADD_CUSTOM_COMMAND(
-            TARGET Sysrepo-cpp
-            POST_BUILD
-            COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CPP_YANG_DIR}/${CPP_TEST_MODULE}@${CPP_TEST_MODULE_REV}.yang
-            VERBATIM)
-        endmacro(INSTALL_YANG)
+              set(CPP_TEST_MODULE ${MODULE_NAME})
+              set(CPP_TEST_MODULE_REV ${MODULE_REVISION} )
+              set(CPP_SWIG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+              set(CPP_TEST_DIR ${CPP_SWIG_DIR}/tests)
+              set(CPP_YANG_DIR ${CPP_TEST_DIR}/yang)
 
-        INSTALL_YANG("swig-test-cpp-changes"    "2017-03-09")
-        INSTALL_YANG("swig-test-cpp-operations" "2017-03-09")
+              ADD_CUSTOM_COMMAND(
+                TARGET Sysrepo-cpp
+                POST_BUILD
+                COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CPP_YANG_DIR}/${CPP_TEST_MODULE}@${CPP_TEST_MODULE_REV}.yang
+                VERBATIM)
+            endmacro(INSTALL_YANG)
+
+            INSTALL_YANG("swig-test-cpp-changes"    "2017-03-09")
+            INSTALL_YANG("swig-test-cpp-operations" "2017-03-09")
+        endif()
     endif()
 endif()
 

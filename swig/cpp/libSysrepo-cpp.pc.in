@@ -1,0 +1,13 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+
+Name: @PROJECT_NAME@
+Description: @SYSREPO_DESC@
+Version: @SYSREPO_VERSION@
+Requires.private: libsysrepo
+Libs: -L${libdir} -lSysrepo-cpp
+Cflags: -I${includedir}
+
+SR_REPOSITORY_LOC=@REPOSITORY_LOC@
+SR_PLUGINS_DIR=@PLUGINS_DIR@
