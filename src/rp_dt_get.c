@@ -732,6 +732,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
                     sub->xpath, NULL, &state_data_node);
         if (rc != SR_ERR_OK) {
             SR_LOG_WRN("Unable to find schema node for %s (it may be disabled)", sub->xpath);
+            rc = SR_ERR_OK;
             continue;
         }
 
