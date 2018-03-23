@@ -7,11 +7,27 @@ matrix:
             dist: trusty
             sudo: required
             compiler: gcc
+            addons:
+                apt:
+                    sources:
+                        - ubuntu-toolchain-r-test
+                    packages:
+                        - g++-7
+            env:
+                - MATRIX_EVAL="CC=gcc-7 && CXX=g++-7"
         -   os: linux
             dist: trusty
             sudo: required
             compiler: gcc
-            env: USE_SR_MEM_MGMT=OFF
+            addons:
+                apt:
+                    sources:
+                        - ubuntu-toolchain-r-test
+                    packages:
+                        - g++-7
+            env:
+                - MATRIX_EVAL="CC=gcc-7 && CXX=g++-7"
+                - USE_SR_MEM_MGMT=OFF
         -   os: linux
             dist: trusty
             sudo: required
@@ -25,6 +41,7 @@ cache:
     - $HOME/local
 
 before_install:
+  - eval "${MATRIX_EVAL}"
   - test $TRAVIS_BRANCH != coverity -o ${TRAVIS_JOB_NUMBER##*.} = 1 || exit 0
   - test $TRAVIS_BRANCH != devel-coverity -o ${TRAVIS_JOB_NUMBER##*.} = 1 || exit 0
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash deploy/travis/install-libs.sh; fi
