@@ -351,8 +351,6 @@ dm_enable_features_in_tmp_module(dm_ctx_t *dm_ctx, md_module_t *md_module, const
     int rc = SR_ERR_OK;
     int ret = 0;
     dm_schema_info_t *si = NULL;
-    const char **features = NULL;
-    uint8_t *features_state = NULL;
     const struct lys_module *module_to_read_from = NULL;
     const char *main_module_name = NULL;
     sr_llist_node_t *ll_node = NULL;
@@ -389,25 +387,15 @@ dm_enable_features_in_tmp_module(dm_ctx_t *dm_ctx, md_module_t *md_module, const
         goto cleanup;
     }
 
-    features = lys_features_list(module_to_read_from, &features_state);
-
-    size_t f = 0;
-    while (NULL != features[f]) {
-        if (features_state[f]) {
-            ret = lys_features_enable(module, features[f]);
-        } else {
-            ret = lys_features_disable(module, features[f]);
-        }
-        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Failed to modify feature '%s' state in module '%s'", features[f], module->name);
-        f++;
-    }
+    /* If features are set in persistent data their dependent features have been checked already.
+     * So there is no need to check the dependencies again. They can just be cloned. */
+    ret = sr_features_clone(module_to_read_from, module);
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Failed to clone feature into module '%s'", module->name);
 
 cleanup:
     if (locked) {
         pthread_rwlock_unlock(&si->model_lock);
     }
-    free(features_state);
-    free(features);
 
     return rc;
 }
