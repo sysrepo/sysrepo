@@ -6124,6 +6124,185 @@ cl_feature_dependencies_test_post(void **state) {
     return 0;
 }
 
+typedef struct netconf_change_s{
+    pthread_mutex_t mutex;
+    pthread_cond_t cv;
+    sr_val_t *values;
+    size_t val_cnt;
+}netconf_change_t;
+
+static void
+netconf_change_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
+{
+    netconf_change_t *change = (netconf_change_t *) private_ctx;
+    pthread_mutex_lock(&change->mutex);
+    sr_dup_values(values, values_cnt, &change->values);
+    change->val_cnt = values_cnt;
+    pthread_cond_signal(&change->cv);
+    pthread_mutex_unlock(&change->mutex);
+}
+
+#define SET_COND_WAIT_TIMED(CV, MUTEX, TS) \
+    do { \
+        sr_clock_get_time(CLOCK_REALTIME, (TS)); \
+        ts.tv_sec += COND_WAIT_SEC;             \
+        pthread_cond_timedwait((CV), (MUTEX), (TS));\
+    } while(0)
+
+static int
+cl_feature_dependencies_2_test_change_cb(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event, void *private_ctx) {
+
+    if ( SR_EV_APPLY == event && strstr(xpath,"/feature-dependencies1:box")==xpath && private_ctx ) {
+
+        *((int*)private_ctx) += 1;
+    }
+    return SR_ERR_OK;
+}
+
+static int
+cl_feature_dependencies_2_test_pre (void **state) {
+
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/feature-dependencies1.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "feature-dependencies1.yang", true);
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/feature-dependencies4.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "feature-dependencies4.yang", true);
+
+    exec_shell_command("../src/sysrepoctl --feature-enable=xyz --module=feature-dependencies3", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --feature-enable=abc --module=feature-dependencies2", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --feature-enable=def --module=feature-dependencies2", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --feature-enable=defdef --module=feature-dependencies4", ".*", true, 0);
+
+    exec_shell_command("../src/sysrepoctl --feature-enable=issue1 --module=feature-dependencies1", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --feature-enable=issue2 --module=feature-dependencies2", ".*", true, 0);
+
+    sysrepo_setup(state);
+
+    return 0;
+}
+
+/* When a temporary context is created by cloning from the original one (which
+   has already been parsed), and its features shall be enabled/disabled according
+   to the original module in function dm_enable_features_in_tmp_module() the error
+   "Feature XXX is disabled by its 1. if-feature condition" occurs for dependent
+   features because the imported modules are not considered.
+   The proposed solution is to clone (instead of enabling/disabling) the features
+   of the original module to the temporary module in sysrepo's data_manager.c
+   by calling a new libyang function lys_features_clone() avoiding the dependency
+   checks which have been done already for the original module.
+ */
+static void
+cl_feature_dependencies_2_test (void **state) {
+
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    int set_cnt = 0;
+    int ntf_cnt = 0;
+    int rc = 0;
+    sr_val_t value;
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    netconf_change_t change = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, .values = 0, .val_cnt = 0};
+    struct timespec ts = {0};
+
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "feature-dependencies1", cl_feature_dependencies_2_test_change_cb, &set_cnt, 0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_subtree_change_subscribe(session, "/feature-dependencies1:box/feature-dependencies4:def", cl_feature_dependencies_2_test_change_cb, &set_cnt, 0, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_event_notif_subscribe(session, "/ietf-netconf-notifications:netconf-config-change", netconf_change_notif_cb, &change, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    pthread_mutex_lock(&change.mutex);
+
+    memset(&value, 0, sizeof(sr_val_t));
+    value.type = SR_STRING_T;
+    value.data.string_val = "DEF";
+    rc = sr_set_item(session, "/feature-dependencies1:box/feature-dependencies4:def", &value, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    SET_COND_WAIT_TIMED(&change.cv, &change.mutex, &ts);
+
+    if (!change.values) goto cleanup;
+
+    assert_int_equal(7, change.val_cnt);
+    assert_string_equal("/ietf-netconf-notifications:netconf-config-change/edit[1]/target", change.values[5].xpath);
+    assert_int_equal(SR_INSTANCEID_T, change.values[5].type);
+    assert_string_equal(change.values[5].data.instanceid_val, "/feature-dependencies1:box/feature-dependencies4:def");
+    ++ntf_cnt;
+
+    sr_free_values(change.values, change.val_cnt);
+    change.values = NULL;
+    change.val_cnt = 0;
+
+    pthread_mutex_unlock(&change.mutex);
+
+    usleep(100000); /* 100ms */
+
+    pthread_mutex_lock(&change.mutex);
+
+    rc = sr_delete_item(session, "/feature-dependencies1:box/feature-dependencies4:def", SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    SET_COND_WAIT_TIMED(&change.cv, &change.mutex, &ts);
+
+    if (!change.values) goto cleanup;
+
+    assert_int_equal(7, change.val_cnt);
+    assert_string_equal("/ietf-netconf-notifications:netconf-config-change/edit[1]/target", change.values[5].xpath);
+    assert_int_equal(SR_INSTANCEID_T, change.values[5].type);
+    assert_string_equal(change.values[5].data.instanceid_val, "/feature-dependencies1:box/feature-dependencies4:def");
+    ++ntf_cnt;
+
+    sr_free_values(change.values, change.val_cnt);
+    change.values = NULL;
+    change.val_cnt = 0;
+
+cleanup:
+    pthread_mutex_unlock(&change.mutex);
+    pthread_mutex_destroy(&change.mutex);
+    pthread_cond_destroy(&change.cv);
+
+    rc = sr_unsubscribe(session, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    assert_int_equal(2, set_cnt);
+    assert_int_equal(2, ntf_cnt);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static int
+cl_feature_dependencies_2_test_post(void **state) {
+
+    sysrepo_teardown(state);
+
+    exec_shell_command("../src/sysrepoctl --feature-disable=issue2 --module=feature-dependencies2", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --feature-disable=issue1 --module=feature-dependencies1", ".*", true, 0);
+
+    exec_shell_command("../src/sysrepoctl --feature-disable=defdef --module=feature-dependencies4", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --feature-disable=def --module=feature-dependencies2", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --feature-disable=abc --module=feature-dependencies2", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --feature-disable=xyz --module=feature-dependencies3", ".*", true, 0);
+
+    exec_shell_command("../src/sysrepoctl --uninstall --module=feature-dependencies4", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "feature-dependencies4.yang", false);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=feature-dependencies1", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "feature-dependencies1.yang", false);
+
+    return 0;
+}
+
 int
 main()
 {
@@ -6188,6 +6367,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_identityref_test, cl_identityref_test_pre, cl_identityref_test_post),
             cmocka_unit_test_setup_teardown(cl_mutual_leafref_test, cl_mutual_leafref_test_pre, cl_mutual_leafref_test_post),
             cmocka_unit_test_setup_teardown(cl_feature_dependencies_test, cl_feature_dependencies_test_pre, cl_feature_dependencies_test_post),
+            cmocka_unit_test_setup_teardown(cl_feature_dependencies_2_test, cl_feature_dependencies_2_test_pre, cl_feature_dependencies_2_test_post),
     };
 
     watchdog_start(300);

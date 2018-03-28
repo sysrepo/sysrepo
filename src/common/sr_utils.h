@@ -797,4 +797,16 @@ int sr_str_to_time(char *time_str, time_t *time);
 
 /**@} utils */
 
+/**
+ * @brief Clone features
+ *
+ * Clone the features of a module.
+ *
+ * @param[in] module_src source module for feature cloning
+ * @param[in] module_tgt target module for feature cloning
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_features_clone(const struct lys_module *module_src, const struct lys_module *module_tgt);
+
 #endif /* SR_UTILS_H_ */

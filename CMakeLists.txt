@@ -176,7 +176,7 @@ set(STORE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
     "Save config-change notifications (RFC 6470) in the notification store (slows down the commit process).")
 
 # timeouts
-set(REQUEST_TIMEOUT 3 CACHE INTEGER
+set(REQUEST_TIMEOUT 4 CACHE INTEGER
     "Timeout (in seconds) for standard Sysrepo API requests.")
 
 set(LONG_REQUEST_TIMEOUT 15 CACHE INTEGER

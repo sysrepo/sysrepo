@@ -3138,3 +3138,47 @@ cleanup:
     free(time_str_copy);
     return rc;
 }
+
+int sr_features_clone(const struct lys_module *module_src, const struct lys_module *module_tgt)
+{
+    int i, j;
+
+    uint8_t fsize_src, fsize_tgt;
+    struct lys_feature *f_src, *f_tgt;
+
+    if (module_src->inc_size != module_tgt->inc_size) {
+        SR_LOG_ERR("Features cannot be cloned %s.", module_src->name);
+        return EXIT_FAILURE;
+    }
+
+    for (i = -1; i < module_src->inc_size; i++) {
+        if (i == -1) {
+            fsize_src = module_src->features_size;
+            fsize_tgt = module_tgt->features_size;
+            f_src = module_src->features;
+            f_tgt = module_tgt->features;
+        } else {
+            fsize_src = module_src->inc[i].submodule->features_size;
+            fsize_tgt = module_tgt->inc[i].submodule->features_size;
+            f_src = module_src->inc[i].submodule->features;
+            f_tgt = module_tgt->inc[i].submodule->features;
+        }
+
+        if (fsize_src != fsize_tgt) {
+            SR_LOG_ERR("Features cannot be cloned %s.", module_src->name);
+            return EXIT_FAILURE;
+        }
+
+        for (j = 0; j < fsize_src; j++) {
+            if (!strcmp(f_src[j].name, f_tgt[j].name)) {
+                f_tgt[j].flags |= f_src[j].flags & LYS_FENABLED;
+            }
+            else {
+                SR_LOG_ERR("Features cannot be cloned %s.", module_src->name);
+                return EXIT_FAILURE;
+            }
+        }
+    }
+
+    return EXIT_SUCCESS;
+}
