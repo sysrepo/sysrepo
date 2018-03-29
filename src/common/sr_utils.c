@@ -860,7 +860,12 @@ sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
         case LY_TYPE_INST:
             return SR_INSTANCEID_T;
         case LY_TYPE_LEAFREF:
-            return sr_libyang_leaf_get_type_sch(((struct lys_node_leaf *)leaf->schema)->type.info.lref.target);
+            /* if the target leafref was disconnected there is a problem in case the leaf is actually a union */
+            if ((struct lyd_node_leaf_list *)leaf->value.leafref) {
+                return sr_libyang_leaf_get_type((struct lyd_node_leaf_list *)leaf->value.leafref);
+            } else {
+                return sr_libyang_leaf_get_type_sch(((struct lys_node_leaf *)leaf->schema)->type.info.lref.target);
+            }
         case LY_TYPE_STRING:
             return SR_STRING_T;
         case LY_TYPE_INT8:
