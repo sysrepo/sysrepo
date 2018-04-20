@@ -177,10 +177,10 @@ set(STORE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
 
 # timeouts
 set(REQUEST_TIMEOUT 4 CACHE INTEGER
-    "Timeout (in seconds) for standard Sysrepo API requests.")
+    "Timeout (in seconds) for standard Sysrepo API requests. Set to 0 for no timeout.")
 
 set(LONG_REQUEST_TIMEOUT 15 CACHE INTEGER
-    "Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action).")
+    "Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action). Set to 0 for no timeout.")
 
 set(COMMIT_VERIFY_TIMEOUT 10 CACHE INTEGER
     "Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers.")
@@ -193,6 +193,10 @@ set(NOTIF_AGE_TIMEOUT 60 CACHE INTEGER
 
 set(NOTIF_TIME_WINDOW 10 CACHE INTEGER
     "Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files).")
+
+if(REQUEST_TIMEOUT EQUAL "0" AND NOT LONG_REQUEST_TIMEOUT EQUAL "0")
+    message(FATAL_ERROR "LONG_REQUEST_TIMEOUT must be 0 when REQUEST_TIMEOUT is 0")
+endif(REQUEST_TIMEOUT EQUAL "0" AND NOT LONG_REQUEST_TIMEOUT EQUAL "0")
 
 # add subdirectories
 add_subdirectory(src)
