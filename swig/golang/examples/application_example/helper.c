@@ -20,6 +20,7 @@
  */
 
 #include "helper.h"
+#include "_cgo_export.h"
 #include <sysrepo.h>
 
 sr_val_t *get_val(sr_val_t *val, size_t i) {
@@ -27,5 +28,5 @@ sr_val_t *get_val(sr_val_t *val, size_t i) {
 }
 
 int module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx) {
-	return Go_module_change_cb(session, module_name, event, private_ctx);
+    return Go_module_change_cb(session, (char *) module_name, event, NULL);
 }
