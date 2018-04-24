@@ -176,27 +176,8 @@ set(STORE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
     "Save config-change notifications (RFC 6470) in the notification store (slows down the commit process).")
 
 # timeouts
-if(REQUEST_TIMEOUT EQUAL "0" OR LONG_REQUEST_TIMEOUT EQUAL "0")
-    message(STATUS "Sysrepo API request Timeouts (REQUEST_TIMEOUT/LONG_REQUEST_TIMEOUT) have been disabled.")
-    set(REQUEST_TIMEOUT 0 CACHE INTEGER
-	"Timeout (in seconds) for standard Sysrepo API requests. Set to 0 for no timeout.")
-    set(LONG_REQUEST_TIMEOUT 0 CACHE INTEGER
-	"Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action). Set to 0 for no timeout.")
-endif(REQUEST_TIMEOUT EQUAL "0" OR LONG_REQUEST_TIMEOUT EQUAL "0")
-
-if(NOT DEFINED REQUEST_TIMEOUT)
-    set(REQUEST_TIMEOUT 4 CACHE INTEGER
-	"Timeout (in seconds) for standard Sysrepo API requests. Set to 0 for no timeout.")
-endif(NOT DEFINED REQUEST_TIMEOUT)
-
-if(NOT DEFINED LONG_REQUEST_TIMEOUT)
-    set(LONG_REQUEST_TIMEOUT 15 CACHE INTEGER
-	"Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action). Set to 0 for no timeout.")
-endif(NOT DEFINED LONG_REQUEST_TIMEOUT)
-
-if(REQUEST_TIMEOUT GREATER LONG_REQUEST_TIMEOUT)
-    message(FATAL_ERROR "LONG_REQUEST_TIMEOUT (${LONG_REQUEST_TIMEOUT}) must be greater than REQUEST_TIMEOUT (${REQUEST_TIMEOUT})")
-endif(REQUEST_TIMEOUT GREATER LONG_REQUEST_TIMEOUT)
+set(REQUEST_TIMEOUT 15 CACHE INTEGER
+    "Timeout (in seconds) for Sysrepo API requests. Set to 0 for no timeout.")
 
 set(COMMIT_VERIFY_TIMEOUT 10 CACHE INTEGER
     "Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers.")
