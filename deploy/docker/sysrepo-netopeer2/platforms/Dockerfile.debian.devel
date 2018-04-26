@@ -24,7 +24,7 @@ RUN \
       libprotobuf-c-dev \
       protobuf-c-compiler \
       # netopeer2 \
-      libssl1.0-dev \
+      libssl-dev \
       libssh-dev \
       # bindings
       swig
@@ -98,7 +98,6 @@ RUN \
 
 # netopeer2
 RUN \
-      git clone https://github.com/CESNET/Netopeer2.git && \
       cd Netopeer2/server && mkdir build && cd build && \
       git checkout devel-server && \
       cmake .. && \

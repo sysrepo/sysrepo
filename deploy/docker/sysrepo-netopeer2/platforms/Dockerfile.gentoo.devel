@@ -6,13 +6,9 @@ MAINTAINER mislav.novakovic@sartura.hr
 RUN \
       emerge --sync
 
-# read all news in case they are IMPORTANT
-RUN \
-      eselect news read --quiet all
-
 # install basic dependencies
 RUN \
-      emerge -q --backtrack=300 \
+      emerge -q \
       automake \
        bison \
        flex \
