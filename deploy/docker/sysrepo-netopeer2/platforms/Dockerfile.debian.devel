@@ -50,7 +50,7 @@ RUN \
 RUN \
       git clone https://github.com/sysrepo/libredblack.git && \
       cd libredblack && \
-      ./configure && \
+      ./configure --prefix=/usr && \
       make && \
       make install && \
       ldconfig
@@ -60,7 +60,7 @@ RUN \
       git clone https://github.com/CESNET/libyang.git && \
       cd libyang && mkdir build && cd build && \
       git checkout devel && \
-      cmake .. && \
+      cmake -DCMAKE_INSTALL_PREFIX=/usr .. && \
       make -j2 && \
       make install && \
       ldconfig
@@ -70,7 +70,7 @@ RUN \
       git clone https://github.com/sysrepo/sysrepo.git && \
       cd sysrepo && mkdir build && cd build && \
       git checkout devel && \
-      cmake .. && \
+      cmake -DCMAKE_INSTALL_PREFIX=/usr .. && \
       make -j2 && \
       make install && \
       ldconfig
@@ -80,7 +80,7 @@ RUN \
       git clone https://github.com/CESNET/libnetconf2.git && \
       cd libnetconf2 && mkdir build && cd build && \
       git checkout devel && \
-      cmake .. && \
+      cmake -DCMAKE_INSTALL_PREFIX=/usr .. && \
       make -j2 && \
       make install && \
       ldconfig
@@ -91,7 +91,7 @@ RUN \
       git clone https://github.com/CESNET/Netopeer2.git && \
       cd Netopeer2 && git checkout devel-server && \
       cd keystored && mkdir build && cd build && \
-      cmake .. && \
+      cmake -DCMAKE_INSTALL_PREFIX=/usr .. && \
       make -j2 && \
       make install && \
       ldconfig
@@ -100,11 +100,11 @@ RUN \
 RUN \
       cd Netopeer2/server && mkdir build && cd build && \
       git checkout devel-server && \
-      cmake .. && \
+      cmake -DCMAKE_INSTALL_PREFIX=/usr .. && \
       make -j2 && \
       make install && \
       cd ../../cli && mkdir build && cd build && \
-      cmake .. && \
+      cmake -DCMAKE_INSTALL_PREFIX=/usr .. && \
       make -j2 && \
       make install
 
@@ -113,7 +113,7 @@ RUN apt-get install -y python-dev
 RUN \
       cd /opt/dev/sysrepo/build && \
       make clean && \
-      cmake -DGEN_PYTHON_VERSION=2 .. && \
+      cmake -DCMAKE_INSTALL_PREFIX=/usr -DGEN_PYTHON_VERSION=2 .. && \
       make -j2 && \
       make install
 
@@ -122,7 +122,7 @@ RUN apt-get install -y lua5.1-dev
 RUN \
       cd /opt/dev/sysrepo/build && \
       make clean && \
-      cmake -DGEN_LUA_VERSION=5.1 .. && \
+      cmake -DCMAKE_INSTALL_PREFIX=/usr -DGEN_LUA_VERSION=5.1 .. && \
       make -j2 && \
       make install
 
@@ -132,7 +132,7 @@ RUN \
       cd /opt/dev/sysrepo && \
       # cmake requires new directory for switching python version \
       mkdir build_python3 && cd build_python3 && \
-      cmake -DGEN_PYTHON_VERSION=3 .. && \
+      cmake -DCMAKE_INSTALL_PREFIX=/usr -DGEN_PYTHON_VERSION=3 .. && \
       make -j2 && \
       make install
 
@@ -142,7 +142,7 @@ RUN \
       cd /opt/dev/sysrepo && \
       # cmake requires new directory for switching lua version \
       mkdir build_lua52 && cd build_lua52 && \
-      cmake -DGEN_LUA_VERSION=5.2 .. && \
+      cmake -DCMAKE_INSTALL_PREFIX=/usr -DGEN_LUA_VERSION=5.2 .. && \
       make -j2 && \
       make install
 
