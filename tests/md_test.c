@@ -1455,11 +1455,9 @@ validate_context(md_ctx_t *md_ctx)
         } else {
             validate_dependency(module->deps, "C", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_DATA, true, 1,  "E@2016-06-11"));
         }
-        if (implemented.D_rev1) {
-            validate_dependency(module->deps, "D@2016-06-10", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_IMPORT, true));
-        } else {
-            validate_dependency(module->deps, "D@2016-06-10", 1, md_test_dep(MD_DEP_IMPORT, true));
-        }
+
+        validate_dependency(module->deps, "D@2016-06-10", 2, md_test_dep(MD_DEP_IMPORT, true), md_test_dep(MD_DEP_IMPORT, true));
+
         validate_dependency(module->deps, "D@2016-06-20", 0);
         validate_dependency(module->deps, "Dcommon@2016-06-10", 0);
         validate_dependency(module->deps, "E", 0);

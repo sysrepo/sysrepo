@@ -1439,11 +1439,6 @@ md_collect_identity_dependencies(md_ctx_t *md_ctx, const struct lys_ident *ident
 
     /* modules are different, add the dependency */
     if (module2 && (module != module2)) {
-        if (!module2->implemented) {
-            /* this identity or any derived identities cannot be used as the module is not implemented */
-            return SR_ERR_OK;
-        }
-
         if (SR_ERR_OK != md_add_dependency(module->deps, MD_DEP_EXTENSION, module2, true, NULL) ||
                 SR_ERR_OK != md_add_dependency(module2->inv_deps, MD_DEP_EXTENSION, module, true, NULL)) {
             SR_LOG_ERR_MSG("Failed to add an edge into the dependency graph.");
