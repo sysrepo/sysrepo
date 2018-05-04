@@ -4733,7 +4733,38 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
                 d_cnt++;
             }
         }
+    }
 
+    if (SR_EV_VERIFY == ev) {
+        rc = dm_save_commit_context(dm_ctx, c_ctx);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Saving of commit context failed");
+        }
+    } else {
+        /* apply abort */
+        dm_release_resources_commit_context(dm_ctx, c_ctx);
+        rc = dm_save_commit_context(dm_ctx, c_ctx);
+        /* if there is a verify subscription commit context is already saved */
+        if (SR_ERR_DATA_EXISTS == rc) {
+            rc = SR_ERR_OK;
+        }
+    }
+
+    i = 0;
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
+        if (!info->modified) {
+            continue;
+        }
+        size_t d_cnt = 0;
+        dm_model_subscription_t lookup = {0};
+
+        lookup.schema_info = info->schema;
+
+        ms = sr_btree_search(c_ctx->subscriptions, &lookup);
+        if (NULL == ms) {
+            SR_LOG_WRN("No subscription found for %s", info->schema->module->name);
+            continue;
+        }
         if (NULL == ms->difflist) {
             continue;
         }
@@ -4786,21 +4817,6 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
                     }
                 }
             }
-        }
-    }
-
-    if (SR_EV_VERIFY == ev) {
-        rc = dm_save_commit_context(dm_ctx, c_ctx);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Saving of commit context failed");
-        }
-    } else {
-        /* apply abort */
-        dm_release_resources_commit_context(dm_ctx, c_ctx);
-        rc = dm_save_commit_context(dm_ctx, c_ctx);
-        /* if there is a verify subscription commit context is already saved */
-        if (SR_ERR_DATA_EXISTS == rc) {
-            rc = SR_ERR_OK;
         }
     }
 
