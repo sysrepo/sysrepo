@@ -1,0 +1,14 @@
+module mws-main-module {
+    prefix mws-main;
+
+    namespace "modulewithsub:main";
+
+    include mws-main-submodule1;
+    include mws-main-submodule2;
+
+    container main {
+        leaf top {
+            type string;
+        }
+    }
+}
