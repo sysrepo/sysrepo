@@ -1,0 +1,21 @@
+module augm_container_if_feature_m1 {
+  namespace "urn:ietf:params:xml:ns:yang:ietf-interfaces:augm_container_if_feature";
+  prefix acif;
+
+  import ietf-interfaces{
+    prefix if;
+  }
+
+  feature augm_feature;
+
+  augment "/if:interfaces-state/if:interface" {
+    container container1 {
+      if-feature augm_feature;
+      leaf augmented-data-flag {
+          type boolean;
+          description
+            "Flag for test of augmentation into empty container.";
+      }
+    }
+  }
+}
