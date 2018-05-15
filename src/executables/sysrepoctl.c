@@ -976,7 +976,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     while (module_ll_node) {
         module = (md_module_t *)module_ll_node->data;
 
-        if (!strcmp(module->ns, mod->ns)) {
+        if (!strcmp(module->ns, mod->ns) && strcmp(module->name, mod->name)) {
             fprintf(stderr, "Error: Module '%s' with namespace '%s' already in context.\n", module->name, module->ns);
             goto fail;
         }
