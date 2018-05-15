@@ -1744,12 +1744,16 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, md_module_t *main
                         if (augment) {
                             if (node->nodetype == LYS_AUGMENT) {
                                 child = (struct lys_node *)lys_getnext(NULL, node, NULL, 0);
-                                assert(!(child->nodetype & (LYS_CONTAINER | LYS_LIST)) || (intptr_t)child->priv & PRIV_OP_SUBTREE);
-                                assert(child->nodetype & (LYS_CONTAINER | LYS_LIST) || child->flags & LYS_CONFIG_R);
+                                assert(child == NULL || !(child->nodetype & (LYS_CONTAINER | LYS_LIST)) || (intptr_t)child->priv & PRIV_OP_SUBTREE);
+                                assert(child == NULL || child->nodetype & (LYS_CONTAINER | LYS_LIST) || child->flags & LYS_CONFIG_R);
                             } else {
                                 child = node;
                             }
-                            rc = md_check_op_data_subtree(dest_module, child);
+                            if (child != NULL) {
+                                rc = md_check_op_data_subtree(dest_module, child);
+                            } else {
+                                rc = SR_ERR_OK;
+                            }
                         } else {
                             child = node;
                         }
