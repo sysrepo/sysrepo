@@ -2553,6 +2553,23 @@ validaton_of_multiple_models(void **state)
 
 }
 
+void set_item_id_ref(void **state){
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+
+    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
+
+    sr_val_t *val = NULL;
+    sr_new_val("/id-ref-base:main/id-ref-aug:augmented/id-ref", &val);
+    sr_val_set_str_data(val, SR_IDENTITYREF_T, "id-def-extended:external-derived-id");
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_STRICT, val, NULL, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_free_val(val);
+    test_rp_session_cleanup(ctx, session);
+}
+
 
 int main(){
 
@@ -2593,6 +2610,7 @@ int main(){
             cmocka_unit_test(candidate_copy_config_lock_test),
             cmocka_unit_test_setup(edit_union_type, createData),
             cmocka_unit_test_setup(validaton_of_multiple_models, createData),
+            cmocka_unit_test(set_item_id_ref),
     };
 
     watchdog_start(300);
