@@ -4944,30 +4944,6 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
 
         /* distinguish between modules that can and cannot be locked */
         si->can_not_be_locked = !module->has_data;
-
-        /* load this module also into contexts of newly augmented modules */
-        ll_node = module->inv_deps->first;
-        while (ll_node) {
-            dep = (md_dep_t *)ll_node->data;
-            if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented) {
-                lookup.module_name = (char *)dep->dest->name;
-                si_ext = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
-                if (NULL != si_ext && NULL != si_ext->ly_ctx) {
-                    rc = dm_load_schema_file(dm_ctx, module->filepath, true, &si_ext);
-                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to load schema %s", module->filepath);
-
-                    /* compute xpath hashes for all newly added schema nodes (through augment) */
-                    rc = dm_init_missing_node_priv_data(si_ext);
-                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", dep->dest->name);
-
-                    if (module->has_persist) {
-                        rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si_ext, false);
-                        CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
-                    }
-                }
-            }
-            ll_node = ll_node->next;
-        }
 unlock:
         pthread_rwlock_unlock(&si->model_lock);
     } else {
@@ -4975,6 +4951,31 @@ unlock:
          * into this module is received */
         SR_LOG_DBG("Module %s will be loaded when a request for it comes", module_name);
     }
+
+    /* load this module also into contexts of newly augmented modules */
+    ll_node = module->inv_deps->first;
+    while (ll_node) {
+        dep = (md_dep_t *)ll_node->data;
+        if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented) {
+            lookup.module_name = (char *)dep->dest->name;
+            si_ext = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
+            if (NULL != si_ext && NULL != si_ext->ly_ctx) {
+                rc = dm_load_schema_file(dm_ctx, module->filepath, true, &si_ext);
+                CHECK_RC_LOG_GOTO(rc, unlock, "Failed to load schema %s", module->filepath);
+
+                /* compute xpath hashes for all newly added schema nodes (through augment) */
+                rc = dm_init_missing_node_priv_data(si_ext);
+                CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", dep->dest->name);
+
+                if (module->has_persist) {
+                    rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si_ext, false);
+                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
+                }
+            }
+        }
+        ll_node = ll_node->next;
+    }
+
 cleanup:
     pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
     md_ctx_unlock(dm_ctx->md_ctx);
