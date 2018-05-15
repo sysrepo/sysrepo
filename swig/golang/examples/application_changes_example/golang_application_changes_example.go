@@ -131,6 +131,7 @@ func print_current_config(session *C.sr_session_ctx_t, module_name *C.char) {
 	var count C.size_t = 0
 	var rc C.int = C.SR_ERR_OK
 	xpath := C.CString("/" + C.GoString(module_name) + ":*//*")
+	defer C.free(unsafe.Pointer(xpath))
 
 	rc = C.sr_get_items(session, xpath, &values, &count)
 	if C.SR_ERR_OK != rc {
@@ -214,6 +215,7 @@ func Go_module_change_cb(session *C.sr_session_ctx_t, module_name *C.char, event
 	fmt.Printf("\n\n ========== CHANGES: =============================================\n\n")
 
 	change_path := C.CString("/" + C.GoString(module_name) + ":*")
+	defer C.free(unsafe.Pointer(change_path))
 
 	rc = C.sr_get_changes_iter(session, change_path, &it)
 	if C.SR_ERR_OK != rc {
@@ -245,6 +247,7 @@ func main() {
 	var rc C.int = C.SR_ERR_OK
 
 	module_name := C.CString("ietf-interfaces")
+	defer C.free(unsafe.Pointer(module_name))
 
 	/* connect to sysrepo */
 	rc = C.sr_connect(module_name, C.SR_CONN_DEFAULT, &connection)
