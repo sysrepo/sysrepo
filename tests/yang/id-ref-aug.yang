@@ -1,0 +1,22 @@
+module id-ref-aug {
+  namespace "urn:ietf:params:xml:ns:yang:id-ref-aug";
+  prefix ira;
+
+  import id-ref-base {
+      prefix irb;
+  }
+
+  import id-def-base {
+      prefix idb;
+  }
+
+  augment "/irb:main" {
+      container augmented {
+        leaf id-ref {
+            type identityref {
+                base idb:base-id;
+            }
+        }
+      }
+  }
+}
