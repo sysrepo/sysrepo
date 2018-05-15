@@ -1789,10 +1789,11 @@ next_node:
                     } else {
                         /* if processing augment, we must be able to go back through
                          * the augments from the same module */
-                        if (parent && main_module_schema == lys_node_module(parent)) {
-                            node = parent;
-                        } else {
-                            node = node->parent; /* should be NULL */
+                        node = node->parent;
+                        if (node == NULL) {
+                            if (parent && main_module_schema == lys_node_module(parent)) {
+                                node = parent;
+                            } 
                         }
                     }
                     process_children = false;
