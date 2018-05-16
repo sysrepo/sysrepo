@@ -1507,6 +1507,12 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                 goto next_node;
             }
 
+            /* process nodes only from this augment (we assume there is always only one augment in a module
+             * targeting one node, otherwise both augmnents will be traversed twice, no real harm) */
+            if (augment && (node->module != root->module)) {
+                goto next_node;
+            }
+
             /* go as deep as possible */
             if (process_children) {
                 while (!(node->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) && node->child
