@@ -1,0 +1,8 @@
+module id-ref-base {
+  namespace "urn:ietf:params:xml:ns:yang:id-ref-base";
+  prefix irb;
+
+  container main {
+      description "Will be augmented by others.";
+  }
+}
