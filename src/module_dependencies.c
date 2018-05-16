@@ -1470,8 +1470,7 @@ md_collect_identity_dependencies(md_ctx_t *md_ctx, const struct lys_ident *ident
  *        and data dependencies (and maybe more in the future as needed).
  */
 static int
-md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, md_module_t *main_module, struct lys_node *root,
-        sr_list_t *being_parsed)
+md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *root, sr_list_t *being_parsed)
 {
     int rc = SR_ERR_OK;
     struct lys_node *node = NULL, *child = NULL, *parent = NULL;
@@ -1640,8 +1639,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, md_module_t *main
                 case LY_TYPE_IDENT:
                     /* identityref */
                     for (int i = 0; i < leaf->type.info.ident.count; ++i) {
-                        rc = md_collect_identity_dependencies(md_ctx, leaf->type.info.ident.ref[i], main_module,
-                                                              being_parsed);
+                        rc = md_collect_identity_dependencies(md_ctx, leaf->type.info.ident.ref[i], module, being_parsed);
                         if (SR_ERR_OK != rc) {
                             return rc;
                         }
@@ -2196,7 +2194,7 @@ implemented_dependencies:
 
         /* collect instance identifiers and operational data subtrees */
         if (!module->submodule) {
-            rc = md_traverse_schema_tree(md_ctx, module, main_module, module_schema->data, being_parsed);
+            rc = md_traverse_schema_tree(md_ctx, main_module, module_schema->data, being_parsed);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
@@ -2226,12 +2224,12 @@ implemented_dependencies:
                 goto cleanup;
             }
 
-            rc = md_traverse_schema_tree(md_ctx, dep->dest, dep->dest, tmp_module_schema->data, being_parsed);
+            rc = md_traverse_schema_tree(md_ctx, dep->dest, tmp_module_schema->data, being_parsed);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
             for (uint32_t i = 0; i < tmp_module_schema->augment_size; ++i) {
-                rc = md_traverse_schema_tree(md_ctx, dep->dest, dep->dest, (struct lys_node *)&tmp_module_schema->augment[i],
+                rc = md_traverse_schema_tree(md_ctx, dep->dest, (struct lys_node *)&tmp_module_schema->augment[i],
                                              being_parsed);
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
@@ -2245,7 +2243,7 @@ implemented_dependencies:
 
         for (uint32_t i = 0; i < module_schema->augment_size; ++i) {
             augment = module_schema->augment + i;
-            rc = md_traverse_schema_tree(md_ctx, main_module, main_module, (struct lys_node *)augment, being_parsed);
+            rc = md_traverse_schema_tree(md_ctx, main_module, (struct lys_node *)augment, being_parsed);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
