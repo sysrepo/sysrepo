@@ -475,9 +475,10 @@ md_get_inc_revision(const struct lys_include *inc)
  * @brief Get the module in which the data of the given schema node resides.
  */
 md_module_t *
-md_get_destination_module(md_ctx_t *md_ctx, md_module_t *module, const struct lys_node *node)
+md_get_destination_module(md_ctx_t *md_ctx, sr_list_t *being_parsed, const struct lys_node *node)
 {
     const struct lys_node *parent = NULL;
+    md_module_t *dest_module = NULL;
 
     if (NULL == node) {
         return NULL;
@@ -497,16 +498,9 @@ md_get_destination_module(md_ctx_t *md_ctx, md_module_t *module, const struct ly
         }
     } while (parent);
 
-    md_module_t module_lkp;
-    module_lkp.name = (char *)lys_node_module(node)->name;
-    module_lkp.revision_date = (char *)md_get_module_revision(lys_node_module(node));
-
-    if (NULL != module && NULL != module->name && 0 == strcmp(module_lkp.name, module->name) &&
-        0 == strcmp(module_lkp.revision_date, module->revision_date)) {
-        return module;
-    }
-
-    return (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
+    md_get_module_info(md_ctx, (char *)lys_node_module(node)->name, (char *)md_get_module_revision(lys_node_module(node)),
+                       being_parsed, &dest_module);
+    return dest_module;
 }
 
 /*
@@ -1476,8 +1470,7 @@ md_collect_identity_dependencies(md_ctx_t *md_ctx, const struct lys_ident *ident
  *        and data dependencies (and maybe more in the future as needed).
  */
 static int
-md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, md_module_t *main_module, struct lys_node *root,
-        sr_list_t *being_parsed)
+md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *root, sr_list_t *being_parsed)
 {
     int rc = SR_ERR_OK;
     struct lys_node *node = NULL, *child = NULL, *parent = NULL;
@@ -1498,7 +1491,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, md_module_t *main
     augment = (root->nodetype == LYS_AUGMENT ? true : false);
 
     main_module_schema = lys_node_module(root);
-    dest_module = (augment ? md_get_destination_module(md_ctx, module, root) : module);
+    dest_module = (augment ? md_get_destination_module(md_ctx, being_parsed, root) : module);
     if (NULL == dest_module) {
         /* shouldn't happen as all imports are already processed */
         SR_LOG_ERR_MSG("Failed to obtain the destination module of a schema node.");
@@ -1511,6 +1504,12 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, md_module_t *main
         do {
             /* skip groupings */
             if (LYS_GROUPING == node->nodetype) {
+                goto next_node;
+            }
+
+            /* process nodes only from this augment (we assume there is always only one augment in a module
+             * targeting one node, otherwise both augmnents will be traversed twice, no real harm) */
+            if (augment && (node->module != root->module)) {
                 goto next_node;
             }
 
@@ -1646,8 +1645,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, md_module_t *main
                 case LY_TYPE_IDENT:
                     /* identityref */
                     for (int i = 0; i < leaf->type.info.ident.count; ++i) {
-                        rc = md_collect_identity_dependencies(md_ctx, leaf->type.info.ident.ref[i], main_module,
-                                                              being_parsed);
+                        rc = md_collect_identity_dependencies(md_ctx, leaf->type.info.ident.ref[i], module, being_parsed);
                         if (SR_ERR_OK != rc) {
                             return rc;
                         }
@@ -2202,7 +2200,7 @@ implemented_dependencies:
 
         /* collect instance identifiers and operational data subtrees */
         if (!module->submodule) {
-            rc = md_traverse_schema_tree(md_ctx, module, main_module, module_schema->data, being_parsed);
+            rc = md_traverse_schema_tree(md_ctx, main_module, module_schema->data, being_parsed);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
@@ -2232,12 +2230,12 @@ implemented_dependencies:
                 goto cleanup;
             }
 
-            rc = md_traverse_schema_tree(md_ctx, dep->dest, dep->dest, tmp_module_schema->data, being_parsed);
+            rc = md_traverse_schema_tree(md_ctx, dep->dest, tmp_module_schema->data, being_parsed);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
             for (uint32_t i = 0; i < tmp_module_schema->augment_size; ++i) {
-                rc = md_traverse_schema_tree(md_ctx, dep->dest, dep->dest, (struct lys_node *)&tmp_module_schema->augment[i],
+                rc = md_traverse_schema_tree(md_ctx, dep->dest, (struct lys_node *)&tmp_module_schema->augment[i],
                                              being_parsed);
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
@@ -2251,7 +2249,7 @@ implemented_dependencies:
 
         for (uint32_t i = 0; i < module_schema->augment_size; ++i) {
             augment = module_schema->augment + i;
-            rc = md_traverse_schema_tree(md_ctx, main_module, main_module, (struct lys_node *)augment, being_parsed);
+            rc = md_traverse_schema_tree(md_ctx, main_module, (struct lys_node *)augment, being_parsed);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
