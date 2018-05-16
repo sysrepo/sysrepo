@@ -1793,7 +1793,7 @@ next_node:
                         if (node == NULL) {
                             if (parent && main_module_schema == lys_node_module(parent)) {
                                 node = parent;
-                            } 
+                            }
                         }
                     }
                     process_children = false;
@@ -2223,7 +2223,7 @@ implemented_dependencies:
                 goto cleanup;
             }
 
-            /* load module schema into the temporary context. */
+            /* load module schema with any augment targets into a temporary context */
             tmp_module_schema = lys_parse_path(tmp_ly_ctx, dep->dest->filepath, sr_str_ends_with(dep->dest->filepath,
                                                SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG);
             if (NULL == tmp_module_schema) {
@@ -2235,6 +2235,13 @@ implemented_dependencies:
             rc = md_traverse_schema_tree(md_ctx, dep->dest, dep->dest, tmp_module_schema->data, being_parsed);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
+            }
+            for (uint32_t i = 0; i < tmp_module_schema->augment_size; ++i) {
+                rc = md_traverse_schema_tree(md_ctx, dep->dest, dep->dest, (struct lys_node *)&tmp_module_schema->augment[i],
+                                             being_parsed);
+                if (SR_ERR_OK != rc) {
+                    goto cleanup;
+                }
             }
 
             tmp_module_schema = NULL;
