@@ -1758,6 +1758,32 @@ md_test_insert_module_5(void **state)
     md_destroy(md_ctx);
 }
 
+static const char * const md_test_insert_module_double_aug_mod = TEST_SOURCE_DIR "/yang/mwa-aug2" TEST_MODULE_EXT;
+
+static void
+md_test_insert_module_double_aug(void **state)
+{
+    int rc;
+    md_ctx_t *md_ctx = NULL;
+    sr_list_t *implicitly_inserted = NULL;
+
+    rc = md_init(TEST_SOURCE_DIR "/yang", TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", true, &md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+    validate_context(md_ctx);
+
+    rc = md_insert_module(md_ctx, md_test_insert_module_double_aug_mod, &implicitly_inserted);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, implicitly_inserted->count);
+    md_free_module_key_list(implicitly_inserted);
+    validate_context(md_ctx);
+
+    rc = md_flush(md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    md_destroy(md_ctx);
+}
+
 static int
 _md_test_remove_modules(md_ctx_t *md_ctx, const char *name, const char *revision, sr_list_t **implicitly_removed)
 {
@@ -1918,6 +1944,12 @@ md_test_remove_modules(void **state)
     assert_int_equal(0, implicitly_removed->count);
     md_free_module_key_list(implicitly_removed);
     implicitly_removed = NULL;
+  
+    rc = _md_test_remove_modules(md_ctx, "mwa-aug2", NULL, &implicitly_removed);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, implicitly_removed->count);
+    md_free_module_key_list(implicitly_removed);
+    implicitly_removed = NULL;
 
     /* flush changes into the internal data file */
     rc = md_flush(md_ctx);
@@ -2060,6 +2092,7 @@ int main(){
             cmocka_unit_test(md_test_insert_module_3),
             cmocka_unit_test(md_test_insert_module_4),
             cmocka_unit_test(md_test_insert_module_5),
+            cmocka_unit_test(md_test_insert_module_double_aug),
             cmocka_unit_test(md_test_remove_modules),
             cmocka_unit_test(md_test_grouping_and_uses),
             cmocka_unit_test(md_test_has_data),
