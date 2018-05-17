@@ -1,0 +1,11 @@
+module mws-other-module {
+    prefix mws-other;
+
+    namespace "modulewithsub:other";
+
+    container foo {
+        leaf bar {
+            type string;
+        }
+    }
+}
