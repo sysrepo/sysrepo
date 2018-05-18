@@ -1742,8 +1742,16 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                         if (augment) {
                             if (node->nodetype == LYS_AUGMENT) {
                                 child = (struct lys_node *)lys_getnext(NULL, node, NULL, 0);
-                                assert(child == NULL || !(child->nodetype & (LYS_CONTAINER | LYS_LIST)) || (intptr_t)child->priv & PRIV_OP_SUBTREE);
-                                assert(child == NULL || child->nodetype & (LYS_CONTAINER | LYS_LIST) || child->flags & LYS_CONFIG_R);
+                                if (child != NULL) {
+                                    if (child->nodetype & (LYS_CONTAINER | LYS_LIST)) {
+                                        /* All op data means containers/lists containing children will have 
+                                           PRIV_OP_SUBTREE set. Empty containers/lists will not have this set. 
+                                           Neither will containers that only have children from a different schema. */
+                                        assert(((intptr_t)child->priv & PRIV_OP_SUBTREE) || child->child == NULL || main_module_schema != lys_node_module(child->child));
+                                    } else {
+                                        assert(child->flags & LYS_CONFIG_R);
+                                    }
+                                }
                             } else {
                                 child = node;
                             }
