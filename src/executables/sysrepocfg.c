@@ -597,7 +597,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
     do {
         /* go as deep as possible */
         if (process_children) {
-            while (!(elem->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) && elem->child) {
+            while (!(elem->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) && elem->child) {
                 elem = elem->child;
             }
         }

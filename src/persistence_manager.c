@@ -37,17 +37,18 @@
 #include <sys/xattr.h>
 #endif
 
-#define PM_SCHEMA_FILE "sysrepo-persistent-data.yang"  /**< Schema of module's persistent data. */
+#define PM_MODULE_NAME "sysrepo-persistent-data"
+#define PM_SCHEMA_FILE PM_MODULE_NAME ".yang"  /**< Schema of module's persistent data. */
 
 //! @cond doxygen_suppress
-#define PM_XPATH_MODULE                      "/sysrepo-persistent-data:module[name='%s']"
+#define PM_XPATH_MODULE                      "/" PM_MODULE_NAME ":module[name='%s']"
 
 #define PM_XPATH_FEATURES                     PM_XPATH_MODULE "/enabled-features/feature-name"
 #define PM_XPATH_FEATURES_BY_NAME             PM_XPATH_MODULE "/enabled-features/feature-name[.='%s']"
 
 #define PM_XPATH_SUBSCRIPTION_LIST            PM_XPATH_MODULE "/subscriptions/subscription"
 
-#define PM_XPATH_SUBSCRIPTION                 PM_XPATH_SUBSCRIPTION_LIST "[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']"
+#define PM_XPATH_SUBSCRIPTION                 PM_XPATH_SUBSCRIPTION_LIST "[type='" PM_MODULE_NAME ":%s'][destination-address='%s'][destination-id='%"PRIu32"']"
 #define PM_XPATH_SUBSCRIPTION_XPATH           PM_XPATH_SUBSCRIPTION      "/xpath"
 #define PM_XPATH_SUBSCRIPTION_USERNAME        PM_XPATH_SUBSCRIPTION      "/username"
 #define PM_XPATH_SUBSCRIPTION_EVENT           PM_XPATH_SUBSCRIPTION      "/event"
@@ -56,8 +57,8 @@
 #define PM_XPATH_SUBSCRIPTION_ENABLE_NACM     PM_XPATH_SUBSCRIPTION      "/enable-nacm"
 #define PM_XPATH_SUBSCRIPTION_API_VARIANT     PM_XPATH_SUBSCRIPTION      "/api-variant"
 
-#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE        PM_XPATH_SUBSCRIPTION_LIST "[type='%s']"
-#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH  PM_XPATH_SUBSCRIPTION_LIST "[type='%s'][xpath='%s']"
+#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE        PM_XPATH_SUBSCRIPTION_LIST "[type='" PM_MODULE_NAME ":%s']"
+#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH  PM_XPATH_SUBSCRIPTION_LIST "[type='" PM_MODULE_NAME ":%s'][xpath='%s']"
 #define PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR    PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s']"
 #define PM_XPATH_SUBSCRIPTIONS_BY_DST_ID      PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s'][destination-id='%"PRIu32"']"
 #define PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING PM_XPATH_SUBSCRIPTION_LIST "[enable-running=true()]"

@@ -1556,9 +1556,10 @@ rp_dt_add_changes_for_children(sr_list_t *changes, LYD_DIFFTYPE type, struct lyd
     bool added = false, added_child = false;
     size_t orig_len =  changes->count;
 
-    child = node->child;
-    if (node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) {
+    if (node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) {
         child = NULL;
+    } else {
+        child = node->child;
     }
     while (child) {
         rc = rp_dt_add_changes_for_children(changes, type, child, &added);
@@ -1632,9 +1633,10 @@ rp_has_only_empty_np_containers(struct lyd_node *root, sr_list_t *deleted, struc
         return false;
     }
 
-    child = root->child;
-    if (root->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) {
+    if (root->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) {
         child = NULL;
+    } else {
+        child = root->child;
     }
     while (child) {
         if (!rp_has_only_empty_np_containers(child, deleted, skip)) {
