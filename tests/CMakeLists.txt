@@ -155,6 +155,15 @@ macro(INSTALL_YANG_FOR_TESTS MODULE_NAME)
     )
 endmacro(INSTALL_YANG_FOR_TESTS)
 
+macro(ENABLE_FEATURE_FOR_TESTS MODULE_NAME FEATURE_NAME)
+    ADD_CUSTOM_COMMAND(
+        TARGET common_test
+        POST_BUILD
+        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --feature-enable ${FEATURE_NAME} --module ${MODULE_NAME} -0 ${TEST_REPOSITORY_LOC} > /dev/null
+        VERBATIM
+    )
+endmacro(ENABLE_FEATURE_FOR_TESTS)
+
 if(ENABLE_NACM)
     INSTALL_YANG_FOR_TESTS("ietf-netconf-acm@2012-02-22")
 endif(ENABLE_NACM)
@@ -179,6 +188,16 @@ INSTALL_YANG_FOR_TESTS("turing-machine")
 INSTALL_YANG_FOR_TESTS("ietf-netconf-notifications")
 INSTALL_YANG_FOR_TESTS("nc-notifications")
 INSTALL_YANG_FOR_TESTS("servers")
+
+INSTALL_YANG_FOR_TESTS("data-feat-enable-A")
+INSTALL_YANG_FOR_TESTS("data-feat-enable-B")
+INSTALL_YANG_FOR_TESTS("data-feat-enable-C")
+INSTALL_YANG_FOR_TESTS("data-feat-enable-D")
+ENABLE_FEATURE_FOR_TESTS("data-feat-enable-C" "c-feature")
+
+INSTALL_YANG_FOR_TESTS("data-imp-dep-A")
+INSTALL_YANG_FOR_TESTS("data-imp-dep-B")
+INSTALL_YANG_FOR_TESTS("data-imp-dep-C")
 
 
 # dummy testing plugins

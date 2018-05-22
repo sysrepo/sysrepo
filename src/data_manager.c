@@ -400,6 +400,85 @@ cleanup:
     return rc;
 }
 
+static int
+dm_enable_features_with_imports(dm_ctx_t *dm_ctx, md_module_t *module, const struct lys_module *ly_module, struct ly_ctx *target_ctx)
+{
+    const struct lys_module *dest_module = NULL, *src_module = NULL;
+    dm_schema_info_t *si = NULL;
+    int ret = 0, rc = 0;
+
+    rc = dm_get_module_and_lock(dm_ctx, module->name, &si);
+    CHECK_RC_LOG_RETURN(rc, "Schema '%s' not found", module->name);
+    ret = sr_features_clone(si->module, ly_module);
+    pthread_rwlock_unlock(&si->model_lock);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Failed to clone feature into module '%s'", module->name);
+
+    for (sr_llist_node_t *node = module->deps->first; node; node = node->next) {
+        md_dep_t *dep = (md_dep_t*)node->data;
+
+        if (dep->type != MD_DEP_IMPORT) {
+            continue;
+        }
+
+        dest_module = ly_ctx_get_module(target_ctx, dep->dest->name, NULL, 0);
+        if (!dest_module) {
+            SR_LOG_ERR("Could not find module %s in the context of module %s", dep->dest->name, module->name);
+            return SR_ERR_INTERNAL;
+        }
+
+        rc = dm_get_module_and_lock(dm_ctx, dep->dest->name, &si);
+        CHECK_RC_LOG_RETURN(rc, "Schema '%s' not found", dep->dest->name);
+
+        src_module = si->module;
+        ret = sr_features_clone(src_module, dest_module);
+        pthread_rwlock_unlock(&si->model_lock);
+
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Failed to clone feature into module '%s'", dest_module->name);
+    }
+
+    return SR_ERR_OK;
+}
+
+static int
+dm_mark_deps_as_implemented(dm_ctx_t *dm_ctx, md_module_t *module, struct ly_ctx *target_ctx)
+{
+    const struct lys_module *dest_module = NULL;
+    int ret = 0;
+    const char *rev = NULL;
+
+    for (sr_llist_node_t *node = module->deps->first; node; node = node->next) {
+        md_dep_t *dep = (md_dep_t*)node->data;
+
+        if (dep->type != MD_DEP_IMPORT) {
+            continue;
+        }
+
+        if (!dep->dest->implemented) {
+            continue;
+        }
+
+        if (strcmp(dep->dest->revision_date, "") != 0) {
+            rev = dep->dest->revision_date;
+        } else {
+            rev = NULL;
+        }
+
+        dest_module = ly_ctx_get_module(target_ctx, dep->dest->name, rev, 0);
+        if (!dest_module) {
+            SR_LOG_ERR("Could not find module %s in the context of module %s", dep->dest->name, module->name);
+            return SR_ERR_INTERNAL;
+        }
+
+        ret = lys_set_implemented(dest_module);
+        if (ret != EXIT_SUCCESS) {
+            SR_LOG_ERR("Could not mark module %s as implemented in the context of module %s", dep->dest->name, module->name);
+            return SR_ERR_INTERNAL;
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
 /**
  * @brief The function is called to load the requested module into the context.
  */
@@ -433,9 +512,19 @@ dm_module_clb(struct ly_ctx *ctx, const char *name, const char *ns, int options,
 
     ly_module = lys_parse_path(ctx, module->filepath, fmt);
 
-    rc = dm_enable_features_in_tmp_module(dm_ctx, module, ly_module);
+    rc = dm_enable_features_with_imports(dm_ctx, module, ly_module, ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Failed to enable features for imports of module %s", module->name);
+        return NULL;
+    }
 
-    return SR_ERR_OK == rc ? ly_module : NULL;
+    rc = dm_mark_deps_as_implemented(dm_ctx, module, ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Failed mark imports of module %s as implemented", module->name);
+        return NULL;
+    }
+
+    return ly_module;
 }
 
 /**
@@ -952,6 +1041,13 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
                 md_ctx_unlock(dm_ctx->md_ctx);
                 return rc;
             }
+
+            rc = dm_mark_deps_as_implemented(dm_ctx, dep->dest, si->ly_ctx);
+            if (SR_ERR_OK != rc) {
+                *schema_info = NULL;
+                md_ctx_unlock(dm_ctx->md_ctx);
+                return rc;
+            }
         }
         if (dep->type == MD_DEP_DATA) {
             /* mark this module as dependent on data from other modules */
@@ -959,6 +1055,9 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         }
         ll_node = ll_node->next;
     }
+
+    rc = dm_mark_deps_as_implemented(dm_ctx, module, si->ly_ctx);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to mark imports as implemented for module %s", module->name);
 
     /* compute xpath hashes for all schema nodes (referenced from data tree) */
     rc = dm_init_missing_node_priv_data(si);
@@ -3145,10 +3244,17 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
         /* loaded data trees are valid, so check only the modified ones */
         if (info->modified) {
             rc = dm_validate_data_info(dm_ctx, session, info);
-            if (SR_ERR_VALIDATION_FAILED == rc) {
-                if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(info->schema->module->ctx), "%s",
-                        ly_errmsg(info->schema->module->ctx))) {
-                    SR_LOG_WRN_MSG("Failed to record validation error");
+            if (rc != SR_ERR_OK) {
+                if (SR_ERR_VALIDATION_FAILED == rc) {
+                    if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(info->schema->module->ctx), "%s",
+                            ly_errmsg(info->schema->module->ctx))) {
+                        SR_LOG_WRN_MSG("Failed to record validation error");
+                    }
+                } else {
+                    if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, "Validation failed: %s",
+                                                  sr_strerror(rc))) {
+                        SR_LOG_WRN_MSG("Failed to record validation error");
+                    }
                 }
                 validation_failed = true;
                 rc = SR_ERR_OK;
