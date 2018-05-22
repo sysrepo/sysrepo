@@ -2106,6 +2106,9 @@ cl_notification_test(void **state)
         if (0 == strcmp("ietf-interfaces", schemas[s].module_name)){
             assert_true(schemas[s].enabled_feature_cnt > 0);
             assert_string_equal("pre-provisioning", schemas[s].enabled_features[0]);
+        } else if(0 != strstr(schemas[s].module_name, "data-feat-enable-C")) {
+            assert_true(schemas[s].enabled_feature_cnt > 0);
+            assert_string_equal("c-feature", schemas[s].enabled_features[0]);
         } else {
             assert_int_equal(0, schemas[s].enabled_feature_cnt);
         }

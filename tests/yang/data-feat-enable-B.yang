@@ -1,0 +1,24 @@
+module data-feat-enable-B {
+    prefix dfe-B;
+    namespace "urn:dfe:B";
+
+    import data-feat-enable-D {
+        prefix dfe-D;
+    }
+
+    container b-con {
+        list b-list {
+            key name;
+
+            leaf name {
+                type string;
+            }
+
+            leaf ref {
+                type leafref {
+                    path "/dfe-D:d-con/dfe-D:d-list/dfe-D:name";
+                }
+            }
+        }
+    }
+}
