@@ -120,7 +120,6 @@ RUN \
       make -j2 && \
       make install && \
       cd ../../cli && mkdir build && cd build && \
-      git checkout devel-cli && \
       cmake -DCMAKE_INSTALL_PREFIX=/usr .. && \
       make -j2 && \
       make install

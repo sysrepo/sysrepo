@@ -421,7 +421,7 @@ np_notif_store_test(void **state)
     sr_list_t *notif_list = NULL;
 
     /* create notif. data tree */
-    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     assert_non_null(ctx);
     module = ly_ctx_load_module(ctx, "test-module", NULL);
     assert_non_null(module);

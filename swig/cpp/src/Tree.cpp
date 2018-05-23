@@ -25,8 +25,6 @@
 
 #include <string.h>
 
-using namespace std;
-
 extern "C" {
 #include "sysrepo.h"
 #include "sysrepo/trees.h"
@@ -34,7 +32,7 @@ extern "C" {
 }
 
 Tree::Tree() {
-    _node = NULL;
+    _node = nullptr;
     _deleter = S_Deleter(new Deleter(_node));
 }
 Tree::Tree(const char *root_name, const char *root_module_name) {
@@ -55,7 +53,7 @@ S_Tree Tree::dup() {
     if (!_node)
         throw std::logic_error("Tree::dup: called on null Tree");
 
-    sr_node_t *tree_dup = NULL;
+    sr_node_t *tree_dup = nullptr;
     int ret = sr_dup_tree(_node, &tree_dup);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
@@ -74,7 +72,7 @@ S_Tree Tree::parent() {
     if (!_node)
         throw std::logic_error("Tree::parent: called on null Tree");
     if (!_node->parent)
-        return NULL;
+        return nullptr;
 
     S_Tree node(new Tree(_node->parent, _deleter));
     return node;
@@ -83,7 +81,7 @@ S_Tree Tree::next() {
     if (!_node)
         throw std::logic_error("Tree::next: called on null Tree");
     if (!_node->next)
-        return NULL;
+        return nullptr;
 
     S_Tree node(new Tree(_node->next, _deleter));
     return node;
@@ -92,7 +90,7 @@ S_Tree Tree::prev() {
     if (!_node)
         throw std::logic_error("Tree::prev: called on null Tree");
     if (!_node->prev)
-        return NULL;
+        return nullptr;
 
     S_Tree node(new Tree(_node->prev, _deleter));
     return node;
@@ -101,7 +99,7 @@ S_Tree Tree::first_child() {
     if (!_node)
         throw std::logic_error("Tree::first_child: called on null Tree");
     if (!_node->first_child)
-        return NULL;
+        return nullptr;
 
     S_Tree node(new Tree(_node->first_child, _deleter));
     return node;
@@ -110,66 +108,66 @@ S_Tree Tree::last_child() {
     if (!_node)
         throw std::logic_error("Tree::last_child: called on null Tree");
     if (!_node->last_child)
-        return NULL;
+        return nullptr;
 
     S_Tree node(new Tree(_node->last_child, _deleter));
     return node;
 }
 S_String Tree::to_string(int depth_limit) {
-    char *mem = NULL;
+    char *mem = nullptr;
 
     int ret = sr_print_tree_mem(&mem, _node, depth_limit);
     if (SR_ERR_OK == ret) {
-        if (mem == NULL)
-            return NULL;
+        if (mem == nullptr)
+            return nullptr;
         S_String string_val = mem;
         free(mem);
         return string_val;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-        return NULL;
+        return nullptr;
     }
 }
 S_String Tree::value_to_string() {
-    char *mem = NULL;
+    char *mem = nullptr;
 
-    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
+    if (_node == nullptr) throw_exception(SR_ERR_DATA_MISSING);
 
     sr_val_t *val = (sr_val_t *) _node;
 
     int ret = sr_print_val_mem(&mem, val);
     if (SR_ERR_OK == ret) {
-        if (mem == NULL)
-            return NULL;
+        if (mem == nullptr)
+            return nullptr;
         S_String string_val = mem;
         free(mem);
         return string_val;
     } else if (SR_ERR_NOT_FOUND == ret) {
-        return NULL;
+        return nullptr;
     } else {
         throw_exception(ret);
-        return NULL;
+        return nullptr;
     }
 }
 void Tree::set_name(const char *name) {
-    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
+    if (_node == nullptr) throw_exception(SR_ERR_DATA_MISSING);
     int ret = sr_node_set_name(_node, name);
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
 void Tree::set_module(const char *module_name) {
-    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
+    if (_node == nullptr) throw_exception(SR_ERR_DATA_MISSING);
     int ret = sr_node_set_module(_node, module_name);
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
 void Tree::set_str_data(sr_type_t type, const char *string_val) {
-    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
+    if (_node == nullptr) throw_exception(SR_ERR_DATA_MISSING);
     int ret = sr_node_set_str_data(_node, type, string_val);
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
 void Tree::add_child(const char *child_name, const char *child_module_name, S_Tree child) {
-    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
+    if (_node == nullptr) throw_exception(SR_ERR_DATA_MISSING);
     int ret = sr_node_add_child(_node, child_name, child_module_name, &child->_node);
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
@@ -183,7 +181,7 @@ void Tree::set(const char *value, sr_type_t type) {
         ret = sr_node_set_str_data(_node, type, value);
         if (ret != SR_ERR_OK)
             throw_exception(ret);
-    } else if (value != NULL && ( type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
+    } else if (value != nullptr && ( type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
         type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T)) {
         throw_exception(SR_ERR_INVAL_ARG);
     }
@@ -329,7 +327,7 @@ S_Trees Trees::dup() {
     if (!_trees)
         throw std::logic_error("Trees::tree: called on null Trees");
 
-    sr_node_t *tree_dup = NULL;
+    sr_node_t *tree_dup = nullptr;
     int ret = sr_dup_trees(_trees, _cnt, &tree_dup);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
@@ -349,13 +347,13 @@ S_Trees Trees_Holder::allocate(size_t n) {
     _allocate = false;
 
     if (n == 0)
-        return NULL;
+        return nullptr;
 
     *p_cnt = n;
     int ret = sr_new_trees(n, p_trees);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
-    S_Trees trees(new Trees(p_trees, p_cnt, NULL));
+    S_Trees trees(new Trees(p_trees, p_cnt, nullptr));
     return trees;
 }
 Trees_Holder::~Trees_Holder() {}

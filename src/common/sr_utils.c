@@ -842,7 +842,7 @@ sr_libyang_leaf_get_type_sch(const struct lys_node_leaf *leaf)
 sr_type_t
 sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
 {
-    switch(leaf->value_type & LY_DATA_TYPE_MASK) {
+    switch(leaf->value_type) {
         case LY_TYPE_BINARY:
             return SR_BINARY_T;
         case LY_TYPE_BITS:
@@ -860,7 +860,12 @@ sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
         case LY_TYPE_INST:
             return SR_INSTANCEID_T;
         case LY_TYPE_LEAFREF:
-            return sr_libyang_leaf_get_type_sch(((struct lys_node_leaf *)leaf->schema)->type.info.lref.target);
+            /* if the target leafref was disconnected there is a problem in case the leaf is actually a union */
+            if ((struct lyd_node_leaf_list *)leaf->value.leafref) {
+                return sr_libyang_leaf_get_type((struct lyd_node_leaf_list *)leaf->value.leafref);
+            } else {
+                return sr_libyang_leaf_get_type_sch(((struct lys_node_leaf *)leaf->schema)->type.info.lref.target);
+            }
         case LY_TYPE_STRING:
             return SR_STRING_T;
         case LY_TYPE_INT8:
@@ -1114,7 +1119,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
     CHECK_NULL_ARG2(leaf, value);
     int rc = SR_ERR_OK;
     struct lys_type *actual_type = NULL;
-    LY_DATA_TYPE type = leaf->value_type & LY_DATA_TYPE_MASK;
+    LY_DATA_TYPE type = leaf->value_type;
     const char *node_name = "(unknown)";
     if (NULL != leaf->schema && NULL != leaf->schema->name) {
         node_name = leaf->schema->name;
@@ -1411,10 +1416,17 @@ sr_val_to_str_with_schema(const sr_val_t *value, const struct lys_node *schema_n
 bool
 sr_is_key_node(const struct lys_node *node)
 {
-    if (NULL == node || NULL == node->parent || LYS_LIST != node->parent->nodetype) {
+    if (NULL == node) {
         return false;
     }
-    struct lys_node_list *list  = (struct lys_node_list *) node->parent;
+
+    const struct lys_node *parent = NULL;
+    for (parent = lys_parent(node); parent && (parent->nodetype == LYS_USES); parent = lys_parent(parent));
+    if (NULL == parent || LYS_LIST != parent->nodetype) {
+        return false;
+    }
+
+    struct lys_node_list *list  = (struct lys_node_list *) parent;
     for (uint8_t i = 0;  i < list->keys_size; i++) {
         if (node == (struct lys_node *)list->keys[i]) {
             return true;
@@ -1718,7 +1730,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
     if (NULL != parent) {
         /* get module */
         if (NULL != sr_tree->module_name) {
-            module = ly_ctx_get_module(ly_ctx, sr_tree->module_name, NULL);
+            module = ly_ctx_get_module(ly_ctx, sr_tree->module_name, NULL, 1);
         } else {
             module = lyd_node_module(parent);
         }
@@ -1726,7 +1738,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
         char *ns = NULL;
         ret = sr_copy_first_ns(xpath, &ns);
         CHECK_RC_MSG_RETURN(ret, "Copy first ns failed");
-        module = ly_ctx_get_module(ly_ctx, ns, NULL);
+        module = ly_ctx_get_module(ly_ctx, ns, NULL, 1);
         free(ns);
     }
     if (NULL == module) {
@@ -1819,14 +1831,14 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
                     *data_tree = node;
                 }
                 if (NULL == node) {
-                    SR_LOG_ERR("Failed to create tree root node (leaf) ('%s'): %s", xpath, ly_errmsg());
+                    SR_LOG_ERR("Failed to create tree root node (leaf) ('%s'): %s", xpath, ly_errmsg(ly_ctx));
                     return SR_ERR_INTERNAL;
                 }
             } else {
                 node = lyd_new_leaf(parent, module, sr_tree->name, string_val);
                 free(string_val);
                 if (NULL == node) {
-                    SR_LOG_ERR("Unable to add leaf node (named '%s'): %s", sr_tree->name, ly_errmsg());
+                    SR_LOG_ERR("Unable to add leaf node (named '%s'): %s", sr_tree->name, ly_errmsg(ly_ctx));
                     return SR_ERR_INTERNAL;
                 }
             }
@@ -2314,19 +2326,7 @@ int
 sr_clock_get_time(clockid_t clock_id, struct timespec *ts)
 {
     CHECK_NULL_ARG(ts);
-#ifdef __APPLE__
-    /* OS X */
-    clock_serv_t cclock = {0};
-    mach_timespec_t mts = {0};
-    host_get_clock_service(mach_host_self(), clock_id, &cclock);
-    clock_get_time(cclock, &mts);
-    mach_port_deallocate(mach_task_self(), cclock);
-    ts->tv_sec = mts.tv_sec;
-    ts->tv_nsec = mts.tv_nsec;
-    return 0;
-#else
     return clock_gettime(clock_id, ts);
-#endif
 }
 
 static bool
@@ -2368,10 +2368,11 @@ sr_find_schema_node_valid_identifier(const char *identifier, size_t id_len)
 static int
 sr_find_schema_node_predicate(const struct lys_node *node, char *predicate, const struct lys_module *prev_mod)
 {
-    char *pred_end = NULL, *identifier = NULL;
-    size_t id_len = 0;
+    char *ptr = NULL, *pred_end = NULL, *identifier = NULL, *mod_name = NULL;
+    size_t id_len = 0, mod_name_len = 0;
     uint16_t i = 0;
     struct lys_node_leaf *key = NULL;
+    const struct lys_module *key_mod;
 
     if (!(node->nodetype & (LYS_LIST | LYS_LEAFLIST))) {
         return -1;
@@ -2408,14 +2409,32 @@ sr_find_schema_node_predicate(const struct lys_node *node, char *predicate, cons
                     }
                 }
             } else {
+                /* prefix */
+                mod_name = NULL;
+                ptr = strchr(identifier, ':');
+                if (ptr != NULL && (ptr - identifier < id_len)) {
+                    mod_name = identifier;
+                    mod_name_len = ptr - identifier;
+                    identifier = ptr + 1;
+                    id_len -= mod_name_len + 1;
+
+                    if (!sr_find_schema_node_valid_identifier(mod_name, mod_name_len)) {
+                        return SR_ERR_INVAL_ARG;
+                    }
+                }
+
                 if (!sr_find_schema_node_valid_identifier(identifier, id_len)) {
                     return SR_ERR_INVAL_ARG;
                 }
 
                 for (i = 0; i < ((struct lys_node_list *)node)->keys_size; ++i) {
                     key = ((struct lys_node_list *)node)->keys[i];
+                    key_mod = lys_node_module((struct lys_node *)key);
                     if (0 == strncmp(key->name, identifier, id_len) && !key->name[id_len]) {
-                        break;
+                        if ((mod_name == NULL && key_mod == prev_mod) ||
+                                (mod_name != NULL && 0 == strncmp(key_mod->name, mod_name, mod_name_len) && !key_mod->name[mod_name_len])) {
+                            break;
+                        }
                     }
                 }
                 if (i == ((struct lys_node_list *)node)->keys_size) {
@@ -2444,14 +2463,41 @@ sr_find_schema_node(const struct lys_module *module, const struct lys_node *star
     }
 
     path = strdup(data_path);
-
     path_end = path + strlen(path);
-    /* replace every '/' with 0 (but be careful with "//") and prepare for parsing */
-    for (name = strchr(path, '/'); name; name = strchr(name + 2, '/')) {
-        name[0] = '\0';
-        if (name[1] == '\0') {
-            rc = SR_ERR_INVAL_ARG;
-            goto error;
+
+    for (name = path; name[0]; ++name) {
+        switch (name[0]) {
+        case '/':
+            /* replace every '/' with 0 (but be careful with "//") */
+            name[0] = '\0';
+            if (name[1] == '\0') {
+                rc = SR_ERR_INVAL_ARG;
+                goto error;
+            }
+            ++name;
+            break;
+        case '\'':
+            /* skip quoted values */
+            do {
+                ++name;
+            } while (name[0] && (name[0] != '\''));
+            if (!name[0]) {
+                rc = SR_ERR_INVAL_ARG;
+                goto error;
+            }
+            break;
+        case '\"':
+            /* skip quoted values */
+            do {
+                ++name;
+            } while (name[0] && ((name[0] != '\"') || (name[-1] == '\\')));
+            if (!name[0]) {
+                rc = SR_ERR_INVAL_ARG;
+                goto error;
+            }
+            break;
+        default:
+            break;
         }
     }
     if (path[0] == '\0') {
@@ -2542,7 +2588,7 @@ sr_find_schema_node(const struct lys_module *module, const struct lys_node *star
             if (name[0] != '*') {
                 if (0 == strcmp(node->name, name)) {
                     if (predicate) {
-                        tmp_rc = sr_find_schema_node_predicate(node, predicate, prev_mod);
+                        tmp_rc = sr_find_schema_node_predicate(node, predicate, lys_node_module(node));
                         if (tmp_rc == -1) {
                             continue;
                         } else if (tmp_rc != SR_ERR_OK) {
@@ -3096,4 +3142,48 @@ sr_str_to_time(char *time_str, time_t *time)
 cleanup:
     free(time_str_copy);
     return rc;
+}
+
+int sr_features_clone(const struct lys_module *module_src, const struct lys_module *module_tgt)
+{
+    int i, j;
+
+    uint8_t fsize_src, fsize_tgt;
+    struct lys_feature *f_src, *f_tgt;
+
+    if (module_src->inc_size != module_tgt->inc_size) {
+        SR_LOG_ERR("Features cannot be cloned %s.", module_src->name);
+        return EXIT_FAILURE;
+    }
+
+    for (i = -1; i < module_src->inc_size; i++) {
+        if (i == -1) {
+            fsize_src = module_src->features_size;
+            fsize_tgt = module_tgt->features_size;
+            f_src = module_src->features;
+            f_tgt = module_tgt->features;
+        } else {
+            fsize_src = module_src->inc[i].submodule->features_size;
+            fsize_tgt = module_tgt->inc[i].submodule->features_size;
+            f_src = module_src->inc[i].submodule->features;
+            f_tgt = module_tgt->inc[i].submodule->features;
+        }
+
+        if (fsize_src != fsize_tgt) {
+            SR_LOG_ERR("Features cannot be cloned %s.", module_src->name);
+            return EXIT_FAILURE;
+        }
+
+        for (j = 0; j < fsize_src; j++) {
+            if (!strcmp(f_src[j].name, f_tgt[j].name)) {
+                f_tgt[j].flags |= f_src[j].flags & LYS_FENABLED;
+            }
+            else {
+                SR_LOG_ERR("Features cannot be cloned %s.", module_src->name);
+                return EXIT_FAILURE;
+            }
+        }
+    }
+
+    return EXIT_SUCCESS;
 }

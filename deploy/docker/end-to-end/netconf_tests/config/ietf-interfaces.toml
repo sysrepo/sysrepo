@@ -1,0 +1,85 @@
+[login]
+
+address = "172.77.0.77"
+username = "netconf"
+password = "netconf"
+
+[[test]]
+
+XMLRequest = """
+<edit-config>
+<target><running/></target>
+<config xmlns:op="urn:ietf:params:xml:ns:netconf:base:1.0">
+<interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+  <interface>
+    <name>eth0</name>
+    <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+      <mtu>1492</mtu>
+    </ipv4>
+  </interface>
+</interfaces>
+</config>
+</edit-config>
+"""
+
+XMLResponse = "<ok/>"
+
+[[test]]
+
+XMLRequest = """
+<get-config>
+<source><running/></source>
+<filter>
+<interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+  <interface>
+    <name>eth0</name>
+    <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+      <mtu/>
+    </ipv4>
+  </interface>
+</interfaces>
+</filter>
+</get-config>
+"""
+
+XMLResponse = """<data xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"><interface><name>eth0</name><ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip"><mtu>1492</mtu></ipv4></interface></interfaces></data>"""
+
+[[test]]
+
+XMLRequest = """
+<edit-config>
+<target><running/></target>
+<config xmlns:op="urn:ietf:params:xml:ns:netconf:base:1.0">
+<interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+  <interface>
+    <name>eth1</name>
+    <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+      <mtu>1492</mtu>
+    </ipv4>
+  </interface>
+</interfaces>
+</config>
+</edit-config>
+"""
+
+XMLResponse = "<ok/>"
+
+[[test]]
+
+XMLRequest = """
+<get-config>
+<source><running/></source>
+<filter>
+<interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+  <interface>
+    <name>eth1</name>
+    <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+      <mtu/>
+    </ipv4>
+  </interface>
+</interfaces>
+</filter>
+</get-config>
+"""
+
+XMLResponse = """<data xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"><interface><name>eth1</name><ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip"><mtu>1492</mtu></ipv4></interface></interfaces></data>"""

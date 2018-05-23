@@ -159,7 +159,7 @@ sysrepo_teardown(void **state)
 void
 libyang_setup(void **state)
 {
-    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     const struct lys_module *module = ly_ctx_load_module(ctx, "example-module", NULL);
     assert_non_null(module);
     *state = (void *) ctx;

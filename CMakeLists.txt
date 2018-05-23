@@ -6,7 +6,7 @@ include(GNUInstallDirs)
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 7)
-set(SYSREPO_MICRO_VERSION 0)
+set(SYSREPO_MICRO_VERSION 3)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION})
 
@@ -42,6 +42,8 @@ set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
 
 set(CALL_TARGET_BINS_DIRECTLY ON CACHE BOOL "Enable calling sysrepoctl/sysrepocfg directly at install time")
 set(INDIRECT_YANG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/yang/" CACHE PATH "Where to store YANG files when not executing sysrepoctl directly")
+set(CALL_SYSREPOCTL_BIN "${CMAKE_BINARY_DIR}/src/sysrepoctl" CACHE PATH "Path to the sysrepoctl binary to be used at install time")
+set(CALL_SYSREPOCFG_BIN "${CMAKE_BINARY_DIR}/src/sysrepocfg" CACHE PATH "Path to the sysrepocfg binary to be used at install time")
 
 if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
@@ -174,11 +176,8 @@ set(STORE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
     "Save config-change notifications (RFC 6470) in the notification store (slows down the commit process).")
 
 # timeouts
-set(REQUEST_TIMEOUT 3 CACHE INTEGER
-    "Timeout (in seconds) for standard Sysrepo API requests.")
-
-set(LONG_REQUEST_TIMEOUT 15 CACHE INTEGER
-    "Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action).")
+set(REQUEST_TIMEOUT 15 CACHE INTEGER
+    "Timeout (in seconds) for Sysrepo API requests. Set to 0 for no timeout.")
 
 set(COMMIT_VERIFY_TIMEOUT 10 CACHE INTEGER
     "Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers.")
@@ -191,6 +190,12 @@ set(NOTIF_AGE_TIMEOUT 60 CACHE INTEGER
 
 set(NOTIF_TIME_WINDOW 10 CACHE INTEGER
     "Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files).")
+
+set(GET_ITEMS_FETCH_LIMIT 100 CACHE INTEGER
+    "Number of items being fetched in one message from Sysrepo Engine when processing sr_get_items_iter calls. Increasing this can improve efficiency when working with large datastores at the cost of higher memory usage peaks.")
+
+set(GET_SUBTREE_CHUNK_CHILD_LIMIT 20 CACHE INTEGER
+    "Maximum number of children nodes (of any parent node) being fetched in one message from Sysrepo Engine when processing sr_get_subtree(s)_*_chunk(s). Increasing this can improve efficiency when working with large datastores at the cost of higher memory usage peaks.")
 
 # add subdirectories
 add_subdirectory(src)
@@ -208,7 +213,7 @@ endmacro(EXEC_AT_INSTALL_TIME)
 set(SH_INSTALL_YANG_CMDS "#!/bin/bash\n\nset -eux -o pipefail\nshopt -s failglob\n\nSYSREPOCTL=sysrepoctl\n\n")
 macro(INSTALL_YANG MODULE_NAME REVISION PERMISSIONS)
     if(CALL_TARGET_BINS_DIRECTLY)
-        EXEC_AT_INSTALL_TIME("${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=${PERMISSIONS}")
+        EXEC_AT_INSTALL_TIME("${CALL_SYSREPOCTL_BIN} --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=${PERMISSIONS}")
     else()
         set(SH_INSTALL_YANG_CMDS "${SH_INSTALL_YANG_CMDS}\\\${SYSREPOCTL} --install --yang=${INDIRECT_YANG_INSTALL_DIR}/${MODULE_NAME}${REVISION}.yang --permissions=${PERMISSIONS}\n")
     endif()

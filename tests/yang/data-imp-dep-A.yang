@@ -1,0 +1,28 @@
+module data-imp-dep-A {
+    prefix did-A;
+    namespace "urn:did:A";
+
+    import data-imp-dep-B {
+        prefix did-B;
+    }
+
+    import data-imp-dep-C {
+        prefix did-C;
+    }
+
+    container a-con {
+        list a-list {
+            key name;
+
+            leaf name {
+                type did-B:b-type;
+            }
+
+            leaf ref {
+                type leafref {
+                    path "/did-C:c-con/did-C:c-list/did-C:name";
+                }
+            }
+        }
+    }
+}

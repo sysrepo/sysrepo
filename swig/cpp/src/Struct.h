@@ -32,30 +32,28 @@ extern "C" {
 #include "sysrepo.h"
 }
 
-using namespace std;
-
 // class for sysrepo C union sr_data_t
 class Data
 {
 public:
     Data(sr_data_t data, sr_type_t type, S_Deleter deleter);
     ~Data();
-    char *get_binary();
-    char *get_bits();
-    bool get_bool();
-    double get_decimal64();
-    char *get_enum();
-    char *get_identityref();
-    char *get_instanceid();
-    int8_t get_int8();
-    int16_t get_int16();
-    int32_t get_int32();
-    int64_t get_int64();
-    char *get_string();
-    uint8_t get_uint8();
-    uint16_t get_uint16();
-    uint32_t get_uint32();
-    uint64_t get_uint64();
+    char *get_binary() const;
+    char *get_bits() const;
+    bool get_bool() const;
+    double get_decimal64() const;
+    char *get_enum() const;
+    char *get_identityref() const;
+    char *get_instanceid() const;
+    int8_t get_int8() const;
+    int16_t get_int16() const;
+    int32_t get_int32() const;
+    int64_t get_int64() const;
+    char *get_string() const;
+    uint8_t get_uint8() const;
+    uint16_t get_uint16() const;
+    uint32_t get_uint32() const;
+    uint64_t get_uint64() const;
 
 private:
     sr_data_t _d;
@@ -114,8 +112,8 @@ private:
 class Vals
 {
 public:
-    Vals(const sr_val_t *vals, const size_t cnt, S_Deleter deleter = NULL);
-    Vals(sr_val_t **vals, size_t *cnt, S_Deleter deleter = NULL);
+    Vals(const sr_val_t *vals, const size_t cnt, S_Deleter deleter = nullptr);
+    Vals(sr_val_t **vals, size_t *cnt, S_Deleter deleter = nullptr);
     Vals(size_t cnt);
     Vals();
     ~Vals();
@@ -149,7 +147,7 @@ private:
 class Val_Iter
 {
 public:
-    Val_Iter(sr_val_iter_t *iter = NULL);
+    Val_Iter(sr_val_iter_t *iter = nullptr);
     ~Val_Iter();
     sr_val_iter_t *iter() {return _iter;};
 
@@ -160,7 +158,7 @@ private:
 class Change_Iter
 {
 public:
-    Change_Iter(sr_change_iter_t *iter = NULL);
+    Change_Iter(sr_change_iter_t *iter = nullptr);
     ~Change_Iter();
     sr_change_iter_t *iter() {return _iter;};
 
@@ -175,8 +173,8 @@ public:
     Error();
     Error(const sr_error_info_t *info);
     ~Error();
-    const char *message() {if (_info) return _info->message; else return NULL;};
-    const char *xpath() {if (_info) return _info->message; else return NULL;};
+    const char *message() const {if (_info) return _info->message; else return nullptr;};
+    const char *xpath() const {if (_info) return _info->message; else return nullptr;};
 
     friend class Session;
 
@@ -206,9 +204,9 @@ class Schema_Revision
 public:
     Schema_Revision(sr_sch_revision_t rev);
     ~Schema_Revision();
-    const char *revision() {return _rev.revision;};
-    const char *file_path_yang() {return _rev.file_path_yang;};
-    const char *file_path_yin() {return _rev.file_path_yin;};
+    const char *revision() const {return _rev.revision;};
+    const char *file_path_yang() const {return _rev.file_path_yang;};
+    const char *file_path_yin() const {return _rev.file_path_yin;};
 
 private:
     sr_sch_revision_t _rev;
@@ -220,7 +218,7 @@ class Schema_Submodule
 public:
     Schema_Submodule(sr_sch_submodule_t sub, S_Deleter deleter);
     ~Schema_Submodule();
-    const char *submodule_name() {return _sub.submodule_name;};
+    const char *submodule_name() const {return _sub.submodule_name;};
     S_Schema_Revision revision();
 
 private:
@@ -234,15 +232,15 @@ class Yang_Schema
 public:
     Yang_Schema(sr_schema_t *sch, S_Deleter deleter);
     ~Yang_Schema();
-    const char *module_name() {return _sch->module_name;};
-    const char *ns() {return _sch->ns;};
-    const char *prefix() {return _sch->prefix;};
-    bool implemented() {return _sch->implemented;};
+    const char *module_name() const {return _sch->module_name;};
+    const char *ns() const {return _sch->ns;};
+    const char *prefix() const {return _sch->prefix;};
+    bool implemented() const {return _sch->implemented;};
     S_Schema_Revision revision();
     S_Schema_Submodule submodule(size_t n);
-    size_t submodule_cnt() {return _sch->submodule_count;};
+    size_t submodule_cnt() const {return _sch->submodule_count;};
     char *enabled_features(size_t n);
-    size_t enabled_feature_cnt() {return _sch->enabled_feature_cnt;};
+    size_t enabled_feature_cnt() const {return _sch->enabled_feature_cnt;};
 
     friend class Session;
 
@@ -258,7 +256,7 @@ public:
     Yang_Schemas();
     ~Yang_Schemas();
     S_Yang_Schema schema(size_t n);
-    size_t schema_cnt() {return _cnt;};
+    size_t schema_cnt() const {return _cnt;};
 
     friend class Session;
 
@@ -274,9 +272,9 @@ class Fd_Change
 public:
     Fd_Change(sr_fd_change_t *ch);
     ~Fd_Change();
-    int fd() {return _ch->fd;};
-    int events() {return _ch->events;};
-    sr_fd_action_t action() {return _ch->action;};
+    int fd() const {return _ch->fd;};
+    int events() const {return _ch->events;};
+    sr_fd_action_t action() const {return _ch->action;};
 
 private:
     sr_fd_change_t *_ch;
@@ -299,7 +297,7 @@ class Iter_Value
 {
 
 public:
-    Iter_Value(sr_val_iter_t *iter = NULL);
+    Iter_Value(sr_val_iter_t *iter = nullptr);
     ~Iter_Value();
     void Set(sr_val_iter_t *iter);
 
@@ -313,7 +311,7 @@ class Iter_Change
 {
 
 public:
-    Iter_Change(sr_change_iter_t *iter = NULL);
+    Iter_Change(sr_change_iter_t *iter = nullptr);
     ~Iter_Change();
 
     friend class Session;

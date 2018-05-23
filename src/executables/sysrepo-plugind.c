@@ -96,6 +96,9 @@ typedef struct sr_pd_ctx_s {
     ev_timer init_retry_timer;     /**< Initialization retry timer. */
 } sr_pd_ctx_t;
 
+/** @brief Options for sr-plugind's call to sr_connect */
+static sr_conn_options_t connect_options = SR_CONN_DAEMON_REQUIRED;
+
 /**
  * @brief Callback called by the event loop watcher when a signal is caught.
  */
@@ -314,7 +317,7 @@ sr_pd_session_check(sr_pd_ctx_t *ctx)
         ctx->connection = NULL;
 
         /* reconnect */
-        rc = sr_connect("sysrepo-plugind", SR_CONN_DAEMON_REQUIRED | SR_CONN_DAEMON_START, &ctx->connection);
+        rc = sr_connect("sysrepo-plugind", connect_options, &ctx->connection);
         if (SR_ERR_OK == rc) {
             rc = sr_session_start(ctx->connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &ctx->session);
         }
@@ -406,11 +409,12 @@ sr_pd_print_help()
     sr_pd_print_version();
 
     printf("Usage:\n");
-    printf("  sysrepo-plugind [-h] [-v] [-d] [-l <level>]\n\n");
+    printf("  sysrepo-plugind [-h] [-v] [-d] [-D] [-l <level>]\n\n");
     printf("Options:\n");
     printf("  -h\t\tPrints usage help.\n");
     printf("  -v\t\tPrints version.\n");
     printf("  -d\t\tDebug mode - daemon will run in the foreground and print logs to stderr instead of syslog.\n");
+    printf("  -D\t\tAuto-start sysrepod if not running already\n");
     printf("  -l <level>\tSets verbosity level of logging:\n");
     printf("\t\t\t0 = all logging turned off\n");
     printf("\t\t\t1 = log only error messages\n");
@@ -433,7 +437,7 @@ main(int argc, char* argv[])
     int log_level = -1;
     int rc = SR_ERR_OK;
 
-    while ((c = getopt (argc, argv, "hvdl:")) != -1) {
+    while ((c = getopt (argc, argv, "hvdDl:")) != -1) {
         switch (c) {
             case 'v':
                 sr_pd_print_version();
@@ -441,6 +445,9 @@ main(int argc, char* argv[])
                 break;
             case 'd':
                 debug_mode = true;
+                break;
+            case 'D':
+                connect_options |= SR_CONN_DAEMON_START;
                 break;
             case 'l':
                 log_level = atoi(optarg);
@@ -476,7 +483,7 @@ main(int argc, char* argv[])
     ctx.init_retry_timer.data = &ctx;
 
     /* connect to sysrepo */
-    rc = sr_connect("sysrepo-plugind", SR_CONN_DAEMON_REQUIRED | SR_CONN_DAEMON_START, &ctx.connection);
+    rc = sr_connect("sysrepo-plugind", connect_options, &ctx.connection);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepod: %s", sr_strerror(rc));
 
     /* start the session */

@@ -1,0 +1,18 @@
+module data-imp-dep-B {
+    prefix did-B;
+    namespace "urn:did:B";
+
+    import data-imp-dep-C {
+        prefix did-C;
+    }
+
+    typedef b-type {
+        type string;
+    }
+
+    augment "/did-C:c-con" {
+        leaf b-leaf {
+            type string;
+        }
+    }
+}

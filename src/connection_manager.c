@@ -501,6 +501,10 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
     buff_size = buff->pos;
     buff_pos = connection->cm_data->out_buff.start;
 
+    if (buff_size - buff_pos == 0) {
+        return rc;
+    }
+
     SR_LOG_DBG("Sending %zu bytes of data.", (buff_size - buff_pos));
 
     do {

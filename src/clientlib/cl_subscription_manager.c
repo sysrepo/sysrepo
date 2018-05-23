@@ -96,6 +96,8 @@ typedef struct cl_sm_ctx_s {
     ev_async stop_watcher;
     /** Watcher for changes in server context list. */
     ev_async server_ctx_watcher;
+    /** Blocking synchronization of processing of all pending events */
+    sr_fd_sm_terminated_cb local_watcher_terminate_cb;
 } cl_sm_ctx_t;
 
 /**
@@ -288,7 +290,11 @@ cl_sm_connection_cleanup(void *connection_p)
 
         /* stop monitoring client file descriptor */
         if (conn->sm_ctx->local_fd_watcher) {
-            cl_sm_fd_changeset_add(conn->sm_ctx, conn->fd, (SR_FD_INPUT_READY | SR_FD_OUTPUT_READY), SR_FD_STOP_WATCHING);
+            if (conn->sm_ctx->local_watcher_terminate_cb) {
+                /* do nothing, we have already asked for the event loop to be stopped */
+            } else {
+                cl_sm_fd_changeset_add(conn->sm_ctx, conn->fd, (SR_FD_INPUT_READY | SR_FD_OUTPUT_READY), SR_FD_STOP_WATCHING);
+            }
         } else {
             if (NULL != conn->read_watcher.data) {
                 ev_io_stop(conn->sm_ctx->event_loop, &conn->read_watcher);
@@ -391,6 +397,10 @@ cl_sm_conn_out_buff_flush(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
     buff = &conn->out_buff;
     buff_size = buff->pos;
     buff_pos = conn->out_buff.start;
+
+    if (buff_size - buff_pos == 0) {
+        return rc;
+    }
 
     SR_LOG_DBG("Sending %zu bytes of data.", (buff_size - buff_pos));
 
@@ -1363,8 +1373,12 @@ cl_sm_server_cleanup(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_ctx)
     if (NULL != server_ctx) {
         /* stop monitoring the server socket */
         if (sm_ctx->local_fd_watcher) {
-            cl_sm_fd_changeset_add(sm_ctx, server_ctx->listen_socket_fd, (SR_FD_INPUT_READY | SR_FD_OUTPUT_READY),
-                    SR_FD_STOP_WATCHING);
+            if (sm_ctx->local_watcher_terminate_cb) {
+                /* do nothing, we have already asked for the event loop to be stopped */
+            } else {
+                cl_sm_fd_changeset_add(sm_ctx, server_ctx->listen_socket_fd, (SR_FD_INPUT_READY | SR_FD_OUTPUT_READY),
+                        SR_FD_STOP_WATCHING);
+            }
         } else {
             if (NULL != server_ctx->server_watcher.data) {
                 ev_io_stop(sm_ctx->event_loop, &server_ctx->server_watcher);
@@ -1462,7 +1476,7 @@ cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, c
     strncat(path, ".sock", PATH_MAX - strlen(path) - 1);
     fd = open(path, O_RDWR | O_CREAT | O_EXCL, 0600);
 #endif
-    CHECK_NOT_MINUS1_LOG_RETURN(fd, -1, "Failed to open unique temporary file: %s", strerror(errno));  
+    CHECK_NOT_MINUS1_LOG_RETURN(fd, -1, "Failed to open unique temporary file: %s", strerror(errno));
     close(fd);
     unlink(path);
 
@@ -1654,10 +1668,11 @@ cl_sm_event_loop_threaded(void *sm_ctx_p)
 }
 
 int
-cl_sm_init(bool local_fd_watcher, int notify_pipe[2], cl_sm_ctx_t **sm_ctx_p)
+cl_sm_init(bool local_fd_watcher, sr_fd_sm_terminated_cb local_sm_terminate_cb, int notify_pipe[2], cl_sm_ctx_t **sm_ctx_p)
 {
     cl_sm_ctx_t *ctx = NULL;
     int ret = 0, rc = SR_ERR_OK;
+    pthread_mutexattr_t mattr;
 
     CHECK_NULL_ARG(sm_ctx_p);
 
@@ -1668,6 +1683,7 @@ cl_sm_init(bool local_fd_watcher, int notify_pipe[2], cl_sm_ctx_t **sm_ctx_p)
     CHECK_NULL_NOMEM_RETURN(ctx);
 
     ctx->local_fd_watcher = local_fd_watcher;
+    ctx->local_watcher_terminate_cb = local_sm_terminate_cb;
     ctx->fd_changeset_notify_pipe[0] = notify_pipe[0];
     ctx->fd_changeset_notify_pipe[1] = notify_pipe[1];
 
@@ -1693,7 +1709,11 @@ cl_sm_init(bool local_fd_watcher, int notify_pipe[2], cl_sm_ctx_t **sm_ctx_p)
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions server contexts mutex.");
     ret = pthread_mutex_init(&ctx->fd_changeset_lock, NULL);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize fd changeset mutex.");
-    ret = pthread_mutex_init(&ctx->subscriptions_lock, NULL);
+    ret = pthread_mutexattr_init(&mattr);
+    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize mutex attribute.");
+    pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
+    ret = pthread_mutex_init(&ctx->subscriptions_lock, &mattr);
+    pthread_mutexattr_destroy(&mattr);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions mutex.");
 
     srand(time(NULL));
@@ -1738,8 +1758,12 @@ void
 cl_sm_cleanup(cl_sm_ctx_t *sm_ctx, bool join)
 {
     if (NULL != sm_ctx) {
-        if (!sm_ctx->local_fd_watcher) {
-            if (join) {
+        if (join) {
+            if (sm_ctx->local_fd_watcher) {
+                if (sm_ctx->local_watcher_terminate_cb) {
+                    sm_ctx->local_watcher_terminate_cb();
+                }
+            } else {
                 ev_async_send(sm_ctx->event_loop, &sm_ctx->stop_watcher);
                 pthread_join(sm_ctx->event_loop_thread, NULL);
             }

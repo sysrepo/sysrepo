@@ -29,7 +29,7 @@ extern "C" {
 #include "sysrepo/trees.h"
 }
 
-typedef enum free_type_e {
+enum class Free_Type {
     VAL,
     VALS,
     VALS_POINTER,
@@ -38,7 +38,7 @@ typedef enum free_type_e {
     TREES_POINTER,
     SCHEMAS,
     SESSION,
-} free_type_t;
+};
 
 typedef union value_e {
     sr_val_t *_val;
@@ -70,7 +70,7 @@ public:
 private:
     count_t c;
     value_t v;
-    free_type_t _t;
+    Free_Type _t;
 };
 
 #endif

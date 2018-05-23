@@ -1,0 +1,6 @@
+module data-feat-enable-C {
+    prefix dfe-C;
+    namespace "urn:dfe:C";
+
+    feature c-feature;
+}

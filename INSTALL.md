@@ -164,8 +164,7 @@ There are several timeouts that can be configured via CMake variables:
 
 CMake variable              | Default value | Description
 --------------------------- | ------------- | -----------
-`REQUEST_TIMEOUT`           | 3 sec         | Timeout (in seconds) for standard Sysrepo API requests.
-`LONG_REQUEST_TIMEOUT`      | 15 sec        | Timeout (in seconds) for Sysrepo API requests that can take longer than standard requests (commit, copy-config, rpc, action).
+`REQUEST_TIMEOUT`           | 3 sec         | Timeout (in seconds) for standard Sysrepo API requests. Set to 0 to disable request timeouts.
 `COMMIT_VERIFY_TIMEOUT`     | 10 sec        | Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers.
 `OPER_DATA_PROVIDE_TIMEOUT` | 2 sec         | Timeout (in seconds) that a request can wait for operational data from data providers.
 `NOTIF_AGE_TIMEOUT`         | 60 min        | Timeout (in minutes) after which stored notifications will be aged out and erased from notification store.
@@ -173,6 +172,21 @@ CMake variable              | Default value | Description
 
 #### Enabling NACM
 By default Netconf Access Control Model is disabled and only system access right are checked. To enable NACM use `cmake -DENABLE_NACM:BOOL=ON ..`. Another useful option is `cmake -DNACM_RECOVERY_UID:INTEGER=0 ..` where you can specify the system UID of the user that will act as the recovery session which is a session that can perform any operation disregarding the data in NACM.
+
+### Cross-compiling notes
+
+Sysrepo's build produces binaries which are going to be used later in the build process, most notably the `sysrepoctl` and `sysrepocfg`.
+That presents an obstacle when cross-compiling, i.e., when the host system's architecture differs from the target.
+
+One way of solving this problem is building sysrepo twice.
+The first build is for the host architecture, but it is configured to use a `REPOSITORY_LOC` pointing to `/etc/sysrepo` in target's rootfs.
+The second build then targets the actual target architecture as usual, but this time it's configured with `CALL_SYSREPOCTL_BIN=path/to/host/sysrepoctl` and `CALL_SYSREPOCFG_BIN=...`, respectively.
+This approach is reasonably straightforward with build environment such as [Buildroot](https://buildroot.org/).
+
+If your platform/system prefers to use another approach, it is also possible to disable execution of these tools by setting `CALL_TARGET_BINS_DIRECTLY=OFF`.
+In that case, sysrepo produces an `install-yang.sh` shell script in the build directory.
+YANG files that are needed are copied to `INDIRECT_YANG_INSTALL_DIR`.
+Note that `sysrepod` will fail to start until you *install* these yang files on your target system.
 
 ## Using sysrepo
 By installation, three main parts of sysrepo are installed on the system: **sysrepoctl tool**, **sysrepo library** and **sysrepo daemon**.

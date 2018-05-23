@@ -157,12 +157,85 @@ sr_new_trees_test(void **state)
 }
 
 static void
+sr_realloc_trees_test(void **state)
+{
+    int rc = 0;
+    sr_node_t *trees = NULL;
+
+    rc = sr_realloc_trees(0, 5, &trees);
+    assert_int_equal(SR_ERR_OK, rc);
+#ifdef USE_SR_MEM_MGMT
+    assert_non_null(trees->_sr_mem);
+    assert_int_equal(1, trees->_sr_mem->obj_count);
+    assert_true(0 < trees->_sr_mem->used_total);
+#else
+    assert_null(trees->_sr_mem);
+#endif
+
+    for (int i = 0; i < 5; ++i) {
+#ifdef USE_SR_MEM_MGMT
+        if (0 < i) {
+            assert_ptr_equal(trees[i-1]._sr_mem, trees[i]._sr_mem);
+        }
+#endif
+        assert_null(trees[i].name);
+        assert_false(trees[i].dflt);
+        assert_null(trees[i].module_name);
+        assert_int_equal(SR_UNKNOWN_T, trees[i].type);
+        assert_int_equal(0, trees[i].data.uint64_val);
+        assert_null(trees[i].parent);
+        assert_null(trees[i].first_child);
+        assert_null(trees[i].last_child);
+        assert_null(trees[i].prev);
+        assert_null(trees[i].next);
+    }
+
+    for (int i = 0; i < 5; ++i) {
+        trees[i].data.uint64_val = i;
+    }
+
+    rc = sr_realloc_trees(5, 10, &trees);
+    assert_int_equal(SR_ERR_OK, rc);
+#ifdef USE_SR_MEM_MGMT
+    assert_non_null(trees->_sr_mem);
+    assert_int_equal(1, trees->_sr_mem->obj_count);
+    assert_true(0 < trees->_sr_mem->used_total);
+#else
+    assert_null(trees->_sr_mem);
+#endif
+
+    for (int i = 0; i < 10; ++i) {
+        if (i < 5) {
+            assert_int_equal(i, trees[i].data.uint64_val);
+        } else {
+#ifdef USE_SR_MEM_MGMT
+            if (0 < i) {
+                assert_ptr_equal(trees[i-1]._sr_mem, trees[i]._sr_mem);
+            }
+#endif
+            assert_null(trees[i].name);
+            assert_false(trees[i].dflt);
+            assert_null(trees[i].module_name);
+            assert_int_equal(SR_UNKNOWN_T, trees[i].type);
+            assert_int_equal(0, trees[i].data.uint64_val);
+            assert_null(trees[i].parent);
+            assert_null(trees[i].first_child);
+            assert_null(trees[i].last_child);
+            assert_null(trees[i].prev);
+            assert_null(trees[i].next);
+        }
+    }
+
+    sr_free_trees(trees, 10);
+}
+
+static void
 sr_node_set_name_test(void **state)
 {
     int rc = 0;
     sr_node_t *tree = NULL, *trees = NULL;
     char name[10] = { 0, };
-   
+
     /* single tree */
     rc = sr_new_tree(NULL, NULL, &tree);
     assert_int_equal(SR_ERR_OK, rc);
@@ -196,7 +269,7 @@ sr_node_set_module_test(void **state)
 {
     int rc = 0;
     sr_node_t *tree = NULL, *trees = NULL;
-   
+
     /* single tree */
     rc = sr_new_tree(NULL, NULL, &tree);
     assert_int_equal(SR_ERR_OK, rc);
@@ -647,7 +720,7 @@ sr_dup_trees_test(void **state)
         assert_null(leaf->next);
     }
 
-    for (int i = 1; i < tree_cnt; ++i) { 
+    for (int i = 1; i < tree_cnt; ++i) {
         /* /example_module:number[.=0] */
         leaf = trees_dup + i;
         assert_non_null(leaf);
@@ -1024,6 +1097,7 @@ main() {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(sr_new_tree_test),
         cmocka_unit_test(sr_new_trees_test),
+        cmocka_unit_test(sr_realloc_trees_test),
         cmocka_unit_test(sr_node_set_name_test),
         cmocka_unit_test(sr_node_set_module_test),
         cmocka_unit_test(sr_node_set_str_data_test),

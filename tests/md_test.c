@@ -1643,10 +1643,158 @@ md_test_insert_module(void **state)
 }
 
 /*
- * @brief Test md_remove_module().
+ * @brief Test md_insert_module().
+ */
+
+static const char * const md_test_insert_module_2_mod1 = TEST_SOURCE_DIR "/yang/augm_by_incl_m1" TEST_MODULE_EXT;
+
+static void
+md_test_insert_module_2(void **state)
+{
+    int rc;
+    md_ctx_t *md_ctx = NULL;
+    sr_list_t *implicitly_inserted = NULL;
+
+    rc = md_init(TEST_SOURCE_DIR "/yang", TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", true, &md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+    validate_context(md_ctx);
+
+    rc = md_insert_module(md_ctx, md_test_insert_module_2_mod1, &implicitly_inserted);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, implicitly_inserted->count);
+    md_free_module_key_list(implicitly_inserted);
+    validate_context(md_ctx);
+
+    rc = md_flush(md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    md_destroy(md_ctx);
+}
+
+/*
+ * @brief Test md_insert_module().
+ */
+
+static const char * const md_test_insert_module_3_mod1 = TEST_SOURCE_DIR "/yang/mws-main-module" TEST_MODULE_EXT;
+
+static void
+md_test_insert_module_3(void **state)
+{
+    int rc;
+    md_ctx_t *md_ctx = NULL;
+    sr_list_t *implicitly_inserted = NULL;
+
+    rc = md_init(TEST_SOURCE_DIR "/yang", TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", true, &md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+    validate_context(md_ctx);
+
+    rc = md_insert_module(md_ctx, md_test_insert_module_3_mod1, &implicitly_inserted);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, implicitly_inserted->count);
+    md_free_module_key_list(implicitly_inserted);
+    validate_context(md_ctx);
+
+    rc = md_flush(md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    md_destroy(md_ctx);
+}
+
+/*
+ * @brief Test md_insert_module_4().
+ */
+
+static const char * const md_test_insert_module_4_mod1 = TEST_SOURCE_DIR "/yang/augm_empty_container_m1" TEST_MODULE_EXT;
+
+static void
+md_test_insert_module_4(void **state)
+{
+    int rc;
+    md_ctx_t *md_ctx = NULL;
+    sr_list_t *implicitly_inserted = NULL;
+
+    rc = md_init(TEST_SOURCE_DIR "/yang", TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", true, &md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+    validate_context(md_ctx);
+
+    rc = md_insert_module(md_ctx, md_test_insert_module_4_mod1, &implicitly_inserted);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(0, implicitly_inserted->count);
+    md_free_module_key_list(implicitly_inserted);
+    validate_context(md_ctx);
+
+    rc = md_flush(md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    md_destroy(md_ctx);
+}
+
+static const char * const md_test_insert_module_5_mod1 = TEST_SOURCE_DIR "/yang/augm_container_if_feature_m1" TEST_MODULE_EXT;
+
+static void
+md_test_insert_module_5(void **state)
+{
+    int rc;
+    md_ctx_t *md_ctx = NULL;
+    sr_list_t *implicitly_inserted = NULL;
+
+    rc = md_init(TEST_SOURCE_DIR "/yang", TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", true, &md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+    validate_context(md_ctx);
+
+    rc = md_insert_module(md_ctx, md_test_insert_module_5_mod1, &implicitly_inserted);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(0, implicitly_inserted->count);
+    md_free_module_key_list(implicitly_inserted);
+    validate_context(md_ctx);
+
+    rc = md_flush(md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    md_destroy(md_ctx);
+}
+
+static const char * const md_test_insert_module_double_aug_mod = TEST_SOURCE_DIR "/yang/mwa-aug2" TEST_MODULE_EXT;
+
+static void
+md_test_insert_module_double_aug(void **state)
+{
+    int rc;
+    md_ctx_t *md_ctx = NULL;
+    sr_list_t *implicitly_inserted = NULL;
+
+    rc = md_init(TEST_SOURCE_DIR "/yang", TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", true, &md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+    validate_context(md_ctx);
+
+    rc = md_insert_module(md_ctx, md_test_insert_module_double_aug_mod, &implicitly_inserted);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, implicitly_inserted->count);
+    md_free_module_key_list(implicitly_inserted);
+    validate_context(md_ctx);
+
+    rc = md_flush(md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    md_destroy(md_ctx);
+}
+
+static int
+_md_test_remove_modules(md_ctx_t *md_ctx, const char *name, const char *revision, sr_list_t **implicitly_removed)
+{
+    return md_remove_modules(md_ctx, &name, &revision, 1, implicitly_removed);
+}
+
+/*
+ * @brief Test md_remove_modules().
  */
 static void
-md_test_remove_module(void **state)
+md_test_remove_modules(void **state)
 {
     int rc;
     md_ctx_t *md_ctx = NULL;
@@ -1663,29 +1811,29 @@ md_test_remove_module(void **state)
     validate_context(md_ctx);
 
     /* there is no module named G */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "G", NULL, &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "G", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(implicitly_removed);
 
     /* initialy only the module E can be removed */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "A", NULL, &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "A", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(implicitly_removed);
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "B", NULL, &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "B", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(implicitly_removed);
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "C", NULL, &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "C", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(implicitly_removed);
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(implicitly_removed);
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-20", &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-20", &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(implicitly_removed);
 
     /* remove module F (D-rev2 should get removed automatically) */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "F", "2016-06-21", &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "F", "2016-06-21", &implicitly_removed);
     assert_int_equal(SR_ERR_OK, rc);
     inserted.F = implemented.F = false;
     inserted.D_rev2 = false;
@@ -1699,12 +1847,12 @@ md_test_remove_module(void **state)
     validate_context(md_ctx);
 
     /* D-rev2 is already removed */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-20", &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-20", &implicitly_removed);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(implicitly_removed);
 
     /* now there are no modules dependent on B, remove it */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "B", "", &implicitly_removed); /*< try "" instead of NULL */
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "B", "", &implicitly_removed); /*< try "" instead of NULL */
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(0, implicitly_removed->count);
     sr_list_cleanup(implicitly_removed);
@@ -1713,23 +1861,23 @@ md_test_remove_module(void **state)
     validate_context(md_ctx);
 
     /* still can't remove A, C, D-rev1 */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "A", NULL, &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "A", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(implicitly_removed);
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "C", NULL, &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "C", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(implicitly_removed);
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(implicitly_removed);
 
     /* B is not present anymore */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "B", NULL, &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "B", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(implicitly_removed);
 
     /* remove module E */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "E", "2016-06-11", &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "E", "2016-06-11", &implicitly_removed);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(0, implicitly_removed->count);
     sr_list_cleanup(implicitly_removed);
@@ -1738,7 +1886,7 @@ md_test_remove_module(void **state)
     validate_context(md_ctx);
 
     /* remove module D-rev1 */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", &implicitly_removed);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(0, implicitly_removed->count);
     sr_list_cleanup(implicitly_removed);
@@ -1747,7 +1895,7 @@ md_test_remove_module(void **state)
     validate_context(md_ctx);
 
     /* remove module C */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "C", NULL, &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "C", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(0, implicitly_removed->count);
     sr_list_cleanup(implicitly_removed);
@@ -1756,13 +1904,52 @@ md_test_remove_module(void **state)
     validate_context(md_ctx);
 
     /* finally remove module A */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "A", NULL, &implicitly_removed);
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "A", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(0, implicitly_removed->count);
     sr_list_cleanup(implicitly_removed);
     implicitly_removed = NULL;
     inserted.A = implemented.A = false;
     validate_context(md_ctx);
+
+    /* remove all augm modules */
+    rc = _md_test_remove_modules(md_ctx, "augm_by_incl_m1", NULL, &implicitly_removed);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, implicitly_removed->count);
+    md_free_module_key_list(implicitly_removed);
+    implicitly_removed = NULL;
+
+    rc = _md_test_remove_modules(md_ctx, "augm_by_incl_m4", NULL, &implicitly_removed);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(0, implicitly_removed->count);
+    sr_list_cleanup(implicitly_removed);
+    implicitly_removed = NULL;
+    validate_context(md_ctx);
+
+    rc = _md_test_remove_modules(md_ctx, "mws-main-module", NULL, &implicitly_removed);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, implicitly_removed->count);
+    md_free_module_key_list(implicitly_removed);
+    implicitly_removed = NULL;
+    validate_context(md_ctx);
+
+    rc = _md_test_remove_modules(md_ctx, "augm_empty_container_m1", NULL, &implicitly_removed);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(0, implicitly_removed->count);
+    md_free_module_key_list(implicitly_removed);
+    implicitly_removed = NULL;
+  
+    rc = _md_test_remove_modules(md_ctx, "augm_container_if_feature_m1", NULL, &implicitly_removed);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(0, implicitly_removed->count);
+    md_free_module_key_list(implicitly_removed);
+    implicitly_removed = NULL;
+  
+    rc = _md_test_remove_modules(md_ctx, "mwa-aug2", NULL, &implicitly_removed);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, implicitly_removed->count);
+    md_free_module_key_list(implicitly_removed);
+    implicitly_removed = NULL;
 
     /* flush changes into the internal data file */
     rc = md_flush(md_ctx);
@@ -1901,7 +2088,12 @@ int main(){
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(md_test_init_and_destroy),
             cmocka_unit_test(md_test_insert_module),
-            cmocka_unit_test(md_test_remove_module),
+            cmocka_unit_test(md_test_insert_module_2),
+            cmocka_unit_test(md_test_insert_module_3),
+            cmocka_unit_test(md_test_insert_module_4),
+            cmocka_unit_test(md_test_insert_module_5),
+            cmocka_unit_test(md_test_insert_module_double_aug),
+            cmocka_unit_test(md_test_remove_modules),
             cmocka_unit_test(md_test_grouping_and_uses),
             cmocka_unit_test(md_test_has_data),
     };

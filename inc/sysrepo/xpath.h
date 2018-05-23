@@ -24,6 +24,10 @@
 
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @defgroup xpath_utils XPath Processing Utilities
  * @{
@@ -35,9 +39,6 @@
  *
  *  Similarly to strtok function in all subsequent calls that is supposed to work with the same
  *  input xpath must be NULL.
- *
- *  @note Functions expects that key values do not contain
- *  characters like '[=/. If any yes it can lead to undefined behavior.
  */
 
 /**
@@ -222,6 +223,10 @@ bool sr_xpath_node_name_eq(const char *xpath, const char *node_str);
 void sr_xpath_recover(sr_xpath_ctx_t *state);
 
 /**@} xpath_utils */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SYSREPO_XPATH_H_ */
 

@@ -23,6 +23,12 @@
 #ifndef SYSREPO_VALUES_H_
 #define SYSREPO_VALUES_H_
 
+#include <stdio.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @defgroup values Value Manipulation Utilities
  * @{
@@ -62,6 +68,15 @@ int sr_new_val(const char *xpath, sr_val_t **value);
  * @param [out] values Returned newly allocated array of values.
  */
 int sr_new_values(size_t value_cnt, sr_val_t **values);
+
+/**
+ * @brief Reallocate an array of sysrepo values.
+ *
+ * @param [in] old_value_cnt Current length of the value array.
+ * @param [in] new_value_cnt Desired length of the value array.
+ * @param [in,out] values Returned newly allocated/enlarged array of values.
+ */
+int sr_realloc_values(size_t old_value_cnt, size_t new_value_cnt, sr_val_t **values);
 
 /**
  * @brief Set/change xpath of a Sysrepo value.
@@ -173,5 +188,9 @@ char *sr_val_to_str(const sr_val_t *value);
 int sr_val_to_buff(const sr_val_t *value, char buffer[], size_t size);
 
 /**@} values */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SYSREPO_VALUES_H_ */

@@ -1,6 +1,7 @@
 [Unit]
 Description=Sysrepo YANG configuration storage and management
 Requires=sysrepod.service
+After=sysrepod.service
 
 [Service]
 Type=forking

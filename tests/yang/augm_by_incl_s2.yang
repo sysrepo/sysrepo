@@ -1,0 +1,10 @@
+submodule augm_by_incl_s2 {
+  belongs-to augm_by_incl_m3 {
+    prefix abi_m3;
+  }
+
+  augment "/abi_m3:cont1" {
+    container cont11 {
+    }
+  }
+}

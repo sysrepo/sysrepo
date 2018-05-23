@@ -1,0 +1,19 @@
+module augm_by_incl_m3 {
+  namespace "urn:fri:params:xml:ns:yang:augm_by_incl_m3";
+  prefix abi_m3;
+
+  import augm_by_incl_m4 {
+    prefix abi_m4;
+  }
+
+  include augm_by_incl_s1;
+  include augm_by_incl_s2;
+
+  augment "/abi_m3:cont1/abi_m3:cont11" {
+    container cont111 {
+        leaf leaf111 {
+          type abi_m4:reftype;
+      }
+    }
+  }
+}

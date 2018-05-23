@@ -1,0 +1,20 @@
+module feature-dependencies2 {
+
+   namespace "urn:pfe:params:xml:ns:yang:feature-dependencies2";
+   prefix fd2;
+
+   import feature-dependencies3 {
+      prefix fd3;
+   }
+
+   feature abc {
+      if-feature fd3:xyz;
+   }
+
+   feature def {
+      if-feature fd3:xyz;
+   }
+
+   feature issue2;
+
+}

@@ -59,6 +59,9 @@
     #include <sys/types.h>
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 // Common typedefs and API
@@ -1847,7 +1850,7 @@ typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *
  * Subscribing as a data provider for configuration data does not have any effect.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath @ref xp_page "Schema Path" identifying the subtree under which the provider is able to provide
+ * @param[in] xpath @ref xp_page "Data Path" identifying the subtree under which the provider is able to provide
  * operational data.
  * @param[in] callback Callback to be called when the operational data nder given xpat is needed.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
@@ -1891,6 +1894,11 @@ typedef struct sr_fd_change_s {
 } sr_fd_change_t;
 
 /**
+ * @brief Callback when the subscription manager is terminated
+ */
+typedef void (*sr_fd_sm_terminated_cb)();
+
+/**
  * @brief Initializes application-local file descriptor watcher.
  *
  * This can be used in those applications that subscribe for changes or providing data in sysrepo, which have their
@@ -1905,9 +1913,14 @@ typedef struct sr_fd_change_s {
  * @param[out] fd Initial file descriptor that is supposed to be monitored for readable events by the application.
  * Once there is an event detected on this file descriptor, the application is supposed to call ::sr_fd_event_process.
  *
+ * @param[in] sm_terminate_cb Function to be called when the subscription manager is terminated. If this callback is provided,
+ * it shall block until all pending events on any file descriptor associated with sysrepo have been handled. I.e., ensure that
+ * the event loop has called sr_fd_event_process() for all pending events before returning from this callback. If this callback
+ * doesn't block, errors will be shown in the log.
+ *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_fd_watcher_init(int *fd);
+int sr_fd_watcher_init(int *fd, sr_fd_sm_terminated_cb sm_terminate_cb);
 
 /**
  * @brief Cleans-up the application-local file descriptor watcher previously initiated by ::sr_fd_watcher_init.
@@ -1990,5 +2003,9 @@ void sr_free_tree(sr_node_t *tree);
 void sr_free_trees(sr_node_t *trees, size_t count);
 
 /**@} cl */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SYSREPO_H_ */

@@ -1,0 +1,14 @@
+module data-imp-dep-C {
+    prefix did-C;
+    namespace "urn:did:C";
+
+    container c-con {
+        list c-list {
+            key name;
+
+            leaf name {
+                type string;
+            }
+        }
+    }
+}

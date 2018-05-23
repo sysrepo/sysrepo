@@ -37,18 +37,6 @@
 #include "trees_internal.h"
 
 /**
- * @brief Number of items being fetched in one message from Sysrepo Engine by
- * processing of sr_get_items_iter calls.
- */
-#define CL_GET_ITEMS_FETCH_LIMIT 100
-
-/**
- * @brief Maximum number of children nodes (of any parent node) being fetched in
- * one message from Sysrepo Engine by processing of sr_get_subtree(s)_*_chunk(s).
- */
-#define CL_GET_SUBTREE_CHUNK_CHILD_LIMIT 20
-
-/**
  * @brief Maximum number of *not-yet-loaded* levels of any subtree chunk sent by the operation
  * sr_get_subtree(s)_*_chunk(s).
  */
@@ -100,6 +88,8 @@ static int subscriptions_cnt = 0;             /**< Number of active subscription
 static cm_ctx_t *local_cm_ctx = NULL;         /**< Local Connection Manager context in case of library mode. */
 static cl_sm_ctx_t *cl_sm_ctx = NULL;         /**< Subscription Manager context. */
 static int local_watcher_fd[2] = { -1, -1 };  /**< File descriptor pair of an application-local file descriptor watcher. */
+static sr_fd_sm_terminated_cb local_watcher_terminate_cb = NULL;
+                                              /**< Callback for blocking upon an exit of the last subscription manager */
 static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking shared global variables. */
 
 /**
@@ -292,7 +282,7 @@ cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
     pthread_mutex_lock(&global_lock);
     if (0 == subscriptions_cnt) {
         /* this is the first subscription - initialize subscription manager */
-        rc = cl_sm_init((-1 != local_watcher_fd[0]), local_watcher_fd, &cl_sm_ctx);
+        rc = cl_sm_init((-1 != local_watcher_fd[0]), local_watcher_terminate_cb, local_watcher_fd, &cl_sm_ctx);
     }
     subscriptions_cnt++;
     if (SR_ERR_OK == rc) {
@@ -1029,7 +1019,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *xpath, sr_val_iter_t **
 
     cl_session_clear_errors(session);
 
-    rc = cl_send_get_items_iter(session, xpath, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
+    rc = cl_send_get_items_iter(session, xpath, 0, SR_GET_ITEMS_FETCH_LIMIT, &msg_resp);
     if (SR_ERR_NOT_FOUND == rc) {
         SR_LOG_DBG("No items found for xpath '%s'", xpath);
         /* SR_ERR_NOT_FOUND will be returned on get_item_next call */
@@ -1100,7 +1090,7 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
     } else {
         /* Fetch more items */
         rc = cl_send_get_items_iter(session, iter->xpath, iter->offset,
-                CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
+                SR_GET_ITEMS_FETCH_LIMIT, &msg_resp);
         if (SR_ERR_NOT_FOUND == rc) {
             SR_LOG_DBG("All items has been read for xpath '%s'", iter->xpath);
             goto cleanup;
@@ -1334,7 +1324,7 @@ sr_add_tree_iterator(sr_node_t *root, sr_node_t *iterator, const char *xpath, bo
                     prev = prev->prev;
                 }
                 if ((1 < depth || (1 == depth && !bounded_slice))
-                        && CL_GET_SUBTREE_CHUNK_CHILD_LIMIT == child_cnt) {
+                        && SR_GET_SUBTREE_CHUNK_CHILD_LIMIT == child_cnt) {
                     sr_node_insert_child(node->parent, iterator);
                     ++iterator->data.int32_val;
                 }
@@ -1377,8 +1367,8 @@ sr_get_subtree_first_chunk(sr_session_ctx_t *session, const char *xpath, sr_node
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtree_chunk_req->xpath, rc, cleanup);
     msg_req->request->get_subtree_chunk_req->single = true;
     msg_req->request->get_subtree_chunk_req->slice_offset = 0;
-    msg_req->request->get_subtree_chunk_req->slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
-    msg_req->request->get_subtree_chunk_req->child_limit = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->slice_width = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->child_limit = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
     msg_req->request->get_subtree_chunk_req->depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT;
 
     /* send the request and receive the response */
@@ -1450,8 +1440,8 @@ sr_get_subtrees_first_chunks(sr_session_ctx_t *session, const char *xpath, sr_no
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtree_chunk_req->xpath, rc, cleanup);
     msg_req->request->get_subtree_chunk_req->single = false;
     msg_req->request->get_subtree_chunk_req->slice_offset = 0;
-    msg_req->request->get_subtree_chunk_req->slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
-    msg_req->request->get_subtree_chunk_req->child_limit = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->slice_width = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->child_limit = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
     msg_req->request->get_subtree_chunk_req->depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT;
 
     /* send the request and receive the response */
@@ -1554,10 +1544,10 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
         /*  -> slice width */
         node = parent;
         bounded_slice = true;
-        while (CL_GET_SUBTREE_CHUNK_CHILD_LIMIT > slice_width && NULL != node) {
+        while (SR_GET_SUBTREE_CHUNK_CHILD_LIMIT > slice_width && NULL != node) {
             if (SR_TREE_ITERATOR_T == node->type) {
                 bounded_slice = false;
-                slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+                slice_width = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
                 break;
             }
             if (node->first_child && SR_TREE_ITERATOR_T == node->first_child->type) {
@@ -1583,7 +1573,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
         }
         /* include as many nodes as allowed */
         bounded_slice = false;
-        slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+        slice_width = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
         depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT + 1;
     }
 
@@ -1615,7 +1605,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
             }
             prev = prev->prev;
         }
-        snprintf(indices[i], BUF_LEN, "%lu", index);
+        snprintf(indices[i], BUF_LEN, "%zu", index);
         node = node->parent;
     }
     /* -> xpath length */
@@ -1673,7 +1663,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
     msg_req->request->get_subtree_chunk_req->single = true;
     msg_req->request->get_subtree_chunk_req->slice_offset = slice_offset;
     msg_req->request->get_subtree_chunk_req->slice_width = slice_width;
-    msg_req->request->get_subtree_chunk_req->child_limit = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->child_limit = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
     msg_req->request->get_subtree_chunk_req->depth_limit = depth_limit;
 
     /* send the request and receive the response */
@@ -2082,14 +2072,8 @@ sr_commit(sr_session_ctx_t *session)
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__COMMIT);
-    if ((SR_ERR_OK != rc) && (SR_ERR_OPERATION_FAILED != rc) && (SR_ERR_VALIDATION_FAILED != rc) &&
-        (SR_ERR_UNAUTHORIZED != rc)) {
-        SR_LOG_ERR_MSG("Error by processing of commit request.");
-        goto cleanup;
-    }
-
     commit_resp = msg_resp->response->commit_resp;
-    if ((SR_ERR_OPERATION_FAILED == rc) || (SR_ERR_VALIDATION_FAILED == rc) || (SR_ERR_UNAUTHORIZED == rc)) {
+    if (rc != SR_ERR_OK) {
         SR_LOG_ERR("Commit operation failed with %zu error(s).", commit_resp->n_errors);
 
         /* store commit errors within the session */
@@ -2182,14 +2166,8 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name,
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__COPY_CONFIG);
-    if ((SR_ERR_OK != rc) && (SR_ERR_OPERATION_FAILED != rc) && (SR_ERR_VALIDATION_FAILED != rc) &&
-        (SR_ERR_UNAUTHORIZED != rc)) {
-        SR_LOG_ERR_MSG("Error by processing of copy_config request.");
-        goto cleanup;
-    }
-
     copy_config_resp = msg_resp->response->copy_config_resp;
-    if ((SR_ERR_OPERATION_FAILED == rc) || (SR_ERR_VALIDATION_FAILED == rc) || (SR_ERR_UNAUTHORIZED == rc)) {
+    if (rc != SR_ERR_OK) {
         SR_LOG_ERR("Copy_config operation failed with %zu error(s).", copy_config_resp->n_errors);
 
         /* store commit errors within the session */
@@ -2672,7 +2650,7 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
 
     cl_session_clear_errors(session);
 
-    rc = cl_send_get_changes(session, xpath, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
+    rc = cl_send_get_changes(session, xpath, 0, SR_GET_ITEMS_FETCH_LIMIT, &msg_resp);
     if (SR_ERR_NOT_FOUND == rc) {
         SR_LOG_DBG("No items found for xpath '%s'", xpath);
         /* SR_ERR_NOT_FOUND will be returned on get_change_next call */
@@ -2756,7 +2734,7 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
     } else {
         /* Fetch more items */
         rc = cl_send_get_changes(session, iter->xpath, iter->offset,
-                CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
+                SR_GET_ITEMS_FETCH_LIMIT, &msg_resp);
         if (SR_ERR_NOT_FOUND == rc) {
             SR_LOG_DBG("All items has been read for xpath '%s'", iter->xpath);
             goto cleanup;
@@ -3782,7 +3760,7 @@ cleanup:
 }
 
 int
-sr_fd_watcher_init(int *fd_p)
+sr_fd_watcher_init(int *fd_p, sr_fd_sm_terminated_cb sm_terminate_cb)
 {
     int pipefd[2] = { 0, };
     int ret = 0, rc = SR_ERR_OK;
@@ -3801,6 +3779,7 @@ sr_fd_watcher_init(int *fd_p)
     pthread_mutex_lock(&global_lock);
     local_watcher_fd[0] = pipefd[0];
     local_watcher_fd[1] = pipefd[1];
+    local_watcher_terminate_cb = sm_terminate_cb;
     pthread_mutex_unlock(&global_lock);
 
     *fd_p = pipefd[0]; /* return read end of the pipe */

@@ -87,7 +87,7 @@ int rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_
  * to identify the matching nodes. The selection of returned values can be specified by limit and offset.
  * @param [in] rp_ctx
  * @param [in] rp_session
- * @param [in] get_items_ctx\
+ * @param [in] get_items_ctx
  * @param [in] sr_mem
  * @param [in] xpath
  * @param [in] offset - return the values with index and above
@@ -271,6 +271,23 @@ int rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context
  * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_remove_loaded_state_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session);
+
+/**
+ * @brief Loads configuration data and asks for state data if needed. Request
+ * can enter this function in RP_REQ_NEW state or RP_REQ_FINISHED.
+ *
+ * In RP_REQ_NEW state saves the data tree name into session.
+ *
+ * @param [in] rp_ctx
+ * @param [in] rp_session
+ * @param [in] xpath
+ * @param [in] api_variant
+ * @param [in] tree_depth_limit
+ * @param [out] data_tree Optional.
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_api_variant_t api_variant,
+        size_t tree_depth_limit,  struct lyd_node **data_tree);
 
 /**
  * @brief Frees state data context.

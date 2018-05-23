@@ -1,0 +1,31 @@
+module mutual-leafref-base {
+
+   namespace "urn:pfe:params:xml:ns:yang:mutual-leafref-base";
+   prefix mlr-bas;
+
+   description "Base module to be augmented.";
+
+   revision 2018-01-11 {
+      description "je nu";
+      reference "nu ja";
+   }
+
+   typedef item-ref {
+      type leafref {
+         path "/mlr-bas:box/mlr-bas:item/mlr-bas:name";
+      }
+   }
+
+   container box {
+      list item {
+         key name;
+         leaf name {
+            type string;
+         }
+         leaf xyz {
+            type string;
+         }
+      }
+   }
+
+}
