@@ -191,6 +191,12 @@ set(NOTIF_AGE_TIMEOUT 60 CACHE INTEGER
 set(NOTIF_TIME_WINDOW 10 CACHE INTEGER
     "Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files).")
 
+set(GET_ITEMS_FETCH_LIMIT 100 CACHE INTEGER
+    "Number of items being fetched in one message from Sysrepo Engine when processing sr_get_items_iter calls. Increasing this can improve efficiency when working with large datastores at the cost of higher memory usage peaks.")
+
+set(GET_SUBTREE_CHUNK_CHILD_LIMIT 20 CACHE INTEGER
+    "Maximum number of children nodes (of any parent node) being fetched in one message from Sysrepo Engine when processing sr_get_subtree(s)_*_chunk(s). Increasing this can improve efficiency when working with large datastores at the cost of higher memory usage peaks.")
+
 # add subdirectories
 add_subdirectory(src)
 
