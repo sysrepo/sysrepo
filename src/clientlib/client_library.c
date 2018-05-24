@@ -2093,9 +2093,7 @@ cleanup:
     } else {
         sr_mem_free(sr_mem);
     }
-    if (NULL != msg_resp) {
-        sr_msg_free(msg_resp);
-    }
+    sr_msg_free(msg_resp);
     return cl_session_return(session, rc);
 }
 
@@ -2187,9 +2185,7 @@ cleanup:
     } else {
         sr_mem_free(sr_mem);
     }
-    if (NULL != msg_resp) {
-        sr_msg_free(msg_resp);
-    }
+    sr_msg_free(msg_resp);
     return cl_session_return(session, rc);
 }
 

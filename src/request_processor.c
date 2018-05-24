@@ -3112,6 +3112,9 @@ rp_event_notif_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
         sr_free_values(with_def, with_def_cnt);
         sr_free_trees(with_def_tree, with_def_tree_cnt);
         pthread_mutex_unlock(&session->cur_req_mutex);
+        if (tmp_rp_session) {
+            rp_session_stop(rp_ctx, session);
+        }
         return rc;
     }
 

@@ -42,8 +42,8 @@ cache:
 
 before_install:
   - eval "${MATRIX_EVAL}"
-  - test $TRAVIS_BRANCH != coverity -o ${TRAVIS_JOB_NUMBER##*.} = 1 || exit 0
-  - test $TRAVIS_BRANCH != devel-coverity -o ${TRAVIS_JOB_NUMBER##*.} = 1 || exit 0
+  - test $TRAVIS_BRANCH != coverity -o "$CC" = "clang" || exit 0
+  - test $TRAVIS_BRANCH != devel-coverity -o "$CC" = "clang" || exit 0
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash deploy/travis/install-libs.sh; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sh deploy/travis/install-libs-osx.sh; fi
 
@@ -66,7 +66,6 @@ after_success:
 
 after_failure:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash ../deploy/travis/report-crash.sh; fi
-
 env:
   global:
    # COVERITY_SCAN_TOKEN
@@ -76,7 +75,7 @@ addons:
   coverity_scan:
     project:
       name: "sysrepo/sysrepo"
-    notification_email: raszabo@cisco.com
-    build_command_prepend: "mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local .. && make clean"
+    notification_email: mvasko@cesnet.cz
+    build_command_prepend: "mkdir build ; cd build ; cmake -DENABLE_NACM=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local .. && make clean"
     build_command:   "make -j 2"
     branch_pattern: ".*coverity"

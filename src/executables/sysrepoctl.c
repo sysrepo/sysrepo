@@ -940,6 +940,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
         search_dirs[0] = srctl_get_dir_path((NULL != yang) ? yang : yin);
         if (NULL == search_dirs[0]) {
             fprintf(stderr, "Error: Unable to extract search directory path.\n");
+            free(search_dirs);
             goto fail;
         }
         search_dir_count = 1;
@@ -1266,6 +1267,10 @@ main(int argc, char* argv[])
             case 's':
                 ++search_dir_count;
                 search_dirs = realloc(search_dirs, search_dir_count * sizeof *search_dirs);
+                if (!search_dirs) {
+                    fprintf(stderr, "%s: memory allocation failed. Exiting.\n", argv[0]);
+                    return EXIT_FAILURE;
+                }
                 search_dirs[search_dir_count - 1] = optarg;
                 break;
             case 'S':
