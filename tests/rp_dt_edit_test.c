@@ -2587,6 +2587,56 @@ static void set_item(const char *path, const char *value, sr_type_t type, rp_ctx
     assert_int_equal(SR_ERR_OK, rc);
 }
 
+static int set_items_data_and_feature_import_setup(void **state)
+{
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-feat-enable-A.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-A.yang", true);
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-feat-enable-B.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-B.yang", true);
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-feat-enable-C.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-C.yang", true);
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-feat-enable-D.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-D.yang", true);
+
+    exec_shell_command("../src/sysrepoctl --feature-enable c-feature --module data-feat-enable-C", ".*", true, 0);
+
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-imp-dep-A.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-A.yang", true);
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-imp-dep-B.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-B.yang", true);
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-imp-dep-C.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-C.yang", true);
+
+    setup(state);
+
+    return 0;
+}
+
+static int set_items_data_and_feature_import_teardown(void **state)
+{
+    exec_shell_command("../src/sysrepoctl --feature-disable c-feature --module data-feat-enable-C", ".*", true, 0);
+
+    exec_shell_command("../src/sysrepoctl --uninstall --module=data-feat-enable-A", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-A.yang", false);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=data-feat-enable-B", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-B.yang", false);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=data-feat-enable-C", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-C.yang", false);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=data-feat-enable-D", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-D.yang", false);
+
+    exec_shell_command("../src/sysrepoctl --uninstall --module=data-imp-dep-A", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-A.yang", false);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=data-imp-dep-B", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-B.yang", false);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=data-imp-dep-C", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-C.yang", false);
+
+    teardown(state);
+
+    return 0;
+}
+
 void set_items_data_and_feature_import(void **state)
 {
     int rc;
@@ -2685,8 +2735,8 @@ int main(){
             cmocka_unit_test_setup(edit_union_type, createData),
             cmocka_unit_test_setup(validaton_of_multiple_models, createData),
             cmocka_unit_test(set_item_id_ref),
-            cmocka_unit_test(set_items_data_and_feature_import),
-            cmocka_unit_test(set_items_data_and_import_implemented),
+            cmocka_unit_test_setup_teardown(set_items_data_and_feature_import, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
+            cmocka_unit_test_setup_teardown(set_items_data_and_import_implemented, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
     };
 
     watchdog_start(300);
