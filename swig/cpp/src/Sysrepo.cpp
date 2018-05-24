@@ -92,5 +92,5 @@ void Logs::set_stderr(sr_log_level_t log_level)
 
 void Logs::set_syslog(sr_log_level_t log_level)
 {
-    sr_log_stderr(log_level);
+    sr_log_syslog(log_level);
 }
