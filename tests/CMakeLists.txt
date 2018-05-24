@@ -189,16 +189,6 @@ INSTALL_YANG_FOR_TESTS("ietf-netconf-notifications")
 INSTALL_YANG_FOR_TESTS("nc-notifications")
 INSTALL_YANG_FOR_TESTS("servers")
 
-INSTALL_YANG_FOR_TESTS("data-feat-enable-A")
-INSTALL_YANG_FOR_TESTS("data-feat-enable-B")
-INSTALL_YANG_FOR_TESTS("data-feat-enable-C")
-INSTALL_YANG_FOR_TESTS("data-feat-enable-D")
-ENABLE_FEATURE_FOR_TESTS("data-feat-enable-C" "c-feature")
-
-INSTALL_YANG_FOR_TESTS("data-imp-dep-A")
-INSTALL_YANG_FOR_TESTS("data-imp-dep-B")
-INSTALL_YANG_FOR_TESTS("data-imp-dep-C")
-
 
 # dummy testing plugins
 add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)
