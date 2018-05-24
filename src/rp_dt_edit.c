@@ -350,14 +350,14 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     if (dm_is_running_ds_session(session)) {
         if (!dm_is_enabled_check_recursively(sch_node)) {
             SR_LOG_ERR("The node is not enabled in running datastore %s", xpath);
-            return SR_ERR_INVAL_ARG;
+            return dm_report_error(session, "The node is not enabled in running datastore", xpath, SR_ERR_INVAL_ARG);
         }
     }
 
     /* non-presence container can not be created */
     if (LYS_CONTAINER == sch_node->nodetype && NULL == ((struct lys_node_container *) sch_node)->presence) {
         SR_LOG_ERR("Non presence container can not be created %s", xpath);
-        return SR_ERR_INVAL_ARG;
+        return dm_report_error(session, "Non presence container can not be created", xpath, SR_ERR_INVAL_ARG);
     }
 
     /* key node can not be created, create list instead*/
@@ -425,11 +425,11 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
 
 
     /* create or update */
-    ly_errno = 0;
+    ly_errno = LY_SUCCESS;
     node = dm_lyd_new_path(info, xpath, new_value, flags);
     if (NULL == node && LY_SUCCESS != ly_errno) {
-        SR_LOG_ERR("Setting of item failed %s %d", xpath, ly_vecode);
-        if (LYVE_PATH_EXISTS == ly_vecode) {
+        SR_LOG_ERR("Setting of item failed %s %d", xpath, ly_vecode(info->schema->module->ctx));
+        if (LYVE_PATH_EXISTS == ly_vecode(info->schema->module->ctx)) {
             rc = SR_ERR_DATA_EXISTS;
         } else if (LY_EVALID == ly_errno) {
             rc = SR_ERR_INVAL_ARG;
@@ -491,8 +491,8 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
     }
 
     if (!((LYS_LIST | LYS_LEAFLIST) & node->schema->nodetype) || (!(LYS_USERORDERED & node->schema->flags))) {
-        SR_LOG_ERR("Xpath %s does not identify the user ordered list or leaf-list", xpath);
-        return SR_ERR_INVAL_ARG;
+        SR_LOG_ERR("Xpath %s does not identify a user ordered list or leaf-list", xpath);
+        return dm_report_error(session, "Path does not identify a user ordered list or leaf-list", xpath, SR_ERR_INVAL_ARG);
     }
 
     if ((SR_MOVE_AFTER == position || SR_MOVE_BEFORE == position) && NULL != relative_item) {
@@ -526,7 +526,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
 
     if (NULL == sibling || !((LYS_LIST | LYS_LEAFLIST) & sibling->schema->nodetype) || (!(LYS_USERORDERED & sibling->schema->flags)) || (node->schema != sibling->schema)) {
         SR_LOG_ERR("Xpath %s does not identify the user ordered list or leaf-list or sibling node", xpath);
-        return SR_ERR_INVAL_ARG;
+        return dm_report_error(session, "Path does not identify a user ordered list or leaf-list", xpath, SR_ERR_INVAL_ARG);
     }
 
     if (SR_MOVE_FIRST == position) {
@@ -938,7 +938,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t **c_ct
             commit_ctx->errors = NULL;
             commit_ctx->err_cnt = 0;
             SR_LOG_DBG_MSG("Commit (9/10): abort notifications sent");
-            rc = SR_ERR_OPERATION_FAILED;
+            rc = commit_ctx->result;
             goto cleanup;
         default:
             break;

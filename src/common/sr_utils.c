@@ -842,7 +842,7 @@ sr_libyang_leaf_get_type_sch(const struct lys_node_leaf *leaf)
 sr_type_t
 sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
 {
-    switch(leaf->value_type & LY_DATA_TYPE_MASK) {
+    switch(leaf->value_type) {
         case LY_TYPE_BINARY:
             return SR_BINARY_T;
         case LY_TYPE_BITS:
@@ -860,7 +860,12 @@ sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
         case LY_TYPE_INST:
             return SR_INSTANCEID_T;
         case LY_TYPE_LEAFREF:
-            return sr_libyang_leaf_get_type_sch(((struct lys_node_leaf *)leaf->schema)->type.info.lref.target);
+            /* if the target leafref was disconnected there is a problem in case the leaf is actually a union */
+            if ((struct lyd_node_leaf_list *)leaf->value.leafref) {
+                return sr_libyang_leaf_get_type((struct lyd_node_leaf_list *)leaf->value.leafref);
+            } else {
+                return sr_libyang_leaf_get_type_sch(((struct lys_node_leaf *)leaf->schema)->type.info.lref.target);
+            }
         case LY_TYPE_STRING:
             return SR_STRING_T;
         case LY_TYPE_INT8:
@@ -1114,7 +1119,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
     CHECK_NULL_ARG2(leaf, value);
     int rc = SR_ERR_OK;
     struct lys_type *actual_type = NULL;
-    LY_DATA_TYPE type = leaf->value_type & LY_DATA_TYPE_MASK;
+    LY_DATA_TYPE type = leaf->value_type;
     const char *node_name = "(unknown)";
     if (NULL != leaf->schema && NULL != leaf->schema->name) {
         node_name = leaf->schema->name;
@@ -1826,14 +1831,14 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
                     *data_tree = node;
                 }
                 if (NULL == node) {
-                    SR_LOG_ERR("Failed to create tree root node (leaf) ('%s'): %s", xpath, ly_errmsg());
+                    SR_LOG_ERR("Failed to create tree root node (leaf) ('%s'): %s", xpath, ly_errmsg(ly_ctx));
                     return SR_ERR_INTERNAL;
                 }
             } else {
                 node = lyd_new_leaf(parent, module, sr_tree->name, string_val);
                 free(string_val);
                 if (NULL == node) {
-                    SR_LOG_ERR("Unable to add leaf node (named '%s'): %s", sr_tree->name, ly_errmsg());
+                    SR_LOG_ERR("Unable to add leaf node (named '%s'): %s", sr_tree->name, ly_errmsg(ly_ctx));
                     return SR_ERR_INTERNAL;
                 }
             }
@@ -3137,4 +3142,48 @@ sr_str_to_time(char *time_str, time_t *time)
 cleanup:
     free(time_str_copy);
     return rc;
+}
+
+int sr_features_clone(const struct lys_module *module_src, const struct lys_module *module_tgt)
+{
+    int i, j;
+
+    uint8_t fsize_src, fsize_tgt;
+    struct lys_feature *f_src, *f_tgt;
+
+    if (module_src->inc_size != module_tgt->inc_size) {
+        SR_LOG_ERR("Features cannot be cloned %s.", module_src->name);
+        return EXIT_FAILURE;
+    }
+
+    for (i = -1; i < module_src->inc_size; i++) {
+        if (i == -1) {
+            fsize_src = module_src->features_size;
+            fsize_tgt = module_tgt->features_size;
+            f_src = module_src->features;
+            f_tgt = module_tgt->features;
+        } else {
+            fsize_src = module_src->inc[i].submodule->features_size;
+            fsize_tgt = module_tgt->inc[i].submodule->features_size;
+            f_src = module_src->inc[i].submodule->features;
+            f_tgt = module_tgt->inc[i].submodule->features;
+        }
+
+        if (fsize_src != fsize_tgt) {
+            SR_LOG_ERR("Features cannot be cloned %s.", module_src->name);
+            return EXIT_FAILURE;
+        }
+
+        for (j = 0; j < fsize_src; j++) {
+            if (!strcmp(f_src[j].name, f_tgt[j].name)) {
+                f_tgt[j].flags |= f_src[j].flags & LYS_FENABLED;
+            }
+            else {
+                SR_LOG_ERR("Features cannot be cloned %s.", module_src->name);
+                return EXIT_FAILURE;
+            }
+        }
+    }
+
+    return EXIT_SUCCESS;
 }

@@ -73,15 +73,17 @@ srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, 
     fd = open(file_path, O_RDONLY);
     assert_true_bt(fd >= 0);
 
+    ly_errno = LY_SUCCESS;
     file_data = lyd_parse_fd(srcfg_test_libyang_ctx, fd, file_format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
     if (!file_data && LY_SUCCESS != ly_errno) {
-        fprintf(stderr, "lyd_parse_fd error: %s (%s)", ly_errmsg(), ly_errpath());
+        fprintf(stderr, "lyd_parse_fd error: %s (%s)", ly_errmsg(srcfg_test_libyang_ctx), ly_errpath(srcfg_test_libyang_ctx));
     }
     assert_true_bt(file_data || LY_SUCCESS == ly_errno);
     if (NULL != exp) {
+        ly_errno = LY_SUCCESS;
         exp_data = lyd_parse_mem(srcfg_test_libyang_ctx, exp, exp_format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
         if (!exp_data && LY_SUCCESS != ly_errno) {
-            fprintf(stderr, "lyd_parse_mem error: %s (%s)", ly_errmsg(), ly_errpath());
+            fprintf(stderr, "lyd_parse_mem error: %s (%s)", ly_errmsg(srcfg_test_libyang_ctx), ly_errpath(srcfg_test_libyang_ctx));
         }
         assert_true_bt(exp_data || LY_SUCCESS == ly_errno);
     }
@@ -429,9 +431,9 @@ srcfg_test_xpath(void **state)
     rc = sr_session_refresh(srcfg_test_session);
     if (rc != SR_ERR_OK) {
         printf("Error by sr_session_refresh %s\n", sr_strerror(rc));
-    }
+    };
     rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/fakeleaf", &rvalue);
-    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
     sr_free_val(rvalue);
     rvalue = NULL;
 
@@ -1231,7 +1233,7 @@ main() {
     /* create libyang context */
     srcfg_test_libyang_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     if (NULL == srcfg_test_libyang_ctx) {
-        fprintf(stderr, "Unable to initialize libyang context: %s", ly_errmsg());
+        fprintf(stderr, "Unable to initialize libyang context");
         goto terminate;
     }
 
@@ -1262,7 +1264,8 @@ main() {
             for (int j = 0; j < sizeof(modules_for_tests) / sizeof(*modules_for_tests); j++) {
                 if (NULL != path && 0 == strcmp(modules_for_tests[j], schemas[i].module_name)) {
                     if (NULL == lys_parse_path(srcfg_test_libyang_ctx, path, LYS_IN_YANG)) {
-                        fprintf(stderr, "Failed to parse schema file '%s': %s (%s)", path, ly_errmsg(), ly_errpath());
+                        fprintf(stderr, "Failed to parse schema file '%s': %s (%s)",
+                                path, ly_errmsg(srcfg_test_libyang_ctx), ly_errpath(srcfg_test_libyang_ctx));
                         ret = SR_ERR_IO;
                         goto terminate;
                     }

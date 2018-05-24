@@ -2553,6 +2553,97 @@ validaton_of_multiple_models(void **state)
 
 }
 
+void set_item_id_ref(void **state){
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+
+    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
+
+    sr_val_t *val = NULL;
+    sr_new_val("/id-ref-base:main/id-ref-aug:augmented/id-ref", &val);
+    sr_val_set_str_data(val, SR_IDENTITYREF_T, "id-def-extended:external-derived-id");
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_STRICT, val, NULL, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_free_val(val);
+    test_rp_session_cleanup(ctx, session);
+}
+
+static void set_item(const char *path, const char *value, sr_type_t type, rp_ctx_t *ctx,
+                     rp_session_t *session)
+{
+    sr_val_t *val = NULL;
+    int rc;
+    sr_new_val(path, &val);
+    if (type != SR_LIST_T) {
+        sr_val_set_str_data(val, type, value);
+    }
+    val->type = type;
+    SR_LOG_INF("Adding item %s", path);
+    assert_int_equal(val->type, type);
+
+    rc = rp_dt_set_item_wrapper(ctx, session, val->xpath, val, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+}
+
+void set_items_data_and_feature_import(void **state)
+{
+    int rc;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    dm_commit_context_t *c_ctx = NULL;
+
+    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
+
+    set_item("/data-feat-enable-D:d-con/d-list[name='d-foo']", NULL, SR_LIST_T,
+             ctx, session);
+    set_item("/data-feat-enable-D:d-con/data-feat-enable-A:a-leaf", "a-bar", SR_STRING_T,
+             ctx, session);
+    set_item("/data-feat-enable-B:b-con/b-list[name='b-foo']", NULL, SR_LIST_T,
+             ctx, session);
+    set_item("/data-feat-enable-B:b-con/b-list[name='b-foo']/ref", "d-foo", SR_STRING_T,
+             ctx, session);
+
+
+    rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(e_cnt, 0);
+    assert_ptr_equal(errors, NULL);
+
+    test_rp_session_cleanup(ctx, session);
+}
+
+void set_items_data_and_import_implemented(void **state)
+{
+    int rc;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    dm_commit_context_t *c_ctx = NULL;
+
+    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
+
+    set_item("/data-imp-dep-A:a-con/a-list[name='a-foo']", NULL, SR_LIST_T,
+             ctx, session);
+    set_item("/data-imp-dep-A:a-con/a-list[name='a-foo']/ref", "c-foo", SR_STRING_T,
+             ctx, session);
+    set_item("/data-imp-dep-C:c-con/c-list[name='c-foo']", NULL, SR_LIST_T,
+             ctx, session);
+    set_item("/data-imp-dep-C:c-con/data-imp-dep-B:b-leaf", "b-foo", SR_STRING_T,
+             ctx, session);
+
+
+    rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(e_cnt, 0);
+    assert_ptr_equal(errors, NULL);
+
+    test_rp_session_cleanup(ctx, session);
+}
 
 int main(){
 
@@ -2593,6 +2684,9 @@ int main(){
             cmocka_unit_test(candidate_copy_config_lock_test),
             cmocka_unit_test_setup(edit_union_type, createData),
             cmocka_unit_test_setup(validaton_of_multiple_models, createData),
+            cmocka_unit_test(set_item_id_ref),
+            cmocka_unit_test(set_items_data_and_feature_import),
+            cmocka_unit_test(set_items_data_and_import_implemented),
     };
 
     watchdog_start(300);

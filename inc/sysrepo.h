@@ -59,6 +59,9 @@
     #include <sys/types.h>
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 // Common typedefs and API
@@ -2000,5 +2003,9 @@ void sr_free_tree(sr_node_t *tree);
 void sr_free_trees(sr_node_t *trees, size_t count);
 
 /**@} cl */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SYSREPO_H_ */

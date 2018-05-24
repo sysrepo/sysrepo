@@ -158,7 +158,7 @@ srctl_list_modules()
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
     sr_schema_t *schemas = NULL;
-    size_t schema_cnt = 0;
+    size_t schema_cnt = 0, max_mod_name = 0, i;
     char buff[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
 
@@ -172,13 +172,19 @@ srctl_list_modules()
         rc = sr_list_schemas(session, &schemas, &schema_cnt);
     }
 
-    printf("\n%-30s| %-11s| %-12s| %-20s| %-12s| %-30s| %s\n",
-            "Module Name", "Revision", "Conformance", "Data Owner", "Permissions", "Submodules", "Enabled Features");
-    printf("-----------------------------------------------------------------------------------------------------------------------------------------------\n");
-
     if (SR_ERR_OK == rc) {
+        for (i = 0; i < schema_cnt; ++i) {
+            if (strlen(schemas[i].module_name) > max_mod_name) {
+                max_mod_name = strlen(schemas[i].module_name);
+            }
+        }
+
+        printf("\n%-*s| %-11s| %-12s| %-20s| %-12s| %-30s| %s\n", (int)max_mod_name + 1,
+               "Module Name", "Revision", "Conformance", "Data Owner", "Permissions", "Submodules", "Enabled Features");
+        printf("----------------------------------------------------------------------------------------------------"
+               "-------------------------------------------\n");
         for (size_t i = 0; i < schema_cnt; i++) {
-            printf("%-30s| %-11s| ", schemas[i].module_name,
+            printf("%-*s| %-11s| ", (int)max_mod_name + 1, schemas[i].module_name,
                     (NULL == schemas[i].revision.revision ? "" : schemas[i].revision.revision));
 
             /* print conformance */
@@ -508,7 +514,6 @@ srctl_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
         case LY_LLDBG:
             SR_LOG_DBG("libyang: %s", msg);
             break;
-        case LY_LLSILENT:
         default:
             break;
     }
@@ -916,10 +921,12 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     sr_session_ctx_t *session = NULL;
     struct ly_ctx *ly_ctx = NULL;
     md_ctx_t *md_ctx = NULL;
-    const struct lys_module *module;
+    const struct lys_module *mod;
     bool local_search_dir = false;
     char schema_dst[PATH_MAX] = { 0, };
     int rc = SR_ERR_INTERNAL, rc_schema = SR_ERR_INTERNAL, ret = 0;
+    md_module_t *module = NULL;
+    sr_llist_node_t *module_ll_node = NULL;
 
     if (NULL == yang && NULL == yin) {
         fprintf(stderr, "Error: Either YANG or YIN file must be specified for --install operation.\n");
@@ -942,7 +949,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     /* init libyang context */
     ly_ctx = ly_ctx_new(search_dirs[0], 0);
     if (NULL == ly_ctx) {
-        fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
+        fprintf(stderr, "Error: Unable to initialize libyang context.\n");
         goto fail;
     }
     for (int i = 1; i < search_dir_count; ++i) {
@@ -958,14 +965,27 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     }
 
     /* load the module into libyang ctx to get module information */
-    module = lys_parse_path(ly_ctx, (NULL != yin) ? yin : yang, (NULL != yin) ? LYS_IN_YIN : LYS_IN_YANG);
-    if (NULL == module) {
+    mod = lys_parse_path(ly_ctx, (NULL != yin) ? yin : yang, (NULL != yin) ? LYS_IN_YIN : LYS_IN_YANG);
+    if (NULL == mod) {
         fprintf(stderr, "Error: Unable to load the module by libyang.\n");
         goto fail;
     }
 
+    /* check namespace duplication */
+    module_ll_node = md_ctx->modules->first;
+    while (module_ll_node) {
+        module = (md_module_t *)module_ll_node->data;
+
+        if (!strcmp(module->ns, mod->ns) && strcmp(module->name, mod->name)) {
+            fprintf(stderr, "Error: Module '%s' with namespace '%s' already in context.\n", module->name, module->ns);
+            goto fail;
+        }
+
+        module_ll_node = module_ll_node->next;
+    }
+
     /* install schema files */
-    rc_schema = srctl_schema_install(module, yang, yin);
+    rc_schema = srctl_schema_install(mod, yang, yin);
     if (SR_ERR_OK != rc_schema && SR_ERR_DATA_EXISTS != rc_schema) {
         rc = rc_schema;
         goto fail_schema;
@@ -973,9 +993,9 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
 
     /* update dependencies */
     if (NULL != yin) {
-        srctl_get_yin_path(module->name, module->rev[0].date, schema_dst, PATH_MAX);
+        srctl_get_yin_path(mod->name, mod->rev[0].date, schema_dst, PATH_MAX);
     } else if (NULL != yang) {
-        srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX);
+        srctl_get_yang_path(mod->name, mod->rev[0].date, schema_dst, PATH_MAX);
     }
     rc = md_insert_module(md_ctx, schema_dst, NULL);
     if (SR_ERR_OK != rc) {
@@ -993,7 +1013,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     md_ctx = NULL;
 
     /* install data files */
-    rc = srctl_data_install(module, owner, permissions);
+    rc = srctl_data_install(mod, owner, permissions);
     if (SR_ERR_OK != rc) {
         goto fail_data;
     }
@@ -1003,11 +1023,11 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
         printf("Notifying sysrepo about the change...\n");
         rc = srctl_open_session(true, &connection, &session);
         if (SR_ERR_OK == rc) {
-            rc = sr_module_install(session, module->name, module->rev[0].date, module->filepath, true);
+            rc = sr_module_install(session, mod->name, mod->rev[0].date, mod->filepath, true);
             if (SR_ERR_OK != rc) {
                 if (SR_ERR_RESTART_NEEDED == rc) {
                     fprintf(stderr, "Error: sysrepod must be restarted (or stopped) before previously uninstalled "
-                            "module '%s' can be reinstalled.\n", module->name);
+                            "module '%s' can be reinstalled.\n", mod->name);
                 } else {
                     srctl_report_error(session, rc);
                 }
@@ -1026,7 +1046,7 @@ fail_data:
     rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir,
                  srctl_internal_data_search_dir, true, &md_ctx);
     if (SR_ERR_OK == rc) {
-        rc = md_remove_modules(md_ctx, &module->name, (const char * const *)&module->rev[0].date, 1, NULL);
+        rc = md_remove_modules(md_ctx, &mod->name, (const char * const *)&mod->rev[0].date, 1, NULL);
     }
     if (SR_ERR_OK == rc) {
         md_flush(md_ctx);
@@ -1034,12 +1054,12 @@ fail_data:
     md_destroy(md_ctx);
     md_ctx = NULL;
 
-    srctl_data_uninstall(module->name);
+    srctl_data_uninstall(mod->name);
 fail_schema:
     printf("Reverting the install operation...\n");
     /* remove both yang and yin schema files */
     if (NULL != yang && SR_ERR_DATA_EXISTS != rc_schema) {
-        srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX);
+        srctl_get_yang_path(mod->name, mod->rev[0].date, schema_dst, PATH_MAX);
         ret = unlink(schema_dst);
         if (0 != ret && ENOENT != errno) {
             fprintf(stderr, "Error: Unable to revert the installation of the schema file '%s'.\n", schema_dst);
@@ -1048,7 +1068,7 @@ fail_schema:
         }
     }
     if (NULL != yin && SR_ERR_DATA_EXISTS != rc_schema) {
-        srctl_get_yin_path(module->name, module->rev[0].date, schema_dst, PATH_MAX);
+        srctl_get_yin_path(mod->name, mod->rev[0].date, schema_dst, PATH_MAX);
         ret = unlink(schema_dst);
         if (0 != ret && ENOENT != errno) {
             fprintf(stderr, "Error: Unable to revert the installation of the schema file '%s'.\n", schema_dst);

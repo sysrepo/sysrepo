@@ -85,8 +85,8 @@ public:
     S_Trees rpc_send(const char *xpath, S_Trees input);
     S_Vals action_send(const char *xpath, S_Vals input);
     S_Trees action_send(const char *xpath, S_Trees input);
-    void send_event(const char * xpath, S_Vals values, const sr_ev_notif_flag_t options = SR_EV_NOTIF_DEFAULT);
-    void send_event(const char * xpath, S_Trees trees, const sr_ev_notif_flag_t options = SR_EV_NOTIF_DEFAULT);
+    void event_notif_send(const char *xpath, S_Vals values, const sr_ev_notif_flag_t options = SR_EV_NOTIF_DEFAULT);
+    void event_notif_send(const char *xpath, S_Trees trees, const sr_ev_notif_flag_t options = SR_EV_NOTIF_DEFAULT);
 
     friend class Subscribe;
 

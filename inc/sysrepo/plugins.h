@@ -30,6 +30,10 @@
 
 #include <sysrepo.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @defgroup plugin_utils Plugin Utilities
  * @{
@@ -127,5 +131,9 @@ extern volatile uint8_t sr_ll_syslog;       /**< Holds current level of syslog d
         if (sr_ll_syslog >= LL) \
             SRP_LOG__SYSLOG(LL, MSG, __VA_ARGS__) \
     } while(0)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SYSREPO_PLUGINS_H_ */

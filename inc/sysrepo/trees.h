@@ -25,6 +25,10 @@
 
 #include <stdio.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @defgroup trees Tree Manipulation Utilities
  * @{
@@ -214,5 +218,9 @@ sr_node_t *sr_node_get_next_sibling(sr_session_ctx_t *session, sr_node_t *node);
 sr_node_t *sr_node_get_parent(sr_session_ctx_t *session, sr_node_t *node);
 
 /**@} trees */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SYSREPO_TREES_H_ */

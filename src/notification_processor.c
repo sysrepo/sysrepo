@@ -402,9 +402,10 @@ np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *dat
     rc = sr_locking_set_lock_fd(np_ctx->lock_ctx, fd, data_filename, (read_only ? false : true), true);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to lock data file '%s'.", data_filename);
 
+    ly_errno = LY_SUCCESS;
     *data_tree = lyd_parse_fd(np_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_OPT_NOAUTODEL);
     if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
-        SR_LOG_ERR("Parsing data from file '%s' failed: %s", data_filename, ly_errmsg());
+        SR_LOG_ERR("Parsing data from file '%s' failed: %s", data_filename, ly_errmsg(np_ctx->ly_ctx));
         rc = SR_ERR_INTERNAL;
     } else {
         SR_LOG_DBG("Data successfully loaded from file '%s'.", data_filename);
@@ -438,7 +439,8 @@ np_save_data_tree(struct lyd_node *data_tree, int fd)
 
     /* print data tree to file */
     ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_EXPLICIT);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving notification store data tree failed: %s", ly_errmsg());
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving notification store data tree failed: %s",
+                          ly_errmsg(data_tree->schema->module->ctx));
 
     /* flush in-core data to the disc */
     ret = fsync(fd);
@@ -761,7 +763,7 @@ np_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     /* init libyang ctx */
     ctx->ly_ctx = ly_ctx_new(schema_search_dir, 0);
     if (NULL == ctx->ly_ctx) {
-        SR_LOG_ERR("libyang initialization failed: %s", ly_errmsg());
+        SR_LOG_ERR_MSG("libyang initialization failed");
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -776,7 +778,7 @@ np_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     ctx->ns_schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YANG);
     free(schema_filename);
     if (NULL == ctx->ns_schema) {
-        SR_LOG_ERR("Unable to parse the schema file '%s': %s", NP_NS_SCHEMA_FILE, ly_errmsg());
+        SR_LOG_ERR("Unable to parse the schema file '%s': %s", NP_NS_SCHEMA_FILE, ly_errmsg(ctx->ly_ctx));
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
@@ -1533,13 +1535,8 @@ np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, char *subs_xpat
     if (NULL != commit) {
         if (SR_EV_VERIFY == event && SR_ERR_OK != result) {
             /* error returned from the verifier */
-            if (SR_ERR_OK == commit->result) {
-                /* if there isn't any previous error stored within the commit context, store there this one */
-                commit->result = result;
-            }
-            if (SR_ERR_OK != result) {
-                np_commit_error_add(commit, subs_xpath, do_not_send_abort, err_msg, err_xpath);
-            }
+            commit->result = result;
+            np_commit_error_add(commit, subs_xpath, do_not_send_abort, err_msg, err_xpath);
             SR_LOG_ERR("Verifier for '%s' returned an error (msg: '%s', xpath: '%s'), commit will be aborted.",
                     subs_xpath, err_msg, err_xpath);
         }
@@ -1662,7 +1659,7 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
     char data_xpath[PATH_MAX] = { 0, };
     char generated_time_buf[TIME_BUF_SIZE] = { 0, };
     struct timespec logged_time_spec = { 0, };
-    struct lyd_node *data_tree = NULL, *new_node = NULL, *dt_dup = NULL;
+    struct lyd_node *data_tree = NULL, *new_node = NULL;
     int fd = -1;
     int rc = SR_ERR_OK;
 
@@ -1713,7 +1710,7 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
 
     new_node = lyd_new_path(data_tree, np_ctx->ly_ctx, data_xpath, NULL, 0, 0);
     if (NULL == new_node) {
-        SR_LOG_WRN("Error by adding new notification entry %s: %s.", data_xpath, ly_errmsg());
+        SR_LOG_WRN("Error by adding new notification entry %s: %s.", data_xpath, ly_errmsg(np_ctx->ly_ctx));
         goto cleanup; /* do not set error code - it may be just too much notifications within the same hundred of second */
     }
     if (NULL == data_tree) {
@@ -1729,20 +1726,16 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
         new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_STRING);
     } else {
         /* store notification data as anydata */
-        dt_dup = lyd_dup_to_ctx(notif_data_tree, 1, notif_data_tree->schema->module->ctx);
-        if (NULL == dt_dup) {
-            SR_LOG_ERR("Error duplicating notification data tree: %s.", ly_errmsg());
+        if (lyd_print_mem(&ptr, notif_data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)) {
+            SR_LOG_ERR("Error printing notification data tree: %s.", ly_errmsg(notif_data_tree->schema->module->ctx));
             goto cleanup;
         }
-
-        new_node = lyd_new_anydata(new_node, NULL, "data", (void*)dt_dup, LYD_ANYDATA_DATATREE);
+        new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_SXMLD);
     }
     if (NULL == new_node) {
-        SR_LOG_ERR("Error by adding notification content into notification store: %s.", ly_errmsg());
+        SR_LOG_ERR("Error by adding notification content into notification store: %s.", ly_errmsg(notif_data_tree->schema->module->ctx));
         rc = SR_ERR_INTERNAL;
         goto cleanup;
-    } else {
-        dt_dup = NULL; /* data tree freed in lyd_new_anydata */
     }
 
     /* save notif. data */
@@ -1758,7 +1751,7 @@ cleanup:
 }
 
 int
-np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, const char *xpath,
+np_get_event_notifications(np_ctx_t *np_ctx, rp_session_t *rp_session, const char *xpath,
         const time_t start_time, const time_t stop_time, const sr_api_variant_t api_variant, sr_list_t **notifications)
 {
     char *module_name = NULL;
@@ -1804,7 +1797,8 @@ np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, con
             main_tree = data_tree;
         } else {
             ret = lyd_merge(main_tree, data_tree, LYD_OPT_DESTRUCT);
-            CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Unable to merge notification trees: %s", ly_errmsg());
+            CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
+                                "Unable to merge notification trees: %s", ly_errmsg(main_tree->schema->module->ctx));
         }
     }
 
@@ -1837,7 +1831,7 @@ np_get_event_notifications(np_ctx_t *np_ctx, const rp_session_t *rp_session, con
             }
 
             /* parse notification data */
-            rc = dm_parse_event_notif(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, NULL, notification, api_variant);
+            rc = dm_parse_event_notif(np_ctx->rp_ctx, rp_session, NULL, notification, api_variant);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Error by parsing notification '%s'.", notification->xpath);
 
             SR_LOG_DBG("Adding a new notification: '%s' (time=%ld)", notification->xpath, notification->timestamp);

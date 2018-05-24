@@ -1,0 +1,14 @@
+module data-feat-enable-D {
+    prefix dfe-D;
+    namespace "urn:dfe:D";
+
+    container d-con {
+        list d-list {
+            key name;
+
+            leaf name {
+                type string;
+            }
+        }
+    }
+}

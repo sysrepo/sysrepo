@@ -1785,7 +1785,8 @@ cl_refused_by_verifier(void **state)
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_copy_config(session, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING);
-    assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
+    /* error code from the verifier */
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
@@ -1893,7 +1894,7 @@ cl_no_abort_notifications(void **state)
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
-    assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
     assert_int_equal(changes.cnt, 0);
 
@@ -1967,7 +1968,7 @@ cl_one_abort_notification(void **state)
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_copy_config(session, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
-    assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;

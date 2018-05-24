@@ -1,0 +1,25 @@
+module data-feat-enable-A {
+    prefix dfe-A;
+    namespace "urn:dfe:A";
+
+    import data-feat-enable-C {
+        prefix dfe-C;
+    }
+
+    import data-feat-enable-D {
+        prefix dfe-D;
+    }
+
+    augment "/dfe-D:d-con" {
+        leaf a-leaf {
+            type string;
+            if-feature dfe-C:c-feature;
+        }
+    }
+
+    container a-con {
+        leaf a-leaf2 {
+            type string;
+        }
+    }
+}
