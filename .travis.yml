@@ -62,7 +62,7 @@ script:
   - sudo make install
 
 after_success:
-  - if [ "$CC" = "gcc-7" ]; then codecov; fi
+  - if [ "$CC" = "gcc" ]; then codecov; fi
 
 after_failure:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash ../deploy/travis/report-crash.sh; fi
