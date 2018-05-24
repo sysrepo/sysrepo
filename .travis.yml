@@ -42,8 +42,8 @@ cache:
 
 before_install:
   - eval "${MATRIX_EVAL}"
-  - test $TRAVIS_BRANCH != coverity -o ${TRAVIS_JOB_NUMBER##*.} = 1 || exit 0
-  - test $TRAVIS_BRANCH != devel-coverity -o ${TRAVIS_JOB_NUMBER##*.} = 1 || exit 0
+  - test $TRAVIS_BRANCH != coverity -o "$CC" = "clang" || exit 0
+  - test $TRAVIS_BRANCH != devel-coverity -o "$CC" = "clang" || exit 0
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash deploy/travis/install-libs.sh; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sh deploy/travis/install-libs-osx.sh; fi
 
@@ -52,7 +52,20 @@ before_script:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo sysctl -w kernel.core_pattern=$(pwd)/build/core.%e.%p; fi
 
 script:
-  - true
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DLOG_THREAD_ID=ON -DLONG_REQUEST_TIMEOUT=30 -DUSE_SR_MEM_MGMT=${USE_SR_MEM_MGMT:-ON} -DENABLE_NACM=ON .. && make -j2; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then mkdir build ; cd build ; cmake -DGEN_LANGUAGE_BINDINGS=0 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DLOG_THREAD_ID=ON -DLONG_REQUEST_TIMEOUT=30 -DENABLE_NACM=ON .. && make -j2; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then ( sudo sh ../deploy/travis/watch-bt.sh & ); fi
+  - ctest --output-on-failure
+  - CTEST=`which ctest` && sudo $CTEST --output-on-failure --tests-regex ac_test
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo sh ../deploy/travis/install-test-users.sh; fi
+  - CTEST=`which ctest` && sudo $CTEST --output-on-failure --tests-regex nacm_cl_test || (sleep 5; ls -al /var/log; ls -rt /var/log/syslog* | xargs sudo cat; exit 1)
+  - sudo make install
+
+after_success:
+  - if [ "$CC" = "gcc-7" ]; then codecov; fi
+
+after_failure:
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash ../deploy/travis/report-crash.sh; fi
 
 env:
   global:
@@ -65,5 +78,5 @@ addons:
       name: "sysrepo/sysrepo"
     notification_email: mvasko@cesnet.cz
     build_command_prepend: "mkdir build ; cd build ; cmake -DENABLE_NACM=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local .. && make clean"
-    build_command:   "make -j2"
+    build_command:   "make -j 2"
     branch_pattern: ".*coverity"
