@@ -5067,7 +5067,9 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
         /* distinguish between modules that can and cannot be locked */
         si->can_not_be_locked = !module->has_data;
 unlock:
-        pthread_rwlock_unlock(&si->model_lock);
+        if (si) {
+            pthread_rwlock_unlock(&si->model_lock);
+        }
     } else {
         /* module is installed for the first time, will be loaded when a request
          * into this module is received */
