@@ -115,6 +115,7 @@ sr_error:
     return rc;
 
 sys_error:
+    sr_free_val(val);
     SRP_LOG_ERR("OVEN: Oven config change callback failed: %s.", strerror(rc));
     return SR_ERR_OPERATION_FAILED;
 }
