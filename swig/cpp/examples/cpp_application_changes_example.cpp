@@ -1,5 +1,5 @@
 /**
- * @file application_changes_example.cpp
+ * @file cpp_application_changes_example.cpp
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
  * @brief Example application that uses sysrepo as the configuration datastore. It
  * prints the changes made in running data store.

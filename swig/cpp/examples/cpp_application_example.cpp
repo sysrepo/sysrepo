@@ -1,5 +1,5 @@
 /**
- * @file application_example.cpp
+ * @file cpp_application_example.cpp
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
  * @brief Example application that uses sysrepo as the configuraton datastore.
  *
