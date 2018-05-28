@@ -34,7 +34,7 @@
 //! @cond doxygen_suppress
 #define MD_MODULE_NAME      "sysrepo-module-dependencies"
 #define MD_SCHEMA_FILENAME  MD_MODULE_NAME ".yang"
-#define MD_DATA_FILENAME    MD_MODULE_NAME ".xml"
+#define MD_DATA_FILENAME    MD_MODULE_NAME "." SR_FILE_FORMAT_EXT
 //! @endcond
 
 /* A list of frequently used xpaths for the internal module with dependency info */
@@ -1093,7 +1093,7 @@ md_init(const char *schema_search_dir,
 
     /* parse the data file */
     ly_errno = LY_SUCCESS;
-    ctx->data_tree = lyd_parse_fd(ctx->ly_ctx, ctx->fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+    ctx->data_tree = lyd_parse_fd(ctx->ly_ctx, ctx->fd, SR_FILE_FORMAT_LY, LYD_OPT_STRICT | LYD_OPT_CONFIG);
     if (NULL == ctx->data_tree && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Unable to parse " MD_DATA_FILENAME " data file: %s", ly_errmsg(ctx->ly_ctx));
         goto fail;
@@ -1744,8 +1744,8 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                                 child = (struct lys_node *)lys_getnext(NULL, node, NULL, 0);
                                 if (child != NULL) {
                                     if (child->nodetype & (LYS_CONTAINER | LYS_LIST)) {
-                                        /* All op data means containers/lists containing children will have 
-                                           PRIV_OP_SUBTREE set. Empty containers/lists will not have this set. 
+                                        /* All op data means containers/lists containing children will have
+                                           PRIV_OP_SUBTREE set. Empty containers/lists will not have this set.
                                            Neither will containers that only have children from a different schema. */
                                         assert(((intptr_t)child->priv & PRIV_OP_SUBTREE) || child->child == NULL || main_module_schema != lys_node_module(child->child));
                                     } else {
@@ -2843,7 +2843,7 @@ md_flush(md_ctx_t *md_ctx)
     ret = ftruncate(md_ctx->fd, 0);
     CHECK_ZERO_MSG_RETURN(ret, SR_ERR_INTERNAL, "Failed to truncate the internal data file '" MD_DATA_FILENAME"'.");
 
-    ret = lyd_print_fd(md_ctx->fd, md_ctx->data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+    ret = lyd_print_fd(md_ctx->fd, md_ctx->data_tree, SR_FILE_FORMAT_LY, LYP_WITHSIBLINGS | LYP_FORMAT);
     if (0 != ret) {
         SR_LOG_ERR("Unable to export data tree with dependencies: %s", ly_errmsg(md_ctx->data_tree->schema->module->ctx));
         return SR_ERR_INTERNAL;

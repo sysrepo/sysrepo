@@ -1640,7 +1640,7 @@ srcfg_print_help()
     printf("  -d, --datastore <datastore>  Datastore to be operated on\n");
     printf("                               (either \"running\" or \"startup\", \"running\" is default).\n");
     printf("  -f, --format <format>        Data format to be used for configuration editing/importing/exporting\n");
-    printf("                               (\"xml\" or \"json\", \"xml\" is default).\n");
+    printf("                               (\"xml\" or \"json\", \"" SR_FILE_FORMAT_EXT "\" is default).\n");
     printf("  -e, --editor <editor>        Text editor to be used for editing datastore data\n");
     printf("                               (default editor is defined by $VISUAL or $EDITOR env. variables).\n");
     printf("  -i, --import [<path>]        Read and replace entire configuration from a supplied file\n");
@@ -1688,10 +1688,10 @@ main(int argc, char* argv[])
     int c = 0;
     srcfg_operation_t operation = SRCFG_OP_EDIT;
     char *module_name = NULL, *datastore_name = "running";
-    char *format_name = "xml", *editor = NULL;
+    char *format_name = SR_FILE_FORMAT_EXT, *editor = NULL;
     char *filepath = NULL;
     srcfg_datastore_t datastore = SRCFG_STORE_RUNNING;
-    LYD_FORMAT format = LYD_XML;
+    LYD_FORMAT format = SR_FILE_FORMAT_LY;
     bool enabled = false, keep = false, permanent = false, strict = true;
     int log_level = -1;
     char local_schema_search_dir[PATH_MAX] = { 0, }, local_internal_schema_search_dir[PATH_MAX] = { 0, };

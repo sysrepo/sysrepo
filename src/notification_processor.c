@@ -403,7 +403,7 @@ np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *dat
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to lock data file '%s'.", data_filename);
 
     ly_errno = LY_SUCCESS;
-    *data_tree = lyd_parse_fd(np_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_OPT_NOAUTODEL);
+    *data_tree = lyd_parse_fd(np_ctx->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_OPT_NOAUTODEL);
     if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Parsing data from file '%s' failed: %s", data_filename, ly_errmsg(np_ctx->ly_ctx));
         rc = SR_ERR_INTERNAL;
@@ -438,7 +438,7 @@ np_save_data_tree(struct lyd_node *data_tree, int fd)
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File truncate failed: %s", sr_strerror_safe(errno));
 
     /* print data tree to file */
-    ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_EXPLICIT);
+    ret = lyd_print_fd(fd, data_tree, SR_FILE_FORMAT_LY, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_EXPLICIT);
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving notification store data tree failed: %s",
                           ly_errmsg(data_tree->schema->module->ctx));
 
@@ -505,7 +505,7 @@ np_get_notif_store_filename(const char *module_name, time_t received_time, char 
     /* move raw_time back to the beginning of the current NP_NOTIF_FILE_WINDOW */
     raw_time -= (((tm_time->tm_hour * 60) + tm_time->tm_min) % SR_NOTIF_TIME_WINDOW) * 60;
     strftime(filename_buff + strlen(filename_buff), filename_buff_size - strlen(filename_buff) - 1,
-            "%Y-%m-%d_%H-%M.xml", localtime(&raw_time));
+            "%Y-%m-%d_%H-%M." SR_FILE_FORMAT_EXT, localtime(&raw_time));
 
     /* create file if not exists & apply access permissions */
     if (-1 == access(filename_buff, F_OK)) {
@@ -675,6 +675,9 @@ np_event_notification_entry_fill(np_ev_notification_t *notification, struct lyd_
                 } else if (LYD_ANYDATA_CONSTSTRING == node_anydata->value_type) {
                     notification->data.string = node_anydata->value.str;
                     notification->data_type = NP_EV_NOTIF_DATA_STRING;
+                } else if (LYD_ANYDATA_JSON == node_anydata->value_type) {
+                    notification->data.string = node_anydata->value.str;
+                    notification->data_type = NP_EV_NOTIF_DATA_JSON;
                 }
             }
         }
@@ -1723,14 +1726,36 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
         char *string_notif = NULL;
         rc = dm_netconf_config_change_to_string(np_ctx->rp_ctx->dm_ctx, notif_data_tree, &string_notif);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed print config-change notif to string");
-        new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_STRING);
+        switch (SR_FILE_FORMAT_LY) {
+        case LYD_JSON:
+            new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_JSOND);
+            break;
+        case LYD_XML:
+            new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_STRING);
+            break;
+        default:
+            SR_LOG_ERR_MSG("Unknown libyang format '" "SR_FILE_FORMAT_LY" "'.");
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
     } else {
         /* store notification data as anydata */
-        if (lyd_print_mem(&ptr, notif_data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)) {
+        if (lyd_print_mem(&ptr, notif_data_tree, SR_FILE_FORMAT_LY, LYP_WITHSIBLINGS | LYP_FORMAT)) {
             SR_LOG_ERR("Error printing notification data tree: %s.", ly_errmsg(notif_data_tree->schema->module->ctx));
             goto cleanup;
         }
-        new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_SXMLD);
+        switch (SR_FILE_FORMAT_LY) {
+        case LYD_JSON:
+            new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_JSOND);
+            break;
+        case LYD_XML:
+            new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_SXMLD);
+            break;
+        default:
+            SR_LOG_ERR_MSG("Unknown libyang format '" "SR_FILE_FORMAT_LY" "'.");
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
     }
     if (NULL == new_node) {
         SR_LOG_ERR("Error by adding notification content into notification store: %s.", ly_errmsg(notif_data_tree->schema->module->ctx));
