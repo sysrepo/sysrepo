@@ -1205,7 +1205,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
             ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
 
             ly_errno = LY_SUCCESS;
-            tmp_node = lyd_parse_fd(tmp_ctx->ctx, fd, LYD_XML, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+            tmp_node = lyd_parse_fd(tmp_ctx->ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
             md_ctx_unlock(dm_ctx->md_ctx);
 
             if (NULL == tmp_node && LY_SUCCESS != ly_errno) {
@@ -1224,7 +1224,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
         } else {
             ly_errno = LY_SUCCESS;
             /* use LYD_OPT_TRUSTED, validation will be done later */
-            data_tree = lyd_parse_fd(schema_info->ly_ctx, fd, LYD_XML, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+            data_tree = lyd_parse_fd(schema_info->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
             if (NULL == data_tree && LY_SUCCESS != ly_errno) {
                 SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg(schema_info->ly_ctx));
                 free(data);
@@ -4244,7 +4244,7 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
             if (0 == ret) {
                 ly_errno = LY_SUCCESS; /* needed to check if the error was in libyang or not below */
                 ret = lyd_print_fd(c_ctx->fds[count], NULL == merged_info->required_modules ? merged_info->node : tmp_data_tree,
-                            LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+                            SR_FILE_FORMAT_LY, LYP_WITHSIBLINGS | LYP_FORMAT);
             }
 
             if (NULL != merged_info->required_modules) {
@@ -5523,7 +5523,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
         module_name = module_names->data[i];
         if (SR_DS_CANDIDATE != dst) {
             /* write dest file, dst is either startup or running */
-            if (0 != lyd_print_fd(fds[i], src_infos[i]->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)) {
+            if (0 != lyd_print_fd(fds[i], src_infos[i]->node, SR_FILE_FORMAT_LY, LYP_WITHSIBLINGS | LYP_FORMAT)) {
                 SR_LOG_ERR("Copy of module %s failed", module_name);
                 rc = SR_ERR_INTERNAL;
             }
@@ -6552,8 +6552,9 @@ dm_parse_event_notif(rp_ctx_t *rp_ctx, rp_session_t *session, sr_mem_ctx_t *sr_m
 
     CHECK_NULL_ARG4(rp_ctx, session, notification, notification->xpath);
 
-    if (NP_EV_NOTIF_DATA_XML != notification->data_type && NP_EV_NOTIF_DATA_STRING != notification->data_type) {
-        SR_LOG_ERR_MSG("Invalid notification data type (should be XML or STRING).");
+    if (NP_EV_NOTIF_DATA_XML != notification->data_type && NP_EV_NOTIF_DATA_STRING != notification->data_type
+            && NP_EV_NOTIF_DATA_JSON != notification->data_type) {
+        SR_LOG_ERR_MSG("Invalid notification data type (should be XML, STRING or JSON).");
         return SR_ERR_INVAL_ARG;
     }
 
@@ -6576,6 +6577,7 @@ dm_parse_event_notif(rp_ctx_t *rp_ctx, rp_session_t *session, sr_mem_ctx_t *sr_m
     }
     ly_set_free(set);
 
+    /* we need special context for this */
     if (0 == strcmp("/ietf-netconf-notifications:netconf-config-change", notification->xpath)) {
         CHECK_NULL_ARG(notification->data.string);
         rc = dm_get_tmp_ly_ctx(rp_ctx->dm_ctx, NULL, &tmp_ctx);
@@ -6584,40 +6586,29 @@ dm_parse_event_notif(rp_ctx_t *rp_ctx, rp_session_t *session, sr_mem_ctx_t *sr_m
         md_ctx_lock(rp_ctx->dm_ctx->md_ctx, false);
         ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, rp_ctx->dm_ctx);
 
-        xml = lyxml_parse_mem(tmp_ctx->ctx, notification->data.string, 0);
-        if (NULL == xml) {
-            SR_LOG_ERR("Error by parsing of the notification XML tree: %s", ly_errmsg(tmp_ctx->ctx));
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-
         ly_ctx = tmp_ctx->ctx;
-
-    } else if (notification->data_type == NP_EV_NOTIF_DATA_XML) {
-        CHECK_NULL_ARG(notification->data.xml);
-        /* duplicate the xml tree for use in the dm_ctx */
-        xml = lyxml_dup(di->schema->ly_ctx, notification->data.xml);
-        if (NULL == xml) {
-            SR_LOG_ERR("Error by duplicating of the notification XML tree: %s", ly_errmsg(di->schema->ly_ctx));
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-
-        ly_ctx = di->schema->ly_ctx;
     } else {
-        CHECK_NULL_ARG(notification->data.string);
-        xml = lyxml_parse_mem(di->schema->ly_ctx, notification->data.string, 0);
-        if (NULL == xml) {
-            SR_LOG_ERR("Error by parsing of the notification XML tree: %s", ly_errmsg(di->schema->ly_ctx));
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-
         ly_ctx = di->schema->ly_ctx;
     }
 
-    /* parse the XML into the data tree */
-    data_tree = lyd_parse_xml(ly_ctx, &xml, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
+    /* get data tree */
+    if (notification->data_type == NP_EV_NOTIF_DATA_XML) {
+        CHECK_NULL_ARG(notification->data.xml);
+        /* duplicate the xml tree for use in the dm_ctx */
+        xml = lyxml_dup(ly_ctx, notification->data.xml);
+        if (NULL == xml) {
+            SR_LOG_ERR("Error by duplicating of the notification XML tree: %s", ly_errmsg(ly_ctx));
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        data_tree = lyd_parse_xml(ly_ctx, &xml, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
+    } else if (notification->data_type == NP_EV_NOTIF_DATA_STRING) {
+        CHECK_NULL_ARG(notification->data.string);
+        data_tree = lyd_parse_mem(ly_ctx, notification->data.string, LYD_XML, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
+    } else {
+        CHECK_NULL_ARG(notification->data.string);
+        data_tree = lyd_parse_mem(ly_ctx, notification->data.string, LYD_JSON, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
+    }
     if (NULL == data_tree) {
         SR_LOG_ERR("Error by parsing notification data: %s", ly_errmsg(ly_ctx));
         rc = dm_report_error(session->dm_session, ly_errmsg(ly_ctx), notification->xpath, SR_ERR_VALIDATION_FAILED);
@@ -7148,7 +7139,7 @@ dm_netconf_config_change_to_string(dm_ctx_t *dm_ctx, struct lyd_node *notif, cha
     ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
 
     tmp_notif = sr_dup_datatree_to_ctx(notif, tmp_ctx->ctx);
-    lyd_print_mem(out, tmp_notif, LYD_XML, 0);
+    lyd_print_mem(out, tmp_notif, SR_FILE_FORMAT_LY, 0);
 
 cleanup:
     free(module_name);

@@ -168,4 +168,12 @@
  *  of higher memory usage peaks. */
 #define SR_GET_SUBTREE_CHUNK_CHILD_LIMIT @GET_SUBTREE_CHUNK_CHILD_LIMIT@
 
+/** Datastore file format extension used.
+ */
+#define SR_FILE_FORMAT_EXT "@FILE_FORMAT_EXT@"
+
+/** libyang format flag.
+ */
+#define SR_FILE_FORMAT_LY @FILE_FORMAT_LY@
+
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

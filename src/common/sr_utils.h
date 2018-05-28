@@ -338,9 +338,10 @@ int sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid);
  * @brief Saves the data tree into file. Workaround function that adds the root element to data_tree.
  * @param [in] file_name
  * @param [in] data_tree
+ * @param [in] format
  * @return err_code
  */
-int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree);
+int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree, LYD_FORMAT format);
 
 /**
  * @brief Check if the set contains the specified object.

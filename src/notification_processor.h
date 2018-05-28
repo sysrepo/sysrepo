@@ -66,6 +66,7 @@ typedef enum np_ev_notif_data_type_s {
     NP_EV_NOTIF_DATA_NONE,             /**< No data. */
     NP_EV_NOTIF_DATA_XML,              /**< Data in XML format. */
     NP_EV_NOTIF_DATA_STRING,           /**< Data in string xml format */
+    NP_EV_NOTIF_DATA_JSON,             /**< Data in string JSON format */
     NP_EV_NOTIF_DATA_VALUES,           /**< Data in st_val_t format. */
     NP_EV_NOTIF_DATA_TREES,            /**< Data in sr_node_t format. */
 } np_ev_notif_data_type_t;

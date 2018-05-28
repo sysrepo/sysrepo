@@ -161,7 +161,7 @@ pm_save_data_tree(struct lyd_node *data_tree, int fd)
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File truncate failed: %s", sr_strerror_safe(errno));
 
     /* print data tree to file */
-    ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+    ret = lyd_print_fd(fd, data_tree, SR_FILE_FORMAT_LY, LYP_WITHSIBLINGS | LYP_FORMAT);
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving persist data tree failed: %s", ly_errmsg(data_tree->schema->module->ctx));
 
     /* flush in-core data to the disc */
@@ -259,7 +259,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to lock persist data file for '%s'.", module_name);
 
     ly_errno = LY_SUCCESS;
-    *data_tree = lyd_parse_fd(pm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_OPT_NOAUTODEL);
+    *data_tree = lyd_parse_fd(pm_ctx->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_OPT_NOAUTODEL);
     if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Parsing persist data from file '%s' failed: %s", data_filename, ly_errmsg(pm_ctx->ly_ctx));
         rc = SR_ERR_INTERNAL;

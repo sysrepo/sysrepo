@@ -540,7 +540,7 @@ sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
 #endif /* !defined(HAVE_GETPEEREID) */
 
 int
-sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
+sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree, LYD_FORMAT format)
 {
     CHECK_NULL_ARG2(file_name, data_tree);
     int ret = 0;
@@ -554,7 +554,7 @@ sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
     ret = lockf(fileno(f), F_LOCK, 0);
     CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup, "Failed to lock the file %s", file_name);
 
-    ret = lyd_print_file(f, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+    ret = lyd_print_file(f, data_tree, format, LYP_WITHSIBLINGS | LYP_FORMAT);
     CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Failed to write output into %s", file_name);
 
 cleanup:
@@ -1243,20 +1243,41 @@ int
 sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *value)
 {
     CHECK_NULL_ARG2(node, value);
+    char *str_val = NULL;
+    bool free_str = false;
     const char *node_name = "(unknown)";
     if (NULL != node->schema && NULL != node->schema->name) {
         node_name = node->schema->name;
     }
 
-    if (LYD_ANYDATA_DATATREE == node->value_type || LYD_ANYDATA_XML == node->value_type) {
-        SR_LOG_ERR("Unsupported (non-string) anydata value type for node '%s'", node_name);
+    switch (node->value_type) {
+    case LYD_ANYDATA_CONSTSTRING:
+    case LYD_ANYDATA_STRING:
+    case LYD_ANYDATA_JSON:
+    case LYD_ANYDATA_JSOND:
+    case LYD_ANYDATA_SXML:
+    case LYD_ANYDATA_SXMLD:
+        str_val = (char *)node->value.str;
+        break;
+    case LYD_ANYDATA_XML:
+        lyxml_print_mem(&str_val, node->value.xml, LYXML_PRINT_FORMAT);
+        free_str = true;
+        break;
+    case LYD_ANYDATA_DATATREE:
+        lyd_print_mem(&str_val, node->value.tree, LYD_JSON, LYP_FORMAT | LYP_WITHSIBLINGS);
+        free_str = true;
+        break;
     }
-    if ((NULL != node->schema) && (NULL != node->value.str)) {
+
+    if ((NULL != node->schema) && (NULL != str_val)) {
         switch (node->schema->nodetype) {
             case LYS_ANYXML:
                 sr_mem_edit_string(value->_sr_mem, &value->data.anyxml_val, node->value.str);
                 if (NULL == value->data.anyxml_val) {
                     SR_LOG_ERR_MSG("String duplication failed");
+                    if (free_str) {
+                        free(str_val);
+                    }
                     return SR_ERR_NOMEM;
                 }
                 break;
@@ -1264,15 +1285,24 @@ sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *val
                 sr_mem_edit_string(value->_sr_mem, &value->data.anydata_val, node->value.str);
                 if (NULL == value->data.anydata_val) {
                     SR_LOG_ERR_MSG("String duplication failed");
+                    if (free_str) {
+                        free(str_val);
+                    }
                     return SR_ERR_NOMEM;
                 }
                 break;
             default:
                 SR_LOG_ERR("Copy value failed for anydata node '%s'", node_name);
+                if (free_str) {
+                    free(str_val);
+                }
                 return SR_ERR_INTERNAL;
         }
     }
 
+    if (free_str) {
+        free(str_val);
+    }
     return SR_ERR_OK;
 }
 
