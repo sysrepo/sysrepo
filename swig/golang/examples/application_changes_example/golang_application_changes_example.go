@@ -24,7 +24,7 @@ package main
 import (
 	"fmt"
 	"unsafe"
-       )
+)
 
 /*
 #cgo LDFLAGS: -lsysrepo
@@ -53,7 +53,7 @@ func print_value(value *C.sr_val_t) {
 		break
 	case C.SR_BOOL_T:
 		bool_val := (*C.bool)(unsafe.Pointer(&value.data))
-		if (*bool_val == C.bool(true)) {
+		if *bool_val == C.bool(true) {
 			fmt.Printf("= true\n")
 		} else {
 			fmt.Printf("= false\n")
@@ -119,7 +119,7 @@ func print_value(value *C.sr_val_t) {
 func sysrepo_print_value(value *C.sr_val_t) {
 	var mem *C.char = nil
 	rc := C.sr_print_val_mem(&mem, value)
-	if (C.SR_ERR_OK != rc) {
+	if C.SR_ERR_OK != rc {
 		fmt.Printf("Error by sr_print_val_mem: %d", C.sr_strerror(rc))
 	} else {
 		fmt.Printf("%s", C.GoString(mem))
@@ -131,9 +131,10 @@ func print_current_config(session *C.sr_session_ctx_t, module_name *C.char) {
 	var count C.size_t = 0
 	var rc C.int = C.SR_ERR_OK
 	xpath := C.CString("/" + C.GoString(module_name) + ":*//*")
+	defer C.free(unsafe.Pointer(xpath))
 
 	rc = C.sr_get_items(session, xpath, &values, &count)
-	if (C.SR_ERR_OK != rc) {
+	if C.SR_ERR_OK != rc {
 		fmt.Printf("Error by sr_get_items: %d", C.sr_strerror(rc))
 		return
 	} else {
@@ -152,35 +153,35 @@ func print_current_config(session *C.sr_session_ctx_t, module_name *C.char) {
 func print_change(op C.sr_change_oper_t, old_val *C.sr_val_t, new_val *C.sr_val_t) {
 	switch op {
 	case C.SR_OP_CREATED:
-		if (nil != new_val) {
+		if nil != new_val {
 			fmt.Printf("CREATED: ")
 			sysrepo_print_value(new_val)
 		}
 		break
 	case C.SR_OP_DELETED:
-		if (nil != old_val) {
+		if nil != old_val {
 			fmt.Printf("DELETED: ")
 			sysrepo_print_value(old_val)
 		}
-	break
+		break
 	case C.SR_OP_MODIFIED:
-		if (nil != old_val && nil != new_val) {
+		if nil != old_val && nil != new_val {
 			fmt.Printf("MODIFIED: ")
 			fmt.Printf("old value ")
 			sysrepo_print_value(old_val)
 			fmt.Printf("new value ")
 			sysrepo_print_value(new_val)
 		}
-	break
+		break
 	case C.SR_OP_MOVED:
-		if (nil != new_val) {
-		if (nil != old_val) {
-			fmt.Printf("MOVED: %s after %s", new_val.xpath, old_val.xpath)
-		} else {
-			fmt.Printf("MOVED: %s after ", new_val.xpath)
+		if nil != new_val {
+			if nil != old_val {
+				fmt.Printf("MOVED: %s after %s", new_val.xpath, old_val.xpath)
+			} else {
+				fmt.Printf("MOVED: %s after ", new_val.xpath)
+			}
 		}
-	}
-	break
+		break
 	}
 }
 
@@ -198,7 +199,7 @@ func ev_to_str(ev C.sr_notif_event_t) string {
 }
 
 //export Go_module_change_cb
-func Go_module_change_cb(session *C.sr_session_ctx_t, module_name *C.char, event C.sr_notif_event_t, private_ctx []byte) C.int {
+func Go_module_change_cb(session *C.sr_session_ctx_t, module_name *C.char, event C.sr_notif_event_t, private_ctx *C.char) C.int {
 	var it *C.sr_change_iter_t = nil
 	var rc C.int = C.SR_ERR_OK
 	var oper C.sr_change_oper_t
@@ -206,7 +207,7 @@ func Go_module_change_cb(session *C.sr_session_ctx_t, module_name *C.char, event
 	var new_value *C.sr_val_t = nil
 
 	fmt.Printf("\n\n ========== Notification  %s =============================================", ev_to_str(event))
-	if (C.SR_EV_APPLY == event) {
+	if C.SR_EV_APPLY == event {
 		fmt.Printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n")
 		print_current_config(session, module_name)
 	}
@@ -214,9 +215,10 @@ func Go_module_change_cb(session *C.sr_session_ctx_t, module_name *C.char, event
 	fmt.Printf("\n\n ========== CHANGES: =============================================\n\n")
 
 	change_path := C.CString("/" + C.GoString(module_name) + ":*")
+	defer C.free(unsafe.Pointer(change_path))
 
-	rc = C.sr_get_changes_iter(session, change_path , &it)
-	if (C.SR_ERR_OK != rc) {
+	rc = C.sr_get_changes_iter(session, change_path, &it)
+	if C.SR_ERR_OK != rc {
 		fmt.Printf("Get changes iter failed for xpath %s", change_path)
 		return C.SR_ERR_OK
 	} else {
@@ -225,7 +227,7 @@ func Go_module_change_cb(session *C.sr_session_ctx_t, module_name *C.char, event
 
 	for {
 		rc = C.sr_get_change_next(session, it, &oper, &old_value, &new_value)
-		if (C.SR_ERR_OK != rc) {
+		if C.SR_ERR_OK != rc {
 			break
 		}
 		print_change(oper, old_value, new_value)
@@ -245,10 +247,11 @@ func main() {
 	var rc C.int = C.SR_ERR_OK
 
 	module_name := C.CString("ietf-interfaces")
+	defer C.free(unsafe.Pointer(module_name))
 
 	/* connect to sysrepo */
 	rc = C.sr_connect(module_name, C.SR_CONN_DEFAULT, &connection)
-	if (C.SR_ERR_OK != rc) {
+	if C.SR_ERR_OK != rc {
 		fmt.Printf("Error by sr_connect: %s\n", C.sr_strerror(rc))
 		return
 	} else {
@@ -257,7 +260,7 @@ func main() {
 
 	/* start session */
 	rc = C.sr_session_start(connection, C.SR_DS_STARTUP, C.SR_SESS_DEFAULT, &session)
-	if (C.SR_ERR_OK != rc) {
+	if C.SR_ERR_OK != rc {
 		fmt.Printf("Error by sr_session_start: %s\n", C.sr_strerror(rc))
 		return
 	} else {
@@ -270,7 +273,7 @@ func main() {
 
 	/* subscribe for changes in running config */
 	rc = C.sr_module_change_subscribe(session, module_name, C.sr_module_change_cb(C.module_change_cb), nil, 0, C.SR_SUBSCR_DEFAULT, &subscription)
-	if (C.SR_ERR_OK != rc) {
+	if C.SR_ERR_OK != rc {
 		fmt.Printf("Error by sr_module_change_subscribe: %s\n", C.sr_strerror(rc))
 		return
 	} else {
@@ -279,7 +282,8 @@ func main() {
 
 	fmt.Printf("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n")
 
-	for {}
+	for {
+	}
 
 	fmt.Printf("Application exit requested, exiting.\n")
 
