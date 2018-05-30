@@ -1987,7 +1987,7 @@ dm_remove_added_data_trees(dm_session_t *session, dm_data_info_t *data_info)
 {
     CHECK_NULL_ARG2(session, data_info);
     if (NULL != data_info->node) {
-        if (data_info->schema->module != data_info->node->schema->module) {
+        if (data_info->schema->module != LYS_MAIN_MODULE(data_info->node->schema)) {
             /* verify that the module referencing others has some data */
             lyd_free_withsiblings(data_info->node);
             data_info->node = NULL;

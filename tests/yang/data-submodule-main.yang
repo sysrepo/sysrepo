@@ -1,0 +1,6 @@
+module data-submodule-main {
+    namespace "test:data-submodule-main";
+    prefix dsm;
+
+    include data-submodule-sub;
+}
