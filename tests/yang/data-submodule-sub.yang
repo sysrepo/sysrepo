@@ -1,0 +1,19 @@
+submodule data-submodule-sub {
+    belongs-to data-submodule-main {
+        prefix dsm;
+    }
+
+    import ietf-interfaces {
+        prefix if;
+    }
+
+    container foo {
+        description "Top-level container defined in a submodule";
+
+        leaf bar {
+            when "not(/if:interfaces/if:interface[name='foo'])";
+            description "Leaf with dependency on external module";
+            type string;
+        }
+    }
+}
