@@ -598,6 +598,10 @@ np_get_all_notification_files(np_ctx_t *np_ctx, time_t time_from, time_t time_to
     /* open the directory with notifications */
     dir = opendir(SR_NOTIF_DATA_SEARCH_DIR);
     if (NULL == dir) {
+        if (errno == ENOENT) {
+            SR_LOG_INF("No notification files in '%s': %s.", SR_NOTIF_DATA_SEARCH_DIR, sr_strerror_safe(errno));
+            return SR_ERR_OK;
+        }
         SR_LOG_ERR("Error by opening directory '%s': %s.", SR_NOTIF_DATA_SEARCH_DIR, sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
