@@ -336,6 +336,25 @@ dm_module_difflist_free(void *item)
 }
 
 /**
+ * @brief include dependencies in test for has_persist
+ */
+static bool
+dm_module_has_persist(md_module_t *module)
+{
+    CHECK_NULL_ARG(module);
+    bool has_persist = module->has_persist;
+
+    sr_llist_node_t *item = module->deps->first;
+    while (item && !has_persist) {
+        md_dep_t *dep = (md_dep_t *)item->data;
+        has_persist = dep->dest->submodule && dep->dest->has_persist;
+        item = item->next;
+    }
+
+    return has_persist;
+}
+
+/**
  * @brief Enables/disables the features in tmp_ctx to match the settings from persist file.
  *
  * @param [in] dm_ctx
@@ -357,7 +376,7 @@ dm_enable_features_in_tmp_module(dm_ctx_t *dm_ctx, md_module_t *md_module, const
     md_dep_t *md_dep = NULL;
     bool locked = false;
 
-    if (!md_module->has_persist) {
+    if (!dm_module_has_persist(md_module)) {
         return SR_ERR_OK;
     }
 
@@ -916,7 +935,7 @@ dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session,
     ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *) ll_node->data;
-        if (dep->dest->has_persist) {
+        if (dm_module_has_persist(dep->dest)) {
             if (dep->type == MD_DEP_IMPORT) {
                 rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
@@ -1064,7 +1083,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to initialize private data for module %s", module->name);
 
     /* apply persist data enable features, running datastore */
-    if (module->has_persist) {
+    if (dm_module_has_persist(module)) {
         rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, module); /* TODO: session should be known here */
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for imports of module %s", module_name);
         rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module_name, si, false); /* TODO: session should be known here */
@@ -1074,7 +1093,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *) ll_node->data;
-        if (dep->dest->has_persist) {
+        if (dm_module_has_persist(dep->dest)) {
             if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
                 rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, dep->dest); /* TODO: session should be known here */
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for imports of module %s", dep->dest->name);
@@ -5059,7 +5078,7 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
         rc = dm_init_missing_node_priv_data(si);
         CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", module->name);
 
-        if (module->has_persist) {
+        if (dm_module_has_persist(module)) {
             rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si, false);
             CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
         }
@@ -5091,7 +5110,7 @@ unlock:
                 rc = dm_init_missing_node_priv_data(si_ext);
                 CHECK_RC_LOG_GOTO(rc, unlock, "Failed to initialize private data for module %s", dep->dest->name);
 
-                if (module->has_persist) {
+                if (dm_module_has_persist(module)) {
                     rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si_ext, false);
                     CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
                 }
