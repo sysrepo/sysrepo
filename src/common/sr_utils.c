@@ -1307,7 +1307,7 @@ sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *val
 }
 
 /** max dec64 format string length */
-#define MAX_FMT_LEN 6
+#define MAX_FMT_LEN 7
 
 static int
 sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
