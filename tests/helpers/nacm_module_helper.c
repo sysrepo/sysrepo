@@ -50,7 +50,7 @@ save_nacm_config(test_nacm_cfg_t *nacm_config)
 {
     /* validate & save */
     assert_int_equal(0, lyd_validate(&nacm_config->root, LYD_OPT_STRICT | LYD_OPT_CONFIG, nacm_config->ly_ctx));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(NACM_MODULE_DATA_FILE_NAME, nacm_config->root));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(NACM_MODULE_DATA_FILE_NAME, nacm_config->root, SR_FILE_FORMAT_LY));
 }
 
 void

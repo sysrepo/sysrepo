@@ -11,6 +11,10 @@ module feature-dependencies2 {
       if-feature fd3:xyz;
    }
 
+   feature def {
+      if-feature fd3:xyz;
+   }
+
    feature issue2;
 
 }

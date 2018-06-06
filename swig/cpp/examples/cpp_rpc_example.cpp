@@ -183,7 +183,7 @@ class My_Callback:public Callback {
 	return SR_ERR_OK;
     }
 
-    int rpc_tree(const char *xpath, S_Trees in_trees, S_Trees_Holder holder, void *private_ctx) {
+    int rpc_tree(const char *xpath, const S_Trees in_trees, S_Trees_Holder holder, void *private_ctx) {
         cout << "\n ========== RPC TREE CALLED ==========\n" << endl;
 
         auto out_trees = holder->allocate(3);

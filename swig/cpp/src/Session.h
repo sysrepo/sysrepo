@@ -85,8 +85,8 @@ public:
     S_Trees rpc_send(const char *xpath, S_Trees input);
     S_Vals action_send(const char *xpath, S_Vals input);
     S_Trees action_send(const char *xpath, S_Trees input);
-    void send_event(const char * xpath, S_Vals values, const sr_ev_notif_flag_t options = SR_EV_NOTIF_DEFAULT);
-    void send_event(const char * xpath, S_Trees trees, const sr_ev_notif_flag_t options = SR_EV_NOTIF_DEFAULT);
+    void event_notif_send(const char *xpath, S_Vals values, const sr_ev_notif_flag_t options = SR_EV_NOTIF_DEFAULT);
+    void event_notif_send(const char *xpath, S_Trees trees, const sr_ev_notif_flag_t options = SR_EV_NOTIF_DEFAULT);
 
     friend class Subscribe;
 
@@ -108,10 +108,10 @@ public:
     virtual int subtree_change(S_Session session, const char *xpath, sr_notif_event_t event, void *private_ctx) {return SR_ERR_OK;};
     virtual void module_install(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx) {return;};
     virtual void feature_enable(const char *module_name, const char *feature_name, bool enabled, void *private_ctx) {return;};
-    virtual int rpc(const char *xpath, S_Vals input, S_Vals_Holder output, void *private_ctx) {return SR_ERR_OK;};
-    virtual int action(const char *xpath, S_Vals input, S_Vals_Holder output, void *private_ctx) {return SR_ERR_OK;};
-    virtual int rpc_tree(const char *xpath, S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
-    virtual int action_tree(const char *xpath, S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int rpc(const char *xpath, const S_Vals input, S_Vals_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int action(const char *xpath, const S_Vals input, S_Vals_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int rpc_tree(const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int action_tree(const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
     virtual int dp_get_items(const char *xpath, S_Vals_Holder vals, void *private_ctx) {return SR_ERR_OK;};
     virtual void event_notif(const sr_ev_notif_type_t notif_type, const char *xpath, S_Vals vals, time_t timestamp, void *private_ctx) {return;};
     virtual void event_notif_tree(const sr_ev_notif_type_t notif_type, const char *xpath, S_Trees trees, time_t timestamp, void *private_ctx) {return;};

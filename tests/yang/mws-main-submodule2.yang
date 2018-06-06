@@ -1,0 +1,17 @@
+submodule mws-main-submodule2 {
+    belongs-to mws-main-module {
+        prefix mws-main;
+    }
+
+    import mws-other-module {
+        prefix mws-other;
+    }
+
+    augment "/mws-main:main" {
+        leaf second {
+            type leafref {
+                path "/mws-other:foo/mws-other:bar";
+            }
+        }
+    }
+}

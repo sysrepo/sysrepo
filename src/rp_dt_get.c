@@ -730,7 +730,11 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
 
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL,
                     sub->xpath, NULL, &state_data_node);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to find schema node for %s", sub->xpath);
+        if (rc != SR_ERR_OK) {
+            SR_LOG_WRN("Unable to find schema node for %s (it may be disabled)", sub->xpath);
+            rc = SR_ERR_OK;
+            continue;
+        }
 
         rc = rp_dt_atoms_require_subtree(atoms, state_data_node, &subtree_needed);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Rp dt atoms require subtree failed");
@@ -1170,25 +1174,11 @@ rp_dt_remove_loaded_state_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
     return rc;
 }
 
-/**
- * @brief Loads configuration data and asks for state data if needed. Request
- * can enter this function in RP_REQ_NEW state or RP_REQ_FINISHED.
- *
- * In RP_REQ_NEW state saves the data tree name into session.
- *
- * @param [in] rp_ctx
- * @param [in] rp_session
- * @param [in] xpath
- * @param [in] api_variant
- * @param [in] tree_depth_limit
- * @param [out] data_tree
- * @return Error code (SR_ERR_OK on success)
- */
-static int
+int
 rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_api_variant_t api_variant,
         size_t tree_depth_limit,  struct lyd_node **data_tree)
 {
-    CHECK_NULL_ARG4(rp_ctx, rp_session, xpath, data_tree);
+    CHECK_NULL_ARG3(rp_ctx, rp_session, xpath);
     int rc = SR_ERR_OK;
     bool has_state_data = false;
     dm_data_info_t *data_info = NULL;
@@ -1214,7 +1204,9 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
         /* check of data tree's emptiness is performed outside of this function -> ignore SR_ERR_NOT_FOUND */
         rc = SR_ERR_NOT_FOUND == rc ? SR_ERR_OK : rc;
         CHECK_RC_LOG_GOTO(rc, cleanup, "Getting data tree failed (%d) for xpath '%s'", rc, xpath);
-        *data_tree = data_info->node;
+        if (data_tree) {
+            *data_tree = data_info->node;
+        }
 
         /* if the request requires operational data pause the processing and wait for data to be provided */
         if ((SR_DS_RUNNING == rp_session->datastore || SR_DS_CANDIDATE == rp_session->datastore) &&
@@ -1249,9 +1241,11 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
 
     } else if (RP_REQ_DATA_LOADED == rp_session->state) {
         SR_LOG_DBG("Session id = %u data loaded, continue processing", rp_session->id);
-        rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, rp_session->module_name, data_tree);
-        /* check of data tree's emptiness is performed outside of this function -> ignore SR_ERR_NOT_FOUND */
-        rc = SR_ERR_NOT_FOUND == rc ? SR_ERR_OK : rc;
+        if (data_tree) {
+            rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, rp_session->module_name, data_tree);
+            /* check of data tree's emptiness is performed outside of this function -> ignore SR_ERR_NOT_FOUND */
+            rc = SR_ERR_NOT_FOUND == rc ? SR_ERR_OK : rc;
+        }
     } else {
         SR_LOG_ERR("Session id = %u is in invalid state.", rp_session->id);
         rc = SR_ERR_INTERNAL;
@@ -1562,9 +1556,10 @@ rp_dt_add_changes_for_children(sr_list_t *changes, LYD_DIFFTYPE type, struct lyd
     bool added = false, added_child = false;
     size_t orig_len =  changes->count;
 
-    child = node->child;
-    if (node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) {
+    if (node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) {
         child = NULL;
+    } else {
+        child = node->child;
     }
     while (child) {
         rc = rp_dt_add_changes_for_children(changes, type, child, &added);
@@ -1638,9 +1633,10 @@ rp_has_only_empty_np_containers(struct lyd_node *root, sr_list_t *deleted, struc
         return false;
     }
 
-    child = root->child;
-    if (root->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) {
+    if (root->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) {
         child = NULL;
+    } else {
+        child = root->child;
     }
     while (child) {
         if (!rp_has_only_empty_np_containers(child, deleted, skip)) {

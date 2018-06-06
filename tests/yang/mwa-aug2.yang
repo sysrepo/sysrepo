@@ -1,0 +1,17 @@
+module mwa-aug2 {
+    namespace "modulewithaug:aug2";
+    prefix mwa2;
+
+    import ietf-interfaces {
+        prefix if;
+    }
+    import mwa-aug1 {
+        prefix mwa1;
+    }
+
+    augment "/if:interfaces-state/if:interface/mwa1:foo" {
+        container bar {
+            leaf baz { type string; }
+        }
+    }
+}

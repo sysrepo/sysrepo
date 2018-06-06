@@ -440,6 +440,10 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
     size_t attempts = 0;
     do {
         session->id = rand();
+        if (session->id == 0) {
+            /* reserved for internal use */
+            continue;
+        }
         if (NULL != sr_btree_search(sm_ctx->session_id_btree, session)) {
             session->id = SM_SESSION_ID_INVALID;
         }

@@ -305,7 +305,7 @@ sr_realloc(sr_mem_ctx_t *sr_mem, void *ptr, size_t old_size, size_t new_size)
     /* find the memory block of ptr */
     node_ll = sr_mem->cursor;
     used_head = sr_mem->used_head;
-    for (size_t i = 0; node_ll && i < MAX_BLOCKS_AVAIL_FOR_ALLOC-1;
+    for (i = 0; node_ll && i < MAX_BLOCKS_AVAIL_FOR_ALLOC-1;
          ++i, node_ll = node_ll->prev, used_head = QUEUE_PREV(used_head, MAX_BLOCKS_AVAIL_FOR_ALLOC)) {
 
         mem_block = (sr_mem_block_t *)node_ll->data;
