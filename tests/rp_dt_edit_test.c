@@ -2610,6 +2610,11 @@ static int set_items_data_and_feature_import_setup(void **state)
     exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-submodule-main.yang", ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-submodule-main.yang", true);
 
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/feature-submodule-main.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "feature-submodule-main.yang", true);
+
+    exec_shell_command("../src/sysrepoctl --feature-enable test-submodule-feature --module feature-submodule-main", ".*", true, 0);
+
     setup(state);
 
     return 0;
@@ -2634,9 +2639,11 @@ static int set_items_data_and_feature_import_teardown(void **state)
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-B.yang", false);
     exec_shell_command("../src/sysrepoctl --uninstall --module=data-imp-dep-C", ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-C.yang", false);
-
     exec_shell_command("../src/sysrepoctl --uninstall --module=data-submodule-main", ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-submodule-main.yang", false);
+
+    exec_shell_command("../src/sysrepoctl --uninstall --module=feature-submodule-main", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "feature-submodule-main.yang", false);
 
     teardown(state);
 
@@ -2730,6 +2737,34 @@ void set_and_get_items_from_top_level_in_submodule(void **state)
     test_rp_session_cleanup(ctx, session);
 }
 
+void set_and_get_items_from_feature_of_submodule(void **state)
+{
+    int rc;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    dm_commit_context_t *c_ctx = NULL;
+    sr_val_t *val = NULL;
+
+    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
+    set_item("/feature-submodule-mod:mod-container/feature-submodule-main:augmented-data-val", "aug-data", SR_STRING_T, ctx, session);
+
+    rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(e_cnt, 0);
+    assert_ptr_equal(errors, NULL);
+    
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/feature-submodule-mod:mod-container/feature-submodule-main:augmented-data-val", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_STRING_T, val->type);
+    assert_string_equal("aug-data", val->data.string_val);
+    sr_free_val(val);
+
+    test_rp_session_cleanup(ctx, session);
+}
+
 int main(){
 
     sr_log_stderr(SR_LL_DBG);
@@ -2773,6 +2808,7 @@ int main(){
             cmocka_unit_test_setup_teardown(set_items_data_and_feature_import, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
             cmocka_unit_test_setup_teardown(set_items_data_and_import_implemented, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
             cmocka_unit_test_setup_teardown(set_and_get_items_from_top_level_in_submodule, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
+            cmocka_unit_test_setup_teardown(set_and_get_items_from_feature_of_submodule, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown)
     };
 
     watchdog_start(300);
