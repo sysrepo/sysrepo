@@ -45,7 +45,11 @@ endif()
 
 # find Python package
 if(GEN_PYTHON_BINDINGS AND SWIG_FOUND)
-    message("-- Python version ${GEN_PYTHON_VERSION} was selected")
+    message(STATUS "Python version ${GEN_PYTHON_VERSION} was selected")
+    unset(PYTHON_LIBRARY CACHE)
+    unset(PYTHON_EXECUTABLE CACHE)
+    unset(PYTHON_INCLUDE_DIR CACHE)
+    unset(PYTHON_LIBRARY_DEBUG CACHE)
     if(${GEN_PYTHON_VERSION} STREQUAL "2")
         find_package(PythonLibs 2)
         find_package(PythonInterp)
