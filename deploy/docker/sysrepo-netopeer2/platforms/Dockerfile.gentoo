@@ -111,8 +111,7 @@ RUN \
 RUN emerge -q python:2.7
 RUN \
       cd /opt/dev/sysrepo/build && \
-      make clean && \
-      cmake -DCMAKE_INSTALL_PREFIX=/usr -DGEN_PYTHON_VERSION=2 .. && \
+      cmake -DGEN_PYTHON_VERSION=2 .. && \
       make -j2 && \
       make install
 
@@ -125,26 +124,21 @@ RUN \
       emerge -q lua:5.1
 RUN \
       cd /opt/dev/sysrepo/build && \
-      make clean && \
-      cmake -DCMAKE_INSTALL_PREFIX=/usr -DGEN_LUA_VERSION=5.1 .. && \
+      cmake -DGEN_LUA_VERSION=5.1 .. && \
       make -j2 && \
       make install
 
 # install python3 sysrepo language bindings
 RUN emerge -q python:3.4
 RUN \
-      cd /opt/dev/sysrepo && \
-      # cmake requires new directory for switching python version \
-      mkdir build_python3 && cd build_python3 && \
-      cmake -DCMAKE_INSTALL_PREFIX=/usr -DGEN_PYTHON_VERSION=3 .. && \
+      cd /opt/dev/sysrepo/build && \
+      cmake -DGEN_PYTHON_VERSION=3 .. && \
       make -j2 && \
       make install
 
 RUN \
-      cd /opt/dev/sysrepo && \
-      # cmake requires new directory for switching lua version \
-      mkdir build_lua52 && cd build_lua52 && \
-      cmake -DCMAKE_INSTALL_PREFIX=/usr -DGEN_LUA_VERSION=5.2 .. && \
+      cd /opt/dev/sysrepo/build && \
+      cmake -DGEN_LUA_VERSION=5.2 .. && \
       make -j2 && \
       make install
 
