@@ -1,8 +1,9 @@
 /**
- * @file application_changes_example.cpp
+ * @file cpp_rpc_example.cpp
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
- * @brief Example application that uses sysrepo as the configuration datastore. It
- * prints the changes made in running data store.
+ * @brief Example usage of rpc(), rpc_tree(), rpc_subscribe_tree(),
+ * rpc_send() and others related to the Remote procedure call (RPC)
+ * mechanism
  *
  * @copyright
  * Copyright 2016 Deutsche Telekom AG.
