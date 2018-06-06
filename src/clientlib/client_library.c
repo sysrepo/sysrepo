@@ -37,18 +37,6 @@
 #include "trees_internal.h"
 
 /**
- * @brief Number of items being fetched in one message from Sysrepo Engine by
- * processing of sr_get_items_iter calls.
- */
-#define CL_GET_ITEMS_FETCH_LIMIT 100
-
-/**
- * @brief Maximum number of children nodes (of any parent node) being fetched in
- * one message from Sysrepo Engine by processing of sr_get_subtree(s)_*_chunk(s).
- */
-#define CL_GET_SUBTREE_CHUNK_CHILD_LIMIT 20
-
-/**
  * @brief Maximum number of *not-yet-loaded* levels of any subtree chunk sent by the operation
  * sr_get_subtree(s)_*_chunk(s).
  */
@@ -1031,7 +1019,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *xpath, sr_val_iter_t **
 
     cl_session_clear_errors(session);
 
-    rc = cl_send_get_items_iter(session, xpath, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
+    rc = cl_send_get_items_iter(session, xpath, 0, SR_GET_ITEMS_FETCH_LIMIT, &msg_resp);
     if (SR_ERR_NOT_FOUND == rc) {
         SR_LOG_DBG("No items found for xpath '%s'", xpath);
         /* SR_ERR_NOT_FOUND will be returned on get_item_next call */
@@ -1102,7 +1090,7 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
     } else {
         /* Fetch more items */
         rc = cl_send_get_items_iter(session, iter->xpath, iter->offset,
-                CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
+                SR_GET_ITEMS_FETCH_LIMIT, &msg_resp);
         if (SR_ERR_NOT_FOUND == rc) {
             SR_LOG_DBG("All items has been read for xpath '%s'", iter->xpath);
             goto cleanup;
@@ -1336,7 +1324,7 @@ sr_add_tree_iterator(sr_node_t *root, sr_node_t *iterator, const char *xpath, bo
                     prev = prev->prev;
                 }
                 if ((1 < depth || (1 == depth && !bounded_slice))
-                        && CL_GET_SUBTREE_CHUNK_CHILD_LIMIT == child_cnt) {
+                        && SR_GET_SUBTREE_CHUNK_CHILD_LIMIT == child_cnt) {
                     sr_node_insert_child(node->parent, iterator);
                     ++iterator->data.int32_val;
                 }
@@ -1379,8 +1367,8 @@ sr_get_subtree_first_chunk(sr_session_ctx_t *session, const char *xpath, sr_node
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtree_chunk_req->xpath, rc, cleanup);
     msg_req->request->get_subtree_chunk_req->single = true;
     msg_req->request->get_subtree_chunk_req->slice_offset = 0;
-    msg_req->request->get_subtree_chunk_req->slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
-    msg_req->request->get_subtree_chunk_req->child_limit = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->slice_width = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->child_limit = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
     msg_req->request->get_subtree_chunk_req->depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT;
 
     /* send the request and receive the response */
@@ -1452,8 +1440,8 @@ sr_get_subtrees_first_chunks(sr_session_ctx_t *session, const char *xpath, sr_no
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtree_chunk_req->xpath, rc, cleanup);
     msg_req->request->get_subtree_chunk_req->single = false;
     msg_req->request->get_subtree_chunk_req->slice_offset = 0;
-    msg_req->request->get_subtree_chunk_req->slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
-    msg_req->request->get_subtree_chunk_req->child_limit = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->slice_width = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->child_limit = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
     msg_req->request->get_subtree_chunk_req->depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT;
 
     /* send the request and receive the response */
@@ -1556,10 +1544,10 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
         /*  -> slice width */
         node = parent;
         bounded_slice = true;
-        while (CL_GET_SUBTREE_CHUNK_CHILD_LIMIT > slice_width && NULL != node) {
+        while (SR_GET_SUBTREE_CHUNK_CHILD_LIMIT > slice_width && NULL != node) {
             if (SR_TREE_ITERATOR_T == node->type) {
                 bounded_slice = false;
-                slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+                slice_width = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
                 break;
             }
             if (node->first_child && SR_TREE_ITERATOR_T == node->first_child->type) {
@@ -1585,7 +1573,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
         }
         /* include as many nodes as allowed */
         bounded_slice = false;
-        slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+        slice_width = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
         depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT + 1;
     }
 
@@ -1675,7 +1663,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
     msg_req->request->get_subtree_chunk_req->single = true;
     msg_req->request->get_subtree_chunk_req->slice_offset = slice_offset;
     msg_req->request->get_subtree_chunk_req->slice_width = slice_width;
-    msg_req->request->get_subtree_chunk_req->child_limit = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->child_limit = SR_GET_SUBTREE_CHUNK_CHILD_LIMIT;
     msg_req->request->get_subtree_chunk_req->depth_limit = depth_limit;
 
     /* send the request and receive the response */
@@ -2084,14 +2072,8 @@ sr_commit(sr_session_ctx_t *session)
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__COMMIT);
-    if ((SR_ERR_OK != rc) && (SR_ERR_OPERATION_FAILED != rc) && (SR_ERR_VALIDATION_FAILED != rc) &&
-        (SR_ERR_UNAUTHORIZED != rc)) {
-        SR_LOG_ERR_MSG("Error by processing of commit request.");
-        goto cleanup;
-    }
-
     commit_resp = msg_resp->response->commit_resp;
-    if ((SR_ERR_OPERATION_FAILED == rc) || (SR_ERR_VALIDATION_FAILED == rc) || (SR_ERR_UNAUTHORIZED == rc)) {
+    if (rc != SR_ERR_OK) {
         SR_LOG_ERR("Commit operation failed with %zu error(s).", commit_resp->n_errors);
 
         /* store commit errors within the session */
@@ -2111,9 +2093,7 @@ cleanup:
     } else {
         sr_mem_free(sr_mem);
     }
-    if (NULL != msg_resp) {
-        sr_msg_free(msg_resp);
-    }
+    sr_msg_free(msg_resp);
     return cl_session_return(session, rc);
 }
 
@@ -2184,14 +2164,8 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name,
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__COPY_CONFIG);
-    if ((SR_ERR_OK != rc) && (SR_ERR_OPERATION_FAILED != rc) && (SR_ERR_VALIDATION_FAILED != rc) &&
-        (SR_ERR_UNAUTHORIZED != rc)) {
-        SR_LOG_ERR_MSG("Error by processing of copy_config request.");
-        goto cleanup;
-    }
-
     copy_config_resp = msg_resp->response->copy_config_resp;
-    if ((SR_ERR_OPERATION_FAILED == rc) || (SR_ERR_VALIDATION_FAILED == rc) || (SR_ERR_UNAUTHORIZED == rc)) {
+    if (rc != SR_ERR_OK) {
         SR_LOG_ERR("Copy_config operation failed with %zu error(s).", copy_config_resp->n_errors);
 
         /* store commit errors within the session */
@@ -2211,9 +2185,7 @@ cleanup:
     } else {
         sr_mem_free(sr_mem);
     }
-    if (NULL != msg_resp) {
-        sr_msg_free(msg_resp);
-    }
+    sr_msg_free(msg_resp);
     return cl_session_return(session, rc);
 }
 
@@ -2674,7 +2646,7 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
 
     cl_session_clear_errors(session);
 
-    rc = cl_send_get_changes(session, xpath, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
+    rc = cl_send_get_changes(session, xpath, 0, SR_GET_ITEMS_FETCH_LIMIT, &msg_resp);
     if (SR_ERR_NOT_FOUND == rc) {
         SR_LOG_DBG("No items found for xpath '%s'", xpath);
         /* SR_ERR_NOT_FOUND will be returned on get_change_next call */
@@ -2758,7 +2730,7 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
     } else {
         /* Fetch more items */
         rc = cl_send_get_changes(session, iter->xpath, iter->offset,
-                CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
+                SR_GET_ITEMS_FETCH_LIMIT, &msg_resp);
         if (SR_ERR_NOT_FOUND == rc) {
             SR_LOG_DBG("All items has been read for xpath '%s'", iter->xpath);
             goto cleanup;

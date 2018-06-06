@@ -278,7 +278,7 @@ createDataTreeTestModule()
 
     /* validate & save */
     assert_int_equal(0, lyd_validate(&r, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_MODULE_DATA_FILE_NAME, r));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_MODULE_DATA_FILE_NAME, r, SR_FILE_FORMAT_LY));
 
     lyd_free_withsiblings(r);
 
@@ -302,7 +302,7 @@ createDataTreeExampleModule()
 
     root = lyd_new_path(NULL, ctx, XPATH, "Leaf value", 0, 0);
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(EXAMPLE_MODULE_DATA_FILE_NAME, root));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(EXAMPLE_MODULE_DATA_FILE_NAME, root, SR_FILE_FORMAT_LY));
 
     lyd_free_withsiblings(root);
     ly_ctx_destroy(ctx, NULL);
@@ -335,7 +335,7 @@ createDataTreeLargeExampleModule(int list_count)
     lyd_new_path(root, ctx, "/example-module:container/list[key1='key1'][key2='key2']/leaf", "Leaf value", 0, 0);
 
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(EXAMPLE_MODULE_DATA_FILE_NAME, root));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(EXAMPLE_MODULE_DATA_FILE_NAME, root, SR_FILE_FORMAT_LY));
 
     lyd_free_withsiblings(root);
     ly_ctx_destroy(ctx, NULL);
@@ -392,7 +392,7 @@ createDataTreeLargeIETFinterfacesModule(size_t if_count)
 
 
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, root));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, root, SR_FILE_FORMAT_LY));
 
     lyd_free_withsiblings(root);
     ly_ctx_destroy(ctx, NULL);
@@ -444,7 +444,7 @@ createDataTreeIETFinterfacesModule(){
     lyd_new_leaf(node, module_interfaces, "enabled", "false");
 
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, root));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, root, SR_FILE_FORMAT_LY));
 
     lyd_free_withsiblings(root);
     ly_ctx_destroy(ctx, NULL);
@@ -484,7 +484,7 @@ createDataTreeIETFinterfacesModuleMerge(){
     lyd_new_leaf(node, module_ip, "mtu", "1500");
 
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces.merge.xml", root));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces.merge." SR_FILE_FORMAT_EXT, root, SR_FILE_FORMAT_LY));
 
     lyd_free_withsiblings(root);
     ly_ctx_destroy(ctx, NULL);
@@ -514,7 +514,7 @@ createDataTreeReferencedModule(int8_t magic_number)
 
     /* validate & save */
     assert_int_equal(0, lyd_validate(&r1, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(REFERENCED_MODULE_DATA_FILE_NAME, r1));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(REFERENCED_MODULE_DATA_FILE_NAME, r1, SR_FILE_FORMAT_LY));
 
     lyd_free_withsiblings(r1);
 
@@ -548,7 +548,7 @@ createDataTreeStateModule()
 
     /* validate & save */
     assert_int_equal(0, lyd_validate(&r1, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(STATE_MODULE_DATA_FILE_NAME, r1));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(STATE_MODULE_DATA_FILE_NAME, r1, SR_FILE_FORMAT_LY));
 
     lyd_free_withsiblings(r1);
 

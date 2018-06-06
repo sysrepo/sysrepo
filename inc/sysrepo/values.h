@@ -25,6 +25,10 @@
 
 #include <stdio.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @defgroup values Value Manipulation Utilities
  * @{
@@ -184,5 +188,9 @@ char *sr_val_to_str(const sr_val_t *value);
 int sr_val_to_buff(const sr_val_t *value, char buffer[], size_t size);
 
 /**@} values */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SYSREPO_VALUES_H_ */

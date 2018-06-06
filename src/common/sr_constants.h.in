@@ -159,4 +159,21 @@
 /** Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files). */
 #define SR_NOTIF_TIME_WINDOW @NOTIF_TIME_WINDOW@
 
+/** Number of items being fetched in one message from Sysrepo Engine when processing sr_get_items_iter calls.
+ *  Increasing this can improve efficiency when working with large datastores at the cost of higher memory usage peaks. */
+#define SR_GET_ITEMS_FETCH_LIMIT @GET_ITEMS_FETCH_LIMIT@
+
+/** Maximum number of children nodes (of any parent node) being fetched in one message from Sysrepo Engine when processing
+ *  sr_get_subtree(s)_*_chunk(s). Increasing this can improve efficiency when working with large datastores at the cost
+ *  of higher memory usage peaks. */
+#define SR_GET_SUBTREE_CHUNK_CHILD_LIMIT @GET_SUBTREE_CHUNK_CHILD_LIMIT@
+
+/** Datastore file format extension used.
+ */
+#define SR_FILE_FORMAT_EXT "@FILE_FORMAT_EXT@"
+
+/** libyang format flag.
+ */
+#define SR_FILE_FORMAT_LY @FILE_FORMAT_LY@
+
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

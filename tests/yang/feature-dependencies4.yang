@@ -1,0 +1,25 @@
+module feature-dependencies4 {
+
+   namespace "urn:pfe:params:xml:ns:yang:feature-dependencies4";
+   prefix fd4;
+
+   import feature-dependencies1 {
+      prefix fd1;
+   }
+
+   import feature-dependencies2 {
+      prefix fd2;
+   }
+
+   feature defdef {
+      if-feature fd2:def;
+   }
+
+   augment "/fd1:box" {
+      leaf def {
+         if-feature defdef;
+         type string;
+      }
+   }
+
+}

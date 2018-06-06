@@ -24,7 +24,7 @@ RUN \
       libprotobuf-c-dev \
       protobuf-c-compiler \
       # netopeer2 \
-      libssl1.0-dev \
+      libssl-dev \
       libssh-dev \
       # bindings
       swig

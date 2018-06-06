@@ -24,7 +24,7 @@ package main
 import (
 	"fmt"
 	"unsafe"
-       )
+)
 
 /*
 #cgo LDFLAGS: -lsysrepo
@@ -53,7 +53,7 @@ func print_value(value *C.sr_val_t) {
 		break
 	case C.SR_BOOL_T:
 		bool_val := (*C.bool)(unsafe.Pointer(&value.data))
-		if (*bool_val == C.bool(true)) {
+		if *bool_val == C.bool(true) {
 			fmt.Printf("= true\n")
 		} else {
 			fmt.Printf("= false\n")
@@ -119,7 +119,7 @@ func print_value(value *C.sr_val_t) {
 func sysrepo_print_value(value *C.sr_val_t) {
 	var mem *C.char = nil
 	rc := C.sr_print_val_mem(&mem, value)
-	if (C.SR_ERR_OK != rc) {
+	if C.SR_ERR_OK != rc {
 		fmt.Printf("Error by sr_print_val_mem: %d", C.sr_strerror(rc))
 	} else {
 		fmt.Printf("%s", C.GoString(mem))
@@ -131,9 +131,10 @@ func print_current_config(session *C.sr_session_ctx_t, module_name *C.char) {
 	var count C.size_t = 0
 	var rc C.int = C.SR_ERR_OK
 	xpath := C.CString("/" + C.GoString(module_name) + ":*//*")
+	defer C.free(unsafe.Pointer(xpath))
 
 	rc = C.sr_get_items(session, xpath, &values, &count)
-	if (C.SR_ERR_OK != rc) {
+	if C.SR_ERR_OK != rc {
 		fmt.Printf("Error by sr_get_items: %d", C.sr_strerror(rc))
 		return
 	} else {
@@ -150,7 +151,7 @@ func print_current_config(session *C.sr_session_ctx_t, module_name *C.char) {
 }
 
 //export Go_module_change_cb
-func Go_module_change_cb(session *C.sr_session_ctx_t, module_name *C.char, event C.sr_notif_event_t, private_ctx []byte) C.int {
+func Go_module_change_cb(session *C.sr_session_ctx_t, module_name *C.char, event C.sr_notif_event_t, private_ctx *C.char) C.int {
 	fmt.Printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n")
 
 	print_current_config(session, module_name)
@@ -165,10 +166,11 @@ func main() {
 	var rc C.int = C.SR_ERR_OK
 
 	module_name := C.CString("ietf-interfaces")
+	defer C.free(unsafe.Pointer(module_name))
 
 	/* connect to sysrepo */
 	rc = C.sr_connect(module_name, C.SR_CONN_DEFAULT, &connection)
-	if (C.SR_ERR_OK != rc) {
+	if C.SR_ERR_OK != rc {
 		fmt.Printf("Error by sr_connect: %s\n", C.sr_strerror(rc))
 		return
 	} else {
@@ -177,7 +179,7 @@ func main() {
 
 	/* start session */
 	rc = C.sr_session_start(connection, C.SR_DS_STARTUP, C.SR_SESS_DEFAULT, &session)
-	if (C.SR_ERR_OK != rc) {
+	if C.SR_ERR_OK != rc {
 		fmt.Printf("Error by sr_session_start: %s\n", C.sr_strerror(rc))
 		return
 	} else {
@@ -189,8 +191,8 @@ func main() {
 	print_current_config(session, module_name)
 
 	/* subscribe for changes in running config */
-	rc = C.sr_module_change_subscribe(session, module_name, C.sr_module_change_cb(C.module_change_cb), nil, 0, C.SR_SUBSCR_DEFAULT | C.SR_SUBSCR_APPLY_ONLY, &subscription)
-	if (C.SR_ERR_OK != rc) {
+	rc = C.sr_module_change_subscribe(session, module_name, C.sr_module_change_cb(C.module_change_cb), nil, 0, C.SR_SUBSCR_DEFAULT|C.SR_SUBSCR_APPLY_ONLY, &subscription)
+	if C.SR_ERR_OK != rc {
 		fmt.Printf("Error by sr_module_change_subscribe: %s\n", C.sr_strerror(rc))
 		return
 	} else {
@@ -199,7 +201,8 @@ func main() {
 
 	fmt.Printf("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n")
 
-	for {}
+	for {
+	}
 
 	fmt.Printf("Application exit requested, exiting.\n")
 

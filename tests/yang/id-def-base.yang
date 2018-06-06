@@ -1,0 +1,6 @@
+module id-def-base {
+  namespace "urn:ietf:params:xml:ns:yang:id-def-base";
+  prefix idb;
+
+  identity base-id;
+}

@@ -331,7 +331,8 @@ rp_count_changes_in_difflists(sr_list_t *diff_lists)
 }
 
 int
-rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, sr_list_t *diff_lists) {
+rp_generate_config_change_notification(rp_ctx_t *rp_ctx, rp_session_t *session, sr_list_t *diff_lists)
+{
     CHECK_NULL_ARG3(rp_ctx, session, diff_lists);
     int rc = SR_ERR_OK;
     Sr__Msg *req = NULL;
@@ -2150,10 +2151,10 @@ rp_check_exec_perm_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
  * @brief Processes a RPC/Action request.
  */
 static int
-rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_rpc_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *skip_msg_cleanup)
 {
     const char *xpath = NULL;
-    char *module_name = NULL, *error_msg = NULL;
+    char *module_name = NULL;
     sr_api_variant_t msg_api_variant = SR_API_VALUES;
     sr_val_t *input = NULL, *with_def = NULL;
     sr_node_t *input_tree = NULL, *with_def_tree = NULL;
@@ -2182,6 +2183,80 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     /* reuse context from msg for req (or resp) */
     sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
 
+    /* parse input arguments */
+    msg_api_variant = sr_api_variant_gpb_to_sr(msg->request->rpc_req->orig_api_variant);
+    switch (msg_api_variant) {
+        case SR_API_VALUES:
+            rc = sr_values_gpb_to_sr(sr_mem, msg->request->rpc_req->input, msg->request->rpc_req->n_input,
+                    &input, &input_cnt);
+            break;
+        case SR_API_TREES:
+            rc = sr_trees_gpb_to_sr(sr_mem, msg->request->rpc_req->input_tree, msg->request->rpc_req->n_input_tree,
+                    &input_tree, &input_cnt);
+            break;
+    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse %s (%s) input arguments from GPB message.",
+                      op_name, msg->request->rpc_req->xpath);
+
+    session->req = msg;
+
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, finalize);
+    rp_handle_get_call_state(session);
+
+    /* validate RPC/Action request */
+    switch (msg_api_variant) {
+        case SR_API_VALUES:
+            if (action) {
+                rc = dm_validate_action(rp_ctx, session, msg->request->rpc_req->xpath,
+                                 input, input_cnt, true, sr_mem, &with_def, &with_def_cnt,
+                                 &with_def_tree, &with_def_tree_cnt);
+
+            } else {
+                rc = dm_validate_rpc(rp_ctx, session, msg->request->rpc_req->xpath,
+                                     input, input_cnt, true, sr_mem, &with_def, &with_def_cnt,
+                                     &with_def_tree, &with_def_tree_cnt);
+            }
+            break;
+        case SR_API_TREES:
+            if (action) {
+                rc = dm_validate_action_tree(rp_ctx, session, msg->request->rpc_req->xpath,
+                                     input_tree, input_cnt, true, sr_mem, &with_def, &with_def_cnt,
+                                     &with_def_tree, &with_def_tree_cnt);
+            } else {
+                rc = dm_validate_rpc_tree(rp_ctx, session, msg->request->rpc_req->xpath,
+                                     input_tree, input_cnt, true, sr_mem, &with_def, &with_def_cnt,
+                                     &with_def_tree, &with_def_tree_cnt);
+            }
+            break;
+    }
+    if (rc != SR_ERR_OK) {
+        SR_LOG_ERR("Validation of an %s (%s) message failed.", op_name, msg->request->rpc_req->xpath);
+    }
+
+    if (RP_REQ_WAITING_FOR_DATA == session->state) {
+        SR_LOG_DBG_MSG("Request paused, waiting for data");
+        /* we are waiting for operational data do not free the request */
+        *skip_msg_cleanup = true;
+        /* setup timeout */
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, SR_OPER_DATA_PROVIDE_TIMEOUT);
+
+        if (SR_API_VALUES == msg_api_variant) {
+            sr_free_values(input, input_cnt);
+        } else {
+            sr_free_trees(input_tree, input_cnt);
+        }
+        sr_free_values(with_def, with_def_cnt);
+        sr_free_trees(with_def_tree, with_def_tree_cnt);
+        pthread_mutex_unlock(&session->cur_req_mutex);
+        return rc;
+    }
+
+    pthread_mutex_unlock(&session->cur_req_mutex);
+
+    if (rc != SR_ERR_OK) {
+        goto finalize;
+    }
+
     /* get module name */
     rc = sr_copy_first_ns(msg->request->rpc_req->xpath, &module_name);
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for %s request (%s).", op_name,
@@ -2206,49 +2281,6 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             goto finalize;
         }
     }
-
-    /* parse input arguments */
-    msg_api_variant = sr_api_variant_gpb_to_sr(msg->request->rpc_req->orig_api_variant);
-    switch (msg_api_variant) {
-        case SR_API_VALUES:
-            rc = sr_values_gpb_to_sr(sr_mem, msg->request->rpc_req->input, msg->request->rpc_req->n_input,
-                    &input, &input_cnt);
-            break;
-        case SR_API_TREES:
-            rc = sr_trees_gpb_to_sr(sr_mem, msg->request->rpc_req->input_tree, msg->request->rpc_req->n_input_tree,
-                    &input_tree, &input_cnt);
-            break;
-    }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse %s (%s) input arguments from GPB message.",
-                      op_name, msg->request->rpc_req->xpath);
-
-    /* validate RPC/Action request */
-    switch (msg_api_variant) {
-        case SR_API_VALUES:
-            if (action) {
-                rc = dm_validate_action(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
-                                 input, input_cnt, true, sr_mem, &with_def, &with_def_cnt,
-                                 &with_def_tree, &with_def_tree_cnt);
-
-            } else {
-                rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
-                                     input, input_cnt, true, sr_mem, &with_def, &with_def_cnt,
-                                     &with_def_tree, &with_def_tree_cnt);
-            }
-            break;
-        case SR_API_TREES:
-            if (action) {
-                rc = dm_validate_action_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
-                                     input_tree, input_cnt, true, sr_mem, &with_def, &with_def_cnt,
-                                     &with_def_tree, &with_def_tree_cnt);
-            } else {
-                rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
-                                     input_tree, input_cnt, true, sr_mem, &with_def, &with_def_cnt,
-                                     &with_def_tree, &with_def_tree_cnt);
-            }
-            break;
-    }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an %s (%s) message failed.", op_name, msg->request->rpc_req->xpath);
 
     /* fill-in subscription details into the request */
     bool subscription_match = false;
@@ -2321,7 +2353,6 @@ finalize:
     /* free all the allocated data */
     np_subscriptions_list_cleanup(subscriptions_list);
     free(module_name);
-    free(error_msg);
     free(nacm_rule);
     free(nacm_rule_info);
     if (SR_API_VALUES == msg_api_variant) {
@@ -2332,9 +2363,9 @@ finalize:
     sr_free_values(with_def, with_def_cnt);
     sr_free_trees(with_def_tree, with_def_tree_cnt);
 
+    session->req = NULL;
+
     if (SR_ERR_OK == rc) {
-        /* release the message since it won't be released in dispatch */
-        sr_msg_free(msg);
         /* forward the request to the subscriber */
         rc = cm_msg_send(rp_ctx->cm_ctx, req);
     } else {
@@ -2360,8 +2391,6 @@ finalize:
             } else {
                 resp->response->rpc_resp->xpath = strdup(msg->request->rpc_req->xpath);
             }
-            /* release the message since it won't be released in dispatch */
-            sr_msg_free(msg);
             /* send the response */
             rc = cm_msg_send(rp_ctx->cm_ctx, resp);
         }
@@ -2465,6 +2494,10 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
 
     /* loop through the node children */
     LY_TREE_FOR(sch_node->child, iter) {
+        if (lys_is_disabled(iter, 0)) {
+            continue;
+        }
+
         subs_index = session->state_data_ctx.subscription_nodes->count;
         if ((LYS_LIST | LYS_CONTAINER) & iter->nodetype) {
             /* find subscription where subsequent request will be addressed
@@ -2508,6 +2541,7 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
             }
         }
     }
+
 cleanup:
     for (size_t i = 0; i < xp_count; i++) {
         free(xpaths[i]);
@@ -2596,7 +2630,7 @@ cleanup:
  * @brief Processes a RPC/Action response.
  */
 static int
-rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_rpc_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     sr_api_variant_t msg_api_variant = SR_API_VALUES;
     sr_val_t *output = NULL, *with_def = NULL;
@@ -2632,18 +2666,18 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     if (SR_ERR_OK == rc) {
         if (SR_API_VALUES == msg_api_variant) {
             if (action) {
-                rc = dm_validate_action(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
+                rc = dm_validate_action(rp_ctx, session, msg->response->rpc_resp->xpath,
                         output, output_cnt, false, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
             } else {
-                rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
+                rc = dm_validate_rpc(rp_ctx, session, msg->response->rpc_resp->xpath,
                         output, output_cnt, false, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
             }
         } else {
             if (action) {
-                rc = dm_validate_action_tree(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
+                rc = dm_validate_action_tree(rp_ctx, session, msg->response->rpc_resp->xpath,
                         output_tree, output_cnt, false, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
             } else {
-                rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
+                rc = dm_validate_rpc_tree(rp_ctx, session, msg->response->rpc_resp->xpath,
                         output_tree, output_cnt, false, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
             }
         }
@@ -2997,7 +3031,7 @@ rp_event_notif_match_subscr(const char *ntf_xpath, const char *subscr_xpath)
  * @brief Processes an event notification request.
  */
 static int
-rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_event_notif_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *skip_msg_cleanup)
 {
     dm_data_info_t *di = NULL;
     char *xpath = NULL;
@@ -3010,13 +3044,12 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     size_t values_cnt = 0, tree_cnt = 0, with_def_cnt = 0, with_def_tree_cnt = 0;
     sr_list_t *subscriptions_list = NULL;
     np_subscription_t *subscription = NULL;
-    bool sub_match = false;
+    bool sub_match = false, tmp_rp_session = false;
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem_msg = NULL;
     nacm_ctx_t *nacm_ctx = NULL;
     nacm_action_t nacm_action = NACM_ACTION_PERMIT;
     char *nacm_rule = NULL, *nacm_rule_info = NULL;
-    dm_session_t *dm_session = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET4(rc, rp_ctx, msg, msg->request, msg->request->event_notif_req);
@@ -3026,11 +3059,10 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 
     SR_LOG_DBG("Processing event notification request (%s).", msg->request->event_notif_req->xpath);
 
-    if (NULL != session) {
-        dm_session = session->dm_session;
-    } else {
-        rc = dm_session_start(rp_ctx->dm_ctx, NULL, SR_DS_RUNNING, &dm_session);
-        CHECK_RC_MSG_GOTO(rc, finalize, "Failed to create temporary dm_session");
+    if (session == NULL) {
+        rc = rp_session_start(rp_ctx, 0, NULL, SR_DS_RUNNING, 0, 0, &session);
+        CHECK_RC_MSG_GOTO(rc, finalize, "Failed to start temporary RP session.");
+        tmp_rp_session = true;
     }
 
     /* parse input arguments */
@@ -3046,19 +3078,55 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse event notification (%s) data trees from GPB message.",
                       msg->request->event_notif_req->xpath);
 
+    session->req = msg;
+
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, finalize);
+    rp_handle_get_call_state(session);
+
     /* validate event-notification request */
     if (SR_API_VALUES == msg_api_variant) {
-        rc = dm_validate_event_notif(rp_ctx->dm_ctx, dm_session, msg->request->event_notif_req->xpath, values, values_cnt, NULL,
+        rc = dm_validate_event_notif(rp_ctx, session, msg->request->event_notif_req->xpath, values, values_cnt, NULL,
                 &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree, &notif_ctx);
     } else {
-        rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, dm_session, msg->request->event_notif_req->xpath, trees, tree_cnt, NULL,
+        rc = dm_validate_event_notif_tree(rp_ctx, session, msg->request->event_notif_req->xpath, trees, tree_cnt, NULL,
                 &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, &notif_data_tree, &notif_ctx);
     }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.", msg->request->event_notif_req->xpath);
+
+    if (rc != SR_ERR_OK) {
+        SR_LOG_ERR("Validation of an event notification (%s) message failed.", msg->request->event_notif_req->xpath);
+    }
+
+    if (RP_REQ_WAITING_FOR_DATA == session->state) {
+        SR_LOG_DBG_MSG("Request paused, waiting for data");
+        /* we are waiting for operational data do not free the request */
+        *skip_msg_cleanup = true;
+        /* setup timeout */
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, SR_OPER_DATA_PROVIDE_TIMEOUT);
+
+        /* free all the allocated data */
+        if (SR_API_VALUES == msg_api_variant) {
+            sr_free_values(values, values_cnt);
+        } else {
+            sr_free_trees(trees, tree_cnt);
+        }
+        sr_free_values(with_def, with_def_cnt);
+        sr_free_trees(with_def_tree, with_def_tree_cnt);
+        pthread_mutex_unlock(&session->cur_req_mutex);
+        if (tmp_rp_session) {
+            rp_session_stop(rp_ctx, session);
+        }
+        return rc;
+    }
+
+    pthread_mutex_unlock(&session->cur_req_mutex);
+
+    if (rc != SR_ERR_OK) {
+        goto finalize;
+    }
 
     rc = sr_copy_first_ns(msg->request->event_notif_req->xpath, &module_name);
     CHECK_RC_MSG_RETURN(rc, "Error by extracting module name from xpath.");
-    rc = dm_get_data_info(rp_ctx->dm_ctx, dm_session, module_name, &di);
+    rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module_name, &di);
     CHECK_RC_LOG_GOTO(rc, finalize, "Dm_get_dat_info failed for module %s", module_name);
 
     xpath = ly_path_data2schema(di->schema->ly_ctx, msg->request->event_notif_req->xpath);
@@ -3068,7 +3136,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         goto finalize;
     }
 
-    if (NULL != session) {
+    if (!tmp_rp_session) {
         /* authorize (write permissions are required to deliver the event-notification) */
         rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
         CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
@@ -3080,7 +3148,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 #endif /* STORE_CONFIG_CHANGE_NOTIF */
     if (!(msg->request->event_notif_req->options & SR__EVENT_NOTIF_REQ__NOTIF_FLAGS__EPHEMERAL)) {
         /* store the notification in the datastore */
-        rc = np_store_event_notification(rp_ctx->np_ctx, NULL != session ? session->user_credentials : NULL,
+        rc = np_store_event_notification(rp_ctx->np_ctx, session->user_credentials,
                 xpath, msg->request->event_notif_req->timestamp, notif_data_tree);
         CHECK_RC_MSG_GOTO(rc, finalize, "Failed to save event notification");
     }
@@ -3090,7 +3158,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 #endif /* ENABLE_NOTIF_STORE */
 
     /* get event-notification subscriptions */
-    rc = pm_get_subscriptions(rp_ctx->pm_ctx, (NULL != session) ? session->user_credentials : NULL, module_name,
+    rc = pm_get_subscriptions(rp_ctx->pm_ctx, session->user_credentials, module_name,
             SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS, &subscriptions_list);
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for event notification request (%s).", xpath);
 
@@ -3156,7 +3224,7 @@ finalize:
 
     /* send the response with return code */
     if (!msg->request->event_notif_req->do_not_send_reply) {
-        rc_tmp = sr_gpb_resp_alloc(sr_mem_msg, SR__OPERATION__EVENT_NOTIF, session ? session->id : 0, &resp);
+        rc_tmp = sr_gpb_resp_alloc(sr_mem_msg, SR__OPERATION__EVENT_NOTIF, session->id, &resp);
         if (SR_ERR_OK == rc_tmp) {
             resp->response->result = rc;
             rc = cm_msg_send(rp_ctx->cm_ctx, resp);
@@ -3166,11 +3234,11 @@ finalize:
     }
 
     free(xpath);
-    sr_msg_free(msg);
-
-    if (NULL == session) {
-        dm_session_stop(rp_ctx->dm_ctx, dm_session);
+    session->req = NULL;
+    if (tmp_rp_session) {
+        rp_session_stop(rp_ctx, session);
     }
+
     if (NULL != notif_data_tree) {
         lyd_free_withsiblings(notif_data_tree);
     }
@@ -3184,7 +3252,7 @@ finalize:
  * @brief Processes an event notification replay request.
  */
 static int
-rp_event_notif_replay_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_event_notif_replay_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__EventNotifReplayReq *replay_req = NULL;
     Sr__Msg *resp = NULL;
@@ -3448,13 +3516,11 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             break;
         case SR__OPERATION__RPC:
         case SR__OPERATION__ACTION:
-            rc = rp_rpc_req_process(rp_ctx, session, msg);
-            *skip_msg_cleanup = true;
-            return rc; /* skip further processing */
+            rc = rp_rpc_req_process(rp_ctx, session, msg, skip_msg_cleanup);
+            break;
         case SR__OPERATION__EVENT_NOTIF:
-            rc = rp_event_notif_req_process(rp_ctx, session, msg);
-            *skip_msg_cleanup = true;
-            return rc; /* skip further processing */
+            rc = rp_event_notif_req_process(rp_ctx, session, msg, skip_msg_cleanup);
+            break;
         case SR__OPERATION__EVENT_NOTIF_REPLAY:
             rc = rp_event_notif_replay_req_process(rp_ctx, session, msg);
             break;
@@ -3862,7 +3928,6 @@ cleanup:
     return rc;
 }
 
-
 int
 rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
 {
@@ -4043,9 +4108,11 @@ rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucr
         CHECK_RC_LOG_GOTO(rc, cleanup, "List of state xpath initialization failed for session id=%"PRIu32".", session_id);
     }
 
-
-    rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Access Control session init failed for session id=%"PRIu32".", session_id);
+    if (session_id != 0) {
+        /* not for internal sessions */
+        rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Access Control session init failed for session id=%"PRIu32".", session_id);
+    }
 
     rc = dm_session_start(rp_ctx->dm_ctx, user_credentials, datastore, &session->dm_session);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Init of dm_session failed for session id=%"PRIu32".", session_id);
@@ -4183,10 +4250,9 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finishe
 
     pthread_mutex_lock(&c_ctx->mutex);
     SR_LOG_DBG("Commit context in state %d", c_ctx->state);
+    c_ctx->result = result;
 
-    if (!finished && DM_COMMIT_WAIT_FOR_NOTIFICATIONS == c_ctx->state &&
-        NULL != c_ctx->init_session) {
-
+    if (!finished && DM_COMMIT_WAIT_FOR_NOTIFICATIONS == c_ctx->state && NULL != c_ctx->init_session) {
         switch (c_ctx->init_session->req->request->operation) {
         case SR__OPERATION__COPY_CONFIG:
             op_str = "copy_config";
@@ -4227,7 +4293,7 @@ rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, bool finishe
         c_ctx->init_session->req = NULL;
         pthread_mutex_unlock(&c_ctx->mutex);
         pthread_rwlock_unlock(&dm_ctxs->lock);
-    } else if (finished && DM_COMMIT_FINISHED == c_ctx->state){
+    } else if (finished && DM_COMMIT_FINISHED == c_ctx->state) {
         pthread_mutex_unlock(&c_ctx->mutex);
         pthread_rwlock_unlock(&dm_ctxs->lock);
         locked = false;

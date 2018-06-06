@@ -395,13 +395,15 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     }
 
     /* set timeout for receive operation */
-    tv.tv_sec = SR_REQUEST_TIMEOUT;
-    tv.tv_usec = 0;
-    rc = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
-    if (-1 == rc) {
-        SR_LOG_ERR("Unable to set timeout for socket operations on socket=%s: %s", socket_path, sr_strerror_safe(errno));
-        close(fd);
-        return SR_ERR_DISCONNECT;
+    if (SR_REQUEST_TIMEOUT > 0) {
+        tv.tv_sec = SR_REQUEST_TIMEOUT;
+        tv.tv_usec = 0;
+        rc = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
+        if (-1 == rc) {
+            SR_LOG_ERR("Unable to set timeout for socket operations on socket=%s: %s", socket_path, sr_strerror_safe(errno));
+            close(fd);
+            return SR_ERR_DISCONNECT;
+        }
     }
 
     conn_ctx->fd = fd;
@@ -485,23 +487,12 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
         sr_mem_ctx_t *sr_mem_resp, const Sr__Operation expected_response_op)
 {
     int rc = SR_ERR_OK;
-    struct timeval tv = { 0, };
 
     CHECK_NULL_ARG4(session, session->conn_ctx, msg_req, msg_resp);
 
     SR_LOG_DBG("Sending %s request.", sr_gpb_operation_name(expected_response_op));
 
     pthread_mutex_lock(&session->conn_ctx->lock);
-    /* some operation may take more time, raise the timeout */
-    if (SR__OPERATION__COMMIT == expected_response_op || SR__OPERATION__COPY_CONFIG == expected_response_op ||
-            SR__OPERATION__RPC == expected_response_op || SR__OPERATION__ACTION == expected_response_op) {
-        tv.tv_sec = SR_LONG_REQUEST_TIMEOUT;
-        tv.tv_usec = 0;
-        rc = setsockopt(session->conn_ctx->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
-        if (-1 == rc) {
-            SR_LOG_WRN("Unable to set timeout for socket operations: %s", sr_strerror_safe(errno));
-        }
-    }
 
     /* send the request */
     rc = cl_message_send(session->conn_ctx, msg_req);
@@ -521,16 +512,6 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
                 session->id, sr_gpb_operation_name(msg_req->request->operation));
         pthread_mutex_unlock(&session->conn_ctx->lock);
         return rc;
-    }
-
-    /* change socket timeout to the standard value */
-    if (SR__OPERATION__COMMIT == expected_response_op || SR__OPERATION__COPY_CONFIG == expected_response_op ||
-            SR__OPERATION__RPC == expected_response_op || SR__OPERATION__ACTION == expected_response_op) {
-        tv.tv_sec = SR_REQUEST_TIMEOUT;
-        rc = setsockopt(session->conn_ctx->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
-        if (-1 == rc) {
-            SR_LOG_WRN("Unable to set timeout for socket operations: %s", sr_strerror_safe(errno));
-        }
     }
 
     pthread_mutex_unlock(&session->conn_ctx->lock);

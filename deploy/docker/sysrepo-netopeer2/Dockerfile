@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 MAINTAINER mislav.novakovic@sartura.hr
 
@@ -55,15 +55,6 @@ RUN \
       git clone https://github.com/sysrepo/sysrepo.git && \
       cd sysrepo && mkdir build && cd build && \
       cmake -DCMAKE_BUILD_TYPE:String="Release" -DENABLE_TESTS=OFF -DREPOSITORY_LOC:PATH=/etc/sysrepo .. && \
-      make -j2 && \
-      make install && \
-      ldconfig
-
-# libssh
-RUN \
-      git clone http://git.libssh.org/projects/libssh.git && \
-      cd libssh && mkdir build && cd build && \
-      cmake .. && \
       make -j2 && \
       make install && \
       ldconfig

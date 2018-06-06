@@ -81,8 +81,8 @@ RUN \
 # libssh
 RUN \
       git clone http://git.libssh.org/projects/libssh.git && \
-      cd libssh && mkdir build && cd build && \
-      cmake .. && \
+      cd libssh && git checkout -b libssh-0.7.5 && mkdir build && cd build && \
+      cmake -DCMAKE_INSTALL_PREFIX=/usr .. && \
       make -j2 && \
       make install && \
       ldconfig

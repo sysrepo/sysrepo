@@ -155,6 +155,15 @@ macro(INSTALL_YANG_FOR_TESTS MODULE_NAME)
     )
 endmacro(INSTALL_YANG_FOR_TESTS)
 
+macro(ENABLE_FEATURE_FOR_TESTS MODULE_NAME FEATURE_NAME)
+    ADD_CUSTOM_COMMAND(
+        TARGET common_test
+        POST_BUILD
+        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --feature-enable ${FEATURE_NAME} --module ${MODULE_NAME} -0 ${TEST_REPOSITORY_LOC} > /dev/null
+        VERBATIM
+    )
+endmacro(ENABLE_FEATURE_FOR_TESTS)
+
 if(ENABLE_NACM)
     INSTALL_YANG_FOR_TESTS("ietf-netconf-acm@2012-02-22")
 endif(ENABLE_NACM)
@@ -162,6 +171,10 @@ INSTALL_YANG_FOR_TESTS("example-module")
 INSTALL_YANG_FOR_TESTS("test-module")
 INSTALL_YANG_FOR_TESTS("small-module")
 INSTALL_YANG_FOR_TESTS("info-module")
+INSTALL_YANG_FOR_TESTS("id-ref-base")
+INSTALL_YANG_FOR_TESTS("id-ref-aug")
+INSTALL_YANG_FOR_TESTS("id-def-base")
+INSTALL_YANG_FOR_TESTS("id-def-extended")
 INSTALL_YANG_FOR_TESTS("module-a@2016-02-10")
 INSTALL_YANG_FOR_TESTS("module-b@2016-02-05")
 INSTALL_YANG_FOR_TESTS("ietf-interfaces@2014-05-08")

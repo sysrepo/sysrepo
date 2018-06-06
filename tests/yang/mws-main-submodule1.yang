@@ -1,0 +1,11 @@
+submodule mws-main-submodule1 {
+    belongs-to mws-main-module {
+        prefix mws-main;
+    }
+
+    augment "/mws-main:main" {
+        leaf first {
+            type string;
+        }
+    }
+}

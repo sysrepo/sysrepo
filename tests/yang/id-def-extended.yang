@@ -1,0 +1,12 @@
+module id-def-extended {
+  namespace "urn:ietf:params:xml:ns:yang:id-def-extended";
+  prefix ide;
+
+  import id-def-base {
+    prefix idb;
+  }
+
+  identity external-derived-id {
+    base idb:base-id;
+  }
+}

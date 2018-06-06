@@ -73,20 +73,22 @@ srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, 
     fd = open(file_path, O_RDONLY);
     assert_true_bt(fd >= 0);
 
+    ly_errno = LY_SUCCESS;
     file_data = lyd_parse_fd(srcfg_test_libyang_ctx, fd, file_format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
     if (!file_data && LY_SUCCESS != ly_errno) {
-        fprintf(stderr, "lyd_parse_fd error: %s (%s)", ly_errmsg(), ly_errpath());
+        fprintf(stderr, "lyd_parse_fd error: %s (%s)", ly_errmsg(srcfg_test_libyang_ctx), ly_errpath(srcfg_test_libyang_ctx));
     }
     assert_true_bt(file_data || LY_SUCCESS == ly_errno);
     if (NULL != exp) {
+        ly_errno = LY_SUCCESS;
         exp_data = lyd_parse_mem(srcfg_test_libyang_ctx, exp, exp_format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
         if (!exp_data && LY_SUCCESS != ly_errno) {
-            fprintf(stderr, "lyd_parse_mem error: %s (%s)", ly_errmsg(), ly_errpath());
+            fprintf(stderr, "lyd_parse_mem error: %s (%s)", ly_errmsg(srcfg_test_libyang_ctx), ly_errpath(srcfg_test_libyang_ctx));
         }
         assert_true_bt(exp_data || LY_SUCCESS == ly_errno);
     }
 
-    diff = lyd_diff(file_data, exp_data, LYD_DIFFOPT_WITHDEFAULTS);
+    diff = lyd_diff(file_data, exp_data, 0);
     assert_non_null_bt(diff);
 
     while (diff->type && LYD_DIFF_END != diff->type[count]) {
@@ -274,82 +276,82 @@ srcfg_test_export(void **state)
     /* ietf-interfaces */
     /*  startup, xml */
     exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml ietf-interfaces > /tmp/ietf-interfaces.startup.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", SR_FILE_FORMAT_LY));
     /*  startup, json */
     exec_shell_command("../src/sysrepocfg --export=/tmp/ietf-interfaces.startup.json --datastore=startup --format=json ietf-interfaces", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", SR_FILE_FORMAT_LY));
     /*  running, xml */
     exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml ietf-interfaces", "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("ietf-interfaces"));
     exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml ietf-interfaces > /tmp/ietf-interfaces.running.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", SR_FILE_FORMAT_LY));
     /*  running, json */
     exec_shell_command("../src/sysrepocfg --export=/tmp/ietf-interfaces.running.json --datastore=running --format=json ietf-interfaces", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", SR_FILE_FORMAT_LY));
 
     /* test-module */
     /*  startup, xml */
     exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml test-module > /tmp/test-module.startup.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "test-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "test-module.startup", SR_FILE_FORMAT_LY));
     /*  startup, json */
     exec_shell_command("../src/sysrepocfg --export=/tmp/test-module.startup.json --datastore=startup --format=json test-module", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.startup", SR_FILE_FORMAT_LY));
     /*  running, xml */
     exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml test-module", "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("test-module"));
     exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml test-module > /tmp/test-module.running.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "test-module.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "test-module.running", SR_FILE_FORMAT_LY));
     /*  running, json */
     exec_shell_command("../src/sysrepocfg --export=/tmp/test-module.running.json --datastore=running --format=json test-module", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.running", SR_FILE_FORMAT_LY));
 
     /* example-module */
     /*  startup, xml */
     exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml example-module > /tmp/example-module.startup.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "example-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "example-module.startup", SR_FILE_FORMAT_LY));
     /*  startup, json */
     exec_shell_command("../src/sysrepocfg --export=/tmp/example-module.startup.json --datastore=startup --format=json example-module", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.startup", SR_FILE_FORMAT_LY));
     /*  running, xml */
     exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml example-module", "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("example-module"));
     exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml example-module > /tmp/example-module.running.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "example-module.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "example-module.running", SR_FILE_FORMAT_LY));
     /*  running, json */
     exec_shell_command("../src/sysrepocfg --export=/tmp/example-module.running.json --datastore=running --format=json example-module", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.running", SR_FILE_FORMAT_LY));
 
     /* cross-module */
     /*  startup, xml */
     exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml cross-module > /tmp/cross-module.startup.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "cross-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "cross-module.startup", SR_FILE_FORMAT_LY));
     /*  startup, json */
     exec_shell_command("../src/sysrepocfg --export=/tmp/cross-module.startup.json --datastore=startup --format=json cross-module", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.startup", SR_FILE_FORMAT_LY));
     /*  running, xml */
     exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml cross-module", "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("cross-module"));
     exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml cross-module > /tmp/cross-module.running.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "cross-module.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "cross-module.running", SR_FILE_FORMAT_LY));
     /*  running, json */
     exec_shell_command("../src/sysrepocfg --export=/tmp/cross-module.running.json --datastore=running --format=json cross-module", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.running", SR_FILE_FORMAT_LY));
 
     /* referenced-data */
     /*  startup, xml */
     exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml referenced-data > /tmp/referenced-data.startup.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "referenced-data.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "referenced-data.startup", SR_FILE_FORMAT_LY));
     /*  startup, json */
     exec_shell_command("../src/sysrepocfg --export=/tmp/referenced-data.startup.json --datastore=startup --format=json referenced-data", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.startup", SR_FILE_FORMAT_LY));
     /*  running, xml */
     exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml referenced-data", "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
     exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml referenced-data > /tmp/referenced-data.running.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "referenced-data.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "referenced-data.running", SR_FILE_FORMAT_LY));
     /*  running, json */
     exec_shell_command("../src/sysrepocfg --export=/tmp/referenced-data.running.json --datastore=running --format=json referenced-data", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.running", SR_FILE_FORMAT_LY));
 
     /* restore pre-test state */
     assert_int_equal(0, srcfg_test_unsubscribe("ietf-interfaces"));
@@ -368,19 +370,19 @@ srcfg_test_xpath(void **state)
     /* export ietf-interfaces, in both xml and json formats */
 
     /*  startup, xml */
-    exec_shell_command("../src/sysrepocfg -d startup -g /ietf-interfaces:*//* > /tmp/ietf-interfaces.startup.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", LYD_XML));
+    exec_shell_command("../src/sysrepocfg -d startup -f xml -g /ietf-interfaces:*//* > /tmp/ietf-interfaces.startup.xml", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", SR_FILE_FORMAT_LY));
     /*  startup, json */
-    exec_shell_command("../src/sysrepocfg -d startup --format json -g /ietf-interfaces:*//* > /tmp/ietf-interfaces.startup.json", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", LYD_XML));
+    exec_shell_command("../src/sysrepocfg -d startup -f json -g /ietf-interfaces:*//* > /tmp/ietf-interfaces.startup.json", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", SR_FILE_FORMAT_LY));
     /*  running, xml */
     exec_shell_command("../src/sysrepocfg -d running -g /ietf-interfaces:*//*", "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("ietf-interfaces"));
     exec_shell_command("../src/sysrepocfg -g /ietf-interfaces:*//* --datastore=running --format=xml ietf-interfaces > /tmp/ietf-interfaces.running.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", SR_FILE_FORMAT_LY));
     /*  running, json */
     exec_shell_command("../src/sysrepocfg -g /ietf-interfaces:*//* --datastore=running --format=json ietf-interfaces > /tmp/ietf-interfaces.running.json", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", SR_FILE_FORMAT_LY));
 
     /* set a string value */
     exec_shell_command("../src/sysrepocfg -s \"/ietf-interfaces:interfaces/interface[name='eth0']/description\" -w 'description eth0' --datastore=running", ".*", true, 0);
@@ -429,9 +431,9 @@ srcfg_test_xpath(void **state)
     rc = sr_session_refresh(srcfg_test_session);
     if (rc != SR_ERR_OK) {
         printf("Error by sr_session_refresh %s\n", sr_strerror(rc));
-    }
+    };
     rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/fakeleaf", &rvalue);
-    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
     sr_free_val(rvalue);
     rvalue = NULL;
 
@@ -508,9 +510,9 @@ srcfg_test_merge(void **state)
     sr_val_t *rvalue = { 0 };
     int rc = 0;
 
-    exec_shell_command("../src/sysrepocfg -d running -g /ietf-interfaces:*//*", "no active subscriptions", true, 1);
+    exec_shell_command("../src/sysrepocfg -d running -f " SR_FILE_FORMAT_EXT " -g /ietf-interfaces:*//*", "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("ietf-interfaces"));
-    exec_shell_command("../src/sysrepocfg -m " TEST_DATA_SEARCH_DIR "ietf-interfaces.merge.xml -d running ietf-interfaces", ".*", true, 0);
+    exec_shell_command("../src/sysrepocfg -m " TEST_DATA_SEARCH_DIR "ietf-interfaces.merge." SR_FILE_FORMAT_EXT " -d running ietf-interfaces", ".*", true, 0);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_session_refresh(srcfg_test_session);
     if (rc != SR_ERR_OK) {
@@ -565,20 +567,20 @@ srcfg_test_import(void **state)
     /* ietf-interfaces */
     /*  startup, xml */
     exec_shell_command("../src/sysrepocfg --import --datastore=startup --format=xml ietf-interfaces < /tmp/ietf-interfaces.startup.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", SR_FILE_FORMAT_LY));
     /*  startup, json */
     exec_shell_command("../src/sysrepocfg --import=/tmp/ietf-interfaces.startup.json --datastore=startup --format=json ietf-interfaces", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", SR_FILE_FORMAT_LY));
     /*  running, xml */
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml ietf-interfaces < /tmp/ietf-interfaces.running.xml",
                        "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("ietf-interfaces"));
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml ietf-interfaces < /tmp/ietf-interfaces.running.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", SR_FILE_FORMAT_LY));
     /*  running, json, permanent */
     exec_shell_command("../src/sysrepocfg --permanent --import=/tmp/ietf-interfaces.running.json --datastore=running --format=json ietf-interfaces", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", LYD_XML));
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", SR_FILE_FORMAT_LY));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", SR_FILE_FORMAT_LY));
     /* check the internal data file with module dependencies (just in case) */
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
@@ -590,10 +592,10 @@ srcfg_test_import(void **state)
     /* test-module */
     /*  startup, xml */
     exec_shell_command("../src/sysrepocfg --import --datastore=startup --format=xml test-module < /tmp/test-module.startup.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "test-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "test-module.startup", SR_FILE_FORMAT_LY));
     /*  startup, json */
     exec_shell_command("../src/sysrepocfg --import=/tmp/test-module.startup.json --datastore=startup --format=json test-module", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.startup", SR_FILE_FORMAT_LY));
     /*  running, xml */
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml test-module < /tmp/test-module.running.xml",
                        "no active subscriptions", true, 1);
@@ -602,11 +604,11 @@ srcfg_test_import(void **state)
                        "Cannot read data from module 'referenced-data' .* no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml test-module < /tmp/test-module.running.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "test-module.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "test-module.running", SR_FILE_FORMAT_LY));
     /*  running, json, permanent */
     exec_shell_command("../src/sysrepocfg --permanent --import=/tmp/test-module.running.json --datastore=running --format=json test-module", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.running", LYD_XML));
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.running", SR_FILE_FORMAT_LY));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.startup", SR_FILE_FORMAT_LY));
     /* check the internal data file with module dependencies (just in case) */
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
@@ -619,20 +621,20 @@ srcfg_test_import(void **state)
     /* example-module */
     /*  startup, xml */
     exec_shell_command("../src/sysrepocfg --import --datastore=startup --format=xml example-module < /tmp/example-module.startup.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "example-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "example-module.startup", SR_FILE_FORMAT_LY));
     /*  startup, json */
     exec_shell_command("../src/sysrepocfg --import=/tmp/example-module.startup.json --datastore=startup --format=json example-module", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.startup", SR_FILE_FORMAT_LY));
     /*  running, xml */
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml example-module < /tmp/example-module.running.xml",
                        "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("example-module"));
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml example-module < /tmp/example-module.running.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "example-module.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "example-module.running", SR_FILE_FORMAT_LY));
     /*  running, json, permanent */
     exec_shell_command("../src/sysrepocfg --permanent --import=/tmp/example-module.running.json --datastore=running --format=json example-module", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.running", LYD_XML));
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.running", SR_FILE_FORMAT_LY));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.startup", SR_FILE_FORMAT_LY));
     /* check the internal data file with module dependencies (just in case) */
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
@@ -644,10 +646,10 @@ srcfg_test_import(void **state)
     /* cross-module */
     /*  startup, xml */
     exec_shell_command("../src/sysrepocfg --import --datastore=startup --format=xml cross-module < /tmp/cross-module.startup.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "cross-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "cross-module.startup", SR_FILE_FORMAT_LY));
     /*  startup, json */
     exec_shell_command("../src/sysrepocfg --import=/tmp/cross-module.startup.json --datastore=startup --format=json cross-module", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.startup", SR_FILE_FORMAT_LY));
     /*  running, xml */
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml cross-module < /tmp/cross-module.running.xml",
                        "no active subscriptions", true, 1);
@@ -656,11 +658,11 @@ srcfg_test_import(void **state)
                        "Cannot read data from module 'referenced-data' .* no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml cross-module < /tmp/cross-module.running.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "cross-module.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "cross-module.running", SR_FILE_FORMAT_LY));
     /*  running, json, permanent */
     exec_shell_command("../src/sysrepocfg --permanent --import=/tmp/cross-module.running.json --datastore=running --format=json cross-module", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.running", LYD_XML));
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.running", SR_FILE_FORMAT_LY));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.startup", SR_FILE_FORMAT_LY));
     /* check the internal data file with module dependencies (just in case) */
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
@@ -673,20 +675,20 @@ srcfg_test_import(void **state)
     /* referenced-data */
     /*  startup, xml */
     exec_shell_command("../src/sysrepocfg --import --datastore=startup --format=xml referenced-data < /tmp/referenced-data.startup.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "referenced-data.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "referenced-data.startup", SR_FILE_FORMAT_LY));
     /*  startup, json */
     exec_shell_command("../src/sysrepocfg --import=/tmp/referenced-data.startup.json --datastore=startup --format=json referenced-data", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.startup", SR_FILE_FORMAT_LY));
     /*  running, xml */
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml referenced-data < /tmp/referenced-data.running.xml",
                        "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml referenced-data < /tmp/referenced-data.running.xml", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "referenced-data.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "referenced-data.running", SR_FILE_FORMAT_LY));
     /*  running, json, permanent */
     exec_shell_command("../src/sysrepocfg --permanent --import=/tmp/referenced-data.running.json --datastore=running --format=json referenced-data", ".*", true, 0);
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.running", LYD_XML));
-    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.startup", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.running", SR_FILE_FORMAT_LY));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.startup", SR_FILE_FORMAT_LY));
     /* check the internal data file with module dependencies (just in case) */
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
@@ -737,7 +739,7 @@ srcfg_test_editing(void **state)
     /* prepare command to execute sysrepocfg */
     strcat(cmd, "cat " FILENAME_USER_INPUT " | PATH=");
     assert_non_null(getcwd(cmd + strlen(cmd), PATH_MAX - strlen(cmd)));
-    strcat(cmd, ":$PATH ../src/sysrepocfg --editor=sysrepocfg_test_editor.sh --datastore=");
+    strcat(cmd, ":$PATH ../src/sysrepocfg --editor=sysrepocfg_test_editor.sh --format=xml --datastore=");
     strcat(cmd, srcfg_test_datastore);
     strcat(cmd, " ");
     args = cmd + strlen(cmd);
@@ -1231,7 +1233,7 @@ main() {
     /* create libyang context */
     srcfg_test_libyang_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
     if (NULL == srcfg_test_libyang_ctx) {
-        fprintf(stderr, "Unable to initialize libyang context: %s", ly_errmsg());
+        fprintf(stderr, "Unable to initialize libyang context");
         goto terminate;
     }
 
@@ -1262,7 +1264,8 @@ main() {
             for (int j = 0; j < sizeof(modules_for_tests) / sizeof(*modules_for_tests); j++) {
                 if (NULL != path && 0 == strcmp(modules_for_tests[j], schemas[i].module_name)) {
                     if (NULL == lys_parse_path(srcfg_test_libyang_ctx, path, LYS_IN_YANG)) {
-                        fprintf(stderr, "Failed to parse schema file '%s': %s (%s)", path, ly_errmsg(), ly_errpath());
+                        fprintf(stderr, "Failed to parse schema file '%s': %s (%s)",
+                                path, ly_errmsg(srcfg_test_libyang_ctx), ly_errpath(srcfg_test_libyang_ctx));
                         ret = SR_ERR_IO;
                         goto terminate;
                     }
