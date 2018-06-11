@@ -2553,10 +2553,13 @@ validaton_of_multiple_models(void **state)
 
 }
 
-void set_item_id_ref(void **state){
+void set_and_get_item_id_ref(void **state){
     int rc = 0;
     rp_ctx_t *ctx = *state;
     rp_session_t *session = NULL;
+    dm_commit_context_t *c_ctx = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
 
     test_rp_session_create(ctx, SR_DS_STARTUP, &session);
 
@@ -2565,8 +2568,20 @@ void set_item_id_ref(void **state){
     sr_val_set_str_data(val, SR_IDENTITYREF_T, "id-def-extended:external-derived-id");
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_STRICT, val, NULL, false);
     assert_int_equal(SR_ERR_OK, rc);
-
     sr_free_val(val);
+
+    rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(e_cnt, 0);
+    assert_ptr_equal(errors, NULL);
+
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/id-ref-base:main/id-ref-aug:augmented/id-ref", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_IDENTITYREF_T, val->type);
+    assert_string_equal("id-def-extended:external-derived-id", val->data.identityref_val);
+    sr_free_val(val);
+
     test_rp_session_cleanup(ctx, session);
 }
 
@@ -2804,7 +2819,7 @@ int main(){
             cmocka_unit_test(candidate_copy_config_lock_test),
             cmocka_unit_test_setup(edit_union_type, createData),
             cmocka_unit_test_setup(validaton_of_multiple_models, createData),
-            cmocka_unit_test(set_item_id_ref),
+            cmocka_unit_test(set_and_get_item_id_ref),
             cmocka_unit_test_setup_teardown(set_items_data_and_feature_import, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
             cmocka_unit_test_setup_teardown(set_items_data_and_import_implemented, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
             cmocka_unit_test_setup_teardown(set_and_get_items_from_top_level_in_submodule, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
