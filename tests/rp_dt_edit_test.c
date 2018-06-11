@@ -2563,6 +2563,9 @@ void set_and_get_item_id_ref(void **state){
 
     test_rp_session_create(ctx, SR_DS_STARTUP, &session);
 
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/id-ref-base:main/id-ref-aug:augmented/id-ref", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+    
     sr_val_t *val = NULL;
     sr_new_val("/id-ref-base:main/id-ref-aug:augmented/id-ref", &val);
     sr_val_set_str_data(val, SR_IDENTITYREF_T, "id-def-extended:external-derived-id");
