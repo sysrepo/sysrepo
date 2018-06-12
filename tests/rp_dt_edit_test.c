@@ -2560,18 +2560,20 @@ void set_and_get_item_id_ref(void **state){
     dm_commit_context_t *c_ctx = NULL;
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
+    sr_val_t *val = NULL;
 
     test_rp_session_create(ctx, SR_DS_STARTUP, &session);
 
     rc = rp_dt_delete_item_wrapper(ctx, session, "/id-ref-base:main/id-ref-aug:augmented/id-ref", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);    
+
+    val = calloc(1, sizeof(*val));
+    assert_non_null(val);
+    val->type = SR_IDENTITYREF_T;
+    val->data.identityref_val = strdup("id-def-extended:external-derived-id");
+    assert_non_null(val->data.identityref_val);
+    rc = rp_dt_set_item_wrapper(ctx, session, "/id-ref-base:main/id-ref-aug:augmented/id-ref", val, NULL, SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_OK, rc);
-    
-    sr_val_t *val = NULL;
-    sr_new_val("/id-ref-base:main/id-ref-aug:augmented/id-ref", &val);
-    sr_val_set_str_data(val, SR_IDENTITYREF_T, "id-def-extended:external-derived-id");
-    rc = rp_dt_set_item_wrapper(ctx, session, val->xpath, val, NULL, SR_EDIT_STRICT);
-    assert_int_equal(SR_ERR_OK, rc);
-    sr_free_val(val);
 
     rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
     assert_int_equal(rc, SR_ERR_OK);
