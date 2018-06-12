@@ -2726,7 +2726,7 @@ void set_and_get_items_from_top_level_in_submodule(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(e_cnt, 0);
     assert_ptr_equal(errors, NULL);
-    
+
     rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/data-submodule-main:foo/bar", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -2754,7 +2754,7 @@ void set_and_get_items_from_feature_of_submodule(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(e_cnt, 0);
     assert_ptr_equal(errors, NULL);
-    
+
     rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/feature-submodule-mod:mod-container/feature-submodule-main:augmented-data-val", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
