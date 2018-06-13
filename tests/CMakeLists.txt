@@ -114,6 +114,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     ADD_UNIT_TEST_WITH_OPTS(plugin_daemon_test 1 0 "")
     ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 1 0 "")
     ADD_UNIT_TEST_WITH_OPTS(sysrepocfg_test 1 0 "")
+    ADD_UNIT_TEST(rp_dt_edit_test_features 1)
 
     ADD_CUSTOM_COMMAND(
         TARGET sysrepocfg_test
