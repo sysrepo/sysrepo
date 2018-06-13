@@ -165,6 +165,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, md_module_t *module)
     dm_schema_info_t *si = NULL;
     uint32_t mod_idx = 0;
     const struct lys_module *mod = NULL;
+    sr_list_t *loaded_deps = NULL;
 
     CHECK_NULL_ARG2(ly_ctx, module);
 
@@ -181,7 +182,12 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, md_module_t *module)
     }
 
     /* load the module schema and all its dependencies */
-    rc = dm_load_module_deps_r(module, si);
+    rc = sr_list_init(&loaded_deps);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
+
+    rc = dm_load_module_deps_r(module, si, loaded_deps);
+    sr_list_cleanup(loaded_deps);
+
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load dependencies for module %s", module->name);
 
     /* also enable all features of all models */

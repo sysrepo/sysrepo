@@ -1003,8 +1003,20 @@ dm_load_schema_file(const char *schema_filepath, dm_schema_info_t *si, const str
     return SR_ERR_OK;
 }
 
+static bool
+dm_load_module_deps_in_list(md_module_t *dep_module, sr_list_t *loaded_deps)
+{
+    for (size_t i = 0; loaded_deps && (i < loaded_deps->count); ++i) {
+        if (0 == strcmp(dep_module->name, ((md_module_t *)loaded_deps->data[i])->name)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 int
-dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si)
+dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si, sr_list_t *loaded_deps)
 {
     int rc = SR_ERR_OK;
     md_dep_t *dep = NULL;
@@ -1013,7 +1025,13 @@ dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si)
     ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *)ll_node->data;
-        if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
+        if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA)
+                && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {
+            rc = sr_list_add(loaded_deps, dep->dest);
+            if (SR_ERR_OK != rc) {
+                return rc;
+            }
+
             if (dep->type == MD_DEP_DATA) {
                 /* mark this module as dependent on data from other modules */
                 si->cross_module_data_dependency = true;
@@ -1041,13 +1059,18 @@ dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si)
                     ll_node3 = dep->dest->deps->first;
                     while (ll_node3) {
                         dep = (md_dep_t *)ll_node3->data;
-                        if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented) {
+                        if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented
+                                && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {
+                            rc = sr_list_add(loaded_deps, dep->dest);
+                            if (SR_ERR_OK != rc) {
+                                return rc;
+                            }
 
                             /* load the module schema and all its dependencies */
                             rc = dm_load_schema_file(dep->dest->filepath, si, NULL);
                             CHECK_RC_LOG_RETURN(rc, "Failed to load schema %s", dep->dest->filepath);
 
-                            rc = dm_load_module_deps_r(dep->dest, si);
+                            rc = dm_load_module_deps_r(dep->dest, si, loaded_deps);
                             if (SR_ERR_OK != rc) {
                                 return rc;
                             }
@@ -1082,6 +1105,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     int rc = SR_ERR_OK;
     dm_schema_info_t *si = NULL;
     md_module_t *module = NULL;
+    sr_list_t *loaded_deps = NULL;
     md_dep_t *dep = NULL;
     sr_llist_node_t *ll_node = NULL;
     const struct lys_module *ly_mod = NULL;
@@ -1115,7 +1139,12 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     si->has_instance_id = module->inst_ids->first != NULL;
 
     /* load the module schema and all its dependencies */
-    rc = dm_load_module_deps_r(module, si);
+    rc = sr_list_init(&loaded_deps);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
+
+    rc = dm_load_module_deps_r(module, si, loaded_deps);
+    sr_list_cleanup(loaded_deps);
+
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load dependencies for module %s", module->name);
 
     /* compute xpath hashes for all schema nodes (referenced from data tree) */
