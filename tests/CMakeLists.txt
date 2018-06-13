@@ -115,6 +115,9 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 1 0 "")
     ADD_UNIT_TEST_WITH_OPTS(sysrepocfg_test 1 0 "")
     ADD_UNIT_TEST(rp_dt_edit_test_features 1)
+    IF (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+        ADD_UNIT_TEST_WITH_OPTS(np_test_store 1 1 "cm_msg_send")
+    ENDIF()
 
     ADD_CUSTOM_COMMAND(
         TARGET sysrepocfg_test
