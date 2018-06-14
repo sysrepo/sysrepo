@@ -6383,6 +6383,7 @@ dm_validate_procedure(rp_ctx_t *rp_ctx, rp_session_t *session, dm_procedure_t ty
     const char *procedure_name = NULL;
     const char *last_delim = NULL;
     int rc = SR_ERR_OK;
+    bool locked = false;
 
     CHECK_NULL_ARG3(rp_ctx, session, xpath);
 
@@ -6451,6 +6452,11 @@ dm_validate_procedure(rp_ctx_t *rp_ctx, rp_session_t *session, dm_procedure_t ty
         }
     }
 
+    /* provide callback to resolve identityrefs */
+    md_ctx_lock(rp_ctx->dm_ctx->md_ctx, false);
+    locked = true;
+    ly_ctx_set_module_data_clb(di->schema->ly_ctx, dm_module_clb, rp_ctx->dm_ctx);
+
     /* convert sysrepo values/trees to libyang data tree */
     rc = dm_sr_val_node_to_ly_datatree(session->dm_session, di, xpath, args_p, arg_cnt, api_variant, input, &data_tree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by converting sysrepo values/trees to libyang data tree.");
@@ -6493,6 +6499,9 @@ dm_validate_procedure(rp_ctx_t *rp_ctx, rp_session_t *session, dm_procedure_t ty
     }
 
 cleanup:
+    if (locked) {
+        md_ctx_unlock(rp_ctx->dm_ctx->md_ctx);
+    }
     free(module_name);
     if (NULL != data_tree) {
         lyd_free_withsiblings(data_tree);
