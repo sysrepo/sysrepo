@@ -711,6 +711,26 @@ dm_event_notif_test(void **state)
     sr_free_values(with_def, with_def_cnt);
     sr_free_trees(with_def_tree, with_def_tree_cnt);
 
+    /* load id-ref-aug module */
+    rc = dm_get_module_and_lock(ctx->dm_ctx, "id-ref-hello", &schema_info);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* valid event notification */
+    values_cnt = 1;
+    values = calloc(values_cnt, sizeof(*values));
+    values[0].xpath = strdup("/id-ref-hello:hello/id-ref");
+    values[0].type = SR_IDENTITYREF_T;
+    values[0].data.identityref_val = strdup("id-def-extended:external-derived-id");
+
+    rc = dm_validate_event_notif(ctx, session, "/id-ref-hello:hello", values, values_cnt,
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt, NULL, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(with_def[0].data.identityref_val, "id-def-extended:external-derived-id");
+
+    sr_free_values(values, values_cnt);
+    sr_free_values(with_def, with_def_cnt);
+    sr_free_trees(with_def_tree, with_def_tree_cnt);
+
     test_rp_session_cleanup(ctx, session);
     test_rp_ctx_cleanup(ctx);
 }
