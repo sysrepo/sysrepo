@@ -270,7 +270,7 @@ dm_free_lys_private_data(const struct lys_node *node, void *private)
     }
 }
 
-static void
+void
 dm_free_schema_info(void *schema_info)
 {
     CHECK_NULL_ARG_VOID(schema_info);
@@ -459,7 +459,7 @@ dm_enable_features_with_imports(dm_ctx_t *dm_ctx, md_module_t *module, const str
 }
 
 static int
-dm_mark_deps_as_implemented(dm_ctx_t *dm_ctx, md_module_t *module, struct ly_ctx *target_ctx)
+dm_mark_deps_as_implemented(md_module_t *module, struct ly_ctx *target_ctx)
 {
     const struct lys_module *dest_module = NULL;
     int ret = 0;
@@ -537,7 +537,7 @@ dm_module_clb(struct ly_ctx *ctx, const char *name, const char *ns, int options,
         return NULL;
     }
 
-    rc = dm_mark_deps_as_implemented(dm_ctx, module, ctx);
+    rc = dm_mark_deps_as_implemented(module, ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Failed mark imports of module %s as implemented", module->name);
         return NULL;
@@ -649,7 +649,7 @@ dm_release_tmp_ly_ctx(dm_ctx_t *dm_ctx, dm_tmp_ly_ctx_t *tmp_ctx)
     return rc;
 }
 
-static int
+int
 dm_schema_info_init(const char *schema_search_dir, dm_schema_info_t **schema_info)
 {
     CHECK_NULL_ARG2(schema_search_dir, schema_info);
@@ -866,6 +866,18 @@ dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schem
     return rc;
 }
 
+static bool
+dm_load_module_deps_in_list(md_module_t *dep_module, sr_list_t *loaded_deps)
+{
+    for (size_t i = 0; loaded_deps && (i < loaded_deps->count); ++i) {
+        if (0 == strcmp(dep_module->name, ((md_module_t *)loaded_deps->data[i])->name)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static int
 dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, dm_schema_info_t *si,
                                 bool features_only)
@@ -879,6 +891,12 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const c
     if (NULL == dm_ctx->pm_ctx) {
         SR_LOG_WRN("Persist manager not initialized, applying of persist data will be skipped for module %s", module_name);
         return SR_ERR_OK;
+    }
+
+    const struct lys_module *module = ly_ctx_get_module(si->ly_ctx, module_name, NULL, 0);
+    if (NULL == module) {
+       SR_LOG_WRN("Module %s not found in context; skipping persist data operations", module_name);
+       return SR_ERR_OK;
     }
 
     /* load module's persistent data */
@@ -926,21 +944,46 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const c
 }
 
 static int
-dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *si, md_module_t *module)
+dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *si, md_module_t *module, sr_list_t *loaded_deps)
 {
     int rc = SR_ERR_OK;
     md_dep_t *dep = NULL;
-    sr_llist_node_t *ll_node = NULL;
+    sr_llist_node_t *ll_node = NULL, *ll_node2 = NULL, *ll_node3 = NULL;
 
     ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *) ll_node->data;
         if (dm_module_has_persist(dep->dest)) {
             if (dep->type == MD_DEP_IMPORT) {
-                rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest);
+                rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest, loaded_deps);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
             }
         }
+
+        ll_node2 = dep->dest->deps->first;
+        while (ll_node2) {
+            dep = (md_dep_t *)ll_node2->data;
+            if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented) {
+                ll_node3 = dep->dest->deps->first;
+                while (ll_node3) {
+                    dep = (md_dep_t *)ll_node3->data;
+                    if (dm_module_has_persist(dep->dest)) {
+                        if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) 
+                                && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {   
+                            /* add the dep to list to track any already accounted deps */
+                            rc = sr_list_add(loaded_deps, dep->dest);
+                            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to add module %s to list", dep->dest->name);
+
+                            rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest, loaded_deps);
+                            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
+                        }
+                    }
+                    ll_node3 = ll_node3->next;
+                }
+            }
+            ll_node2 = ll_node2->next;
+        }
+
         ll_node = ll_node->next;
     }
     rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si, true);
@@ -962,48 +1005,101 @@ cleanup:
  * @param [out] schema_info
  * @return Error code (SR_ERR_OK on success)
  */
-static int
-dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, bool append, dm_schema_info_t **schema_info)
+int
+dm_load_schema_file(const char *schema_filepath, dm_schema_info_t *si, const struct lys_module **mod)
 {
-    CHECK_NULL_ARG3(dm_ctx, schema_filepath, schema_info);
+    CHECK_NULL_ARG2(schema_filepath, si);
     const struct lys_module *module = NULL;
-
-    dm_schema_info_t *si = NULL;
-    int rc = SR_ERR_OK;
-
-    if (append) {
-        /* schemas will be loaded into provided context */
-        CHECK_NULL_ARG(*schema_info);
-        si = *schema_info;
-    } else {
-        /* allocate new structure where schemas will be loaded*/
-        rc = dm_schema_info_init(dm_ctx->schema_search_dir, &si);
-        CHECK_RC_MSG_RETURN(rc, "Schema info init failed");
-    }
 
     /* load schema tree */
     LYS_INFORMAT fmt = sr_str_ends_with(schema_filepath, SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG;
     module = lys_parse_path(si->ly_ctx, schema_filepath, fmt);
     if (module == NULL) {
         SR_LOG_WRN("Unable to parse a schema file: %s", schema_filepath);
-        if (!append) {
-            dm_free_schema_info(si);
-        }
         return SR_ERR_INTERNAL;
     }
 
-    if (!append) {
-        si->module_name = strdup(module->name);
-        CHECK_NULL_NOMEM_GOTO(si->module_name, rc, cleanup);
-        si->module = module;
+    if (mod) {
+        *mod = module;
     }
 
-    *schema_info = si;
     return SR_ERR_OK;
+}
 
-cleanup:
-    dm_free_schema_info(si);
-    return rc;
+
+int
+dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si, sr_list_t *loaded_deps)
+{
+    int rc = SR_ERR_OK;
+    md_dep_t *dep = NULL;
+    sr_llist_node_t *ll_node = NULL, *ll_node2 = NULL, *ll_node3 = NULL;
+
+    ll_node = module->deps->first;
+    while (ll_node) {
+        dep = (md_dep_t *)ll_node->data;
+        if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA)
+                && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {
+            rc = sr_list_add(loaded_deps, dep->dest);
+            if (SR_ERR_OK != rc) {
+                return rc;
+            }
+
+            if (dep->type == MD_DEP_DATA) {
+                /* mark this module as dependent on data from other modules */
+                si->cross_module_data_dependency = true;
+            }
+            /**
+             * Note:
+             *  - imports are automatically loaded by libyang
+             *  - module write lock is not required because schema info is not added into schema tree yet
+             */
+            rc = dm_load_schema_file(dep->dest->filepath, si, NULL);
+            if (SR_ERR_OK != rc) {
+                return rc;
+            }
+
+            rc = dm_mark_deps_as_implemented(dep->dest, si->ly_ctx);
+            if (SR_ERR_OK != rc) {
+                return rc;
+            }
+
+            /* we must check EXTENSION deps of this dep IMPORT deps because of possible derived implemented identities */
+            ll_node2 = dep->dest->deps->first;
+            while (ll_node2) {
+                dep = (md_dep_t *)ll_node2->data;
+                if (dep->type == MD_DEP_IMPORT) {
+                    ll_node3 = dep->dest->deps->first;
+                    while (ll_node3) {
+                        dep = (md_dep_t *)ll_node3->data;
+                        if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented
+                                && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {
+                            rc = sr_list_add(loaded_deps, dep->dest);
+                            if (SR_ERR_OK != rc) {
+                                return rc;
+                            }
+
+                            /* load the module schema and all its dependencies */
+                            rc = dm_load_schema_file(dep->dest->filepath, si, NULL);
+                            CHECK_RC_LOG_RETURN(rc, "Failed to load schema %s", dep->dest->filepath);
+
+                            rc = dm_load_module_deps_r(dep->dest, si, loaded_deps);
+                            if (SR_ERR_OK != rc) {
+                                return rc;
+                            }
+                        }
+                        ll_node3 = ll_node3->next;
+                    }
+                }
+                ll_node2 = ll_node2->next;
+            }
+        }
+        ll_node = ll_node->next;
+    }
+
+    rc = dm_mark_deps_as_implemented(module, si->ly_ctx);
+    CHECK_RC_LOG_RETURN(rc, "Failed to mark imports as implemented for module %s", module->name);
+
+    return SR_ERR_OK;
 }
 
 /**
@@ -1021,8 +1117,10 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     int rc = SR_ERR_OK;
     dm_schema_info_t *si = NULL;
     md_module_t *module = NULL;
+    sr_list_t *loaded_deps = NULL;
     md_dep_t *dep = NULL;
     sr_llist_node_t *ll_node = NULL;
+    const struct lys_module *ly_mod = NULL;
 
     /* search for the module to use */
     md_ctx_lock(dm_ctx->md_ctx, false);
@@ -1039,44 +1137,27 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         goto cleanup;
     }
 
-    /* load the module schema and all its dependencies */
-    rc = dm_load_schema_file(dm_ctx, module->filepath, false, &si);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load schema %s", module->filepath);
+    /* allocate new structure where schemas will be loaded*/
+    rc = dm_schema_info_init(dm_ctx->schema_search_dir, &si);
+    CHECK_RC_MSG_RETURN(rc, "Schema info init failed");
 
+    /* load the module schema and all its dependencies */
+    rc = dm_load_schema_file(module->filepath, si, &ly_mod);
+    CHECK_RC_LOG_RETURN(rc, "Failed to load schema %s", dep->dest->filepath);
+
+    si->module_name = strdup(ly_mod->name);
+    CHECK_NULL_NOMEM_GOTO(si->module_name, rc, cleanup);
+    si->module = ly_mod;
     si->has_instance_id = module->inst_ids->first != NULL;
 
-    ll_node = module->deps->first;
-    while (ll_node) {
-        dep = (md_dep_t *)ll_node->data;
-        if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
-            /**
-             * Note:
-             *  - imports are automatically loaded by libyang
-             *  - module write lock is not required because schema info is not added into schema tree yet
-             */
-            rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, true, &si);
-            if (SR_ERR_OK != rc) {
-                *schema_info = NULL;
-                md_ctx_unlock(dm_ctx->md_ctx);
-                return rc;
-            }
+    /* load the module schema and all its dependencies */
+    rc = sr_list_init(&loaded_deps);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
 
-            rc = dm_mark_deps_as_implemented(dm_ctx, dep->dest, si->ly_ctx);
-            if (SR_ERR_OK != rc) {
-                *schema_info = NULL;
-                md_ctx_unlock(dm_ctx->md_ctx);
-                return rc;
-            }
-        }
-        if (dep->type == MD_DEP_DATA) {
-            /* mark this module as dependent on data from other modules */
-            si->cross_module_data_dependency = true;
-        }
-        ll_node = ll_node->next;
-    }
+    rc = dm_load_module_deps_r(module, si, loaded_deps);
+    sr_list_cleanup(loaded_deps);
 
-    rc = dm_mark_deps_as_implemented(dm_ctx, module, si->ly_ctx);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to mark imports as implemented for module %s", module->name);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load dependencies for module %s", module->name);
 
     /* compute xpath hashes for all schema nodes (referenced from data tree) */
     rc = dm_init_missing_node_priv_data(si);
@@ -1084,8 +1165,13 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
 
     /* apply persist data enable features, running datastore */
     if (dm_module_has_persist(module)) {
-        rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, module); /* TODO: session should be known here */
+        rc = sr_list_init(&loaded_deps);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
+
+        rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, module, loaded_deps); /* TODO: session should be known here */
+        sr_list_cleanup(loaded_deps);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for imports of module %s", module_name);
+        
         rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module_name, si, false); /* TODO: session should be known here */
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", module_name);
     }
@@ -1095,8 +1181,15 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         dep = (md_dep_t *) ll_node->data;
         if (dm_module_has_persist(dep->dest)) {
             if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
-                rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, dep->dest); /* TODO: session should be known here */
+
+                rc = sr_list_init(&loaded_deps);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
+
+                rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, dep->dest, loaded_deps); /* TODO: session should be known here */
+                sr_list_cleanup(loaded_deps);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for imports of module %s", dep->dest->name);
+                
+                
                 rc = dm_apply_persist_data_for_model(dm_ctx, NULL, dep->dest->name, si, false); /* TODO: session should be known here */
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", dep->dest->name);
             }
@@ -5054,7 +5147,7 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
         si->ly_ctx = ly_ctx_new(dm_ctx->schema_search_dir, 0);
         CHECK_NULL_NOMEM_GOTO(si->ly_ctx, rc, unlock);
 
-        rc = dm_load_schema_file(dm_ctx, module->filepath, true, &si);
+        rc = dm_load_schema_file(module->filepath, si, NULL);
         CHECK_RC_LOG_GOTO(rc, unlock, "Failed to load schema %s", module->filepath);
 
         si->module = ly_ctx_get_module(si->ly_ctx, module_name, NULL, 1);
@@ -5103,7 +5196,7 @@ unlock:
             lookup.module_name = (char *)dep->dest->name;
             si_ext = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
             if (NULL != si_ext && NULL != si_ext->ly_ctx) {
-                rc = dm_load_schema_file(dm_ctx, module->filepath, true, &si_ext);
+                rc = dm_load_schema_file(module->filepath, si_ext, NULL);
                 CHECK_RC_LOG_GOTO(rc, unlock, "Failed to load schema %s", module->filepath);
 
                 /* compute xpath hashes for all newly added schema nodes (through augment) */

@@ -36,6 +36,7 @@
 #include "sr_common.h"
 #include "client_library.h"
 #include "module_dependencies.h"
+#include "data_manager.h"
 #include "sysrepo/xpath.h"
 
 #define EXPECTED_MAX_INPUT_FILE_SIZE  4096
@@ -154,32 +155,6 @@ srcfg_report_error(int rc)
     }
 }
 
-/*
- * @brief Load schema file at the given path into the libyang context and enable all features.
- */
-static int
-srcfg_load_module_schema(struct ly_ctx *ly_ctx, const char *filepath)
-{
-    const struct lys_module *module_schema = NULL;
-
-    CHECK_NULL_ARG2(ly_ctx, filepath);
-
-    SR_LOG_DBG("Loading module schema: '%s'.", filepath);
-    module_schema = lys_parse_path(ly_ctx, filepath,
-                                   sr_str_ends_with(filepath, SR_SCHEMA_YANG_FILE_EXT) ? LYS_IN_YANG : LYS_IN_YIN);
-    if (NULL == module_schema) {
-        fprintf(stderr, "Error: Failed to load the schema file at: %s.\n", filepath);
-        return SR_ERR_INTERNAL;
-    }
-
-    /* also enable all features */
-    for (uint8_t i = 0; i < module_schema->features_size; i++) {
-        lys_features_enable(module_schema, module_schema->features[i].name);
-    }
-
-    return SR_ERR_OK;
-}
-
 /**
  * @brief Initializes libyang ctx with all schemas installed for specified module in sysrepo.
  */
@@ -187,40 +162,48 @@ static int
 srcfg_ly_init(struct ly_ctx **ly_ctx, md_module_t *module)
 {
     int rc = SR_ERR_OK;
-    sr_llist_node_t *dep_node = NULL;
-    md_dep_t *dep = NULL;
+    dm_schema_info_t *si = NULL;
+    uint32_t mod_idx = 0;
+    const struct lys_module *mod = NULL;
+    sr_list_t *loaded_deps = NULL;
 
     CHECK_NULL_ARG2(ly_ctx, module);
 
-    /* init libyang context */
-    *ly_ctx = ly_ctx_new(srcfg_schema_search_dir, 0);
-    if (NULL == *ly_ctx) {
-        SR_LOG_ERR_MSG("Unable to initialize libyang context");
-        return SR_ERR_INTERNAL;
-    }
+    /* allocate new structure where schemas will be loaded */
+    rc = dm_schema_info_init(srcfg_schema_search_dir, &si);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Schema info init failed");
+
     ly_set_log_clb(srcfg_ly_log_cb, 1);
 
-    /* load the module schema and all its dependencies */
-    rc = srcfg_load_module_schema(*ly_ctx, module->filepath);
-    if (SR_ERR_OK != rc) {
+    SR_LOG_DBG("Loading module schema: '%s'.", module->filepath);
+    rc = dm_load_schema_file(module->filepath, si, NULL);
+    if (rc != SR_ERR_OK) {
         goto cleanup;
     }
-    dep_node = module->deps->first;
-    while (dep_node) {
-        dep = (md_dep_t *)dep_node->data;
-        if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
-            /* imports and includes are automatically loaded by libyang */
-            rc = srcfg_load_module_schema(*ly_ctx, dep->dest->filepath);
-            if (SR_ERR_OK != rc) {
-                goto cleanup;
-            }
+
+    /* load the module schema and all its dependencies */
+    rc = sr_list_init(&loaded_deps);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
+
+    rc = dm_load_module_deps_r(module, si, loaded_deps);
+    sr_list_cleanup(loaded_deps);
+
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load dependencies for module %s", module->name);
+
+    /* also enable all features of all models */
+    mod_idx = ly_ctx_internal_modules_count(si->ly_ctx);
+    while ((mod = ly_ctx_get_module_iter(si->ly_ctx, &mod_idx))) {
+        for (uint8_t i = 0; i < mod->features_size; i++) {
+            lys_features_enable(mod, mod->features[i].name);
         }
-        dep_node = dep_node->next;
     }
 
+    *ly_ctx = si->ly_ctx;
+    si->ly_ctx = NULL;
     rc = SR_ERR_OK;
 
 cleanup:
+    dm_free_schema_info(si);
     return rc;
 }
 
