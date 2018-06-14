@@ -866,6 +866,18 @@ dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schem
     return rc;
 }
 
+static bool
+dm_load_module_deps_in_list(md_module_t *dep_module, sr_list_t *loaded_deps)
+{
+    for (size_t i = 0; loaded_deps && (i < loaded_deps->count); ++i) {
+        if (0 == strcmp(dep_module->name, ((md_module_t *)loaded_deps->data[i])->name)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static int
 dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, dm_schema_info_t *si,
                                 bool features_only)
@@ -879,6 +891,12 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const c
     if (NULL == dm_ctx->pm_ctx) {
         SR_LOG_WRN("Persist manager not initialized, applying of persist data will be skipped for module %s", module_name);
         return SR_ERR_OK;
+    }
+
+    const struct lys_module *module = ly_ctx_get_module(si->ly_ctx, module_name, NULL, 0);
+    if (NULL == module) {
+       SR_LOG_WRN("Module %s not found in context; skipping persist data operations", module_name);
+       return SR_ERR_OK;
     }
 
     /* load module's persistent data */
@@ -926,7 +944,7 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const c
 }
 
 static int
-dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *si, md_module_t *module)
+dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *si, md_module_t *module, sr_list_t *loaded_deps)
 {
     int rc = SR_ERR_OK;
     md_dep_t *dep = NULL;
@@ -937,7 +955,7 @@ dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session,
         dep = (md_dep_t *) ll_node->data;
         if (dm_module_has_persist(dep->dest)) {
             if (dep->type == MD_DEP_IMPORT) {
-                rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest);
+                rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest, loaded_deps);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
             }
         }
@@ -950,8 +968,13 @@ dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session,
                 while (ll_node3) {
                     dep = (md_dep_t *)ll_node3->data;
                     if (dm_module_has_persist(dep->dest)) {
-                        if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
-                            rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest);
+                        if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) 
+                                && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {   
+                            /* add the dep to list to track any already accounted deps */
+                            rc = sr_list_add(loaded_deps, dep->dest);
+                            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to add module %s to list", dep->dest->name);
+
+                            rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest, loaded_deps);
                             CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
                         }
                     }
@@ -1003,17 +1026,6 @@ dm_load_schema_file(const char *schema_filepath, dm_schema_info_t *si, const str
     return SR_ERR_OK;
 }
 
-static bool
-dm_load_module_deps_in_list(md_module_t *dep_module, sr_list_t *loaded_deps)
-{
-    for (size_t i = 0; loaded_deps && (i < loaded_deps->count); ++i) {
-        if (0 == strcmp(dep_module->name, ((md_module_t *)loaded_deps->data[i])->name)) {
-            return true;
-        }
-    }
-
-    return false;
-}
 
 int
 dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si, sr_list_t *loaded_deps)
@@ -1153,8 +1165,13 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
 
     /* apply persist data enable features, running datastore */
     if (dm_module_has_persist(module)) {
-        rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, module); /* TODO: session should be known here */
+        rc = sr_list_init(&loaded_deps);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
+
+        rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, module, loaded_deps); /* TODO: session should be known here */
+        sr_list_cleanup(loaded_deps);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for imports of module %s", module_name);
+        
         rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module_name, si, false); /* TODO: session should be known here */
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", module_name);
     }
@@ -1164,8 +1181,15 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         dep = (md_dep_t *) ll_node->data;
         if (dm_module_has_persist(dep->dest)) {
             if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
-                rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, dep->dest); /* TODO: session should be known here */
+
+                rc = sr_list_init(&loaded_deps);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
+
+                rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, dep->dest, loaded_deps); /* TODO: session should be known here */
+                sr_list_cleanup(loaded_deps);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for imports of module %s", dep->dest->name);
+                
+                
                 rc = dm_apply_persist_data_for_model(dm_ctx, NULL, dep->dest->name, si, false); /* TODO: session should be known here */
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", dep->dest->name);
             }
