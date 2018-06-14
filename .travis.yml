@@ -28,7 +28,6 @@ matrix:
             env:
                 - MATRIX_EVAL="CC=gcc-7 && CXX=g++-7"
                 - USE_SR_MEM_MGMT=OFF
-                - SR_REPOSITORY_LOCATION=/tmp/sysrepo-repository
         -   os: linux
             dist: trusty
             sudo: required
