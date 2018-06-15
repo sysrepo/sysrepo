@@ -98,7 +98,7 @@ void skip_if_daemon_running();
 #define XP_TEST_MODULE_EMPTY_VALUE ""
 
 #define XP_TEST_MODULE_IDREF "/test-module:main/id_ref"
-#define XP_TEST_MODULE_IDREF_VALUE "id_1"
+#define XP_TEST_MODULE_IDREF_VALUE "test-module:id_1"
 
 #define XP_TEST_MODULE_INT8 "/test-module:main/i8"
 #define XP_TEST_MODULE_INT8_VALUE "8"
