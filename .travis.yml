@@ -32,6 +32,12 @@ matrix:
             dist: trusty
             sudo: required
             compiler: clang
+        -   os: linux
+            dist: trusty
+            sudo: required
+            compiler: clang
+            env:
+                - SR_REPOSITORY_LOCATION=/tmp/sysrepo-repository
         -   os: osx
             compiler: gcc
 
@@ -52,7 +58,7 @@ before_script:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo sysctl -w kernel.core_pattern=$(pwd)/build/core.%e.%p; fi
 
 script:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DLOG_THREAD_ID=ON -DLONG_REQUEST_TIMEOUT=30 -DUSE_SR_MEM_MGMT=${USE_SR_MEM_MGMT:-ON} -DENABLE_NACM=ON .. && make -j2; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DLOG_THREAD_ID=ON -DLONG_REQUEST_TIMEOUT=30 -DUSE_SR_MEM_MGMT=${USE_SR_MEM_MGMT:-ON} -DENABLE_NACM=ON ${SR_REPOSITORY_LOCATION:+-DREPOSITORY_LOC=${SR_REPOSITORY_LOCATION}} .. && make -j2; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then mkdir build ; cd build ; cmake -DGEN_LANGUAGE_BINDINGS=0 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DLOG_THREAD_ID=ON -DLONG_REQUEST_TIMEOUT=30 -DENABLE_NACM=ON .. && make -j2; fi
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then ( sudo sh ../deploy/travis/watch-bt.sh & ); fi
   - ctest --output-on-failure
