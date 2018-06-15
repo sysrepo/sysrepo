@@ -3,4 +3,10 @@ module id-def-base {
   prefix idb;
 
   identity base-id;
+
+  typedef id-ref-type {
+    type identityref {
+      base base-id;
+    }
+  }
 }
