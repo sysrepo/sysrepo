@@ -530,6 +530,10 @@ dm_module_clb(struct ly_ctx *ctx, const char *name, const char *ns, int options,
     LYS_INFORMAT fmt = sr_str_ends_with(module->filepath, SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG;
 
     ly_module = lys_parse_path(ctx, module->filepath, fmt);
+    if ( NULL == ly_module ) {
+        SR_LOG_ERR("Failed to parse path %s", module->filepath);
+        return NULL;
+    }
 
     rc = dm_enable_features_with_imports(dm_ctx, module, ly_module, ctx);
     if (SR_ERR_OK != rc) {
