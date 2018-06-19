@@ -376,12 +376,12 @@ srcfg_test_xpath(void **state)
     exec_shell_command("../src/sysrepocfg -d startup -f json -g /ietf-interfaces:*//* > /tmp/ietf-interfaces.startup.json", ".*", true, 0);
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", SR_FILE_FORMAT_LY));
     /*  running, xml */
-    exec_shell_command("../src/sysrepocfg -d running -g /ietf-interfaces:*//*", "no active subscriptions", true, 1);
+    exec_shell_command("../src/sysrepocfg -d running -f xml -g /ietf-interfaces:*//*", "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("ietf-interfaces"));
-    exec_shell_command("../src/sysrepocfg -g /ietf-interfaces:*//* --datastore=running --format=xml ietf-interfaces > /tmp/ietf-interfaces.running.xml", ".*", true, 0);
+    exec_shell_command("../src/sysrepocfg -d running -f xml -g /ietf-interfaces:*//* ietf-interfaces > /tmp/ietf-interfaces.running.xml", ".*", true, 0);
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", SR_FILE_FORMAT_LY));
     /*  running, json */
-    exec_shell_command("../src/sysrepocfg -g /ietf-interfaces:*//* --datastore=running --format=json ietf-interfaces > /tmp/ietf-interfaces.running.json", ".*", true, 0);
+    exec_shell_command("../src/sysrepocfg -d running -f json -g /ietf-interfaces:*//* ietf-interfaces > /tmp/ietf-interfaces.running.json", ".*", true, 0);
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", SR_FILE_FORMAT_LY));
 
     /* set a string value */

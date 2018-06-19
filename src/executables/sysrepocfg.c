@@ -1623,7 +1623,7 @@ srcfg_print_help()
     printf("  -d, --datastore <datastore>  Datastore to be operated on\n");
     printf("                               (either \"running\" or \"startup\", \"running\" is default).\n");
     printf("  -f, --format <format>        Data format to be used for configuration editing/importing/exporting\n");
-    printf("                               (\"xml\" or \"json\", \"" SR_FILE_FORMAT_EXT "\" is default).\n");
+    printf("                               (\"xml\" or \"json\", if not specified, will be set based on file extension).\n");
     printf("  -e, --editor <editor>        Text editor to be used for editing datastore data\n");
     printf("                               (default editor is defined by $VISUAL or $EDITOR env. variables).\n");
     printf("  -i, --import [<path>]        Read and replace entire configuration from a supplied file\n");
@@ -1671,10 +1671,10 @@ main(int argc, char* argv[])
     int c = 0;
     srcfg_operation_t operation = SRCFG_OP_EDIT;
     char *module_name = NULL, *datastore_name = "running";
-    char *format_name = SR_FILE_FORMAT_EXT, *editor = NULL;
+    char *format_name = NULL, *editor = NULL;
     char *filepath = NULL;
     srcfg_datastore_t datastore = SRCFG_STORE_RUNNING;
-    LYD_FORMAT format = SR_FILE_FORMAT_LY;
+    LYD_FORMAT format = 0;
     bool enabled = false, keep = false, permanent = false, strict = true;
     int log_level = -1;
     char local_schema_search_dir[PATH_MAX] = { 0, }, local_internal_schema_search_dir[PATH_MAX] = { 0, };
@@ -1870,16 +1870,39 @@ main(int argc, char* argv[])
             goto terminate;
         }
     }
+
     /*  -> format */
-    if (strcasecmp("xml", format_name) == 0) {
-        format = LYD_XML;
-    } else if (strcasecmp("json", format_name) == 0) {
-        format = LYD_JSON;
-    } else {
-        fprintf(stderr, "%s: Unsupported data format (xml and json are supported).\n", argv[0]);
-        rc = SR_ERR_INVAL_ARG;
-        goto terminate;
+    switch (operation) {
+    case SRCFG_OP_EDIT:
+    case SRCFG_OP_IMPORT:
+    case SRCFG_OP_EXPORT:
+    case SRCFG_OP_EXPORT_XPATH:
+    case SRCFG_OP_MERGE:
+        if (!format_name) {
+            if (!filepath) {
+                fprintf(stderr, "%s: Please specify data format (xml and json are supported).\n", argv[0]);
+                rc = SR_ERR_INVAL_ARG;
+                goto terminate;
+            }
+            if ((strlen(filepath) > 4) && !strcmp(filepath + strlen(filepath) - 4, ".xml")) {
+                format = LYD_XML;
+            } else if ((strlen(filepath) > 5) && !strcmp(filepath + strlen(filepath) - 5, ".json")) {
+                format = LYD_JSON;
+            }
+        } else if (strcasecmp("xml", format_name) == 0) {
+            format = LYD_XML;
+        } else if (strcasecmp("json", format_name) == 0) {
+            format = LYD_JSON;
+        } else {
+            fprintf(stderr, "%s: Unsupported data format (xml and json are supported).\n", argv[0]);
+            rc = SR_ERR_INVAL_ARG;
+            goto terminate;
+        }
+        break;
+    default:
+        break;
     }
+
     /*  -> datastore */
     if (strcasecmp("startup", datastore_name) == 0) {
         datastore = SRCFG_STORE_STARTUP;
@@ -1890,6 +1913,7 @@ main(int argc, char* argv[])
         rc = SR_ERR_INVAL_ARG;
         goto terminate;
     }
+
     /*  -> find default editor if none specified */
     if (NULL == editor && SRCFG_OP_EDIT == operation) {
         editor = getenv("VISUAL");
@@ -1972,30 +1996,30 @@ main(int argc, char* argv[])
 
     /* call selected operation */
     switch (operation) {
-        case SRCFG_OP_EDIT:
-            rc = srcfg_edit_operation(module, datastore, format, editor, keep, permanent, false, strict);
-            break;
-        case SRCFG_OP_IMPORT:
-            rc = srcfg_import_operation(module, datastore, filepath, format, permanent, false, strict);
-            break;
-        case SRCFG_OP_EXPORT:
-            rc = srcfg_export_operation(module, filepath, format);
-            break;
-        case SRCFG_OP_EXPORT_XPATH:
-            rc = srcfg_export_xpath_operation(module, filepath, xpath, format);
-            break;
-        case SRCFG_OP_IMPORT_XPATH:
-            rc = srcfg_import_xpath_operation(module, datastore, xpath, xpathvalue, permanent);
-            break;
-        case SRCFG_OP_DELETE_XPATH:
-            rc = srcfg_delete_xpath_operation((const char **) xpathdel, xpathdel_count);
-            for (int j = 0; j < xpathdel_count; j++)
-                free(xpathdel[j]);
-            free(xpathdel);
-            break;
-        case SRCFG_OP_MERGE:
-            rc = srcfg_import_operation(module, datastore, filepath, format, permanent, true, strict);
-            break;
+    case SRCFG_OP_EDIT:
+        rc = srcfg_edit_operation(module, datastore, format, editor, keep, permanent, false, strict);
+        break;
+    case SRCFG_OP_IMPORT:
+        rc = srcfg_import_operation(module, datastore, filepath, format, permanent, false, strict);
+        break;
+    case SRCFG_OP_EXPORT:
+        rc = srcfg_export_operation(module, filepath, format);
+        break;
+    case SRCFG_OP_EXPORT_XPATH:
+        rc = srcfg_export_xpath_operation(module, filepath, xpath, format);
+        break;
+    case SRCFG_OP_IMPORT_XPATH:
+        rc = srcfg_import_xpath_operation(module, datastore, xpath, xpathvalue, permanent);
+        break;
+    case SRCFG_OP_DELETE_XPATH:
+        rc = srcfg_delete_xpath_operation((const char **) xpathdel, xpathdel_count);
+        for (int j = 0; j < xpathdel_count; j++)
+            free(xpathdel[j]);
+        free(xpathdel);
+        break;
+    case SRCFG_OP_MERGE:
+        rc = srcfg_import_operation(module, datastore, filepath, format, permanent, true, strict);
+        break;
     }
 
 terminate:
