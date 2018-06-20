@@ -2604,7 +2604,7 @@ void set_item_leafref_augment(void ** state) {
     rc = rp_dt_delete_item_wrapper(ctx, session, "/augm_leafref_m1:augleafrefcontainer/augm_leafref_m1:name", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);    
 
-    rc = rp_dt_delete_item_wrapper(ctx, session, "/small-module:item/augm_leafref_m1:augleaf", SR_EDIT_DEFAULT);
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/augm_leafref_m2:item/augm_leafref_m1:augleaf", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     val = calloc(1, sizeof(*val));
@@ -2625,7 +2625,7 @@ void set_item_leafref_augment(void ** state) {
     val->type = SR_STRING_T;
     val->data.string_val = strdup("leafrefval");
     assert_non_null(val->data.string_val);
-    rc = rp_dt_set_item_wrapper(ctx, session, "/small-module:item/augm_leafref_m1:augleaf", val, NULL, SR_EDIT_STRICT);
+    rc = rp_dt_set_item_wrapper(ctx, session, "/augm_leafref_m2:item/augm_leafref_m1:augleaf", val, NULL, SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);

@@ -2,8 +2,8 @@ module augm_leafref_m1 {
     namespace "test:augmleafref";
     prefix alr;
 
-    import small-module {
-        prefix sm;
+    import augm_leafref_m2 {
+        prefix alrc;
     }
 
     container augleafrefcontainer {
@@ -18,7 +18,7 @@ module augm_leafref_m1 {
         }
     }
 
-    augment "/sm:item" {
+    augment "/alrc:item" {
         leaf augleaf {
             type alr-ref;
         }
