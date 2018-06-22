@@ -2493,11 +2493,7 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
     }
 
     /* loop through the node children */
-    LY_TREE_FOR(sch_node->child, iter) {
-        if (lys_is_disabled(iter, 0)) {
-            continue;
-        }
-
+    while ((iter = (struct lys_node *)lys_getnext(iter, sch_node, NULL, 0))) {
         subs_index = session->state_data_ctx.subscription_nodes->count;
         if ((LYS_LIST | LYS_CONTAINER) & iter->nodetype) {
             /* find subscription where subsequent request will be addressed
