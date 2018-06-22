@@ -1825,8 +1825,9 @@ int sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subs
  *
  * - If the xpath identifies a container, the provider is supposed to return all leaves and leaf-lists values within it.
  * Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
- * - If the xpath identifies a list, the provider is supposed to return all leaves and leaf-lists values within all
- * instances of the list. Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
+ * - If the xpath identifies a list, the provider is supposed to return all leaves (except for keys!) and
+ * leaf-lists values within all instances of the list. Nested lists and containers should not be provided - sysrepo
+ * will ask for them in subsequent calls.
  * - If the xpath identifies a leaf-list, the provider is supposed to return all leaf-list values.
  * - If the xpath identifies a leaf, the provider is supposed to return just the leaf in question.
  *
