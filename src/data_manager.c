@@ -663,7 +663,7 @@ dm_schema_info_init(const char *schema_search_dir, dm_schema_info_t **schema_inf
     si = calloc(1, sizeof(*si));
     CHECK_NULL_NOMEM_RETURN(si);
 
-    si->ly_ctx = ly_ctx_new(schema_search_dir, 0);
+    si->ly_ctx = ly_ctx_new(schema_search_dir, LY_CTX_NOYANGLIBRARY);
     CHECK_NULL_NOMEM_GOTO(si->ly_ctx, rc, cleanup);
 
     pthread_rwlock_init(&si->model_lock, NULL);
@@ -972,8 +972,8 @@ dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session,
                 while (ll_node3) {
                     dep = (md_dep_t *)ll_node3->data;
                     if (dm_module_has_persist(dep->dest)) {
-                        if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) 
-                                && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {   
+                        if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA)
+                                && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {
                             /* add the dep to list to track any already accounted deps */
                             rc = sr_list_add(loaded_deps, dep->dest);
                             CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to add module %s to list", dep->dest->name);
@@ -1175,7 +1175,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, module, loaded_deps); /* TODO: session should be known here */
         sr_list_cleanup(loaded_deps);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for imports of module %s", module_name);
-        
+
         rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module_name, si, false); /* TODO: session should be known here */
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", module_name);
     }
@@ -1192,8 +1192,8 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
                 rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, dep->dest, loaded_deps); /* TODO: session should be known here */
                 sr_list_cleanup(loaded_deps);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for imports of module %s", dep->dest->name);
-                
-                
+
+
                 rc = dm_apply_persist_data_for_model(dm_ctx, NULL, dep->dest->name, si, false); /* TODO: session should be known here */
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", dep->dest->name);
             }
@@ -2250,7 +2250,7 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     rc = sr_list_init(&t_ctx->loaded_modules);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize a list");
 
-    t_ctx->ctx = ly_ctx_new(ctx->schema_search_dir, 0);
+    t_ctx->ctx = ly_ctx_new(ctx->schema_search_dir, LY_CTX_NOYANGLIBRARY);
     CHECK_NULL_NOMEM_GOTO(t_ctx->ctx, rc, cleanup);
 
     ctx->tmp_ly_ctx = t_ctx;
@@ -5148,7 +5148,7 @@ dm_install_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_na
             goto unlock;
         }
         /* load module and its dependencies into si */
-        si->ly_ctx = ly_ctx_new(dm_ctx->schema_search_dir, 0);
+        si->ly_ctx = ly_ctx_new(dm_ctx->schema_search_dir, LY_CTX_NOYANGLIBRARY);
         CHECK_NULL_NOMEM_GOTO(si->ly_ctx, rc, unlock);
 
         rc = dm_load_schema_file(module->filepath, si, NULL);
