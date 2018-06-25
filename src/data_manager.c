@@ -997,6 +997,75 @@ cleanup:
     return rc;
 }
 
+static int
+dm_apply_module_dep_persist_r(dm_ctx_t *dm_ctx, md_module_t *module, dm_schema_info_t *si, sr_list_t *applied_persist)
+{
+    int rc = SR_ERR_OK;
+    md_dep_t *dep = NULL;
+    sr_llist_node_t *ll_node = NULL, *ll_node2 = NULL, *ll_node3 = NULL;
+
+    if (dm_module_has_persist(module)) {
+        rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, module, applied_persist);
+        CHECK_RC_LOG_RETURN(rc, "Failed to apply persist data for imports of module %s", module->name);
+
+        rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module->name, si, false);
+        CHECK_RC_LOG_RETURN(rc, "Failed to apply persist data for module %s", module->name);
+    }
+    rc = sr_list_add(applied_persist, module);
+    if (SR_ERR_OK != rc) {
+        return rc;
+    }
+
+    ll_node = module->deps->first;
+    while (ll_node) {
+        dep = (md_dep_t *)ll_node->data;
+        if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA)
+                && !dm_load_module_deps_in_list(dep->dest, applied_persist)) {
+
+            if (dm_module_has_persist(dep->dest)) {
+                rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, dep->dest, applied_persist);
+                CHECK_RC_LOG_RETURN(rc, "Failed to apply persist data for imports of module %s", dep->dest->name);
+
+                rc = dm_apply_persist_data_for_model(dm_ctx, NULL, dep->dest->name, si, false);
+                CHECK_RC_LOG_RETURN(rc, "Failed to apply persist data for module %s", dep->dest->name);
+            }
+            rc = sr_list_add(applied_persist, dep->dest);
+            if (SR_ERR_OK != rc) {
+                return rc;
+            }
+
+            /* we must check EXTENSION deps of this dep IMPORT deps because of possible derived implemented identities */
+            ll_node2 = dep->dest->deps->first;
+            while (ll_node2) {
+                dep = (md_dep_t *)ll_node2->data;
+                if (dep->type == MD_DEP_IMPORT) {
+                    ll_node3 = dep->dest->deps->first;
+                    while (ll_node3) {
+                        dep = (md_dep_t *)ll_node3->data;
+                        if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented
+                                && !dm_load_module_deps_in_list(dep->dest, applied_persist)) {
+                            rc = sr_list_add(applied_persist, dep->dest);
+                            if (SR_ERR_OK != rc) {
+                                return rc;
+                            }
+
+                            rc = dm_apply_module_dep_persist_r(dm_ctx, dep->dest, si, applied_persist);
+                            if (SR_ERR_OK != rc) {
+                                return rc;
+                            }
+                        }
+                        ll_node3 = ll_node3->next;
+                    }
+                }
+                ll_node2 = ll_node2->next;
+            }
+        }
+        ll_node = ll_node->next;
+    }
+
+    return SR_ERR_OK;
+}
+
 /**
  * @brief Loads a schema file into the schema_info structure.
  *
@@ -1029,7 +1098,6 @@ dm_load_schema_file(const char *schema_filepath, dm_schema_info_t *si, const str
 
     return SR_ERR_OK;
 }
-
 
 int
 dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si, sr_list_t *loaded_deps)
@@ -1123,7 +1191,6 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     md_module_t *module = NULL;
     sr_list_t *loaded_deps = NULL;
     md_dep_t *dep = NULL;
-    sr_llist_node_t *ll_node = NULL;
     const struct lys_module *ly_mod = NULL;
 
     /* search for the module to use */
@@ -1168,38 +1235,12 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to initialize private data for module %s", module->name);
 
     /* apply persist data enable features, running datastore */
-    if (dm_module_has_persist(module)) {
-        rc = sr_list_init(&loaded_deps);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
+    rc = sr_list_init(&loaded_deps);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
 
-        rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, module, loaded_deps); /* TODO: session should be known here */
-        sr_list_cleanup(loaded_deps);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for imports of module %s", module_name);
-
-        rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module_name, si, false); /* TODO: session should be known here */
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", module_name);
-    }
-
-    ll_node = module->deps->first;
-    while (ll_node) {
-        dep = (md_dep_t *) ll_node->data;
-        if (dm_module_has_persist(dep->dest)) {
-            if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
-
-                rc = sr_list_init(&loaded_deps);
-                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
-
-                rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, dep->dest, loaded_deps); /* TODO: session should be known here */
-                sr_list_cleanup(loaded_deps);
-                CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for imports of module %s", dep->dest->name);
-
-
-                rc = dm_apply_persist_data_for_model(dm_ctx, NULL, dep->dest->name, si, false); /* TODO: session should be known here */
-                CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", dep->dest->name);
-            }
-        }
-        ll_node = ll_node->next;
-    }
+    rc = dm_apply_module_dep_persist_r(dm_ctx, module, si, loaded_deps);
+    sr_list_cleanup(loaded_deps);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to apply persist data");
 
     /* distinguish between modules that can and cannot be locked */
     si->can_not_be_locked = !module->has_data;
