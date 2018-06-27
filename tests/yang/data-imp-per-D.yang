@@ -1,0 +1,17 @@
+module data-imp-per-D {
+    namespace "urn:test:data-imp-per-D";
+    prefix dip-D;
+
+    import data-imp-per-A {
+        prefix dip-A;
+    }
+
+    description
+        "Model to import dip-A for data import persistence test";
+
+    container d-cont {
+        leaf d-leaf {
+            type dip-A:a-type;
+        }
+    }
+}

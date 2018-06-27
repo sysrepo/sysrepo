@@ -138,6 +138,66 @@ static int set_items_data_and_feature_import_teardown(void **state)
     return 0;
 }
 
+static int set_data_and_feature_import_data_imp_per_setup(void **state)
+{
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-imp-per-B.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-per-B.yang", true);
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-imp-per-C.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-per-C.yang", true);
+
+    exec_shell_command("../src/sysrepoctl --feature-enable c-feature --module data-imp-per-C", ".*", true, 0);
+
+    setup(state);
+
+    return 0;
+}
+
+static int set_data_and_feature_import_data_imp_per_without_identity_setup(void **state)
+{
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-imp-per-D.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-per-D.yang", true);
+
+    return set_data_and_feature_import_data_imp_per_setup(state);
+}
+
+static int set_data_and_feature_import_data_imp_per_with_identity_setup(void **state)
+{
+    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-imp-per-D-with-identity.yang", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-per-D-with-identity.yang", true);
+
+    return set_data_and_feature_import_data_imp_per_setup(state);
+}
+
+static int set_data_and_feature_import_data_imp_per_teardown(void **state)
+{
+    exec_shell_command("../src/sysrepoctl --feature-disable c-feature --module data-imp-per-C", ".*", true, 0);
+
+    exec_shell_command("../src/sysrepoctl --uninstall --module=data-imp-per-C", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-per-C.yang", false);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=data-imp-per-B,data-imp-per-A", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-per-B-standalone.yang", false);
+
+    teardown(state);
+
+    return 0;
+}
+
+static int set_data_and_feature_import_data_imp_per_without_identity_teardown(void **state)
+{
+    exec_shell_command("../src/sysrepoctl --uninstall --module=data-imp-per-D", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-per-D.yang", false);
+
+    return set_data_and_feature_import_data_imp_per_teardown(state);
+}
+
+static int set_data_and_feature_import_data_imp_per_with_identity_teardown(void **state)
+{
+    exec_shell_command("../src/sysrepoctl --uninstall --module=data-imp-per-D-with-identity", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-per-D-with-identity.yang", false);
+
+    return set_data_and_feature_import_data_imp_per_teardown(state);
+}
+
 void set_items_data_and_feature_import(void **state)
 {
     int rc;
@@ -194,6 +254,53 @@ void set_items_data_and_import_implemented(void **state)
     assert_ptr_equal(errors, NULL);
 
     test_rp_session_cleanup(ctx, session);
+}
+
+#define D_LEAF_WITHOUT_IDENTITY "/data-imp-per-D:d-cont/d-leaf"
+#define D_LEAF_WITH_IDENTITY "/data-imp-per-D-with-identity:d-cont/d-leaf"
+
+void set_items_data_and_imported_augment(void **state, const char* d_leaf_path)
+{
+    int rc;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL, *session2 = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    dm_commit_context_t *c_ctx = NULL;
+
+    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
+    test_rp_session_create(ctx, SR_DS_STARTUP, &session2);
+
+    set_item("/data-imp-per-A:a-cont/a-leaf", "a-foo", SR_STRING_T,
+             ctx, session);
+    set_item("/data-imp-per-A:a-cont/data-imp-per-C:c-cont/c-leaf", "c-foo", SR_STRING_T,
+             ctx, session);
+
+    rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(e_cnt, 0);
+    assert_ptr_equal(errors, NULL);
+
+    set_item(d_leaf_path, "a-foo", SR_STRING_T,
+             ctx, session2);
+
+    rc = rp_dt_commit(ctx, session2, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(e_cnt, 0);
+    assert_ptr_equal(errors, NULL);
+
+    test_rp_session_cleanup(ctx, session);
+    test_rp_session_cleanup(ctx, session2);
+}
+
+void set_items_data_and_imported_augment_without_identity(void **state)
+{
+    set_items_data_and_imported_augment(state, D_LEAF_WITHOUT_IDENTITY);
+}
+
+void set_items_data_and_imported_augment_with_identity(void **state)
+{
+    set_items_data_and_imported_augment(state, D_LEAF_WITH_IDENTITY);
 }
 
 void set_and_get_items_from_top_level_in_submodule(void **state)
@@ -260,6 +367,8 @@ int main(){
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(set_items_data_and_feature_import, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
             cmocka_unit_test_setup_teardown(set_items_data_and_import_implemented, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
+            cmocka_unit_test_setup_teardown(set_items_data_and_imported_augment_without_identity, set_data_and_feature_import_data_imp_per_without_identity_setup, set_data_and_feature_import_data_imp_per_without_identity_teardown),
+            cmocka_unit_test_setup_teardown(set_items_data_and_imported_augment_with_identity, set_data_and_feature_import_data_imp_per_with_identity_setup, set_data_and_feature_import_data_imp_per_with_identity_teardown),
             cmocka_unit_test_setup_teardown(set_and_get_items_from_top_level_in_submodule, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
             cmocka_unit_test_setup_teardown(set_and_get_items_from_feature_of_submodule, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown)
     };
