@@ -1,0 +1,19 @@
+module data-imp-per-A {
+    namespace "urn:test:data-imp-per-A";
+    prefix dip-A;
+
+    description
+        "Base model for data import persistence test";
+
+    typedef a-type {
+        type leafref {
+            path "/dip-A:a-cont/dip-A:a-leaf";
+        }
+    }
+
+    container a-cont {
+        leaf a-leaf {
+            type string;
+        }
+    }
+}

@@ -962,6 +962,14 @@ dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session,
                 rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest, loaded_deps);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
             }
+            if (dep->type == MD_DEP_EXTENSION && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {
+                /* add the dep to list to track any already accounted deps */
+                rc = sr_list_add(loaded_deps, dep->dest);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to add module %s to list", dep->dest->name);
+
+                rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest, loaded_deps);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
+            }
         }
 
         ll_node2 = dep->dest->deps->first;
