@@ -301,7 +301,7 @@ install (FILES ${INTERNAL_YANGS} DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 
 # install NACM YANG module
 if(ENABLE_NACM)
-    INSTALL_YANG("ietf-netconf-acm" "@2012-02-22" "644")
+    INSTALL_YANG("ietf-netconf-acm" "@2018-02-14" "644")
 endif(ENABLE_NACM)
 
 find_package(PkgConfig QUIET)
