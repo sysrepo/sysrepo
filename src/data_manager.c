@@ -1117,6 +1117,10 @@ dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si, sr_list_t *load
     ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *)ll_node->data;
+        if (dep->type == MD_DEP_DATA) {
+            /* mark this module as dependent on data from other modules */
+            si->cross_module_data_dependency = true;
+        }
         if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA)
                 && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {
             rc = sr_list_add(loaded_deps, dep->dest);
@@ -1124,10 +1128,6 @@ dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si, sr_list_t *load
                 return rc;
             }
 
-            if (dep->type == MD_DEP_DATA) {
-                /* mark this module as dependent on data from other modules */
-                si->cross_module_data_dependency = true;
-            }
             /**
              * Note:
              *  - imports are automatically loaded by libyang

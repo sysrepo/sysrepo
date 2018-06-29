@@ -2565,7 +2565,7 @@ void set_and_get_item_id_ref(void **state){
     test_rp_session_create(ctx, SR_DS_STARTUP, &session);
 
     rc = rp_dt_delete_item_wrapper(ctx, session, "/id-ref-base:main/id-ref-aug:augmented/id-ref", SR_EDIT_DEFAULT);
-    assert_int_equal(SR_ERR_OK, rc);    
+    assert_int_equal(SR_ERR_OK, rc);
 
     val = calloc(1, sizeof(*val));
     assert_non_null(val);
@@ -2586,7 +2586,53 @@ void set_and_get_item_id_ref(void **state){
     assert_int_equal(SR_IDENTITYREF_T, val->type);
     assert_string_equal("id-def-extended:external-derived-id", val->data.identityref_val);
     sr_free_val(val);
-    
+
+    test_rp_session_cleanup(ctx, session);
+}
+
+void set_item_leafref_augment(void ** state) {
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+    dm_commit_context_t *c_ctx = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    sr_val_t *val = NULL;
+
+    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/augm_leafref_m1:augleafrefcontainer/augm_leafref_m1:name", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/augm_leafref_m2:item/augm_leafref_m1:augleaf", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val = calloc(1, sizeof(*val));
+    assert_non_null(val);
+    val->type = SR_STRING_T;
+    val->data.string_val = strdup("leafrefval");
+    assert_non_null(val->data.string_val);
+    rc = rp_dt_set_item_wrapper(ctx, session, "/augm_leafref_m1:augleafrefcontainer/augm_leafref_m1:name", val, NULL, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(e_cnt, 0);
+    assert_ptr_equal(errors, NULL);
+
+    val = calloc(1, sizeof(*val));
+    assert_non_null(val);
+    val->type = SR_STRING_T;
+    val->data.string_val = strdup("leafrefval");
+    assert_non_null(val->data.string_val);
+    rc = rp_dt_set_item_wrapper(ctx, session, "/augm_leafref_m2:item/augm_leafref_m1:augleaf", val, NULL, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(e_cnt, 0);
+    assert_ptr_equal(errors, NULL);
+
     test_rp_session_cleanup(ctx, session);
 }
 
@@ -2630,6 +2676,7 @@ int main(){
             cmocka_unit_test_setup(edit_union_type, createData),
             cmocka_unit_test_setup(validaton_of_multiple_models, createData),
             cmocka_unit_test(set_and_get_item_id_ref),
+            cmocka_unit_test(set_item_leafref_augment),
     };
 
     watchdog_start(300);
