@@ -46,7 +46,11 @@ macro(INSTALL_EXAMPLE_YANG MODULE_NAME REVISION)
         # import data into module
         set(CMD "${CMD}\; ${CALL_SYSREPOCFG_BIN} --import=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.data.xml --datastore=startup --format=xml --level=0 ${MODULE_NAME}")
     endif()
-    EXEC_AT_INSTALL_TIME(${CMD})
+    if(CALL_TARGET_BINS_DIRECTLY)
+        EXEC_AT_INSTALL_TIME(${CMD})
+    else()
+        set(SH_INSTALL_YANG_CMDS "${SH_INSTALL_YANG_CMDS}\\\${CMD}\n")
+    endif()
 endmacro(INSTALL_EXAMPLE_YANG)
 
 INSTALL_EXAMPLE_YANG("turing-machine" "")
