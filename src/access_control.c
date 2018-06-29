@@ -112,6 +112,7 @@ ac_module_info_free_cb(void *item)
     free(info);
 }
 
+#ifndef ENABLE_NACM
 /**
  * @brief Checks if the current user is able to access provided file for specified operation.
  */
@@ -194,6 +195,7 @@ ac_check_file_access_with_eid(ac_ctx_t *ac_ctx, const char *file_name,
 
     CHECK_NULL_ARG2(ac_ctx, file_name);
 
+#ifndef ENABLE_NACM
     pthread_mutex_lock(&ac_ctx->lock);
 
     rc_tmp = ac_set_identity(euid, egid);
@@ -205,9 +207,11 @@ ac_check_file_access_with_eid(ac_ctx_t *ac_ctx, const char *file_name,
     }
 
     pthread_mutex_unlock(&ac_ctx->lock);
+#endif
 
     return (SR_ERR_OK == rc_tmp) ? rc : rc_tmp;
 }
+#endif
 
 /**
  * @brief Checks if the session is authorized to perform specified operation
@@ -410,6 +414,7 @@ ac_check_file_permissions(ac_session_t *session, const char *file_name, const ac
 
     CHECK_NULL_ARG4(session, session->ac_ctx, session->user_credentials, file_name);
 
+#ifndef ENABLE_NACM
     if (!session->ac_ctx->priviledged_process) {
         /* sysrepo engine DOES NOT run within a privileged process */
         if ((session->user_credentials->r_uid != session->ac_ctx->proc_euid) ||
@@ -458,6 +463,7 @@ ac_check_file_permissions(ac_session_t *session, const char *file_name, const ac
                     (AC_OPER_READ == operation ? "read" : "write"), file_name);
         }
     }
+#endif
 
     return rc;
 }
@@ -469,6 +475,7 @@ ac_set_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
 
     CHECK_NULL_ARG(ac_ctx);
 
+#ifndef ENABLE_NACM
     if (NULL != user_credentials) {
         if (!ac_ctx->priviledged_process) {
             /* sysrepo engine DOES NOT run within a privileged process - skip identity switch */
@@ -488,6 +495,7 @@ ac_set_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
             rc = ac_set_identity(user_credentials->r_uid, user_credentials->r_gid);
         }
     }
+#endif
 
     return rc;
 }
@@ -499,6 +507,7 @@ ac_unset_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
 
     CHECK_NULL_ARG(ac_ctx);
 
+#ifndef ENABLE_NACM
     if (!ac_ctx->priviledged_process) {
         /* sysrepo engine DOES NOT run within a privileged process - skip identity switch */
         return SR_ERR_OK;
@@ -510,6 +519,7 @@ ac_unset_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
     if (NULL != user_credentials) {
         pthread_mutex_unlock(&ac_ctx->lock);
     }
+#endif
 
     return rc;
 }
