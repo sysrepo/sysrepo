@@ -223,7 +223,12 @@ sr_copy_first_ns(const char *xpath, char **namespace)
     if (xpath[0] != '/' || NULL == colon_pos) {
         return SR_ERR_INVAL_ARG;
     }
-    *namespace = strndup(xpath + 1, (colon_pos - xpath -1));
+    ++xpath;
+    if (xpath[0] == '/') {
+        ++xpath;
+    }
+
+    *namespace = strndup(xpath, colon_pos - xpath);
     CHECK_NULL_NOMEM_RETURN(*namespace);
     return SR_ERR_OK;
 }
