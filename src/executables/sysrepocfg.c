@@ -155,6 +155,17 @@ srcfg_report_error(int rc)
     }
 }
 
+static int
+srcfg_compare_modules_cb(const void *a, const void *b) {
+    if (a < b) {
+        return -1;
+    } else if (a > b) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
 /**
  * @brief Initializes libyang ctx with all schemas installed for specified module in sysrepo.
  */
@@ -165,7 +176,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, md_module_t *module)
     dm_schema_info_t *si = NULL;
     uint32_t mod_idx = 0;
     const struct lys_module *mod = NULL;
-    sr_list_t *loaded_deps = NULL;
+    sr_btree_t *loaded_deps = NULL;
 
     CHECK_NULL_ARG2(ly_ctx, module);
 
@@ -182,11 +193,12 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, md_module_t *module)
     }
 
     /* load the module schema and all its dependencies */
-    rc = sr_list_init(&loaded_deps);
+    rc = sr_btree_init(srcfg_compare_modules_cb, NULL, &loaded_deps);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
 
     rc = dm_load_module_deps_r(module, si, loaded_deps);
-    sr_list_cleanup(loaded_deps);
+    sr_btree_cleanup(loaded_deps);
+    loaded_deps = NULL;
 
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load dependencies for module %s", module->name);
 
@@ -203,6 +215,8 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, md_module_t *module)
     rc = SR_ERR_OK;
 
 cleanup:
+    sr_btree_cleanup(loaded_deps);
+
     dm_free_schema_info(si);
     return rc;
 }
