@@ -871,15 +871,25 @@ dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schem
 }
 
 static bool
-dm_load_module_deps_in_list(md_module_t *dep_module, sr_list_t *loaded_deps)
+dm_search_module_deps_in_tree(md_module_t *dep_module, sr_btree_t *loaded_deps)
 {
-    for (size_t i = 0; loaded_deps && (i < loaded_deps->count); ++i) {
-        if (0 == strcmp(dep_module->name, ((md_module_t *)loaded_deps->data[i])->name)) {
-            return true;
-        }
+    if (sr_btree_search(loaded_deps, dep_module) != NULL) {
+        return true;
     }
 
     return false;
+}
+
+int
+dm_btree_insert_ignore_duplicate(sr_btree_t *tree, void *item) {
+    int rc;
+
+    rc = sr_btree_insert(tree, item);
+    if (rc == SR_ERR_DATA_EXISTS) {
+        rc = SR_ERR_OK;
+    }
+
+    return rc;
 }
 
 static int
@@ -895,12 +905,6 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const c
     if (NULL == dm_ctx->pm_ctx) {
         SR_LOG_WRN("Persist manager not initialized, applying of persist data will be skipped for module %s", module_name);
         return SR_ERR_OK;
-    }
-
-    const struct lys_module *module = ly_ctx_get_module(si->ly_ctx, module_name, NULL, 0);
-    if (NULL == module) {
-       SR_LOG_WRN("Module %s not found in context; skipping persist data operations", module_name);
-       return SR_ERR_OK;
     }
 
     /* load module's persistent data */
@@ -948,26 +952,36 @@ dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, dm_session_t *session, const c
 }
 
 static int
-dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *si, md_module_t *module, sr_list_t *loaded_deps)
+dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *si, md_module_t *module, sr_btree_t *loaded_deps, sr_btree_t *completed_deps)
 {
     int rc = SR_ERR_OK;
     md_dep_t *dep = NULL;
     sr_llist_node_t *ll_node = NULL, *ll_node2 = NULL, *ll_node3 = NULL;
 
+    if (dm_search_module_deps_in_tree(module, completed_deps)) {
+        return SR_ERR_OK;
+    }
+
+    const struct lys_module *l_module = ly_ctx_get_module(si->ly_ctx, module->name, NULL, 0);
+    if (l_module == NULL) {
+        SR_LOG_DBG("Module %s not found in context; skipping persist data operations for module and imports", module->name);
+        return SR_ERR_OK;
+    }
+
     ll_node = module->deps->first;
-    while (ll_node) {
+    while (ll_node && !dm_search_module_deps_in_tree(module, completed_deps)) {
         dep = (md_dep_t *) ll_node->data;
         if (dm_module_has_persist(dep->dest)) {
             if (dep->type == MD_DEP_IMPORT) {
-                rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest, loaded_deps);
+                rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest, loaded_deps, completed_deps);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
             }
-            if (dep->type == MD_DEP_EXTENSION && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {
+            if (dep->type == MD_DEP_EXTENSION && !dm_search_module_deps_in_tree(dep->dest, loaded_deps)) {
                 /* add the dep to list to track any already accounted deps */
-                rc = sr_list_add(loaded_deps, dep->dest);
+                rc = dm_btree_insert_ignore_duplicate(loaded_deps, dep->dest);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to add module %s to list", dep->dest->name);
 
-                rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest, loaded_deps);
+                rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest, loaded_deps, completed_deps);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
             }
         }
@@ -981,12 +995,12 @@ dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session,
                     dep = (md_dep_t *)ll_node3->data;
                     if (dm_module_has_persist(dep->dest)) {
                         if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA)
-                                && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {
+                                && !dm_search_module_deps_in_tree(dep->dest, loaded_deps)) {
                             /* add the dep to list to track any already accounted deps */
-                            rc = sr_list_add(loaded_deps, dep->dest);
+                            rc = dm_btree_insert_ignore_duplicate(loaded_deps, dep->dest);
                             CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to add module %s to list", dep->dest->name);
 
-                            rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest, loaded_deps);
+                            rc = dm_apply_persist_data_for_model_imports(dm_ctx, session, si, dep->dest, loaded_deps, completed_deps);
                             CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", dep->dest->name);
                         }
                     }
@@ -998,49 +1012,49 @@ dm_apply_persist_data_for_model_imports(dm_ctx_t *dm_ctx, dm_session_t *session,
 
         ll_node = ll_node->next;
     }
+
     rc = dm_apply_persist_data_for_model(dm_ctx, session, module->name, si, true);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply features from persist data for module %s", module->name);
+
+    rc = dm_btree_insert_ignore_duplicate(completed_deps, module);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to add module %s to list", module->name);
 
 cleanup:
     return rc;
 }
 
 static int
-dm_apply_module_dep_persist_r(dm_ctx_t *dm_ctx, md_module_t *module, dm_schema_info_t *si, sr_list_t *applied_persist)
+dm_apply_module_dep_persist_r(dm_ctx_t *dm_ctx, md_module_t *module, dm_schema_info_t *si, sr_btree_t *applied_persist, sr_btree_t *completed_deps)
 {
     int rc = SR_ERR_OK;
     md_dep_t *dep = NULL;
     sr_llist_node_t *ll_node = NULL, *ll_node2 = NULL, *ll_node3 = NULL;
 
     if (dm_module_has_persist(module)) {
-        rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, module, applied_persist);
+        rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, module, applied_persist, completed_deps);
         CHECK_RC_LOG_RETURN(rc, "Failed to apply persist data for imports of module %s", module->name);
 
         rc = dm_apply_persist_data_for_model(dm_ctx, NULL, module->name, si, false);
         CHECK_RC_LOG_RETURN(rc, "Failed to apply persist data for module %s", module->name);
     }
-    rc = sr_list_add(applied_persist, module);
-    if (SR_ERR_OK != rc) {
-        return rc;
-    }
+    rc = dm_btree_insert_ignore_duplicate(applied_persist, module);
+    CHECK_RC_LOG_RETURN(rc, "Failed to add module %s to list", module->name);
 
     ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *)ll_node->data;
         if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA)
-                && !dm_load_module_deps_in_list(dep->dest, applied_persist)) {
+                && !dm_search_module_deps_in_tree(dep->dest, applied_persist)) {
 
             if (dm_module_has_persist(dep->dest)) {
-                rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, dep->dest, applied_persist);
+                rc = dm_apply_persist_data_for_model_imports(dm_ctx, NULL, si, dep->dest, applied_persist, completed_deps);
                 CHECK_RC_LOG_RETURN(rc, "Failed to apply persist data for imports of module %s", dep->dest->name);
 
                 rc = dm_apply_persist_data_for_model(dm_ctx, NULL, dep->dest->name, si, false);
                 CHECK_RC_LOG_RETURN(rc, "Failed to apply persist data for module %s", dep->dest->name);
             }
-            rc = sr_list_add(applied_persist, dep->dest);
-            if (SR_ERR_OK != rc) {
-                return rc;
-            }
+            rc = dm_btree_insert_ignore_duplicate(applied_persist, dep->dest);
+            CHECK_RC_LOG_RETURN(rc, "Failed to add module %s to list", dep->dest->name);
 
             /* we must check EXTENSION deps of this dep IMPORT deps because of possible derived implemented identities */
             ll_node2 = dep->dest->deps->first;
@@ -1051,13 +1065,11 @@ dm_apply_module_dep_persist_r(dm_ctx_t *dm_ctx, md_module_t *module, dm_schema_i
                     while (ll_node3) {
                         dep = (md_dep_t *)ll_node3->data;
                         if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented
-                                && !dm_load_module_deps_in_list(dep->dest, applied_persist)) {
-                            rc = sr_list_add(applied_persist, dep->dest);
-                            if (SR_ERR_OK != rc) {
-                                return rc;
-                            }
+                                && !dm_search_module_deps_in_tree(dep->dest, applied_persist)) {
+                            rc = dm_btree_insert_ignore_duplicate(applied_persist, dep->dest);
+                            CHECK_RC_LOG_RETURN(rc, "Failed to add module %s to list", dep->dest->name);
 
-                            rc = dm_apply_module_dep_persist_r(dm_ctx, dep->dest, si, applied_persist);
+                            rc = dm_apply_module_dep_persist_r(dm_ctx, dep->dest, si, applied_persist, completed_deps);
                             if (SR_ERR_OK != rc) {
                                 return rc;
                             }
@@ -1108,7 +1120,7 @@ dm_load_schema_file(const char *schema_filepath, dm_schema_info_t *si, const str
 }
 
 int
-dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si, sr_list_t *loaded_deps)
+dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si, sr_btree_t *loaded_deps)
 {
     int rc = SR_ERR_OK;
     md_dep_t *dep = NULL;
@@ -1122,11 +1134,9 @@ dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si, sr_list_t *load
             si->cross_module_data_dependency = true;
         }
         if ((dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA)
-                && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {
-            rc = sr_list_add(loaded_deps, dep->dest);
-            if (SR_ERR_OK != rc) {
-                return rc;
-            }
+                && !dm_search_module_deps_in_tree(dep->dest, loaded_deps)) {
+            rc = dm_btree_insert_ignore_duplicate(loaded_deps, dep->dest);
+            CHECK_RC_LOG_RETURN(rc, "Failed to add module %s to list", dep->dest->name);
 
             /**
              * Note:
@@ -1152,11 +1162,9 @@ dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si, sr_list_t *load
                     while (ll_node3) {
                         dep = (md_dep_t *)ll_node3->data;
                         if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented
-                                && !dm_load_module_deps_in_list(dep->dest, loaded_deps)) {
-                            rc = sr_list_add(loaded_deps, dep->dest);
-                            if (SR_ERR_OK != rc) {
-                                return rc;
-                            }
+                                && !dm_search_module_deps_in_tree(dep->dest, loaded_deps)) {
+                            rc = dm_btree_insert_ignore_duplicate(loaded_deps, dep->dest);
+                            CHECK_RC_LOG_RETURN(rc, "Failed to add module %s to list", dep->dest->name);
 
                             /* load the module schema and all its dependencies */
                             rc = dm_load_schema_file(dep->dest->filepath, si, NULL);
@@ -1182,6 +1190,17 @@ dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si, sr_list_t *load
     return SR_ERR_OK;
 }
 
+static int
+dm_compare_modules_cb(const void *a, const void *b) {
+    if (a < b) {
+        return -1;
+    } else if (a > b) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
 /**
  * @brief Loads module and all its dependencies into the libyang context.
  * @param [in] dm_ctx
@@ -1197,7 +1216,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     int rc = SR_ERR_OK;
     dm_schema_info_t *si = NULL;
     md_module_t *module = NULL;
-    sr_list_t *loaded_deps = NULL;
+    sr_btree_t *loaded_deps = NULL, *completed_deps = NULL;
     md_dep_t *dep = NULL;
     const struct lys_module *ly_mod = NULL;
 
@@ -1230,11 +1249,12 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     si->has_instance_id = module->inst_ids->first != NULL;
 
     /* load the module schema and all its dependencies */
-    rc = sr_list_init(&loaded_deps);
+    rc = sr_btree_init(dm_compare_modules_cb, NULL, &loaded_deps);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
 
     rc = dm_load_module_deps_r(module, si, loaded_deps);
-    sr_list_cleanup(loaded_deps);
+    sr_btree_cleanup(loaded_deps);
+    loaded_deps = NULL;
 
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load dependencies for module %s", module->name);
 
@@ -1243,11 +1263,16 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to initialize private data for module %s", module->name);
 
     /* apply persist data enable features, running datastore */
-    rc = sr_list_init(&loaded_deps);
+    rc = sr_btree_init(dm_compare_modules_cb, NULL, &loaded_deps);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
+    rc = sr_btree_init(dm_compare_modules_cb, NULL, &completed_deps);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
 
-    rc = dm_apply_module_dep_persist_r(dm_ctx, module, si, loaded_deps);
-    sr_list_cleanup(loaded_deps);
+    rc = dm_apply_module_dep_persist_r(dm_ctx, module, si, loaded_deps, completed_deps);
+    sr_btree_cleanup(loaded_deps);
+    loaded_deps = NULL;
+    sr_btree_cleanup(completed_deps);
+    completed_deps = NULL;
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to apply persist data");
 
     /* distinguish between modules that can and cannot be locked */
@@ -1277,6 +1302,9 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
 unlock:
     pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
 cleanup:
+    sr_btree_cleanup(loaded_deps);
+    sr_btree_cleanup(completed_deps);
+
     if (SR_ERR_OK == rc) {
         *schema_info = si;
     } else {
