@@ -1,0 +1,14 @@
+module commit-nacm-segfault {
+
+  namespace "test:commit-nacm-segfault";
+  prefix commit-seg;
+
+  list test-list {
+    key test-key;
+
+    leaf test-key {
+      type string;
+    }
+  }
+}
+
