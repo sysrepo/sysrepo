@@ -4766,7 +4766,8 @@ dm_perform_netconf_access_control(nacm_ctx_t *nacm_ctx, dm_session_t *session, d
     }
 
     /* start NACM data access validation for this module */
-    rc = nacm_data_validation_start(nacm_ctx, session->user_credentials, new_info->node->schema,
+    struct lys_node *schema = new_info->node == NULL ? prev_info->node->schema : new_info->node->schema;
+    rc = nacm_data_validation_start(nacm_ctx, session->user_credentials, schema,
             &nacm_data_val_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to start NACM data validation.");
 
