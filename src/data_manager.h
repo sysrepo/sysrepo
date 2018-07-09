@@ -272,6 +272,8 @@ void dm_free_schema_info(void *schema_info);
 
 int dm_load_schema_file(const char *schema_filepath, dm_schema_info_t *si, const struct lys_module **mod);
 
+int dm_load_module_ident_deps_r(md_module_t *module, dm_schema_info_t *si, sr_btree_t *loaded_deps);
+
 int dm_load_module_deps_r(md_module_t *module, dm_schema_info_t *si, sr_btree_t *loaded_deps);
 
 /**
