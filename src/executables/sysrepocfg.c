@@ -196,11 +196,14 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, md_module_t *module)
     rc = sr_btree_init(srcfg_compare_modules_cb, NULL, &loaded_deps);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to init list");
 
+    rc = dm_load_module_ident_deps_r(module, si, loaded_deps);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load identityref dependencies for module %s", module->name);
+
     rc = dm_load_module_deps_r(module, si, loaded_deps);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load dependencies for module %s", module->name);
+
     sr_btree_cleanup(loaded_deps);
     loaded_deps = NULL;
-
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load dependencies for module %s", module->name);
 
     /* also enable all features of all models */
     mod_idx = ly_ctx_internal_modules_count(si->ly_ctx);
