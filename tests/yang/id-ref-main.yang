@@ -1,0 +1,28 @@
+module id-ref-main {
+  namespace "urn:ietf:params:xml:ns:yang:id-ref-main";
+  prefix irm;
+
+  import id-ref-imported {
+    prefix id-ref-imp;
+  }
+
+  identity ident-main;
+
+  container main {
+    leaf ident-ref {
+      type identityref {
+        base id-ref-imp:id-ref;
+      }
+    }
+
+    list ident-list {
+      key ref1;
+
+      leaf ref1 {
+        type identityref {
+          base irm:ident-main;
+        }
+      }
+    }
+  }
+}

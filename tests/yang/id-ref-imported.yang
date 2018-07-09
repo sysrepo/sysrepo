@@ -1,0 +1,6 @@
+module id-ref-imported {
+  namespace "urn:ietf:params:xml:ns:yang:id-ref-imported";
+  prefix id-ref-imp;
+
+  identity id-ref;
+}
