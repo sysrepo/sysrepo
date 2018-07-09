@@ -239,27 +239,39 @@ sr_copy_all_ns(const char *xpath, char ***namespaces_p, size_t *ns_count_p)
     CHECK_NULL_ARG3(xpath, namespaces_p, ns_count_p);
 
     int rc = SR_ERR_OK;
-    char *colon_pos, **tmp, **namespaces = NULL;
+    char *xp, *sptr, *ptr, *cur_node, **tmp, **namespaces = NULL;
     size_t ns_count = 0;
 
     if (xpath[0] != '/') {
         return SR_ERR_INVAL_ARG;
     }
 
-    while ((colon_pos = strchr(xpath, ':'))) {
-        for (xpath = colon_pos; isalnum(xpath[-1]) || (xpath[-1] == '_') || (xpath[-1] == '-') || (xpath[-1] == '.'); --xpath);
-        tmp = realloc(namespaces, (ns_count + 1) * sizeof *namespaces);
-        CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
-        namespaces = tmp;
-        ns_count++;
+    xp = strdup(xpath);
 
-        namespaces[ns_count - 1] = strndup(xpath, colon_pos - xpath);
-        CHECK_NULL_NOMEM_GOTO(namespaces[ns_count - 1], rc, cleanup);
+    for (cur_node = strtok_r(xp, "/", &sptr); cur_node; cur_node = strtok_r(NULL, "/", &sptr)) {
+        if (cur_node[strlen(cur_node) - 1] == ']') {
+            ptr = strchr(cur_node, '[');
+            if (!ptr) {
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            *ptr = '\0';
+        }
 
-        xpath = colon_pos + 1;
+        ptr = strchr(cur_node, ':');
+        if (ptr) {
+            tmp = realloc(namespaces, (ns_count + 1) * sizeof *namespaces);
+            CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
+            namespaces = tmp;
+            ns_count++;
+
+            namespaces[ns_count - 1] = strndup(cur_node, ptr - cur_node);
+            CHECK_NULL_NOMEM_GOTO(namespaces[ns_count - 1], rc, cleanup);
+        }
     }
 
 cleanup:
+    free(xp);
     if (SR_ERR_OK == rc) {
         *namespaces_p = namespaces;
         *ns_count_p = ns_count;
