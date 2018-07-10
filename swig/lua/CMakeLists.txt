@@ -25,7 +25,11 @@ set(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR})
 
 set_source_files_properties(${LUA_SWIG_BINDING}.i PROPERTIES CPLUSPLUS ON)
 
-swig_add_module(${LUA_SWIG_BINDING} lua ${LUA_SWIG_BINDING}.i)
+if(${CMAKE_VERSION} VERSION_LESS "3.8.0")
+    swig_add_module(${LUA_SWIG_BINDING} lua ${LUA_SWIG_BINDING}.i)
+else()
+    swig_add_library(${LUA_SWIG_BINDING} LANGUAGE lua SOURCES ${LUA_SWIG_BINDING}.i)
+endif()
 set_target_properties(${SWIG_MODULE_${LUA_SWIG_BINDING}_REAL_NAME} PROPERTIES PREFIX "")
 swig_link_libraries(${LUA_SWIG_BINDING} ${LUA_LIBRARIES} Sysrepo_Lua)
 
