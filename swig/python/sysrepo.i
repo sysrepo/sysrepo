@@ -1,4 +1,4 @@
-%module libsysrepoPython
+%module sysrepo
 
 %include <stdint.i>
 

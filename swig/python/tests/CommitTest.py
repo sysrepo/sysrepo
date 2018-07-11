@@ -18,7 +18,7 @@ __license__ = "Apache 2.0"
 
 from ConcurrentHelpers import *
 import TestModule
-import libsysrepoPython as sr
+import sysrepo as sr
 
 class CommitTester(SysrepoTester):
     def setup(self):

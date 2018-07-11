@@ -17,7 +17,7 @@ __license__ = "Apache 2.0"
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import libsysrepoPython as sr
+import sysrepo as sr
 import sys
 
 def test_rpc_cb(xpath, in_vals, holder, private_ctx):

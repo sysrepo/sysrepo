@@ -27,7 +27,7 @@ __license__ = "Apache 2.0"
 #
 # The original c implementation is also available in the source, so one can refer to it to evaluate trade-offs.
 
-import libsysrepoPython as sr
+import sysrepo as sr
 import sys
 
 # Helper function for printing changes given operation, old and new value.

@@ -1,7 +1,7 @@
 from __future__ import print_function
 from time import time
 
-import libsysrepoPython as sr
+import sysrepo as sr
 
 # Tests are created to follow already existing performance test implemented in c in tests/measure_performance.c
 # They are meant to compare python bindings for sysrepo with the original and as an overall measure for

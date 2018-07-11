@@ -18,7 +18,7 @@ __license__ = "Apache 2.0"
 # limitations under the License.
 import unittest
 import TestModule
-import libsysrepoPython as sr
+import sysrepo as sr
 
 class MoveTest(unittest.TestCase):
 

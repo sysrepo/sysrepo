@@ -21,7 +21,7 @@ __license__ = "Apache 2.0"
 from ConcurrentHelpers import *
 import subprocess
 import TestModule
-import libsysrepoPython
+import sysrepo
 
 
 class SysrepoctlTester(SysrepoTester):

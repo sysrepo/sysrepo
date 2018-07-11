@@ -16,7 +16,7 @@ __license__ = "Apache 2.0"
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import libsysrepoPython as sr
+import sysrepo as sr
 
 XP_TEST_MODULE_ENUM = "/test-module:main/enum"
 XP_TEST_MODULE_ENUM_VALUE = "maybe"

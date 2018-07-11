@@ -17,7 +17,7 @@ __license__ = "Apache 2.0"
 # limitations under the License.
 
 from ConcurrentHelpers import *
-import libsysrepoPython as sr
+import sysrepo as sr
 
 
 class User2(SysrepoTester):

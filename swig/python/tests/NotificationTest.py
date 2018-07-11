@@ -25,7 +25,7 @@ import signal
 import os
 import subprocess
 import TestModule
-import libsysrepoPython as sr
+import sysrepo as sr
 
 
 class NotificationTester(SysrepoTester):
