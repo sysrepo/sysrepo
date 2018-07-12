@@ -58,6 +58,10 @@ typedef struct rp_ctx_s {
 
     pthread_rwlock_t commit_lock;            /**< Lock to synchronize commit in this instance */
     bool do_not_generate_config_change;      /**< Config-change notification will not be generated */
+
+    /* request ID generator */
+    uint64_t total_req_cnt;                  /**< Total number of received requests for this context. */
+    pthread_mutex_t total_req_cnt_mutex;     /**< Mutex protecting total_req_cnt. */
 } rp_ctx_t;
 
 /**
