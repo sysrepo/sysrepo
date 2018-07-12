@@ -4151,7 +4151,7 @@ cl_enable_empty_startup(void **state)
 }
 
 static int
-dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     printf("operational data for '%s' requested.\n", xpath);
 

@@ -204,7 +204,7 @@ the specific changed values.
 @subsection state State Data
 ~~~{.c}
 static int
-oven_state_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+oven_state_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     sr_val_t *vals;
     int rc;
@@ -230,7 +230,8 @@ oven_state_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *pr
 ~~~
 The state data callback is self-explaining. It should create and return direct children of the `xpath` parent
 (more in @ref data_providers). As the subscription was only for one container with 2 leaves as children, the `xpath`
-can only have one value and will hence be always the same.
+can only have one value and will hence be always the same. `request_id` identifies the initial request which
+triggered this callback.
 
 @subsection rpc RPC Subscriptions
 ~~~{.c}
