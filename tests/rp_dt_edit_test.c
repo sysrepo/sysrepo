@@ -2410,10 +2410,11 @@ add_delete_list_row_with_nacm_test(void **state)
 
     new_nacm_config(&nacm_config);
     enable_nacm_config(nacm_config, true);
+    add_nacm_user(nacm_config, "user1", "group1");
+    add_nacm_rule_list(nacm_config, "acl1", "group1", NULL);
+    add_nacm_rule(nacm_config, "acl1", "allow-segfault", "commit-nacm-segfault", NACM_RULE_DATA, "/commit-nacm-segfault:test-list[test-key='test-key']", "*", "permit", NULL);
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "commit-nacm-segfault", NULL));
     save_nacm_config(nacm_config);
-
-    rc = nacm_init(ctx->dm_ctx, ctx->dm_ctx->data_search_dir, &ctx->dm_ctx->nacm_ctx);
-    assert_int_equal(SR_ERR_OK, rc);
 
     test_rp_session_create_with_options(ctx, SR_DS_RUNNING, SR_SESS_ENABLE_NACM, &sessionA);
 
@@ -2444,6 +2445,7 @@ add_delete_list_row_with_nacm_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     test_rp_session_cleanup(ctx, sessionA);
+    delete_nacm_config(nacm_config);
 }
 
 static void
