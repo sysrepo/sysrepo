@@ -3392,8 +3392,11 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
         /* generate new request id */
         pthread_mutex_lock(&session->total_req_cnt_mutex);
         ++session->total_req_cnt;
-        msg->request->_id = session->total_req_cnt;
         pthread_mutex_unlock(&session->total_req_cnt_mutex);
+        pthread_mutex_lock(&rp_ctx->total_req_cnt_mutex);
+        ++rp_ctx->total_req_cnt;
+        msg->request->_id = rp_ctx->total_req_cnt;
+        pthread_mutex_unlock(&rp_ctx->total_req_cnt_mutex);
     }
 
     /* acquire lock for operation accessing data */
@@ -3989,6 +3992,8 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     rc = rp_setup_internal_state_data(ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Set up of internal state data failed");
 
+    pthread_mutex_init(&ctx->total_req_cnt_mutex, NULL);
+
     /* run worker threads */
     pthread_mutex_init(&ctx->request_queue_mutex, NULL);
     pthread_cond_init(&ctx->request_queue_cv, NULL);
@@ -4043,6 +4048,7 @@ rp_cleanup(rp_ctx_t *rp_ctx)
         }
         pthread_mutex_destroy(&rp_ctx->request_queue_mutex);
         pthread_cond_destroy(&rp_ctx->request_queue_cv);
+        pthread_mutex_destroy(&rp_ctx->total_req_cnt_mutex);
 
         while (sr_cbuff_dequeue(rp_ctx->request_queue, &req)) {
             if (NULL != req.msg) {
