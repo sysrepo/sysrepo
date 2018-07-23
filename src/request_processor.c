@@ -2689,6 +2689,12 @@ rp_rpc_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         }
         resp->response->rpc_resp->orig_api_variant = msg->response->rpc_resp->orig_api_variant;
         resp->response->result = msg->response->result;
+        if (SR_ERR_OK != msg->response->result && NULL != msg->response->error) {
+            rc = dm_report_error(session->dm_session,
+                                 msg->response->error->message,
+                                 msg->response->error->xpath,
+                                 msg->response->result);
+        }
     }
     if (SR_ERR_OK == rc) {
         if (SR_API_VALUES == sr_api_variant_gpb_to_sr(msg->response->rpc_resp->orig_api_variant)) {
