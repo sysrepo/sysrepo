@@ -78,7 +78,7 @@ int teardown(void **state){
 
 int setup_running_to_candidate(void **state){
     exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/commit-nacm-segfault.yang", ".*", true, 0);
-    setup(state);
+    //setup(state);
     return 0;
 }
 
@@ -2412,20 +2412,20 @@ add_delete_list_row_with_nacm_test(void **state)
     enable_nacm_config(nacm_config, true);
     add_nacm_user(nacm_config, "user1", "group1");
     add_nacm_rule_list(nacm_config, "acl1", "group1", NULL);
-    add_nacm_rule(nacm_config, "acl1", "allow-segfault", "commit-nacm-segfault", NACM_RULE_DATA, "/commit-nacm-segfault:test-list[test-key='test-key']", "*", "permit", NULL);
-    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "commit-nacm-segfault", NULL));
+    add_nacm_rule(nacm_config, "acl1", "allow-segfault", "commit-nacm", NACM_RULE_DATA, "/commit-nacm:test-list[test-key='test-key']", "*", "permit", NULL);
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "commit-nacm", NULL));
     save_nacm_config(nacm_config);
 
     test_rp_session_create_with_options(ctx, SR_DS_RUNNING, SR_SESS_ENABLE_NACM, &sessionA);
 
-    rc = dm_enable_module_running(ctx->dm_ctx, sessionA->dm_session, "commit-nacm-segfault", NULL);
+    rc = dm_enable_module_running(ctx->dm_ctx, sessionA->dm_session, "commit-nacm", NULL);
 
     assert_int_equal(SR_ERR_OK, rc);
 
     sr_val_t *value = NULL;
     value = calloc(1, sizeof(*value));
     assert_non_null(value);
-    value->xpath = strdup("/commit-nacm-segfault:test-list[test-key='test-key']");
+    value->xpath = strdup("/commit-nacm:test-list[test-key='test-key']");
     value->type = SR_LIST_T;
     assert_non_null(value->xpath);
 
@@ -2440,7 +2440,7 @@ add_delete_list_row_with_nacm_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     // Delete row
-    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/commit-nacm-segfault:test-list[test-key='test-key']", SR_EDIT_DEFAULT);
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/commit-nacm:test-list[test-key='test-key']", SR_EDIT_DEFAULT);
     rc = rp_dt_commit(ctx, sessionA, &c_ctx, false, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -2730,7 +2730,9 @@ int main(){
             cmocka_unit_test(candidate_edit_test),
             cmocka_unit_test(copy_to_running_test),
             cmocka_unit_test(candidate_copy_config_lock_test),
-            cmocka_unit_test_setup_teardown(add_delete_list_row_with_nacm_test, setup_running_to_candidate, teardown),
+            //cmocka_unit_test_setup_teardown(add_delete_list_row_with_nacm_test, setup_running_to_candidate, teardown),
+            //cmocka_unit_test_setup(add_delete_list_row_with_nacm_test, setup_running_to_candidate),
+            cmocka_unit_test(add_delete_list_row_with_nacm_test),
             cmocka_unit_test_setup(edit_union_type, createData),
             cmocka_unit_test_setup(validaton_of_multiple_models, createData),
             cmocka_unit_test(set_and_get_item_id_ref),

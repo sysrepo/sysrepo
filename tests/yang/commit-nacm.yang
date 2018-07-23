@@ -1,6 +1,6 @@
-module commit-nacm-segfault {
+module commit-nacm {
 
-  namespace "test:commit-nacm-segfault";
+  namespace "test:commit-nacm";
   prefix commit-seg;
 
   list test-list {
