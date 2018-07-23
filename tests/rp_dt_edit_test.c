@@ -76,12 +76,6 @@ int teardown(void **state){
     return 0;
 }
 
-int setup_running_to_candidate(void **state){
-    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/commit-nacm-segfault.yang", ".*", true, 0);
-    //setup(state);
-    return 0;
-}
-
 void delete_item_leaf_test(void **state){
     int rc = 0;
     rp_ctx_t *ctx = *state;
@@ -2730,8 +2724,6 @@ int main(){
             cmocka_unit_test(candidate_edit_test),
             cmocka_unit_test(copy_to_running_test),
             cmocka_unit_test(candidate_copy_config_lock_test),
-            //cmocka_unit_test_setup_teardown(add_delete_list_row_with_nacm_test, setup_running_to_candidate, teardown),
-            //cmocka_unit_test_setup(add_delete_list_row_with_nacm_test, setup_running_to_candidate),
             cmocka_unit_test(add_delete_list_row_with_nacm_test),
             cmocka_unit_test_setup(edit_union_type, createData),
             cmocka_unit_test_setup(validaton_of_multiple_models, createData),
