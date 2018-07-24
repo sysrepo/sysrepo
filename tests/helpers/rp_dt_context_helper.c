@@ -90,6 +90,27 @@ test_rp_session_create(rp_ctx_t *rp_ctx, sr_datastore_t datastore, rp_session_t 
 }
 
 void
+test_rp_session_create_with_options(rp_ctx_t *rp_ctx, sr_datastore_t datastore,
+        uint32_t options, rp_session_t **rp_session_p)
+{
+    rp_session_t *session = NULL;
+    ac_ucred_t *credentials = NULL;
+    char *user = getenv("USER");
+    int rc = SR_ERR_OK;
+
+    credentials = calloc(1, sizeof(*credentials));
+
+    credentials->r_username = user ? strdup(user) : NULL;
+    credentials->r_uid = getuid();
+    credentials->r_gid = getgid();
+
+    rc = rp_session_start(rp_ctx, 123456, credentials, datastore, options, 0, &session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    *rp_session_p = session;
+}
+
+void
 test_rp_session_create_user(rp_ctx_t *rp_ctx, sr_datastore_t datastore, const ac_ucred_t user_credentials,
         uint32_t options, rp_session_t **rp_session_p)
 {

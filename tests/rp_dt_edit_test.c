@@ -33,6 +33,7 @@
 #include "rp_dt_edit.h"
 #include "rp_dt_xpath.h"
 #include "test_module_helper.h"
+#include "nacm_module_helper.h"
 #include "rp_dt_context_helper.h"
 #include "rp_internal.h"
 #include "system_helper.h"
@@ -2392,6 +2393,56 @@ copy_to_running_test(void **state)
 }
 
 static void
+add_delete_list_row_with_nacm_test(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *sessionA = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    test_nacm_cfg_t *nacm_config = NULL;
+
+    new_nacm_config(&nacm_config);
+    enable_nacm_config(nacm_config, true);
+    add_nacm_user(nacm_config, "user1", "group1");
+    add_nacm_rule_list(nacm_config, "acl1", "group1", NULL);
+    add_nacm_rule(nacm_config, "acl1", "allow-segfault", "commit-nacm", NACM_RULE_DATA, "/commit-nacm:test-list[test-key='test-key']", "*", "permit", NULL);
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "commit-nacm", NULL));
+    save_nacm_config(nacm_config);
+
+    test_rp_session_create_with_options(ctx, SR_DS_RUNNING, SR_SESS_ENABLE_NACM, &sessionA);
+
+    rc = dm_enable_module_running(ctx->dm_ctx, sessionA->dm_session, "commit-nacm", NULL);
+
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_val_t *value = NULL;
+    value = calloc(1, sizeof(*value));
+    assert_non_null(value);
+    value->xpath = strdup("/commit-nacm:test-list[test-key='test-key']");
+    value->type = SR_LIST_T;
+    assert_non_null(value->xpath);
+
+    // Create row
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, value->xpath, value, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+    value = NULL;
+
+    // Commit
+    dm_commit_context_t *c_ctx = NULL;
+    rc = rp_dt_commit(ctx, sessionA, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    // Delete row
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/commit-nacm:test-list[test-key='test-key']", SR_EDIT_DEFAULT);
+    rc = rp_dt_commit(ctx, sessionA, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    test_rp_session_cleanup(ctx, sessionA);
+    delete_nacm_config(nacm_config);
+}
+
+static void
 candidate_copy_config_lock_test(void **state)
 {
     int rc = 0;
@@ -2731,6 +2782,7 @@ int main(){
             cmocka_unit_test(candidate_edit_test),
             cmocka_unit_test(copy_to_running_test),
             cmocka_unit_test(candidate_copy_config_lock_test),
+            cmocka_unit_test(add_delete_list_row_with_nacm_test),
             cmocka_unit_test_setup(edit_union_type, createData),
             cmocka_unit_test_setup(validaton_of_multiple_models, createData),
             cmocka_unit_test(set_and_get_item_id_ref),
