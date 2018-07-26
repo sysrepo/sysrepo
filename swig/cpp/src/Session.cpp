@@ -666,7 +666,7 @@ S_Vals Session::rpc_send(const char *xpath, S_Vals input)
     }
 
     // ensure that the class is not freed before
-    if (input->_vals == nullptr) {
+    if (input == nullptr) {
         throw_exception(SR_ERR_INTERNAL);
     }
 
@@ -703,7 +703,7 @@ S_Vals Session::action_send(const char *xpath, S_Vals input)
     }
 
     // ensure that the class is not freed before
-    if (input->_vals == nullptr) {
+    if (input == nullptr) {
         throw_exception(SR_ERR_INTERNAL);
     }
 
