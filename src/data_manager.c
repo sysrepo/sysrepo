@@ -1416,7 +1416,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
             ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
 
             ly_errno = LY_SUCCESS;
-            tmp_node = lyd_parse_fd(tmp_ctx->ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+            tmp_node = lyd_parse_fd(tmp_ctx->ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_STRICT | LYD_OPT_CONFIG);
             md_ctx_unlock(dm_ctx->md_ctx);
 
             if (NULL == tmp_node && LY_SUCCESS != ly_errno) {
@@ -1435,7 +1435,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
         } else {
             ly_errno = LY_SUCCESS;
             /* use LYD_OPT_TRUSTED, validation will be done later */
-            data_tree = lyd_parse_fd(schema_info->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+            data_tree = lyd_parse_fd(schema_info->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_STRICT | LYD_OPT_CONFIG);
             if (NULL == data_tree && LY_SUCCESS != ly_errno) {
                 SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg(schema_info->ly_ctx));
                 free(data);
@@ -6822,13 +6822,13 @@ dm_parse_event_notif(rp_ctx_t *rp_ctx, rp_session_t *session, sr_mem_ctx_t *sr_m
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
-        data_tree = lyd_parse_xml(ly_ctx, &xml, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
+        data_tree = lyd_parse_xml(ly_ctx, &xml, LYD_OPT_NOTIF | LYD_OPT_TRUSTED | LYD_OPT_STRICT, NULL);
     } else if (notification->data_type == NP_EV_NOTIF_DATA_STRING) {
         CHECK_NULL_ARG(notification->data.string);
-        data_tree = lyd_parse_mem(ly_ctx, notification->data.string, LYD_XML, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
+        data_tree = lyd_parse_mem(ly_ctx, notification->data.string, LYD_XML, LYD_OPT_NOTIF | LYD_OPT_TRUSTED | LYD_OPT_STRICT, NULL);
     } else {
         CHECK_NULL_ARG(notification->data.string);
-        data_tree = lyd_parse_mem(ly_ctx, notification->data.string, LYD_JSON, LYD_OPT_NOTIF | LYD_OPT_TRUSTED, NULL);
+        data_tree = lyd_parse_mem(ly_ctx, notification->data.string, LYD_JSON, LYD_OPT_NOTIF | LYD_OPT_TRUSTED | LYD_OPT_STRICT, NULL);
     }
     if (NULL == data_tree) {
         SR_LOG_ERR("Error by parsing notification data: %s", ly_errmsg(ly_ctx));
