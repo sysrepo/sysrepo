@@ -176,13 +176,15 @@ set(STORE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
     "Save config-change notifications (RFC 6470) in the notification store (slows down the commit process).")
 
 set(FILE_FORMAT_EXT "xml" CACHE STRING
-    "Datastore file format extension used. Can be either json or xml.")
+    "Datastore file format extension used. Can be json, xml, or lyb.")
 if (FILE_FORMAT_EXT STREQUAL "json")
     set(FILE_FORMAT_LY "LYD_JSON")
 elseif (FILE_FORMAT_EXT STREQUAL "xml")
     set(FILE_FORMAT_LY "LYD_XML")
+elseif (FILE_FORMAT_EXT STREQUAL "lyb")
+    set(FILE_FORMAT_LY "LYD_LYB")
 else()
-    message(FATAL_ERROR "Unknown file format \"${FILE_FORMAT_EXT}\", must be either json or xml.")
+    message(FATAL_ERROR "Unknown file format \"${FILE_FORMAT_EXT}\", must be json, xml, or lyb.")
 endif()
 
 # timeouts

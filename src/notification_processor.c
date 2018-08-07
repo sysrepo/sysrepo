@@ -682,6 +682,9 @@ np_event_notification_entry_fill(np_ev_notification_t *notification, struct lyd_
                 } else if (LYD_ANYDATA_JSON == node_anydata->value_type) {
                     notification->data.string = node_anydata->value.str;
                     notification->data_type = NP_EV_NOTIF_DATA_JSON;
+                } else if (LYD_ANYDATA_LYB == node_anydata->value_type) {
+                    notification->data.string = node_anydata->value.str;
+                    notification->data_type = NP_EV_NOTIF_DATA_LYB;
                 }
             }
         }
@@ -1737,6 +1740,9 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
         case LYD_XML:
             new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_STRING);
             break;
+        case LYD_LYB:
+            new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_LYB);
+            break;
         default:
             SR_LOG_ERR_MSG("Unknown libyang format '" "SR_FILE_FORMAT_LY" "'.");
             rc = SR_ERR_INTERNAL;
@@ -1754,6 +1760,9 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
             break;
         case LYD_XML:
             new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_SXMLD);
+            break;
+        case LYD_LYB:
+            new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_LYB);
             break;
         default:
             SR_LOG_ERR_MSG("Unknown libyang format '" "SR_FILE_FORMAT_LY" "'.");
