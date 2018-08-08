@@ -1741,7 +1741,7 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
             new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_STRING);
             break;
         case LYD_LYB:
-            new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_LYB);
+            new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_LYBD);
             break;
         default:
             SR_LOG_ERR_MSG("Unknown libyang format '" "SR_FILE_FORMAT_LY" "'.");
@@ -1762,7 +1762,7 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
             new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_SXMLD);
             break;
         case LYD_LYB:
-            new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_LYB);
+            new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_LYBD);
             break;
         default:
             SR_LOG_ERR_MSG("Unknown libyang format '" "SR_FILE_FORMAT_LY" "'.");
