@@ -5686,7 +5686,10 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
                     dm_session_switch_ds(session, prev_ds);
                 }
             }
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s can not be locked in destination datastore", module_name);
+            if (rc != SR_ERR_OK) {
+                SR_LOG_WRN("Module %s can not be locked in destination datastore", module_name);
+                goto cleanup;
+            }
         }
 
         /* load data tree to be copied */
