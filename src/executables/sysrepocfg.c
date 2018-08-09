@@ -525,6 +525,12 @@ srcfg_convert_lydiff_changed(const char *xpath, struct lyd_node *node)
 
     CHECK_NULL_ARG2(xpath, node);
 
+    if (node->dflt) {
+        SR_LOG_DBG("Skipping default node '%s'.", node->schema->name);
+        rc = SR_ERR_OK;
+        goto cleanup;
+    }
+
     switch (node->schema->nodetype) {
         case LYS_LEAF:
         case LYS_LEAFLIST:
