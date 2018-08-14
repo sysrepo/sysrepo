@@ -1537,6 +1537,9 @@ sr_copy_node_to_tree_internal(const struct lyd_node *top_parent, const struct ly
         case LYS_LIST:
             sr_tree->type = SR_LIST_T;
             break;
+        case LYS_NOTIF:
+            sr_tree->type = SR_NOTIFICATION_T;
+            break;
         case LYS_ANYXML:
         case LYS_ANYDATA:
             sch_any = (struct lyd_node_anydata *) node;
