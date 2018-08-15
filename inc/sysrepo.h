@@ -1139,8 +1139,9 @@ typedef enum sr_subscr_flag_e {
      * ::sr_subtree_change_subscribe calls it means that:
      *
      * - the subscriber is the "owner" of the subscribed data tree and and the data tree will be enabled in the running
-     *   datastore while this subscription is alive (can be changed using ::SR_SUBSCR_PASSIVE flag),
-     * - configuration data of the subscribed module or subtree is copied from startup to running datastore,
+     *   datastore while this subscription is alive (if not already, can be changed using ::SR_SUBSCR_PASSIVE flag),
+     * - configuration data of the subscribed module or subtree is copied from startup to running datastore
+     *   (only if the module was not enabled before),
      * - the callback will be called twice, once with ::SR_EV_VERIFY event and once with ::SR_EV_APPLY / ::SR_EV_ABORT
      *   event passed in (can be changed with ::SR_SUBSCR_APPLY_ONLY flag).
      */

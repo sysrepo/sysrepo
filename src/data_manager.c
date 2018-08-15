@@ -5846,15 +5846,21 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
     CHECK_NULL_ARG2(ctx, module_name); /* schema_info, session can be NULL */
     dm_schema_info_t *si = NULL;
     int rc = SR_ERR_OK;
+    bool res = false;
 
-    rc = dm_get_module_and_lockw(ctx, module_name, &si);
-    CHECK_RC_LOG_RETURN(rc, "Lock schema %s for write failed", module_name);
+    rc = dm_has_enabled_subtree(ctx, module_name, &si, &res);
+    CHECK_RC_LOG_RETURN(rc, "Has enabled subtree check for %s failed", module_name);
+
+    /* lock again */
+    RWLOCK_RDLOCK_TIMED_CHECK_RETURN(&si->model_lock);
 
     rc = dm_enable_module_running_internal(ctx, session, si, module_name);
     pthread_rwlock_unlock(&si->model_lock);
     CHECK_RC_LOG_RETURN(rc, "Enable module %s running failed", module_name);
 
-    rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING, subscription, 0, NULL, NULL);
+    if (!res) {
+        rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING, subscription, 0, NULL, NULL);
+    }
 
     return rc;
 }
