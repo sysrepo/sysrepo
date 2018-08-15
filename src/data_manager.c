@@ -5686,7 +5686,10 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
                     dm_session_switch_ds(session, prev_ds);
                 }
             }
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s can not be locked in destination datastore", module_name);
+            if (rc != SR_ERR_OK) {
+                SR_LOG_WRN("Module %s can not be locked in destination datastore", module_name);
+                goto cleanup;
+            }
         }
 
         /* load data tree to be copied */
@@ -6774,8 +6777,8 @@ dm_parse_event_notif(rp_ctx_t *rp_ctx, rp_session_t *session, sr_mem_ctx_t *sr_m
     CHECK_NULL_ARG4(rp_ctx, session, notification, notification->xpath);
 
     if (NP_EV_NOTIF_DATA_XML != notification->data_type && NP_EV_NOTIF_DATA_STRING != notification->data_type
-            && NP_EV_NOTIF_DATA_JSON != notification->data_type) {
-        SR_LOG_ERR_MSG("Invalid notification data type (should be XML, STRING or JSON).");
+            && NP_EV_NOTIF_DATA_JSON != notification->data_type && NP_EV_NOTIF_DATA_LYB != notification->data_type) {
+        SR_LOG_ERR_MSG("Invalid notification data type (should be XML, STRING, JSON, or LYB).");
         return SR_ERR_INVAL_ARG;
     }
 
@@ -6826,9 +6829,12 @@ dm_parse_event_notif(rp_ctx_t *rp_ctx, rp_session_t *session, sr_mem_ctx_t *sr_m
     } else if (notification->data_type == NP_EV_NOTIF_DATA_STRING) {
         CHECK_NULL_ARG(notification->data.string);
         data_tree = lyd_parse_mem(ly_ctx, notification->data.string, LYD_XML, LYD_OPT_NOTIF | LYD_OPT_TRUSTED | LYD_OPT_STRICT, NULL);
-    } else {
+    } else if (notification->data_type == NP_EV_NOTIF_DATA_JSON) {
         CHECK_NULL_ARG(notification->data.string);
         data_tree = lyd_parse_mem(ly_ctx, notification->data.string, LYD_JSON, LYD_OPT_NOTIF | LYD_OPT_TRUSTED | LYD_OPT_STRICT, NULL);
+    } else {
+        CHECK_NULL_ARG(notification->data.string);
+        data_tree = lyd_parse_mem(ly_ctx, notification->data.string, LYD_LYB, LYD_OPT_NOTIF | LYD_OPT_TRUSTED | LYD_OPT_STRICT, NULL);
     }
     if (NULL == data_tree) {
         SR_LOG_ERR("Error by parsing notification data: %s", ly_errmsg(ly_ctx));

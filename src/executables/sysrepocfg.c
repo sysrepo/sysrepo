@@ -1646,7 +1646,7 @@ srcfg_print_help()
     printf("  -d, --datastore <datastore>  Datastore to be operated on\n");
     printf("                               (either \"running\" or \"startup\", \"running\" is default).\n");
     printf("  -f, --format <format>        Data format to be used for configuration editing/importing/exporting\n");
-    printf("                               (\"xml\" or \"json\", if not specified, will be set based on file extension).\n");
+    printf("                               (\"xml\", \"json\", or \"lyb\", if not specified, will be set based on file extension).\n");
     printf("  -e, --editor <editor>        Text editor to be used for editing datastore data\n");
     printf("                               (default editor is defined by $VISUAL or $EDITOR env. variables).\n");
     printf("  -i, --import [<path>]        Read and replace entire configuration from a supplied file\n");
@@ -1911,11 +1911,15 @@ main(int argc, char* argv[])
                 format = LYD_XML;
             } else if ((strlen(filepath) > 5) && !strcmp(filepath + strlen(filepath) - 5, ".json")) {
                 format = LYD_JSON;
+            } else if ((strlen(filepath) > 4) && !strcmp(filepath + strlen(filepath) - 4, ".lyb")) {
+                format = LYD_LYB;
             }
         } else if (strcasecmp("xml", format_name) == 0) {
             format = LYD_XML;
         } else if (strcasecmp("json", format_name) == 0) {
             format = LYD_JSON;
+        } else if (strcasecmp("lyb", format_name) == 0) {
+            format = LYD_LYB;
         } else {
             fprintf(stderr, "%s: Unsupported data format (xml and json are supported).\n", argv[0]);
             rc = SR_ERR_INVAL_ARG;

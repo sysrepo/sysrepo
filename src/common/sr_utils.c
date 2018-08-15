@@ -1257,6 +1257,8 @@ sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *val
     case LYD_ANYDATA_JSOND:
     case LYD_ANYDATA_SXML:
     case LYD_ANYDATA_SXMLD:
+    case LYD_ANYDATA_LYBD:
+    case LYD_ANYDATA_LYB:
         str_val = (char *)node->value.str;
         break;
     case LYD_ANYDATA_XML:
