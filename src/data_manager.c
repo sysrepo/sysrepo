@@ -3427,6 +3427,92 @@ cleanup:
     return rc;
 }
 
+static void
+dm_record_errors(int rc, sr_error_info_t **errors, size_t *err_cnt, dm_data_info_t *info)
+{
+    if (SR_ERR_VALIDATION_FAILED == rc) {
+        if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(info->schema->module->ctx), "%s",
+                                        ly_errmsg(info->schema->module->ctx))) {
+            SR_LOG_WRN_MSG("Failed to record validation error");
+        }
+    } else {
+        if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, "Validation failed: %s",
+                                        sr_strerror(rc))) {
+            SR_LOG_WRN_MSG("Failed to record validation error");
+        }
+    }
+}
+
+static void
+dm_invalidate_leaf_refs(struct lyd_node *root)
+{
+    struct lyd_node *data = NULL, *next = NULL, *iter = NULL;
+    LY_TREE_FOR(root, data) {
+        LY_TREE_DFS_BEGIN(data, next, iter) {
+            switch (iter->schema->nodetype) {
+            case LYS_LEAFLIST:
+            case LYS_LEAF:
+                if (((struct lys_node_leaf *)iter->schema)->type.base == LY_TYPE_LEAFREF) {
+                    iter->validity |= LYD_VAL_LEAFREF;
+                }
+                break;
+            default:
+                break;
+            }
+            LY_TREE_DFS_END(data, next, iter)
+        }
+    }
+}
+
+static int
+dm_validate_module_inv_data_deps(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors,
+                                 size_t *err_cnt, const char *module_name)
+{
+    dm_data_info_t *info = NULL;
+    bool must_free_info = false;
+    int rc = SR_ERR_OK;
+    md_module_t *module = NULL;
+    sr_llist_node_t *ll_node = NULL;
+    md_dep_t *dep = NULL;
+    bool validation_failed = false;
+
+    md_ctx_lock(dm_ctx->md_ctx, false);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, NULL, &module);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s info failed", module_name);
+
+    ll_node = module->inv_deps->first;
+    while (ll_node) {
+        dep = (md_dep_t *)ll_node->data;
+        ll_node = ll_node->next;
+
+        if (dep->type != MD_DEP_DATA || !dep->dest->has_data) {
+            continue;
+        }
+        rc = dm_get_data_info_internal(dm_ctx, session, dep->dest->name, true, &must_free_info, &info);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load data info for %s", dep->dest->name);
+
+        /* The dependent data has changed, so leaf refs might not be valid anymore */
+        dm_invalidate_leaf_refs(info->node);
+        rc = dm_validate_data_info(dm_ctx, session, info);
+        if (rc != SR_ERR_OK) {
+            dm_record_errors(rc, errors, err_cnt, info);
+            validation_failed = true;
+            rc = SR_ERR_OK;
+        }
+
+        if (must_free_info) {
+            dm_data_info_free(info);
+        }
+    }
+
+cleanup:
+    md_ctx_unlock(dm_ctx->md_ctx);
+    if(validation_failed) {
+        rc = SR_ERR_VALIDATION_FAILED;
+    }
+    return rc;
+}
+
 int
 dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
 {
@@ -3456,17 +3542,12 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
         if (info->modified) {
             rc = dm_validate_data_info(dm_ctx, session, info);
             if (rc != SR_ERR_OK) {
-                if (SR_ERR_VALIDATION_FAILED == rc) {
-                    if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(info->schema->module->ctx), "%s",
-                            ly_errmsg(info->schema->module->ctx))) {
-                        SR_LOG_WRN_MSG("Failed to record validation error");
-                    }
-                } else {
-                    if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, "Validation failed: %s",
-                                                  sr_strerror(rc))) {
-                        SR_LOG_WRN_MSG("Failed to record validation error");
-                    }
-                }
+                dm_record_errors(rc, errors, err_cnt, info);
+                validation_failed = true;
+                rc = SR_ERR_OK;
+            }
+            rc = dm_validate_module_inv_data_deps(dm_ctx, session, errors, err_cnt, info->schema->module_name);
+            if (rc != SR_ERR_OK) {
                 validation_failed = true;
                 rc = SR_ERR_OK;
             }
@@ -6025,8 +6106,17 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char
     rc = dm_copy_mandatory_for_subtree(ctx, xpath, startup_info, candidate_info);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to copy mandatory nodes for subtree");
 
-    /* copy module candidate -> running */
-    rc = dm_copy_module(ctx, tmp_session, module_name, SR_DS_CANDIDATE, SR_DS_RUNNING, subscription, 0, NULL, NULL);
+    /* swap candidate and startup data info nodes so we can do the copy from SR_DS_STARTUP
+     * otherwise validation will get messed up since all startup config has not necessarily been
+     * loaded yet
+     */
+    node = startup_info->node;
+    startup_info->node = candidate_info->node;
+    candidate_info->node = node;
+    tmp_session->datastore = SR_DS_STARTUP;
+
+    /* copy module startup -> running */
+    rc = dm_copy_module(ctx, tmp_session, module_name, SR_DS_STARTUP, SR_DS_RUNNING, subscription, 0, NULL, NULL);
 
 cleanup:
     ly_set_free(nodes);
