@@ -5426,6 +5426,16 @@ cl_cross_module_dependency(void **state)
     rc = sr_validate(session);
     assert_int_equal(SR_ERR_OK, rc);
 
+    /* clean data */
+    rc = sr_delete_item(session, "/referenced-data:*", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_delete_item(session, "/cross-module:*", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
     sr_session_stop(session);
 }
 
