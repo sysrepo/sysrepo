@@ -534,7 +534,7 @@ static int
 np_get_notification_files(np_ctx_t *np_ctx, const char *module_name, time_t time_from, time_t time_to,
         sr_list_t *file_list)
 {
-    char dirname[PATH_MAX] = { 0, };
+    char dirname[PATH_MAX - 257] = { 0, };
     char filename[PATH_MAX] = { 0, };
     struct dirent **entries = NULL;
     int dir_elem_cnt = 0;
@@ -544,12 +544,12 @@ np_get_notification_files(np_ctx_t *np_ctx, const char *module_name, time_t time
     CHECK_NULL_ARG3(np_ctx, module_name, file_list);
 
     if (sr_ll_stderr >= SR_LL_DBG) {
-        strftime(dirname, PATH_MAX - 1, "%Y-%m-%d %H:%M", localtime(&time_from));
+        strftime(dirname, PATH_MAX - 258, "%Y-%m-%d %H:%M", localtime(&time_from));
         strftime(filename, PATH_MAX - 1, "%Y-%m-%d %H:%M", localtime(&time_to));
     }
     SR_LOG_DBG("Listing notification data files for '%s' modified from '%s' to '%s'.", module_name, dirname, filename);
 
-    snprintf(dirname, PATH_MAX - 1, "%s/%s", SR_NOTIF_DATA_SEARCH_DIR, module_name);
+    snprintf(dirname, PATH_MAX - 258, "%s/%s", SR_NOTIF_DATA_SEARCH_DIR, module_name);
 
     /* scan files in the directory with the data files (in alphabetical order) */
     dir_elem_cnt = scandir(dirname, &entries, NULL, alphasort);

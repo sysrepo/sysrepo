@@ -197,7 +197,7 @@ sr_pd_load_plugins(sr_pd_ctx_t *ctx)
     DIR *dir;
     struct dirent entry, *result;
     char *env_str = NULL;
-    char plugins_dir[PATH_MAX + 1] = { 0, };
+    char plugins_dir[PATH_MAX - 256] = { 0, };
     char plugin_filename[PATH_MAX + 1] = { 0, };
     sr_pd_plugin_ctx_t *tmp = NULL;
     bool init_retry_needed = false;
@@ -209,9 +209,9 @@ sr_pd_load_plugins(sr_pd_ctx_t *ctx)
     /* get plugins dir from environment variable, or use default one */
     env_str = getenv("SR_PLUGINS_DIR");
     if (NULL != env_str) {
-        strncat(plugins_dir, env_str, PATH_MAX);
+        strncat(plugins_dir, env_str, PATH_MAX - 257);
     } else {
-        strncat(plugins_dir, SR_PLUGINS_DIR, PATH_MAX);
+        strncat(plugins_dir, SR_PLUGINS_DIR, PATH_MAX - 257);
     }
 
     SR_LOG_DBG("Loading plugins from '%s'.", plugins_dir);
