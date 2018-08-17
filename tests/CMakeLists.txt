@@ -102,6 +102,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     endif(ENABLE_NACM)
 
     ADD_UNIT_TEST(cl_test 1)
+    ADD_UNIT_TEST(cl_test2 1)
     ADD_UNIT_TEST(cl_notifications_test 1)
     ADD_UNIT_TEST(cl_state_data_test 1)
     ADD_UNIT_TEST(cl_fd_watcher_test 1)
