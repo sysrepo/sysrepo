@@ -698,7 +698,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     schema_xpath = ly_path_data2schema(schema_info->ly_ctx, xpath);
     if (NULL == schema_xpath) {
         SR_LOG_ERR("Failed to transform data path '%s' to schema path", xpath);
-        rc = SR_ERR_INVAL_ARG;
+        rc = SR_ERR_BAD_ELEMENT;
         goto cleanup;
     }
 
