@@ -36,7 +36,7 @@
 #define TEST_MODULE_EXT        ".yang"
 
 typedef struct md_test_inserted_modules_s {
-    bool A, B, C, D_rev1, D_rev2, E, F;
+    bool A, B, C, D_rev1, D_rev2, E, F, V;
 } md_test_inserted_modules_t;
 
 md_test_inserted_modules_t inserted;
@@ -477,6 +477,15 @@ static const char * const md_module_X_body =
 "  }";
 
 
+static const char * const md_module_V_filepath = TEST_SCHEMA_SEARCH_DIR TEST_MODULE_PREFIX "V" TEST_MODULE_EXT;
+static const char * const md_module_V_body =
+"  deviation \"/A:base-container/A:num\" {\n"
+"    deviate replace {\n"
+"      type uint8;\n"
+"    }\n"
+"  }";
+
+
 
 static md_test_dep_t *
 md_test_dep(md_dep_type_t type, int is_direct, ...)
@@ -640,6 +649,7 @@ md_tests_setup(void **state)
     create_module_yang_schema("E", md_module_E_filepath, md_module_E_body, "D@2016-06-10", "C", NULL);
     create_module_yang_schema("F", md_module_F_filepath, md_module_F_body, "D@2016-06-20", NULL);
     create_module_yang_schema("X", md_module_X_filepath, md_module_X_body, NULL);
+    create_module_yang_schema("V", md_module_V_filepath, md_module_V_body, "A", NULL);
     return 0;
 }
 
@@ -708,6 +718,8 @@ present_module(const char *module_name, int presence_type)
         return presence->E;
     } else if (0 == strcmp("F@2016-06-21", module_name)) {
         return presence->F;
+    } else if (0 == strcmp("V", module_name)) {
+        return presence->V;
     }
     return false;
 }
@@ -984,6 +996,9 @@ validate_context(md_ctx_t *md_ctx)
             validate_dependency(module->inv_deps, "E@2016-06-11", 2, md_test_dep(MD_DEP_IMPORT, false), md_test_dep(MD_DEP_DATA, false, 0));
         }
         validate_dependency(module->inv_deps, "F@2016-06-21", 1, md_test_dep(MD_DEP_IMPORT, false));
+        if (implemented.V) {
+            validate_dependency(module->deps, "V", 1, md_test_dep(MD_DEP_EXTENSION, true));
+        }
     } else {
         assert_int_equal_bt(SR_ERR_NOT_FOUND, rc);
         assert_null_bt(module);
@@ -1621,6 +1636,15 @@ md_test_insert_module(void **state)
     implicitly_inserted = NULL;
     validate_context(md_ctx);
 
+    /* insert module V */
+    rc = md_insert_module(md_ctx, md_module_V_filepath, &implicitly_inserted);
+    assert_int_equal(SR_ERR_OK, rc);
+    inserted.V = implemented.V = true;
+    assert_int_equal(0, implicitly_inserted->count);
+    sr_list_cleanup(implicitly_inserted);
+    implicitly_inserted = NULL;
+    validate_context(md_ctx);
+
     /* flush changes into the internal data file */
     rc = md_flush(md_ctx);
     assert_int_equal(SR_ERR_OK, rc);
@@ -1815,6 +1839,7 @@ md_test_remove_modules(void **state)
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(implicitly_removed);
 
+
     /* initialy only the module E can be removed */
     rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "A", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
@@ -1901,6 +1926,15 @@ md_test_remove_modules(void **state)
     sr_list_cleanup(implicitly_removed);
     implicitly_removed = NULL;
     inserted.C = implemented.C = false;
+    validate_context(md_ctx);
+
+    /* Remove the deviation */
+    rc = _md_test_remove_modules(md_ctx, TEST_MODULE_PREFIX "V", NULL, &implicitly_removed);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(0, implicitly_removed->count);
+    sr_list_cleanup(implicitly_removed);
+    implicitly_removed = NULL;
+    inserted.V = implemented.V = false;
     validate_context(md_ctx);
 
     /* finally remove module A */

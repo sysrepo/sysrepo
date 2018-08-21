@@ -1830,6 +1830,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     struct lys_include *inc = NULL;
     struct lys_ident *ident = NULL;
     struct lys_node_augment *augment = NULL;
+    struct lys_deviation *deviation = NULL;
     struct ly_ctx *tmp_ly_ctx = NULL;
     const struct lys_module *tmp_module_schema = NULL;
     md_module_t module_lkp = { 0, };
@@ -2184,6 +2185,42 @@ implemented_dependencies:
                         continue;
                     } else {
                         SR_LOG_ERR_MSG("Unable to resolve dependency induced by an augment.");
+                        rc = SR_ERR_INTERNAL;
+                        goto cleanup;
+                    }
+                }
+                if (SR_ERR_OK != md_add_dependency(module2->deps, MD_DEP_EXTENSION, main_module, true, NULL) ||
+                    SR_ERR_OK != md_add_dependency(main_module->inv_deps, MD_DEP_EXTENSION, module2, true, NULL)) {
+                    SR_LOG_ERR_MSG("Failed to add an edge into the dependency graph.");
+                    rc = SR_ERR_INTERNAL;
+                    goto cleanup;
+                }
+                /* add entry also into data_tree */
+                rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_DEPENDENCY, NULL, main_module,
+                                    "add (extension) dependency into the data tree", NULL,
+                                    module2->name, module2->revision_date,
+                                    main_module->name, main_module->revision_date,
+                                    md_get_dep_type_to_str(MD_DEP_EXTENSION));
+                if (SR_ERR_OK != rc) {
+                    goto cleanup;
+                }
+            }
+        }
+
+        /* process dependencies introduced by deviations */
+        for (uint32_t i = 0; i < module_schema->deviation_size; ++i) {
+            deviation = module_schema->deviation + i;
+            if (module_schema != lys_node_module(deviation->orig_node)) {
+                module_lkp.name = (char *)lys_node_module(deviation->orig_node)->name;
+                module_lkp.revision_date = (char *)md_get_module_revision(lys_node_module(deviation->orig_node));
+                module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
+                if (NULL == module2) {
+                    if (module->submodule && NULL != belongsto &&
+                        0 == strcmp(belongsto->name, module_lkp.name) &&
+                        0 == strcmp(belongsto->revision_date, module_lkp.revision_date)) {
+                        continue;
+                    } else {
+                        SR_LOG_ERR_MSG("Unable to resolve dependency induced by a deviation.");
                         rc = SR_ERR_INTERNAL;
                         goto cleanup;
                     }
