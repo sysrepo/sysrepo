@@ -1135,8 +1135,11 @@ md_init(const char *schema_search_dir,
                             module->ns = strdup(leaf->value.string);
                             CHECK_NULL_NOMEM_GOTO(module->ns, rc, fail);
                         } else if (node->schema->name && 0 == strcmp("filepath", node->schema->name)) {
-                            module->filepath = strdup(leaf->value.string);
+                            const size_t needed = strlen(SR_SCHEMA_SEARCH_DIR) + strlen(leaf->value.string) + 1 /* terminating \0 */;
+                            module->filepath = (char *)calloc(needed, 1);
                             CHECK_NULL_NOMEM_GOTO(module->filepath, rc, fail);
+                            strcat(module->filepath, SR_SCHEMA_SEARCH_DIR);
+                            strcat(module->filepath, leaf->value.string);
                         } else if (node->schema->name && 0 == strcmp("latest-revision", node->schema->name)) {
                             module->latest_revision = leaf->value.bln;
                         } else if (node->schema->name && 0 == strcmp("submodule", node->schema->name)) {
@@ -1998,7 +2001,12 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
         goto cleanup;
     }
     /*  - filepath */
-    rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_FILEPATH, module->filepath, module,
+    const char *relative_filepath = module->filepath;
+    if (strncmp(module->filepath, SR_SCHEMA_SEARCH_DIR, strlen(SR_SCHEMA_SEARCH_DIR)) == 0) {
+        relative_filepath += strlen(SR_SCHEMA_SEARCH_DIR);
+        assert(*relative_filepath != '/');
+    }
+    rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_FILEPATH, relative_filepath, module,
                          "set filepath", NULL, module->name, module->revision_date);
     if (SR_ERR_OK != rc) {
         goto cleanup;
