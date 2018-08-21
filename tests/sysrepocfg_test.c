@@ -433,7 +433,7 @@ srcfg_test_xpath(void **state)
         printf("Error by sr_session_refresh %s\n", sr_strerror(rc));
     };
     rc = sr_get_item(srcfg_test_session, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/fakeleaf", &rvalue);
-    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
     sr_free_val(rvalue);
     rvalue = NULL;
 
