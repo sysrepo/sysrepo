@@ -29,6 +29,7 @@
 #include <pthread.h>
 #include <libyang/libyang.h>
 #include <inttypes.h>
+#include <time.h>
 
 /**
  * @brief Checks if the schema node has a key node with the specified name
@@ -779,6 +780,7 @@ rp_dt_reload_nacm(rp_ctx_t *rp_ctx)
 {
     Sr__Msg *req = NULL;
     int rc = SR_ERR_OK;
+    struct timespec ts;
     CHECK_NULL_ARG(rp_ctx);
 
     /* setup the timer */
@@ -793,7 +795,9 @@ rp_dt_reload_nacm(rp_ctx_t *rp_ctx)
 
     /* wait until the NACM ctx has been reloaded */
     while (cm_msg_search(rp_ctx->cm_ctx, req)) {
-        usleep(250);
+        ts.tv_sec = 0;
+        ts.tv_nsec = 250000;
+        nanosleep(&ts, NULL);
     }
 
     return rc;
