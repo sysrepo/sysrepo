@@ -771,7 +771,8 @@ cleanup:
 }
 
 /**
- * @brief Reload NACM configuration (asynchronous, sends a request to the request processor).
+ * @brief Reload NACM configuration (sends a request to the request processor
+ * and waits for it to be fully processed).
  */
 static int
 rp_dt_reload_nacm(rp_ctx_t *rp_ctx)
@@ -788,6 +789,11 @@ rp_dt_reload_nacm(rp_ctx_t *rp_ctx)
     }
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Unable to send a request to reload the running NACM configuration.");
+    }
+
+    /* wait until the NACM ctx has been reloaded */
+    while (cm_msg_search(rp_ctx->cm_ctx, req)) {
+        usleep(250);
     }
 
     return rc;

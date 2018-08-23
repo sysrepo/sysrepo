@@ -2084,6 +2084,20 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     return rc;
 }
 
+bool
+cm_msg_search(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    bool search_result = false;
+
+    if (cm_ctx != NULL && msg != NULL) {
+        pthread_mutex_lock(&cm_ctx->msg_queue_mutex);
+        search_result = sr_cbuff_search(cm_ctx->msg_queue, &msg);
+        pthread_mutex_unlock(&cm_ctx->msg_queue_mutex);
+    }
+
+    return search_result;
+}
+
 int
 cm_watch_signal(cm_ctx_t *cm_ctx, int signum, cm_signal_cb callback)
 {
