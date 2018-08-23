@@ -19,12 +19,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#define _GNU_SOURCE
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <stdarg.h>
 #include <libyang/libyang.h>
 
@@ -1135,8 +1136,16 @@ md_init(const char *schema_search_dir,
                             module->ns = strdup(leaf->value.string);
                             CHECK_NULL_NOMEM_GOTO(module->ns, rc, fail);
                         } else if (node->schema->name && 0 == strcmp("filepath", node->schema->name)) {
-                            module->filepath = strdup(leaf->value.string);
-                            CHECK_NULL_NOMEM_GOTO(module->filepath, rc, fail);
+                            if (leaf->value.string[0] == '/') {
+                                module->filepath = strdup(leaf->value.string);
+                                CHECK_NULL_NOMEM_GOTO(module->filepath, rc, fail);
+                            } else {
+                                if (asprintf(&module->filepath, "%s%s", SR_SCHEMA_SEARCH_DIR, leaf->value.string) == -1) {
+                                    SR_LOG_ERR("Unable to allocate memory in %s", __func__);
+                                    rc = SR_ERR_NOMEM;
+                                    goto fail;
+                                }
+                            }
                         } else if (node->schema->name && 0 == strcmp("latest-revision", node->schema->name)) {
                             module->latest_revision = leaf->value.bln;
                         } else if (node->schema->name && 0 == strcmp("submodule", node->schema->name)) {
@@ -1999,7 +2008,12 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
         goto cleanup;
     }
     /*  - filepath */
-    rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_FILEPATH, module->filepath, module,
+    const char *relative_filepath = module->filepath;
+    if (strncmp(module->filepath, SR_SCHEMA_SEARCH_DIR, strlen(SR_SCHEMA_SEARCH_DIR)) == 0) {
+        relative_filepath += strlen(SR_SCHEMA_SEARCH_DIR);
+        assert(*relative_filepath != '/');
+    }
+    rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_FILEPATH, relative_filepath, module,
                          "set filepath", NULL, module->name, module->revision_date);
     if (SR_ERR_OK != rc) {
         goto cleanup;
