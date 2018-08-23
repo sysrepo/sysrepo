@@ -19,12 +19,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#define _GNU_SOURCE
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <stdarg.h>
 #include <libyang/libyang.h>
 
@@ -1135,11 +1136,16 @@ md_init(const char *schema_search_dir,
                             module->ns = strdup(leaf->value.string);
                             CHECK_NULL_NOMEM_GOTO(module->ns, rc, fail);
                         } else if (node->schema->name && 0 == strcmp("filepath", node->schema->name)) {
-                            const size_t needed = strlen(SR_SCHEMA_SEARCH_DIR) + strlen(leaf->value.string) + 1 /* terminating \0 */;
-                            module->filepath = (char *)calloc(needed, 1);
-                            CHECK_NULL_NOMEM_GOTO(module->filepath, rc, fail);
-                            strcat(module->filepath, SR_SCHEMA_SEARCH_DIR);
-                            strcat(module->filepath, leaf->value.string);
+                            if (leaf->value.string[0] == '/') {
+                                module->filepath = strdup(leaf->value.string);
+                                CHECK_NULL_NOMEM_GOTO(module->filepath, rc, fail);
+                            } else {
+                                if (asprintf(&module->filepath, "%s%s", SR_SCHEMA_SEARCH_DIR, leaf->value.string) == -1) {
+                                    SR_LOG_ERR("Unable to allocate memory in %s", __func__);
+                                    rc = SR_ERR_NOMEM;
+                                    goto fail;
+                                }
+                            }
                         } else if (node->schema->name && 0 == strcmp("latest-revision", node->schema->name)) {
                             module->latest_revision = leaf->value.bln;
                         } else if (node->schema->name && 0 == strcmp("submodule", node->schema->name)) {
