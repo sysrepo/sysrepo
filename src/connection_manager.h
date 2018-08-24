@@ -44,6 +44,7 @@
 
 #include "sysrepo.pb-c.h"
 #include "cm_session_manager.h"
+#include <stdbool.h>
 
 /**
  * @brief Connection Manager context used to identify particular instance of
@@ -137,6 +138,19 @@ int cm_stop(cm_ctx_t *cm_ctx);
  * @return Error code (SR_ERR_OK on success).
  */
 int cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg);
+
+/**
+ * @brief Checks the Connection Manager context to see if the message
+ * is still in the buffer.
+ *
+ * @note This function is thread safe, can be called from any thread.
+ *
+ * @param[in] cm_ctx Connection Manager context.
+ * @param[in] msg Message to search for.
+ *
+ * @return true if the msg exists in the buffer, false if it does not exist.
+ */
+bool cm_msg_search(cm_ctx_t *cm_ctx, Sr__Msg *msg);
 
 /**
  * @brief Callback to be called when a watched signal (registered with
