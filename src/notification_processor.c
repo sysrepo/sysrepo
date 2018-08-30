@@ -139,10 +139,12 @@ np_dst_info_insert(np_ctx_t *np_ctx, const char *dst_address, const char *module
     char **tmp = NULL;
     bool inserted = false;
     int rc = SR_ERR_OK;
+    int rdlock_result = 0;
+    int wrlock_result = 0;
 
     CHECK_NULL_ARG3(np_ctx, dst_address, module_name);
 
-    pthread_rwlock_rdlock(&np_ctx->lock);
+    rdlock_result = pthread_rwlock_rdlock(&np_ctx->lock);
 
     /* find info entry matching with the destination */
     info_lookup.dst_address = dst_address;
@@ -153,15 +155,19 @@ np_dst_info_insert(np_ctx_t *np_ctx, const char *dst_address, const char *module
         for (size_t i = 0; i < info->subscribed_modules_cnt; i++) {
             if (0 == strcmp(info->subscribed_modules[i], module_name)) {
                 /* module name already exists within the info entry, no update needed */
-                pthread_rwlock_unlock(&np_ctx->lock);
+                if (0 == rdlock_result) {
+                    pthread_rwlock_unlock(&np_ctx->lock);
+                }
                 return SR_ERR_OK;
             }
         }
     }
 
     /* info update is required */
-    pthread_rwlock_unlock(&np_ctx->lock);
-    pthread_rwlock_wrlock(&np_ctx->lock);
+    if (0 == rdlock_result) {
+        pthread_rwlock_unlock(&np_ctx->lock);
+    }
+    wrlock_result = pthread_rwlock_wrlock(&np_ctx->lock);
 
     if (NULL == info) {
         /* info entry not found, create new one */
@@ -186,7 +192,9 @@ np_dst_info_insert(np_ctx_t *np_ctx, const char *dst_address, const char *module
     CHECK_NULL_NOMEM_GOTO(info->subscribed_modules[info->subscribed_modules_cnt], rc, cleanup);
     info->subscribed_modules_cnt++;
 
-    pthread_rwlock_unlock(&np_ctx->lock);
+    if (0 == wrlock_result) {
+        pthread_rwlock_unlock(&np_ctx->lock);
+    }
     return SR_ERR_OK;
 
 cleanup:
@@ -199,7 +207,9 @@ cleanup:
             free(new_info);
         }
     }
-    pthread_rwlock_unlock(&np_ctx->lock);
+    if (0 == wrlock_result) {
+        pthread_rwlock_unlock(&np_ctx->lock);
+    }
     return rc;
 }
 
