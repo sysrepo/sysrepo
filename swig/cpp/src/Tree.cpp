@@ -19,7 +19,7 @@
  * limitations under the License.
  */
 
-#include "Sysrepo.h"
+#include "Sysrepo.hpp"
 #include "Struct.h"
 #include "Tree.h"
 

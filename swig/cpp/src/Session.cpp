@@ -27,7 +27,7 @@
 #include "Struct.h"
 #include "Internal.h"
 #include "Tree.h"
-#include "Sysrepo.h"
+#include "Sysrepo.hpp"
 #include "Connection.h"
 #include "Session.h"
 
@@ -98,30 +98,22 @@ S_Error Session::get_last_error()
 {
     S_Error error(new Error());
 
-    int ret = sr_get_last_error(_sess, &error->_info);
-    if (SR_ERR_OK == ret) {
-        return error;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    sr_get_last_error(_sess, &error->_info);
+    if (error->_info == nullptr) {
         return nullptr;
     }
+    return error;
 }
 
 S_Errors Session::get_last_errors()
 {
     S_Errors errors(new Errors());
 
-    int ret = sr_get_last_errors(_sess, &errors->_info, &errors->_cnt);
-    if (SR_ERR_OK == ret) {
-        return errors;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    sr_get_last_errors(_sess, &errors->_info, &errors->_cnt);
+    if (errors->_cnt == 0) {
         return nullptr;
     }
+    return errors;
 }
 
 S_Yang_Schemas Session::list_schemas()

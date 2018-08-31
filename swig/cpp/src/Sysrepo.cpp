@@ -23,7 +23,7 @@
 #include <stdlib.h>
 
 #include "Struct.h"
-#include "Sysrepo.h"
+#include "Sysrepo.hpp"
 
 extern "C" {
 #include "sysrepo.h"

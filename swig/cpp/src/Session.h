@@ -30,7 +30,7 @@
 #include "Internal.h"
 #include "Struct.h"
 #include "Tree.h"
-#include "Sysrepo.h"
+#include "Sysrepo.hpp"
 #include "Connection.h"
 #include "Session.h"
 

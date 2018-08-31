@@ -20,7 +20,7 @@
  */
 
 #include "Internal.h"
-#include "Sysrepo.h"
+#include "Sysrepo.hpp"
 #include <iostream>
 
 extern "C" {

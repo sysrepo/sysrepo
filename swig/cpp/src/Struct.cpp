@@ -24,7 +24,7 @@
 #include <string.h>
 
 #include "Struct.h"
-#include "Sysrepo.h"
+#include "Sysrepo.hpp"
 #include "Internal.h"
 
 extern "C" {
