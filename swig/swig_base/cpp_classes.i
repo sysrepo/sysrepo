@@ -15,7 +15,7 @@
 
 %{
 /* Includes the header in the wrapper code */
-#include "Sysrepo.h"
+#include "Sysrepo.hpp"
 #include "Connection.h"
 #include "Session.h"
 #include "Struct.h"
@@ -222,7 +222,7 @@
 #endif
 %ignore Xpath_Ctx::Xpath_Ctx(sr_xpath_ctx_t *);
 
-%include "Sysrepo.h"
+%include "Sysrepo.hpp"
 %include "Connection.h"
 %include "Session.h"
 %include "Struct.h"

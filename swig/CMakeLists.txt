@@ -87,7 +87,7 @@ set(SYSREPO_CPP_SOURCES
     ${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.cpp)
 
 set(SYSREPO_HPP_SOURCES
-    ${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.h
+    ${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.hpp
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Connection.h
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Session.h
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Struct.h

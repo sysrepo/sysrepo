@@ -19,7 +19,7 @@
  * limitations under the License.
  */
 
-#include "Sysrepo.h"
+#include "Sysrepo.hpp"
 #include "Xpath.h"
 
 extern "C" {

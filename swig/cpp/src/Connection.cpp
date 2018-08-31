@@ -22,7 +22,7 @@
 #include <iostream>
 #include <stdexcept>
 
-#include "Sysrepo.h"
+#include "Sysrepo.hpp"
 #include "Connection.h"
 
 extern "C" {
