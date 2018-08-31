@@ -174,7 +174,7 @@ public:
     Error(const sr_error_info_t *info);
     ~Error();
     const char *message() const {if (_info) return _info->message; else return nullptr;};
-    const char *xpath() const {if (_info) return _info->message; else return nullptr;};
+    const char *xpath() const {if (_info) return _info->xpath; else return nullptr;};
 
     friend class Session;
 
