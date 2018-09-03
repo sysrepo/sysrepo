@@ -19,27 +19,27 @@
 %warnfilter(477);
 
 %typemap(javadirectorin) std::shared_ptr<Session> "new $typemap(jstype, Session)($1,false)";
-%typemap(directorin,descriptor="L$typemap(jstype, Session);") std::shared_ptr<Session> %{
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, Session);") std::shared_ptr<Session> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
 %typemap(javadirectorin) std::shared_ptr<Vals> "new $typemap(jstype, Vals)($1,false)";
-%typemap(directorin,descriptor="L$typemap(jstype, Vals);") std::shared_ptr<Vals> %{
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, Vals);") std::shared_ptr<Vals> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
 %typemap(javadirectorin) std::shared_ptr<Vals_Holder> "new $typemap(jstype, Vals_Holder)($1,false)";
-%typemap(directorin,descriptor="L$typemap(jstype, Vals_Holder);") std::shared_ptr<Vals_Holder> %{
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, Vals_Holder);") std::shared_ptr<Vals_Holder> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
 %typemap(javadirectorin) std::shared_ptr<Trees> "new $typemap(jstype, Trees)($1,false)";
-%typemap(directorin,descriptor="L$typemap(jstype, Trees);") std::shared_ptr<Trees> %{
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, Trees);") std::shared_ptr<Trees> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
 %typemap(javadirectorin) std::shared_ptr<Trees_Holder> "new $typemap(jstype, Trees_Holder)($1,false)";
-%typemap(directorin,descriptor="L$typemap(jstype, Trees_Holder);") std::shared_ptr<Trees_Holder> %{
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, Trees_Holder);") std::shared_ptr<Trees_Holder> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
