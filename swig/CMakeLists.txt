@@ -94,13 +94,13 @@ set(SYSREPO_CPP_SOURCES
     ${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.cpp)
 
 set(SYSREPO_HPP_SOURCES
-    ${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.h
-        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Connection.h
-        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Session.h
-        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Struct.h
-        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Xpath.h
-        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Tree.h
-    ${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.h)
+    ${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.hpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Connection.hpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Session.hpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Struct.hpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Xpath.hpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Tree.hpp
+    ${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.hpp)
 
 add_library(Sysrepo-cpp SHARED ${SYSREPO_CPP_SOURCES})
 SET_TARGET_PROPERTIES(Sysrepo-cpp PROPERTIES

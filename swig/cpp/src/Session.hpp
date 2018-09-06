@@ -27,12 +27,12 @@
 #include <map>
 #include <vector>
 
-#include "Internal.h"
-#include "Struct.h"
-#include "Tree.h"
-#include "Sysrepo.h"
-#include "Connection.h"
-#include "Session.h"
+#include "Internal.hpp"
+#include "Struct.hpp"
+#include "Tree.hpp"
+#include "Sysrepo.hpp"
+#include "Connection.hpp"
+#include "Session.hpp"
 
 extern "C" {
 #include "sysrepo.h"

@@ -25,9 +25,9 @@
 #include <vector>
 #include <memory>
 
-#include "Sysrepo.h"
-#include "Struct.h"
-#include "Session.h"
+#include "Sysrepo.hpp"
+#include "Struct.hpp"
+#include "Session.hpp"
 
 
 /* custom infinite loop */

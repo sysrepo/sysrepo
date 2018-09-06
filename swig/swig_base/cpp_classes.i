@@ -15,12 +15,12 @@
 
 %{
 /* Includes the header in the wrapper code */
-#include "Sysrepo.h"
-#include "Connection.h"
-#include "Session.h"
-#include "Struct.h"
-#include "Tree.h"
-#include "Xpath.h"
+#include "Sysrepo.hpp"
+#include "Connection.hpp"
+#include "Session.hpp"
+#include "Struct.hpp"
+#include "Tree.hpp"
+#include "Xpath.hpp"
 %}
 
 %ignore SESS_DEFAULT;
@@ -222,9 +222,9 @@
 #endif
 %ignore Xpath_Ctx::Xpath_Ctx(sr_xpath_ctx_t *);
 
-%include "Sysrepo.h"
-%include "Connection.h"
-%include "Session.h"
-%include "Struct.h"
-%include "Tree.h"
-%include "Xpath.h"
+%include "Sysrepo.hpp"
+%include "Connection.hpp"
+%include "Session.hpp"
+%include "Struct.hpp"
+%include "Tree.hpp"
+%include "Xpath.hpp"

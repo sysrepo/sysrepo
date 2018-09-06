@@ -22,8 +22,8 @@
 #include <iostream>
 #include <stdexcept>
 
-#include "Sysrepo.h"
-#include "Connection.h"
+#include "Sysrepo.hpp"
+#include "Connection.hpp"
 
 extern "C" {
 #include "sysrepo.h"

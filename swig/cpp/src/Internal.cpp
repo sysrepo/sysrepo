@@ -19,8 +19,8 @@
  * limitations under the License.
  */
 
-#include "Internal.h"
-#include "Sysrepo.h"
+#include "Internal.hpp"
+#include "Sysrepo.hpp"
 #include <iostream>
 
 extern "C" {

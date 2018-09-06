@@ -24,12 +24,12 @@
 #include <iostream>
 #include <vector>
 
-#include "Struct.h"
-#include "Internal.h"
-#include "Tree.h"
-#include "Sysrepo.h"
-#include "Connection.h"
-#include "Session.h"
+#include "Struct.hpp"
+#include "Internal.hpp"
+#include "Tree.hpp"
+#include "Sysrepo.hpp"
+#include "Connection.hpp"
+#include "Session.hpp"
 
 extern "C" {
 #include "sysrepo.h"

@@ -90,7 +90,7 @@
 #include <iostream>
 #include <stdexcept>
 
-#include "Internal.h"
+#include "Internal.hpp"
 
 extern "C" {
 #include "sysrepo.h"

@@ -22,8 +22,8 @@
 #include <iostream>
 #include <stdlib.h>
 
-#include "Struct.h"
-#include "Sysrepo.h"
+#include "Struct.hpp"
+#include "Sysrepo.hpp"
 
 extern "C" {
 #include "sysrepo.h"

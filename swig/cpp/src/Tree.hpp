@@ -22,8 +22,8 @@
 #ifndef TREE_H
 #define TREE_H
 
-#include "Sysrepo.h"
-#include "Struct.h"
+#include "Sysrepo.hpp"
+#include "Struct.hpp"
 
 extern "C" {
 #include "sysrepo.h"

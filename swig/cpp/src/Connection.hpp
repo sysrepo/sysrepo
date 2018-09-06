@@ -24,8 +24,8 @@
 
 #include <iostream>
 
-#include "Sysrepo.h"
-#include "Internal.h"
+#include "Sysrepo.hpp"
+#include "Internal.hpp"
 
 extern "C" {
 #include "sysrepo.h"
