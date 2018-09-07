@@ -98,7 +98,12 @@ extern "C" {
 #include "sysrepo.h"
 }
 
-void throw_exception(int error);
+#ifdef SWIG
+// https://github.com/swig/swig/issues/1158
+void throw_exception (int error);
+#else
+void throw_exception [[noreturn]] (int error);
+#endif
 
 class sysrepo_exception : public std::runtime_error
 {
