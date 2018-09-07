@@ -105,5 +105,4 @@ Deleter::~Deleter() {
     v._sess = nullptr;
     break;
     }
-    return;
 }
