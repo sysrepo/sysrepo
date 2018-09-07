@@ -140,24 +140,26 @@ S_Yang_Schemas Session::list_schemas()
     }
 }
 
-S_String Session::get_schema(const char *module_name, const char *revision,\
+std::string Session::get_schema(const char *module_name, const char *revision,\
                                const char *submodule_name, sr_schema_format_t format)
 {
     char *mem = nullptr;
 
     int ret = sr_get_schema(_sess, module_name, revision, submodule_name, format, &mem);
     if (SR_ERR_OK == ret) {
-        if (mem == nullptr)
-            return nullptr;
-        S_String string_val = mem;
+        if (mem == nullptr) {
+            return std::string();
+        }
+        std::string string_val = mem;
         free(mem);
         return string_val;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
-        return nullptr;
     }
+
+    if (SR_ERR_NOT_FOUND == ret) {
+        return std::string();
+    }
+
+    throw_exception(ret);
 }
 
 S_Val Session::get_item(const char *xpath)

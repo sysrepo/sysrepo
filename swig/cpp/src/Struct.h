@@ -96,8 +96,8 @@ public:
     bool dflt() {return _val->dflt;};
     void dflt_set(bool data) {_val->dflt = data;};
     S_Data data() {S_Data data(new Data(_val->data, _val->type, _deleter)); return data;};
-    S_String to_string();
-    S_String val_to_string();
+    std::string to_string();
+    std::string val_to_string();
     S_Val dup();
 
     friend class Session;
