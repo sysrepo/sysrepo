@@ -11,13 +11,16 @@ INSTALL_PREFIX_DIR=$HOME/local
 export PKG_CONFIG_PATH=$INSTALL_PREFIX_DIR/lib/pkgconfig:$PKG_CONFIG_PATH
 
 # check to see if cache folder is empty
-if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
+if [ ! -d "$INSTALL_PREFIX_DIR/libZZZ" ]; then
     echo "Building all libraries."
     cd ~
 
     # CMocka
     git clone git://git.cryptomilk.org/projects/cmocka.git
-    cd cmocka ; mkdir build; cd build
+    cd cmocka
+    wget https://gitlab.com/jktjkt/cmocka/commit/f8091e8a58a7e2e5ff54220356abf6d41c4410f1.patch
+    git am f8091e8a58a7e2e5ff54220356abf6d41c4410f1.patch
+    mkdir build; cd build
     cmake ..
     make -j2 && make install
     cd ../..

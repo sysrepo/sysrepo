@@ -13,13 +13,16 @@ pip install --user codecov
 echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-certificates.crt
 
 # check to see if cache folder is empty
-if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
+if [ ! -d "$INSTALL_PREFIX_DIR/libZZZ" ]; then
     echo "Building all libraries."
     cd ~
 
     # CMocka
     git clone git://git.cryptomilk.org/projects/cmocka.git
-    cd cmocka ; mkdir build; cd build
+    cd cmocka
+    wget https://gitlab.com/jktjkt/cmocka/commit/f8091e8a58a7e2e5ff54220356abf6d41c4410f1.patch
+    git am f8091e8a58a7e2e5ff54220356abf6d41c4410f1.patch
+    mkdir build; cd build
     cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX_DIR -DCMAKE_C_FLAGS="-DUNIT_TESTING_DEBUG" ..
     make -j2 > /dev/null && make install
     cd ../..
