@@ -654,6 +654,10 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
                                 goto set_value;
                             } else {
                                 /* create list instance (directly) only once - with the first key */
+                                if (SR_UNKNOWN_T != value.type) {
+                                    sr_free_val_content(&value);
+                                    value.type = SR_UNKNOWN_T;
+                                }
                                 goto next_node;
                             }
                         }
