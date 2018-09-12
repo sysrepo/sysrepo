@@ -13,7 +13,7 @@ find_path(CMOCKA_INCLUDE_DIR cmocka.h
           HINTS ${PC_CMOCKA_INCLUDEDIR} ${PC_CMOCKA_INCLUDE_DIRS}
           PATH_SUFFIXES cmocka)
 
-find_library(CMOCKA_LIBRARY NAMES cmocka 
+find_library(CMOCKA_LIBRARY NAMES cmocka cmocka_shared
              HINTS ${PC_CMOCKA_LIBDIR} ${PC_CMOCKA_LIBRARY_DIRS})
 
 set(CMOCKA_LIBRARIES ${CMOCKA_LIBRARY})
