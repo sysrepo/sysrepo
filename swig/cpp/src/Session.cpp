@@ -97,28 +97,22 @@ S_Error Session::get_last_error()
 {
     S_Error error(new Error());
 
-    int ret = sr_get_last_error(_sess, &error->_info);
-    if (SR_ERR_OK == ret) {
-        return error;
-    }
-    if (SR_ERR_NOT_FOUND == ret) {
+    sr_get_last_error(_sess, &error->_info);
+    if (error->_info == nullptr) {
         return nullptr;
     }
-    throw_exception(ret);
+    return error;
 }
 
 S_Errors Session::get_last_errors()
 {
     S_Errors errors(new Errors());
 
-    int ret = sr_get_last_errors(_sess, &errors->_info, &errors->_cnt);
-    if (SR_ERR_OK == ret) {
-        return errors;
-    }
-    if (SR_ERR_NOT_FOUND == ret) {
+    sr_get_last_errors(_sess, &errors->_info, &errors->_cnt);
+    if (errors->_cnt == 0) {
         return nullptr;
     }
-    throw_exception(ret);
+    return errors;
 }
 
 S_Yang_Schemas Session::list_schemas()
