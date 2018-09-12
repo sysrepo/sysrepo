@@ -66,7 +66,6 @@ Session::Session(S_Connection conn, sr_datastore_t datastore, const sr_sess_opti
 
 cleanup:
     throw_exception(ret);
-    return;
 }
 
 Session::Session(sr_session_ctx_t *sess, sr_sess_options_t opts, S_Deleter deleter)
@@ -101,12 +100,11 @@ S_Error Session::get_last_error()
     int ret = sr_get_last_error(_sess, &error->_info);
     if (SR_ERR_OK == ret) {
         return error;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
         return nullptr;
     }
+    throw_exception(ret);
 }
 
 S_Errors Session::get_last_errors()
@@ -116,12 +114,11 @@ S_Errors Session::get_last_errors()
     int ret = sr_get_last_errors(_sess, &errors->_info, &errors->_cnt);
     if (SR_ERR_OK == ret) {
         return errors;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
         return nullptr;
     }
+    throw_exception(ret);
 }
 
 S_Yang_Schemas Session::list_schemas()
@@ -132,32 +129,31 @@ S_Yang_Schemas Session::list_schemas()
     if (SR_ERR_OK == ret) {
         schema->_deleter = std::make_shared<Deleter>(schema->_sch, schema->_cnt);
         return schema;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
         return nullptr;
     }
+    throw_exception(ret);
 }
 
-S_String Session::get_schema(const char *module_name, const char *revision,\
+std::string Session::get_schema(const char *module_name, const char *revision,\
                                const char *submodule_name, sr_schema_format_t format)
 {
     char *mem = nullptr;
 
     int ret = sr_get_schema(_sess, module_name, revision, submodule_name, format, &mem);
     if (SR_ERR_OK == ret) {
-        if (mem == nullptr)
-            return nullptr;
-        S_String string_val = mem;
+        if (mem == nullptr) {
+            return std::string();
+        }
+        std::string string_val = mem;
         free(mem);
         return string_val;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
-        return nullptr;
     }
+    if (SR_ERR_NOT_FOUND == ret) {
+        return std::string();
+    }
+    throw_exception(ret);
 }
 
 S_Val Session::get_item(const char *xpath)
@@ -168,12 +164,11 @@ S_Val Session::get_item(const char *xpath)
     if (SR_ERR_OK == ret) {
         value->_deleter = std::make_shared<Deleter>(value->_val);
         return value;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
         return nullptr;
     }
+    throw_exception(ret);
 }
 S_Vals Session::get_items(const char *xpath)
 {
@@ -183,12 +178,11 @@ S_Vals Session::get_items(const char *xpath)
     if (SR_ERR_OK == ret) {
         values->_deleter = std::make_shared<Deleter>(values->_vals, values->_cnt);
         return values;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
         return nullptr;
     }
+    throw_exception(ret);
 }
 
 S_Iter_Value Session::get_items_iter(const char *xpath)
@@ -198,12 +192,11 @@ S_Iter_Value Session::get_items_iter(const char *xpath)
     int ret = sr_get_items_iter(_sess, xpath, &iter->_iter);
     if (SR_ERR_OK == ret) {
         return iter;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
         return nullptr;
     }
+    throw_exception(ret);
 }
 
 S_Val Session::get_item_next(S_Iter_Value iter)
@@ -214,12 +207,11 @@ S_Val Session::get_item_next(S_Iter_Value iter)
     if (SR_ERR_OK == ret) {
         value->_deleter = std::make_shared<Deleter>(value->_val);
         return value;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
-    return nullptr;
     }
+    if (SR_ERR_NOT_FOUND == ret) {
+        return nullptr;
+    }
+    throw_exception(ret);
 }
 
 S_Tree Session::get_subtree(const char *xpath, sr_get_subtree_options_t opts)
@@ -230,14 +222,11 @@ S_Tree Session::get_subtree(const char *xpath, sr_get_subtree_options_t opts)
     if (SR_ERR_OK == ret) {
         tree->_deleter = std::make_shared<Deleter>(tree->_node);
         return tree;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
-    return nullptr;
     }
-
-    return tree;
+    if (SR_ERR_NOT_FOUND == ret) {
+        return nullptr;
+    }
+    throw_exception(ret);
 }
 
 S_Trees Session::get_subtrees(const char *xpath, sr_get_subtree_options_t opts)
@@ -248,14 +237,11 @@ S_Trees Session::get_subtrees(const char *xpath, sr_get_subtree_options_t opts)
     if (SR_ERR_OK == ret) {
         trees->_deleter = std::make_shared<Deleter>(trees->_trees, trees->_cnt);
         return trees;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
-    return nullptr;
     }
-
-    return trees;
+    if (SR_ERR_NOT_FOUND == ret) {
+        return nullptr;
+    }
+    throw_exception(ret);
 }
 
 S_Tree Session::get_child(S_Tree in_tree)
@@ -396,12 +382,11 @@ S_Iter_Change Session::get_changes_iter(const char *xpath)
     int ret = sr_get_changes_iter(_sess, xpath, &iter->_iter);
     if (SR_ERR_OK == ret) {
         return iter;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
         return nullptr;
     }
+    throw_exception(ret);
 }
 
 S_Change Session::get_change_next(S_Iter_Change iter)
@@ -411,12 +396,11 @@ S_Change Session::get_change_next(S_Iter_Change iter)
     int ret = sr_get_change_next(_sess, iter->_iter, &change->_oper, &change->_old, &change->_new);
     if (SR_ERR_OK == ret) {
         return change;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
         return nullptr;
     }
+    throw_exception(ret);
 }
 
 Session::~Session() {}
