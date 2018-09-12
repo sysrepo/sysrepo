@@ -31,6 +31,8 @@ extern "C" {
 #include "sysrepo.h"
 }
 
+namespace sysrepo {
+
 class Connection
 {
 public:
@@ -43,5 +45,7 @@ private:
     sr_conn_ctx_t *_conn;
     sr_conn_options_t _opts;
 };
+
+}
 
 #endif

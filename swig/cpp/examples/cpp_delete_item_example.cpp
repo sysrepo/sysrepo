@@ -29,9 +29,9 @@ int
 main(int argc, char **argv)
 {
     try {
-        S_Connection conn(new Connection("app4"));
+        sysrepo::S_Connection conn(new sysrepo::Connection("app4"));
 
-        S_Session sess(new Session(conn));
+        sysrepo::S_Session sess(new sysrepo::Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv6/address[ip='fe80::ab8']";
 

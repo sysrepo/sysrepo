@@ -22,12 +22,14 @@
 #include <iostream>
 #include <stdlib.h>
 
-#include "Struct.hpp"
 #include "Sysrepo.hpp"
+#include "Struct.hpp"
 
 extern "C" {
 #include "sysrepo.h"
 }
+
+namespace sysrepo {
 
 sysrepo_exception::sysrepo_exception(const sr_error_t error_code)
     : std::runtime_error(sr_strerror(error_code))
@@ -58,4 +60,6 @@ void Logs::set_stderr(sr_log_level_t log_level)
 void Logs::set_syslog(sr_log_level_t log_level)
 {
     sr_log_syslog(log_level);
+}
+
 }

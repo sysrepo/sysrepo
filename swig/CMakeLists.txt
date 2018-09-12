@@ -6,7 +6,7 @@ remove_definitions(-DSWIGLUA)
 
 # find SWIG package
 if(GEN_LANGUAGE_BINDINGS)
-    find_package(SWIG)
+    find_package(SWIG 3.0.12 REQUIRED)
     if(NOT SWIG_FOUND)
         message(WARNING "SWIG library not found")
     else()

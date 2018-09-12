@@ -22,72 +22,8 @@
 #ifndef SYSREPO_H
 #define SYSREPO_H
 
-#ifdef SWIGLUA
-    #define S_Iter_Value       Iter_Value*
-    #define S_Iter_Change      Iter_Change*
-    #define S_Session          Session*
-    #define S_Subscribe        Subscribe*
-    #define S_Connection       Connection*
-    #define S_Operation        Operation*
-    #define S_Schema_Content   Schema_Content*
-    #define S_Error            Error*
-    #define S_Errors           Errors*
-    #define S_Data             Data*
-    #define S_Schema_Revision  Schema_Revision*
-    #define S_Schema_Submodule Schema_Submodule*
-    #define S_Yang_Schema      Yang_Schema*
-    #define S_Yang_Schemas     Yang_Schemas*
-    #define S_Fd_Change        Fd_Change*
-    #define S_Fd_Changes       Fd_Changes*
-    #define S_Val              Val*
-    #define S_Vals_Holder      Vals_Holder*
-    #define S_Vals             Vals*
-    #define S_Tree             Tree*
-    #define S_Trees            Trees*
-    #define S_Trees_Holder     Trees_Holder*
-    #define S_Xpath_Ctx        Xpath_Ctx*
-    #define S_Logs             Logs*
-    #define S_Change           Change*
-    #define S_Counter          std::shared_ptr<Counter>
-    #define S_Callback         Callback*
-#else
-    #define S_Iter_Value       std::shared_ptr<Iter_Value>
-    #define S_Iter_Change      std::shared_ptr<Iter_Change>
-    #define S_Session          std::shared_ptr<Session>
-    #define S_Subscribe        std::shared_ptr<Subscribe>
-    #define S_Connection       std::shared_ptr<Connection>
-    #define S_Operation        std::shared_ptr<Operation>
-    #define S_Schema_Content   std::shared_ptr<Schema_Content>
-    #define S_Error            std::shared_ptr<Error>
-    #define S_Errors           std::shared_ptr<Errors>
-    #define S_Data             std::shared_ptr<Data>
-    #define S_Schema_Revision  std::shared_ptr<Schema_Revision>
-    #define S_Schema_Submodule std::shared_ptr<Schema_Submodule>
-    #define S_Yang_Schema      std::shared_ptr<Yang_Schema>
-    #define S_Yang_Schemas     std::shared_ptr<Yang_Schemas>
-    #define S_Fd_Change        std::shared_ptr<Fd_Change>
-    #define S_Fd_Changes       std::shared_ptr<Fd_Changes>
-    #define S_Val              std::shared_ptr<Val>
-    #define S_Vals_Holder      std::shared_ptr<Vals_Holder>
-    #define S_Vals             std::shared_ptr<Vals>
-    #define S_Tree             std::shared_ptr<Tree>
-    #define S_Trees            std::shared_ptr<Trees>
-    #define S_Trees_Holder     std::shared_ptr<Trees_Holder>
-    #define S_Xpath_Ctx        std::shared_ptr<Xpath_Ctx>
-    #define S_Logs             std::shared_ptr<Logs>
-    #define S_Change           std::shared_ptr<Change>
-    #define S_Counter          std::shared_ptr<Counter>
-    #define S_Callback         std::shared_ptr<Callback>
-#endif
-
-#define SESS_DEFAULT 0
-#define DS_RUNNING 1
-#define EDIT_DEFAULT 0
-#define CONN_DEFAULT 0
-#define GET_SUBTREE_DEFAULT 0
-#define SUBSCR_DEFAULT 0
-
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 
 #include "Internal.hpp"
@@ -95,6 +31,103 @@
 extern "C" {
 #include "sysrepo.h"
 }
+
+namespace sysrepo {
+
+class Iter_Value;
+class Iter_Change;
+class Session;
+class Subscribe;
+class Connection;
+class Operation;
+class Schema_Content;
+class Error;
+class Errors;
+class Data;
+class Schema_Revision;
+class Schema_Submodule;
+class Yang_Schema;
+class Yang_Schemas;
+class Fd_Change;
+class Fd_Changes;
+class Val;
+class Vals_Holder;
+class Vals;
+class Tree;
+class Trees;
+class Trees_Holder;
+class Xpath_Ctx;
+class Logs;
+class Change;
+class Counter;
+class Callback;
+class Deleter;
+
+#ifdef SWIGLUA
+using S_Iter_Value       = Iter_Value*;
+using S_Iter_Change      = Iter_Change*;
+using S_Session          = Session*;
+using S_Subscribe        = Subscribe*;
+using S_Connection       = Connection*;
+using S_Operation        = Operation*;
+using S_Schema_Content   = Schema_Content*;
+using S_Error            = Error*;
+using S_Errors           = Errors*;
+using S_Data             = Data*;
+using S_Schema_Revision  = Schema_Revision*;
+using S_Schema_Submodule = Schema_Submodule*;
+using S_Yang_Schema      = Yang_Schema*;
+using S_Yang_Schemas     = Yang_Schemas*;
+using S_Fd_Change        = Fd_Change*;
+using S_Fd_Changes       = Fd_Changes*;
+using S_Val              = Val*;
+using S_Vals_Holder      = Vals_Holder*;
+using S_Vals             = Vals*;
+using S_Tree             = Tree*;
+using S_Trees            = Trees*;
+using S_Trees_Holder     = Trees_Holder*;
+using S_Xpath_Ctx        = Xpath_Ctx*;
+using S_Logs             = Logs*;
+using S_Change           = Change*;
+using S_Counter          = Counter*;
+using S_Callback         = Callback*;
+#else
+using S_Iter_Value       = std::shared_ptr<Iter_Value>;
+using S_Iter_Change      = std::shared_ptr<Iter_Change>;
+using S_Session          = std::shared_ptr<Session>;
+using S_Subscribe        = std::shared_ptr<Subscribe>;
+using S_Connection       = std::shared_ptr<Connection>;
+using S_Operation        = std::shared_ptr<Operation>;
+using S_Schema_Content   = std::shared_ptr<Schema_Content>;
+using S_Error            = std::shared_ptr<Error>;
+using S_Errors           = std::shared_ptr<Errors>;
+using S_Data             = std::shared_ptr<Data>;
+using S_Schema_Revision  = std::shared_ptr<Schema_Revision>;
+using S_Schema_Submodule = std::shared_ptr<Schema_Submodule>;
+using S_Yang_Schema      = std::shared_ptr<Yang_Schema>;
+using S_Yang_Schemas     = std::shared_ptr<Yang_Schemas>;
+using S_Fd_Change        = std::shared_ptr<Fd_Change>;
+using S_Fd_Changes       = std::shared_ptr<Fd_Changes>;
+using S_Val              = std::shared_ptr<Val>;
+using S_Vals_Holder      = std::shared_ptr<Vals_Holder>;
+using S_Vals             = std::shared_ptr<Vals>;
+using S_Tree             = std::shared_ptr<Tree>;
+using S_Trees            = std::shared_ptr<Trees>;
+using S_Trees_Holder     = std::shared_ptr<Trees_Holder>;
+using S_Xpath_Ctx        = std::shared_ptr<Xpath_Ctx>;
+using S_Logs             = std::shared_ptr<Logs>;
+using S_Change           = std::shared_ptr<Change>;
+using S_Counter          = std::shared_ptr<Counter>;
+using S_Callback         = std::shared_ptr<Callback>;
+using S_Deleter          = std::shared_ptr<Deleter>;
+#endif
+
+static const int SESS_DEFAULT = 1;
+static const int DS_RUNNING = 1;
+static const int EDIT_DEFAULT = 0;
+static const int CONN_DEFAULT = 0;
+static const int GET_SUBTREE_DEFAULT = 0;
+static const int SUBSCR_DEFAULT = 0;
 
 #ifdef SWIG
 // https://github.com/swig/swig/issues/1158
@@ -122,4 +155,5 @@ public:
     void set_syslog(sr_log_level_t log_level);
 };
 
+}
 #endif

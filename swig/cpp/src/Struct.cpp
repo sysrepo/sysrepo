@@ -33,6 +33,8 @@ extern "C" {
 #include "sysrepo/trees.h"
 }
 
+namespace sysrepo {
+
 // Data
 Data::Data(sr_data_t data, sr_type_t type, S_Deleter deleter) {_d = data; _t = type; _deleter = deleter;}
 Data::~Data() {}
@@ -710,4 +712,6 @@ Change::~Change() {
         sr_free_val(_new);
     if (_old)
         sr_free_val(_old);
+}
+
 }

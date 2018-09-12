@@ -27,16 +27,18 @@
 #include <map>
 #include <vector>
 
+#include "Sysrepo.hpp"
 #include "Internal.hpp"
 #include "Struct.hpp"
 #include "Tree.hpp"
-#include "Sysrepo.hpp"
 #include "Connection.hpp"
 #include "Session.hpp"
 
 extern "C" {
 #include "sysrepo.h"
 }
+
+namespace sysrepo {
 
 class Session
 {
@@ -154,4 +156,5 @@ private:
     S_Deleter sess_deleter;
 };
 
+}
 #endif

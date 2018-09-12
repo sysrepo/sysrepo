@@ -13,16 +13,6 @@
 %include "shared_ptr.i"
 #endif
 
-%{
-/* Includes the header in the wrapper code */
-#include "Sysrepo.hpp"
-#include "Connection.hpp"
-#include "Session.hpp"
-#include "Struct.hpp"
-#include "Tree.hpp"
-#include "Xpath.hpp"
-%}
-
 %ignore SESS_DEFAULT;
 %ignore DS_RUNNING;
 %ignore EDIT_DEFAULT;
@@ -33,11 +23,11 @@
 %ignore throw_exception;
 
 #ifndef SWIGLUA
-%shared_ptr(Connection);
+%shared_ptr(sysrepo::Connection);
 #endif
 
 #ifndef SWIGLUA
-%shared_ptr(Session);
+%shared_ptr(sysrepo::Session);
 #endif
 %ignore Session::Session(sr_session_ctx_t *, sr_sess_options_t);
 %ignore Session::Session(sr_session_ctx_t *);
@@ -58,12 +48,12 @@
 %newobject Session::action_send;
 
 #ifndef SWIGLUA
-%shared_ptr(Callback);
+%shared_ptr(sysrepo::Callback);
 #endif
 %ignore Callback::private_ctx;
 
 #ifndef SWIGLUA
-%shared_ptr(Subscribe);
+%shared_ptr(sysrepo::Subscribe);
 #endif
 %ignore Subscribe::swig_sub;
 %ignore Subscribe::swig_sess;
@@ -71,13 +61,13 @@
 %ignore Subscribe::additional_cleanup(void *);
 
 #ifndef SWIGLUA
-%shared_ptr(Data);
+%shared_ptr(sysrepo::Data);
 #endif
 %ignore Data::Data(sr_data_t, sr_type_t);
 %ignore Data::Data(sr_data_t);
 
 #ifndef SWIGLUA
-%shared_ptr(Val);
+%shared_ptr(sysrepo::Val);
 #endif
 %ignore Val::Val(sr_val_t *, S_Deleter);
 %ignore Val::Val(sr_val_t *);
@@ -87,7 +77,7 @@
 %newobject Val::val_to_string;
 
 #ifndef SWIGLUA
-%shared_ptr(Vals);
+%shared_ptr(sysrepo::Vals);
 #endif
 %ignore Vals::Vals(const sr_val_t *, const size_t, S_Deleter counter);
 %ignore Vals::Vals(const sr_val_t *, const size_t);
@@ -100,87 +90,87 @@
 %newobject Vals::dup;
 
 #ifndef SWIGLUA
-%shared_ptr(Vals_Holder);
+%shared_ptr(sysrepo::Vals_Holder);
 #endif
 %ignore Vals_Holder::Vals_Holder(sr_val_t **, size_t *);
 %ignore Vals_Holder::Vals_Holder(sr_val_t **);
 %newobject Vals_Holder::allocate;
 
 #ifndef SWIGLUA
-%shared_ptr(Val_Iter);
+%shared_ptr(sysrepo::Val_Iter);
 #endif
 %ignore Val_Iter::Val_Iter(sr_val_iter_t *iter);
 %ignore Val_Iter::iter();
 
 #ifndef SWIGLUA
-%shared_ptr(Change_Iter);
+%shared_ptr(sysrepo::Change_Iter);
 #endif
 %ignore Change_Iter::Change_Iter(sr_change_iter_t *iter);
 %ignore Change_Iter::iter();
 
 #ifndef SWIGLUA
-%shared_ptr(Error);
+%shared_ptr(sysrepo::Error);
 #endif
 %ignore Error::Error(const sr_error_info_t *);
 
 #ifndef SWIGLUA
-%shared_ptr(Errors);
+%shared_ptr(sysrepo::Errors);
 #endif
 %newobject Errors::error;
 
 #ifndef SWIGLUA
-%shared_ptr(Schema_Revision);
+%shared_ptr(sysrepo::Schema_Revision);
 #endif
 %ignore Schema_Revision::Schema_Revision(sr_sch_revision_t);
 
 #ifndef SWIGLUA
-%shared_ptr(Schema_Submodule);
+%shared_ptr(sysrepo::Schema_Submodule);
 #endif
 %ignore Schema_Submodule::Schema_Submodule(sr_sch_submodule_t);
 %newobject Schema_Submodule::revision;
 
 #ifndef SWIGLUA
-%shared_ptr(Yang_Schema);
+%shared_ptr(sysrepo::Yang_Schema);
 #endif
 %ignore Yang_Schema::Yang_Schema(sr_schema_t *);
 %newobject Yang_Schema::revision;
 %newobject Yang_Schema::submodule;
 
 #ifndef SWIGLUA
-%shared_ptr(Yang_Schemas);
+%shared_ptr(sysrepo::Yang_Schemas);
 #endif
 %newobject Yang_Schemas::schema;
 
 #ifndef SWIGLUA
-%shared_ptr(Fd_Change);
+%shared_ptr(sysrepo::Fd_Change);
 #endif
 %ignore Fd_Change::Fd_Change(sr_fd_change_t *);
 
 #ifndef SWIGLUA
-%shared_ptr(Fd_Changes);
+%shared_ptr(sysrepo::Fd_Changes);
 #endif
 %ignore Fd_Changes::Fd_Changes(sr_fd_change_t *, size_t);
 %ignore Fd_Changes::Fd_Changes(sr_fd_change_t *);
 %newobject Fd_Changes::fd_change;
 
 #ifndef SWIGLUA
-%shared_ptr(Iter_Value);
+%shared_ptr(sysrepo::Iter_Value);
 #endif
 %ignore Iter_Value::Iter_Value(sr_val_iter_t *);
 
 #ifndef SWIGLUA
-%shared_ptr(Iter_Change);
+%shared_ptr(sysrepo::Iter_Change);
 #endif
 %ignore Iter_Change::Iter_Change(sr_change_iter_t *);
 
 #ifndef SWIGLUA
-%shared_ptr(Change);
+%shared_ptr(sysrepo::Change);
 #endif
 %newobject new_val;
 %newobject old_val;
 
 #ifndef SWIGLUA
-%shared_ptr(Tree);
+%shared_ptr(sysrepo::Tree);
 #endif
 %ignore Tree::Tree(const char *, const char *);
 %ignore Tree::Tree(const char *);
@@ -198,7 +188,7 @@
 %newobject Tree::to_string;
 
 #ifndef SWIGLUA
-%shared_ptr(Trees);
+%shared_ptr(sysrepo::Trees);
 #endif
 %ignore Trees::Trees(sr_node_t **, size_t *, S_Deleter);
 %ignore Trees::Trees(sr_node_t **, size_t *);
@@ -211,16 +201,25 @@
 %newobject Trees::dup;
 
 #ifndef SWIGLUA
-%shared_ptr(Trees_Holder);
+%shared_ptr(sysrepo::Trees_Holder);
 #endif
 %ignore Trees_Holder::Trees_Holder(sr_node_t **, size_t *);
 %ignore Trees_Holder::Trees_Holder(sr_node_t **);
 %newobject Trees::allocate;
 
 #ifndef SWIGLUA
-%shared_ptr(Xpath_Ctx);
+%shared_ptr(sysrepo::Xpath_Ctx);
 #endif
 %ignore Xpath_Ctx::Xpath_Ctx(sr_xpath_ctx_t *);
+
+%{
+#include "Sysrepo.hpp"
+#include "Connection.hpp"
+#include "Session.hpp"
+#include "Struct.hpp"
+#include "Tree.hpp"
+#include "Xpath.hpp"
+%}
 
 %include "Sysrepo.hpp"
 %include "Connection.hpp"

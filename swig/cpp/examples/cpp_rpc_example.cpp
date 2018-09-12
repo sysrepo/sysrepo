@@ -34,7 +34,7 @@
 using namespace std;
 
 void
-print_tree(S_Tree tree)
+print_tree(sysrepo::S_Tree tree)
 {
     cout << tree->name();
     cout << " ";
@@ -50,9 +50,9 @@ print_tree(S_Tree tree)
         cout << "= " << tree->data()->get_string() << endl;;
         break;
     case SR_BOOL_T:
-	if (tree->data()->get_bool())
+    if (tree->data()->get_bool())
             cout << "= true" << endl;
-	else
+    else
             cout << "= false" << endl;
         break;
     case SR_ENUM_T:
@@ -98,7 +98,7 @@ print_tree(S_Tree tree)
 }
 
 void
-print_value(S_Val value)
+print_value(sysrepo::S_Val value)
 {
     cout << value->xpath();
     cout << " ";
@@ -114,9 +114,9 @@ print_value(S_Val value)
         cout << "= " << value->data()->get_string() << endl;;
         break;
     case SR_BOOL_T:
-	if (value->data()->get_bool())
+    if (value->data()->get_bool())
             cout << "= true" << endl;
-	else
+    else
             cout << "= false" << endl;
         break;
     case SR_ENUM_T:
@@ -161,8 +161,8 @@ print_value(S_Val value)
     return;
 }
 
-class My_Callback:public Callback {
-    int rpc(const char *xpath, const S_Vals in_vals, S_Vals_Holder holder, void *private_ctx) {
+class My_Callback:public sysrepo::Callback {
+    int rpc(const char *xpath, const sysrepo::S_Vals in_vals, sysrepo::S_Vals_Holder holder, void *private_ctx) {
         cout << "\n ========== RPC CALLED ==========\n" << endl;
 
         auto out_vals = holder->allocate(3);
@@ -180,10 +180,10 @@ class My_Callback:public Callback {
                             "/root/",\
                             SR_STRING_T);
 
-	return SR_ERR_OK;
+    return SR_ERR_OK;
     }
 
-    int rpc_tree(const char *xpath, const S_Trees in_trees, S_Trees_Holder holder, void *private_ctx) {
+    int rpc_tree(const char *xpath, const sysrepo::S_Trees in_trees, sysrepo::S_Trees_Holder holder, void *private_ctx) {
         cout << "\n ========== RPC TREE CALLED ==========\n" << endl;
 
         auto out_trees = holder->allocate(3);
@@ -198,7 +198,7 @@ class My_Callback:public Callback {
         out_trees->tree(2)->set_name("location");
         out_trees->tree(2)->set("/root/", SR_STRING_T);
 
-	return SR_ERR_OK;
+    return SR_ERR_OK;
     }
 };
 
@@ -210,24 +210,24 @@ main(int argc, char **argv)
 
         printf("Application will make an rpc call in %s\n", module_name);
         /* connect to sysrepo */
-        S_Connection conn(new Connection("example_application"));
+        sysrepo::S_Connection conn(new sysrepo::Connection("example_application"));
 
         /* start session */
-        S_Session sess(new Session(conn));
+        sysrepo::S_Session sess(new sysrepo::Session(conn));
 
         /* subscribe for changes in running config */
-        S_Subscribe subscribe(new Subscribe(sess));
-	S_Callback cb(new My_Callback());
+        sysrepo::S_Subscribe subscribe(new sysrepo::Subscribe(sess));
+        sysrepo::S_Callback cb(new My_Callback());
 
         cout << "\n ========== SUBSCRIBE TO RPC CALL ==========\n" << endl;
 
         subscribe->rpc_subscribe("/test-module:activate-software-image", cb);
 
-        S_Vals in_vals(new Vals(2));
+        sysrepo::S_Vals in_vals(new sysrepo::Vals(2));
 
         in_vals->val(0)->set("/test-module:activate-software-image/image-name",\
                            "acmefw-2.3",\
-			   SR_STRING_T);
+               SR_STRING_T);
         in_vals->val(1)->set("/test-module:activate-software-image/location",\
                            "/root/",\
                            SR_STRING_T);
@@ -242,7 +242,7 @@ main(int argc, char **argv)
         cout << "\n ========== SUBSCRIBE TO RPC TREE CALL ==========\n" << endl;
         subscribe->rpc_subscribe_tree("/test-module:activate-software-image", cb);
 
-        S_Trees in_trees(new Trees(1));
+        sysrepo::S_Trees in_trees(new sysrepo::Trees(1));
 
         in_trees->tree(0)->set_name("image-name");
         in_trees->tree(0)->set("acmefw-2.3", SR_STRING_T);

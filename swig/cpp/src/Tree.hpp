@@ -30,6 +30,8 @@ extern "C" {
 #include "sysrepo/trees.h"
 }
 
+namespace sysrepo {
+
 class Tree
 {
 public:
@@ -110,4 +112,5 @@ private:
     bool _allocate;
 };
 
+}
 #endif

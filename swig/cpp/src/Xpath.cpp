@@ -26,6 +26,8 @@ extern "C" {
 #include "sysrepo/xpath.h"
 }
 
+namespace sysrepo {
+
 Xpath_Ctx::Xpath_Ctx() {
     sr_xpath_ctx_t *state = nullptr;
     state = (sr_xpath_ctx_t *) calloc(1, sizeof(*state));
@@ -38,4 +40,6 @@ Xpath_Ctx::Xpath_Ctx() {
 Xpath_Ctx::~Xpath_Ctx() {
     if (_state != nullptr)
         free(_state);
+}
+
 }

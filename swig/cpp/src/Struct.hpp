@@ -32,6 +32,8 @@ extern "C" {
 #include "sysrepo.h"
 }
 
+namespace sysrepo {
+
 // class for sysrepo C union sr_data_t
 class Data
 {
@@ -340,4 +342,5 @@ private:
     S_Deleter _deleter_old;
 };
 
+}
 #endif

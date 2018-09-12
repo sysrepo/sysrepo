@@ -24,10 +24,10 @@
 #include <iostream>
 #include <vector>
 
+#include "Sysrepo.hpp"
 #include "Struct.hpp"
 #include "Internal.hpp"
 #include "Tree.hpp"
-#include "Sysrepo.hpp"
 #include "Connection.hpp"
 #include "Session.hpp"
 
@@ -35,6 +35,8 @@ extern "C" {
 #include "sysrepo.h"
 #include "sysrepo/trees.h"
 }
+
+namespace sysrepo {
 
 Session::Session(S_Connection conn, sr_datastore_t datastore, const sr_sess_options_t opts, \
                  const char *user_name)
@@ -721,4 +723,6 @@ void Session::event_notif_send(const char *xpath, S_Trees trees, const sr_ev_not
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
+}
+
 }

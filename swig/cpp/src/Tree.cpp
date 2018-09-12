@@ -31,6 +31,8 @@ extern "C" {
 #include "sysrepo/values.h"
 }
 
+namespace sysrepo {
+
 Tree::Tree() {
     _node = nullptr;
     _deleter = S_Deleter(new Deleter(_node));
@@ -358,3 +360,4 @@ S_Trees Trees_Holder::allocate(size_t n) {
 }
 Trees_Holder::~Trees_Holder() {}
 
+}
