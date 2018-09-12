@@ -1,0 +1,24 @@
+module data-imp-per-C {
+    namespace "urn:test:data-imp-per-C";
+    prefix dip-C;
+
+    import data-imp-per-A {
+        prefix dip-A;
+    }
+
+    description
+        "Augment for data import persistence test";
+
+    feature c-feature;
+
+    augment "/dip-A:a-cont" {
+        container c-cont {
+            if-feature c-feature;
+            presence "presence";
+
+            leaf c-leaf {
+                type string;
+            }
+        }
+    }
+}

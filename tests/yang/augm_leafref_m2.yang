@@ -1,0 +1,10 @@
+module augm_leafref_m2 {
+    namespace "test:augmleafrefcompanion";
+    prefix alrc;
+
+    container item {
+        leaf name {
+            type string;
+        }
+    }
+}

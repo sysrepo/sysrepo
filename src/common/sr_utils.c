@@ -223,7 +223,12 @@ sr_copy_first_ns(const char *xpath, char **namespace)
     if (xpath[0] != '/' || NULL == colon_pos) {
         return SR_ERR_INVAL_ARG;
     }
-    *namespace = strndup(xpath + 1, (colon_pos - xpath -1));
+    ++xpath;
+    if (xpath[0] == '/') {
+        ++xpath;
+    }
+
+    *namespace = strndup(xpath, colon_pos - xpath);
     CHECK_NULL_NOMEM_RETURN(*namespace);
     return SR_ERR_OK;
 }
@@ -234,27 +239,39 @@ sr_copy_all_ns(const char *xpath, char ***namespaces_p, size_t *ns_count_p)
     CHECK_NULL_ARG3(xpath, namespaces_p, ns_count_p);
 
     int rc = SR_ERR_OK;
-    char *colon_pos, **tmp, **namespaces = NULL;
+    char *xp, *sptr, *ptr, *cur_node, **tmp, **namespaces = NULL;
     size_t ns_count = 0;
 
     if (xpath[0] != '/') {
         return SR_ERR_INVAL_ARG;
     }
 
-    while ((colon_pos = strchr(xpath, ':'))) {
-        for (xpath = colon_pos; isalnum(xpath[-1]) || (xpath[-1] == '_') || (xpath[-1] == '-') || (xpath[-1] == '.'); --xpath);
-        tmp = realloc(namespaces, (ns_count + 1) * sizeof *namespaces);
-        CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
-        namespaces = tmp;
-        ns_count++;
+    xp = strdup(xpath);
 
-        namespaces[ns_count - 1] = strndup(xpath, colon_pos - xpath);
-        CHECK_NULL_NOMEM_GOTO(namespaces[ns_count - 1], rc, cleanup);
+    for (cur_node = strtok_r(xp, "/", &sptr); cur_node; cur_node = strtok_r(NULL, "/", &sptr)) {
+        if (cur_node[strlen(cur_node) - 1] == ']') {
+            ptr = strchr(cur_node, '[');
+            if (!ptr) {
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            *ptr = '\0';
+        }
 
-        xpath = colon_pos + 1;
+        ptr = strchr(cur_node, ':');
+        if (ptr) {
+            tmp = realloc(namespaces, (ns_count + 1) * sizeof *namespaces);
+            CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
+            namespaces = tmp;
+            ns_count++;
+
+            namespaces[ns_count - 1] = strndup(cur_node, ptr - cur_node);
+            CHECK_NULL_NOMEM_GOTO(namespaces[ns_count - 1], rc, cleanup);
+        }
     }
 
 cleanup:
+    free(xp);
     if (SR_ERR_OK == rc) {
         *namespaces_p = namespaces;
         *ns_count_p = ns_count;
@@ -1100,19 +1117,6 @@ sr_libyang_get_actual_leaf_type(struct lys_type *base_info, LY_DATA_TYPE type)
     return NULL;
 }
 
-static int
-sr_mem_edit_string_va_wrapper(sr_mem_ctx_t *sr_mem, char **string_p, const char *format, ...)
-{
-    va_list arg_list;
-    int rc = SR_ERR_OK;
-
-    va_start(arg_list, format);
-    rc = sr_mem_edit_string_va(sr_mem, string_p, format, arg_list);
-    va_end(arg_list);
-
-    return rc;
-}
-
 int
 sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value)
 {
@@ -1176,21 +1180,17 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         }
         return SR_ERR_OK;
     case LY_TYPE_IDENT:
-        if (NULL == leaf->schema || NULL == leaf->value.ident->name) {
+        if (NULL == leaf->value_str) {
             SR_LOG_ERR("Identity ref or schema in leaf '%s' is NULL", node_name);
             return SR_ERR_INTERNAL;
         }
-        if (lyd_node_module((struct lyd_node *)leaf) == lys_main_module(leaf->value.ident->module)) {
-            sr_mem_edit_string(value->_sr_mem, &value->data.identityref_val, leaf->value.ident->name);
-        } else {
-            sr_mem_edit_string_va_wrapper(value->_sr_mem, &value->data.identityref_val, "%s:%s",
-                                          lys_main_module(leaf->value.ident->module)->name, leaf->value.ident->name);
+
+        sr_mem_edit_string(value->_sr_mem, &value->data.identityref_val, leaf->value_str);
+        if (NULL == value->data.identityref_val) {
+            SR_LOG_ERR_MSG("Identityref duplication failed");
+            return SR_ERR_NOMEM;
         }
 
-        if (NULL == value->data.identityref_val) {
-            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'identityref'", node_name);
-            return SR_ERR_INTERNAL;
-        }
         return SR_ERR_OK;
     case LY_TYPE_INST:
         return sr_libyang_val_str_to_sr_val(leaf->value_str, value->type, value);
@@ -1257,6 +1257,8 @@ sr_libyang_anydata_copy_value(const struct lyd_node_anydata *node, sr_val_t *val
     case LYD_ANYDATA_JSOND:
     case LYD_ANYDATA_SXML:
     case LYD_ANYDATA_SXMLD:
+    case LYD_ANYDATA_LYBD:
+    case LYD_ANYDATA_LYB:
         str_val = (char *)node->value.str;
         break;
     case LYD_ANYDATA_XML:
@@ -1536,6 +1538,9 @@ sr_copy_node_to_tree_internal(const struct lyd_node *top_parent, const struct ly
             break;
         case LYS_LIST:
             sr_tree->type = SR_LIST_T;
+            break;
+        case LYS_NOTIF:
+            sr_tree->type = SR_NOTIFICATION_T;
             break;
         case LYS_ANYXML:
         case LYS_ANYDATA:

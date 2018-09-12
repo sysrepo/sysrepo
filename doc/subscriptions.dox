@@ -7,17 +7,17 @@ Sysrepo allows managed applications / plugins to subscribe for two types of asyn
 - change in the running datastore (@ref rds_subscriptions),
 - request for state data (@ref data_providers).
 
-Both types of subscriptions are explained below in more detail. 
+Both types of subscriptions are explained below in more detail.
 
 @section callbacks Callbacks and threading model
 Each of the subscriptions works on the base of asynchronous callbacks - pointers to functions that
-will be called upon desired event. For asynchornous event delivery, Sysrepo automatically 
+will be called upon desired event. For asynchornous event delivery, Sysrepo automatically
 creates a new thread in the managed application (or in plugin daemon in case of a Sysrepo plugins)
 behind the scenes. It is always one thread, no matter how many subscriptions you have. This has
 the following implications:
 
 - All events will be delivered to a different thread than your application uses for its usual job. If
-your callbacks are manipulating any data structures used also in the main/other threads, you will 
+your callbacks are manipulating any data structures used also in the main/other threads, you will
 need to use some locking mechanism.
 - All events will be delivered synchronously into your application: a callback won't be executed
 until the previous callback have returned.
@@ -26,7 +26,8 @@ until the previous callback have returned.
 If the API call (e.g. ::sr_commit) results into a different callback to be called in the same application,
 the second one cannot be executed until the first one returns (in case of ::sr_commit, you will most
 likely get a commit timeout error). If you need this behavior, start a new thread to execute the
-API call and return from the callback immediately.
+API call and return from the callback immediately but be careful not to use the sysrepo session from
+the callback because it will not exist anymore!
 
 @note The same threading model applies also to @ref plugins, but with one important note - all plugins share the
 same thread for the event delivery.
@@ -45,7 +46,7 @@ configuration of a model in the running datastore is not accessible. Subscribing
 for changes in the runnig datastore also enables the configuration in the
 running datastore for relevant data subtrees.
 
-There are two API calls that can be used to subscribe for changes in the running datastore and 
+There are two API calls that can be used to subscribe for changes in the running datastore and
 to enable the configuration in the running datastore at the same time:
 
 - ::sr_module_change_subscribe - this API call enables the whole configuration described by a module.

@@ -1,0 +1,20 @@
+module id-ref-installed {
+  namespace "urn:ietf:params:xml:ns:yang:id-ref-installed";
+  prefix iri;
+
+  import id-ref-imported {
+    prefix id-ref-imp;
+  }
+
+  import id-ref-extend-main {
+    prefix irem;
+  }
+
+  identity id-ref-extended {
+    base id-ref-imp:id-ref;
+  }
+
+  identity id-ref-main-extended {
+    base irem:ident-main-extended;
+  }
+}

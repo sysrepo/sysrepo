@@ -534,6 +534,23 @@ sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item)
     return true;
 }
 
+bool
+sr_cbuff_search(sr_cbuff_t *buffer, void *item)
+{
+    if (NULL == buffer || 0 == buffer->count) {
+        return false;
+    }
+
+    for (size_t i = 0; i < buffer->count; ++i) {
+        if (item == ((uint8_t*)buffer->data + (buffer->head * buffer->elem_size * i))) {
+            SR_LOG_DBG("item: %p found in buffer: %p", item, (void*)buffer);
+            return true;
+        }
+    }
+    SR_LOG_DBG("item: %p not found in buffer: %p", item, (void*)buffer);
+    return false;
+}
+
 size_t
 sr_cbuff_items_in_queue(sr_cbuff_t *buffer)
 {

@@ -24,7 +24,7 @@ module cross-module {
          }
       }
 
-      must 'number = /rd:magic_number' {
+      must 'count(number) = 0 or number = /rd:magic_number' {
          error-message "Number must be equal to magic_number";
       }
    }

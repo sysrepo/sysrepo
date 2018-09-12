@@ -315,6 +315,18 @@ int sr_cbuff_enqueue(sr_cbuff_t *buffer, void *item);
 bool sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item);
 
 /**
+ * @brief Searches for an element in the circular buffer.
+ *
+ * @note O(n).
+ *
+ * @param[in] buffer Circular buffer queue context.
+ * @param[in] item The element that is to be searched for in the buffer.
+ *
+ * @return true if an element was found, false if the element is not found.
+ */
+bool sr_cbuff_search(sr_cbuff_t *buffer, void *item);
+
+/**
  * @brief Return number of elements currently stored in the queue.
  *
  * @note O(1).

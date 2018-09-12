@@ -1,0 +1,30 @@
+module data-imp-per-B {
+    namespace "urn:test:data-imp-per-B";
+    prefix dip-B;
+
+
+    import data-imp-per-A {
+        prefix dip-A;
+    }
+
+    description
+        "Non-submodule example for data import persistence test";
+
+    typedef b-type {
+        type leafref {
+            path "/dip-B:b-cont/dip-B:b-leaf";
+        }
+    }
+
+    container b-cont {
+        leaf b-leaf {
+            type string;
+        }
+    }
+
+    augment "/dip-A:a-cont" {
+        leaf b-augleaf {
+            type b-type;
+        }
+    }
+}

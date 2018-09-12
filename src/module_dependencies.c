@@ -19,12 +19,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#define _GNU_SOURCE
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <stdarg.h>
 #include <libyang/libyang.h>
 
@@ -1030,7 +1031,7 @@ md_init(const char *schema_search_dir,
     pthread_rwlock_init(&ctx->lock, NULL);
 
     /* Create libyang context */
-    ctx->ly_ctx = ly_ctx_new(schema_search_dir, 0);
+    ctx->ly_ctx = ly_ctx_new(schema_search_dir, LY_CTX_NOYANGLIBRARY);
     CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, fail);
 
     /* Copy schema search directory */
@@ -1135,8 +1136,16 @@ md_init(const char *schema_search_dir,
                             module->ns = strdup(leaf->value.string);
                             CHECK_NULL_NOMEM_GOTO(module->ns, rc, fail);
                         } else if (node->schema->name && 0 == strcmp("filepath", node->schema->name)) {
-                            module->filepath = strdup(leaf->value.string);
-                            CHECK_NULL_NOMEM_GOTO(module->filepath, rc, fail);
+                            if (leaf->value.string[0] == '/') {
+                                module->filepath = strdup(leaf->value.string);
+                                CHECK_NULL_NOMEM_GOTO(module->filepath, rc, fail);
+                            } else {
+                                if (asprintf(&module->filepath, "%s%s", SR_SCHEMA_SEARCH_DIR, leaf->value.string) == -1) {
+                                    SR_LOG_ERR("Unable to allocate memory in %s", __func__);
+                                    rc = SR_ERR_NOMEM;
+                                    goto fail;
+                                }
+                            }
                         } else if (node->schema->name && 0 == strcmp("latest-revision", node->schema->name)) {
                             module->latest_revision = leaf->value.bln;
                         } else if (node->schema->name && 0 == strcmp("submodule", node->schema->name)) {
@@ -1830,6 +1839,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     struct lys_include *inc = NULL;
     struct lys_ident *ident = NULL;
     struct lys_node_augment *augment = NULL;
+    struct lys_deviation *deviation = NULL;
     struct ly_ctx *tmp_ly_ctx = NULL;
     const struct lys_module *tmp_module_schema = NULL;
     md_module_t module_lkp = { 0, };
@@ -1998,7 +2008,12 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
         goto cleanup;
     }
     /*  - filepath */
-    rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_FILEPATH, module->filepath, module,
+    const char *relative_filepath = module->filepath;
+    if (strncmp(module->filepath, SR_SCHEMA_SEARCH_DIR, strlen(SR_SCHEMA_SEARCH_DIR)) == 0) {
+        relative_filepath += strlen(SR_SCHEMA_SEARCH_DIR);
+        assert(*relative_filepath != '/');
+    }
+    rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_FILEPATH, relative_filepath, module,
                          "set filepath", NULL, module->name, module->revision_date);
     if (SR_ERR_OK != rc) {
         goto cleanup;
@@ -2206,6 +2221,42 @@ implemented_dependencies:
             }
         }
 
+        /* process dependencies introduced by deviations */
+        for (uint32_t i = 0; i < module_schema->deviation_size; ++i) {
+            deviation = module_schema->deviation + i;
+            if (module_schema != lys_node_module(deviation->orig_node)) {
+                module_lkp.name = (char *)lys_node_module(deviation->orig_node)->name;
+                module_lkp.revision_date = (char *)md_get_module_revision(lys_node_module(deviation->orig_node));
+                module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
+                if (NULL == module2) {
+                    if (module->submodule && NULL != belongsto &&
+                        0 == strcmp(belongsto->name, module_lkp.name) &&
+                        0 == strcmp(belongsto->revision_date, module_lkp.revision_date)) {
+                        continue;
+                    } else {
+                        SR_LOG_ERR_MSG("Unable to resolve dependency induced by a deviation.");
+                        rc = SR_ERR_INTERNAL;
+                        goto cleanup;
+                    }
+                }
+                if (SR_ERR_OK != md_add_dependency(module2->deps, MD_DEP_EXTENSION, main_module, true, NULL) ||
+                    SR_ERR_OK != md_add_dependency(main_module->inv_deps, MD_DEP_EXTENSION, module2, true, NULL)) {
+                    SR_LOG_ERR_MSG("Failed to add an edge into the dependency graph.");
+                    rc = SR_ERR_INTERNAL;
+                    goto cleanup;
+                }
+                /* add entry also into data_tree */
+                rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_DEPENDENCY, NULL, main_module,
+                                    "add (extension) dependency into the data tree", NULL,
+                                    module2->name, module2->revision_date,
+                                    main_module->name, main_module->revision_date,
+                                    md_get_dep_type_to_str(MD_DEP_EXTENSION));
+                if (SR_ERR_OK != rc) {
+                    goto cleanup;
+                }
+            }
+        }
+
         /* collect instance identifiers and operational data subtrees */
         if (!module->submodule) {
             rc = md_traverse_schema_tree(md_ctx, main_module, module_schema->data, being_parsed);
@@ -2222,7 +2273,7 @@ implemented_dependencies:
             }
 
             /* Use a separate context for module schema processing */
-            tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir, 0);
+            tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir, LY_CTX_NOYANGLIBRARY);
             if (NULL == tmp_ly_ctx) {
                 rc = SR_ERR_INTERNAL;
                 SR_LOG_ERR_MSG("Unable to initialize libyang context");
@@ -2342,7 +2393,7 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath, sr_list_t **implicitly_
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     /* Use a separate context for module schema processing */
-    tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir, 0);
+    tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir, LY_CTX_NOYANGLIBRARY);
     if (NULL == tmp_ly_ctx) {
         rc = SR_ERR_INTERNAL;
         SR_LOG_ERR_MSG("Unable to initialize libyang context");

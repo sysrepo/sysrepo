@@ -1442,11 +1442,9 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
         return SR_ERR_NOMEM;
     }
 
-    MUTEX_LOCK_TIMED_CHECK_GOTO(&rp_ctx->commit_block_mutex, rc, cleanup);
     if (rp_ctx->block_further_commits) {
         rc = SR_ERR_OPERATION_FAILED;
     }
-    pthread_mutex_unlock(&rp_ctx->commit_block_mutex);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Stop requested, commits are blocked.");
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
@@ -1563,12 +1561,10 @@ rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
         return SR_ERR_NOMEM;
     }
 
-    MUTEX_LOCK_TIMED_CHECK_GOTO(&rp_ctx->commit_block_mutex, rc, cleanup);
     /* do this check only if this really will be a commit */
     if (SR__DATA_STORE__RUNNING == msg->request->copy_config_req->dst_datastore && rp_ctx->block_further_commits) {
         rc = SR_ERR_OPERATION_FAILED;
     }
-    pthread_mutex_unlock(&rp_ctx->commit_block_mutex);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Stop requested, commits are blocked.");
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
@@ -2493,11 +2489,7 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
     }
 
     /* loop through the node children */
-    LY_TREE_FOR(sch_node->child, iter) {
-        if (lys_is_disabled(iter, 0)) {
-            continue;
-        }
-
+    while ((iter = (struct lys_node *)lys_getnext(iter, sch_node, NULL, 0))) {
         subs_index = session->state_data_ctx.subscription_nodes->count;
         if ((LYS_LIST | LYS_CONTAINER) & iter->nodetype) {
             /* find subscription where subsequent request will be addressed
@@ -2697,6 +2689,12 @@ rp_rpc_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         }
         resp->response->rpc_resp->orig_api_variant = msg->response->rpc_resp->orig_api_variant;
         resp->response->result = msg->response->result;
+        if (SR_ERR_OK != msg->response->result && NULL != msg->response->error) {
+            rc = dm_report_error(session->dm_session,
+                                 msg->response->error->message,
+                                 msg->response->error->xpath,
+                                 msg->response->result);
+        }
     }
     if (SR_ERR_OK == rc) {
         if (SR_API_VALUES == sr_api_variant_gpb_to_sr(msg->response->rpc_resp->orig_api_variant)) {
@@ -3400,8 +3398,11 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
         /* generate new request id */
         pthread_mutex_lock(&session->total_req_cnt_mutex);
         ++session->total_req_cnt;
-        msg->request->_id = session->total_req_cnt;
         pthread_mutex_unlock(&session->total_req_cnt_mutex);
+        pthread_mutex_lock(&rp_ctx->total_req_cnt_mutex);
+        ++rp_ctx->total_req_cnt;
+        msg->request->_id = rp_ctx->total_req_cnt;
+        pthread_mutex_unlock(&rp_ctx->total_req_cnt_mutex);
     }
 
     /* acquire lock for operation accessing data */
@@ -3421,12 +3422,10 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             break;
         case SR__OPERATION__COMMIT:
         case SR__OPERATION__COPY_CONFIG:
-            MUTEX_LOCK_TIMED_CHECK_RETURN(&rp_ctx->commit_block_mutex);
             if (!rp_ctx->block_further_commits) {
                 pthread_rwlock_wrlock(&rp_ctx->commit_lock);
                 locked = true;
             }
-            pthread_mutex_unlock(&rp_ctx->commit_block_mutex);
             break;
         default:
             break;
@@ -3999,7 +3998,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     rc = rp_setup_internal_state_data(ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Set up of internal state data failed");
 
-    pthread_mutex_init(&ctx->commit_block_mutex, NULL);
+    pthread_mutex_init(&ctx->total_req_cnt_mutex, NULL);
 
     /* run worker threads */
     pthread_mutex_init(&ctx->request_queue_mutex, NULL);
@@ -4055,6 +4054,7 @@ rp_cleanup(rp_ctx_t *rp_ctx)
         }
         pthread_mutex_destroy(&rp_ctx->request_queue_mutex);
         pthread_cond_destroy(&rp_ctx->request_queue_cv);
+        pthread_mutex_destroy(&rp_ctx->total_req_cnt_mutex);
 
         while (sr_cbuff_dequeue(rp_ctx->request_queue, &req)) {
             if (NULL != req.msg) {
@@ -4062,7 +4062,6 @@ rp_cleanup(rp_ctx_t *rp_ctx)
             }
         }
         pthread_rwlock_destroy(&rp_ctx->commit_lock);
-        pthread_mutex_destroy(&rp_ctx->commit_block_mutex);
         dm_cleanup(rp_ctx->dm_ctx);
         np_cleanup(rp_ctx->np_ctx);
         pm_cleanup(rp_ctx->pm_ctx);
@@ -4340,9 +4339,7 @@ rp_wait_for_commits_to_finish(rp_ctx_t *rp_ctx)
     int rc = SR_ERR_OK;
 
     /* block commits in request processor */
-    MUTEX_LOCK_TIMED_CHECK_RETURN(&rp_ctx->commit_block_mutex);
     rp_ctx->block_further_commits = true;
-    pthread_mutex_unlock(&rp_ctx->commit_block_mutex);
 
     /* block commits in data manager */
     rc = dm_get_commit_ctxs(rp_ctx->dm_ctx, &commit_ctxs);
