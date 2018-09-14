@@ -481,6 +481,10 @@ void Val::set(const char *xpath, uint64_t uint64_val, sr_type_t type) {
 
     _val->type = type;
 }
+void Val::xpath_set(char *xpath) {
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
 std::string Val::to_string() {
     char *mem = nullptr;
 
