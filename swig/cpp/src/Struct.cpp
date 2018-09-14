@@ -563,7 +563,8 @@ S_Vals Vals::dup() {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Vals vals(new Vals(new_val, _cnt));
+    S_Deleter deleter(new Deleter(new_val, _cnt));
+    S_Vals vals(new Vals(new_val, _cnt, deleter));
     return vals;
 }
 
