@@ -139,10 +139,12 @@ np_dst_info_insert(np_ctx_t *np_ctx, const char *dst_address, const char *module
     char **tmp = NULL;
     bool inserted = false;
     int rc = SR_ERR_OK;
+    int rdlock_result = 0;
+    int wrlock_result = 0;
 
     CHECK_NULL_ARG3(np_ctx, dst_address, module_name);
 
-    pthread_rwlock_rdlock(&np_ctx->lock);
+    rdlock_result = pthread_rwlock_rdlock(&np_ctx->lock);
 
     /* find info entry matching with the destination */
     info_lookup.dst_address = dst_address;
@@ -153,15 +155,19 @@ np_dst_info_insert(np_ctx_t *np_ctx, const char *dst_address, const char *module
         for (size_t i = 0; i < info->subscribed_modules_cnt; i++) {
             if (0 == strcmp(info->subscribed_modules[i], module_name)) {
                 /* module name already exists within the info entry, no update needed */
-                pthread_rwlock_unlock(&np_ctx->lock);
+                if (0 == rdlock_result) {
+                    pthread_rwlock_unlock(&np_ctx->lock);
+                }
                 return SR_ERR_OK;
             }
         }
     }
 
     /* info update is required */
-    pthread_rwlock_unlock(&np_ctx->lock);
-    pthread_rwlock_wrlock(&np_ctx->lock);
+    if (0 == rdlock_result) {
+        pthread_rwlock_unlock(&np_ctx->lock);
+    }
+    wrlock_result = pthread_rwlock_wrlock(&np_ctx->lock);
 
     if (NULL == info) {
         /* info entry not found, create new one */
@@ -186,7 +192,9 @@ np_dst_info_insert(np_ctx_t *np_ctx, const char *dst_address, const char *module
     CHECK_NULL_NOMEM_GOTO(info->subscribed_modules[info->subscribed_modules_cnt], rc, cleanup);
     info->subscribed_modules_cnt++;
 
-    pthread_rwlock_unlock(&np_ctx->lock);
+    if (0 == wrlock_result) {
+        pthread_rwlock_unlock(&np_ctx->lock);
+    }
     return SR_ERR_OK;
 
 cleanup:
@@ -199,7 +207,9 @@ cleanup:
             free(new_info);
         }
     }
-    pthread_rwlock_unlock(&np_ctx->lock);
+    if (0 == wrlock_result) {
+        pthread_rwlock_unlock(&np_ctx->lock);
+    }
     return rc;
 }
 
@@ -276,15 +286,12 @@ np_commit_ctx_find(np_ctx_t *np_ctx, uint32_t commit_id, sr_llist_node_t **llist
 }
 
 /**
- * @brief Increments count of notifications sent for the commit specified by commit ID.
+ * @brief Create a commit for the specified commit ID.
  */
-static int
-np_commit_notif_cnt_increment(np_ctx_t *np_ctx, uint32_t commit_id)
+static np_commit_ctx_t *
+np_commit_create(np_ctx_t *np_ctx, uint32_t commit_id)
 {
     np_commit_ctx_t *commit = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG(np_ctx);
 
     pthread_rwlock_wrlock(&np_ctx->lock);
 
@@ -295,18 +302,18 @@ np_commit_notif_cnt_increment(np_ctx_t *np_ctx, uint32_t commit_id)
         SR_LOG_DBG("Creating a new NP commit context for commit ID %"PRIu32".", commit_id);
 
         commit = calloc(1, sizeof(*commit));
-        CHECK_NULL_NOMEM_GOTO(commit, rc, unlock);
+        if (!commit) {
+            goto unlock;
+        }
 
         commit->commit_id = commit_id;
-        rc = sr_llist_add_new(np_ctx->commits, commit);
+        sr_llist_add_new(np_ctx->commits, commit);
     }
-
-    commit->notifications_sent++;
 
 unlock:
     pthread_rwlock_unlock(&np_ctx->lock);
 
-    return rc;
+    return commit;
 }
 
 /**
@@ -534,7 +541,7 @@ static int
 np_get_notification_files(np_ctx_t *np_ctx, const char *module_name, time_t time_from, time_t time_to,
         sr_list_t *file_list)
 {
-    char dirname[PATH_MAX] = { 0, };
+    char dirname[PATH_MAX - 257] = { 0, };
     char filename[PATH_MAX] = { 0, };
     struct dirent **entries = NULL;
     int dir_elem_cnt = 0;
@@ -544,12 +551,12 @@ np_get_notification_files(np_ctx_t *np_ctx, const char *module_name, time_t time
     CHECK_NULL_ARG3(np_ctx, module_name, file_list);
 
     if (sr_ll_stderr >= SR_LL_DBG) {
-        strftime(dirname, PATH_MAX - 1, "%Y-%m-%d %H:%M", localtime(&time_from));
+        strftime(dirname, PATH_MAX - 258, "%Y-%m-%d %H:%M", localtime(&time_from));
         strftime(filename, PATH_MAX - 1, "%Y-%m-%d %H:%M", localtime(&time_to));
     }
     SR_LOG_DBG("Listing notification data files for '%s' modified from '%s' to '%s'.", module_name, dirname, filename);
 
-    snprintf(dirname, PATH_MAX - 1, "%s/%s", SR_NOTIF_DATA_SEARCH_DIR, module_name);
+    snprintf(dirname, PATH_MAX - 258, "%s/%s", SR_NOTIF_DATA_SEARCH_DIR, module_name);
 
     /* scan files in the directory with the data files (in alphabetical order) */
     dir_elem_cnt = scandir(dirname, &entries, NULL, alphasort);
@@ -682,6 +689,9 @@ np_event_notification_entry_fill(np_ev_notification_t *notification, struct lyd_
                 } else if (LYD_ANYDATA_JSON == node_anydata->value_type) {
                     notification->data.string = node_anydata->value.str;
                     notification->data_type = NP_EV_NOTIF_DATA_JSON;
+                } else if (LYD_ANYDATA_LYB == node_anydata->value_type) {
+                    notification->data.string = node_anydata->value.str;
+                    notification->data_type = NP_EV_NOTIF_DATA_LYB;
                 }
             }
         }
@@ -1379,6 +1389,7 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, sr_not
 {
     Sr__Msg *notif = NULL;
     int rc = SR_ERR_OK;
+    np_commit_ctx_t *commit;
 
     CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, subscription, subscription->dst_address);
 
@@ -1407,10 +1418,15 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, sr_not
         rc = np_dst_info_insert(np_ctx, subscription->dst_address, subscription->module_name);
     }
     if (SR_ERR_OK == rc) {
+        /* first create the commit context */
+        commit = np_commit_create(np_ctx, commit_id);
+        if (!commit) {
+            return SR_ERR_INTERNAL;
+        }
         /* send the message */
         rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
         if (SR_ERR_OK == rc) {
-            rc = np_commit_notif_cnt_increment(np_ctx, commit_id);
+            commit->notifications_sent++;
         }
     } else {
         sr_msg_free(notif);
@@ -1737,6 +1753,9 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
         case LYD_XML:
             new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_STRING);
             break;
+        case LYD_LYB:
+            new_node = lyd_new_anydata(new_node, NULL, "data", string_notif, LYD_ANYDATA_LYBD);
+            break;
         default:
             SR_LOG_ERR_MSG("Unknown libyang format '" "SR_FILE_FORMAT_LY" "'.");
             rc = SR_ERR_INTERNAL;
@@ -1754,6 +1773,9 @@ np_store_event_notification(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const
             break;
         case LYD_XML:
             new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_SXMLD);
+            break;
+        case LYD_LYB:
+            new_node = lyd_new_anydata(new_node, NULL, "data", ptr, LYD_ANYDATA_LYBD);
             break;
         default:
             SR_LOG_ERR_MSG("Unknown libyang format '" "SR_FILE_FORMAT_LY" "'.");

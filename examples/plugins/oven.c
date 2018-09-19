@@ -121,7 +121,7 @@ sys_error:
 }
 
 static int
-oven_state_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+oven_state_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     sr_val_t *vals;
     int rc;

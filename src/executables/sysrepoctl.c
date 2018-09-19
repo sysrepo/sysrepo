@@ -749,7 +749,7 @@ srctl_same_file(const char *file1, const char *file2)
 static int
 srctl_schema_install(const struct lys_module *module, const char *yang_src, const char *yin_src)
 {
-    char yang_dst[PATH_MAX] = { 0, }, yin_dst[PATH_MAX] = { 0, }, cmd[PATH_MAX] = { 0, };
+    char yang_dst[PATH_MAX - 17] = { 0, }, yin_dst[PATH_MAX - 17] = { 0, }, cmd[PATH_MAX] = { 0, };
     const char *yang_path = NULL, *yin_path = NULL;
     int ret = 0, rc = SR_ERR_OK;
 
@@ -757,7 +757,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
         /* install YANG */
         if (-1 != access(yang_src, F_OK)) {
             /* only if the source file actually exists */
-            srctl_get_yang_path(module->name, module->rev[0].date, yang_dst, PATH_MAX);
+            srctl_get_yang_path(module->name, module->rev[0].date, yang_dst, PATH_MAX - 17);
             if (srctl_same_file(yang_src, yang_dst)) {
                 rc = SR_ERR_DATA_EXISTS;
                 printf("Schema of the module %s is already installed, skipping...\n", module->name);
@@ -778,7 +778,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
         /* install YIN */
         if (-1 != access(yin_src, F_OK)) {
             /* only if the source file actually exists */
-            srctl_get_yin_path(module->name, module->rev[0].date, yin_dst, PATH_MAX);
+            srctl_get_yin_path(module->name, module->rev[0].date, yin_dst, PATH_MAX - 17);
             if (srctl_same_file(yin_src, yin_dst)) {
                 rc = SR_ERR_DATA_EXISTS;
                 printf("Schema of the module %s is already installed, skipping...\n", module->name);
@@ -948,7 +948,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     }
 
     /* init libyang context */
-    ly_ctx = ly_ctx_new(search_dirs[0], 0);
+    ly_ctx = ly_ctx_new(search_dirs[0], LY_CTX_NOYANGLIBRARY);
     if (NULL == ly_ctx) {
         fprintf(stderr, "Error: Unable to initialize libyang context.\n");
         goto fail;

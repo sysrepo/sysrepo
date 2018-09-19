@@ -33,6 +33,7 @@
 #include "rp_dt_edit.h"
 #include "rp_dt_xpath.h"
 #include "test_module_helper.h"
+#include "nacm_module_helper.h"
 #include "rp_dt_context_helper.h"
 #include "rp_internal.h"
 #include "system_helper.h"
@@ -2392,6 +2393,56 @@ copy_to_running_test(void **state)
 }
 
 static void
+add_delete_list_row_with_nacm_test(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *sessionA = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    test_nacm_cfg_t *nacm_config = NULL;
+
+    new_nacm_config(&nacm_config);
+    enable_nacm_config(nacm_config, true);
+    add_nacm_user(nacm_config, "user1", "group1");
+    add_nacm_rule_list(nacm_config, "acl1", "group1", NULL);
+    add_nacm_rule(nacm_config, "acl1", "allow-segfault", "commit-nacm", NACM_RULE_DATA, "/commit-nacm:test-list[test-key='test-key']", "*", "permit", NULL);
+    assert_non_null(ly_ctx_load_module(nacm_config->ly_ctx, "commit-nacm", NULL));
+    save_nacm_config(nacm_config);
+
+    test_rp_session_create_with_options(ctx, SR_DS_RUNNING, SR_SESS_ENABLE_NACM, &sessionA);
+
+    rc = dm_enable_module_running(ctx->dm_ctx, sessionA->dm_session, "commit-nacm", NULL);
+
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_val_t *value = NULL;
+    value = calloc(1, sizeof(*value));
+    assert_non_null(value);
+    value->xpath = strdup("/commit-nacm:test-list[test-key='test-key']");
+    value->type = SR_LIST_T;
+    assert_non_null(value->xpath);
+
+    // Create row
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, value->xpath, value, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+    value = NULL;
+
+    // Commit
+    dm_commit_context_t *c_ctx = NULL;
+    rc = rp_dt_commit(ctx, sessionA, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    // Delete row
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/commit-nacm:test-list[test-key='test-key']", SR_EDIT_DEFAULT);
+    rc = rp_dt_commit(ctx, sessionA, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    test_rp_session_cleanup(ctx, sessionA);
+    delete_nacm_config(nacm_config);
+}
+
+static void
 candidate_copy_config_lock_test(void **state)
 {
     int rc = 0;
@@ -2553,214 +2604,143 @@ validaton_of_multiple_models(void **state)
 
 }
 
-void set_item_id_ref(void **state){
+void set_and_get_item_id_ref(void **state){
     int rc = 0;
     rp_ctx_t *ctx = *state;
     rp_session_t *session = NULL;
+    dm_commit_context_t *c_ctx = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    sr_val_t *val = NULL;
 
     test_rp_session_create(ctx, SR_DS_STARTUP, &session);
 
-    sr_val_t *val = NULL;
-    sr_new_val("/id-ref-base:main/id-ref-aug:augmented/id-ref", &val);
-    sr_val_set_str_data(val, SR_IDENTITYREF_T, "id-def-extended:external-derived-id");
-    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_STRICT, val, NULL, false);
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/id-ref-base:main/id-ref-aug:augmented/id-ref", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    sr_free_val(val);
-    test_rp_session_cleanup(ctx, session);
-}
-
-static void set_item(const char *path, const char *value, sr_type_t type, rp_ctx_t *ctx,
-                     rp_session_t *session)
-{
-    sr_val_t *val = NULL;
-    int rc;
-    sr_new_val(path, &val);
-    if (type != SR_LIST_T) {
-        sr_val_set_str_data(val, type, value);
-    }
-    val->type = type;
-    SR_LOG_INF("Adding item %s", path);
-    assert_int_equal(val->type, type);
-
-    rc = rp_dt_set_item_wrapper(ctx, session, val->xpath, val, NULL, SR_EDIT_DEFAULT);
+    val = calloc(1, sizeof(*val));
+    assert_non_null(val);
+    val->type = SR_IDENTITYREF_T;
+    val->data.identityref_val = strdup("id-def-extended:external-derived-id");
+    assert_non_null(val->data.identityref_val);
+    rc = rp_dt_set_item_wrapper(ctx, session, "/id-ref-base:main/id-ref-aug:augmented/id-ref", val, NULL, SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_OK, rc);
-}
-
-static int set_items_data_and_feature_import_setup(void **state)
-{
-    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-feat-enable-A.yang", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-A.yang", true);
-    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-feat-enable-B.yang", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-B.yang", true);
-    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-feat-enable-C.yang", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-C.yang", true);
-    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-feat-enable-D.yang", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-D.yang", true);
-
-    exec_shell_command("../src/sysrepoctl --feature-enable c-feature --module data-feat-enable-C", ".*", true, 0);
-
-    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-imp-dep-A.yang", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-A.yang", true);
-    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-imp-dep-B.yang", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-B.yang", true);
-    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-imp-dep-C.yang", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-C.yang", true);
-
-    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/data-submodule-main.yang", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-submodule-main.yang", true);
-
-    exec_shell_command("../src/sysrepoctl --install --yang=" TEST_SOURCE_DIR "/yang/feature-submodule-main.yang", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "feature-submodule-main.yang", true);
-
-    exec_shell_command("../src/sysrepoctl --feature-enable test-submodule-feature --module feature-submodule-main", ".*", true, 0);
-
-    setup(state);
-
-    return 0;
-}
-
-static int set_items_data_and_feature_import_teardown(void **state)
-{
-    exec_shell_command("../src/sysrepoctl --feature-disable c-feature --module data-feat-enable-C", ".*", true, 0);
-
-    exec_shell_command("../src/sysrepoctl --uninstall --module=data-feat-enable-A", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-A.yang", false);
-    exec_shell_command("../src/sysrepoctl --uninstall --module=data-feat-enable-B", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-B.yang", false);
-    exec_shell_command("../src/sysrepoctl --uninstall --module=data-feat-enable-C", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-C.yang", false);
-    exec_shell_command("../src/sysrepoctl --uninstall --module=data-feat-enable-D", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-feat-enable-D.yang", false);
-
-    exec_shell_command("../src/sysrepoctl --uninstall --module=data-imp-dep-A", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-A.yang", false);
-    exec_shell_command("../src/sysrepoctl --uninstall --module=data-imp-dep-B", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-B.yang", false);
-    exec_shell_command("../src/sysrepoctl --uninstall --module=data-imp-dep-C", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-imp-dep-C.yang", false);
-    exec_shell_command("../src/sysrepoctl --uninstall --module=data-submodule-main", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "data-submodule-main.yang", false);
-
-    exec_shell_command("../src/sysrepoctl --uninstall --module=feature-submodule-main", ".*", true, 0);
-    test_file_exists(TEST_SCHEMA_SEARCH_DIR "feature-submodule-main.yang", false);
-
-    teardown(state);
-
-    return 0;
-}
-
-void set_items_data_and_feature_import(void **state)
-{
-    int rc;
-    rp_ctx_t *ctx = *state;
-    rp_session_t *session = NULL;
-    sr_error_info_t *errors = NULL;
-    size_t e_cnt = 0;
-    dm_commit_context_t *c_ctx = NULL;
-
-    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
-
-    set_item("/data-feat-enable-D:d-con/d-list[name='d-foo']", NULL, SR_LIST_T,
-             ctx, session);
-    set_item("/data-feat-enable-D:d-con/data-feat-enable-A:a-leaf", "a-bar", SR_STRING_T,
-             ctx, session);
-    set_item("/data-feat-enable-B:b-con/b-list[name='b-foo']", NULL, SR_LIST_T,
-             ctx, session);
-    set_item("/data-feat-enable-B:b-con/b-list[name='b-foo']/ref", "d-foo", SR_STRING_T,
-             ctx, session);
-
 
     rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(e_cnt, 0);
     assert_ptr_equal(errors, NULL);
 
-    test_rp_session_cleanup(ctx, session);
-}
-
-void set_items_data_and_import_implemented(void **state)
-{
-    int rc;
-    rp_ctx_t *ctx = *state;
-    rp_session_t *session = NULL;
-    sr_error_info_t *errors = NULL;
-    size_t e_cnt = 0;
-    dm_commit_context_t *c_ctx = NULL;
-
-    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
-
-    set_item("/data-imp-dep-A:a-con/a-list[name='a-foo']", NULL, SR_LIST_T,
-             ctx, session);
-    set_item("/data-imp-dep-A:a-con/a-list[name='a-foo']/ref", "c-foo", SR_STRING_T,
-             ctx, session);
-    set_item("/data-imp-dep-C:c-con/c-list[name='c-foo']", NULL, SR_LIST_T,
-             ctx, session);
-    set_item("/data-imp-dep-C:c-con/data-imp-dep-B:b-leaf", "b-foo", SR_STRING_T,
-             ctx, session);
-
-
-    rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
-    assert_int_equal(rc, SR_ERR_OK);
-    assert_int_equal(e_cnt, 0);
-    assert_ptr_equal(errors, NULL);
-
-    test_rp_session_cleanup(ctx, session);
-}
-
-void set_and_get_items_from_top_level_in_submodule(void **state)
-{
-    int rc;
-    rp_ctx_t *ctx = *state;
-    rp_session_t *session = NULL;
-    sr_error_info_t *errors = NULL;
-    size_t e_cnt = 0;
-    dm_commit_context_t *c_ctx = NULL;
-    sr_val_t *val = NULL;
-
-    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
-
-    set_item("/data-submodule-main:foo/bar", "test", SR_STRING_T, ctx, session);
-
-    rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
-    assert_int_equal(rc, SR_ERR_OK);
-    assert_int_equal(e_cnt, 0);
-    assert_ptr_equal(errors, NULL);
-    
-    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/data-submodule-main:foo/bar", &val);
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/id-ref-base:main/id-ref-aug:augmented/id-ref-aug:id-ref", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
-    assert_int_equal(SR_STRING_T, val->type);
-    assert_string_equal("test", val->data.string_val);
+    assert_int_equal(SR_IDENTITYREF_T, val->type);
+    assert_string_equal("id-def-extended:external-derived-id", val->data.identityref_val);
     sr_free_val(val);
 
     test_rp_session_cleanup(ctx, session);
 }
 
-void set_and_get_items_from_feature_of_submodule(void **state)
-{
-    int rc;
+void set_item_leafref_augment(void ** state) {
+    int rc = 0;
     rp_ctx_t *ctx = *state;
     rp_session_t *session = NULL;
+    dm_commit_context_t *c_ctx = NULL;
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
-    dm_commit_context_t *c_ctx = NULL;
     sr_val_t *val = NULL;
 
     test_rp_session_create(ctx, SR_DS_STARTUP, &session);
-    set_item("/feature-submodule-mod:mod-container/feature-submodule-main:augmented-data-val", "aug-data", SR_STRING_T, ctx, session);
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/augm_leafref_m1:augleafrefcontainer/augm_leafref_m1:name", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/augm_leafref_m2:item/augm_leafref_m1:augleaf", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val = calloc(1, sizeof(*val));
+    assert_non_null(val);
+    val->type = SR_STRING_T;
+    val->data.string_val = strdup("leafrefval");
+    assert_non_null(val->data.string_val);
+    rc = rp_dt_set_item_wrapper(ctx, session, "/augm_leafref_m1:augleafrefcontainer/augm_leafref_m1:name", val, NULL, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(e_cnt, 0);
     assert_ptr_equal(errors, NULL);
-    
-    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/feature-submodule-mod:mod-container/feature-submodule-main:augmented-data-val", &val);
-    assert_int_equal(SR_ERR_OK, rc);
+
+    val = calloc(1, sizeof(*val));
     assert_non_null(val);
-    assert_int_equal(SR_STRING_T, val->type);
-    assert_string_equal("aug-data", val->data.string_val);
-    sr_free_val(val);
+    val->type = SR_STRING_T;
+    val->data.string_val = strdup("leafrefval");
+    assert_non_null(val->data.string_val);
+    rc = rp_dt_set_item_wrapper(ctx, session, "/augm_leafref_m2:item/augm_leafref_m1:augleaf", val, NULL, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(e_cnt, 0);
+    assert_ptr_equal(errors, NULL);
+
+    test_rp_session_cleanup(ctx, session);
+}
+
+void ident_ref_in_installed_module(void ** state) {
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+    dm_commit_context_t *c_ctx = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    sr_val_t *val = NULL;
+
+    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/id-ref-main:main/id-ref-main:ident-ref", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val = calloc(1, sizeof(*val));
+    assert_non_null(val);
+    val->type = SR_IDENTITYREF_T;
+    val->data.identityref_val = strdup("id-ref-installed:id-ref-extended");
+    assert_non_null(val->data.identityref_val);
+    rc = rp_dt_set_item_wrapper(ctx, session, "/id-ref-main:main/id-ref-main:ident-ref", val, NULL, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(e_cnt, 0);
+    assert_ptr_equal(errors, NULL);
+
+    test_rp_session_cleanup(ctx, session);
+}
+
+void extended_ident_ref_in_installed_module(void ** state) {
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+    dm_commit_context_t *c_ctx = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    sr_val_t *val = NULL;
+
+    test_rp_session_create(ctx, SR_DS_STARTUP, &session);
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/id-ref-main:main/id-ref-main:ident-list", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val = calloc(1, sizeof(*val));
+    assert_non_null(val);
+    val->type = SR_LIST_T;
+    rc = rp_dt_set_item_wrapper(ctx, session, "/id-ref-main:main/id-ref-main:ident-list[ref1='id-ref-installed:id-ref-main-extended']", val, NULL, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_commit(ctx, session, &c_ctx, false, &errors, &e_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(e_cnt, 0);
+    assert_ptr_equal(errors, NULL);
 
     test_rp_session_cleanup(ctx, session);
 }
@@ -2802,13 +2782,13 @@ int main(){
             cmocka_unit_test(candidate_edit_test),
             cmocka_unit_test(copy_to_running_test),
             cmocka_unit_test(candidate_copy_config_lock_test),
+            cmocka_unit_test(add_delete_list_row_with_nacm_test),
             cmocka_unit_test_setup(edit_union_type, createData),
             cmocka_unit_test_setup(validaton_of_multiple_models, createData),
-            cmocka_unit_test(set_item_id_ref),
-            cmocka_unit_test_setup_teardown(set_items_data_and_feature_import, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
-            cmocka_unit_test_setup_teardown(set_items_data_and_import_implemented, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
-            cmocka_unit_test_setup_teardown(set_and_get_items_from_top_level_in_submodule, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown),
-            cmocka_unit_test_setup_teardown(set_and_get_items_from_feature_of_submodule, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown)
+            cmocka_unit_test(set_and_get_item_id_ref),
+            cmocka_unit_test(set_item_leafref_augment),
+            cmocka_unit_test(ident_ref_in_installed_module),
+            cmocka_unit_test(extended_ident_ref_in_installed_module),
     };
 
     watchdog_start(300);

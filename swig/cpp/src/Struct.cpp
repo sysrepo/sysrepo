@@ -479,30 +479,29 @@ void Val::set(const char *xpath, uint64_t uint64_val, sr_type_t type) {
 
     _val->type = type;
 }
-S_String Val::to_string() {
+std::string Val::to_string() {
     char *mem = nullptr;
 
     int ret = sr_print_val_mem(&mem, _val);
     if (SR_ERR_OK == ret) {
-        if (mem == nullptr)
-            return nullptr;
-        S_String string_val = mem;
+        if (!mem) {
+            return std::string();
+        }
+        std::string string_val = mem;
         free(mem);
         return string_val;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
         return nullptr;
     }
+    throw_exception(ret);
 }
-S_String Val::val_to_string() {
+std::string Val::val_to_string() {
     char *value = sr_val_to_str(_val);
     if (value == nullptr) {
         throw_exception(SR_ERR_OPERATION_FAILED);
-        return nullptr;
     }
-    S_String string_val = value;
+    std::string string_val = value;
     free(value);
 
     return string_val;

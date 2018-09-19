@@ -1,0 +1,26 @@
+module augm_leafref_m1 {
+    namespace "test:augmleafref";
+    prefix alr;
+
+    import augm_leafref_m2 {
+        prefix alrc;
+    }
+
+    container augleafrefcontainer {
+        leaf name {
+            type string;
+        }
+    }
+
+    typedef alr-ref {
+        type leafref {
+            path "/alr:augleafrefcontainer/alr:name";
+        }
+    }
+
+    augment "/alrc:item" {
+        leaf augleaf {
+            type alr-ref;
+        }
+    }
+}

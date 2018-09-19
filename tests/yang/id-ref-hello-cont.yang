@@ -1,0 +1,14 @@
+module id-ref-hello-cont {
+  namespace "urn:ietf:params:xml:ns:yang:id-ref-hello-cont";
+  prefix irn;
+
+  import id-def-base {
+    prefix idb;
+  }
+
+  grouping hello-content {
+    leaf id-ref {
+      type idb:id-ref-type;
+    }
+  }
+}

@@ -113,24 +113,24 @@ S_Tree Tree::last_child() {
     S_Tree node(new Tree(_node->last_child, _deleter));
     return node;
 }
-S_String Tree::to_string(int depth_limit) {
+std::string Tree::to_string(int depth_limit) {
     char *mem = nullptr;
 
     int ret = sr_print_tree_mem(&mem, _node, depth_limit);
     if (SR_ERR_OK == ret) {
-        if (mem == nullptr)
-            return nullptr;
-        S_String string_val = mem;
+        if (!mem) {
+            return std::string();
+        }
+        std::string string_val = mem;
         free(mem);
         return string_val;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
-        return nullptr;
     }
+    if (SR_ERR_NOT_FOUND == ret) {
+        return std::string();
+    }
+    throw_exception(ret);
 }
-S_String Tree::value_to_string() {
+std::string Tree::value_to_string() {
     char *mem = nullptr;
 
     if (_node == nullptr) throw_exception(SR_ERR_DATA_MISSING);
@@ -139,17 +139,17 @@ S_String Tree::value_to_string() {
 
     int ret = sr_print_val_mem(&mem, val);
     if (SR_ERR_OK == ret) {
-        if (mem == nullptr)
-            return nullptr;
-        S_String string_val = mem;
+        if (!mem) {
+            return std::string();
+        }
+        std::string string_val = mem;
         free(mem);
         return string_val;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
         return nullptr;
     }
+    throw_exception(ret);
 }
 void Tree::set_name(const char *name) {
     if (_node == nullptr) throw_exception(SR_ERR_DATA_MISSING);

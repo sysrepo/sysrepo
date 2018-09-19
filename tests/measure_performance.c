@@ -181,7 +181,7 @@ typedef struct dp_setup_s {
 
 
 int
-data_provide_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+data_provide_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     size_t if_count = *((size_t *) private_ctx);
     int rc = SR_ERR_OK;

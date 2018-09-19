@@ -6,7 +6,7 @@ include(GNUInstallDirs)
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 7)
-set(SYSREPO_MICRO_VERSION 4)
+set(SYSREPO_MICRO_VERSION 5)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION})
 
@@ -175,14 +175,16 @@ set(ENABLE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
 set(STORE_CONFIG_CHANGE_NOTIF 1 CACHE BOOL
     "Save config-change notifications (RFC 6470) in the notification store (slows down the commit process).")
 
-set(FILE_FORMAT_EXT "xml" CACHE STRING
-    "Datastore file format extension used. Can be either json or xml.")
+set(FILE_FORMAT_EXT "lyb" CACHE STRING
+    "Datastore file format extension used. Can be json, xml, or lyb.")
 if (FILE_FORMAT_EXT STREQUAL "json")
     set(FILE_FORMAT_LY "LYD_JSON")
 elseif (FILE_FORMAT_EXT STREQUAL "xml")
     set(FILE_FORMAT_LY "LYD_XML")
+elseif (FILE_FORMAT_EXT STREQUAL "lyb")
+    set(FILE_FORMAT_LY "LYD_LYB")
 else()
-    message(FATAL_ERROR "Unknown file format \"${FILE_FORMAT_EXT}\", must be either json or xml.")
+    message(FATAL_ERROR "Unknown file format \"${FILE_FORMAT_EXT}\", must be json, xml, or lyb.")
 endif()
 
 # timeouts
@@ -301,7 +303,7 @@ install (FILES ${INTERNAL_YANGS} DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 
 # install NACM YANG module
 if(ENABLE_NACM)
-    INSTALL_YANG("ietf-netconf-acm" "@2012-02-22" "644")
+    INSTALL_YANG("ietf-netconf-acm" "@2018-02-14" "644")
 endif(ENABLE_NACM)
 
 find_package(PkgConfig QUIET)

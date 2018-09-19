@@ -29,6 +29,7 @@
 #include <pthread.h>
 #include <libyang/libyang.h>
 #include <inttypes.h>
+#include <time.h>
 
 /**
  * @brief Checks if the schema node has a key node with the specified name
@@ -771,13 +772,15 @@ cleanup:
 }
 
 /**
- * @brief Reload NACM configuration (asynchronous, sends a request to the request processor).
+ * @brief Reload NACM configuration (sends a request to the request processor
+ * and waits for it to be fully processed).
  */
 static int
 rp_dt_reload_nacm(rp_ctx_t *rp_ctx)
 {
     Sr__Msg *req = NULL;
     int rc = SR_ERR_OK;
+    struct timespec ts;
     CHECK_NULL_ARG(rp_ctx);
 
     /* setup the timer */
@@ -788,6 +791,13 @@ rp_dt_reload_nacm(rp_ctx_t *rp_ctx)
     }
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Unable to send a request to reload the running NACM configuration.");
+    }
+
+    /* wait until the NACM ctx has been reloaded */
+    while (cm_msg_search(rp_ctx->cm_ctx, req)) {
+        ts.tv_sec = 0;
+        ts.tv_nsec = 250000;
+        nanosleep(&ts, NULL);
     }
 
     return rc;

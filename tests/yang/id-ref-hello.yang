@@ -1,0 +1,12 @@
+module id-ref-hello {
+  namespace "urn:ietf:params:xml:ns:yang:id-ref-hello";
+  prefix irh;
+
+  import id-ref-hello-cont {
+    prefix irhc;
+  }
+
+  notification hello {
+    uses irhc:hello-content;
+  }
+}
