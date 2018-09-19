@@ -286,15 +286,12 @@ np_commit_ctx_find(np_ctx_t *np_ctx, uint32_t commit_id, sr_llist_node_t **llist
 }
 
 /**
- * @brief Increments count of notifications sent for the commit specified by commit ID.
+ * @brief Create a commit for the specified commit ID.
  */
-static int
-np_commit_notif_cnt_increment(np_ctx_t *np_ctx, uint32_t commit_id)
+static np_commit_ctx_t *
+np_commit_create(np_ctx_t *np_ctx, uint32_t commit_id)
 {
     np_commit_ctx_t *commit = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG(np_ctx);
 
     pthread_rwlock_wrlock(&np_ctx->lock);
 
@@ -305,18 +302,18 @@ np_commit_notif_cnt_increment(np_ctx_t *np_ctx, uint32_t commit_id)
         SR_LOG_DBG("Creating a new NP commit context for commit ID %"PRIu32".", commit_id);
 
         commit = calloc(1, sizeof(*commit));
-        CHECK_NULL_NOMEM_GOTO(commit, rc, unlock);
+        if (!commit) {
+            goto unlock;
+        }
 
         commit->commit_id = commit_id;
-        rc = sr_llist_add_new(np_ctx->commits, commit);
+        sr_llist_add_new(np_ctx->commits, commit);
     }
-
-    commit->notifications_sent++;
 
 unlock:
     pthread_rwlock_unlock(&np_ctx->lock);
 
-    return rc;
+    return commit;
 }
 
 /**
@@ -1392,6 +1389,7 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, sr_not
 {
     Sr__Msg *notif = NULL;
     int rc = SR_ERR_OK;
+    np_commit_ctx_t *commit;
 
     CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, subscription, subscription->dst_address);
 
@@ -1420,10 +1418,15 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, sr_not
         rc = np_dst_info_insert(np_ctx, subscription->dst_address, subscription->module_name);
     }
     if (SR_ERR_OK == rc) {
+        /* first create the commit context */
+        commit = np_commit_create(np_ctx, commit_id);
+        if (!commit) {
+            return SR_ERR_INTERNAL;
+        }
         /* send the message */
         rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
         if (SR_ERR_OK == rc) {
-            rc = np_commit_notif_cnt_increment(np_ctx, commit_id);
+            commit->notifications_sent++;
         }
     } else {
         sr_msg_free(notif);
