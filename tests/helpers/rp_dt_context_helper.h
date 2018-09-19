@@ -38,6 +38,12 @@ void test_rp_ctx_cleanup(rp_ctx_t *ctx);
 void test_rp_session_create(rp_ctx_t *rp_ctx, sr_datastore_t datastore, rp_session_t **rp_session_p);
 
 /**
+ * @brief Creates testing RP session with given options.
+ */
+void test_rp_session_create_with_options(rp_ctx_t *rp_ctx, sr_datastore_t datastore,
+        uint32_t options, rp_session_t **rp_session_p);
+
+/**
  * @brief Creates testing RP session for a given (virtual) user.
  */
 void test_rp_session_create_user(rp_ctx_t *rp_ctx, sr_datastore_t datastore, const ac_ucred_t user_credentials,

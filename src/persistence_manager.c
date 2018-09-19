@@ -1138,7 +1138,10 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new subscription into the data tree.");
 
     /* set subscription details */
-    if (subscription->enable_running) {
+    if (subscription->enable_running && (
+            SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type ||
+            SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription->type ||
+            SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == subscription->type)) {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING, module_name,
                 sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
         rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, true, true, NULL);

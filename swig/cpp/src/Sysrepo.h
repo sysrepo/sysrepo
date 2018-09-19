@@ -50,7 +50,6 @@
     #define S_Change           Change*
     #define S_Counter          std::shared_ptr<Counter>
     #define S_Callback         Callback*
-    #define S_String           std::string
 #else
     #define S_Iter_Value       std::shared_ptr<Iter_Value>
     #define S_Iter_Change      std::shared_ptr<Iter_Change>
@@ -79,7 +78,6 @@
     #define S_Change           std::shared_ptr<Change>
     #define S_Counter          std::shared_ptr<Counter>
     #define S_Callback         std::shared_ptr<Callback>
-    #define S_String           std::string
 #endif
 
 #define SESS_DEFAULT 0
@@ -98,7 +96,12 @@ extern "C" {
 #include "sysrepo.h"
 }
 
-void throw_exception(int error);
+#ifdef SWIG
+// https://github.com/swig/swig/issues/1158
+void throw_exception (int error);
+#else
+void throw_exception [[noreturn]] (int error);
+#endif
 
 class sysrepo_exception : public std::runtime_error
 {

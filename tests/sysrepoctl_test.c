@@ -275,8 +275,6 @@ sysrepoctl_test_feature(void **state)
     exec_shell_command("../src/sysrepoctl --feature-enable=if-mib --module=ietf-interfaces",
                        "Enabling feature 'if-mib' in the module 'ietf-interfaces'.\n"
                        "Operation completed successfully.", true, 0);
-    test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
-                      "enabled-features.*feature-name.*if-mib", true);
     snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Installed[[:space:]]*\\| %s:[-_[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\| if-mib[[:space:]]*\n", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
@@ -284,16 +282,12 @@ sysrepoctl_test_feature(void **state)
     exec_shell_command("../src/sysrepoctl --feature-enable=if-mib --module=ietf-interfaces",
                        "Enabling feature 'if-mib' in the module 'ietf-interfaces'.\n"
                        "Operation completed successfully.", true, 0);
-    test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
-                      "enabled-features.*feature-name.*if-mib", true);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
     /* disable */
     exec_shell_command("../src/sysrepoctl --feature-disable=if-mib --module=ietf-interfaces",
                        "Disabling feature 'if-mib' in the module 'ietf-interfaces'.\n"
                        "Operation completed successfully.", true, 0);
-    test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
-                      "!enabled-features.*feature-name.*if-mib", true);
     snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| Installed[[:space:]]*\\| %s:[-_[:alnum:]]*[[:space:]]*\\| 664[[:space:]]*\\|[[:space:]]*\\|[[:space:]]*\n", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
@@ -301,8 +295,6 @@ sysrepoctl_test_feature(void **state)
     exec_shell_command("../src/sysrepoctl --feature-disable=if-mib --module=ietf-interfaces",
                        "Disabling feature 'if-mib' in the module 'ietf-interfaces'.\n"
                        "Operation completed successfully.", true, 0);
-    test_file_content(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist",
-                      "!enabled-features.*feature-name.*if-mib", true);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 }
 

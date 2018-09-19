@@ -26,9 +26,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdbool.h>
-//! @cond doxygen_suppress
-#define __USE_XOPEN
-//! @endcond
 #include <time.h>
 
 #include <libyang/libyang.h>

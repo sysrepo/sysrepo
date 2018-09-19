@@ -817,6 +817,7 @@ cl_sm_dp_request_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *m
     cb_rc = subscription->callback.dp_get_items_cb(
             msg->request->data_provide_req->xpath,
             &values, &values_cnt,
+            msg->request->data_provide_req->request_id,
             subscription->private_ctx);
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);

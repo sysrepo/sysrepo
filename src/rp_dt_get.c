@@ -100,6 +100,9 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
         val->type = sch_cont->presence == NULL ? SR_CONTAINER_T : SR_CONTAINER_PRESENCE_T;
         val->dflt = node->dflt;
         break;
+    case LYS_NOTIF:
+        val->type = SR_NOTIFICATION_T;
+        break;
     case LYS_LIST:
         val->type = SR_LIST_T;
         break;
@@ -151,20 +154,20 @@ rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t
     }
 
     for (size_t i = 0; i < nodes->number; i++) {
-        vals[i]._sr_mem = sr_mem;
+        vals[cnt]._sr_mem = sr_mem;
         node = nodes->set.d[i];
         if (NULL == node || NULL == node->schema || LYS_RPC == node->schema->nodetype ||
             LYS_NOTIF == node->schema->nodetype || LYS_ACTION == node->schema->nodetype) {
             /* ignore this node */
             continue;
         }
-        rc = rp_dt_get_value_from_node(node, &vals[i]);
+        rc = rp_dt_get_value_from_node(node, &vals[cnt]);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Getting value from node %s failed", node->schema->name);
             if (sr_mem) {
                 sr_mem_restore(&snapshot);
             } else {
-                sr_free_values(vals, i);
+                sr_free_values(vals, cnt);
             }
             return SR_ERR_INTERNAL;
         }
@@ -695,7 +698,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     schema_xpath = ly_path_data2schema(schema_info->ly_ctx, xpath);
     if (NULL == schema_xpath) {
         SR_LOG_ERR("Failed to transform data path '%s' to schema path", xpath);
-        rc = SR_ERR_INVAL_ARG;
+        rc = SR_ERR_BAD_ELEMENT;
         goto cleanup;
     }
 

@@ -2074,11 +2074,15 @@ sr_commit(sr_session_ctx_t *session)
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__COMMIT);
     commit_resp = msg_resp->response->commit_resp;
     if (rc != SR_ERR_OK) {
-        SR_LOG_ERR("Commit operation failed with %zu error(s).", commit_resp->n_errors);
+        if (commit_resp) {
+            SR_LOG_ERR("Commit operation failed with %zu error(s).", commit_resp->n_errors);
 
-        /* store commit errors within the session */
-        if (commit_resp->n_errors > 0) {
-            cl_session_set_errors(session, commit_resp->errors, commit_resp->n_errors);
+            /* store commit errors within the session */
+            if (commit_resp->n_errors > 0) {
+                cl_session_set_errors(session, commit_resp->errors, commit_resp->n_errors);
+            }
+        } else {
+            SR_LOG_ERR_MSG("Commit operation failed.");
         }
     }
 

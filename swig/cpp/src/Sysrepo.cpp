@@ -43,42 +43,7 @@ sr_error_t sysrepo_exception::error_code() const
 }
 
 void throw_exception(int error) {
-    switch(error) {
-    case(SR_ERR_INVAL_ARG):
-        throw sysrepo_exception(SR_ERR_INVAL_ARG);
-    case(SR_ERR_NOMEM):
-        throw sysrepo_exception(SR_ERR_NOMEM);
-    case(SR_ERR_NOT_FOUND):
-        throw sysrepo_exception(SR_ERR_NOT_FOUND);
-    case(SR_ERR_INTERNAL):
-        throw sysrepo_exception(SR_ERR_INTERNAL);
-    case(SR_ERR_INIT_FAILED):
-        throw sysrepo_exception(SR_ERR_INIT_FAILED);
-    case(SR_ERR_IO):
-        throw sysrepo_exception(SR_ERR_IO);
-    case(SR_ERR_DISCONNECT):
-        throw sysrepo_exception(SR_ERR_DISCONNECT);
-    case(SR_ERR_MALFORMED_MSG):
-        throw sysrepo_exception(SR_ERR_MALFORMED_MSG);
-    case(SR_ERR_UNSUPPORTED):
-        throw sysrepo_exception(SR_ERR_UNSUPPORTED);
-    case(SR_ERR_UNKNOWN_MODEL):
-        throw sysrepo_exception(SR_ERR_UNKNOWN_MODEL);
-    case(SR_ERR_BAD_ELEMENT):
-        throw sysrepo_exception(SR_ERR_BAD_ELEMENT);
-    case(SR_ERR_VALIDATION_FAILED):
-        throw sysrepo_exception(SR_ERR_VALIDATION_FAILED);
-    case(SR_ERR_DATA_EXISTS):
-        throw sysrepo_exception(SR_ERR_DATA_EXISTS);
-    case(SR_ERR_DATA_MISSING):
-        throw sysrepo_exception(SR_ERR_DATA_MISSING);
-    case(SR_ERR_UNAUTHORIZED):
-        throw sysrepo_exception(SR_ERR_UNAUTHORIZED);
-    case(SR_ERR_LOCKED):
-        throw sysrepo_exception(SR_ERR_LOCKED);
-    case(SR_ERR_TIME_OUT):
-        throw sysrepo_exception(SR_ERR_TIME_OUT);
-    }
+    throw sysrepo_exception((const sr_error_t) error);
 }
 
 // for consistent swig integration

@@ -94,6 +94,7 @@ typedef enum sr_type_e {
     SR_CONTAINER_T,            /**< Non-presence container. ([RFC 6020 sec 7.5](http://tools.ietf.org/html/rfc6020#section-7.5)) */
     SR_CONTAINER_PRESENCE_T,   /**< Presence container. ([RFC 6020 sec 7.5.1](http://tools.ietf.org/html/rfc6020#section-7.5.1)) */
     SR_LEAF_EMPTY_T,           /**< A leaf that does not hold any value ([RFC 6020 sec 9.11](http://tools.ietf.org/html/rfc6020#section-9.11)) */
+    SR_NOTIFICATION_T,         /**< Notification instance ([RFC 7095 sec 7.16](https://tools.ietf.org/html/rfc7950#section-7.16)) */
 
     /* types containing some data */
     SR_BINARY_T,       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
@@ -1138,8 +1139,9 @@ typedef enum sr_subscr_flag_e {
      * ::sr_subtree_change_subscribe calls it means that:
      *
      * - the subscriber is the "owner" of the subscribed data tree and and the data tree will be enabled in the running
-     *   datastore while this subscription is alive (can be changed using ::SR_SUBSCR_PASSIVE flag),
-     * - configuration data of the subscribed module or subtree is copied from startup to running datastore,
+     *   datastore while this subscription is alive (if not already, can be changed using ::SR_SUBSCR_PASSIVE flag),
+     * - configuration data of the subscribed module or subtree is copied from startup to running datastore
+     *   (only if the module was not enabled before),
      * - the callback will be called twice, once with ::SR_EV_VERIFY event and once with ::SR_EV_APPLY / ::SR_EV_ABORT
      *   event passed in (can be changed with ::SR_SUBSCR_APPLY_ONLY flag).
      */
@@ -1825,8 +1827,9 @@ int sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subs
  *
  * - If the xpath identifies a container, the provider is supposed to return all leaves and leaf-lists values within it.
  * Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
- * - If the xpath identifies a list, the provider is supposed to return all leaves and leaf-lists values within all
- * instances of the list. Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
+ * - If the xpath identifies a list, the provider is supposed to return all leaves (except for keys!) and
+ * leaf-lists values within all instances of the list. Nested lists and containers should not be provided - sysrepo
+ * will ask for them in subsequent calls.
  * - If the xpath identifies a leaf-list, the provider is supposed to return all leaf-list values.
  * - If the xpath identifies a leaf, the provider is supposed to return just the leaf in question.
  *
@@ -1836,11 +1839,12 @@ int sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subs
  * @param[in] xpath @ref xp_page "Data Path" identifying the level under which the nodes are requested.
  * @param[out] values Array of values at the selected level (allocated by the provider).
  * @param[out] values_cnt Number of values returned.
+ * @param[in] request_id An ID identifying the originating request.
  * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_dp_get_items_subscribe call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx);
+typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx);
 
 /**
  * @brief Registers for providing of operational data under given xpath.

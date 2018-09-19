@@ -293,7 +293,7 @@ provide_seats_reserved(const char *xpath, sr_val_t **values, size_t *values_cnt,
     return 0;
 }
 
-int cl_dp_cpu_load (const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+int cl_dp_cpu_load (const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     const char *expected_xpath = "/state-module:cpu_load";
     if (0 == strcmp(xpath, expected_xpath)) {
@@ -318,7 +318,7 @@ int cl_dp_cpu_load (const char *xpath, sr_val_t **values, size_t *values_cnt, vo
     return -1;
 }
 
-int cl_dp_bus (const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+int cl_dp_bus (const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     if (0 == strcmp(xpath, "/state-module:bus/distance_travelled"))
     {
@@ -332,7 +332,16 @@ int cl_dp_bus (const char *xpath, sr_val_t **values, size_t *values_cnt, void *p
     return -1;
 }
 
-int cl_dp_distance_travelled (const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+int cl_dp_bus_req_id (const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
+{
+    sr_list_t *l = (sr_list_t *) private_ctx;
+    if (0 != sr_list_add(l, (char *)request_id)) {
+        SR_LOG_ERR_MSG("Error while adding into list");
+    }
+    return 0;
+}
+
+int cl_dp_distance_travelled (const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     const char *expected_xpath = "/state-module:bus/distance_travelled";
     if (0 == strcmp(xpath, expected_xpath)) {
@@ -342,7 +351,7 @@ int cl_dp_distance_travelled (const char *xpath, sr_val_t **values, size_t *valu
     return -1;
 }
 
-int cl_dp_gps_located (const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+int cl_dp_gps_located (const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     const char *expected_xpath = "/state-module:bus/gps_located";
     if (0 == strcmp(xpath, "/state-module:bus/gps_located")) {
@@ -352,7 +361,7 @@ int cl_dp_gps_located (const char *xpath, sr_val_t **values, size_t *values_cnt,
     return -1;
 }
 
-int cl_dp_seats_reserved (const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+int cl_dp_seats_reserved (const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     const char *expected_xpath = "/state-module:bus/seats/reserved";
     if (sr_xpath_node_name_eq(xpath, "reserved")) {
@@ -362,7 +371,7 @@ int cl_dp_seats_reserved (const char *xpath, sr_val_t **values, size_t *values_c
     return -1;
 }
 
-int cl_dp_missing_type_bus (const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+int cl_dp_missing_type_bus (const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     if (0 == strcmp(xpath, "/state-module:bus/distance_travelled"))
     {
@@ -377,7 +386,7 @@ int cl_dp_missing_type_bus (const char *xpath, sr_val_t **values, size_t *values
 }
 
 int
-cl_dp_incorrect_data(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+cl_dp_incorrect_data(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     sr_list_t *l = (sr_list_t *) private_ctx;
     if (0 != sr_list_add(l, strdup(xpath))) {
@@ -397,12 +406,12 @@ cl_dp_incorrect_data(const char *xpath, sr_val_t **values, size_t *values_cnt, v
     return 0;
 }
 
-int cl_dp_weather (const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+int cl_dp_weather (const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     return SR_ERR_OK;
 }
 
-int cl_dp_sky (const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+int cl_dp_sky (const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     const char *expected_xpath = "/state-module:weather/sky";
     if (0 == strcmp(xpath, expected_xpath)) {
@@ -421,7 +430,7 @@ int cl_dp_sky (const char *xpath, sr_val_t **values, size_t *values_cnt, void *p
     return -1;
 }
 
-int cl_dp_humidity (const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+int cl_dp_humidity (const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     const char *expected_xpath = "/state-module:weather/humidity";
     if (0 == strcmp(xpath, expected_xpath)) {
@@ -449,7 +458,7 @@ cl_whole_module_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_
 }
 
 int
-cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     sr_list_t *l = (sr_list_t *) private_ctx;
     int rc = SR_ERR_OK;
@@ -570,7 +579,7 @@ cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
 }
 
 int
-cl_dp_cross_road(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+cl_dp_cross_road(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     sr_list_t *l = (sr_list_t *) private_ctx;
     if (0 != sr_list_add(l, strdup(xpath))) {
@@ -611,7 +620,7 @@ cl_dp_cross_road(const char *xpath, sr_val_t **values, size_t *values_cnt, void 
 }
 
 int
-cl_dp_wind(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+cl_dp_wind(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     sr_list_t *l = (sr_list_t *) private_ctx;
     if (0 != sr_list_add(l, strdup(xpath))) {
@@ -642,7 +651,7 @@ cl_dp_wind(const char *xpath, sr_val_t **values, size_t *values_cnt, void *priva
 }
 
 int
-cl_dp_wind_speed(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+cl_dp_wind_speed(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     sr_list_t *l = (sr_list_t *) private_ctx;
     if (0 != sr_list_add(l, strdup(xpath))) {
@@ -669,7 +678,7 @@ cl_dp_wind_speed(const char *xpath, sr_val_t **values, size_t *values_cnt, void 
 }
 
 int
-cl_dp_traffic_light(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+cl_dp_traffic_light(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     sr_list_t *l = (sr_list_t *) private_ctx;
     if (0 != sr_list_add(l, strdup(xpath))) {
@@ -715,7 +724,7 @@ cl_dp_traffic_light(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
 }
 
 static int
-cl_dp_card_state(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+cl_dp_card_state(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     sr_val_t *v = NULL;
     int rc = SR_ERR_OK;
@@ -2446,6 +2455,62 @@ cl_all_state_data(void **state)
 }
 
 static void
+cl_request_id(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_list_t *reqid_retrieved = NULL;
+    sr_val_t *values = NULL;
+    size_t cnt = 0;
+    uint32_t count = 0;
+    int rc = SR_ERR_OK;
+
+    rc = sr_list_init(&reqid_retrieved);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe data providers */
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus", cl_dp_bus_req_id, reqid_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* retrieve data once */
+    rc = sr_get_items(session, "/state-module:*//*", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_free_values(values, cnt);
+
+    /* check that reqid is always the same */
+    for (size_t i = 1; i < reqid_retrieved->count; i++) {
+        assert_int_equal(reqid_retrieved->data[i - 1], reqid_retrieved->data[i]);
+    }
+    count = reqid_retrieved->count;
+
+    /* retrieve data a second time */
+    rc = sr_get_items(session, "/state-module:*//*", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_free_values(values, cnt);
+
+    /* check that reqids are different for the first and second request */
+    assert_int_not_equal(reqid_retrieved->data[0], reqid_retrieved->data[count]);
+
+    sr_list_cleanup(reqid_retrieved);
+
+    /* cleanup */
+    sr_unsubscribe(session, subscription);
+    sr_session_stop(session);
+}
+
+static void
 cl_partial_covered_dp_subtree(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -3072,6 +3137,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_nested_data_subscription2, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_nested_data_subscription2_tree, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_all_state_data, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_request_id, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_partial_covered_dp_subtree, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_missing_list_dp, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subscribe_list_in_state_container_dp, sysrepo_setup, sysrepo_teardown),

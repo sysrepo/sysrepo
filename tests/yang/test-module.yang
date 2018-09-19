@@ -209,11 +209,11 @@ module test-module {
     leaf ifMTU {
         type uint32;
     }
-    must "ifType != 'ethernet' or " +
+    must "count(ifType) = 0 or ifType != 'ethernet' or " +
          "(ifType = 'ethernet' and ifMTU = 1500)" {
          error-message "An ethernet MTU must be 1500";
     }
-    must "ifType != 'atm' or " +
+    must "count(ifType) = 0 or ifType != 'atm' or " +
          "(ifType = 'atm' and ifMTU <= 17966 and ifMTU >= 64)" {
          error-message "An atm MTU must be  64 .. 17966";
     }
@@ -477,7 +477,7 @@ module test-module {
         }
         leaf time-of-change {
           type uint32;
-          must '. > /rd:magic_number' {
+          must '. > /rd:magic_number or count(/rd:magic_number) = 0' {
              error-message "time-of-change must be greater than magic_number";
           }
         }

@@ -46,8 +46,7 @@ typedef struct rp_ctx_s {
     size_t thread_spin_limit;                /**< Current limit of thread spinning before going to sleep. */
     bool stop_requested;                     /**< Stopping of all threads has been requested. */
 
-    bool block_further_commits;              /**< Flag that allows commit to be processed */
-    pthread_mutex_t commit_block_mutex;      /**< Mutex guarding block_further_commits flag */
+    volatile bool block_further_commits;     /**< Flag that allows commit to be processed */
 
     sr_cbuff_t *request_queue;               /**< Input request queue. */
     pthread_mutex_t request_queue_mutex;     /**< Request queue mutex. */
@@ -59,6 +58,10 @@ typedef struct rp_ctx_s {
 
     pthread_rwlock_t commit_lock;            /**< Lock to synchronize commit in this instance */
     bool do_not_generate_config_change;      /**< Config-change notification will not be generated */
+
+    /* request ID generator */
+    uint64_t total_req_cnt;                  /**< Total number of received requests for this context. */
+    pthread_mutex_t total_req_cnt_mutex;     /**< Mutex protecting total_req_cnt. */
 } rp_ctx_t;
 
 /**

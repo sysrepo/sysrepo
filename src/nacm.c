@@ -493,7 +493,7 @@ nacm_load_config(nacm_ctx_t *nacm_ctx, const sr_datastore_t ds)
     ly_ctx_set_module_data_clb(nacm_ctx->schema_info->ly_ctx, dm_module_clb, nacm_ctx->dm_ctx);
 
     ly_errno = 0;
-    data_tree = lyd_parse_fd(nacm_ctx->schema_info->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+    data_tree = lyd_parse_fd(nacm_ctx->schema_info->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_STRICT | LYD_OPT_CONFIG);
     if (NULL == data_tree && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Parsing of data tree from file %s failed: %s", ds_filepath, ly_errmsg(nacm_ctx->schema_info->ly_ctx));
         goto cleanup;

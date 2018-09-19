@@ -1,0 +1,12 @@
+module id-ref-extend-main {
+  namespace "urn:ietf:params:xml:ns:yang:id-ref-extend-main";
+  prefix irem;
+
+  import id-ref-main {
+    prefix irm;
+  }
+
+  identity ident-main-extended {
+    base irm:ident-main;
+  }
+}

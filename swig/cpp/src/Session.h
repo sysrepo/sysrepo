@@ -50,8 +50,8 @@ public:
     S_Error get_last_error();
     S_Errors get_last_errors();
     S_Yang_Schemas list_schemas();
-    S_String get_schema(const char *module_name, const char *revision,\
-                               const char *submodule_name, sr_schema_format_t format);
+    std::string get_schema(const char *module_name, const char *revision,
+                           const char *submodule_name, sr_schema_format_t format);
     S_Val get_item(const char *xpath);
     S_Vals get_items(const char *xpath);
     S_Iter_Value get_items_iter(const char *xpath);
@@ -112,7 +112,7 @@ public:
     virtual int action(const char *xpath, const S_Vals input, S_Vals_Holder output, void *private_ctx) {return SR_ERR_OK;};
     virtual int rpc_tree(const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
     virtual int action_tree(const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
-    virtual int dp_get_items(const char *xpath, S_Vals_Holder vals, void *private_ctx) {return SR_ERR_OK;};
+    virtual int dp_get_items(const char *xpath, S_Vals_Holder vals, uint64_t request_id, void *private_ctx) {return SR_ERR_OK;};
     virtual void event_notif(const sr_ev_notif_type_t notif_type, const char *xpath, S_Vals vals, time_t timestamp, void *private_ctx) {return;};
     virtual void event_notif_tree(const sr_ev_notif_type_t notif_type, const char *xpath, S_Trees trees, time_t timestamp, void *private_ctx) {return;};
     Callback *get() {return this;};

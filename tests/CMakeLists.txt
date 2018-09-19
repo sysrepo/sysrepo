@@ -55,6 +55,7 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
         add_test(${TEST_NAME}_valgrind valgrind
             --error-exitcode=1 --read-var-info=yes
             --leak-check=full --show-leak-kinds=all
+            --num-callers=20
             --suppressions=${TEST_HELPERS_DIR}valgrind.supp
             ./${TEST_NAME})
     endif()
@@ -102,6 +103,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     endif(ENABLE_NACM)
 
     ADD_UNIT_TEST(cl_test 1)
+    ADD_UNIT_TEST(cl_test2 1)
     ADD_UNIT_TEST(cl_notifications_test 1)
     ADD_UNIT_TEST(cl_state_data_test 1)
     ADD_UNIT_TEST(cl_fd_watcher_test 1)
@@ -114,6 +116,10 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     ADD_UNIT_TEST_WITH_OPTS(plugin_daemon_test 1 0 "")
     ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 1 0 "")
     ADD_UNIT_TEST_WITH_OPTS(sysrepocfg_test 1 0 "")
+    ADD_UNIT_TEST(rp_dt_edit_test_features 1)
+    IF (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+        ADD_UNIT_TEST_WITH_OPTS(np_test_store 1 1 "cm_msg_send")
+    ENDIF()
 
     ADD_CUSTOM_COMMAND(
         TARGET sysrepocfg_test
@@ -165,16 +171,18 @@ macro(ENABLE_FEATURE_FOR_TESTS MODULE_NAME FEATURE_NAME)
 endmacro(ENABLE_FEATURE_FOR_TESTS)
 
 if(ENABLE_NACM)
-    INSTALL_YANG_FOR_TESTS("ietf-netconf-acm@2012-02-22")
+    INSTALL_YANG_FOR_TESTS("ietf-netconf-acm@2018-02-14")
 endif(ENABLE_NACM)
 INSTALL_YANG_FOR_TESTS("example-module")
 INSTALL_YANG_FOR_TESTS("test-module")
 INSTALL_YANG_FOR_TESTS("small-module")
 INSTALL_YANG_FOR_TESTS("info-module")
-INSTALL_YANG_FOR_TESTS("id-ref-base")
 INSTALL_YANG_FOR_TESTS("id-ref-aug")
-INSTALL_YANG_FOR_TESTS("id-def-base")
+INSTALL_YANG_FOR_TESTS("id-ref-hello")
 INSTALL_YANG_FOR_TESTS("id-def-extended")
+INSTALL_YANG_FOR_TESTS("id-ref-main")
+INSTALL_YANG_FOR_TESTS("id-ref-installed")
+INSTALL_YANG_FOR_TESTS("augm_leafref_m1")
 INSTALL_YANG_FOR_TESTS("module-a@2016-02-10")
 INSTALL_YANG_FOR_TESTS("module-b@2016-02-05")
 INSTALL_YANG_FOR_TESTS("ietf-interfaces@2014-05-08")
@@ -188,6 +196,7 @@ INSTALL_YANG_FOR_TESTS("turing-machine")
 INSTALL_YANG_FOR_TESTS("ietf-netconf-notifications")
 INSTALL_YANG_FOR_TESTS("nc-notifications")
 INSTALL_YANG_FOR_TESTS("servers")
+INSTALL_YANG_FOR_TESTS("commit-nacm")
 
 
 # dummy testing plugins

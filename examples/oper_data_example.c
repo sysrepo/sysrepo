@@ -33,7 +33,7 @@
 volatile int exit_application = 0;
 
 static int
-data_provider_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+data_provider_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 {
     sr_val_t *v = NULL;
     sr_xpath_ctx_t xp_ctx = {0};
