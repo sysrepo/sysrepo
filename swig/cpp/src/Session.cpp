@@ -417,6 +417,14 @@ void Session::set_options(const sr_sess_options_t opts)
     }
 }
 
+void Session::set_error(const char *message, const char *xpath)
+{
+    int ret = sr_set_error(_sess, message, xpath);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
 Subscribe::Subscribe(S_Session sess)
 {
     _sub = nullptr;
