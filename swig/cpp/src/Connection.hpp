@@ -33,9 +33,19 @@ extern "C" {
 
 namespace sysrepo {
 
+/**
+ * @defgroup classes C++/Python
+ * @{
+ */
+
+/**
+ * @brief Class for wrapping sr_conn_ctx_t.
+ * @class Connection
+ */
 class Connection
 {
 public:
+    /** Wrapper for [sr_connect](@ref sr_connect) */
     Connection(const char *app_name, const sr_conn_options_t opts = CONN_DEFAULT);
     ~Connection();
 
@@ -46,6 +56,7 @@ private:
     sr_conn_options_t _opts;
 };
 
+/**@} */
 }
 
 #endif

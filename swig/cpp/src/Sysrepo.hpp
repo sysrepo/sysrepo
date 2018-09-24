@@ -34,6 +34,11 @@ extern "C" {
 
 namespace sysrepo {
 
+/**
+ * @defgroup classes C++/Python
+ * @{
+ */
+
 class Iter_Value;
 class Iter_Change;
 class Session;
@@ -138,6 +143,10 @@ void throw_exception (int error);
 void throw_exception [[noreturn]] (int error);
 #endif
 
+/**
+ * @brief Class for wrapping sr_error_t.
+ * @class sysrepo_exception
+ */
 class sysrepo_exception : public std::runtime_error
 {
 public:
@@ -148,14 +157,21 @@ private:
     sr_error_t m_error_code;
 };
 
+/**
+ * @brief Class for wrapping ref sr_log_level_t.
+ * @class Logs
+ */
 class Logs
 {
 public:
     Logs();
     ~Logs();
+    /** Wrapper for [sr_log_stderr](@ref sr_log_stderr) */
     void set_stderr(sr_log_level_t log_level);
+    /** Wrapper for [sr_log_syslog](@ref sr_log_syslog) */
     void set_syslog(sr_log_level_t log_level);
 };
 
+/**@} */
 }
 #endif
