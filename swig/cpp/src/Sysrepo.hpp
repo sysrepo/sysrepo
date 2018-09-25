@@ -122,12 +122,14 @@ using S_Callback         = std::shared_ptr<Callback>;
 using S_Deleter          = std::shared_ptr<Deleter>;
 #endif
 
-static const int SESS_DEFAULT = 1;
-static const int DS_RUNNING = 1;
-static const int EDIT_DEFAULT = 0;
-static const int CONN_DEFAULT = 0;
-static const int GET_SUBTREE_DEFAULT = 0;
-static const int SUBSCR_DEFAULT = 0;
+/* this is a workaround for python not recognizing
+ * enum's in function default values */
+static const int SESS_DEFAULT = SR_SESS_DEFAULT;
+static const int DS_RUNNING = SR_DS_RUNNING;
+static const int EDIT_DEFAULT = SR_EDIT_DEFAULT;
+static const int CONN_DEFAULT = SR_CONN_DEFAULT;
+static const int GET_SUBTREE_DEFAULT = SR_GET_SUBTREE_DEFAULT;
+static const int SUBSCR_DEFAULT = SR_SUBSCR_DEFAULT;
 
 #ifdef SWIG
 // https://github.com/swig/swig/issues/1158
