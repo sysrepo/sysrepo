@@ -21,7 +21,7 @@
 
 #include <iostream>
 
-#include "Session.h"
+#include "Session.hpp"
 
 using namespace std;
 
@@ -29,17 +29,17 @@ int
 main(int argc, char **argv)
 {
     try {
-        S_Connection conn(new Connection("app2"));
+        sysrepo::S_Connection conn(new sysrepo::Connection("app2"));
 
-        S_Session sess(new Session(conn));
+        sysrepo::S_Session sess(new sysrepo::Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface";
 
-	auto values = sess->get_items(xpath);
+        auto values = sess->get_items(xpath);
         if (values == nullptr)
             return 0;
 
-	for(unsigned int i = 0; i < values->val_cnt(); i++)
+        for(unsigned int i = 0; i < values->val_cnt(); i++)
             cout << values->val(i)->xpath() << endl;
     } catch( const std::exception& e ) {
         cout << e.what() << endl;

@@ -25,12 +25,14 @@
 #include <iostream>
 #include <memory>
 
-#include "Sysrepo.h"
-#include "Internal.h"
+#include "Sysrepo.hpp"
+#include "Internal.hpp"
 
 extern "C" {
 #include "sysrepo.h"
 }
+
+namespace sysrepo {
 
 // class for sysrepo C union sr_data_t
 class Data
@@ -91,7 +93,7 @@ public:
     void set(const char *xpath, uint32_t uint32_val, sr_type_t type);
     void set(const char *xpath, uint64_t uint64_val, sr_type_t type);
     char *xpath() {return _val->xpath;};
-    void xpath_set(char *data) {_val->xpath = data;};
+    void xpath_set(char *xpath);
     sr_type_t type() {return _val->type;};
     bool dflt() {return _val->dflt;};
     void dflt_set(bool data) {_val->dflt = data;};
@@ -340,4 +342,5 @@ private:
     S_Deleter _deleter_old;
 };
 
+}
 #endif

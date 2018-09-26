@@ -22,13 +22,15 @@
 #ifndef TREE_H
 #define TREE_H
 
-#include "Sysrepo.h"
-#include "Struct.h"
+#include "Sysrepo.hpp"
+#include "Struct.hpp"
 
 extern "C" {
 #include "sysrepo.h"
 #include "sysrepo/trees.h"
 }
+
+namespace sysrepo {
 
 class Tree
 {
@@ -110,4 +112,5 @@ private:
     bool _allocate;
 };
 
+}
 #endif

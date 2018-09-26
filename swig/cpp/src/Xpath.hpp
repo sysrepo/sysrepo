@@ -28,6 +28,8 @@ extern "C" {
 #include "sysrepo/xpath.h"
 }
 
+namespace sysrepo {
+
 class Xpath_Ctx
 {
 public:
@@ -60,4 +62,5 @@ private:
     sr_xpath_ctx_t *_state;
 };
 
+}
 #endif

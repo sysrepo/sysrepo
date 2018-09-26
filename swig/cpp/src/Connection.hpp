@@ -24,12 +24,14 @@
 
 #include <iostream>
 
-#include "Sysrepo.h"
-#include "Internal.h"
+#include "Sysrepo.hpp"
+#include "Internal.hpp"
 
 extern "C" {
 #include "sysrepo.h"
 }
+
+namespace sysrepo {
 
 class Connection
 {
@@ -43,5 +45,7 @@ private:
     sr_conn_ctx_t *_conn;
     sr_conn_options_t _opts;
 };
+
+}
 
 #endif
