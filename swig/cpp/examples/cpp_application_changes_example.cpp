@@ -61,8 +61,15 @@ print_change(sysrepo::S_Change change) {
         }
     break;
     case SR_OP_MOVED:
-        if (nullptr != change->new_val()) {
-        cout<<"MOVED: " << change->new_val()->xpath() << " after " << change->old_val()->xpath() << endl;
+        if (nullptr != change->old_val() && nullptr != change->new_val()) {
+           cout << "MOVED: ";
+           cout << change->new_val()->xpath();
+           cout << " after ";
+           cout << change->old_val()->xpath();
+        } else if (nullptr != change->new_val()) {
+           cout << "MOVED: ";
+           cout << change->new_val()->xpath();
+           cout << " first";
         }
     break;
     }
