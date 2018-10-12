@@ -2869,7 +2869,7 @@ dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *i
             rc = dm_load_dependant_data(dm_ctx, session, info);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", info->schema->module_name);
 
-            if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
+            if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_WHENAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
                 SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
                 validation_failed = true;
             } else {
@@ -2923,7 +2923,7 @@ dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *i
             }
 
             /* start validation */
-            if (0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, tmp_ctx->ctx)) {
+            if (0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_WHENAUTODEL | LYD_OPT_CONFIG, tmp_ctx->ctx)) {
                 SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
                 validation_failed = true;
             } else {
@@ -2939,7 +2939,7 @@ dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *i
             info->node = sr_dup_datatree_to_ctx(data_tree, info->schema->ly_ctx);
         }
     } else {
-        if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
+        if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_WHENAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
             SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
             validation_failed = true;
         } else {
@@ -6434,7 +6434,7 @@ dm_validate_procedure_content(rp_ctx_t *rp_ctx, rp_session_t *session, dm_data_i
 
     CHECK_NULL_ARG4(rp_ctx, session, di, proc_node);
 
-    validation_options = LYD_OPT_STRICT | LYD_OPT_NOAUTODEL;
+    validation_options = LYD_OPT_STRICT;
     switch (type) {
         case DM_PROCEDURE_RPC:
         case DM_PROCEDURE_ACTION:
