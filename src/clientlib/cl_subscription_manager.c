@@ -1003,6 +1003,15 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
 
     /* update the replaying flag */
     if (SR_EV_NOTIF_T_REPLAY_COMPLETE == notif_type) {
+        int retries = 0;
+        while (retries <= SR_REPLAYING_RETRIES) {
+            if (subscription->replaying) {
+                break;
+            } else {
+                usleep(SR_REPLAYING_FLAG_TIMEOUT_MS * 1000);
+            }
+            ++retries;
+        }
         subscription->replaying = false;
     }
 
