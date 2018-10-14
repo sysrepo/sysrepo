@@ -1,4 +1,4 @@
-import com.sysrepo.*;
+import org.sysrepo.*;
 
 import java.io.*;
 import org.junit.Test;
