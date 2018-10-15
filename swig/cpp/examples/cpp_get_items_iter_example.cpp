@@ -21,12 +21,12 @@
 
 #include <iostream>
 
-#include "Session.h"
+#include "Session.hpp"
 
 using namespace std;
 
 void
-print_value(S_Val value)
+print_value(sysrepo::S_Val value)
 {
     cout << value->xpath();
     cout << " ";
@@ -43,9 +43,9 @@ print_value(S_Val value)
         cout << "= " << value->data()->get_string() << endl;;
         break;
     case SR_BOOL_T:
-	if (value->data()->get_bool())
+    if (value->data()->get_bool())
             cout << "= true" << endl;
-	else
+    else
             cout << "= false" << endl;
         break;
     case SR_UINT8_T:
@@ -70,13 +70,13 @@ int
 main(int argc, char **argv)
 {
     try {
-        S_Connection conn(new Connection("app3"));
+        sysrepo::S_Connection conn(new sysrepo::Connection("app3"));
 
-        S_Session sess(new Session(conn));
+        sysrepo::S_Session sess(new sysrepo::Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface//*";
 
-	auto iter = sess->get_items_iter(xpath);
+        auto iter = sess->get_items_iter(xpath);
         if (iter == nullptr)
             return 0;
 

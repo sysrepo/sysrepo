@@ -18,28 +18,28 @@
 // temporary fix
 %warnfilter(477);
 
-%typemap(javadirectorin) std::shared_ptr<Session> "new $typemap(jstype, Session)($1,false)";
-%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, Session);") std::shared_ptr<Session> %{
+%typemap(javadirectorin) std::shared_ptr<sysrepo::Session> "new $typemap(jstype, sysrepo::Session)($1,false)";
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, sysrepo::Session);") std::shared_ptr<sysrepo::Session> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
-%typemap(javadirectorin) std::shared_ptr<Vals> "new $typemap(jstype, Vals)($1,false)";
-%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, Vals);") std::shared_ptr<Vals> %{
+%typemap(javadirectorin) std::shared_ptr<sysrepo::Vals> "new $typemap(jstype, sysrepo::Vals)($1,false)";
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, sysrepo::Vals);") std::shared_ptr<sysrepo::Vals> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
-%typemap(javadirectorin) std::shared_ptr<Vals_Holder> "new $typemap(jstype, Vals_Holder)($1,false)";
-%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, Vals_Holder);") std::shared_ptr<Vals_Holder> %{
+%typemap(javadirectorin) std::shared_ptr<sysrepo::Vals_Holder> "new $typemap(jstype, sysrepo::Vals_Holder)($1,false)";
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, sysrepo::Vals_Holder);") std::shared_ptr<sysrepo::Vals_Holder> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
-%typemap(javadirectorin) std::shared_ptr<Trees> "new $typemap(jstype, Trees)($1,false)";
-%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, Trees);") std::shared_ptr<Trees> %{
+%typemap(javadirectorin) std::shared_ptr<sysrepo::Trees> "new $typemap(jstype, sysrepo::Trees)($1,false)";
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, sysrepo::Trees);") std::shared_ptr<sysrepo::Trees> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
-%typemap(javadirectorin) std::shared_ptr<Trees_Holder> "new $typemap(jstype, Trees_Holder)($1,false)";
-%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, Trees_Holder);") std::shared_ptr<Trees_Holder> %{
+%typemap(javadirectorin) std::shared_ptr<sysrepo::Trees_Holder> "new $typemap(jstype, sysrepo::Trees_Holder)($1,false)";
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, sysrepo::Trees_Holder);") std::shared_ptr<sysrepo::Trees_Holder> %{
   *($&1_type*)&j$1 = &$1;
 %}
 

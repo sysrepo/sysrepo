@@ -26,7 +26,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "Session.h"
+#include "Session.hpp"
 
 #define MAX_LEN 100
 
@@ -36,7 +36,7 @@ volatile int exit_application = 0;
 
 /* Helper function for printing changes given operation, old and new value. */
 static void
-print_change(S_Change change) {
+print_change(sysrepo::S_Change change) {
     cout << endl;
     switch(change->oper()) {
     case SR_OP_CREATED:
@@ -50,7 +50,7 @@ print_change(S_Change change) {
            cout << "DELETED: ";
            cout << change->old_val()->to_string();
         }
-	break;
+    break;
     case SR_OP_MODIFIED:
         if (nullptr != change->old_val() && nullptr != change->new_val()) {
            cout << "MODIFIED: ";
@@ -59,19 +59,26 @@ print_change(S_Change change) {
            cout << "new value ";
            cout << change->new_val()->to_string();
         }
-	break;
+    break;
     case SR_OP_MOVED:
-        if (nullptr != change->new_val()) {
-	    cout<<"MOVED: " << change->new_val()->xpath() << " after " << change->old_val()->xpath() << endl;
+        if (nullptr != change->old_val() && nullptr != change->new_val()) {
+           cout << "MOVED: ";
+           cout << change->new_val()->xpath();
+           cout << " after ";
+           cout << change->old_val()->xpath();
+        } else if (nullptr != change->new_val()) {
+           cout << "MOVED: ";
+           cout << change->new_val()->xpath();
+           cout << " first";
         }
-	break;
+    break;
     }
 }
 
 /* Function to print current configuration state.
  * It does so by loading all the items of a session and printing them out. */
 static void
-print_current_config(S_Session session, const char *module_name)
+print_current_config(sysrepo::S_Session session, const char *module_name)
 {
     char select_xpath[MAX_LEN];
     try {
@@ -101,10 +108,10 @@ const char *ev_to_str(sr_notif_event_t ev) {
     }
 }
 
-class My_Callback:public Callback {
+class My_Callback:public sysrepo::Callback {
     public:
     /* Function to be called for subscribed client of given session whenever configuration changes. */
-    int module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
+    int module_change(sysrepo::S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
     {
         char change_path[MAX_LEN];
 
@@ -117,7 +124,7 @@ class My_Callback:public Callback {
 
             cout << "\n\n ========== CHANGES: =============================================\n" << endl;
 
-	    snprintf(change_path, MAX_LEN, "/%s:*", module_name);
+            snprintf(change_path, MAX_LEN, "/%s:*", module_name);
 
             auto it = sess->get_changes_iter(&change_path[0]);
 
@@ -125,7 +132,7 @@ class My_Callback:public Callback {
                 print_change(change);
             }
 
-	    cout << "\n\n ========== END OF CHANGES =======================================\n" << endl;
+        cout << "\n\n ========== END OF CHANGES =======================================\n" << endl;
 
         } catch( const std::exception& e ) {
             cout << e.what() << endl;
@@ -155,14 +162,14 @@ main(int argc, char **argv)
 
         cout << "Application will watch for changes in " << module_name << endl;
         /* connect to sysrepo */
-        S_Connection conn(new Connection("example_application"));
+        sysrepo::S_Connection conn(new sysrepo::Connection("example_application"));
 
         /* start session */
-        S_Session sess(new Session(conn));
+        sysrepo::S_Session sess(new sysrepo::Session(conn));
 
         /* subscribe for changes in running config */
-        S_Subscribe subscribe(new Subscribe(sess));
-	S_Callback cb(new My_Callback());
+        sysrepo::S_Subscribe subscribe(new sysrepo::Subscribe(sess));
+        sysrepo::S_Callback cb(new My_Callback());
 
         subscribe->module_change_subscribe(module_name, cb);
 

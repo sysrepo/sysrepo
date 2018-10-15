@@ -19,14 +19,17 @@
  * limitations under the License.
  */
 
-#include "Internal.h"
-#include "Sysrepo.h"
 #include <iostream>
+
+#include "Sysrepo.hpp"
+#include "Internal.hpp"
 
 extern "C" {
 #include "sysrepo.h"
 #include "sysrepo/trees.h"
 }
+
+namespace sysrepo {
 
 Deleter::Deleter(sr_val_t *val) {
     v._val = val;
@@ -105,5 +108,6 @@ Deleter::~Deleter() {
     v._sess = nullptr;
     break;
     }
-    return;
+}
+
 }

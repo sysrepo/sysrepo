@@ -22,12 +22,14 @@
 #include <iostream>
 #include <stdexcept>
 
-#include "Sysrepo.h"
-#include "Connection.h"
+#include "Sysrepo.hpp"
+#include "Connection.hpp"
 
 extern "C" {
 #include "sysrepo.h"
 }
+
+namespace sysrepo {
 
 Connection::Connection(const char *app_name, const sr_conn_options_t opts)
 {
@@ -53,4 +55,6 @@ Connection::~Connection()
     if (nullptr != _conn) {
         sr_disconnect(_conn);
     }
+}
+
 }

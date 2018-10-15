@@ -23,15 +23,17 @@
 #include <memory>
 #include <string.h>
 
-#include "Struct.h"
-#include "Sysrepo.h"
-#include "Internal.h"
+#include "Struct.hpp"
+#include "Sysrepo.hpp"
+#include "Internal.hpp"
 
 extern "C" {
 #include "sysrepo.h"
 #include "sysrepo/values.h"
 #include "sysrepo/trees.h"
 }
+
+namespace sysrepo {
 
 // Data
 Data::Data(sr_data_t data, sr_type_t type, S_Deleter deleter) {_d = data; _t = type; _deleter = deleter;}
@@ -479,30 +481,33 @@ void Val::set(const char *xpath, uint64_t uint64_val, sr_type_t type) {
 
     _val->type = type;
 }
-S_String Val::to_string() {
+void Val::xpath_set(char *xpath) {
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
+std::string Val::to_string() {
     char *mem = nullptr;
 
     int ret = sr_print_val_mem(&mem, _val);
     if (SR_ERR_OK == ret) {
-        if (mem == nullptr)
-            return nullptr;
-        S_String string_val = mem;
+        if (!mem) {
+            return std::string();
+        }
+        std::string string_val = mem;
         free(mem);
         return string_val;
-    } else if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
-    } else {
-        throw_exception(ret);
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
         return nullptr;
     }
+    throw_exception(ret);
 }
-S_String Val::val_to_string() {
+std::string Val::val_to_string() {
     char *value = sr_val_to_str(_val);
     if (value == nullptr) {
         throw_exception(SR_ERR_OPERATION_FAILED);
-        return nullptr;
     }
-    S_String string_val = value;
+    std::string string_val = value;
     free(value);
 
     return string_val;
@@ -558,7 +563,8 @@ S_Vals Vals::dup() {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Vals vals(new Vals(new_val, _cnt));
+    S_Deleter deleter(new Deleter(new_val, _cnt));
+    S_Vals vals(new Vals(new_val, _cnt, deleter));
     return vals;
 }
 
@@ -711,4 +717,6 @@ Change::~Change() {
         sr_free_val(_new);
     if (_old)
         sr_free_val(_old);
+}
+
 }

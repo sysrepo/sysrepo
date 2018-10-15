@@ -4,7 +4,7 @@
 #include <cstring>
 #include <unistd.h>
 
-#include "Session.h"
+#include "Session.hpp"
 
 using namespace std;
 
@@ -22,10 +22,10 @@ std::string get_xpath(const std::string &test_name, const std::string &node_name
     return "/" + module_name + ":cpp-operations/test-get[name='" + test_name + "']/" + node_name;
 }
 
-void init_test(S_Session sess) {
+void init_test(sysrepo::S_Session sess) {
     for (int i = LOW_BOUND; i < HIGH_BOUND; i++) {
         const auto xpath = get_xpath(get_test_name(i), "number");
-        S_Val vset(new Val((int32_t)i, SR_INT32_T));
+        sysrepo::S_Val vset(new sysrepo::Val((int32_t)i, SR_INT32_T));
         sess->set_item(xpath.c_str(), vset);
     }
 
@@ -33,17 +33,17 @@ void init_test(S_Session sess) {
 }
 
 void
-test_get_item(S_Session sess)
+test_get_item(sysrepo::S_Session sess)
 {
     for (int i = LOW_BOUND; i < HIGH_BOUND; i++) {
         const auto xpath = get_xpath(get_test_name(i), "number");
-        S_Val vget = sess->get_item(xpath.c_str());
+        sysrepo::S_Val vget = sess->get_item(xpath.c_str());
         assert(i == vget->data()->get_int32());
     }
 }
 
 void
-test_delete_item(S_Session sess)
+test_delete_item(sysrepo::S_Session sess)
 {
     for (int i = LOW_BOUND; i < HIGH_BOUND; i++) {
         const auto xpath = get_xpath(get_test_name(i), "number");
@@ -59,20 +59,20 @@ test_delete_item(S_Session sess)
     }
 }
 
-class My_Callback:public Callback {
+class My_Callback:public sysrepo::Callback {
 public:
-    int module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
+    int module_change(sysrepo::S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
         {
             return SR_ERR_OK;
         }
 };
 
 
-void test_set_item(S_Session sess)
+void test_set_item(sysrepo::S_Session sess)
 {
     for (int32_t i = LOW_BOUND; i < HIGH_BOUND; i++) {
         const auto xpath = get_xpath(get_test_name(i), "number");
-        S_Val vset(new Val((int32_t)i, SR_INT32_T));
+        sysrepo::S_Val vset(new sysrepo::Val((int32_t)i, SR_INT32_T));
         sess->set_item(xpath.c_str(), vset);
     }
 
@@ -80,7 +80,7 @@ void test_set_item(S_Session sess)
 
     for (int32_t i = LOW_BOUND; i < HIGH_BOUND; i++) {
         const auto xpath = get_xpath(get_test_name(i), "number");
-        S_Val v = sess->get_item(xpath.c_str());
+        sysrepo::S_Val v = sess->get_item(xpath.c_str());
         assert(i == (int32_t) v->data()->get_int32());
     }
 }
@@ -88,11 +88,11 @@ void test_set_item(S_Session sess)
 int
 main(int argc, char **argv)
 {
-        S_Connection conn(new Connection("test operations"));
-        S_Session sess(new Session(conn, SR_DS_RUNNING));
-        S_Subscribe subs(new Subscribe(sess));
+        sysrepo::S_Connection conn(new sysrepo::Connection("test operations"));
+        sysrepo::S_Session sess(new sysrepo::Session(conn, SR_DS_RUNNING));
+        sysrepo::S_Subscribe subs(new sysrepo::Subscribe(sess));
 
-        S_Callback cb(new My_Callback());
+        sysrepo::S_Callback cb(new My_Callback());
 
         subs->module_change_subscribe(module_name.c_str(), cb);
 

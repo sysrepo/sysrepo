@@ -19,12 +19,14 @@
  * limitations under the License.
  */
 
-#include "Sysrepo.h"
-#include "Xpath.h"
+#include "Sysrepo.hpp"
+#include "Xpath.hpp"
 
 extern "C" {
 #include "sysrepo/xpath.h"
 }
+
+namespace sysrepo {
 
 Xpath_Ctx::Xpath_Ctx() {
     sr_xpath_ctx_t *state = nullptr;
@@ -38,4 +40,6 @@ Xpath_Ctx::Xpath_Ctx() {
 Xpath_Ctx::~Xpath_Ctx() {
     if (_state != nullptr)
         free(_state);
+}
+
 }
