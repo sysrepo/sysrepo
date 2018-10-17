@@ -664,6 +664,70 @@ sr_lys_node_get_data_parent(struct lys_node *node, bool augment)
     return node;
 }
 
+struct lyd_node *
+sr_lyd_parse_fd(struct ly_ctx *ctx, int fd, LYD_FORMAT format, int options)
+{
+    struct lyd_node *node;
+    ssize_t ret;
+    char c;
+
+    node = lyd_parse_fd(ctx, fd, format, options);
+    if (!node) {
+        /* we will attempt to load the file in different format and then convert it based on the first character */
+        ret = read(fd, &c, 1);
+        if (ret < 1) {
+            return NULL;
+        } else {
+            lseek(fd, 0, SEEK_SET);
+        }
+
+        switch (c) {
+        case '<':
+            /* XML */
+            if (format == LYD_XML) {
+                return NULL;
+            }
+
+            SR_LOG_WRN("Attempting data file conversion from \"xml\" to \"%s\".", SR_FILE_FORMAT_EXT);
+            node = lyd_parse_fd(ctx, fd, LYD_XML, options);
+            break;
+        case '{':
+            /* JSON */
+            if (format == LYD_JSON) {
+                return NULL;
+            }
+
+            SR_LOG_WRN("Attempting data file conversion from \"json\" to \"%s\".", SR_FILE_FORMAT_EXT);
+            node = lyd_parse_fd(ctx, fd, LYD_JSON, options);
+            break;
+        case 'l':
+            /* LYB */
+            if (format == LYD_LYB) {
+                return NULL;
+            }
+
+            SR_LOG_WRN("Attempting data file conversion from \"lyb\" to \"%s\".", SR_FILE_FORMAT_EXT);
+            node = lyd_parse_fd(ctx, fd, LYD_LYB, options);
+            break;
+        default:
+            return NULL;
+        }
+
+        if (!node) {
+            return NULL;
+        }
+
+        /* now store it in the new format */
+        if ((ftruncate(fd, 0) == -1) || (lseek(fd, 0, SEEK_SET) == -1)) {
+            SR_LOG_ERR("Preparing conversion data fd failed (%s).", strerror(errno));
+        } else if (lyd_print_fd(fd, node, format, LYP_WITHSIBLINGS | LYP_FORMAT)) {
+            SR_LOG_ERR_MSG("Storing the converted data file failed.");
+        }
+    }
+
+    return node;
+}
+
 struct lyd_node*
 sr_dup_datatree(struct lyd_node *root) {
     struct lyd_node *dup = NULL, *s = NULL, *n = NULL;
