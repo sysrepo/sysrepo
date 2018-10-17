@@ -22,12 +22,15 @@
 #ifndef INTERNAL_H
 #define INTERNAL_H
 
-#define S_Deleter std::shared_ptr<Deleter>
+#include <iostream>
+#include <memory>
 
 extern "C" {
 #include "sysrepo.h"
 #include "sysrepo/trees.h"
 }
+
+namespace sysrepo {
 
 enum class Free_Type {
     VAL,
@@ -73,4 +76,5 @@ private:
     Free_Type _t;
 };
 
+}
 #endif

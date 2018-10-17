@@ -6,7 +6,7 @@ include(GNUInstallDirs)
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 7)
-set(SYSREPO_MICRO_VERSION 5)
+set(SYSREPO_MICRO_VERSION 6)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION})
 
@@ -255,6 +255,13 @@ endif(ENABLE_TESTS)
 # Documentation
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
+    find_program(DOT_PATH dot PATH_SUFFIXES graphviz2.38/bin graphviz/bin)
+    if(DOT_PATH)
+        set(HAVE_DOT "YES")
+    else()
+        set(HAVE_DOT "NO")
+        message(AUTHOR_WARNING "Doxygen: to generate UML diagrams please install graphviz")
+    endif()
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
     add_custom_target(doc
         ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile

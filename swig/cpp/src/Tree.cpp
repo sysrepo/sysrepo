@@ -19,9 +19,9 @@
  * limitations under the License.
  */
 
-#include "Sysrepo.h"
-#include "Struct.h"
-#include "Tree.h"
+#include "Sysrepo.hpp"
+#include "Struct.hpp"
+#include "Tree.hpp"
 
 #include <string.h>
 
@@ -30,6 +30,8 @@ extern "C" {
 #include "sysrepo/trees.h"
 #include "sysrepo/values.h"
 }
+
+namespace sysrepo {
 
 Tree::Tree() {
     _node = nullptr;
@@ -358,3 +360,4 @@ S_Trees Trees_Holder::allocate(size_t n) {
 }
 Trees_Holder::~Trees_Holder() {}
 
+}

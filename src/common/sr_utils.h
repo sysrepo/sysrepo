@@ -373,6 +373,16 @@ bool sr_lys_data_node(struct lys_node *node);
 struct lys_node *sr_lys_node_get_data_parent(struct lys_node *node, bool augment);
 
 /**
+ * @brief Wrapper for lyd_parse_fd() that performs file format conversion if required.
+ *
+ * @param [in] ctx
+ * @param [in] fd
+ * @param [in] format
+ * @param [in] options
+ */
+struct lyd_node *sr_lyd_parse_fd(struct ly_ctx *ctx, int fd, LYD_FORMAT format, int options);
+
+/**
  * @brief Copies the datatree pointed by root including its siblings.
  * @param [in] root Root of the datatree to be duped.
  * @return duplicated datatree or NULL in case of error

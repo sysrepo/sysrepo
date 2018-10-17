@@ -1078,7 +1078,7 @@ md_init(const char *schema_search_dir,
     }
 
     /* open the internal data file */
-    ctx->fd = open(data_filepath, (write_lock ? O_RDWR : O_RDONLY) | O_CREAT,
+    ctx->fd = open(data_filepath, O_RDWR | O_CREAT,
                    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if (-1 == ctx->fd) {
         SR_LOG_ERR("Unable to open " MD_DATA_FILENAME " data file: %s.", strerror(errno));
@@ -1094,7 +1094,7 @@ md_init(const char *schema_search_dir,
 
     /* parse the data file */
     ly_errno = LY_SUCCESS;
-    ctx->data_tree = lyd_parse_fd(ctx->ly_ctx, ctx->fd, SR_FILE_FORMAT_LY, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+    ctx->data_tree = sr_lyd_parse_fd(ctx->ly_ctx, ctx->fd, SR_FILE_FORMAT_LY, LYD_OPT_STRICT | LYD_OPT_CONFIG);
     if (NULL == ctx->data_tree && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Unable to parse " MD_DATA_FILENAME " data file: %s", ly_errmsg(ctx->ly_ctx));
         goto fail;

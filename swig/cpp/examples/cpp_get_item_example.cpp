@@ -22,7 +22,7 @@
 #include <iostream>
 #include <memory>
 
-#include "Session.h"
+#include "Session.hpp"
 
 using namespace std;
 
@@ -30,12 +30,12 @@ int
 main(int argc, char **argv)
 {
     try {
-        Logs log;
+        sysrepo::Logs log;
         log.set_stderr(SR_LL_DBG);
 
-	S_Connection conn(new Connection("app1"));
+        sysrepo::S_Connection conn(new sysrepo::Connection("app1"));
 
-        S_Session sess(new Session(conn));
+        sysrepo::S_Session sess(new sysrepo::Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface[name='eth0']/enabled";
 
