@@ -3405,7 +3405,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
         CHECK_RC_LOG_RETURN(rc, "Module %s in revision %s not found", module_name, module_revision);
     }
 
-    rc = dm_get_module_and_lock(dm_ctx, main_module, &si);
+    rc = dm_get_module_and_lockw(dm_ctx, main_module, &si);
     CHECK_RC_LOG_RETURN(rc, "Get module failed for %s", main_module);
 
     if (NULL != submodule_name) {
