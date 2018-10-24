@@ -69,6 +69,10 @@ module swig-test {
             leaf number {
                  type int32;
             }
+
+            leaf number-uint64 {
+                 type uint64;
+            }
         }                        
     }
 

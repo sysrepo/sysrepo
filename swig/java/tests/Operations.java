@@ -1,10 +1,14 @@
+import org.sysrepo.*;
+
 import java.io.*;
 import org.junit.Test;
 import java.util.Scanner;
+import java.math.BigInteger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
@@ -88,6 +92,23 @@ public class Operations {
         }
     }
 
+    public void test_set_item_uint64(Session sess) {
+
+        for (int i = LOW_BOUND; i < HIGH_BOUND; i++) {
+            final String xpath = String.format(xpath_if_fmt, get_test_name(i), "number-uint64");
+            Val vset = new Val(BigInteger.valueOf(i), sr_type_t.SR_UINT64_T);
+            sess.set_item(xpath, vset);
+        }
+
+        sess.commit();
+
+        for (int i = LOW_BOUND; i < HIGH_BOUND; i++) {
+            final String xpath = String.format(xpath_if_fmt, get_test_name(i), "number-uint64");
+            Val v = sess.get_item(xpath);
+            assertTrue(BigInteger.valueOf(i).equals(v.data().get_uint64()));
+        }
+    }
+
     public static void main(String argv[]) {
 
         Operations test = new Operations();
@@ -116,6 +137,7 @@ public class Operations {
             test.test_delete_item(sess);
 
             test.test_set_item(sess);
+            test.test_set_item_uint64(sess);
             // test.clean_test(sess);
 
         } catch (Exception e) {

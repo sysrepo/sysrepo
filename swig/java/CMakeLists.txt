@@ -12,9 +12,9 @@ set(CMAKE_SWIG_FLAGS "-c++")
 set(CMAKE_SWIG_FLAGS "-I${PROJECT_SOURCE_DIR}")
 set(CMAKE_SWIG_OUTDIR "${CMAKE_CURRENT_BINARY_DIR}")
 
-set_source_files_properties(${JAVA_SWIG_BINDING}.i PROPERTIES CPLUSPLUS ON)
+set_source_files_properties(${JAVA_SWIG_BINDING}.i PROPERTIES CPLUSPLUS ON SWIG_FLAGS "-package;org.sysrepo")
 
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/classes")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/org/sysrepo")
 
 swig_add_module(${JAVA_SWIG_BINDING} java ${JAVA_SWIG_BINDING}.i)
 set_target_properties(${SWIG_MODULE_${JAVA_SWIG_BINDING}_REAL_NAME} PROPERTIES PREFIX "")
@@ -22,7 +22,7 @@ swig_link_libraries(${JAVA_SWIG_BINDING} ${JAVA_LIBRARIES} Sysrepo-cpp)
 
 file(COPY "examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
-add_custom_command(TARGET ${JAVA_SWIG_BINDING} POST_BUILD COMMAND "${Java_JAVAC_EXECUTABLE}" -d classes *.java COMMAND "${Java_JAR_EXECUTABLE}" -cfM Sysrepo.jar -C classes . )
+add_custom_command(TARGET ${JAVA_SWIG_BINDING} POST_BUILD COMMAND "${Java_JAVAC_EXECUTABLE}" *.java -d . COMMAND "${Java_JAR_EXECUTABLE}" -cvf Sysrepo.jar org)
 set(NATIVE_JAR "${CMAKE_CURRENT_BINARY_DIR}/Sysrepo.jar")
 
 # install so file
