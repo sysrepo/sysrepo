@@ -1416,7 +1416,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
             ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
 
             ly_errno = LY_SUCCESS;
-            tmp_node = lyd_parse_fd(tmp_ctx->ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_STRICT | LYD_OPT_CONFIG);
+            tmp_node = sr_lyd_parse_fd(tmp_ctx->ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_STRICT | LYD_OPT_CONFIG);
             md_ctx_unlock(dm_ctx->md_ctx);
 
             if (NULL == tmp_node && LY_SUCCESS != ly_errno) {
@@ -1435,7 +1435,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
         } else {
             ly_errno = LY_SUCCESS;
             /* use LYD_OPT_TRUSTED, validation will be done later */
-            data_tree = lyd_parse_fd(schema_info->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_STRICT | LYD_OPT_CONFIG);
+            data_tree = sr_lyd_parse_fd(schema_info->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_STRICT | LYD_OPT_CONFIG);
             if (NULL == data_tree && LY_SUCCESS != ly_errno) {
                 SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg(schema_info->ly_ctx));
                 free(data);
@@ -1524,7 +1524,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, dm_schema_info
 
     ac_set_user_identity(dm_ctx->ac_ctx, dm_session_ctx->user_credentials);
 
-    int fd = open(data_filename, O_RDONLY);
+    int fd = open(data_filename, O_RDWR);
 
     ac_unset_user_identity(dm_ctx->ac_ctx, dm_session_ctx->user_credentials);
 
@@ -3405,7 +3405,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
         CHECK_RC_LOG_RETURN(rc, "Module %s in revision %s not found", module_name, module_revision);
     }
 
-    rc = dm_get_module_and_lock(dm_ctx, main_module, &si);
+    rc = dm_get_module_and_lockw(dm_ctx, main_module, &si);
     CHECK_RC_LOG_RETURN(rc, "Get module failed for %s", main_module);
 
     if (NULL != submodule_name) {
