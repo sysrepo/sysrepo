@@ -1889,7 +1889,7 @@ main(int argc, char* argv[])
     } else if (NULL == module_name && ((operation == SRCFG_OP_EXPORT_XPATH) || (operation == SRCFG_OP_IMPORT_XPATH))) {
         /* module name got from xpath */
         if (xpath) {
-            snprintf(module_name_xpath, strchr(xpath, ':') - xpath, "%s", xpath + 1);
+            snprintf(module_name_xpath, strchr(xpath, ':') - xpath, "%s", xpath);
             module_name = module_name_xpath;
         } else {
             fprintf(stderr, "%s: XPATH is not specified.\n", argv[0]);
