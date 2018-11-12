@@ -176,7 +176,7 @@ public:
     /** Wrapper for [sr_action_tree_cb](@ref sr_action_tree_cb) callback.*/
     virtual int action_tree(const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
     /** Wrapper for [sr_dp_get_items_cb](@ref sr_dp_get_items_cb) callback.*/
-    virtual int dp_get_items(const char *xpath, S_Vals_Holder vals, uint64_t request_id, void *private_ctx) {return SR_ERR_OK;};
+    virtual int dp_get_items(const char *xpath, S_Vals_Holder vals, uint64_t request_id, const char *original_xpath, void *private_ctx) {return SR_ERR_OK;};
     /** Wrapper for [sr_event_notif_cb](@ref sr_event_notif_cb) callback.*/
     virtual void event_notif(const sr_ev_notif_type_t notif_type, const char *xpath, S_Vals vals, time_t timestamp, void *private_ctx) {return;};
     /** Wrapper for [sr_event_notif_tree_cb](@ref sr_event_notif_tree_cb) callback.*/
