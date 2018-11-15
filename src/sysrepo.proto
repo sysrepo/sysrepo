@@ -836,6 +836,7 @@ message DataProvideReq {
   required uint32 subscription_id = 11;
 
   required uint64 request_id = 20;
+  required string original_xpath = 21;
 }
 
 /**

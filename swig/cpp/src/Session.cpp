@@ -495,10 +495,10 @@ static void event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const char 
     Callback *wrap = (Callback*) private_ctx;
     return wrap->event_notif_tree(notif_type, xpath, vals, timestamp, wrap->private_ctx["event_notif_tree"]);
 }
-static int dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx) {
+static int dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, void *private_ctx) {
     S_Vals_Holder vals(new Vals_Holder(values, values_cnt));
     Callback *wrap = (Callback*) private_ctx;
-    return wrap->dp_get_items(xpath, vals, request_id, wrap->private_ctx["dp_get_items"]);
+    return wrap->dp_get_items(xpath, vals, request_id, original_xpath, wrap->private_ctx["dp_get_items"]);
 }
 
 void Subscribe::module_change_subscribe(const char *module_name, S_Callback callback, \
