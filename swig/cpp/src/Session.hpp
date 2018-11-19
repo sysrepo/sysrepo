@@ -120,6 +120,8 @@ public:
     void copy_config(const char *module_name, sr_datastore_t src_datastore, sr_datastore_t dst_datastore);
     /** Wrapper for [sr_session_set_options](@ref sr_session_set_options) */
     void set_options(const sr_sess_options_t opts);
+    /** Wrapper for [sr_set_error](@ref sr_set_error) */
+    void set_error(const char *message, const char *xpath);
     /** Wrapper for [sr_get_changes_iter](@ref sr_get_changes_iter) */
     S_Iter_Change get_changes_iter(const char *xpath);
     /** Wrapper for [sr_get_change_next](@ref sr_get_change_next) */
