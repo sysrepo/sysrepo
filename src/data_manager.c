@@ -1416,7 +1416,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
             ly_ctx_set_module_data_clb(tmp_ctx->ctx, dm_module_clb, dm_ctx);
 
             ly_errno = LY_SUCCESS;
-            tmp_node = sr_lyd_parse_fd(tmp_ctx->ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_STRICT | LYD_OPT_CONFIG);
+            tmp_node = lyd_parse_fd(tmp_ctx->ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_STRICT | LYD_OPT_CONFIG);
             md_ctx_unlock(dm_ctx->md_ctx);
 
             if (NULL == tmp_node && LY_SUCCESS != ly_errno) {
@@ -1435,7 +1435,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
         } else {
             ly_errno = LY_SUCCESS;
             /* use LYD_OPT_TRUSTED, validation will be done later */
-            data_tree = sr_lyd_parse_fd(schema_info->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_STRICT | LYD_OPT_CONFIG);
+            data_tree = lyd_parse_fd(schema_info->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_TRUSTED | LYD_OPT_STRICT | LYD_OPT_CONFIG);
             if (NULL == data_tree && LY_SUCCESS != ly_errno) {
                 SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg(schema_info->ly_ctx));
                 free(data);
@@ -1524,7 +1524,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, dm_schema_info
 
     ac_set_user_identity(dm_ctx->ac_ctx, dm_session_ctx->user_credentials);
 
-    int fd = open(data_filename, O_RDWR);
+    int fd = open(data_filename, O_RDONLY);
 
     ac_unset_user_identity(dm_ctx->ac_ctx, dm_session_ctx->user_credentials);
 
@@ -2097,10 +2097,6 @@ dm_copy_errors(dm_session_t *session, sr_mem_ctx_t *sr_mem, char **error_msg, ch
 bool
 dm_is_node_enabled(struct lys_node* node)
 {
-    if (node->nodetype & (LYS_GROUPING | LYS_USES | LYS_CHOICE | LYS_CASE)) {
-        return false;
-    }
-
     dm_node_state_t state = dm_get_node_state(node);
     return DM_NODE_ENABLED == state || DM_NODE_ENABLED_WITH_CHILDREN == state;
 }
@@ -2108,10 +2104,6 @@ dm_is_node_enabled(struct lys_node* node)
 bool
 dm_is_node_enabled_with_children(struct lys_node* node)
 {
-    if (node->nodetype & (LYS_GROUPING | LYS_USES | LYS_CHOICE | LYS_CASE)) {
-        return false;
-    }
-
     return DM_NODE_ENABLED_WITH_CHILDREN == dm_get_node_state(node);
 }
 
@@ -2121,10 +2113,16 @@ dm_is_enabled_check_recursively(struct lys_node *node)
     if (dm_is_node_enabled(node)) {
         return true;
     }
-    for (node = lys_parent(node); node; node = lys_parent(node)) {
+    node = node->parent;
+    while (NULL != node) {
+        if (NULL == node->parent && LYS_AUGMENT == node->nodetype) {
+            node = ((struct lys_node_augment *) node)->target;
+            continue;
+        }
         if (dm_is_node_enabled_with_children(node)) {
             return true;
         }
+        node = node->parent;
     }
     return false;
 }
@@ -2846,7 +2844,6 @@ dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *i
     sr_list_t *data_for_validation = NULL;
     dm_tmp_ly_ctx_t *tmp_ctx = NULL;
     dm_data_info_t *dep_di = NULL;
-    const struct lys_module *mod;
     struct lyd_node *data_tree = NULL;
     bool validation_failed = false;
     bool *should_be_freed = NULL;
@@ -2908,13 +2905,6 @@ dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *i
             /* prepare working context*/
             rc = dm_get_tmp_ly_ctx(dm_ctx, info->required_modules, &tmp_ctx);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to acquire tmp ctx");
-
-            /* get module from tmp_ctx */
-            mod = ly_ctx_get_module(tmp_ctx->ctx, info->schema->module->name, NULL, 1);
-            if (!mod) {
-                SR_LOG_ERR("Failed to find module '%s' in temtporary context", info->schema->module->name);
-                goto cleanup;
-            }
 
             /* migrate data to working context */
             for (size_t i = 0; i < data_for_validation->count; i++) {
@@ -3415,7 +3405,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
         CHECK_RC_LOG_RETURN(rc, "Module %s in revision %s not found", module_name, module_revision);
     }
 
-    rc = dm_get_module_and_lockw(dm_ctx, main_module, &si);
+    rc = dm_get_module_and_lock(dm_ctx, main_module, &si);
     CHECK_RC_LOG_RETURN(rc, "Get module failed for %s", main_module);
 
     if (NULL != submodule_name) {
@@ -3485,8 +3475,6 @@ dm_validate_module_inv_data_deps(dm_ctx_t *dm_ctx, dm_session_t *session, sr_err
     sr_llist_node_t *ll_node = NULL;
     md_dep_t *dep = NULL;
     bool validation_failed = false;
-    bool is_enabled = false;
-    sr_datastore_t ds = session->datastore;
 
     md_ctx_lock(dm_ctx->md_ctx, false);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, NULL, &module);
@@ -3500,18 +3488,8 @@ dm_validate_module_inv_data_deps(dm_ctx_t *dm_ctx, dm_session_t *session, sr_err
         if (dep->type != MD_DEP_DATA || !dep->dest->has_data) {
             continue;
         }
-
-        rc = dm_has_enabled_subtree(dm_ctx, dep->dest->name, NULL, &is_enabled);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to check whether module is enabled for %s", dep->dest->name);
-        if (!is_enabled && (ds == SR_DS_RUNNING)) {
-            /* use startup data in this case */
-            session->datastore = SR_DS_STARTUP;
-        }
-
         rc = dm_get_data_info_internal(dm_ctx, session, dep->dest->name, true, &must_free_info, &info);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load data info for %s", dep->dest->name);
-
-        session->datastore = ds;
 
         /* The dependent data has changed, so leaf refs might not be valid anymore */
         dm_invalidate_leaf_refs(info->node);
@@ -5001,9 +4979,6 @@ dm_commit_netconf_access_control(nacm_ctx_t *nacm_ctx, dm_session_t *session, dm
             return SR_ERR_INTERNAL;
         }
 
-        rc = dm_remove_added_data_trees(c_ctx->session, new_info);
-        CHECK_RC_MSG_RETURN(rc, "Removing of added data trees failed");
-
         rc = dm_perform_netconf_access_control(nacm_ctx, session, prev_info, new_info, copy_config, errors, err_cnt, c_ctx);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("NACM access check failed");
@@ -5825,21 +5800,13 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
             if (NULL != session) {
                 ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
             }
-            fds[opened_files] = open(file_name, O_RDWR);
+            fds[opened_files] = open(file_name, O_RDWR | O_TRUNC);
             if (NULL != session) {
                 ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
             }
             if (-1 == fds[opened_files]) {
                 SR_LOG_ERR("File %s can not be opened", file_name);
                 free(file_name);
-                goto cleanup;
-            }
-            /* lock, write, blocking */
-            sr_lock_fd(fds[opened_files], true, true);
-            if (ftruncate(fds[opened_files], 0) != 0) {
-                SR_LOG_ERR("File %s can not be truncated: %s", file_name, sr_strerror_safe(errno));
-                free(file_name);
-                opened_files++;
                 goto cleanup;
             }
             opened_files++;
@@ -5931,18 +5898,19 @@ dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, dm_schema_info_t 
     CHECK_NULL_ARG3(ctx, module_name, res);
     int rc = SR_ERR_OK;
     dm_schema_info_t *schema_info = NULL;
-    const struct lys_node *node = NULL;
 
     rc = dm_get_module_and_lock(ctx, module_name, &schema_info);
     CHECK_RC_MSG_RETURN(rc, "Get module failed");
 
     *res = false;
+    struct lys_node *node = schema_info->module->data;
 
-    while ((node = lys_getnext(node, NULL, schema_info->module, 0))) {
-        if (dm_is_enabled_check_recursively((struct lys_node *)node)) {
+    while (NULL != node) {
+        if (dm_is_enabled_check_recursively(node)) {
             *res = true;
             break;
         }
+        node = node->next;
     }
 
     if (NULL != schema) {
@@ -6187,22 +6155,25 @@ dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modu
     rc = dm_get_module_and_lockw(ctx, module_name, &schema_info);
     CHECK_RC_LOG_RETURN(rc, "Get module failed for module %s", module_name);
 
-    struct lys_node *iter = NULL, *child;
+    struct lys_node *iter = NULL, *child = NULL;
     sr_list_t *stack = NULL;
     rc = sr_list_init(&stack);
     CHECK_RC_MSG_RETURN(rc, "List init failed");
 
     /* iterate through top-level nodes */
-    while ((iter = (struct lys_node *)lys_getnext(iter, NULL, schema_info->module, 0))) {
-        if (dm_is_node_enabled(iter)) {
+    LY_TREE_FOR(schema_info->module->data, iter)
+    {
+        if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype) && dm_is_node_enabled(iter)) {
             rc = dm_set_node_state(iter, DM_NODE_DISABLED);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Set node state failed");
 
-            child = NULL;
-            while ((child = (struct lys_node *)lys_getnext(child, iter, NULL, 0))) {
-                if (dm_is_node_enabled(child)) {
-                    rc = sr_list_add(stack, child);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
+            if ((LYS_CONTAINER | LYS_LIST) & iter->nodetype) {
+                LY_TREE_FOR(iter->child, child)
+                {
+                    if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype) && dm_is_node_enabled(child)) {
+                        rc = sr_list_add(stack, child);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
+                    }
                 }
             }
         }
@@ -6216,11 +6187,14 @@ dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modu
 
         sr_list_rm_at(stack, stack->count - 1);
 
-        child = NULL;
-        while ((child = (struct lys_node *)lys_getnext(child, iter, NULL, 0))) {
-            if (dm_is_node_enabled(child)) {
-                rc = sr_list_add(stack, child);
-                CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
+        if ((LYS_CONTAINER | LYS_LIST) & iter->nodetype) {
+
+            LY_TREE_FOR(iter->child, child)
+            {
+                if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & child->nodetype) && dm_is_node_enabled(child)) {
+                    rc = sr_list_add(stack, child);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
+                }
             }
         }
     }
@@ -6472,7 +6446,7 @@ dm_validate_procedure_content(rp_ctx_t *rp_ctx, rp_session_t *session, dm_data_i
 
     /* load necessary data trees */
     node = proc_node;
-    while (node && (!backtracking || node != proc_node)) {
+    while (!backtracking || node != proc_node) {
         if (false == backtracking) {
             if (node->flags & LYS_XPCONF_DEP) {
                 ext_conf_ref = true;
@@ -6497,7 +6471,7 @@ dm_validate_procedure_content(rp_ctx_t *rp_ctx, rp_session_t *session, dm_data_i
                 node = node->next;
                 backtracking = false;
             } else {
-                node = lys_parent(node);
+                node = node->parent;
             }
         }
     }
@@ -7372,9 +7346,9 @@ dm_lock_schema_info_write(dm_schema_info_t *schema_info)
 }
 
 int
-dm_get_nodes_by_xpath(dm_session_t *session, const char *module_name, const char *xpath, struct ly_set **res)
+dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const struct lys_node *node, struct ly_set **res)
 {
-    CHECK_NULL_ARG4(session, module_name, xpath, res);
+    CHECK_NULL_ARG4(session, module_name, node, res);
     int rc = SR_ERR_OK;
     dm_data_info_t *di = NULL;
 
@@ -7384,9 +7358,9 @@ dm_get_nodes_by_xpath(dm_session_t *session, const char *module_name, const char
     if (di->node == NULL) {
         *res = ly_set_new();
     } else {
-        *res = lyd_find_path(di->node, xpath);
+        *res = lyd_find_instance(di->node, node);
         if (NULL == *res) {
-            SR_LOG_ERR("Failed to find nodes %s in module %s", xpath, module_name);
+            SR_LOG_ERR("Failed to find nodes %s in module %s", node->name, module_name);
             rc = SR_ERR_INTERNAL;
         }
     }

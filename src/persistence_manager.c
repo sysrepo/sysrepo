@@ -218,7 +218,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
         ac_set_user_identity(pm_ctx->rp_ctx->ac_ctx, user_cred);
     }
 
-    fd = open(data_filename, O_RDWR);
+    fd = open(data_filename, (read_only ? O_RDONLY : O_RDWR));
     error = errno;
 
     if (NULL != user_cred) {
@@ -700,7 +700,7 @@ pm_get_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subsc
             CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add a subscription into the subscription list.");
 
             /* increase copy refcount */
-            ATOMIC_INC(&subscription->copy_cnt);
+            subscription->copy_cnt += 1;
         }
     }
 
@@ -801,7 +801,7 @@ pm_cache_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscripti
             CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add a subscription into the cache list.");
 
             /* increase copy refcount */
-            ATOMIC_INC(&subscription->copy_cnt);
+            subscription->copy_cnt += 1;
         }
     }
 

@@ -370,7 +370,7 @@ np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *dat
         ac_set_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
     }
 
-    fd = open(data_filename, O_RDWR);
+    fd = open(data_filename, (read_only ? O_RDONLY : O_RDWR));
 
     if (NULL != user_cred) {
         ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
@@ -862,7 +862,7 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
 {
     CHECK_NULL_ARG2(np_ctx, xpath);
     int rc = SR_ERR_OK, i;
-    char *module_name = NULL, *schema_xpath = NULL;
+    char *module_name = NULL;
     dm_schema_info_t *si = NULL;
     struct lys_node *sch_node, *next;
     struct ly_set *set = NULL;
@@ -889,26 +889,17 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
         rc = dm_get_module_and_lock(np_ctx->rp_ctx->dm_ctx, module_name, &si);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to find module %s", module_name);
 
-        if (xpath[0] == '/') {
-            schema_xpath = ly_path_data2schema(si->ly_ctx, xpath);
-            if (!schema_xpath) {
-                SR_LOG_ERR_MSG("Failed to transform path");
-                rc = SR_ERR_BAD_ELEMENT;
-                goto cleanup;
-            }
-        }
-
         if (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == type) {
             if (xpath[0] == '/') {
-                set = lys_find_path(si->module, NULL, schema_xpath);
+                set = lys_find_path(si->module, NULL, xpath);
                 if (NULL == set || 0 == set->number) {
-                    SR_LOG_ERR("Node identified by xpath %s was not found", schema_xpath);
+                    SR_LOG_ERR("Node identified by xpath %s was not found", xpath);
                     rc = SR_ERR_BAD_ELEMENT;
                     goto cleanup;
                 }
                 if (1 == set->number) {
                     if (set->set.s[0]->nodetype != LYS_NOTIF) {
-                        SR_LOG_ERR("Xpath %s doesn't identify event notification.", schema_xpath);
+                        SR_LOG_ERR("Xpath %s doesn't identify event notification.", xpath);
                         rc = SR_ERR_BAD_ELEMENT;
                     } else if (0 == strcmp(set->set.s[0]->module->name, "nc-notifications")) {
                         if (0 == strcmp(set->set.s[0]->name, "replayComplete")) {
@@ -929,7 +920,7 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
                     }
                 }
                 if (i == set->number) {
-                    SR_LOG_ERR("No notifications identified by xpath %s were found", schema_xpath);
+                    SR_LOG_ERR("No notifications identified by xpath %s were found", xpath);
                     rc = SR_ERR_UNSUPPORTED;
                     goto cleanup;
                 }
@@ -949,25 +940,25 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
             goto cleanup;
         }
 
-        set = lys_find_path(si->module, NULL, schema_xpath);
+        set = lys_find_path(si->module, NULL, xpath);
         if (NULL == set || 1 != set->number) {
-            SR_LOG_ERR("Node identified by xpath %s was not found", schema_xpath);
+            SR_LOG_ERR("Node identified by xpath %s was not found", xpath);
             rc = SR_ERR_BAD_ELEMENT;
             goto cleanup;
         }
         sch_node = set->set.s[0];
 
         if (SR__SUBSCRIPTION_TYPE__RPC_SUBS == type && !(LYS_RPC & sch_node->nodetype)) {
-            SR_LOG_ERR("Xpath %s doesn't identify RPC.", schema_xpath);
+            SR_LOG_ERR("Xpath %s doesn't identify RPC.", xpath);
             rc = SR_ERR_UNSUPPORTED;
             goto cleanup;
         } else if (SR__SUBSCRIPTION_TYPE__ACTION_SUBS == type && !(LYS_ACTION & sch_node->nodetype)) {
-            SR_LOG_ERR("Xpath %s doesn't identify action.", schema_xpath);
+            SR_LOG_ERR("Xpath %s doesn't identify action.", xpath);
             rc = SR_ERR_UNSUPPORTED;
             goto cleanup;
         } else if (SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == type) {
             if ((LYS_NOTIF | LYS_RPC | LYS_ACTION) & sch_node->nodetype) {
-                SR_LOG_ERR("Xpath %s doesn't identify node containing state date.", schema_xpath);
+                SR_LOG_ERR("Xpath %s doesn't identify node containing state date.", xpath);
                 rc = SR_ERR_UNSUPPORTED;
                 goto cleanup;
             }
@@ -982,7 +973,6 @@ np_validate_subscription_xpath(np_ctx_t *np_ctx, Sr__SubscriptionType type, cons
 
 cleanup:
     free(module_name);
-    free(schema_xpath);
     ly_set_free(set);
     if (NULL != si) {
         pthread_rwlock_unlock(&si->model_lock);
@@ -1469,40 +1459,6 @@ np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_s
             CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->subscriber_address, rc);
             /* identification of the request that asked for data */
             req->request->data_provide_req->request_id = session->req->request->_id;
-            switch (session->req->request->operation) {
-            case SR__OPERATION__GET_ITEM:
-                if (session->req->request->get_item_req->xpath) {
-                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_item_req->xpath);
-                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
-                }
-                break;
-            case SR__OPERATION__GET_ITEMS:
-                if (session->req->request->get_items_req->xpath) {
-                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_items_req->xpath);
-                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
-                }
-                break;
-            case SR__OPERATION__GET_SUBTREE:
-                if (session->req->request->get_subtree_req->xpath) {
-                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_subtree_req->xpath);
-                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
-                }
-                break;
-            case SR__OPERATION__GET_SUBTREES:
-                if (session->req->request->get_subtrees_req->xpath) {
-                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_subtrees_req->xpath);
-                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
-                }
-                break;
-            case SR__OPERATION__GET_SUBTREE_CHUNK:
-                if (session->req->request->get_subtree_chunk_req->xpath) {
-                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_subtree_chunk_req->xpath);
-                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
-                }
-                break;
-            default:
-                break;
-            }
         }
     }
 
@@ -1697,7 +1653,7 @@ np_subscription_cleanup(np_subscription_t *subscription)
             np_subscription_content_cleanup(subscription);
             free(subscription);
         } else {
-            ATOMIC_DEC(&subscription->copy_cnt);
+            subscription->copy_cnt -= 1;
         }
     }
 }
