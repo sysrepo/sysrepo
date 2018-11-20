@@ -338,6 +338,11 @@ INSTALL_YANG("ietf-netconf-notifications" "" "666")
 INSTALL_YANG("nc-notifications" "" "666")
 INSTALL_YANG("notifications" "" "666")
 
+# uninstall
+add_custom_target(uninstall "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake")
+add_custom_target(uninstall_with_repo "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake"
+    COMMAND rm -rf ${REPOSITORY_LOC})
+
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(swig)
 endif()
