@@ -6,7 +6,7 @@ include(GNUInstallDirs)
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 7)
-set(SYSREPO_MICRO_VERSION 6)
+set(SYSREPO_MICRO_VERSION 7)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION})
 
@@ -337,6 +337,11 @@ endif()
 INSTALL_YANG("ietf-netconf-notifications" "" "666")
 INSTALL_YANG("nc-notifications" "" "666")
 INSTALL_YANG("notifications" "" "666")
+
+# uninstall
+add_custom_target(uninstall "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake")
+add_custom_target(uninstall_with_repo "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake"
+    COMMAND rm -rf ${REPOSITORY_LOC})
 
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(swig)

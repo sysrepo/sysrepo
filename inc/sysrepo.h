@@ -1840,11 +1840,12 @@ int sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subs
  * @param[out] values Array of values at the selected level (allocated by the provider).
  * @param[out] values_cnt Number of values returned.
  * @param[in] request_id An ID identifying the originating request.
+ * @param[in] original_xpath The xpath that was asked for in the originating request.
  * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_dp_get_items_subscribe call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx);
+typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, void *private_ctx);
 
 /**
  * @brief Registers for providing of operational data under given xpath.

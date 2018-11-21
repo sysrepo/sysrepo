@@ -120,6 +120,8 @@ public:
     void copy_config(const char *module_name, sr_datastore_t src_datastore, sr_datastore_t dst_datastore);
     /** Wrapper for [sr_session_set_options](@ref sr_session_set_options) */
     void set_options(const sr_sess_options_t opts);
+    /** Wrapper for [sr_set_error](@ref sr_set_error) */
+    void set_error(const char *message, const char *xpath);
     /** Wrapper for [sr_get_changes_iter](@ref sr_get_changes_iter) */
     S_Iter_Change get_changes_iter(const char *xpath);
     /** Wrapper for [sr_get_change_next](@ref sr_get_change_next) */
@@ -176,7 +178,7 @@ public:
     /** Wrapper for [sr_action_tree_cb](@ref sr_action_tree_cb) callback.*/
     virtual int action_tree(const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
     /** Wrapper for [sr_dp_get_items_cb](@ref sr_dp_get_items_cb) callback.*/
-    virtual int dp_get_items(const char *xpath, S_Vals_Holder vals, uint64_t request_id, void *private_ctx) {return SR_ERR_OK;};
+    virtual int dp_get_items(const char *xpath, S_Vals_Holder vals, uint64_t request_id, const char *original_xpath, void *private_ctx) {return SR_ERR_OK;};
     /** Wrapper for [sr_event_notif_cb](@ref sr_event_notif_cb) callback.*/
     virtual void event_notif(const sr_ev_notif_type_t notif_type, const char *xpath, S_Vals vals, time_t timestamp, void *private_ctx) {return;};
     /** Wrapper for [sr_event_notif_tree_cb](@ref sr_event_notif_tree_cb) callback.*/

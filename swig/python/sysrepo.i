@@ -264,14 +264,14 @@ public:
     }
 
 
-    int dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, PyObject *private_ctx) {
+    int dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, PyObject *private_ctx) {
         PyObject *arglist;
 
         sysrepo::Vals_Holder *out_vals =(sysrepo::Vals_Holder *)new sysrepo::Vals_Holder(values, values_cnt);
         std::shared_ptr<sysrepo::Vals_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<sysrepo::Vals_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_Holder_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOiO)", xpath, out, request_id, private_ctx);
+        arglist = Py_BuildValue("(sOisO)", xpath, out, request_id, original_xpath, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
@@ -386,10 +386,10 @@ static int g_action_tree_cb(const char *xpath, const sr_node_t *input, const siz
     return ctx->action_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
-static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
+static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->dp_get_items(xpath, values, values_cnt, request_id, ctx->private_ctx);
+    return ctx->dp_get_items(xpath, values, values_cnt, request_id, original_xpath, ctx->private_ctx);
 }
 
 static void g_event_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)

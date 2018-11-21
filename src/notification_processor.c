@@ -1459,6 +1459,40 @@ np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_s
             CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->subscriber_address, rc);
             /* identification of the request that asked for data */
             req->request->data_provide_req->request_id = session->req->request->_id;
+            switch (session->req->request->operation) {
+            case SR__OPERATION__GET_ITEM:
+                if (session->req->request->get_item_req->xpath) {
+                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_item_req->xpath);
+                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
+                }
+                break;
+            case SR__OPERATION__GET_ITEMS:
+                if (session->req->request->get_items_req->xpath) {
+                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_items_req->xpath);
+                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
+                }
+                break;
+            case SR__OPERATION__GET_SUBTREE:
+                if (session->req->request->get_subtree_req->xpath) {
+                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_subtree_req->xpath);
+                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
+                }
+                break;
+            case SR__OPERATION__GET_SUBTREES:
+                if (session->req->request->get_subtrees_req->xpath) {
+                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_subtrees_req->xpath);
+                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
+                }
+                break;
+            case SR__OPERATION__GET_SUBTREE_CHUNK:
+                if (session->req->request->get_subtree_chunk_req->xpath) {
+                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_subtree_chunk_req->xpath);
+                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
+                }
+                break;
+            default:
+                break;
+            }
         }
     }
 
