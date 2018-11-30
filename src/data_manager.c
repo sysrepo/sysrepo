@@ -4979,6 +4979,9 @@ dm_commit_netconf_access_control(nacm_ctx_t *nacm_ctx, dm_session_t *session, dm
             return SR_ERR_INTERNAL;
         }
 
+        rc = dm_remove_added_data_trees(c_ctx->session, new_info);
+        CHECK_RC_MSG_RETURN(rc, "Removing of added data trees failed");
+
         rc = dm_perform_netconf_access_control(nacm_ctx, session, prev_info, new_info, copy_config, errors, err_cnt, c_ctx);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("NACM access check failed");
