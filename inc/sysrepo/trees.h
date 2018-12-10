@@ -1,11 +1,12 @@
 /**
  * @file trees.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
- *         Milan Lenco <milan.lenco@pantheon.tech>
+ *         Milan Lenco <milan.lenco@pantheon.tech>, Pavol Hanzel <pavol.hanzel@pantheon.tech>
  * @brief Functions for simplified manipulation with Sysrepo trees.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
+ * Copyright 2018 PANTHEON Tech.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +25,7 @@
 #define SYSREPO_TREES_H_
 
 #include <stdio.h>
+#include "common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -111,7 +113,7 @@ int sr_node_set_str_data(sr_node_t *node, sr_type_t type, const char *string_val
  * @param [in] type Exact type of the data.
  * @param [in] format Format string used to build the data.
  */
-int sr_node_build_str_data(sr_node_t *node, sr_type_t type, const char *format, ...);
+int sr_node_build_str_data(sr_node_t *node, sr_type_t type, const char *format, ...) FORMAT(printf, 3, 4);
 
 /**
  * @brief Create a new child for a given Sysrepo node.
