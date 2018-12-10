@@ -186,11 +186,11 @@ rpc_caller(sr_session_ctx_t *session)
 
     /* set 'input/tape' list entries */
     for (size_t i = 0; i < 5; ++i) {
-        rc = sr_val_build_xpath(&input[i+2], "/turing-machine:run-until/tape/cell[coord='%d']/symbol", i);
+        rc = sr_val_build_xpath(&input[i+2], "/turing-machine:run-until/tape/cell[coord='%lu']/symbol", i);
         if (SR_ERR_OK != rc) {
             return rc;
         }
-        sr_val_build_str_data(&input[i+2], SR_STRING_T, "%c", 'A'+i);
+        sr_val_build_str_data(&input[i+2], SR_STRING_T, "%lu", 'A'+i);
     }
 
     printf("\n\n ========== EXECUTING RPC ==========\n\n");

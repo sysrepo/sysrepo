@@ -45,6 +45,19 @@ set(INDIRECT_YANG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/
 set(CALL_SYSREPOCTL_BIN "${CMAKE_BINARY_DIR}/src/sysrepoctl" CACHE PATH "Path to the sysrepoctl binary to be used at install time")
 set(CALL_SYSREPOCFG_BIN "${CMAKE_BINARY_DIR}/src/sysrepocfg" CACHE PATH "Path to the sysrepocfg binary to be used at install time")
 
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    set(COMPILER_FORMAT_ATTR "__attribute__ ((__format__(archetype, string_index, first_to_check)))")
+elseif(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    # require at least clang 3.0
+    if (CMAKE_C_COMPILER_VERSION VERSION_LESS 3.0)
+        message(FATAL_ERROR "Clang version must be at least 3.0!")
+    endif()
+    set(COMPILER_FORMAT_ATTR "__attribute__ ((__format__(archetype, string_index, first_to_check)))")
+else()
+    message(WARNING "You are using an unknown compiler, it must support C11 standard \"_Generic\" statement or the \"__builtin_types_compatible_p\" built-in function.")
+    set(COMPILER_FORMAT_ATTR "")
+endif()
+
 if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
@@ -90,7 +103,8 @@ MESSAGE(STATUS "sysrepo repository location: ${REPOSITORY_LOC}")
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/inc")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_BINARY_DIR}/inc")
+configure_file(${PROJECT_SOURCE_DIR}/inc/common.h.in ${PROJECT_BINARY_DIR}/inc/common.h @ONLY)
 
 # find required libraries
 find_package(EV REQUIRED)
