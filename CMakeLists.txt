@@ -48,13 +48,8 @@ set(CALL_SYSREPOCFG_BIN "${CMAKE_BINARY_DIR}/src/sysrepocfg" CACHE PATH "Path to
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(COMPILER_FORMAT_ATTR "__attribute__ ((__format__(archetype, string_index, first_to_check)))")
 elseif(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    # require at least clang 3.0
-    if (CMAKE_C_COMPILER_VERSION VERSION_LESS 3.0)
-        message(FATAL_ERROR "Clang version must be at least 3.0!")
-    endif()
     set(COMPILER_FORMAT_ATTR "__attribute__ ((__format__(archetype, string_index, first_to_check)))")
 else()
-    message(WARNING "You are using an unknown compiler, it must support C11 standard \"_Generic\" statement or the \"__builtin_types_compatible_p\" built-in function.")
     set(COMPILER_FORMAT_ATTR "")
 endif()
 
