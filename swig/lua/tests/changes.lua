@@ -23,7 +23,7 @@ function clean_slate(sess)
   end
 
   local xpath = "/" .. MODULE_NAME .. ":*"
-  local subs = sr.Subscribe(sess)
+  local subs = sr.Subscribe(sr.ptr(sess))
   local wrap = sr.Callback_lua(_cb)
   subs:module_change_subscribe(MODULE_NAME, wrap, nil, 0, sr.SR_SUBSCR_APPLY_ONLY);
 
@@ -45,14 +45,14 @@ local function init_test(sess)
       return tonumber(sr.SR_ERR_OK)
   end
 
-  local subs = sr.Subscribe(sess);
+  local subs = sr.Subscribe(sr.ptr(sess))
   local wrap = sr.Callback_lua(_cb)
   subs:module_change_subscribe(MODULE_NAME, wrap, nil, 0, sr.SR_SUBSCR_APPLY_ONLY);
 
   for i=LOW_BOUND, HIGH_BOUND do
     local val = sr.Val(i, sr.SR_INT32_T)
     local xpath = string.format(xpath_if_fmt, get_test_name(i), 'number')
-    sess:set_item(xpath, val)
+    sess:set_item(xpath, sr.ptr(val))
   end
 
   sess:commit()
@@ -64,7 +64,7 @@ end
 
 -- Suite start:
 local conn = sr.Connection('main connection')
-local sess = sr.Session(conn)
+local sess = sr.Session(sr.ptr(conn))
 
 clean_slate(sess)
 
@@ -100,7 +100,7 @@ function TestChanges:test_module_change()
     lu.assertNotIsNil(it)
 
     while true do
-      local change = session:get_change_next(it)
+      local change = sr.ptr(session:get_change_next(it))
       if (change == nil) then break end
       lu.assertEquals(change:oper(), sr.SR_OP_MODIFIED)
     end
@@ -113,19 +113,19 @@ function TestChanges:test_module_change()
   -- subs:module_change_subscribe(MODULE_NAME, wrap, nil, 0, sr.SR_SUBSCR_APPLY_ONLY);
 
   local wrap = sr.Callback_lua(_cb)
-  local subs = sr.Subscribe(sess)
+  local subs = sr.Subscribe(sr.ptr(sess))
   subs:module_change_subscribe(MODULE_NAME, wrap, nil, 0, sr.SR_SUBSCR_APPLY_ONLY);
 
 
   local val = sr.Val(set_num, sr.SR_INT32_T)
   local xpath = string.format(xpath_if_fmt, get_test_name(set_num), 'number')
-  sess:set_item(xpath, val)
+  sess:set_item(xpath, sr.ptr(val))
   sess:commit()
   sleep()
 
   local xpath = string.format(xpath_if_fmt, get_test_name(set_num), 'number')
   local val2 = sr.Val(mod_num, sr.SR_INT32_T)
-  sess:set_item(xpath, val2)
+  sess:set_item(xpath, sr.ptr(val2))
   sess:commit()
 
   sleep()
@@ -151,7 +151,7 @@ function TestChanges:test_module_change_delete()
     lu.assertNotIsNil(it)
 
     while true do
-      local change = session:get_change_next(it)
+      local change = sr.ptr(session:get_change_next(it))
       if (change == nil) then break end
       lu.assertEquals(change:oper(), sr.SR_OP_DELETED)
     end
@@ -160,12 +160,12 @@ function TestChanges:test_module_change_delete()
   end
 
   local wrap = sr.Callback_lua(_cb)
-  local subs = sr.Subscribe(sess)
+  local subs = sr.Subscribe(sr.ptr(sess))
   subs:module_change_subscribe(MODULE_NAME, wrap, nil, 0, sr.SR_SUBSCR_APPLY_ONLY);
 
   local setval = sr.Val(set_num, sr.SR_INT32_T)
   local xpath = string.format(xpath_if_fmt, get_test_name(set_num), 'number')
-  sess:set_item(xpath, setval)
+  sess:set_item(xpath, sr.ptr(setval))
   sess:commit()
   sleep()
 

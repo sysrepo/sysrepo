@@ -18,11 +18,14 @@ function print_current_config(sess, module_name)
         xpath = "/" .. module_name .. ":*//*"
         values = sess:get_items(xpath)
 
-	if (values == nil) then return end
+        if (values == nil) then return end
 
-	for i=0, values:val_cnt() - 1, 1 do
-            io.write(values:val(i):to_string())
-	end
+        values = sr.ptr(values)
+
+        for i=0, values:val_cnt() - 1, 1 do
+            val = sr.ptr(values:val(i))
+            io.write(val:to_string())
+        end
 
         collectgarbage()
     end
@@ -36,7 +39,7 @@ end
 
 -- Function to be called for subscribed client of given session whenever configuration changes.
 function module_change_cb(session, module_name, event, private_ctx)
-    io.write("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
+    io.write("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n")
 
     print_current_config(session, module_name)
 
@@ -47,21 +50,21 @@ end
 -- Here it is useful because `Conenction`, `Session` and `Subscribe` could throw an exception.
 function run()
     conn = sr.Connection("application")
-    sess = sr.Session(conn)
+    sess = sr.Session(sr.ptr(conn))
 
-    subscribe = sr.Subscribe(sess)
+    subscribe = sr.Subscribe(sr.ptr(sess))
 
     wrap = sr.Callback_lua(module_change_cb)
-    subscribe:module_change_subscribe("ietf-interfaces", wrap);
+    subscribe:module_change_subscribe("ietf-interfaces", wrap)
 
-    io.write("\n\n ========== READING STARTUP CONFIG: ==========\n\n");
-    print_current_config(sess, "ietf-interfaces");
+    io.write("\n\n ========== READING STARTUP CONFIG: ==========\n\n")
+    print_current_config(sess, "ietf-interfaces")
 
-    io.write("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n");
+    io.write("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n")
 
     sr.global_loop()
 
-    io.write("Application exit requested, exiting.\n\n");
+    io.write("Application exit requested, exiting.\n\n")
 end
 
 ok,res=pcall(run)

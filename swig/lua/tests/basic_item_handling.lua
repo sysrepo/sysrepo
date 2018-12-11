@@ -21,8 +21,8 @@ end
 
 function init_helper(conn_name)
   local conn = sr.Connection(conn_name)
-  local sess = sr.Session(conn, sr.SR_DS_RUNNING)
-  local subs = sr.Subscribe(sess)
+  local sess = sr.Session(sr.ptr(conn), sr.SR_DS_RUNNING)
+  local subs = sr.Subscribe(sr.ptr(sess))
   return conn, sess, subs
 end
 
@@ -33,8 +33,8 @@ function clean_slate()
   end
 
   local conn = sr.Connection("get-set-test")
-  local sess = sr.Session(conn, sr.SR_DS_RUNNING)
-  local subs = sr.Subscribe(sess)
+  local sess = sr.Session(sr.ptr(conn), sr.SR_DS_RUNNING)
+  local subs = sr.Subscribe(sr.ptr(sess))
   local wrap = sr.Callback_lua(module_change_cb)
   subs:module_change_subscribe(MODULE_NAME, wrap, nil, 0, sr.SR_SUBSCR_APPLY_ONLY);
   local xpath = "/" .. MODULE_NAME .. ":*"
@@ -59,12 +59,11 @@ function TestGetSet:setUp()
   subs:module_change_subscribe(MODULE_NAME, wrap, nil, 0, sr.SR_SUBSCR_APPLY_ONLY);
 
   -- Create bunch of entries in ietf-interfaces module which are used for testing.
-  local enabled = true
 
   for i=LOW_BOUND, HIGH_BOUND do
     local val = sr.Val(i, sr.SR_INT32_T)
     local xpath = string.format(xpath_if_fmt, get_test_name(i), 'number')
-    sess:set_item(xpath, val)
+    sess:set_item(xpath, sr.ptr(val))
   end
   -- sess:copy_config(MODULE_NAME, sr.SR_DS_RUNNING, sr.SR_DS_CANDIDATE)
   sess:commit()
@@ -84,8 +83,8 @@ function TestGetSet:test_get_item()
 
   for i=LOW_BOUND, HIGH_BOUND do
     local xpath = string.format(xpath_if_fmt, get_test_name(i), 'number')
-    local val = self.sess:get_item(xpath)
-    lu.assertEquals(i, val:data():get_int32())
+    local val = sr.ptr(self.sess:get_item(xpath))
+    lu.assertEquals(i, sr.ptr(val:data()):get_int32())
     lu.assertEquals(xpath, val:xpath())
   end
 end
@@ -94,14 +93,14 @@ function TestGetSet:test_set_item()
 
   for i = LOW_BOUND, HIGH_BOUND do
     local xpath = string.format(xpath_if_fmt, get_test_name(i), 'number')
-    local val = self.sess:get_item(xpath)
-    lu.assertEquals(i, val:data():get_int32())
+    local val = sr.ptr(self.sess:get_item(xpath))
+    lu.assertEquals(i, sr.ptr(val:data()):get_int32())
   end
 
   for i = LOW_BOUND, HIGH_BOUND do
     local xpath = string.format(xpath_if_fmt, get_test_name(i), 'number')
     local val = sr.Val(i, sr.SR_INT32_T)
-    self.sess:set_item(xpath, val)
+    self.sess:set_item(xpath, sr.ptr(val))
   end
 
   self.sess:commit()
@@ -110,8 +109,8 @@ function TestGetSet:test_set_item()
   enabled = false
   for i = LOW_BOUND, HIGH_BOUND do
     local xpath = string.format(xpath_if_fmt, get_test_name(i), 'number')
-    local val = self.sess:get_item(xpath)
-    lu.assertEquals(i, val:data():get_int32())
+    local val = sr.ptr(self.sess:get_item(xpath))
+    lu.assertEquals(i, sr.ptr(val:data()):get_int32())
     enabled = not enabled
   end
 end
@@ -129,7 +128,7 @@ function TestGetSet:test_delete_item()
   for i = LOW_BOUND, HIGH_BOUND do
     local xpath = string.format(xpath_if_fmt, get_test_name(i), 'number')
     local val = self.sess:get_item(xpath)
-    lu.assertIsNil(val)
+    lu.assertIsNil(sr.ptr(val))
   end
 end
 
@@ -137,12 +136,11 @@ function TestGetSet:test_items()
 
   for i = LOW_BOUND, HIGH_BOUND do
     local xpath = string.format(xpath_if_fmt, get_test_name(i), 'number')
-    local val = sr.Val(i, sr.SR_INT32_T)
     self.sess:delete_item(xpath)
   end
 
   local xpath = "/" .. MODULE_NAME .. ":*//*"
-  local values = self.sess:get_items(xpath)
+  local values = sr.ptr(self.sess:get_items(xpath))
   lu.assertNotIsNil(values)
   lu.assertEquals(values:val_cnt(), (HIGH_BOUND - LOW_BOUND + 1) * 2) -- name, type, enabled
 
@@ -150,13 +148,16 @@ function TestGetSet:test_items()
   local j = LOW_BOUND
   for i = 0, values:val_cnt() - 1, 2 do
     local xpath = string.format(xpath_fmt, get_test_name(j))
-    lu.assertEquals(xpath, values:val(i):xpath())
+    lu.assertEquals(xpath, sr.ptr(values:val(i)):xpath())
     xpath = string.format(xpath_if_fmt, get_test_name(j), 'name')
-    lu.assertEquals(xpath, values:val(i+1):xpath())
+    lu.assertEquals(xpath, sr.ptr(values:val(i+1)):xpath())
     j = j + 1
   end
 end
 
+function TestGetSet:go()
+    lu.assertEquals(nil, nil)
+end
 function TestGetSet:test_items_iter()
 
   for i = LOW_BOUND, HIGH_BOUND do
@@ -171,12 +172,12 @@ function TestGetSet:test_items_iter()
 
   local j = LOW_BOUND
   while true do
-    local v0 = self.sess:get_item_next(it)
+    local v0 = sr.ptr(self.sess:get_item_next(it))
     if not v0 then
       break
     end
 
-    local v1 = self.sess:get_item_next(it)
+    local v1 = sr.ptr(self.sess:get_item_next(it))
     lu.assertNotIsNil(v1)
 
     local xpath = string.format(xpath_fmt, get_test_name(j))

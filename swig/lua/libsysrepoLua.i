@@ -31,6 +31,8 @@
 #include "Struct.hpp"
 #include "Session.hpp"
 
+namespace sysrepo {
+
 class Callback_lua {
 public:
     Callback_lua(SWIGLUA_REF fn) : fn(fn) {};
@@ -46,8 +48,8 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Session *sess = (Session *)new Session(session);
-        SWIG_NewPointerObj(fn.L, sess, SWIGTYPE_p_Session, 0);
+        sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
+        SWIG_NewPointerObj(fn.L, sess, SWIGTYPE_p_sysrepo__Session, 0);
         lua_pushstring(fn.L, module_name);
         lua_pushnumber(fn.L, (lua_Number)(int)(event));
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
@@ -66,8 +68,8 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Session *sess = (Session *)new Session(session);
-        SWIG_NewPointerObj(fn.L, sess, SWIGTYPE_p_Session, 0);
+        sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
+        SWIG_NewPointerObj(fn.L, sess, SWIGTYPE_p_sysrepo__Session, 0);
         lua_pushstring(fn.L, xpath);
         lua_pushnumber(fn.L, (lua_Number)(int)(event));
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
@@ -110,11 +112,11 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Vals *in_vals =(Vals *)new Vals(input, input_cnt, nullptr);
-        Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
+        sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(input, input_cnt, nullptr);
+        sysrepo::Vals_Holder *out_vals =(sysrepo::Vals_Holder *)new sysrepo::Vals_Holder(output, output_cnt);
         lua_pushstring(fn.L, xpath);
-        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
-        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals_Holder, 0);
+        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_sysrepo__Vals, 0);
+        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_sysrepo__Vals_Holder, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 4, 1);
         in_vals->~Vals();
@@ -132,11 +134,11 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Vals *in_vals =(Vals *)new Vals(input, input_cnt, nullptr);
-        Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
+        sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(input, input_cnt, nullptr);
+        sysrepo::Vals_Holder *out_vals =(sysrepo::Vals_Holder *)new sysrepo::Vals_Holder(output, output_cnt);
         lua_pushstring(fn.L, xpath);
-        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
-        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals_Holder, 0);
+        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_sysrepo__Vals, 0);
+        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_sysrepo__Vals_Holder, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 4, 1);
         in_vals->~Vals();
@@ -154,11 +156,11 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Trees *in_vals =(Trees *)new Trees(input, input_cnt, nullptr);
-        Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
+        sysrepo::Trees *in_vals =(sysrepo::Trees *)new sysrepo::Trees(input, input_cnt, nullptr);
+        sysrepo::Trees_Holder *out_vals =(sysrepo::Trees_Holder *)new sysrepo::Trees_Holder(output, output_cnt);
         lua_pushstring(fn.L, xpath);
-        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
-        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Trees_Holder, 0);
+        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_sysrepo__Trees, 0);
+        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_sysrepo__Trees_Holder, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 4, 1);
         in_vals->~Trees();
@@ -176,11 +178,11 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Trees *in_vals =(Trees *)new Trees(input, input_cnt, nullptr);
-        Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
+        sysrepo::Trees *in_vals =(sysrepo::Trees *)new sysrepo::Trees(input, input_cnt, nullptr);
+        sysrepo::Trees_Holder *out_vals =(sysrepo::Trees_Holder *)new sysrepo::Trees_Holder(output, output_cnt);
         lua_pushstring(fn.L, xpath);
-        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
-        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Trees_Holder, 0);
+        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_sysrepo__Trees, 0);
+        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_sysrepo__Trees_Holder, 0);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 4, 1);
         in_vals->~Trees();
@@ -197,9 +199,9 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(values, values_cnt);
+        sysrepo::Vals_Holder *out_vals =(sysrepo::Vals_Holder *)new sysrepo::Vals_Holder(values, values_cnt);
         lua_pushstring(fn.L, xpath);
-        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals_Holder, 0);
+        SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_sysrepo__Vals_Holder, 0);
         lua_pushnumber(fn.L, request_id);
         lua_pushstring(fn.L, original_xpath);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
@@ -217,10 +219,10 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Vals *in_vals =(Vals *)new Vals(values, values_cnt, nullptr);
+        sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(values, values_cnt, nullptr);
         lua_pushnumber(fn.L, (lua_Number)(int)(notif_type));
         lua_pushstring(fn.L, xpath);
-        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Vals, 0);
+        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_sysrepo__Vals, 0);
         lua_pushnumber(fn.L, timestamp);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 5, 0);
@@ -233,10 +235,10 @@ public:
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
         }
-        Trees *in_vals =(Trees *)new Trees(trees, tree_cnt, nullptr);
+        sysrepo::Trees *in_vals =(sysrepo::Trees *)new sysrepo::Trees(trees, tree_cnt, nullptr);
         lua_pushnumber(fn.L, (lua_Number)(int)(notif_type));
         lua_pushstring(fn.L, xpath);
-        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_Trees, 0);
+        SWIG_NewPointerObj(fn.L, in_vals, SWIGTYPE_p_sysrepo__Trees, 0);
         lua_pushnumber(fn.L, timestamp);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 5, 0);
@@ -250,75 +252,77 @@ private:
     SWIGLUA_REF fn;
 };
 
+} //namespace sysrepo
+
 static int g_module_change_subscribe_cb(sr_session_ctx_t *session, const char *module_name,\
                                         sr_notif_event_t event, void *private_ctx)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    sysrepo::Wrap_cb *ctx = (sysrepo::Wrap_cb *) private_ctx;
     return ctx->module_change_subscribe(session, module_name, event, ctx->private_ctx);
 }
 
 static int g_subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
                                void *private_ctx)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    sysrepo::Wrap_cb *ctx = (sysrepo::Wrap_cb *) private_ctx;
     return ctx->subtree_change(session, xpath, event, ctx->private_ctx);
 }
 
 static void g_module_install_cb(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    sysrepo::Wrap_cb *ctx = (sysrepo::Wrap_cb *) private_ctx;
     ctx->module_install(module_name, revision, state, ctx->private_ctx);
 }
 
 static void g_feature_enable_cb(const char *module_name, const char *feature_name, bool enabled, void *private_ctx)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    sysrepo::Wrap_cb *ctx = (sysrepo::Wrap_cb *) private_ctx;
     ctx->feature_enable(module_name, feature_name, enabled, ctx->private_ctx);
 }
 
 static int g_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                      size_t *output_cnt, void *private_ctx)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    sysrepo::Wrap_cb *ctx = (sysrepo::Wrap_cb *) private_ctx;
     return ctx->rpc_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
 static int g_action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                      size_t *output_cnt, void *private_ctx)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    sysrepo::Wrap_cb *ctx = (sysrepo::Wrap_cb *) private_ctx;
     return ctx->action_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
 static int g_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    sysrepo::Wrap_cb *ctx = (sysrepo::Wrap_cb *) private_ctx;
     return ctx->rpc_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
 static int g_action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    sysrepo::Wrap_cb *ctx = (sysrepo::Wrap_cb *) private_ctx;
     return ctx->action_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
-static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, void *private_ctx)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->dp_get_items(xpath, values, values_cnt, ctx->private_ctx);
+    sysrepo::Wrap_cb *ctx = (sysrepo::Wrap_cb *) private_ctx;
+    return ctx->dp_get_items(xpath, values, values_cnt, request_id, original_xpath, ctx->private_ctx);
 }
 
 static void g_event_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    sysrepo::Wrap_cb *ctx = (sysrepo::Wrap_cb *) private_ctx;
     ctx->event_notif(notif_type, xpath, values, values_cnt, timestamp, ctx->private_ctx);
 }
 
 static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    sysrepo::Wrap_cb *ctx = (sysrepo::Wrap_cb *) private_ctx;
     ctx->event_notif_tree(notif_type, xpath, trees, tree_cnt, timestamp, ctx->private_ctx);
 }
 
@@ -340,16 +344,40 @@ static void global_loop() {
     }
 }
 
+/* helper function for creating shared_ptr classes */
+static std::shared_ptr<sysrepo::Connection> ptr(sysrepo::Connection *T) {return T ? std::shared_ptr<sysrepo::Connection>(T) : nullptr;}
+static std::shared_ptr<sysrepo::Session> ptr(sysrepo::Session *T) {return T ? std::shared_ptr<sysrepo::Session>(T) : nullptr;}
+static std::shared_ptr<sysrepo::Subscribe> ptr(sysrepo::Subscribe *T) {return T ? std::shared_ptr<sysrepo::Subscribe>(T) : nullptr;}
+static std::shared_ptr<sysrepo::Trees> ptr(sysrepo::Trees *T) {return T ? std::shared_ptr<sysrepo::Trees>(T) : nullptr;}
+static std::shared_ptr<sysrepo::Tree> ptr(sysrepo::Tree *T) {return T ? std::shared_ptr<sysrepo::Tree>(T) : nullptr;}
+static std::shared_ptr<sysrepo::Vals> ptr(sysrepo::Vals *T) {return T ? std::shared_ptr<sysrepo::Vals>(T) : nullptr;}
+static std::shared_ptr<sysrepo::Val> ptr(sysrepo::Val *T) {return T ? std::shared_ptr<sysrepo::Val>(T) : nullptr;}
+static std::shared_ptr<sysrepo::Change> ptr(sysrepo::Change *T) {return T ? std::shared_ptr<sysrepo::Change>(T) : nullptr;}
+
+static sysrepo::Connection *ptr(std::shared_ptr<sysrepo::Connection> t) {return t ? t.get() : nullptr;}
+static sysrepo::Session *ptr(std::shared_ptr<sysrepo::Session> t) {return t ? t.get() : nullptr;}
+static sysrepo::Subscribe *ptr(std::shared_ptr<sysrepo::Subscribe> t) {return t ? t.get() : nullptr;}
+static sysrepo::Trees *ptr(std::shared_ptr<sysrepo::Trees> t) {return t ? t.get() : nullptr;}
+static sysrepo::Tree *ptr(std::shared_ptr<sysrepo::Tree> t) {return t ? t.get() : nullptr;}
+static sysrepo::Vals *ptr(std::shared_ptr<sysrepo::Vals> t) {return t ? t.get() : nullptr;}
+static sysrepo::Val *ptr(std::shared_ptr<sysrepo::Val> t) {return t ? t.get() : nullptr;}
+static sysrepo::Iter_Change *ptr(std::shared_ptr<sysrepo::Iter_Change> t) {return t ? t.get() : nullptr;}
+static sysrepo::Change *ptr(std::shared_ptr<sysrepo::Change> t) {return t ? t.get() : nullptr;}
+static sysrepo::Operation *ptr(std::shared_ptr<sysrepo::Operation> t) {return t ? t.get() : nullptr;}
+static sysrepo::Vals_Holder *ptr(std::shared_ptr<sysrepo::Vals_Holder> t) {return t ? t.get() : nullptr;}
+static sysrepo::Trees_Holder *ptr(std::shared_ptr<sysrepo::Trees_Holder> t) {return t ? t.get() : nullptr;}
+static sysrepo::Data *ptr(std::shared_ptr<sysrepo::Data> t) {return t ? t.get() : nullptr;}
+
 %}
 
-%extend Subscribe {
+%extend sysrepo::Subscribe {
 
     void module_change_subscribe(const char *module_name, Callback_lua *cb, void *private_ctx = nullptr, \
                                  uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = nullptr;
-        class_ctx = new Wrap_cb(callback);
+        sysrepo::Wrap_cb *class_ctx = nullptr;
+        class_ctx = new sysrepo::Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -365,8 +393,8 @@ static void global_loop() {
                                  uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = nullptr;
-        class_ctx = new Wrap_cb(callback);
+        sysrepo::Wrap_cb *class_ctx = nullptr;
+        class_ctx = new sysrepo::Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -382,8 +410,8 @@ static void global_loop() {
                                   sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = nullptr;
-        class_ctx = new Wrap_cb(callback);
+        sysrepo::Wrap_cb *class_ctx = nullptr;
+        class_ctx = new sysrepo::Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -400,8 +428,8 @@ static void global_loop() {
                                   sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = nullptr;
-        class_ctx = new Wrap_cb(callback);
+        sysrepo::Wrap_cb *class_ctx = nullptr;
+        class_ctx = new sysrepo::Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -417,8 +445,8 @@ static void global_loop() {
     void rpc_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = nullptr;
-        class_ctx = new Wrap_cb(callback);
+        sysrepo::Wrap_cb *class_ctx = nullptr;
+        class_ctx = new sysrepo::Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -434,8 +462,8 @@ static void global_loop() {
     void action_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = nullptr;
-        class_ctx = new Wrap_cb(callback);
+        sysrepo::Wrap_cb *class_ctx = nullptr;
+        class_ctx = new sysrepo::Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -451,8 +479,8 @@ static void global_loop() {
     void rpc_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = nullptr;
-        class_ctx = new Wrap_cb(callback);
+        sysrepo::Wrap_cb *class_ctx = nullptr;
+        class_ctx = new sysrepo::Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -468,8 +496,8 @@ static void global_loop() {
     void action_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = nullptr;
-        class_ctx = new Wrap_cb(callback);
+        sysrepo::Wrap_cb *class_ctx = nullptr;
+        class_ctx = new sysrepo::Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -485,8 +513,8 @@ static void global_loop() {
     void event_notif_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = nullptr;
-        class_ctx = new Wrap_cb(callback);
+        sysrepo::Wrap_cb *class_ctx = nullptr;
+        class_ctx = new sysrepo::Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -502,8 +530,8 @@ static void global_loop() {
     void event_notif_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr,\
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = nullptr;
-        class_ctx = new Wrap_cb(callback);
+        sysrepo::Wrap_cb *class_ctx = nullptr;
+        class_ctx = new sysrepo::Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -519,8 +547,8 @@ static void global_loop() {
     void dp_get_items_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = nullptr, \
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
-        Wrap_cb *class_ctx = nullptr;
-        class_ctx = new Wrap_cb(callback);
+        sysrepo::Wrap_cb *class_ctx = nullptr;
+        class_ctx = new sysrepo::Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
@@ -534,7 +562,7 @@ static void global_loop() {
     }
 
     void additional_cleanup(void *private_ctx) {
-        delete static_cast<Wrap_cb*>(private_ctx);
+        delete static_cast<sysrepo::Wrap_cb*>(private_ctx);
     }
 
 };

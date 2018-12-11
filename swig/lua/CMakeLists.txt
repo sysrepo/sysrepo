@@ -1,18 +1,6 @@
 add_definitions(-DSWIG)
 add_definitions(-DSWIGLUA)
 
-project(Sysrepo_Lua)
-
-add_library(Sysrepo_Lua SHARED ${SYSREPO_CPP_SOURCES})
-SET_TARGET_PROPERTIES(Sysrepo_Lua PROPERTIES
-              VERSION ${SYSREPO_VERSION} SOVERSION ${SYSREPO_SOVERSION})
-
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
-
-include_directories(${CMAKE_SOURCE_DIR})
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(Sysrepo_Lua sysrepo)
-
 set(LUA_SWIG_BINDING libsysrepoLua)
 
 include(${SWIG_USE_FILE})
@@ -31,7 +19,7 @@ else()
     swig_add_library(${LUA_SWIG_BINDING} LANGUAGE lua SOURCES ${LUA_SWIG_BINDING}.i)
 endif()
 set_target_properties(${SWIG_MODULE_${LUA_SWIG_BINDING}_REAL_NAME} PROPERTIES PREFIX "")
-swig_link_libraries(${LUA_SWIG_BINDING} ${LUA_LIBRARIES} Sysrepo_Lua)
+swig_link_libraries(${LUA_SWIG_BINDING} ${LUA_LIBRARIES} Sysrepo-cpp)
 
 # tests
 if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
@@ -78,4 +66,3 @@ endif()
 
 # install binary
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${LUA_SWIG_BINDING}.so" DESTINATION "${CMAKE_INSTALL_LIBDIR}/lua/${GEN_LUA_VERSION}/")
-install(TARGETS Sysrepo_Lua DESTINATION ${CMAKE_INSTALL_LIBDIR})

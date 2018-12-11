@@ -17,7 +17,7 @@ function print_change(op, old_val, new_val)
            io.write(new_val:to_string())
     elseif (op == sr.SR_OP_DELETED) then
            io.write ("DELETED: ")
-           io.write(old_val:to_string());
+           io.write(old_val:to_string())
     elseif (op == sr.SR_OP_MODIFIED) then
            io.write ("MODIFIED: ")
            io.write ("old value ")
@@ -37,11 +37,13 @@ function print_current_config(sess, module_name)
         xpath = "/" .. module_name .. ":*//*"
         values = sess:get_items(xpath)
 
-	if (values == nil) then return end
+        if (values == nil) then return end
+        values = sr.ptr(values)
 
-	for i=0, values:val_cnt() - 1, 1 do
-            io.write(values:val(i):to_string())
-	end
+        for i=0, values:val_cnt() - 1, 1 do
+            val = sr.ptr(values:val(i))
+            io.write(val:to_string())
+        end
     end
 
     ok,res=pcall(run)
@@ -64,15 +66,15 @@ function module_change_cb(sess, module_name, event, private_ctx)
 
         change_path = "/" .. module_name .. ":*"
 
-        it = sess:get_changes_iter(change_path);
+        it = sess:get_changes_iter(change_path)
 
         while true do
-            change = sess:get_change_next(it)
+            change = sr.ptr(sess:get_change_next(it))
             if (change == nil) then break end
-            print_change(change:oper(), change:old_val(), change:new_val())
-	end
+            print_change(change:oper(), sr.ptr(change:old_val()), sr.ptr(change:new_val()))
+    end
 
-	io.write("\n\n ========== END OF CHANGES =======================================\n\n")
+    io.write("\n\n ========== END OF CHANGES =======================================\n\n")
 
         collectgarbage()
     end
@@ -89,21 +91,21 @@ end
 -- Main client function.
 function run()
     conn = sr.Connection("application")
-    sess = sr.Session(conn)
+    sess = sr.Session(sr.ptr(conn))
 
-    subscribe = sr.Subscribe(sess)
+    subscribe = sr.Subscribe(sr.ptr(sess))
 
     wrap = sr.Callback_lua(module_change_cb)
-    subscribe:module_change_subscribe("ietf-interfaces", wrap);
+    subscribe:module_change_subscribe("ietf-interfaces", wrap)
 
-    io.write("\n\n ========== READING STARTUP CONFIG: ==========\n\n");
-    print_current_config(sess, "ietf-interfaces");
+    io.write("\n\n ========== READING STARTUP CONFIG: ==========\n\n")
+    print_current_config(sess, "ietf-interfaces")
 
-    io.write("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n");
+    io.write("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n")
 
     sr.global_loop()
 
-    io.write("Application exit requested, exiting.\n\n");
+    io.write("Application exit requested, exiting.\n\n")
 end
 
 ok,res=pcall(run)
