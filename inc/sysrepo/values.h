@@ -1,11 +1,12 @@
 /**
  * @file values.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
- *         Milan Lenco <milan.lenco@pantheon.tech>
+ *         Milan Lenco <milan.lenco@pantheon.tech>, Pavol Hanzel <pavol.hanzel@pantheon.tech>
  * @brief Functions for simplified manipulation with Sysrepo values.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
+ * Copyright 2018 PANTHEON Tech.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +25,8 @@
 #define SYSREPO_VALUES_H_
 
 #include <stdio.h>
+
+#include "common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -93,7 +96,7 @@ int sr_val_set_xpath(sr_val_t *value, const char *xpath);
  * @param [in] value Sysrepo value to change the xpath of.
  * @param [in] format Format string used to build XPath.
  */
-int sr_val_build_xpath(sr_val_t *value, const char *format, ...);
+int sr_val_build_xpath(sr_val_t *value, const char *format, ...) FORMAT(printf, 2, 3);
 
 /**
  * @brief Store data of string type into the Sysrepo value data.
@@ -112,7 +115,7 @@ int sr_val_set_str_data(sr_val_t *value, sr_type_t type, const char *string_val)
  * @param [in] type Exact type of the data.
  * @param [in] format Format string used to build the data.
  */
-int sr_val_build_str_data(sr_val_t *value, sr_type_t type, const char *format, ...);
+int sr_val_build_str_data(sr_val_t *value, sr_type_t type, const char *format, ...) FORMAT(printf, 3, 4);
 
 /**
  * @brief Duplicate value (with or without Sysrepo memory context) into a new

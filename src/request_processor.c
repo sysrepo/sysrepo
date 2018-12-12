@@ -74,8 +74,8 @@ typedef enum rp_capability_change_type_e {
 #define CONFIG_CHANGE_USERNAME_XPATH "/ietf-netconf-notifications:netconf-config-change/changed-by/username"
 #define CONFIG_CHANGE_SESSION_ID_XPATH "/ietf-netconf-notifications:netconf-config-change/changed-by/session-id"
 #define CONFIG_CHANGE_DATASTORE_XPATH "/ietf-netconf-notifications:netconf-config-change/datastore"
-#define CONFIG_CHANGE_TARGET_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%d]/target"
-#define CONFIG_CHANGE_OPERATION_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%d]/operation"
+#define CONFIG_CHANGE_TARGET_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%lu]/target"
+#define CONFIG_CHANGE_OPERATION_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%lu]/operation"
 //! @endcond
 
 /**
