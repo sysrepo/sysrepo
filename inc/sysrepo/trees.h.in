@@ -25,11 +25,15 @@
 #define SYSREPO_TREES_H_
 
 #include <stdio.h>
-#include "common.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * @brief Compiler macro for generating printf-like errors.
+ */
+#define FORMAT(archetype, string_index, first_to_check) @COMPILER_FORMAT_ATTR@
 
 /**
  * @defgroup trees Tree Manipulation Utilities

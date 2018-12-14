@@ -98,8 +98,12 @@ MESSAGE(STATUS "sysrepo repository location: ${REPOSITORY_LOC}")
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_BINARY_DIR}/inc")
-configure_file(${PROJECT_SOURCE_DIR}/inc/common.h.in ${PROJECT_BINARY_DIR}/inc/common.h @ONLY)
+include_directories("${CMAKE_CURRENT_BINARY_DIR}/inc")
+configure_file(${PROJECT_SOURCE_DIR}/inc/sysrepo.h ${PROJECT_BINARY_DIR}/inc/sysrepo.h COPYONLY)
+configure_file(${PROJECT_SOURCE_DIR}/inc/sysrepo/plugins.h ${PROJECT_BINARY_DIR}/inc/sysrepo/plugins.h COPYONLY)
+configure_file(${PROJECT_SOURCE_DIR}/inc/sysrepo/trees.h.in ${PROJECT_BINARY_DIR}/inc/sysrepo/trees.h @ONLY)
+configure_file(${PROJECT_SOURCE_DIR}/inc/sysrepo/values.h.in ${PROJECT_BINARY_DIR}/inc/sysrepo/values.h @ONLY)
+configure_file(${PROJECT_SOURCE_DIR}/inc/sysrepo/xpath.h ${PROJECT_BINARY_DIR}/inc/sysrepo/xpath.h COPYONLY)
 
 # find required libraries
 find_package(EV REQUIRED)
