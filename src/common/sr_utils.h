@@ -31,8 +31,6 @@
 
 #include <libyang/libyang.h>
 
-#include "common.h"
-
 /** get the larger item */
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 /** get the smaller item */

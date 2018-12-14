@@ -182,4 +182,8 @@
  */
 #define SR_FILE_FORMAT_LY @FILE_FORMAT_LY@
 
+/** Compiler macro for generating printf-like errors.
+ */
+#define FORMAT(archetype, string_index, first_to_check) @COMPILER_FORMAT_ATTR@
+
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

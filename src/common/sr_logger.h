@@ -31,7 +31,6 @@
 #include <syslog.h>
 #include <pthread.h>
 
-#include "common.h"
 #include "sr_constants.h"
 
 /**
