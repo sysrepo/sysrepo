@@ -1427,6 +1427,36 @@ sr_dup_data_tree_to_ctx_test(void **state)
     ly_ctx_destroy(ctx_B, NULL);
 }
 
+static void
+sr_copy_all_ns_test(void **state)
+{
+    char **module_names = NULL;
+    size_t module_name_count = 0;
+    int rc = SR_ERR_OK;
+
+    rc = sr_copy_all_ns("/module-a:base/module-b:list['key']/key", &module_names, &module_name_count);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(module_name_count == 2u);
+    assert_string_equal(module_names[0], "module-a");
+    assert_string_equal(module_names[1], "module-b");
+
+    for (size_t j = 0; j < module_name_count; ++j) {
+        free(module_names[j]);
+    }
+    free(module_names);
+
+    rc = sr_copy_all_ns("/module-a:base/module-b:list['key/xyz']/key", &module_names, &module_name_count);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(module_name_count == 2u);
+    assert_string_equal(module_names[0], "module-a");
+    assert_string_equal(module_names[1], "module-b");
+
+    for (size_t j = 0; j < module_name_count; ++j) {
+        free(module_names[j]);
+    }
+    free(module_names);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -1449,6 +1479,7 @@ main() {
             cmocka_unit_test_setup_teardown(sr_get_system_groups_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_free_list_of_strings_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_dup_data_tree_to_ctx_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_copy_all_ns_test, logging_setup, logging_cleanup),
     };
 
     watchdog_start(300);
