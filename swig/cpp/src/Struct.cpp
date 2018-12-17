@@ -88,7 +88,7 @@ char *Data::get_string() const {
 }
 uint8_t Data::get_uint8() const {
     if (_t != SR_UINT8_T) throw_exception(SR_ERR_DATA_MISSING);
-    return _d.uint32_val;
+    return _d.uint8_val;
 }
 uint16_t Data::get_uint16() const {
     if (_t != SR_UINT16_T) throw_exception(SR_ERR_DATA_MISSING);
