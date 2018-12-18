@@ -241,12 +241,32 @@ sr_copy_all_ns(const char *xpath, char ***namespaces_p, size_t *ns_count_p)
     int rc = SR_ERR_OK;
     char *xp, *sptr, *ptr, *cur_node, **tmp, **namespaces = NULL;
     size_t ns_count = 0;
+    static const char qchars[] = "\"'";
+    const char *qchar;
+    char *q1, *q2, *qptr;
 
     if (xpath[0] != '/') {
         return SR_ERR_INVAL_ARG;
     }
 
     xp = strdup(xpath);
+
+    // Blank quoted strings in the xpath, which may contain '/' characters
+    for (qchar = qchars; *qchar; qchar++) {
+        q1 = strchr(xp, *qchar);
+        while (q1) {
+            q2 = strchr(q1 + 1, *qchar);
+            if (!q2) {
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+
+            for (qptr = q1 + 1; qptr < q2; qptr++) {
+                *qptr = ' ';
+            }
+            q1 = strchr(q2 + 1, *qchar);
+        }
+    }
 
     for (cur_node = strtok_r(xp, "/", &sptr); cur_node; cur_node = strtok_r(NULL, "/", &sptr)) {
         if (cur_node[strlen(cur_node) - 1] == ']') {
