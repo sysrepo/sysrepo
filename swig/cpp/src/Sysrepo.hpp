@@ -68,35 +68,6 @@ class Counter;
 class Callback;
 class Deleter;
 
-#ifdef SWIGLUA
-using S_Iter_Value       = Iter_Value*;
-using S_Iter_Change      = Iter_Change*;
-using S_Session          = Session*;
-using S_Subscribe        = Subscribe*;
-using S_Connection       = Connection*;
-using S_Operation        = Operation*;
-using S_Schema_Content   = Schema_Content*;
-using S_Error            = Error*;
-using S_Errors           = Errors*;
-using S_Data             = Data*;
-using S_Schema_Revision  = Schema_Revision*;
-using S_Schema_Submodule = Schema_Submodule*;
-using S_Yang_Schema      = Yang_Schema*;
-using S_Yang_Schemas     = Yang_Schemas*;
-using S_Fd_Change        = Fd_Change*;
-using S_Fd_Changes       = Fd_Changes*;
-using S_Val              = Val*;
-using S_Vals_Holder      = Vals_Holder*;
-using S_Vals             = Vals*;
-using S_Tree             = Tree*;
-using S_Trees            = Trees*;
-using S_Trees_Holder     = Trees_Holder*;
-using S_Xpath_Ctx        = Xpath_Ctx*;
-using S_Logs             = Logs*;
-using S_Change           = Change*;
-using S_Counter          = Counter*;
-using S_Callback         = Callback*;
-#else
 using S_Iter_Value       = std::shared_ptr<Iter_Value>;
 using S_Iter_Change      = std::shared_ptr<Iter_Change>;
 using S_Session          = std::shared_ptr<Session>;
@@ -125,7 +96,6 @@ using S_Change           = std::shared_ptr<Change>;
 using S_Counter          = std::shared_ptr<Counter>;
 using S_Callback         = std::shared_ptr<Callback>;
 using S_Deleter          = std::shared_ptr<Deleter>;
-#endif
 
 /* this is a workaround for python not recognizing
  * enum's in function default values */

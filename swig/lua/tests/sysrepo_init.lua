@@ -24,8 +24,8 @@ end
 function TestSysrepoInit:test_init()
 
   local conn = sr.Connection("test-init")
-  local sess = sr.Session(conn, sr.SR_DS_RUNNING)
-  local subs = sr.Subscribe(sess)
+  local sess = sr.Session(sr.ptr(conn), sr.SR_DS_RUNNING)
+  local subs = sr.Subscribe(sr.ptr(sess))
 
   local wrap = sr.Callback_lua(module_change_cb)
   subs:module_change_subscribe(MODULE_NAME, wrap);
@@ -51,25 +51,27 @@ function TestSysrepoInit:test_value()
   val:xpath_set(xpath)
   lu.assertEquals(xpath, val:xpath())
 
-  local val_duplicated = val:dup()
+  local val_duplicated = sr.ptr(val:dup())
   lu.assertNotEquals(val_duplicated:data(), val:data())
-  lu.assertEquals(val:data():get_string(), val_duplicated:data():get_string())
+  lu.assertEquals(sr.ptr(val:data()):get_string(), sr.ptr(val_duplicated:data()):get_string())
 end
 
 function TestSysrepoInit:test_values()
   local VAL_CNT = 3
   local vals = sr.Vals(VAL_CNT)
   lu.assertEquals(VAL_CNT, vals:val_cnt())
-  lu.assertEquals(vals:val(1):type(), sr.SR_UNKNOWN_T);
 
   local xpath = "/swig-test/lua/test[name='test_name']/number"
-  vals:val(1):set(xpath, 42, sr.SR_INT32_T)
+  local val = sr.ptr(vals:val(1))
+  val:set(xpath, 42, sr.SR_INT32_T)
 
-  local vals_duplicated = vals:dup()
+  local vals_duplicated = sr.ptr(vals:dup())
   lu.assertNotEquals(vals_duplicated, vals)
-  lu.assertEquals(vals_duplicated:val(1):data():get_int32(), vals:val(1):data():get_int32())
-  lu.assertEquals(vals_duplicated:val(1):xpath(), vals:val(1):xpath())
-  lu.assertEquals(vals_duplicated:val(1):type(), vals:val(1):type())
+  local val1 = sr.ptr(vals_duplicated:val(1))
+  local val2 = sr.ptr(vals:val(1))
+  lu.assertEquals(sr.ptr(val1:data()):get_int32(), sr.ptr(val2:data()):get_int32())
+  lu.assertEquals(val1:xpath(), val2:xpath())
+  lu.assertEquals(val1:type(), val2:type())
 end
 
 local runner = lu.LuaUnit.new()
