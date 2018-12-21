@@ -1,0 +1,101 @@
+module sysrepo {
+    namespace "urn:sysrepo";
+    prefix sr;
+
+    yang-version 1.1;
+
+    import ietf-yang-types {
+        prefix yang;
+    }
+
+    import ietf-yang-metadata {
+        prefix md;
+        revision-date 2016-08-05;
+    }
+
+    typedef module-ref {
+        type leafref {
+            path "/sysrepo-modules/module/name";
+        }
+    }
+
+    md:annotation operation {
+        type enumeration {
+            enum none;
+            enum ether;
+        }
+    }
+
+    md:annotation orig-key {
+        type string;
+    }
+
+    md:annotation orig-value {
+        type string;
+    }
+
+    md:annotation orig-dflt {
+        type empty;
+    }
+
+    container sysrepo-modules {
+        list module {
+            key "name";
+
+            leaf name {
+                type string;
+            }
+
+            leaf revision {
+                type string;
+            }
+
+            leaf has-data {
+                type boolean;
+                mandatory true;
+            }
+
+            leaf removed {
+                type empty;
+            }
+
+            leaf-list enabled-feature {
+                type string;
+            }
+
+            list changed-feature {
+                key "name";
+
+                leaf name {
+                    type string;
+                }
+
+                leaf change {
+                    type enumeration {
+                        enum "enable";
+                        enum "disable";
+                    }
+                    mandatory true;
+                }
+            }
+
+            container dependencies {
+                leaf-list module {
+                    type module-ref;
+                }
+
+                list inst-id {
+                    key "xpath";
+
+                    leaf xpath {
+                        type yang:xpath1.0;
+                    }
+
+                    leaf default-module {
+                        type module-ref;
+                    }
+                }
+            }
+        }
+    }
+}

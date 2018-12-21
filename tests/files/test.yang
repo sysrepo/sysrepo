@@ -1,0 +1,46 @@
+module test {
+    namespace "urn:test";
+    prefix t;
+
+    leaf test-leaf {
+        type uint8;
+    }
+
+    list l1 {
+        ordered-by user;
+        key "k";
+
+        leaf k {
+            type string;
+        }
+
+        leaf v {
+            type uint8;
+        }
+    }
+
+    leaf-list ll1 {
+        ordered-by user;
+        type int16;
+    }
+
+    container cont {
+        list l2 {
+            ordered-by user;
+            key "k";
+
+            leaf k {
+                type string;
+            }
+
+            leaf v {
+                type uint8;
+            }
+        }
+
+        leaf-list ll2 {
+            ordered-by user;
+            type int16;
+        }
+    }
+}

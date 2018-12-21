@@ -1,0 +1,12 @@
+module when1 {
+    namespace "urn:when1";
+    prefix w1;
+
+    leaf l1 {
+        type string;
+    }
+
+    leaf l2 {
+        type string;
+    }
+}

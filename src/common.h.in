@@ -1,0 +1,180 @@
+#ifndef _COMMON_H
+#define _COMMON_H
+
+#include <stdint.h>
+#include <string.h>
+#include <errno.h>
+
+#include <libyang/libyang.h>
+
+#include "sysrepo.h"
+
+#define SR_YANG_MOD "sysrepo"
+#define SR_REPO_PATH "@REPO_PATH@"
+#define SR_REPO_PATH_ENV "SYSREPO_REPOSITORY_PATH"
+
+/* s */
+#define SR_MODULE_LOCK_TIMEOUT 5
+
+/* s */
+#define SR_SUBSCR_JOIN_TIMEOUT 1
+
+/* ms */
+#define SR_SUB_LOCK_TIMEOUT 100
+
+/* ms */
+#define SR_SUB_COMMIT_STEP_TIMEOUT 20
+
+/* number of */
+#define SR_SUB_COMMIT_STEP_COUNT 500
+
+/* internal declarations + definitions
+ */
+#define MOD_INFO_DEP     0x01 /* dependency module, its data cannot be changed, but are required for validation */
+#define MOD_INFO_INV_DEP 0x02 /* inverse dependency module, its data cannot be changed, but will be validated */
+#define MOD_INFO_REQ     0x04 /* required module, its data can be changed and it will be validated */
+#define MOD_INFO_TYPE_MASK 0x07 /* just a mask for all module types */
+
+#define MOD_INFO_LOCK    0x08 /* locked module */
+#define MOD_INFO_CHANGED 0x10 /* module data were changed */
+
+typedef struct sr_mod_s sr_mod_t;
+
+struct sr_mod_info_s {
+    sr_datastore_t ds;
+    struct lyd_node *diff;
+    int dflt_change;
+    sr_conn_ctx_t *conn;
+
+    struct sr_mod_info_mod_s {
+        sr_mod_t *shm_mod;
+        uint8_t state;
+        const struct lys_module *ly_mod;
+        struct lyd_node *mod_data;
+        uint32_t event_id;
+
+        int shm_sub_fd;
+        uint32_t shm_sub_size;
+        char *shm_sub;
+    } *mods;
+    uint32_t mod_count;
+};
+
+#include "edit_diff.h"
+#include "shm.h"
+
+/* public definitions
+ */
+struct sr_conn_ctx_s {
+    char *app_name;
+    struct ly_ctx *ly_ctx;
+    sr_session_ctx_t **sessions;
+    uint32_t session_count;
+    sr_subscription_ctx_t **subscriptions;
+    uint32_t subscription_count;
+
+    int shm_lock;
+    int shm_fd;
+    uint32_t shm_size;
+    uint32_t shm_ver;
+    char *shm;
+};
+
+struct sr_session_ctx_s {
+    sr_conn_ctx_t *conn;
+    sr_datastore_t ds;
+    sr_notif_event_t ev;
+    uint8_t flags;
+
+    struct {
+        struct lyd_node *edit;
+        struct lyd_node *diff;
+    } dt[SR_DS_COUNT];
+};
+
+struct sr_subscription_ctx_s {
+    sr_conn_ctx_t *conn;
+    volatile pthread_t tid;
+
+    struct modsub_s {
+        char *module_name;
+        sr_datastore_t ds;
+        struct modsub_sub_s {
+            sr_module_change_cb cb;
+            void *private_data;
+            uint32_t priority;
+            sr_subscr_options_t opts;
+
+            uint32_t event_id;
+            sr_notif_event_t event;
+        } *subs;
+        uint32_t sub_count;
+
+        struct lyd_node *diff;
+        int shm_fd;
+        uint32_t shm_size;
+        char *shm;
+    } *mod_subs;
+    uint32_t mod_sub_count;
+};
+
+struct sr_change_iter_s {
+    struct ly_set *set;
+    uint32_t idx;
+    sr_change_oper_t parent_op;
+    int reverse_changes;
+};
+
+#define SR_LOG_ERR(format, ...) sr_log(SR_LL_ERR, format, ##__VA_ARGS__);
+#define SR_LOG_WRN(format, ...) sr_log(SR_LL_WRN, format, ##__VA_ARGS__);
+#define SR_LOG_INF(format, ...) sr_log(SR_LL_INF, format, ##__VA_ARGS__);
+#define SR_LOG_DBG(format, ...) sr_log(SR_LL_DBG, format, ##__VA_ARGS__);
+
+#define SR_LOG_ERRMSG(format) sr_log(SR_LL_ERR, format);
+#define SR_LOG_WRNMSG(format) sr_log(SR_LL_WRN, format);
+#define SR_LOG_INFMSG(format) sr_log(SR_LL_INF, format);
+#define SR_LOG_DBGMSG(format) sr_log(SR_LL_DBG, format);
+
+#define SR_LOG_ERRINT SR_LOG_ERR("Internal error (%s:%d).", __FILE__, __LINE__)
+#define SR_LOG_ERRMEM SR_LOG_ERR("Memory allocation failed (%s:%d).", __FILE__, __LINE__)
+#define SR_LOG_ERRLOCK(wr, func, ret) SR_LOG_ERR("%s locking a rwlock failed (%s: %s).", wr ? "Write" : "Read", func, strerror(ret))
+
+#define SR_CHECK_MEM_GOTO(cond, ret, go) if (cond) { SR_LOG_ERRMEM; ret = SR_ERR_NOMEM; goto go; }
+#define SR_CHECK_MEM_RET(cond) if (cond) { SR_LOG_ERRMEM; return SR_ERR_NOMEM; }
+#define SR_CHECK_INT_GOTO(cond, ret, go) if (cond) { SR_LOG_ERRINT; ret = SR_ERR_INTERNAL; goto go; }
+#define SR_CHECK_INT_RET(cond) if (cond) { SR_LOG_ERRINT; return SR_ERR_INTERNAL; }
+
+#define SR_LOG_FUNC_ERRNO(func) SR_LOG_ERR("%s() failed (%s).", func, strerror(errno));
+
+void sr_log(sr_log_level_t ll, const char *format, ...);
+
+void *sr_realloc(void *ptr, size_t size);
+
+const char *sr_get_repo_path(void);
+
+int sr_mkpath(char *file_path, mode_t mode, uint32_t start_idx);
+
+/* buf must be size at least 22 */
+char *sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *value, char *buf);
+
+char *sr_get_first_ns(const char *expr);
+
+const char *sr_ds2str(sr_datastore_t ds);
+
+int sr_msleep(uint32_t msec);
+
+uint32_t sr_file_get_size(int fd);
+
+const char *sr_ly_leaf_value_str(const struct lyd_node *leaf);
+
+int sr_shared_rwlock_init(pthread_rwlock_t *rwlock);
+
+const char *sr_ev2str(sr_notif_event_t ev);
+
+int sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val);
+
+void sr_ly_split(struct lyd_node *sibling);
+
+void sr_ly_link(struct lyd_node *first, struct lyd_node *sibling);
+
+#endif

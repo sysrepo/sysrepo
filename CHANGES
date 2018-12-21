@@ -1,0 +1,25 @@
+- sr_*_item flag SR_EDIT_NON_RECURSIVE not supported for sr_delete_item()
+- sr_commit() renamed to sr_apply_changes()
+- sr_node_t -> struct lyd_node *
+- sr_get_subtree(s) removed opts (no iterative retrieval, does not make sense)
+- once listening on a subscription, it cannot be modified!
+- sr_unsubscribe first parameter removed
+- SR_EV_VERIFY -> SR_EV_CHANGE, SR_EV_APPLY -> SR_EV_DONE
+- new event SR_EV_UPDATE (called first, but if several subscriptions, they will not get changes from the previous callbacks unless in one subscription)
+- getting changes xpath - selects specific changes, not change subtrees!
+- deleting a leaf does not check the value/it can be empty! but otherwise only limited paths are accepted, no xpath
+- sr_move_item() different relative item input
+
+removed functions:
+- sr_module_install_subscribe (use notifications)
+- sr_feature_enable_subscribe (use notifications)
+- sr_subtree_change_subscribe (use sr_module_change_subscribe() and filter changes)
+
+added functions:
+- sr_get_context
+- sr_install_module
+- sr_remove_module
+- sr_enable_feature
+- sr_disable_feature
+- sr_edit_batch
+- sr_subscription_listen

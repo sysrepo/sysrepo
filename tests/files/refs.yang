@@ -1,0 +1,41 @@
+module refs {
+    namespace "urn:refs";
+    prefix r;
+
+    import test {
+        prefix t;
+    }
+
+    container cont {
+        presence "str";
+        leaf def-inst-id {
+            type instance-identifier;
+            default "/t:ll1[.='-3000']";
+        }
+    }
+
+    leaf inst-id {
+        type instance-identifier;
+    }
+
+    leaf lref {
+        type leafref {
+            path "/t:test-leaf";
+        }
+    }
+
+    leaf l {
+        type empty;
+    }
+
+    leaf-list ll {
+        type string;
+    }
+
+    list lll {
+        key "key";
+        leaf key {
+            type uint8;
+        }
+    }
+}
