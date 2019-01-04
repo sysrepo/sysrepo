@@ -1687,7 +1687,7 @@ np_subscription_cleanup(np_subscription_t *subscription)
             np_subscription_content_cleanup(subscription);
             free(subscription);
         } else {
-            subscription->copy_cnt -= 1;
+            ATOMIC_DEC(&subscription->copy_cnt);
         }
     }
 }
