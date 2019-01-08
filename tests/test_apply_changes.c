@@ -750,6 +750,7 @@ module_update_fail_cb(sr_session_ctx_t *session, const char *module_name, sr_not
     switch (st->cb_called) {
     case 0:
         /* update fails */
+        sr_set_error(session, "Custom user callback error.", "/path/to/a/node");
         ret = SR_ERR_UNSUPPORTED;
         break;
     default:
@@ -766,6 +767,7 @@ apply_update_fail_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_conn_ctx_t *conn = st->conn[0];
     sr_session_ctx_t *sess;
+    const sr_error_info_t *err_info;
     sr_val_t sr_val;
     struct lyd_node *subtree;
     char *str1;
@@ -787,7 +789,12 @@ apply_update_fail_thread(void *arg)
 
     /* perform the change (it should fail) */
     ret = sr_apply_changes(sess);
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    ret = sr_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(err_info->err_count, 1);
+    assert_string_equal(err_info->err[0].message, "Custom user callback error.");
+    assert_string_equal(err_info->err[0].xpath, "/path/to/a/node");
 
     /* check current data tree */
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
@@ -1119,6 +1126,7 @@ apply_change_fail_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_conn_ctx_t *conn = st->conn[0];
     sr_session_ctx_t *sess;
+    const sr_error_info_t *err_info;
     struct lyd_node *subtree;
     char *str1;
     int ret;
@@ -1136,7 +1144,13 @@ apply_change_fail_thread(void *arg)
 
     /* perform the change (it should fail) */
     ret = sr_apply_changes(sess);
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    /* no custom error message set */
+    ret = sr_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(err_info->err_count, 1);
+    assert_string_equal(err_info->err[0].message, "Operation not supported");
+    assert_null(err_info->err[0].xpath);
 
     /* check current data tree */
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
@@ -2203,5 +2217,6 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_done_when, setup_f, teardown_f),
     };
 
+    sr_log_stderr(SR_LL_INF);
     return cmocka_run_group_tests(tests, setup, teardown);
 }

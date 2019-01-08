@@ -9,11 +9,13 @@
 - getting changes xpath - selects specific changes, not change subtrees!
 - deleting a leaf does not check the value/it can be empty! but otherwise only limited paths are accepted, no xpath
 - sr_move_item() different relative item input
+- error retrieval from session API slightly changed
 
 removed functions:
 - sr_module_install_subscribe (use notifications)
 - sr_feature_enable_subscribe (use notifications)
 - sr_subtree_change_subscribe (use sr_module_change_subscribe() and filter changes)
+- sr_session_refresh (not needed, performed automatically)
 
 added functions:
 - sr_get_context

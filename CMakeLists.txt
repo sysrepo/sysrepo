@@ -61,6 +61,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 set(LIBSRC
     src/sysrepo.c
     src/common.c
+    src/log.c
     src/edit_diff.c
     src/shm_main.c
     src/shm_mod.c
@@ -69,6 +70,8 @@ set(LIBSRC
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_library(srobj OBJECT ${LIBSRC})
 add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
+
+set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
 
 # dependencies
 find_package(YANG REQUIRED)

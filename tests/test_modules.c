@@ -72,5 +72,6 @@ main(void)
         cmocka_unit_test_setup_teardown(test_install_uninstall, setup_f, teardown_f),
     };
 
+    sr_log_stderr(SR_LL_INF);
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

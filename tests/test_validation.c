@@ -200,5 +200,6 @@ main(void)
         cmocka_unit_test_teardown(test_instid, clear_test_refs),
     };
 
+    sr_log_stderr(SR_LL_INF);
     return cmocka_run_group_tests(tests, setup_f, teardown_f);
 }

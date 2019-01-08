@@ -55,7 +55,7 @@ typedef struct sr_sub_s {
     uint32_t priority;
     sr_notif_event_t event;
     uint32_t subscriber_count;
-    int abort_ret;
+    sr_error_t err_code;
 } sr_sub_t;
 /* FOR SUBSCRIBERS
  * followed by:
@@ -64,6 +64,7 @@ typedef struct sr_sub_s {
  * FOR ORIGINATOR (when subscriber_count is 0)
  * followed by:
  * event SR_EV_UPDATE - char *edit_lyb
+ * or if err_code is set - char *error_message; char *error_xpath
  */
 
 /* shm_main.c */
@@ -71,79 +72,82 @@ sr_mod_t *sr_shmmain_getnext(char *sr_shm, sr_mod_t *last);
 
 sr_mod_t *sr_shmmain_find_module(char *sr_shm, const char *name, off_t name_off);
 
-int sr_shmmain_update_ver(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_update_ver(sr_conn_ctx_t *conn);
 
-int sr_shmmain_check_ver(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_check_ver(sr_conn_ctx_t *conn);
 
-int sr_shmmain_check_dirs(void);
+sr_error_info_t *sr_shmmain_check_dirs(void);
 
-int sr_shmmain_lock_open(int *shm_lock);
+sr_error_info_t *sr_shmmain_lock_open(int *shm_lock);
 
-int sr_shmmain_remap(sr_conn_ctx_t *conn, uint32_t shm_size);
+sr_error_info_t *sr_shmmain_remap(sr_conn_ctx_t *conn, uint32_t shm_size);
 
-int sr_shmmain_lock(sr_conn_ctx_t *conn, int wr);
+sr_error_info_t *sr_shmmain_lock(sr_conn_ctx_t *conn, int wr);
 
 void sr_shmmain_unlock(sr_conn_ctx_t *conn);
 
-int sr_shmmain_create(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_create(sr_conn_ctx_t *conn);
 
-int sr_shmmain_open(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent);
 
-int sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod, int *has_data);
+sr_error_info_t *sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod, int *has_data);
 
-int sr_shmmain_unsched_del_module_try(sr_conn_ctx_t *conn, const char *mod_name);
+sr_error_info_t *sr_shmmain_unsched_del_module(sr_conn_ctx_t *conn, const char *mod_name);
 
-int sr_shmmain_deferred_del_module_with_imps(sr_conn_ctx_t *conn, const char *mod_name);
+sr_error_info_t *sr_shmmain_deferred_del_module_with_imps(sr_conn_ctx_t *conn, const char *mod_name);
 
-int sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, const char *feat_name, int enable);
+sr_error_info_t *sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, const char *feat_name,
+        int enable);
 
 /* shm_mod.c */
-int sr_shmmod_lock(sr_mod_t *shm_mod, sr_datastore_t ds, int wr);
+sr_error_info_t *sr_shmmod_lock(sr_mod_t *shm_mod, sr_datastore_t ds, int wr);
 
 void sr_shmmod_unlock(sr_mod_t *shm_mod, sr_datastore_t ds);
 
-int sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_datastore_t ds, struct sr_mod_info_s *mod_info);
-
-int sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
+sr_error_info_t *sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_datastore_t ds,
         struct sr_mod_info_s *mod_info);
 
-int sr_shmmod_multilock(struct sr_mod_info_s *mod_info, int wr, int applying_changes);
+sr_error_info_t *sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
+        struct sr_mod_info_s *mod_info);
 
-int sr_shmmod_multirelock(struct sr_mod_info_s *mod_info, int upgrade);
+sr_error_info_t *sr_shmmod_multilock(struct sr_mod_info_s *mod_info, int wr, int applying_changes);
+
+sr_error_info_t *sr_shmmod_multirelock(struct sr_mod_info_s *mod_info, int upgrade);
 
 void sr_shmmod_multiunlock(struct sr_mod_info_s *mod_info, int applying_changes);
 
-int sr_shmmod_get_filter(sr_session_ctx_t *session, const char *xpath, struct sr_mod_info_s *mod_info,
+sr_error_info_t *sr_shmmod_get_filter(sr_session_ctx_t *session, const char *xpath, struct sr_mod_info_s *mod_info,
         struct ly_set **result);
 
-int sr_shmmod_create_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmmod_create_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_info);
 
-int sr_shmmod_validate(struct sr_mod_info_s *mod_info, int finish_diff);
+sr_error_info_t *sr_shmmod_validate(struct sr_mod_info_s *mod_info, int finish_diff);
 
-int sr_shmmod_store(struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmmod_store(struct sr_mod_info_s *mod_info);
 
-int sr_shmmod_subscription(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, uint32_t priority,
+sr_error_info_t *sr_shmmod_subscription(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, uint32_t priority,
         int subscr_opts, int add);
 
 /* shm_sub.c */
-int sr_shmsub_lock(sr_sub_t *shm_sub, int wr, const char *func);
+sr_error_info_t *sr_shmsub_lock(sr_sub_t *shm_sub, int wr, const char *func);
 
 void sr_shmsub_unlock(sr_sub_t *shm_sub);
 
-int sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_module_change_cb mod_cb,
+sr_error_info_t *sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_module_change_cb mod_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subs_p);
 
-int sr_shmsub_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs);
+sr_error_info_t *sr_shmsub_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs);
 
-int sr_shmsub_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update_edit, int *abort_ret);
+sr_error_info_t *sr_shmsub_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update_edit,
+        sr_error_info_t **cb_err_info);
 
-int sr_shmsub_notify_update_clear(struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmsub_notify_update_clear(struct sr_mod_info_s *mod_info);
 
-int sr_shmsub_notify_change(struct sr_mod_info_s *mod_info, int *abort_ret);
+sr_error_info_t *sr_shmsub_notify_change(struct sr_mod_info_s *mod_info, sr_error_info_t **cb_err_info);
 
-int sr_shmsub_notify_change_done(struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmsub_notify_change_done(struct sr_mod_info_s *mod_info);
 
-int sr_shmsub_notify_change_abort(struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmsub_notify_change_abort(struct sr_mod_info_s *mod_info);
 
 void *sr_shmsub_listen_thread(void *arg);
 

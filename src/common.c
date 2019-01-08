@@ -1,5 +1,5 @@
 
-#define _POSIX_C_SOURCE 200809L
+#include "common.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -14,45 +14,6 @@
 #include <time.h>
 #include <assert.h>
 #include <pthread.h>
-
-#include "common.h"
-
-static void
-sr_log_vprintf(sr_log_level_t ll, const char *format, va_list args)
-{
-    char msg[2048];
-
-    if (vsnprintf(msg, 2048, format, args) == -1) {
-        return;
-    }
-
-    switch (ll) {
-    case SR_LL_ERR:
-        fprintf(stderr, "SRERR: %s\n", msg);
-        break;
-    case SR_LL_WRN:
-        fprintf(stderr, "SRWRN: %s\n", msg);
-        break;
-    case SR_LL_INF:
-        fprintf(stderr, "SRINF: %s\n", msg);
-        break;
-    case SR_LL_DBG:
-        fprintf(stderr, "SRDBG: %s\n", msg);
-        break;
-    case SR_LL_NONE:
-        break;
-    }
-}
-
-void
-sr_log(sr_log_level_t ll, const char *format, ...)
-{
-    va_list ap;
-
-    va_start(ap, format);
-    sr_log_vprintf(ll, format, ap);
-    va_end(ap);
-}
 
 void *
 sr_realloc(void *ptr, size_t size)
@@ -80,10 +41,11 @@ sr_get_repo_path(void)
     return SR_REPO_PATH;
 }
 
-int
+sr_error_info_t *
 sr_mkpath(char *file_path, mode_t mode, uint32_t start_idx)
 {
     char *p;
+    sr_error_info_t *err_info = NULL;
 
     assert(file_path[start_idx] == '/');
 
@@ -92,8 +54,8 @@ sr_mkpath(char *file_path, mode_t mode, uint32_t start_idx)
         if (mkdir(file_path, mode) == -1) {
             if (errno != EEXIST) {
                 *p = '/';
-                SR_LOG_FUNC_ERRNO("mkdir");
-                return SR_ERR_IO;
+                SR_ERRINFO_SYSERRNO(&err_info, "mkdir");
+                return err_info;
             }
         }
         *p = '/';
@@ -101,12 +63,12 @@ sr_mkpath(char *file_path, mode_t mode, uint32_t start_idx)
 
     if (mkdir(file_path, mode) == -1) {
         if (errno != EEXIST) {
-            SR_LOG_FUNC_ERRNO("mkdir");
-            return SR_ERR_IO;
+            SR_ERRINFO_SYSERRNO(&err_info, "mkdir");
+            return err_info;
         }
     }
 
-    return SR_ERR_OK;;
+    return NULL;
 }
 
 char *
@@ -204,9 +166,10 @@ sr_ds2str(sr_datastore_t ds)
     return NULL;
 }
 
-int
+sr_error_info_t *
 sr_msleep(uint32_t msec)
 {
+    sr_error_info_t *err_info = NULL;
     struct timespec ts;
     int ret;
 
@@ -219,29 +182,31 @@ sr_msleep(uint32_t msec)
     } while ((ret == -1) && (errno = EINTR));
 
     if (ret == -1) {
-        SR_LOG_FUNC_ERRNO("nanosleep");
-        return SR_ERR_INTERNAL;
+        SR_ERRINFO_SYSERRNO(&err_info, "nanosleep");
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-uint32_t
-sr_file_get_size(int fd)
+sr_error_info_t *
+sr_file_get_size(int fd, uint32_t *size)
 {
-    off_t size;
+    sr_error_info_t *err_info = NULL;
+    off_t off;
 
-    size = lseek(fd, 0, SEEK_END);
-    if (size == -1) {
-        SR_LOG_FUNC_ERRNO("lseek");
-        return 0;
+    off = lseek(fd, 0, SEEK_END);
+    if (off == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "lseek");
+        return err_info;
     }
     if (lseek(fd, 0, SEEK_SET) == -1) {
-        SR_LOG_FUNC_ERRNO("lseek");
-        return 0;
+        SR_ERRINFO_SYSERRNO(&err_info, "lseek");
+        return err_info;
     }
 
-    return (uint32_t)size;
+    *size = off;
+    return NULL;
 }
 
 const char *
@@ -251,31 +216,32 @@ sr_ly_leaf_value_str(const struct lyd_node *leaf)
     return ((struct lyd_node_leaf_list *)leaf)->value_str;
 }
 
-int
+sr_error_info_t *
 sr_shared_rwlock_init(pthread_rwlock_t *rwlock)
 {
+    sr_error_info_t *err_info = NULL;
     pthread_rwlockattr_t lock_attr;
     int ret;
 
     /* init attr */
     if ((ret = pthread_rwlockattr_init(&lock_attr))) {
-        SR_LOG_ERR("Initializing pthread rwlockattr failed (%s).", strerror(ret));
-        return SR_ERR_INIT_FAILED;
+        sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlockattr failed (%s).", strerror(ret));
+        return err_info;
     }
     if ((ret = pthread_rwlockattr_setpshared(&lock_attr, PTHREAD_PROCESS_SHARED))) {
-        SR_LOG_ERR("Changing pthread rwlockattr failed (%s).", strerror(ret));
         pthread_rwlockattr_destroy(&lock_attr);
-        return SR_ERR_INIT_FAILED;
+        sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread rwlockattr failed (%s).", strerror(ret));
+        return err_info;
     }
 
     if ((ret = pthread_rwlock_init(rwlock, &lock_attr))) {
-        SR_LOG_ERR("Initializing pthread rwlock failed (%s).", strerror(ret));
         pthread_rwlockattr_destroy(&lock_attr);
-        return SR_ERR_INIT_FAILED;
+        sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+        return err_info;
     }
 
     pthread_rwlockattr_destroy(&lock_attr);
-    return SR_ERR_OK;
+    return NULL;
 }
 
 const char *
@@ -299,15 +265,15 @@ sr_ev2str(sr_notif_event_t ev)
     return NULL;
 }
 
-int
+sr_error_info_t *
 sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
 {
+    sr_error_info_t *err_info = NULL;
     char *ptr;
     const struct lyd_node_leaf_list *leaf;
-    int ret;
 
     sr_val->xpath = lyd_path(node);
-    SR_CHECK_MEM_GOTO(!sr_val->xpath, ret, error);
+    SR_CHECK_MEM_GOTO(!sr_val->xpath, err_info, error);
 
     sr_val->dflt = node->dflt;
 
@@ -319,12 +285,12 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
         case LY_TYPE_BINARY:
             sr_val->type = SR_BINARY_T;
             sr_val->data.binary_val = strdup(leaf->value_str);
-            SR_CHECK_MEM_GOTO(!sr_val->data.binary_val, ret, error);
+            SR_CHECK_MEM_GOTO(!sr_val->data.binary_val, err_info, error);
             break;
         case LY_TYPE_BITS:
             sr_val->type = SR_BITS_T;
             sr_val->data.bits_val = strdup(leaf->value_str);
-            SR_CHECK_MEM_GOTO(!sr_val->data.bits_val, ret, error);
+            SR_CHECK_MEM_GOTO(!sr_val->data.bits_val, err_info, error);
             break;
         case LY_TYPE_BOOL:
             sr_val->type = SR_BOOL_T;
@@ -334,8 +300,8 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
             sr_val->type = SR_DECIMAL64_T;
             sr_val->data.decimal64_val = strtod(leaf->value_str, &ptr);
             if (ptr[0]) {
-                SR_LOG_ERR("Value \"%s\" is not a valid decimal64 number.", leaf->value_str);
-                ret = SR_ERR_VALIDATION_FAILED;
+                sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Value \"%s\" is not a valid decimal64 number.",
+                        leaf->value_str);
                 goto error;
             }
             break;
@@ -346,17 +312,17 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
         case LY_TYPE_ENUM:
             sr_val->type = SR_ENUM_T;
             sr_val->data.enum_val = strdup(leaf->value_str);
-            SR_CHECK_MEM_GOTO(!sr_val->data.enum_val, ret, error);
+            SR_CHECK_MEM_GOTO(!sr_val->data.enum_val, err_info, error);
             break;
         case LY_TYPE_IDENT:
             sr_val->type = SR_IDENTITYREF_T;
             sr_val->data.identityref_val = strdup(leaf->value_str);
-            SR_CHECK_MEM_GOTO(!sr_val->data.identityref_val, ret, error);
+            SR_CHECK_MEM_GOTO(!sr_val->data.identityref_val, err_info, error);
             break;
         case LY_TYPE_INST:
             sr_val->type = SR_INSTANCEID_T;
             sr_val->data.instanceid_val = strdup(leaf->value_str);
-            SR_CHECK_MEM_GOTO(!sr_val->data.instanceid_val, ret, error);
+            SR_CHECK_MEM_GOTO(!sr_val->data.instanceid_val, err_info, error);
             break;
         case LY_TYPE_INT8:
             sr_val->type = SR_INT8_T;
@@ -377,7 +343,7 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
         case LY_TYPE_STRING:
             sr_val->type = SR_STRING_T;
             sr_val->data.string_val = strdup(leaf->value_str);
-            SR_CHECK_MEM_GOTO(!sr_val->data.string_val, ret, error);
+            SR_CHECK_MEM_GOTO(!sr_val->data.string_val, err_info, error);
             break;
         case LY_TYPE_UINT8:
             sr_val->type = SR_UINT8_T;
@@ -396,8 +362,8 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
             sr_val->data.uint64_val = leaf->value.uint64;
             break;
         default:
-            SR_LOG_ERRINT;
-            return SR_ERR_INTERNAL;
+            SR_ERRINFO_INT(&err_info);
+            return err_info;
         }
         break;
     case LYS_CONTAINER:
@@ -422,15 +388,15 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
         /* TODO sr_val->data.anydata_val = */
         break;
     default:
-        SR_LOG_ERRINT;
-        return SR_ERR_INTERNAL;
+        SR_ERRINFO_INT(&err_info);
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 
 error:
     free(sr_val->xpath);
-    return ret;
+    return err_info;
 }
 
 void

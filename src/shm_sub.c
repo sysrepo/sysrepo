@@ -1,6 +1,5 @@
 
-#define _POSIX_C_SOURCE 200809L
-#define _GNU_SOURCE
+#include "common.h"
 
 #include <sys/mman.h>
 #include <sys/types.h>
@@ -11,17 +10,16 @@
 #include <assert.h>
 #include <time.h>
 
-#include "common.h"
-
-int
+sr_error_info_t *
 sr_shmsub_lock(sr_sub_t *shm_sub, int wr, const char *func)
 {
     struct timespec abs_ts;
     int ret;
+    sr_error_info_t *err_info = NULL;
 
     if (clock_gettime(CLOCK_REALTIME, &abs_ts) == -1) {
-        SR_LOG_FUNC_ERRNO("clock_gettime");
-        return SR_ERR_INTERNAL;
+        SR_ERRINFO_SYSERRNO(&err_info, "clock_gettime");
+        return err_info;
     }
 
     abs_ts.tv_nsec += SR_SUB_LOCK_TIMEOUT * 1000000;
@@ -36,14 +34,11 @@ sr_shmsub_lock(sr_sub_t *shm_sub, int wr, const char *func)
         ret = pthread_rwlock_timedrdlock(&shm_sub->lock, &abs_ts);
     }
     if (ret) {
-        SR_LOG_ERRLOCK(wr, func, ret);
-        if (ret == ETIMEDOUT) {
-            return SR_ERR_TIME_OUT;
-        }
-        return SR_ERR_INTERNAL;
+        SR_ERRINFO_RWLOCK(&err_info, wr, func, ret);
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
 void
@@ -53,21 +48,25 @@ sr_shmsub_unlock(sr_sub_t *shm_sub)
 
     ret = pthread_rwlock_unlock(&shm_sub->lock);
     if (ret) {
-        SR_LOG_ERR("Unlocking a rwlock failed (%s).", strerror(ret));
+        SR_LOG_WRN("Unlocking a rwlock failed (%s).", strerror(ret));
     }
 }
 
-static int
+static sr_error_info_t *
 sr_shmsub_remap(int shm_fd, uint32_t new_shm_size, uint32_t *shm_size, char **shm)
 {
+    sr_error_info_t *err_info = NULL;
+
     /* read the new shm size if not set */
     if (!new_shm_size) {
-        new_shm_size = sr_file_get_size(shm_fd);
+        if ((err_info = sr_file_get_size(shm_fd, &new_shm_size))) {
+            return err_info;
+        }
     }
 
     if (new_shm_size == *shm_size) {
         /* mapping is fine, the size has not changed */
-        return SR_ERR_OK;
+        return NULL;
     }
 
     if (*shm) {
@@ -77,41 +76,41 @@ sr_shmsub_remap(int shm_fd, uint32_t new_shm_size, uint32_t *shm_size, char **sh
 
     /* truncate */
     if (ftruncate(shm_fd, *shm_size) == -1) {
-        SR_LOG_ERR("Failed to truncate shared memory (%s).", strerror(errno));
         *shm = NULL;
-        return SR_ERR_IO;
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to truncate shared memory (%s).", strerror(errno));
+        return err_info;
     }
 
     /* map */
     *shm = mmap(NULL, *shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (*shm == MAP_FAILED) {
-        SR_LOG_ERR("Failed to map shared memory (%s).", strerror(errno));
         *shm = NULL;
-        return SR_ERR_NOMEM;
+        sr_errinfo_new(&err_info, SR_ERR_NOMEM, NULL, "Failed to map shared memory (%s).", strerror(errno));
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-static int
+static sr_error_info_t *
 sr_shmsub_open(const char *mod_name, sr_datastore_t ds, int *shm_fd)
 {
     char *path, *shm = NULL;
     uint32_t shm_size = 0;
-    int ret, created;
+    int created;
     sr_sub_t *shm_sub;
+    sr_error_info_t *err_info = NULL;
 
     assert((ds == SR_DS_RUNNING) || (ds == SR_DS_STARTUP));
 
     /* already opened */
     if (*shm_fd > -1) {
-        return SR_ERR_OK;
+        return NULL;
     }
 
     /* create/open shared memory */
     if (asprintf(&path, "/sr_%s.%s", mod_name, sr_ds2str(ds)) == -1) {
-        SR_LOG_ERRMEM;
-        return SR_ERR_NOMEM;
+        return &sr_errinfo_mem;
     }
     created = 1;
     *shm_fd = shm_open(path, O_RDWR | O_CREAT | O_EXCL, 00600);
@@ -121,13 +120,13 @@ sr_shmsub_open(const char *mod_name, sr_datastore_t ds, int *shm_fd)
     }
     free(path);
     if (*shm_fd == -1) {
-        SR_LOG_ERR("Failed to open shared memory (%s).", strerror(errno));
-        return SR_ERR_IO;
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open shared memory (%s).", strerror(errno));
+        return err_info;
     }
 
     if (created) {
         /* truncate and map for initialization */
-        if ((ret = sr_shmsub_remap(*shm_fd, sizeof(sr_sub_t), &shm_size, &shm)) != SR_ERR_OK) {
+        if ((err_info = sr_shmsub_remap(*shm_fd, sizeof(sr_sub_t), &shm_size, &shm))) {
             goto error;
         }
 
@@ -138,37 +137,38 @@ sr_shmsub_open(const char *mod_name, sr_datastore_t ds, int *shm_fd)
         munmap(shm, shm_size);
     }
 
-    return SR_ERR_OK;
+    return NULL;
 
 error:
     if (*shm_fd > -1) {
         close(*shm_fd);
         *shm_fd = -1;
     }
-    return ret;
+    return err_info;
 }
 
-int
+sr_error_info_t *
 sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_module_change_cb mod_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subs_p)
 {
     struct modsub_s *mod_sub;
     sr_subscription_ctx_t *subs;
     uint32_t i;
-    int ret;
+    sr_error_info_t *err_info = NULL;
     void *new;
 
     /* allocate new subscription */
     if (!*subs_p) {
         *subs_p = calloc(1, sizeof **subs_p);
-        SR_CHECK_MEM_RET(!*subs_p);
+        SR_CHECK_MEM_RET(!*subs_p, err_info);
         (*subs_p)->conn = conn;
     }
     subs = *subs_p;
 
     if (subs->tid) {
-        SR_LOG_ERRMSG("You cannot add new subscriptions if the existing ones are already being listened on.");
-        return SR_ERR_INVAL_ARG;
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL,
+                "You cannot add new subscriptions if the existing ones are already being listened on.");
+        return err_info;
     }
 
     /* try to find this module subscription SHM mapping, it may already exist */
@@ -180,7 +180,7 @@ sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_m
 
     if (i == subs->mod_sub_count) {
         subs->mod_subs = sr_realloc(subs->mod_subs, (subs->mod_sub_count + 1) * sizeof *subs->mod_subs);
-        SR_CHECK_MEM_RET(!subs->mod_subs);
+        SR_CHECK_MEM_RET(!subs->mod_subs, err_info);
 
         mod_sub = &subs->mod_subs[subs->mod_sub_count];
         memset(mod_sub, 0, sizeof *mod_sub);
@@ -188,11 +188,11 @@ sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_m
 
         /* set attributes */
         mod_sub->module_name = strdup(mod_name);
-        SR_CHECK_MEM_RET(!mod_sub->module_name);
+        SR_CHECK_MEM_RET(!mod_sub->module_name, err_info);
         mod_sub->ds = ds;
 
         mod_sub->subs = malloc(sizeof *mod_sub->subs);
-        SR_CHECK_MEM_GOTO(!mod_sub->subs, ret, error);
+        SR_CHECK_MEM_GOTO(!mod_sub->subs, err_info, error);
         mod_sub->sub_count = 1;
         mod_sub->subs[0].cb = mod_cb;
         mod_sub->subs[0].private_data = private_data;
@@ -202,12 +202,12 @@ sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_m
         mod_sub->subs[0].event = SR_EV_NONE;
 
         /* create/open shared memory */
-        if ((ret = sr_shmsub_open(mod_name, ds, &mod_sub->shm_fd)) != SR_ERR_OK) {
+        if ((err_info = sr_shmsub_open(mod_name, ds, &mod_sub->shm_fd))) {
             goto error;
         }
 
         /* map the structure for now */
-        if ((ret = sr_shmsub_remap(mod_sub->shm_fd, 0, &mod_sub->shm_size, &mod_sub->shm)) != SR_ERR_OK) {
+        if ((err_info = sr_shmsub_remap(mod_sub->shm_fd, 0, &mod_sub->shm_size, &mod_sub->shm))) {
             goto error;
         }
 
@@ -218,7 +218,7 @@ sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_m
 
         /* just use the existing subscription and add another XPath */
         new = realloc(mod_sub->subs, (mod_sub->sub_count + 1) * sizeof *mod_sub->subs);
-        SR_CHECK_MEM_RET(!new);
+        SR_CHECK_MEM_RET(!new, err_info);
 
         mod_sub->subs = new;
         mod_sub->subs[mod_sub->sub_count].cb = mod_cb;
@@ -231,7 +231,7 @@ sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_m
         ++mod_sub->sub_count;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 
 error:
     free(mod_sub->module_name);
@@ -240,24 +240,24 @@ error:
     if (mod_sub->shm_fd > -1) {
         close(mod_sub->shm_fd);
     }
-    return ret;
+    return err_info;
 }
 
-int
+sr_error_info_t *
 sr_shmsub_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
 {
     uint32_t i, j;
     struct modsub_s *mod_sub;
-    int ret;
+    sr_error_info_t *err_info = NULL;
 
     for (i = 0; i < subs->mod_sub_count; ++i) {
         mod_sub = &subs->mod_subs[i];
 
         /* remove the subscriptions from the main SHM */
         for (j = 0; j < mod_sub->sub_count; ++j) {
-            if ((ret = sr_shmmod_subscription(conn, mod_sub->module_name, mod_sub->ds, mod_sub->subs[j].priority,
-                        mod_sub->subs[j].opts, 0)) != SR_ERR_OK) {
-                return ret;
+            if ((err_info = sr_shmmod_subscription(conn, mod_sub->module_name, mod_sub->ds, mod_sub->subs[j].priority,
+                        mod_sub->subs[j].opts, 0))) {
+                return err_info;
             }
         }
 
@@ -275,26 +275,26 @@ sr_shmsub_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
         }
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-static int
-sr_shmsub_notify_new_event_lock(sr_sub_t *shm_sub, const char *mod_name, int *abort_ret)
+static sr_error_info_t *
+sr_shmsub_notify_new_event_lock(sr_sub_t *shm_sub, const char *mod_name, sr_error_t *err_code)
 {
     uint32_t steps;
-    int ret;
+    sr_error_info_t *err_info = NULL;
 
-    if (abort_ret) {
-        *abort_ret = SR_ERR_OK;
+    if (err_code) {
+        *err_code = SR_ERR_OK;
     }
     steps = SR_SUB_COMMIT_STEP_COUNT;
 
     /* SUB WRITE LOCK */
-    if ((ret = sr_shmsub_lock(shm_sub, 1, __func__)) != SR_ERR_OK) {
-        return ret;
+    if ((err_info = sr_shmsub_lock(shm_sub, 1, __func__))) {
+        return err_info;
     }
 
-    while (shm_sub->event && (!abort_ret || !shm_sub->abort_ret) && steps) {
+    while (shm_sub->event && (!err_code || !shm_sub->err_code) && steps) {
         /* SUB UNLOCK */
         sr_shmsub_unlock(shm_sub);
 
@@ -302,38 +302,41 @@ sr_shmsub_notify_new_event_lock(sr_sub_t *shm_sub, const char *mod_name, int *ab
         --steps;
 
         /* SUB WRITE LOCK */
-        if ((ret = sr_shmsub_lock(shm_sub, 1, __func__)) != SR_ERR_OK) {
-            return ret;
+        if ((err_info = sr_shmsub_lock(shm_sub, 1, __func__))) {
+            return err_info;
         }
     }
-    assert(!steps || (!shm_sub->subscriber_count && !shm_sub->event) || (abort_ret && shm_sub->abort_ret));
+    assert(!steps || (!shm_sub->subscriber_count && !shm_sub->event) || (err_code && shm_sub->err_code));
 
     if (!steps) {
         /* timeout */
-        /* TODO check for existence/kill the unresponsive subscriber? */
-        SR_LOG_ERR("Locking subscription of \"%s\" failed, previous event \"%s\" with ID %u priority %u is still waiting"
-                " for %u subscribers.", mod_name, sr_ev2str(shm_sub->event), shm_sub->event_id, shm_sub->priority,
-                shm_sub->subscriber_count);
 
         /* SUB UNLOCK */
         sr_shmsub_unlock(shm_sub);
-        return SR_ERR_TIME_OUT;
-    } else if (abort_ret && shm_sub->abort_ret) {
+
+        /* TODO check for existence/kill the unresponsive subscriber? */
+        sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Locking subscription of \"%s\" failed,"
+                " previous event \"%s\" with ID %u priority %u is still waiting for %u subscribers.",
+                mod_name, sr_ev2str(shm_sub->event), shm_sub->event_id, shm_sub->priority, shm_sub->subscriber_count);
+        return err_info;
+    } else if (err_code && shm_sub->err_code) {
         /* callback for previous event failed */
-        *abort_ret = shm_sub->abort_ret;
+        *err_code = shm_sub->err_code;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-static int
-sr_shmsub_notify_finish_event_unlock(sr_sub_t *shm_sub, int *abort_ret)
+static sr_error_info_t *
+sr_shmsub_notify_finish_event_unlock(sr_sub_t *shm_sub, sr_error_info_t **cb_err_info)
 {
     uint32_t steps;
-    int ret;
+    sr_error_info_t *err_info = NULL;
+    sr_error_t err_code = SR_ERR_OK;
+    char *err_msg, *err_xpath;
 
     steps = SR_SUB_COMMIT_STEP_COUNT;
-    while (shm_sub->event && !shm_sub->abort_ret && steps) {
+    while (shm_sub->event && !shm_sub->err_code && steps) {
         /* SUB UNLOCK */
         sr_shmsub_unlock(shm_sub);
 
@@ -341,38 +344,46 @@ sr_shmsub_notify_finish_event_unlock(sr_sub_t *shm_sub, int *abort_ret)
         --steps;
 
         /* SUB READ LOCK */
-        if ((ret = sr_shmsub_lock(shm_sub, 0, __func__)) != SR_ERR_OK) {
-            return ret;
+        if ((err_info = sr_shmsub_lock(shm_sub, 0, __func__))) {
+            return err_info;
         }
     }
-    assert(!shm_sub->event || shm_sub->abort_ret || !steps);
+    assert(!shm_sub->event || shm_sub->err_code || !steps);
 
     /* return failed callback returned value if any */
-    *abort_ret = shm_sub->abort_ret;
+    err_code = shm_sub->err_code;
 
     /* SUB UNLOCK */
     sr_shmsub_unlock(shm_sub);
 
     if (!steps) {
         /* commit timeout */
+        shm_sub->err_code = SR_ERR_TIME_OUT;
         /* TODO check for existence/kill the unresponsive subscriber? */
-        *abort_ret = SR_ERR_TIME_OUT;
+        sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, NULL, "Callback event processing timed out.");
+    } else if (err_code) {
+        /* create error structure from messages stored after the subscription structure */
+        err_msg = ((char *)shm_sub) + sizeof *shm_sub;
+        err_xpath = err_msg + strlen(err_msg) + 1;
+
+        sr_errinfo_new(cb_err_info, err_code, err_xpath[0] ? err_xpath : NULL, err_msg[0] ? err_msg : sr_strerror(err_code));
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-static int
+static sr_error_info_t *
 sr_shmsub_notify_write_event(uint32_t event_id, uint32_t priority, sr_notif_event_t event, uint32_t subscriber_count,
         const char *data, uint32_t data_len, sr_sub_t *shm_sub)
 {
     uint32_t changed_shm_size;
+    sr_error_info_t *err_info = NULL;
 
     shm_sub->event_id = event_id;
     shm_sub->priority = priority;
     shm_sub->event = event;
     shm_sub->subscriber_count = subscriber_count;
-    shm_sub->abort_ret = SR_ERR_OK;
+    shm_sub->err_code = SR_ERR_OK;
 
     changed_shm_size = sizeof *shm_sub;
 
@@ -384,13 +395,13 @@ sr_shmsub_notify_write_event(uint32_t event_id, uint32_t priority, sr_notif_even
     }
 
     if (msync(shm_sub, changed_shm_size, MS_INVALIDATE)) {
-        SR_LOG_FUNC_ERRNO("msync");
-        return SR_ERR_IO;
+        SR_ERRINFO_SYSERRNO(&err_info, "msync");
+        return err_info;
     }
     SR_LOG_INF("Published event \"%s\" with ID %u priority %u for %u subscribers.",
             sr_ev2str(event), event_id, priority, subscriber_count);
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
 static int
@@ -457,19 +468,20 @@ sr_shmsub_notify_next_subscription(char *sr_shm, struct sr_mod_info_mod_s *mod, 
     }
 }
 
-int
-sr_shmsub_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update_edit, int *abort_ret)
+sr_error_info_t *
+sr_shmsub_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update_edit, sr_error_info_t **cb_err_info)
 {
     sr_sub_t *shm_sub;
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *edit;
     uint32_t i, cur_priority, subscriber_count, diff_lyb_len;
-    int ret = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
     char *diff_lyb = NULL;
+    struct ly_ctx *ly_ctx;
 
     assert(mod_info->diff);
     *update_edit = NULL;
-    *abort_ret = SR_ERR_OK;
+    ly_ctx = lyd_node_module(mod_info->diff)->ctx;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -485,17 +497,19 @@ sr_shmsub_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update
 
         /* prepare diff to write into SHM */
         if (!diff_lyb && lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYP_WITHSIBLINGS)) {
-            return SR_ERR_INTERNAL;
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            SR_ERRINFO_INT(&err_info);
+            return err_info;
         }
         diff_lyb_len = lyd_lyb_data_length(diff_lyb);
 
         /* open sub SHM */
-        if ((ret = sr_shmsub_open(mod->ly_mod->name, mod_info->ds, &mod->shm_sub_fd)) != SR_ERR_OK) {
+        if ((err_info = sr_shmsub_open(mod->ly_mod->name, mod_info->ds, &mod->shm_sub_fd))) {
             goto cleanup;
         }
 
         /* map sub SHM */
-        if ((ret = sr_shmsub_remap(mod->shm_sub_fd, 0, &mod->shm_sub_size, &mod->shm_sub)) != SR_ERR_OK) {
+        if ((err_info = sr_shmsub_remap(mod->shm_sub_fd, 0, &mod->shm_sub_size, &mod->shm_sub))) {
             goto cleanup;
         }
         shm_sub = (sr_sub_t *)mod->shm_sub;
@@ -506,18 +520,18 @@ sr_shmsub_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update
 
         do {
             /* SUB WRITE LOCK */
-            if ((ret = sr_shmsub_notify_new_event_lock(shm_sub, mod->ly_mod->name, NULL)) != SR_ERR_OK) {
+            if ((err_info = sr_shmsub_notify_new_event_lock(shm_sub, mod->ly_mod->name, NULL))) {
                 goto cleanup;
             }
 
             /* remap sub SHM once we have the lock, it will do anything only on the first call */
-            ret = sr_shmsub_remap(mod->shm_sub_fd, sizeof *shm_sub + diff_lyb_len, &mod->shm_sub_size, &mod->shm_sub);
-            if (ret != SR_ERR_OK) {
+            err_info = sr_shmsub_remap(mod->shm_sub_fd, sizeof *shm_sub + diff_lyb_len, &mod->shm_sub_size, &mod->shm_sub);
+            if (err_info) {
                 goto cleanup;
             }
             shm_sub = (sr_sub_t *)mod->shm_sub;
 
-            /* write "diff-update" event */
+            /* write "update" event */
             if (!mod->event_id) {
                 mod->event_id = ++shm_sub->event_id;
             }
@@ -527,14 +541,14 @@ sr_shmsub_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update
             /* wait until all the subscribers have processed the event */
 
             /* SUB UNLOCK */
-            if ((ret = sr_shmsub_notify_finish_event_unlock(shm_sub, abort_ret)) != SR_ERR_OK) {
+            if ((err_info = sr_shmsub_notify_finish_event_unlock(shm_sub, cb_err_info))) {
                 goto cleanup;
             }
 
-            if (*abort_ret != SR_ERR_OK) {
+            if (*cb_err_info) {
                 /* failed callback or timeout */
-                SR_LOG_ERR("Commit event \"%s\" with ID %u priority %u failed (%s).", sr_ev2str(SR_EV_UPDATE),
-                        mod->event_id, cur_priority, sr_strerror(*abort_ret));
+                SR_LOG_WRN("Commit event \"%s\" with ID %u priority %u failed (%s).", sr_ev2str(SR_EV_UPDATE),
+                        mod->event_id, cur_priority, sr_strerror((*cb_err_info)->err_code));
                 goto cleanup;
             } else {
                 SR_LOG_INF("Commit event \"%s\" with ID %u priority %u succeeded.", sr_ev2str(SR_EV_UPDATE),
@@ -542,22 +556,22 @@ sr_shmsub_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update
             }
 
             /* SUB READ LOCK */
-            if ((ret = sr_shmsub_lock(shm_sub, 0, __func__)) != SR_ERR_OK) {
+            if ((err_info = sr_shmsub_lock(shm_sub, 0, __func__))) {
                 goto cleanup;
             }
 
             /* remap sub SHM */
-            if ((ret = sr_shmsub_remap(mod->shm_sub_fd, 0, &mod->shm_sub_size, &mod->shm_sub)) != SR_ERR_OK) {
+            if ((err_info = sr_shmsub_remap(mod->shm_sub_fd, 0, &mod->shm_sub_size, &mod->shm_sub))) {
                 goto cleanup;
             }
             shm_sub = (sr_sub_t *)mod->shm_sub;
 
             /* parse updated edit */
             ly_errno = 0;
-            edit = lyd_parse_mem(mod->ly_mod->ctx, mod->shm_sub + sizeof *shm_sub, LYD_LYB, LYD_OPT_EDIT);
+            edit = lyd_parse_mem(ly_ctx, mod->shm_sub + sizeof *shm_sub, LYD_LYB, LYD_OPT_EDIT);
             if (ly_errno) {
-                SR_LOG_ERRMSG("Failed to parse \"update\" edit.");
-                ret = SR_ERR_VALIDATION_FAILED;
+                sr_errinfo_new_ly(&err_info, ly_ctx);
+                sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse \"update\" edit.");
                 goto cleanup;
             }
 
@@ -569,7 +583,7 @@ sr_shmsub_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update
                 *update_edit = edit;
             } else {
                 if (lyd_insert_after((*update_edit)->prev, edit)) {
-                    ret = SR_ERR_INTERNAL;
+                    sr_errinfo_new_ly(&err_info, ly_ctx);
                     goto cleanup;
                 }
             }
@@ -583,21 +597,21 @@ sr_shmsub_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update
     /* success */
 
 cleanup:
-    if (ret != SR_ERR_OK) {
+    free(diff_lyb);
+    if (err_info || *cb_err_info) {
         lyd_free_withsiblings(*update_edit);
         *update_edit = NULL;
     }
-    free(diff_lyb);
-    return ret;
+    return err_info;
 }
 
-int
+sr_error_info_t *
 sr_shmsub_notify_update_clear(struct sr_mod_info_s *mod_info)
 {
     sr_sub_t *shm_sub;
     struct sr_mod_info_mod_s *mod;
     uint32_t i, cur_priority, subscriber_count;
-    int ret;
+    sr_error_info_t *err_info = NULL;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -621,29 +635,28 @@ sr_shmsub_notify_update_clear(struct sr_mod_info_s *mod_info)
 
         do {
             /* SUB WRITE LOCK */
-            if ((ret = sr_shmsub_lock(shm_sub, 1, __func__)) != SR_ERR_OK) {
-                return ret;
+            if ((err_info = sr_shmsub_lock(shm_sub, 1, __func__))) {
+                return err_info;
             }
 
-            if (shm_sub->abort_ret != SR_ERR_OK) {
+            if (shm_sub->err_code != SR_ERR_OK) {
                 assert((shm_sub->event_id == mod->event_id) && (shm_sub->priority == cur_priority));
 
                 /* clear it */
                 sr_shmsub_notify_write_event(mod->event_id, cur_priority, SR_EV_NONE, 0, NULL, 0, shm_sub);
 
                 /* remap sub SHM to make it smaller */
-                ret = sr_shmsub_remap(mod->shm_sub_fd, sizeof *shm_sub, &mod->shm_sub_size, &mod->shm_sub);
-                if (ret != SR_ERR_OK) {
+                if ((err_info = sr_shmsub_remap(mod->shm_sub_fd, sizeof *shm_sub, &mod->shm_sub_size, &mod->shm_sub))) {
                     /* SUB UNLOCK */
                     sr_shmsub_unlock(shm_sub);
-                    return ret;
+                    return err_info;
                 }
 
                 /* SUB UNLOCK */
                 sr_shmsub_unlock(shm_sub);
 
                 /* we have found the failed sub SHM */
-                return SR_ERR_OK;
+                return NULL;
             }
 
             /* SUB UNLOCK */
@@ -658,21 +671,20 @@ sr_shmsub_notify_update_clear(struct sr_mod_info_s *mod_info)
     }
 
     /* we have not found the failed sub SHM */
-    SR_LOG_ERRINT;
-    return SR_ERR_INTERNAL;
+    SR_ERRINFO_INT(&err_info);
+    return err_info;
 }
 
-int
-sr_shmsub_notify_change(struct sr_mod_info_s *mod_info, int *abort_ret)
+sr_error_info_t *
+sr_shmsub_notify_change(struct sr_mod_info_s *mod_info, sr_error_info_t **cb_err_info)
 {
     sr_sub_t *shm_sub;
     struct sr_mod_info_mod_s *mod;
     uint32_t i, cur_priority, subscriber_count, diff_lyb_len;
-    int ret = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
     char *diff_lyb = NULL;
 
     assert(mod_info->diff);
-    *abort_ret = SR_ERR_OK;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -690,17 +702,18 @@ sr_shmsub_notify_change(struct sr_mod_info_s *mod_info, int *abort_ret)
 
         /* prepare the diff to write into subscription SHM */
         if (!diff_lyb && lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYP_WITHSIBLINGS)) {
-            return SR_ERR_INTERNAL;
+            sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+            return err_info;
         }
         diff_lyb_len = lyd_lyb_data_length(diff_lyb);
 
         /* open sub SHM */
-        if ((ret = sr_shmsub_open(mod->ly_mod->name, mod_info->ds, &mod->shm_sub_fd)) != SR_ERR_OK) {
+        if ((err_info = sr_shmsub_open(mod->ly_mod->name, mod_info->ds, &mod->shm_sub_fd))) {
             goto cleanup;
         }
 
         /* map sub SHM */
-        if ((ret = sr_shmsub_remap(mod->shm_sub_fd, 0, &mod->shm_sub_size, &mod->shm_sub)) != SR_ERR_OK) {
+        if ((err_info = sr_shmsub_remap(mod->shm_sub_fd, 0, &mod->shm_sub_size, &mod->shm_sub))) {
             goto cleanup;
         }
         shm_sub = (sr_sub_t *)mod->shm_sub;
@@ -711,13 +724,13 @@ sr_shmsub_notify_change(struct sr_mod_info_s *mod_info, int *abort_ret)
 
         do {
             /* SUB WRITE LOCK */
-            if ((ret = sr_shmsub_notify_new_event_lock(shm_sub, mod->ly_mod->name, NULL)) != SR_ERR_OK) {
+            if ((err_info = sr_shmsub_notify_new_event_lock(shm_sub, mod->ly_mod->name, NULL))) {
                 goto cleanup;
             }
 
             /* remap sub SHM once we have the lock, it will do anything only on the first call */
-            ret = sr_shmsub_remap(mod->shm_sub_fd, sizeof *shm_sub + diff_lyb_len, &mod->shm_sub_size, &mod->shm_sub);
-            if (ret != SR_ERR_OK) {
+            err_info = sr_shmsub_remap(mod->shm_sub_fd, sizeof *shm_sub + diff_lyb_len, &mod->shm_sub_size, &mod->shm_sub);
+            if (err_info) {
                 goto cleanup;
             }
             shm_sub = (sr_sub_t *)mod->shm_sub;
@@ -732,14 +745,14 @@ sr_shmsub_notify_change(struct sr_mod_info_s *mod_info, int *abort_ret)
             /* wait until all the subscribers have processed the event */
 
             /* SUB UNLOCK */
-            if ((ret = sr_shmsub_notify_finish_event_unlock(shm_sub, abort_ret)) != SR_ERR_OK) {
+            if ((err_info = sr_shmsub_notify_finish_event_unlock(shm_sub, cb_err_info))) {
                 goto cleanup;
             }
 
-            if (*abort_ret != SR_ERR_OK) {
+            if (*cb_err_info) {
                 /* failed callback or timeout */
-                SR_LOG_ERR("Commit event \"%s\" with ID %u priority %u failed (%s).", sr_ev2str(SR_EV_CHANGE),
-                        mod->event_id, cur_priority, sr_strerror(*abort_ret));
+                SR_LOG_WRN("Commit event \"%s\" with ID %u priority %u failed (%s).", sr_ev2str(SR_EV_CHANGE),
+                        mod->event_id, cur_priority, sr_strerror((*cb_err_info)->err_code));
                 goto cleanup;
             } else {
                 SR_LOG_INF("Commit event \"%s\" with ID %u priority %u succeeded.", sr_ev2str(SR_EV_CHANGE),
@@ -756,16 +769,16 @@ sr_shmsub_notify_change(struct sr_mod_info_s *mod_info, int *abort_ret)
 
 cleanup:
     free(diff_lyb);
-    return ret;
+    return err_info;
 }
 
-int
+sr_error_info_t *
 sr_shmsub_notify_change_done(struct sr_mod_info_s *mod_info)
 {
     sr_sub_t *shm_sub;
     struct sr_mod_info_mod_s *mod;
     uint32_t i, cur_priority, subscriber_count;
-    int ret;
+    sr_error_info_t *err_info = NULL;
 
     assert(mod_info->diff);
 
@@ -790,8 +803,8 @@ sr_shmsub_notify_change_done(struct sr_mod_info_s *mod_info)
 
         do {
             /* SUB WRITE LOCK */
-            if ((ret = sr_shmsub_notify_new_event_lock(shm_sub, mod->ly_mod->name, NULL)) != SR_ERR_OK) {
-                return ret;
+            if ((err_info = sr_shmsub_notify_new_event_lock(shm_sub, mod->ly_mod->name, NULL))) {
+                return err_info;
             }
 
             /* write "done" event with the same LYB data trees, do not wait for subscribers */
@@ -806,16 +819,17 @@ sr_shmsub_notify_change_done(struct sr_mod_info_s *mod_info)
         } while (subscriber_count);
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 sr_shmsub_notify_change_abort(struct sr_mod_info_s *mod_info)
 {
     sr_sub_t *shm_sub;
     struct sr_mod_info_mod_s *mod;
     uint32_t i, cur_priority, subscriber_count;
-    int ret, abort_ret;
+    sr_error_t err_code;
+    sr_error_info_t *err_info = NULL;
 
     assert(mod_info->diff);
 
@@ -840,11 +854,11 @@ sr_shmsub_notify_change_abort(struct sr_mod_info_s *mod_info)
 
         do {
             /* SUB WRITE LOCK */
-            if ((ret = sr_shmsub_notify_new_event_lock(shm_sub, mod->ly_mod->name, &abort_ret)) != SR_ERR_OK) {
-                return ret;
+            if ((err_info = sr_shmsub_notify_new_event_lock(shm_sub, mod->ly_mod->name, &err_code))) {
+                return err_info;
             }
 
-            if (abort_ret != SR_ERR_OK) {
+            if (err_code != SR_ERR_OK) {
                 /* the callback/subscription that caused this abort */
                 assert((shm_sub->event_id == mod->event_id) && (shm_sub->priority == cur_priority));
 
@@ -858,9 +872,9 @@ sr_shmsub_notify_change_abort(struct sr_mod_info_s *mod_info)
             /* SUB UNLOCK */
             sr_shmsub_unlock(shm_sub);
 
-            if (abort_ret != SR_ERR_OK) {
+            if (err_code != SR_ERR_OK) {
                 /* last subscription that processed the event, we are done */
-                return SR_ERR_OK;
+                return NULL;
             }
 
             /* find out what is the next priority and how many subscribers have it */
@@ -870,11 +884,11 @@ sr_shmsub_notify_change_abort(struct sr_mod_info_s *mod_info)
     }
 
     /* unreachable unless the failed subscription was not found */
-    SR_LOG_ERRINT;
-    return SR_ERR_INTERNAL;
+    SR_ERRINFO_INT(&err_info);
+    return err_info;
 }
 
-static int
+static void
 sr_shmsub_listen_prepare_sess(struct modsub_s *mod_sub, sr_conn_ctx_t *conn, sr_session_ctx_t *tmp_sess)
 {
     assert(mod_sub->diff);
@@ -883,13 +897,12 @@ sr_shmsub_listen_prepare_sess(struct modsub_s *mod_sub, sr_conn_ctx_t *conn, sr_
     tmp_sess->ds = mod_sub->ds;
     tmp_sess->ev = ((sr_sub_t *)mod_sub->shm)->event;
     tmp_sess->dt[tmp_sess->ds].diff = mod_sub->diff;
-
-    return SR_ERR_OK;
 }
 
 static void
 sr_shmsub_listen_clear_sess(sr_session_ctx_t *tmp_sess)
 {
+    sr_errinfo_free(&tmp_sess->err_info);
     lyd_free_withsiblings(tmp_sess->dt[tmp_sess->ds].edit);
     tmp_sess->dt[tmp_sess->ds].edit = NULL;
     /* it is freed elsewhere */
@@ -914,7 +927,7 @@ sr_shmsub_listen_is_new_event(sr_sub_t *shm_sub, struct modsub_sub_s *sub)
     }
 
     /* some other subscriber callback failed, wait for the originator to handle it */
-    if (shm_sub->abort_ret != SR_ERR_OK) {
+    if (shm_sub->err_code != SR_ERR_OK) {
         return 0;
     }
 
@@ -933,23 +946,21 @@ sr_shmsub_listen_is_new_event(sr_sub_t *shm_sub, struct modsub_sub_s *sub)
         }
         break;
     case SR_EV_NONE:
-        SR_LOG_ERRINT;
+        assert(0);
         return 0;
     }
 
     /* check events succession */
-    SR_CHECK_INT_RET((sub->event == SR_EV_CHANGE) && (shm_sub->event != SR_EV_DONE) && (shm_sub->event != SR_EV_ABORT));
+    assert((sub->event != SR_EV_CHANGE) || ((shm_sub->event == SR_EV_DONE) || (shm_sub->event == SR_EV_ABORT)));
 
     return 1;
 }
 
-static int
-sr_shmsub_listen_finish_event(struct modsub_s *mod_sub, const char *data, uint32_t data_len, int abort_ret)
+static void
+sr_shmsub_listen_finish_event(struct modsub_s *mod_sub, const char *data, uint32_t data_len, sr_error_t err_code)
 {
     sr_sub_t *shm_sub;
     sr_notif_event_t event;
-
-    assert((abort_ret == SR_ERR_OK) || (!data && !data_len));
 
     shm_sub = (sr_sub_t *)mod_sub->shm;
 
@@ -967,34 +978,34 @@ sr_shmsub_listen_finish_event(struct modsub_s *mod_sub, const char *data, uint32
     }
 
     /* write return value in case of a failed callback */
-    shm_sub->abort_ret = abort_ret;
+    shm_sub->err_code = err_code;
 
     if (msync(mod_sub->shm, mod_sub->shm_size, MS_INVALIDATE)) {
-        SR_LOG_FUNC_ERRNO("msync");
+        SR_LOG_WRN("msync() failed (%s).", strerror(errno));
     }
 
     SR_LOG_INF("Finished processing \"%s\" event%s with ID %u priority %u (remaining %u subscribers).", sr_ev2str(event),
-            abort_ret ? " (callback fail)" : "", shm_sub->event_id, shm_sub->priority, shm_sub->subscriber_count);
-
-    return SR_ERR_OK;
+            err_code ? " (callback fail)" : "", shm_sub->event_id, shm_sub->priority, shm_sub->subscriber_count);
 }
 
-static int
+static sr_error_info_t *
 sr_shmsub_listen_process_module_events(struct modsub_s *mod_sub, sr_conn_ctx_t *conn, int *new_event)
 {
-    uint32_t i, data_len = 0;
-    char *data_lyb = NULL;
-    int ret = SR_ERR_OK, abort_ret = SR_ERR_OK;
+    uint32_t i, data_len = 0, msg_len;
+    char *data = NULL;
+    int ret;
+    sr_error_t err_code = SR_ERR_OK;
     struct modsub_sub_s *sub;
     sr_sub_t *shm_sub;
     sr_session_ctx_t tmp_sess;
+    sr_error_info_t *err_info = NULL;
 
     *new_event = 0;
     memset(&tmp_sess, 0, sizeof tmp_sess);
     shm_sub = (sr_sub_t *)mod_sub->shm;
 
     /* SUB READ LOCK */
-    if ((ret = sr_shmsub_lock(shm_sub, 0, __func__)) != SR_ERR_OK) {
+    if ((err_info = sr_shmsub_lock(shm_sub, 0, __func__))) {
         goto cleanup;
     }
 
@@ -1014,7 +1025,7 @@ sr_shmsub_listen_process_module_events(struct modsub_s *mod_sub, sr_conn_ctx_t *
     assert((sub->event != SR_EV_CHANGE) || mod_sub->diff);
 
     /* remap SHM */
-    if ((ret = sr_shmsub_remap(mod_sub->shm_fd, 0, &mod_sub->shm_size, &mod_sub->shm)) != SR_ERR_OK) {
+    if ((err_info = sr_shmsub_remap(mod_sub->shm_fd, 0, &mod_sub->shm_size, &mod_sub->shm))) {
         goto unlock_cleanup;
     }
     shm_sub = (sr_sub_t *)mod_sub->shm;
@@ -1023,22 +1034,13 @@ sr_shmsub_listen_process_module_events(struct modsub_s *mod_sub, sr_conn_ctx_t *
     switch (shm_sub->event) {
     case SR_EV_DONE:
     case SR_EV_ABORT:
-        if (mod_sub->diff) {
-            /* reusing diff from previous event */
-            break;
-        }
-
-        /* should not happen */
-        SR_LOG_ERRINT;
-        /* fallthrough */
+        /* reusing diff from previous event */
+        assert(mod_sub->diff);
+        break;
     default:
-        if (mod_sub->diff) {
-            /* should not happen */
-            SR_LOG_ERRINT;
-            lyd_free_withsiblings(mod_sub->diff);
-        }
+        assert(!mod_sub->diff);
         mod_sub->diff = lyd_parse_mem(conn->ly_ctx, mod_sub->shm + sizeof(sr_sub_t), LYD_LYB, LYD_OPT_EDIT);
-        SR_CHECK_INT_GOTO(!mod_sub->diff, ret, unlock_cleanup);
+        SR_CHECK_INT_GOTO(!mod_sub->diff, err_info, unlock_cleanup);
         break;
     }
 
@@ -1047,9 +1049,7 @@ sr_shmsub_listen_process_module_events(struct modsub_s *mod_sub, sr_conn_ctx_t *
             sr_ev2str(shm_sub->event), shm_sub->event_id, shm_sub->priority, shm_sub->subscriber_count);
 
     /* prepare callback session */
-    if ((ret = sr_shmsub_listen_prepare_sess(mod_sub, conn, &tmp_sess)) != SR_ERR_OK) {
-        goto unlock_cleanup;
-    }
+    sr_shmsub_listen_prepare_sess(mod_sub, conn, &tmp_sess);
 
     /* process individual subscriptions (starting at the last found subscription, it was valid) */
     goto process_event;
@@ -1069,7 +1069,7 @@ process_event:
         if ((shm_sub->event == SR_EV_UPDATE) || (shm_sub->event == SR_EV_CHANGE)) {
             if (ret != SR_ERR_OK) {
                 /* cause abort */
-                abort_ret = ret;
+                err_code = ret;
                 break;
             }
         }
@@ -1079,29 +1079,70 @@ process_event:
     sr_shmsub_unlock(shm_sub);
 
     /* SUB WRITE LOCK */
-    if ((ret = sr_shmsub_lock(shm_sub, 1, __func__)) != SR_ERR_OK) {
+    if ((err_info = sr_shmsub_lock(shm_sub, 1, __func__))) {
         goto cleanup;
     }
 
     switch (shm_sub->event) {
-    case SR_EV_CHANGE:
-        /* we are going to reuse parsed diff, do not free it */
-        break;
     case SR_EV_UPDATE:
-        /* we may have an updated edit (empty is fine), print it into LYB */
-        if (abort_ret == SR_ERR_OK) {
-            if (lyd_print_mem(&data_lyb, tmp_sess.dt[mod_sub->ds].edit, LYD_LYB, LYP_WITHSIBLINGS)) {
-                ret = SR_ERR_INTERNAL;
+        if (err_code == SR_ERR_OK) {
+            /* we may have an updated edit (empty is fine), print it into LYB */
+            if (lyd_print_mem(&data, tmp_sess.dt[mod_sub->ds].edit, LYD_LYB, LYP_WITHSIBLINGS)) {
+                sr_errinfo_new_ly(&err_info, conn->ly_ctx);
                 goto unlock_cleanup;
             }
-            data_len = lyd_lyb_data_length(data_lyb);
+            data_len = lyd_lyb_data_length(data);
 
             /* remap SHM having the lock */
-            ret = sr_shmsub_remap(mod_sub->shm_fd, sizeof *shm_sub + data_len, &mod_sub->shm_size, &mod_sub->shm);
-            if (ret != SR_ERR_OK) {
+            err_info = sr_shmsub_remap(mod_sub->shm_fd, sizeof *shm_sub + data_len, &mod_sub->shm_size, &mod_sub->shm);
+            if (err_info) {
                 goto unlock_cleanup;
             }
             shm_sub = (sr_sub_t *)mod_sub->shm;
+        }
+        /* fallthrough */
+    case SR_EV_CHANGE:
+        if (err_code != SR_ERR_OK) {
+            /* prepare error message and xpath if any set (otherwise we print '\0' 2x) */
+            data_len = 2;
+            if (tmp_sess.err_info && (tmp_sess.err_info->err_code == SR_ERR_OK)) {
+                assert(tmp_sess.err_info->err_count == 1);
+
+                /* error message */
+                msg_len = strlen(tmp_sess.err_info->err[0].message);
+                data_len += msg_len;
+                data = malloc(data_len);
+                SR_CHECK_MEM_GOTO(!data, err_info, unlock_cleanup);
+                strcpy(data, tmp_sess.err_info->err[0].message);
+
+                /* error xpath */
+                if (tmp_sess.err_info->err[0].xpath) {
+                    data_len += strlen(tmp_sess.err_info->err[0].xpath);
+                    data = sr_realloc(data, data_len);
+                    SR_CHECK_MEM_GOTO(!data, err_info, unlock_cleanup);
+                    /* print it after the error message string */
+                    strcpy(data + msg_len + 1, tmp_sess.err_info->err[0].xpath);
+                } else {
+                    /* ending '\0' was already accounted for */
+                    data[msg_len + 1] = '\0';
+                }
+            } else {
+                data = malloc(data_len);
+                SR_CHECK_MEM_GOTO(!data, err_info, unlock_cleanup);
+                memset(data, 0, data_len);
+            }
+
+            /* remap SHM having the lock */
+            err_info = sr_shmsub_remap(mod_sub->shm_fd, sizeof *shm_sub + data_len, &mod_sub->shm_size, &mod_sub->shm);
+            if (err_info) {
+                goto unlock_cleanup;
+            }
+            shm_sub = (sr_sub_t *)mod_sub->shm;
+        }
+
+        if (shm_sub->event == SR_EV_CHANGE) {
+            /* we are going to reuse parsed diff, do not free it */
+            break;
         }
         /* fallthrough */
     default:
@@ -1112,9 +1153,7 @@ process_event:
     }
 
     /* finish event */
-    if ((ret = sr_shmsub_listen_finish_event(mod_sub, data_lyb, data_len, abort_ret)) != SR_ERR_OK) {
-        goto unlock_cleanup;
-    }
+    sr_shmsub_listen_finish_event(mod_sub, data, data_len, err_code);
 
 unlock_cleanup:
     /* SUB UNLOCK */
@@ -1124,15 +1163,16 @@ cleanup:
     /* clear callback session */
     sr_shmsub_listen_clear_sess(&tmp_sess);
 
-    free(data_lyb);
-    return ret;
+    free(data);
+    return err_info;
 }
 
 void *
 sr_shmsub_listen_thread(void *arg)
 {
-    int ret, new_event;
+    int new_event;
     uint32_t i;
+    sr_error_info_t *err_info = NULL;
     sr_subscription_ctx_t *subs = (sr_subscription_ctx_t *)arg;
 
     i = 0;
@@ -1152,7 +1192,7 @@ sr_shmsub_listen_thread(void *arg)
             ++i;
         }
 
-        if ((ret = sr_shmsub_listen_process_module_events(&subs->mod_subs[i], subs->conn, &new_event)) != SR_ERR_OK) {
+        if ((err_info = sr_shmsub_listen_process_module_events(&subs->mod_subs[i], subs->conn, &new_event))) {
             goto error;
         }
     }
@@ -1163,5 +1203,8 @@ error:
     /* free our own resources */
     subs->tid = 0;
     pthread_detach(pthread_self());
+
+    /* no one to collect the error */
+    sr_errinfo_free(&err_info);
     return NULL;
 }

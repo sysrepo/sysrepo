@@ -1,5 +1,5 @@
 
-#define _GNU_SOURCE
+#include "common.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -11,8 +11,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
-
-#include "common.h"
 
 #include "../modules/sysrepo_yang.h"
 #include "../modules/ietf_netconf_acm_yang.h"
@@ -55,39 +53,41 @@ sr_shmmain_find_module(char *sr_shm, const char *name, off_t name_off)
     return NULL;
 }
 
-static int
+static sr_error_info_t *
 sr_shmmain_write_ver(int shm_lock, uint32_t shm_ver)
 {
+    sr_error_info_t *err_info = NULL;
+
     if (write(shm_lock, &shm_ver, sizeof shm_ver) != sizeof shm_ver) {
-        SR_LOG_FUNC_ERRNO("write");
-        return SR_ERR_IO;
+        SR_ERRINFO_SYSERRNO(&err_info, "write");
+        return err_info;
     }
     if (lseek(shm_lock, 0, SEEK_SET) == -1) {
-        SR_LOG_FUNC_ERRNO("lseek");
-        return SR_ERR_IO;
+        SR_ERRINFO_SYSERRNO(&err_info, "lseek");
+        return err_info;
     }
     if (fsync(shm_lock) == -1) {
-        SR_LOG_FUNC_ERRNO("fsync");
-        return SR_ERR_IO;
+        SR_ERRINFO_SYSERRNO(&err_info, "fsync");
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 sr_shmmain_update_ver(sr_conn_ctx_t *conn)
 {
-    int ret;
+    sr_error_info_t *err_info = NULL;
 
     ++conn->shm_ver;
-    if ((ret = sr_shmmain_write_ver(conn->shm_lock, conn->shm_ver)) != SR_ERR_OK) {
-        return ret;
+    if ((err_info = sr_shmmain_write_ver(conn->shm_lock, conn->shm_ver))) {
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return err_info;
 }
 
-static int
+static sr_error_info_t *
 sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
 {
     const struct lys_module *mod;
@@ -95,32 +95,37 @@ sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
     sr_mod_t *shm_mod = NULL;
     off_t *features;
     uint16_t i;
+    sr_error_info_t *err_info = NULL;
     int ret;
 
     if (!conn->ly_ctx) {
         /* very first init */
         if (asprintf(&yang_dir, "%s/yang", sr_get_repo_path()) == -1) {
-            SR_LOG_ERRMEM;
-            return SR_ERR_NOMEM;
+            return &sr_errinfo_mem;
         }
         conn->ly_ctx = ly_ctx_new(yang_dir, 0);
         free(yang_dir);
         if (!conn->ly_ctx) {
-            return SR_ERR_INIT_FAILED;
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create a new libyang context.");
+            return err_info;
         }
 
         /* load internal modules */
         if (!lys_parse_mem(conn->ly_ctx, sysrepo_yang, LYS_YANG)) {
-            return SR_ERR_INIT_FAILED;
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            return err_info;
         }
         if (!lys_parse_mem(conn->ly_ctx, ietf_netconf_acm_yang, LYS_YANG)) {
-            return SR_ERR_INIT_FAILED;
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            return err_info;
         }
         if (!lys_parse_mem(conn->ly_ctx, ietf_netconf_yang, LYS_YANG)) {
-            return SR_ERR_INIT_FAILED;
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            return err_info;
         }
         if (!lys_parse_mem(conn->ly_ctx, ietf_netconf_with_defaults_yang, LYS_YANG)) {
-            return SR_ERR_INIT_FAILED;
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            return err_info;
         }
     }
 
@@ -131,127 +136,135 @@ sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
             if (!mod) {
                 /* add the module */
                 if (!(mod = ly_ctx_load_module(conn->ly_ctx, conn->shm + shm_mod->name, shm_mod->rev))) {
-                    return SR_ERR_INTERNAL;
+                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                    return err_info;
                 }
 
                 /* enable features */
                 features = (off_t *)(conn->shm + shm_mod->features);
                 for (i = 0; i < shm_mod->feat_count; ++i) {
                     ret = lys_features_enable(mod, conn->shm + features[i]);
-                    SR_CHECK_INT_RET(ret);
+                    if (ret) {
+                        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                        return err_info;
+                    }
                 }
             } else if (!mod->implemented) {
                 /* make the module implemented */
                 if (lys_set_implemented(mod)) {
-                    return SR_ERR_INTERNAL;
+                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                    return err_info;
                 }
             }
         }
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-static int
+static sr_error_info_t *
 sr_shmmain_read_ver(int shm_lock, uint32_t *shm_ver)
 {
+    sr_error_info_t *err_info = NULL;
+
     if (read(shm_lock, shm_ver, sizeof *shm_ver) != sizeof *shm_ver) {
-        SR_LOG_FUNC_ERRNO("read");
-        return SR_ERR_IO;
+        SR_ERRINFO_SYSERRNO(&err_info, "read");
+        return err_info;
     }
     if (lseek(shm_lock, 0, SEEK_SET) == -1) {
-        SR_LOG_FUNC_ERRNO("lseek");
-        return SR_ERR_IO;
+        SR_ERRINFO_SYSERRNO(&err_info, "lseek");
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 sr_shmmain_check_ver(sr_conn_ctx_t *conn)
 {
-    int ret;
-    uint32_t shm_ver;
+    sr_error_info_t *err_info = NULL;
+    uint32_t shm_ver, size;
 
     /* check SHM version and update SHM mapping as necessary */
-    if ((ret = sr_shmmain_read_ver(conn->shm_lock, &shm_ver)) != SR_ERR_OK) {
-        return ret;
+    if ((err_info = sr_shmmain_read_ver(conn->shm_lock, &shm_ver))) {
+        return err_info;
     }
     if (conn->shm_ver != shm_ver) {
-        if ((ret = sr_shmmain_remap(conn, sr_file_get_size(conn->shm_fd))) != SR_ERR_OK) {
-            return ret;
+        if ((err_info = sr_file_get_size(conn->shm_fd, &size))) {
+            return err_info;
+        }
+        if ((err_info = sr_shmmain_remap(conn, size))) {
+            return err_info;
         }
 
         /* update libyang context (just add new modules) */
-        if ((ret = sr_shmmain_ly_ctx_update(conn)) != SR_ERR_OK) {
-            return ret;
+        if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
+            return err_info;
         }
 
         /* update version */
         conn->shm_ver = shm_ver;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 sr_shmmain_check_dirs(void)
 {
     const char *repo_path;
     char *dir_path;
+    sr_error_info_t *err_info = NULL;
     int ret;
 
     repo_path = sr_get_repo_path();
 
     /* schema dir */
     if (asprintf(&dir_path, "%s/yang", repo_path) == -1) {
-        SR_LOG_ERRMEM;
-        return SR_ERR_NOMEM;
+        return &sr_errinfo_mem;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
-        SR_LOG_FUNC_ERRNO("access");
         free(dir_path);
-        return SR_ERR_IO;
+        SR_ERRINFO_SYSERRNO(&err_info, "access");
+        return err_info;
     }
     if (ret) {
-        if ((ret = sr_mkpath(dir_path, 00770, 0)) != SR_ERR_OK) {
+        if ((err_info = sr_mkpath(dir_path, 00770, 0))) {
             free(dir_path);
-            return ret;
+            return err_info;
         }
     }
     free(dir_path);
 
     /* data dir */
     if (asprintf(&dir_path, "%s/data/internal", repo_path) == -1) {
-        SR_LOG_ERRMEM;
-        return SR_ERR_NOMEM;
+        return &sr_errinfo_mem;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
-        SR_LOG_FUNC_ERRNO("access");
         free(dir_path);
-        return SR_ERR_IO;
+        SR_ERRINFO_SYSERRNO(&err_info, "access");
+        return err_info;
     }
     if (ret) {
         /* skip checking the repository path, we have just checked it */
-        if ((ret = sr_mkpath(dir_path, 00770, strlen(repo_path))) != SR_ERR_OK) {
+        if ((err_info = sr_mkpath(dir_path, 00770, strlen(repo_path)))) {
             free(dir_path);
-            return ret;
+            return err_info;
         }
     }
     free(dir_path);
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 sr_shmmain_lock_open(int *shm_lock)
 {
-    int ret;
+    sr_error_info_t *err_info = NULL;
     char *path;
 
     if (asprintf(&path, "%s/%s", sr_get_repo_path(), SR_MAIN_SHM_LOCK) == -1) {
-        SR_LOG_ERRMEM;
-        return SR_ERR_NOMEM;
+        return &sr_errinfo_mem;
     }
 
     *shm_lock = open(path, O_RDWR | O_CREAT | O_EXCL, 00600);
@@ -259,8 +272,8 @@ sr_shmmain_lock_open(int *shm_lock)
         free(path);
 
         /* write version */
-        if ((ret = sr_shmmain_write_ver(*shm_lock, 0)) != SR_ERR_OK) {
-            return ret;
+        if ((err_info = sr_shmmain_write_ver(*shm_lock, 0))) {
+            return err_info;
         }
     } else if (errno == EEXIST) {
         /* it exists already, just open it */
@@ -268,26 +281,33 @@ sr_shmmain_lock_open(int *shm_lock)
         free(path);
     }
     if (*shm_lock == -1) {
-        SR_LOG_FUNC_ERRNO("open");
-        return SR_ERR_IO;
+        SR_ERRINFO_SYSERRNO(&err_info, "open");
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 sr_shmmain_remap(sr_conn_ctx_t *conn, uint32_t shm_size)
 {
+    uint32_t size;
+    sr_error_info_t *err_info = NULL;
+
     if (conn->shm) {
         /* unmap SHM */
         munmap(conn->shm, conn->shm_size);
         conn->shm = NULL;
     }
 
+    if ((err_info = sr_file_get_size(conn->shm_fd, &size))) {
+        return err_info;
+    }
+
     /* truncate */
-    if ((sr_file_get_size(conn->shm_fd) != shm_size) && (ftruncate(conn->shm_fd, shm_size) == -1)) {
-        SR_LOG_ERR("Failed to truncate shared memory (%s).", strerror(errno));
-        return SR_ERR_IO;
+    if ((size != shm_size) && (ftruncate(conn->shm_fd, shm_size) == -1)) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to truncate shared memory (%s).", strerror(errno));
+        return err_info;
     }
 
     /* update SHM size */
@@ -297,20 +317,21 @@ sr_shmmain_remap(sr_conn_ctx_t *conn, uint32_t shm_size)
         /* map the shared memory file to actual memory */
         conn->shm = mmap(NULL, conn->shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, conn->shm_fd, 0);
         if (conn->shm == MAP_FAILED) {
-            SR_LOG_ERR("Failed to map shared memory (%s).", strerror(errno));
             conn->shm = NULL;
-            return SR_ERR_NOMEM;
+            sr_errinfo_new(&err_info, SR_ERR_NOMEM, NULL, "Failed to map shared memory (%s).", strerror(errno));
+            return err_info;
         }
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 sr_shmmain_lock(sr_conn_ctx_t *conn, int wr)
 {
     struct flock fl;
     int ret;
+    sr_error_info_t *err_info = NULL;
 
     assert(conn->shm_lock > -1);
 
@@ -320,11 +341,11 @@ sr_shmmain_lock(sr_conn_ctx_t *conn, int wr)
         ret = fcntl(conn->shm_lock, F_SETLKW, &fl);
     } while ((ret == -1) && (errno == EINTR));
     if (ret == -1) {
-        SR_LOG_FUNC_ERRNO("fcntl");
-        return SR_ERR_IO;
+        SR_ERRINFO_SYSERRNO(&err_info, "fcntl");
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
 void
@@ -335,11 +356,11 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn)
     memset(&fl, 0, sizeof fl);
     fl.l_type = F_UNLCK;
     if (fcntl(conn->shm_lock, F_SETLK, &fl) == -1) {
-        SR_LOG_ERRINT;
+        assert(0);
     }
 }
 
-static int
+static sr_error_info_t *
 sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t *shm_last_mod, off_t *shm_end)
 {
     struct lyd_node *ly_mod, *ly_child, *ly_dep, *ly_instid;
@@ -349,7 +370,7 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
     char *shm_cur;
     const char *str;
     uint32_t feat_i, dep_i;
-    int ret;
+    sr_error_info_t *err_info = NULL;
 
     /* 1st loop */
     shm_cur = sr_shm + *shm_end;
@@ -365,11 +386,11 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
         shm_cur += sizeof *shm_mod;
 
         /* init shared rwlock */
-        if ((ret = sr_shared_rwlock_init(&shm_mod->lock[SR_DS_STARTUP])) != SR_ERR_OK) {
-            return ret;
+        if ((err_info = sr_shared_rwlock_init(&shm_mod->lock[SR_DS_STARTUP]))) {
+            return err_info;
         }
-        if ((ret = sr_shared_rwlock_init(&shm_mod->lock[SR_DS_RUNNING])) != SR_ERR_OK) {
-            return ret;
+        if ((err_info = sr_shared_rwlock_init(&shm_mod->lock[SR_DS_RUNNING]))) {
+            return err_info;
         }
 
         LY_TREE_FOR(ly_mod->child, ly_child) {
@@ -440,7 +461,7 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
                         /* copy module name offset */
                         str = sr_ly_leaf_value_str(ly_dep);
                         ref_shm_mod = sr_shmmain_find_module(sr_shm, str, 0);
-                        SR_CHECK_INT_RET(!ref_shm_mod);
+                        SR_CHECK_INT_RET(!ref_shm_mod, err_info);
                         shm_deps[dep_i].module = ref_shm_mod->name;
 
                         /* no xpath */
@@ -463,7 +484,7 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
                                 /* copy module name offset */
                                 str = sr_ly_leaf_value_str(ly_instid);
                                 ref_shm_mod = sr_shmmain_find_module(sr_shm, str, 0);
-                                SR_CHECK_INT_RET(!ref_shm_mod);
+                                SR_CHECK_INT_RET(!ref_shm_mod, err_info);
                                 shm_deps[dep_i].module = ref_shm_mod->name;
                             }
                         }
@@ -474,23 +495,23 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
                 }
             }
         }
-        SR_CHECK_INT_RET(feat_i != shm_mod->feat_count);
-        SR_CHECK_INT_RET(dep_i != shm_mod->dep_count);
+        SR_CHECK_INT_RET(feat_i != shm_mod->feat_count, err_info);
+        SR_CHECK_INT_RET(dep_i != shm_mod->dep_count, err_info);
 
         /* next */
         shm_mod = (sr_mod_t *)(sr_shm + shm_mod->next);
     }
 
     *shm_end = shm_cur - sr_shm;
-    return SR_ERR_OK;
+    return NULL;
 }
 
-static int
+static sr_error_info_t *
 sr_shmmain_shm_add(sr_conn_ctx_t *conn, uint32_t new_shm_size, struct lyd_node *from_mod)
 {
     off_t shm_end;
     sr_mod_t *shm_mod = NULL;
-    int ret;
+    sr_error_info_t *err_info = NULL;
 
     assert(conn->shm_fd > -1);
     assert(new_shm_size);
@@ -504,23 +525,23 @@ sr_shmmain_shm_add(sr_conn_ctx_t *conn, uint32_t new_shm_size, struct lyd_node *
     }
 
     /* remap SHM */
-    if ((ret = sr_shmmain_remap(conn, new_shm_size)) != SR_ERR_OK) {
-        return ret;
+    if ((err_info = sr_shmmain_remap(conn, new_shm_size))) {
+        return err_info;
     }
 
     /* add all newly implemented modules into SHM */
-    if ((ret = sr_shmmain_shm_add_modules(conn->shm, from_mod, shm_mod, &shm_end)) != SR_ERR_OK) {
-        return ret;
+    if ((err_info = sr_shmmain_shm_add_modules(conn->shm, from_mod, shm_mod, &shm_end))) {
+        return err_info;
     }
-    SR_CHECK_INT_RET(shm_end != conn->shm_size);
+    SR_CHECK_INT_RET(shm_end != conn->shm_size, err_info);
 
     /* synchronize SHM */
     if (msync(conn->shm, conn->shm_size, MS_SYNC | MS_INVALIDATE) == -1) {
-        SR_LOG_ERR("Failed to write modified shared memory data (%s).", strerror(errno));
-        return SR_ERR_IO;
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to write modified shared memory data (%s).", strerror(errno));
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
 static uint32_t
@@ -562,67 +583,63 @@ sr_shmmain_ly_calculate_size(struct lyd_node *sr_mods)
     return shm_size;
 }
 
-static int
+static sr_error_info_t *
 sr_shmmain_ly_int_data_print(const struct lyd_node *sr_mods)
 {
     char *path;
+    sr_error_info_t *err_info = NULL;
 
     if (sr_mods && strcmp(sr_mods->schema->module->name, "sysrepo")) {
-        return SR_ERR_INTERNAL;
+        SR_ERRINFO_INT(&err_info);
+        return err_info;
     }
 
     if (asprintf(&path, "%s/data/internal/sysrepo.startup", sr_get_repo_path()) == -1) {
-        SR_LOG_ERRMEM;
-        return SR_ERR_NOMEM;
+        return &sr_errinfo_mem;
     }
 
     /* store the data tree */
     if (lyd_print_path(path, sr_mods, LYD_LYB, LYP_WITHSIBLINGS)) {
         free(path);
-        return SR_ERR_IO;
+        sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mods)->ctx);
+        return err_info;
     }
     free(path);
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-static int
+static sr_error_info_t *
 sr_remove_data_files(const char *mod_name)
 {
     char *path;
-    int ret;
 
     if (asprintf(&path, "%s/data/%s.startup", sr_get_repo_path(), mod_name) == -1) {
-        SR_LOG_ERRMEM;
-        return SR_ERR_NOMEM;
+        return &sr_errinfo_mem;
     }
 
-    ret = unlink(path);
-    free(path);
-    if (ret == -1) {
-        SR_LOG_FUNC_ERRNO("unlink");
-        return SR_ERR_IO;
+    if (unlink(path) == -1) {
+        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
     }
+    free(path);
 
     if (asprintf(&path, "%s/data/%s.running", sr_get_repo_path(), mod_name) == -1) {
-        SR_LOG_ERRMEM;
-        return SR_ERR_NOMEM;
+        return &sr_errinfo_mem;
     }
 
-    ret = unlink(path);
+    if (unlink(path) == -1) {
+        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+    }
     free(path);
-    if (ret == -1) {
-        SR_LOG_FUNC_ERRNO("unlink");
-        return SR_ERR_IO;
-    }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-static int
+static sr_error_info_t *
 sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_node **sr_mods_p)
 {
     uint32_t i;
+    sr_error_info_t *err_info = NULL;
     struct ly_set *set, *set2;
     const struct lys_module *mod;
     struct lyd_node *sr_mods = NULL, *feat_node;
@@ -632,35 +649,37 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
     assert(sr_mods_p);
 
     if (asprintf(&path, "%s/data/internal/%s.startup", sr_get_repo_path(), SR_YANG_MOD) == -1) {
-        SR_LOG_ERRMEM;
-        return SR_ERR_NOMEM;
+        return &sr_errinfo_mem;
     }
 
     /* check the existence of the data file */
     if (access(path, R_OK) == -1) {
         if (conn->shm) {
             /* we have some shared memory but no file on disk, should not happen */
-            SR_LOG_ERR("File \"%s\" was unexpectedly deleted.", path);
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" was unexpectedly deleted.", path);
             goto error;
         }
 
         /* we need to get the module ourselves */
         mod = ly_ctx_get_module(conn->ly_ctx, SR_YANG_MOD, NULL, 1);
         if (!mod) {
+            SR_ERRINFO_INT(&err_info);
             goto error;
         }
 
         /* create empty data tree */
         if (lyd_validate_modules(&sr_mods, &mod, 1, LYD_OPT_CONFIG)) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
             goto error;
         }
-        if (sr_shmmain_ly_int_data_print(sr_mods) != SR_ERR_OK) {
+        if ((err_info = sr_shmmain_ly_int_data_print(sr_mods))) {
             goto error;
         }
     } else {
         /* load sysrepo data */
         sr_mods = lyd_parse_path(conn->ly_ctx, path, LYD_LYB, LYD_OPT_CONFIG);
         if (!sr_mods) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
             goto error;
         }
 
@@ -671,6 +690,7 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
             /* remove modules */
             set = lyd_find_path(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/module/removed");
             if (!set) {
+                sr_errinfo_new_ly(&err_info, conn->ly_ctx);
                 goto error;
             } else if (set->number) {
                 change = 1;
@@ -680,12 +700,15 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
                 if (!set2 || (set2->number != 1)) {
                     ly_set_free(set);
                     ly_set_free(set2);
+                    SR_ERRINFO_INT(&err_info);
                     goto error;
                 }
 
                 if (((struct lyd_node_leaf_list *)set2->set.d[0])->value.bln) {
-                    /* do not check return value, enough that a message is printed */
-                    sr_remove_data_files(sr_ly_leaf_value_str(set->set.d[i]->parent->child));
+                    /* remove data files */
+                    if ((err_info = sr_remove_data_files(sr_ly_leaf_value_str(set->set.d[i]->parent->child)))) {
+                        goto error;
+                    }
                 }
                 ly_set_free(set2);
 
@@ -697,6 +720,7 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
             /* change features */
             set = lyd_find_path(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/module/changed-feature");
             if (!set) {
+                SR_ERRINFO_INT(&err_info);
                 goto error;
             } else if (set->number) {
                 change = 1;
@@ -708,6 +732,7 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
                 if (!strcmp(sr_ly_leaf_value_str(feat_node->child->next), "enable")) {
                     /* enable feature */
                     if (!lyd_new_leaf(feat_node->parent, NULL, "enabled-features", sr_ly_leaf_value_str(feat_node->child))) {
+                        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
                         goto error;
                     }
                 } else {
@@ -715,13 +740,14 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
                     assert(!strcmp(sr_ly_leaf_value_str(feat_node->child->next), "disable"));
                     free(path);
                     if (asprintf(&path, "enabled-feature[.='%s']", sr_ly_leaf_value_str(feat_node->child)) == -1) {
-                        SR_LOG_ERRMEM;
+                        err_info = &sr_errinfo_mem;
                         goto error;
                     }
 
                     set2 = lyd_find_path(feat_node->parent, path);
                     if (!set2 || (set2->number != 1)) {
                         ly_set_free(set2);
+                        SR_ERRINFO_INT(&err_info);
                         goto error;
                     }
                     lyd_free(set2->set.d[0]);
@@ -732,7 +758,7 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
 
             /* store updated data tree */
             if (change) {
-                if (sr_shmmain_ly_int_data_print(sr_mods)) {
+                if ((err_info = sr_shmmain_ly_int_data_print(sr_mods))) {
                     goto error;
                 }
             }
@@ -741,46 +767,42 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
 
     *sr_mods_p = sr_mods;
     free(path);
-    return SR_ERR_OK;
+    return NULL;
 
 error:
     free(path);
     lyd_free_withsiblings(sr_mods);
-    return SR_ERR_INTERNAL;
+    return err_info;
 }
 
-int
+sr_error_info_t *
 sr_shmmain_create(sr_conn_ctx_t *conn)
 {
     struct lyd_node *sr_mods = NULL;
     uint32_t shm_size;
-    int ret;
+    sr_error_info_t *err_info = NULL;
 
     /* create shared memory */
     conn->shm_fd = shm_open(SR_MAIN_SHM, O_RDWR | O_CREAT | O_EXCL, 00600);
     if (conn->shm_fd == -1) {
-        if (errno == EEXIST) {
-            return SR_ERR_EXISTS;
-        }
-        SR_LOG_ERR("Failed to open shared memory (%s).", strerror(errno));
-        ret = SR_ERR_IO;
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open shared memory (%s).", strerror(errno));
         goto error;
     }
 
     /* create libyang context */
-    if ((ret = sr_shmmain_ly_ctx_update(conn)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
         goto error_unlock;
     }
 
     /* parse libyang data tree */
-    if ((ret = sr_shmmain_ly_int_data_parse(conn, 1, &sr_mods)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 1, &sr_mods))) {
         goto error_unlock;
     }
 
     /* create SHM */
     shm_size = sr_shmmain_ly_calculate_size(sr_mods);
     if (shm_size) {
-        if ((ret = sr_shmmain_shm_add(conn, shm_size, sr_mods->child)) != SR_ERR_OK) {
+        if ((err_info = sr_shmmain_shm_add(conn, shm_size, sr_mods->child))) {
             goto error_unlock;
         }
     }
@@ -790,53 +812,60 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
     sr_mods = NULL;
 
     /* update libyang context with info from SHM */
-    if ((ret = sr_shmmain_ly_ctx_update(conn)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
         goto error_unlock;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 
 error_unlock:
     sr_shmmain_unlock(conn);
 error:
     lyd_free_withsiblings(sr_mods);
-    return ret;
+    return err_info;
 }
 
-int
-sr_shmmain_open(sr_conn_ctx_t *conn)
+sr_error_info_t *
+sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent)
 {
-    int ret;
+    sr_error_info_t *err_info = NULL;
+    uint32_t size;
+
+    *nonexistent = 0;
 
     /* try to open the shared memory */
     conn->shm_fd = shm_open(SR_MAIN_SHM, O_RDWR, 00600);
     if (conn->shm_fd == -1) {
         if (errno == ENOENT) {
-            return SR_ERR_NOT_FOUND;
+            *nonexistent = 1;
+            return NULL;
         }
-        SR_LOG_ERR("Failed to open shared memory (%s).", strerror(errno));
-        return SR_ERR_IO;
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open shared memory (%s).", strerror(errno));
+        return err_info;
     }
 
     /* get SHM size and map it */
-    if ((ret = sr_shmmain_remap(conn, sr_file_get_size(conn->shm_fd))) != SR_ERR_OK) {
-        return ret;
+    if ((err_info = sr_file_get_size(conn->shm_fd, &size))) {
+        return err_info;
+    }
+    if ((err_info = sr_shmmain_remap(conn, size))) {
+        return err_info;
     }
 
     /* create libyang context */
-    if ((ret = sr_shmmain_ly_ctx_update(conn)) != SR_ERR_OK) {
-        return ret;
+    if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
+        return err_info;
     }
 
     /* store current version */
-    if ((ret = sr_shmmain_read_ver(conn->shm_lock, &conn->shm_ver)) != SR_ERR_OK) {
-        return ret;
+    if ((err_info = sr_shmmain_read_ver(conn->shm_lock, &conn->shm_ver))) {
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-static int
+static sr_error_info_t *
 sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *mod_name, const struct lys_node *node,
         uint32_t *shm_size)
 {
@@ -844,14 +873,13 @@ sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *
     char *data_path = NULL, *expr;
     struct lyd_node *ly_instid;
     struct ly_set *set;
-    int ret;
+    sr_error_info_t *err_info = NULL;
 
     assert(((dep_type == SR_DEP_REF) && mod_name) || ((dep_type == SR_DEP_INSTID) && node));
 
     if (dep_type == SR_DEP_REF) {
         if (asprintf(&expr, "module[.='%s']", mod_name) == -1) {
-            SR_LOG_ERRMEM;
-            return SR_ERR_NOMEM;
+            return &sr_errinfo_mem;
         }
     } else {
         /* find the instance node(s) */
@@ -875,22 +903,21 @@ sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *
             assert(dep_type != SR_DEP_INSTID);
             data_child = NULL;
             while ((data_child = lys_getnext(data_child, node, NULL, LYS_GETNEXT_PARENTUSES | LYS_GETNEXT_NOSTATECHECK))) {
-                if ((ret = sr_moddep_add(ly_deps, dep_type, mod_name, data_child, shm_size)) != SR_ERR_OK) {
-                    return ret;
+                if ((err_info = sr_moddep_add(ly_deps, dep_type, mod_name, data_child, shm_size))) {
+                    return err_info;
                 }
             }
-            return SR_ERR_OK;
+            return NULL;
         default:
-            SR_LOG_ERRINT;
-            return SR_ERR_INTERNAL;
+            SR_ERRINFO_INT(&err_info);
+            return err_info;
         }
 
         /* create xpath of the node */
         data_path = lys_data_path(node);
         if (!data_path || (asprintf(&expr, "inst-id[.='%s']", data_path) == -1)) {
-            SR_LOG_ERRMEM;
             free(data_path);
-            return SR_ERR_NOMEM;
+            return &sr_errinfo_mem;
         }
     }
 
@@ -899,30 +926,39 @@ sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *
     free(expr);
     if (!set || (set->number > 1)) {
         ly_set_free(set);
-        goto error_internal;
+        if (!set) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(ly_deps)->ctx);
+        } else {
+            SR_ERRINFO_INT(&err_info);
+        }
+        goto error;
     }
     if (set->number) {
         ly_set_free(set);
         free(data_path);
-        return SR_ERR_OK;
+        return NULL;
     }
     ly_set_free(set);
 
     /* create new dependency */
     if (dep_type == SR_DEP_REF) {
         if (!lyd_new_leaf(ly_deps, NULL, "module", mod_name)) {
-            goto error_internal;
+            sr_errinfo_new_ly(&err_info, lyd_node_module(ly_deps)->ctx);
+            goto error;
         }
     } else {
         ly_instid = lyd_new(ly_deps, NULL, "inst-id");
         if (!ly_instid) {
-            goto error_internal;
+            sr_errinfo_new_ly(&err_info, lyd_node_module(ly_deps)->ctx);
+            goto error;
         }
         if (!lyd_new_leaf(ly_instid, NULL, "xpath", data_path)) {
-            goto error_internal;
+            sr_errinfo_new_ly(&err_info, lyd_node_module(ly_deps)->ctx);
+            goto error;
         }
         if (mod_name && !lyd_new_leaf(ly_instid, NULL, "default-module", mod_name)) {
-            goto error_internal;
+            sr_errinfo_new_ly(&err_info, lyd_node_module(ly_deps)->ctx);
+            goto error;
         }
     }
 
@@ -934,52 +970,53 @@ sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *
     } /* module name is NOT allocated again, just referenced */
 
     free(data_path);
-    return SR_ERR_OK;
+    return NULL;
 
-error_internal:
+error:
     free(data_path);
-    SR_LOG_ERRINT;
-    return SR_ERR_INTERNAL;
+    return err_info;
 }
 
-static int
+static sr_error_info_t *
 sr_moddep_cond(const char *cond, int lyxp_opt, struct lys_node *node, const struct lys_module *local_mod,
         struct lyd_node *ly_deps, uint32_t *shm_size)
 {
     struct ly_set *set;
     struct lys_node *atom;
     uint32_t i;
-    int ret;
+    sr_error_info_t *err_info = NULL;
 
     /* get all atoms of the XPath condition */
     set = lys_xpath_atomize(node, LYXP_NODE_ELEM, cond, lyxp_opt);
     if (!set) {
-        return SR_ERR_INTERNAL;
+        sr_errinfo_new_ly(&err_info, local_mod->ctx);
+        return err_info;
     }
 
     /* find all top-level foreign nodes (augment nodes are not considered foreign now) */
     for (i = 0; i < set->number; ++i) {
         atom = set->set.s[i];
         if (!lys_parent(atom) && (lys_node_module(atom) != local_mod)) {
-            if ((ret = sr_moddep_add(ly_deps, SR_DEP_REF, lys_node_module(atom)->name, NULL, shm_size)) != SR_ERR_OK) {
+            if ((err_info = sr_moddep_add(ly_deps, SR_DEP_REF, lys_node_module(atom)->name, NULL, shm_size))) {
                 ly_set_free(set);
-                return ret;
+                return err_info;
             }
         }
     }
 
     ly_set_free(set);
-    return SR_ERR_OK;
+    return NULL;
 }
 
-static int
+static sr_error_info_t *
 sr_moddep_type(const struct lys_type *type, struct lys_node *node, const struct lys_module *local_mod,
         struct lyd_node *ly_deps, uint32_t *shm_size)
 {
     const struct lys_type *t;
     const char *ptr;
     char *mod_name;
-    int ret, i;
+    int i;
+    sr_error_info_t *err_info = NULL;
 
     switch (type->base) {
     case LY_TYPE_INST:
@@ -987,10 +1024,10 @@ sr_moddep_type(const struct lys_type *type, struct lys_node *node, const struct 
         if ((node->nodetype == LYS_LEAF) && ((struct lys_node_leaf *)node)->dflt) {
             mod_name = sr_get_first_ns(((struct lys_node_leaf *)node)->dflt);
         }
-        ret = sr_moddep_add(ly_deps, SR_DEP_INSTID, mod_name, node, shm_size);
+        err_info = sr_moddep_add(ly_deps, SR_DEP_INSTID, mod_name, node, shm_size);
         free(mod_name);
-        if (ret != SR_ERR_OK) {
-            return ret;
+        if (err_info) {
+            return err_info;
         }
         break;
     case LY_TYPE_LEAFREF:
@@ -1004,12 +1041,12 @@ sr_moddep_type(const struct lys_type *type, struct lys_node *node, const struct 
                 if (strncmp(ptr, local_mod->name, i) || local_mod->name[i]) {
                     /* it is a foreign prefix */
                     mod_name = strndup(ptr, i);
-                    SR_CHECK_MEM_RET(!mod_name);
+                    SR_CHECK_MEM_RET(!mod_name, err_info);
 
-                    ret = sr_moddep_add(ly_deps, SR_DEP_REF, mod_name, NULL, shm_size);
+                    err_info = sr_moddep_add(ly_deps, SR_DEP_REF, mod_name, NULL, shm_size);
                     free(mod_name);
-                    if (ret != SR_ERR_OK) {
-                        return ret;
+                    if (err_info) {
+                        return err_info;
                     }
                 }
             }
@@ -1018,8 +1055,8 @@ sr_moddep_type(const struct lys_type *type, struct lys_node *node, const struct 
     case LY_TYPE_UNION:
         t = NULL;
         while ((t = lys_getnext_union_type(t, type))) {
-            if ((ret = sr_moddep_type(t, node, local_mod, ly_deps, shm_size)) != SR_ERR_OK) {
-                return ret;
+            if ((err_info = sr_moddep_type(t, node, local_mod, ly_deps, shm_size))) {
+                return err_info;
             }
         }
         break;
@@ -1028,10 +1065,10 @@ sr_moddep_type(const struct lys_type *type, struct lys_node *node, const struct 
         break;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-static int
+static sr_error_info_t *
 sr_shmmain_ly_add_module(const struct lys_module *mod, struct lyd_node *sr_mods, struct lyd_node **ly_mod_p,
         uint32_t *shm_size)
 {
@@ -1041,7 +1078,7 @@ sr_shmmain_ly_add_module(const struct lys_module *mod, struct lyd_node *sr_mods,
     struct lys_when *when;
     struct lys_restr *musts;
     uint8_t i, must_size;
-    int ret;
+    sr_error_info_t *err_info = NULL;
 
     /* structure itself */
     *shm_size += sizeof(sr_mod_t);
@@ -1049,16 +1086,19 @@ sr_shmmain_ly_add_module(const struct lys_module *mod, struct lyd_node *sr_mods,
     *shm_size += strlen(mod->name) + 1;
 
     ly_mod = lyd_new(sr_mods, NULL, "module");
-    if (!mod) {
-        return SR_ERR_INTERNAL;
+    if (!ly_mod) {
+        sr_errinfo_new_ly(&err_info, mod->ctx);
+        return err_info;
     } else if (ly_mod_p && !*ly_mod_p) {
         *ly_mod_p = ly_mod;
     }
     if (!lyd_new_leaf(ly_mod, NULL, "name", mod->name)) {
-        return SR_ERR_INTERNAL;
+        sr_errinfo_new_ly(&err_info, mod->ctx);
+        return err_info;
     }
     if (mod->rev_size && !lyd_new_leaf(ly_mod, NULL, "revision", mod->rev[0].date)) {
-        return SR_ERR_INTERNAL;
+        sr_errinfo_new_ly(&err_info, mod->ctx);
+        return err_info;
     }
 
     elem = NULL;
@@ -1068,7 +1108,8 @@ sr_shmmain_ly_add_module(const struct lys_module *mod, struct lyd_node *sr_mods,
         }
     }
     if (!lyd_new_leaf(ly_mod, NULL, "has-data", elem ? "true" : "false")) {
-        return SR_ERR_INTERNAL;
+        sr_errinfo_new_ly(&err_info, mod->ctx);
+        return err_info;
     }
 
     for (i = 0; i < mod->features_size; ++i) {
@@ -1079,14 +1120,16 @@ sr_shmmain_ly_add_module(const struct lys_module *mod, struct lyd_node *sr_mods,
             *shm_size += strlen(mod->features[i].name) + 1;
 
             if (!lyd_new_leaf(ly_mod, NULL, "enabled-feature", mod->features[i].name)) {
-                return SR_ERR_INTERNAL;
+                sr_errinfo_new_ly(&err_info, mod->ctx);
+                return err_info;
             }
         }
     }
 
     ly_deps = lyd_new(ly_mod, NULL, "dependencies");
     if (!ly_deps) {
-        return SR_ERR_INTERNAL;
+        sr_errinfo_new_ly(&err_info, mod->ctx);
+        return err_info;
     }
 
     /* dependencies */
@@ -1161,18 +1204,18 @@ sr_shmmain_ly_add_module(const struct lys_module *mod, struct lyd_node *sr_mods,
 
             /* collect the dependencies */
             if (type) {
-                if ((ret = sr_moddep_type(type, elem, mod, ly_deps, shm_size)) != SR_ERR_OK) {
-                    return ret;
+                if ((err_info = sr_moddep_type(type, elem, mod, ly_deps, shm_size))) {
+                    return err_info;
                 }
             }
             if (when) {
-                if ((ret = sr_moddep_cond(when->cond, LYXP_WHEN, elem, mod, ly_deps, shm_size)) != SR_ERR_OK) {
-                    return ret;
+                if ((err_info = sr_moddep_cond(when->cond, LYXP_WHEN, elem, mod, ly_deps, shm_size))) {
+                    return err_info;
                 }
             }
             for (i = 0; i < must_size; ++i) {
-                if ((ret = sr_moddep_cond(musts[i].expr, LYXP_MUST, elem, mod, ly_deps, shm_size)) != SR_ERR_OK) {
-                    return ret;
+                if ((err_info = sr_moddep_cond(musts[i].expr, LYXP_MUST, elem, mod, ly_deps, shm_size))) {
+                    return err_info;
                 }
             }
 
@@ -1207,107 +1250,111 @@ next_sibling:
         }
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-static int
+static sr_error_info_t *
 sr_shmmain_ly_add_module_with_imps(char *sr_shm, const struct lys_module *mod, struct lyd_node *sr_mods,
         struct lyd_node **ly_mod_p, uint32_t *shm_size)
 {
-    int ret;
+    sr_error_info_t *err_info = NULL;
     uint8_t i;
 
-    if (!sr_shmmain_find_module(sr_shm, mod->name, 0)) {
-        /* module was not yet added */
-        if ((ret = sr_shmmain_ly_add_module(mod, sr_mods, ly_mod_p, shm_size)) != SR_ERR_OK) {
-            return ret;
-        }
+    if (sr_shmmain_find_module(sr_shm, mod->name, 0)) {
+        /* module has already been added */
+        return NULL;
+    }
 
-        /* all newly implemented modules will be added also from imports */
-        for (i = 0; i < mod->imp_size; ++i) {
-            if (mod->imp[i].module->implemented) {
-                if ((ret = sr_shmmain_ly_add_module_with_imps(sr_shm, mod->imp[i].module, sr_mods, ly_mod_p, shm_size)) != SR_ERR_OK) {
-                    return ret;
-                }
+    if ((err_info = sr_shmmain_ly_add_module(mod, sr_mods, ly_mod_p, shm_size))) {
+        return err_info;
+    }
+
+    /* all newly implemented modules will be added also from imports */
+    for (i = 0; i < mod->imp_size; ++i) {
+        if (mod->imp[i].module->implemented) {
+            if ((err_info = sr_shmmain_ly_add_module_with_imps(sr_shm, mod->imp[i].module, sr_mods, ly_mod_p, shm_size))) {
+                return err_info;
             }
         }
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod, int *has_data)
 {
     struct lyd_node *sr_mods = NULL, *sr_mod = NULL;
     struct ly_set *set = NULL;
     uint32_t shm_size = 0;
-    int ret = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
 
     /* parse current module information */
-    if ((ret = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods))) {
         goto cleanup;
     }
 
     /* get the combined size of all newly implemented modules */
     assert(mod->implemented);
-    if ((ret = sr_shmmain_ly_add_module_with_imps(conn->shm, mod, sr_mods, &sr_mod, &shm_size)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_ly_add_module_with_imps(conn->shm, mod, sr_mods, &sr_mod, &shm_size))) {
         goto cleanup;
     }
 
     /* remember whether there are any data */
     set = lyd_find_path(sr_mod, "has-data");
-    SR_CHECK_INT_GOTO(!set || (set->number != 1), ret, cleanup);
+    SR_CHECK_INT_GOTO(!set || (set->number != 1), err_info, cleanup);
     *has_data = ((struct lyd_node_leaf_list *)set->set.d[0])->value.bln;
 
     /* validate */
     mod = ly_ctx_get_module(mod->ctx, SR_YANG_MOD, NULL, 1);
-    SR_CHECK_INT_GOTO(!mod, ret, cleanup);
+    SR_CHECK_INT_GOTO(!mod, err_info, cleanup);
+
     if (lyd_validate_modules(&sr_mods, &mod, 1, LYD_OPT_CONFIG)) {
-        ret = SR_ERR_VALIDATION_FAILED;
+        sr_errinfo_new_ly(&err_info, mod->ctx);
+        SR_ERRINFO_VALID(&err_info);
         goto cleanup;
     }
 
     /* just adds the new modules into SHM */
-    if ((ret = sr_shmmain_shm_add(conn, conn->shm_size + shm_size, sr_mod)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_shm_add(conn, conn->shm_size + shm_size, sr_mod))) {
         goto cleanup;
     }
 
     /* store the updated persistent data tree */
-    if ((ret = sr_shmmain_ly_int_data_print(sr_mods)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_ly_int_data_print(sr_mods))) {
         goto cleanup;
     }
 
 cleanup:
     ly_set_free(set);
     lyd_free_withsiblings(sr_mods);
-    return ret;
+    return err_info;
 }
 
-int
-sr_shmmain_unsched_del_module_try(sr_conn_ctx_t *conn, const char *mod_name)
+sr_error_info_t *
+sr_shmmain_unsched_del_module(sr_conn_ctx_t *conn, const char *mod_name)
 {
     struct lyd_node *sr_mods = NULL;
     struct ly_set *set = NULL;
     const struct lys_module *mod;
     char *path = NULL;
-    int ret = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
 
     /* parse current module information */
-    if ((ret = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods))) {
         goto cleanup;
     }
 
     /* check whether the module is marked for deletion */
     if (asprintf(&path, "/" SR_YANG_MOD ":sysrepo-modules/module[name=\"%s\"]/removed", mod_name) == -1) {
-        SR_LOG_ERRMEM;
+        err_info = &sr_errinfo_mem;
         goto cleanup;
     }
     set = lyd_find_path(sr_mods, path);
-    SR_CHECK_INT_GOTO(!set, ret, cleanup);
+    SR_CHECK_INT_GOTO(!set, err_info, cleanup);
     if (!set->number) {
         assert(!set->number);
-        ret = SR_ERR_NOT_FOUND;
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" not marked for deletion.", mod_name);
         goto cleanup;
     }
 
@@ -1317,66 +1364,66 @@ sr_shmmain_unsched_del_module_try(sr_conn_ctx_t *conn, const char *mod_name)
 
     /* validate */
     mod = ly_ctx_get_module(conn->ly_ctx, SR_YANG_MOD, NULL, 1);
-    SR_CHECK_INT_GOTO(!mod, ret, cleanup);
+    SR_CHECK_INT_GOTO(!mod, err_info, cleanup);
+
     if (lyd_validate_modules(&sr_mods, &mod, 1, LYD_OPT_CONFIG)) {
-        ret = SR_ERR_VALIDATION_FAILED;
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        SR_ERRINFO_VALID(&err_info);
         goto cleanup;
     }
 
     /* store the updated persistent data tree */
-    ret = sr_shmmain_ly_int_data_print(sr_mods);
+    err_info = sr_shmmain_ly_int_data_print(sr_mods);
 
 cleanup:
     free(path);
     ly_set_free(set);
     lyd_free_withsiblings(sr_mods);
-    return ret;
+    return err_info;
 }
 
-int
+sr_error_info_t *
 sr_shmmain_deferred_del_module_with_imps(sr_conn_ctx_t *conn, const char *mod_name)
 {
     struct lyd_node *sr_mods = NULL;
     struct ly_set *set = NULL;
     const struct lys_module *mod;
     char *path = NULL;
-    int ret = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
 
     /* parse current module information */
-    if ((ret = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods))) {
         goto cleanup;
     }
 
     /* check that the module is not already marked for deletion */
     if (asprintf(&path, "/" SR_YANG_MOD ":sysrepo-modules/module[name=\"%s\"]/removed", mod_name) == -1) {
-        SR_LOG_ERRMEM;
+        err_info = &sr_errinfo_mem;
         goto cleanup;
     }
     set = lyd_find_path(sr_mods, path);
-    SR_CHECK_INT_GOTO(!set, ret, cleanup);
+    SR_CHECK_INT_GOTO(!set, err_info, cleanup);
     if (set->number == 1) {
-        SR_LOG_ERR("Module \"%s\" already scheduled for deletion.", mod_name);
-        ret = SR_ERR_NOT_FOUND;
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" already scheduled for deletion.", mod_name);
         goto cleanup;
     }
 
     /* mark for deletion */
     if (!lyd_new_path(sr_mods, NULL, path, NULL, 0, LYD_PATH_OPT_NOPARENT)) {
-        SR_LOG_ERRINT;
-        ret = SR_ERR_INTERNAL;
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
         goto cleanup;
     }
 
     /* validate */
     mod = ly_ctx_get_module(conn->ly_ctx, SR_YANG_MOD, NULL, 1);
-    SR_CHECK_INT_GOTO(!mod, ret, cleanup);
+    SR_CHECK_INT_GOTO(!mod, err_info, cleanup);
     if (lyd_validate_modules(&sr_mods, &mod, 1, LYD_OPT_CONFIG)) {
-        ret = SR_ERR_INTERNAL;
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
         goto cleanup;
     }
 
     /* store the updated persistent data tree */
-    if ((ret = sr_shmmain_ly_int_data_print(sr_mods)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_ly_int_data_print(sr_mods))) {
         goto cleanup;
     }
 
@@ -1384,10 +1431,10 @@ cleanup:
     free(path);
     ly_set_free(set);
     lyd_free_withsiblings(sr_mods);
-    return ret;
+    return err_info;
 }
 
-int
+sr_error_info_t *
 sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, const char *feat_name, int enable)
 {
     struct lyd_node *sr_mods = NULL;
@@ -1395,28 +1442,28 @@ sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, co
     struct ly_set *set = NULL;
     const struct lys_module *mod;
     char *path = NULL;
-    int ret = SR_ERR_OK, unsched = 0;
+    int unsched = 0;
+    sr_error_info_t *err_info = NULL;
 
     /* parse current module information */
-    if ((ret = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods))) {
         goto cleanup;
     }
 
     /* check that the feature is not already marked for change */
     if (asprintf(&path, "/" SR_YANG_MOD ":sysrepo-modules/module[name=\"%s\"]/changed-feature[name=\"%s\"]/change",
             mod_name, feat_name) == -1) {
-        SR_LOG_ERRMEM;
+        err_info = &sr_errinfo_mem;
         goto cleanup;
     }
     set = lyd_find_path(sr_mods, path);
-    SR_CHECK_INT_GOTO(!set, ret, cleanup);
+    SR_CHECK_INT_GOTO(!set, err_info, cleanup);
     if (set->number == 1) {
         leaf = (struct lyd_node_leaf_list *)set->set.d[0];
 
         if (enable) {
             if (!strcmp(leaf->value_str, "enable")) {
-                SR_LOG_ERR("Feature \"%s\" already scheduled to be enabled.", mod_name);
-                ret = SR_ERR_EXISTS;
+                sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Feature \"%s\" already scheduled to be enabled.", feat_name);
                 goto cleanup;
             }
 
@@ -1424,8 +1471,7 @@ sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, co
             unsched = 1;
         } else {
             if (!strcmp(leaf->value_str, "disable")) {
-                SR_LOG_ERR("Feature \"%s\" already scheduled to be disabled.", mod_name);
-                ret = SR_ERR_EXISTS;
+                sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Feature \"%s\" already scheduled to be disabled.", feat_name);
                 goto cleanup;
             }
 
@@ -1436,8 +1482,7 @@ sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, co
 
     /* mark the change */
     if (!lyd_new_path(sr_mods, NULL, path, enable ? "enable" : "disable", 0, LYD_PATH_OPT_NOPARENT | LYD_PATH_OPT_UPDATE)) {
-        SR_LOG_ERRINT;
-        ret = SR_ERR_INTERNAL;
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
         goto cleanup;
     }
 
@@ -1447,14 +1492,15 @@ sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, co
 
     /* validate */
     mod = ly_ctx_get_module(conn->ly_ctx, SR_YANG_MOD, NULL, 1);
-    SR_CHECK_INT_GOTO(!mod, ret, cleanup);
+    SR_CHECK_INT_GOTO(!mod, err_info, cleanup);
     if (lyd_validate_modules(&sr_mods, &mod, 1, LYD_OPT_CONFIG)) {
-        ret = SR_ERR_VALIDATION_FAILED;
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        SR_ERRINFO_VALID(&err_info);
         goto cleanup;
     }
 
     /* store the updated persistent data tree */
-    if ((ret = sr_shmmain_ly_int_data_print(sr_mods)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_ly_int_data_print(sr_mods))) {
         goto cleanup;
     }
 
@@ -1462,5 +1508,5 @@ cleanup:
     free(path);
     ly_set_free(set);
     lyd_free_withsiblings(sr_mods);
-    return ret;
+    return err_info;
 }
