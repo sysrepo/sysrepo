@@ -101,7 +101,8 @@ sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
     if (!conn->ly_ctx) {
         /* very first init */
         if (asprintf(&yang_dir, "%s/yang", sr_get_repo_path()) == -1) {
-            return &sr_errinfo_mem;
+            SR_ERRINFO_MEM(&err_info);
+            return err_info;
         }
         conn->ly_ctx = ly_ctx_new(yang_dir, 0);
         free(yang_dir);
@@ -221,7 +222,8 @@ sr_shmmain_check_dirs(void)
 
     /* schema dir */
     if (asprintf(&dir_path, "%s/yang", repo_path) == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
         free(dir_path);
@@ -238,7 +240,8 @@ sr_shmmain_check_dirs(void)
 
     /* data dir */
     if (asprintf(&dir_path, "%s/data/internal", repo_path) == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
         free(dir_path);
@@ -264,7 +267,8 @@ sr_shmmain_lock_open(int *shm_lock)
     char *path;
 
     if (asprintf(&path, "%s/%s", sr_get_repo_path(), SR_MAIN_SHM_LOCK) == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
 
     *shm_lock = open(path, O_RDWR | O_CREAT | O_EXCL, 00600);
@@ -595,7 +599,8 @@ sr_shmmain_ly_int_data_print(const struct lyd_node *sr_mods)
     }
 
     if (asprintf(&path, "%s/data/internal/sysrepo.startup", sr_get_repo_path()) == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
 
     /* store the data tree */
@@ -612,10 +617,12 @@ sr_shmmain_ly_int_data_print(const struct lyd_node *sr_mods)
 static sr_error_info_t *
 sr_remove_data_files(const char *mod_name)
 {
+    sr_error_info_t *err_info = NULL;
     char *path;
 
     if (asprintf(&path, "%s/data/%s.startup", sr_get_repo_path(), mod_name) == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
 
     if (unlink(path) == -1) {
@@ -624,7 +631,8 @@ sr_remove_data_files(const char *mod_name)
     free(path);
 
     if (asprintf(&path, "%s/data/%s.running", sr_get_repo_path(), mod_name) == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
 
     if (unlink(path) == -1) {
@@ -649,7 +657,8 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
     assert(sr_mods_p);
 
     if (asprintf(&path, "%s/data/internal/%s.startup", sr_get_repo_path(), SR_YANG_MOD) == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
 
     /* check the existence of the data file */
@@ -740,7 +749,7 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
                     assert(!strcmp(sr_ly_leaf_value_str(feat_node->child->next), "disable"));
                     free(path);
                     if (asprintf(&path, "enabled-feature[.='%s']", sr_ly_leaf_value_str(feat_node->child)) == -1) {
-                        err_info = &sr_errinfo_mem;
+                        SR_ERRINFO_MEM(&err_info);
                         goto error;
                     }
 
@@ -879,7 +888,8 @@ sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *
 
     if (dep_type == SR_DEP_REF) {
         if (asprintf(&expr, "module[.='%s']", mod_name) == -1) {
-            return &sr_errinfo_mem;
+            SR_ERRINFO_MEM(&err_info);
+            return err_info;
         }
     } else {
         /* find the instance node(s) */
@@ -917,7 +927,8 @@ sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *
         data_path = lys_data_path(node);
         if (!data_path || (asprintf(&expr, "inst-id[.='%s']", data_path) == -1)) {
             free(data_path);
-            return &sr_errinfo_mem;
+            SR_ERRINFO_MEM(&err_info);
+            return err_info;
         }
     }
 
@@ -1347,7 +1358,7 @@ sr_shmmain_unsched_del_module(sr_conn_ctx_t *conn, const char *mod_name)
 
     /* check whether the module is marked for deletion */
     if (asprintf(&path, "/" SR_YANG_MOD ":sysrepo-modules/module[name=\"%s\"]/removed", mod_name) == -1) {
-        err_info = &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
     set = lyd_find_path(sr_mods, path);
@@ -1398,7 +1409,7 @@ sr_shmmain_deferred_del_module_with_imps(sr_conn_ctx_t *conn, const char *mod_na
 
     /* check that the module is not already marked for deletion */
     if (asprintf(&path, "/" SR_YANG_MOD ":sysrepo-modules/module[name=\"%s\"]/removed", mod_name) == -1) {
-        err_info = &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
     set = lyd_find_path(sr_mods, path);
@@ -1453,7 +1464,7 @@ sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, co
     /* check that the feature is not already marked for change */
     if (asprintf(&path, "/" SR_YANG_MOD ":sysrepo-modules/module[name=\"%s\"]/changed-feature[name=\"%s\"]/change",
             mod_name, feat_name) == -1) {
-        err_info = &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
     set = lyd_find_path(sr_mods, path);

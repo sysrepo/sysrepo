@@ -4,9 +4,8 @@
 
 #include "common.h"
 
-extern sr_error_info_t sr_errinfo_mem;
-
 #define SR_ERRINFO_INT(err_info) sr_errinfo_new(err_info, SR_ERR_INTERNAL, NULL, "Internal error (%s:%d).", __FILE__, __LINE__)
+#define SR_ERRINFO_MEM(err_info) sr_errinfo_new(err_info, SR_ERR_NOMEM, NULL, NULL)
 #define SR_ERRINFO_RWLOCK(err_info, wr, func, ret) sr_errinfo_new(err_info, (ret == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, \
         NULL, "%s locking a rwlock failed (%s: %s).", wr ? "Write" : "Read", func, strerror(ret))
 #define SR_ERRINFO_SYSERRNO(err_info, func) sr_errinfo_new(err_info, SR_ERR_SYS, NULL, "%s() failed (%s).", func, strerror(errno))
@@ -20,8 +19,8 @@ extern sr_error_info_t sr_errinfo_mem;
 #define SR_LOG_INFMSG(format) sr_log(SR_LL_INF, format)
 #define SR_LOG_DBGMSG(format) sr_log(SR_LL_DBG, format)
 
-#define SR_CHECK_MEM_GOTO(cond, err_info, go) if (cond) { sr_errinfo_free(&(err_info)); err_info = &sr_errinfo_mem; goto go; }
-#define SR_CHECK_MEM_RET(cond, err_info) if (cond) { sr_errinfo_free(&(err_info)); return &sr_errinfo_mem; }
+#define SR_CHECK_MEM_GOTO(cond, err_info, go) if (cond) { SR_ERRINFO_MEM(&(err_info)); goto go; }
+#define SR_CHECK_MEM_RET(cond, err_info) if (cond) { SR_ERRINFO_MEM(&(err_info)); return err_info; }
 #define SR_CHECK_INT_GOTO(cond, err_info, go) if (cond) { SR_ERRINFO_INT(&(err_info)); goto go; }
 #define SR_CHECK_INT_RET(cond, err_info) if (cond) { SR_ERRINFO_INT(&(err_info)); return err_info; }
 

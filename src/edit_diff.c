@@ -191,7 +191,8 @@ sr_ly_edit_find_userord_predicate(const struct lyd_node *sibling, const struct l
         fmt = top_level ? "/%s[.='%s']" : "%s[.='%s']";
     }
     if (asprintf(&expr, fmt, llist->schema->name, key_or_value) == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
 
     /* find the affected node */

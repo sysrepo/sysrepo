@@ -36,10 +36,20 @@ static const char *const sr_errlist[] = {
         "User callback failed",                 /* SR_ERR_CALLBACK_FAILED */
 };
 
-sr_error_info_t sr_errinfo_mem = {
+struct sr_error_info_err_s {
+    const char *message;
+    const char *xpath;
+};
+
+static struct sr_error_info_err_s mem_err = {
+    .message = "Memory allocation failed.",
+    .xpath = NULL
+};
+
+static sr_error_info_t sr_errinfo_mem = {
     .err_code = SR_ERR_NOMEM,
-    .err = NULL,
-    .err_count = 0
+    .err = (void *)&mem_err,
+    .err_count = 1
 };
 
 sr_error_t
@@ -121,6 +131,17 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
     va_list vargs;
     int ret, idx;
 
+    /* special case, when we have no memory, we would try to allocate rror info in vain */
+    if (err_code == SR_ERR_NOMEM) {
+        /* check that both structures are the same (could be compile-time) */
+        assert(sizeof(struct sr_error_info_s) == sizeof *(*err_info)->err);
+        assert(!xpath && !format);
+
+        sr_errinfo_free(err_info);
+        *err_info = &sr_errinfo_mem;
+        goto print;
+    }
+
     if (!*err_info) {
         *err_info = calloc(1, sizeof **err_info);
         if (!*err_info) {
@@ -157,13 +178,9 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
     ++(*err_info)->err_count;
 
     /* print it */
+print:
     idx = (*err_info)->err_count - 1;
-    if (!(*err_info)->err[idx].message) {
-        assert(err_code == SR_ERR_NOMEM);
-        sr_log_msg(SR_LL_ERR, "Memory allocation failed.", NULL);
-    } else {
-        sr_log_msg(SR_LL_ERR, (*err_info)->err[idx].message, (*err_info)->err[idx].xpath);
-    }
+    sr_log_msg(SR_LL_ERR, (*err_info)->err[idx].message, (*err_info)->err[idx].xpath);
 }
 
 void
@@ -197,12 +214,15 @@ sr_errinfo_free(sr_error_info_t **err_info)
     size_t i;
 
     if (err_info && *err_info) {
-        for (i = 0; i < (*err_info)->err_count; ++i) {
-            free((*err_info)->err[i].message);
-            free((*err_info)->err[i].xpath);
+        /* NOMEM is always a static error info structure */
+        if ((*err_info)->err_code != SR_ERR_NOMEM) {
+            for (i = 0; i < (*err_info)->err_count; ++i) {
+                free((*err_info)->err[i].message);
+                free((*err_info)->err[i].xpath);
+            }
+            free((*err_info)->err);
+            free(*err_info);
         }
-        free((*err_info)->err);
-        free(*err_info);
         *err_info = NULL;
     }
 }

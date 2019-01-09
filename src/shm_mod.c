@@ -376,7 +376,8 @@ sr_ly_module_data_get(struct ly_ctx *ly_ctx, const char *mod_name, sr_datastore_
     char *path;
 
     if (asprintf(&path, "%s/data/%s.%s", sr_get_repo_path(), mod_name, sr_ds2str(ds)) == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
 
     ly_errno = LYVE_SUCCESS;
@@ -397,7 +398,8 @@ sr_ly_module_data_set(sr_datastore_t ds, const char *mod_name, struct lyd_node *
     sr_error_info_t *err_info = NULL;
 
     if (asprintf(&path, "%s/data/%s.%s", sr_get_repo_path(), mod_name, sr_ds2str(ds)) == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
 
     if (lyd_print_path(path, data, LYD_LYB, LYP_WITHSIBLINGS)) {
@@ -474,7 +476,7 @@ sr_shmmod_get_filter(sr_session_ctx_t *session, const char *xpath, struct sr_mod
         *result = ly_set_new();
     }
     if (!*result) {
-        err_info = &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
 

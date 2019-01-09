@@ -28,7 +28,8 @@ sr_conn_new(const char *app_name, sr_conn_ctx_t **conn_p)
     conn->app_name = strdup(app_name);
     if (!conn->app_name) {
         free(conn);
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
 
     if ((err_info = sr_shmmain_lock_open(&conn->shm_lock))) {
@@ -147,7 +148,8 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, const sr_s
 
     *session = calloc(1, sizeof **session);
     if (!*session) {
-        return sr_api_ret(NULL, &sr_errinfo_mem);
+        SR_ERRINFO_MEM(&err_info);
+        return sr_api_ret(NULL, err_info);
     }
 
     /* add the session into conn */
@@ -155,7 +157,8 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, const sr_s
     if (!new) {
         free(*session);
         *session = NULL;
-        return sr_api_ret(NULL, &sr_errinfo_mem);
+        SR_ERRINFO_MEM(&err_info);
+        return sr_api_ret(NULL, err_info);
     }
     conn->sessions = new;
     conn->sessions[conn->session_count] = *session;
@@ -331,7 +334,8 @@ sr_store_module(const struct lys_module *mod)
 
     if (asprintf(&path, "%s/yang/%s%s%s.yang", sr_get_repo_path(), mod->name,
                  mod->rev_size ? "@" : "", mod->rev_size ? mod->rev[0].date : "") == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
 
     if (!access(path, R_OK)) {
@@ -396,7 +400,7 @@ sr_create_data_files(const struct lys_module *mod)
 
     /* print them into a file */
     if (asprintf(&path, "%s/data/%s.startup", sr_get_repo_path(), mod->name) == -1) {
-        err_info = &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
     if (lyd_print_path(path, root, LYD_LYB, LYP_WITHSIBLINGS)) {
@@ -415,7 +419,8 @@ sr_create_data_files(const struct lys_module *mod)
     free(path);
     path = NULL;
     if (asprintf(&path, "%s/data/%s.running", sr_get_repo_path(),  mod->name) == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
     if (lyd_print_path(path, root, LYD_LYB, LYP_WITHSIBLINGS)) {
         sr_errinfo_new_ly(&err_info, mod->ctx);
@@ -1171,7 +1176,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
         mem = realloc(conn->subscriptions, (conn->subscription_count + 1) * sizeof *conn->subscriptions);
         if (!mem) {
             sr_unsubscribe(*subscription);
-            return sr_api_ret(session, &sr_errinfo_mem);
+            SR_ERRINFO_MEM(&err_info);
+            return sr_api_ret(session, err_info);
         }
         conn->subscriptions = mem;
         conn->subscriptions[conn->subscription_count] = *subscription;
@@ -1295,7 +1301,8 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
 
     *iter = malloc(sizeof **iter);
     if (!*iter) {
-        return sr_api_ret(session, &sr_errinfo_mem);
+        SR_ERRINFO_MEM(&err_info);
+        return sr_api_ret(session, err_info);
     }
 
     (*iter)->set = lyd_find_path(session->dt[session->ds].diff, xpath);

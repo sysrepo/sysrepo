@@ -110,7 +110,8 @@ sr_shmsub_open(const char *mod_name, sr_datastore_t ds, int *shm_fd)
 
     /* create/open shared memory */
     if (asprintf(&path, "/sr_%s.%s", mod_name, sr_ds2str(ds)) == -1) {
-        return &sr_errinfo_mem;
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
     created = 1;
     *shm_fd = shm_open(path, O_RDWR | O_CREAT | O_EXCL, 00600);
