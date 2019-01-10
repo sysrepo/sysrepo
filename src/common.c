@@ -442,3 +442,55 @@ sr_ly_link(struct lyd_node *first, struct lyd_node *sibling)
     first->prev->next = sibling;
     first->prev = last;
 }
+
+sr_error_info_t *
+sr_ly_data_dup_filter(const struct lyd_node *data, const char *xpath, struct lyd_node **filter_data)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *root;
+    struct ly_set *set;
+    size_t i;
+
+    *filter_data = NULL;
+
+    /* get only the selected subtrees in a set */
+    set = lyd_find_path(data, xpath);
+    if (!set) {
+        sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
+        goto error;
+    }
+
+    for (i = 0; i < set->number; ++i) {
+        /* duplicate filtered subtree */
+        root = lyd_dup(set->set.d[i], LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_PARENTS);
+        if (!root) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
+            goto error;
+        }
+
+        /* find top-level parent */
+        while (root->parent) {
+            root = root->parent;
+        }
+
+        /* merge into the final result */
+        if (*filter_data) {
+            if (lyd_merge(*filter_data, root, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+                lyd_free_withsiblings(root);
+                sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
+                goto error;
+            }
+        } else {
+            *filter_data = root;
+        }
+    }
+
+    ly_set_free(set);
+    return NULL;
+
+error:
+    ly_set_free(set);
+    lyd_free_withsiblings(*filter_data);
+    *filter_data = NULL;
+    return err_info;
+}

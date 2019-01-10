@@ -1116,11 +1116,12 @@ typedef uint32_t sr_subscr_options_t;
  * @param[in] session Automatically-created session that can be used for obtaining changed data
  * (e.g. by ::sr_get_changes_iter call ot ::sr_get_item -like calls). Do not stop this session.
  * @param[in] module_name Name of the module where the change has occurred.
+ * @param[in] xpath XPath used when subscribing, NULL if the whole module was subscribed to.
  * @param[in] event Type of the notification event that has occurred.
  * @param[in] private_data Private context opaque to sysrepo, as passed to
  * ::sr_module_change_subscribe call.
  */
-typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name,
+typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         sr_notif_event_t event, void *private_data);
 
 /**
@@ -1129,6 +1130,7 @@ typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] module_name Name of the module of interest for change notifications.
+ * @param[in] xpath Further filter the changes that will be handled by this subscription. Set NULL for the whole module.
  * @param[in] callback Callback to be called when the change in the datastore occurs.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
@@ -1140,8 +1142,9 @@ typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_module_change_cb callback,
-        void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+        sr_module_change_cb callback, void *private_data, uint32_t priority, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription);
 
 int sr_subscription_listen(sr_subscription_ctx_t *subscription);
 

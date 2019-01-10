@@ -26,6 +26,7 @@ typedef struct sr_mod_dep_s {
 } sr_mod_dep_t;
 
 typedef struct sr_mod_sub_s {
+    off_t xpath;
     uint32_t priority;
     int opts;
 } sr_mod_sub_t;
@@ -125,16 +126,17 @@ sr_error_info_t *sr_shmmod_validate(struct sr_mod_info_s *mod_info, int finish_d
 
 sr_error_info_t *sr_shmmod_store(struct sr_mod_info_s *mod_info);
 
-sr_error_info_t *sr_shmmod_subscription(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, uint32_t priority,
-        int subscr_opts, int add);
+sr_error_info_t *sr_shmmod_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_datastore_t ds,
+        uint32_t priority, int subscr_opts, int add);
 
 /* shm_sub.c */
 sr_error_info_t *sr_shmsub_lock(sr_sub_t *shm_sub, int wr, const char *func);
 
 void sr_shmsub_unlock(sr_sub_t *shm_sub);
 
-sr_error_info_t *sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_module_change_cb mod_cb,
-        void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subs_p);
+sr_error_info_t *sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_datastore_t ds,
+        sr_module_change_cb mod_cb, void *private_data, uint32_t priority, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subs_p);
 
 sr_error_info_t *sr_shmsub_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs);
 

@@ -149,7 +149,7 @@ error:
 }
 
 sr_error_info_t *
-sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_module_change_cb mod_cb,
+sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb mod_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subs_p)
 {
     struct modsub_s *mod_sub;
@@ -197,6 +197,12 @@ sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_m
         mod_sub->sub_count = 1;
         mod_sub->subs[0].cb = mod_cb;
         mod_sub->subs[0].private_data = private_data;
+        if (xpath) {
+            mod_sub->subs[0].xpath = strdup(xpath);
+            SR_CHECK_MEM_GOTO(!mod_sub->subs[0].xpath, err_info, error);
+        } else {
+            mod_sub->subs[0].xpath = NULL;
+        }
         mod_sub->subs[0].priority = priority;
         mod_sub->subs[0].opts = opts;
         mod_sub->subs[0].event_id = 0;
@@ -224,6 +230,12 @@ sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_m
         mod_sub->subs = new;
         mod_sub->subs[mod_sub->sub_count].cb = mod_cb;
         mod_sub->subs[mod_sub->sub_count].private_data = private_data;
+        if (xpath) {
+            mod_sub->subs[mod_sub->sub_count].xpath = strdup(xpath);
+            SR_CHECK_MEM_GOTO(!mod_sub->subs[mod_sub->sub_count].xpath, err_info, error);
+        } else {
+            mod_sub->subs[mod_sub->sub_count].xpath = NULL;
+        }
         mod_sub->subs[mod_sub->sub_count].priority = priority;
         mod_sub->subs[mod_sub->sub_count].opts = opts;
         mod_sub->subs[mod_sub->sub_count].event_id = 0;
@@ -236,6 +248,9 @@ sr_shmsub_add(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, sr_m
 
 error:
     free(mod_sub->module_name);
+    for (i = 0; i < mod_sub->sub_count; ++i) {
+        free(mod_sub->subs[i].xpath);
+    }
     free(mod_sub->subs);
 
     if (mod_sub->shm_fd > -1) {
@@ -256,10 +271,13 @@ sr_shmsub_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
 
         /* remove the subscriptions from the main SHM */
         for (j = 0; j < mod_sub->sub_count; ++j) {
-            if ((err_info = sr_shmmod_subscription(conn, mod_sub->module_name, mod_sub->ds, mod_sub->subs[j].priority,
-                        mod_sub->subs[j].opts, 0))) {
+            if ((err_info = sr_shmmod_subscription(conn, mod_sub->module_name, mod_sub->subs[j].xpath, mod_sub->ds,
+                        mod_sub->subs[j].priority, mod_sub->subs[j].opts, 0))) {
                 return err_info;
             }
+
+            /* free xpath */
+            free(mod_sub->subs[j].xpath);
         }
 
         /* free dynamic memory */
@@ -950,15 +968,33 @@ sr_shmsub_notify_change_abort(struct sr_mod_info_s *mod_info)
     return err_info;
 }
 
-static void
-sr_shmsub_listen_prepare_sess(struct modsub_s *mod_sub, sr_conn_ctx_t *conn, sr_session_ctx_t *tmp_sess)
+static sr_error_info_t *
+sr_shmsub_listen_prepare_sess(struct modsub_s *mod_sub, struct modsub_sub_s *sub, sr_conn_ctx_t *conn,
+        sr_session_ctx_t *tmp_sess)
 {
+    sr_error_info_t *err_info = NULL;
+
     assert(mod_sub->diff);
 
     tmp_sess->conn = conn;
     tmp_sess->ds = mod_sub->ds;
     tmp_sess->ev = ((sr_sub_t *)mod_sub->shm)->event;
-    tmp_sess->dt[tmp_sess->ds].diff = mod_sub->diff;
+    lyd_free_withsiblings(tmp_sess->dt[tmp_sess->ds].diff);
+
+    /* duplicate (filtered) diff */
+    if (sub->xpath) {
+        if ((err_info = sr_ly_data_dup_filter(mod_sub->diff, sub->xpath, &tmp_sess->dt[tmp_sess->ds].diff))) {
+            return err_info;
+        }
+    } else {
+        tmp_sess->dt[tmp_sess->ds].diff = lyd_dup_withsiblings(mod_sub->diff, 0);
+        if (!tmp_sess->dt[tmp_sess->ds].diff) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            return err_info;
+        }
+    }
+
+    return NULL;
 }
 
 static void
@@ -967,7 +1003,7 @@ sr_shmsub_listen_clear_sess(sr_session_ctx_t *tmp_sess)
     sr_errinfo_free(&tmp_sess->err_info);
     lyd_free_withsiblings(tmp_sess->dt[tmp_sess->ds].edit);
     tmp_sess->dt[tmp_sess->ds].edit = NULL;
-    /* it is freed elsewhere */
+    lyd_free_withsiblings(tmp_sess->dt[tmp_sess->ds].diff);
     tmp_sess->dt[tmp_sess->ds].diff = NULL;
 }
 
@@ -1019,7 +1055,8 @@ sr_shmsub_listen_is_new_event(sr_sub_t *shm_sub, struct modsub_sub_s *sub)
 }
 
 static void
-sr_shmsub_listen_finish_event(struct modsub_s *mod_sub, const char *data, uint32_t data_len, sr_error_t err_code)
+sr_shmsub_listen_finish_event(struct modsub_s *mod_sub, uint32_t valid_subscr_count, const char *data, uint32_t data_len,
+        sr_error_t err_code)
 {
     sr_sub_t *shm_sub;
     sr_notif_event_t event;
@@ -1028,7 +1065,7 @@ sr_shmsub_listen_finish_event(struct modsub_s *mod_sub, const char *data, uint32
 
     /* we are done */
     event = shm_sub->event;
-    --shm_sub->subscriber_count;
+    shm_sub->subscriber_count -= valid_subscr_count;
     if (!shm_sub->subscriber_count) {
         /* last subscriber finished, clear event */
         shm_sub->event = SR_EV_NONE;
@@ -1053,7 +1090,7 @@ sr_shmsub_listen_finish_event(struct modsub_s *mod_sub, const char *data, uint32
 static sr_error_info_t *
 sr_shmsub_listen_process_module_events(struct modsub_s *mod_sub, sr_conn_ctx_t *conn, int *new_event)
 {
-    uint32_t i, data_len = 0, msg_len;
+    uint32_t i, data_len = 0, msg_len, valid_subscr_count;
     char *data = NULL;
     int ret;
     sr_error_t err_code = SR_ERR_OK;
@@ -1110,10 +1147,8 @@ sr_shmsub_listen_process_module_events(struct modsub_s *mod_sub, sr_conn_ctx_t *
     SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (remaining %u subscribers).",
             mod_sub->module_name, sr_ev2str(shm_sub->event), shm_sub->event_id, shm_sub->priority, shm_sub->subscriber_count);
 
-    /* prepare callback session */
-    sr_shmsub_listen_prepare_sess(mod_sub, conn, &tmp_sess);
-
     /* process individual subscriptions (starting at the last found subscription, it was valid) */
+    valid_subscr_count = 0;
     goto process_event;
     for (; i < mod_sub->sub_count; ++i) {
         sub = &mod_sub->subs[i];
@@ -1123,16 +1158,27 @@ sr_shmsub_listen_process_module_events(struct modsub_s *mod_sub, sr_conn_ctx_t *
         }
 
 process_event:
+        /* subscription valid new event */
+        ++valid_subscr_count;
+
         /* remember event ID and event so that we do not process it again */
         sub->event_id = shm_sub->event_id;
         sub->event = shm_sub->event;
 
-        ret = sub->cb(&tmp_sess, mod_sub->module_name, shm_sub->event, sub->private_data);
-        if ((shm_sub->event == SR_EV_UPDATE) || (shm_sub->event == SR_EV_CHANGE)) {
-            if (ret != SR_ERR_OK) {
-                /* cause abort */
-                err_code = ret;
-                break;
+        /* prepare callback session */
+        if ((err_info = sr_shmsub_listen_prepare_sess(mod_sub, sub, conn, &tmp_sess))) {
+            goto cleanup;
+        }
+
+        /* whole diff may have been filtered out */
+        if (tmp_sess.dt[tmp_sess.ds].diff) {
+            ret = sub->cb(&tmp_sess, mod_sub->module_name, sub->xpath, shm_sub->event, sub->private_data);
+            if ((shm_sub->event == SR_EV_UPDATE) || (shm_sub->event == SR_EV_CHANGE)) {
+                if (ret != SR_ERR_OK) {
+                    /* cause abort */
+                    err_code = ret;
+                    break;
+                }
             }
         }
     }
@@ -1218,7 +1264,7 @@ process_event:
     }
 
     /* finish event */
-    sr_shmsub_listen_finish_event(mod_sub, data, data_len, err_code);
+    sr_shmsub_listen_finish_event(mod_sub, valid_subscr_count, data, data_len, err_code);
 
 unlock_cleanup:
     /* SUB UNLOCK */

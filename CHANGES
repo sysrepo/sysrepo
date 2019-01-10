@@ -14,7 +14,7 @@
 removed functions:
 - sr_module_install_subscribe (use notifications)
 - sr_feature_enable_subscribe (use notifications)
-- sr_subtree_change_subscribe (use sr_module_change_subscribe() and filter changes)
+- sr_subtree_change_subscribe (use sr_module_change_subscribe() with xpath)
 - sr_session_refresh (not needed, performed automatically)
 
 added functions:

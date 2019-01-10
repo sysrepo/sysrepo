@@ -815,11 +815,11 @@ sr_shmmod_store(struct sr_mod_info_s *mod_info)
 }
 
 sr_error_info_t *
-sr_shmmod_subscription(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds, uint32_t priority, int subscr_opts,
-        int add)
+sr_shmmod_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_datastore_t ds,
+        uint32_t priority, int subscr_opts, int add)
 {
     sr_mod_t *shm_mod;
-    off_t shm_mod_off;
+    off_t shm_mod_off, xpath_off;
     sr_mod_sub_t *shm_msub;
     uint32_t new_shm_size, old_shm_size = 0;
     uint16_t i;
@@ -834,11 +834,13 @@ sr_shmmod_subscription(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t
 
     if (add) {
         if (shm_mod->sub_info[ds].subs + shm_mod->sub_info[ds].sub_count * sizeof *shm_msub == conn->shm_size) {
-            /* adding just one subscription at the very SHM end */
-            new_shm_size = conn->shm_size + sizeof *shm_msub;
+            /* adding just one subscription at the very SHM end, optionally with an xpath */
+            xpath_off = conn->shm_size + sizeof *shm_msub;
+            new_shm_size = xpath_off + (xpath ? strlen(xpath) + 1 : 0);
         } else {
             /* moving all existing subscriptions (if any) and adding a new one */
-            new_shm_size = conn->shm_size + (shm_mod->sub_info[ds].sub_count + 1) * sizeof *shm_msub;
+            xpath_off = conn->shm_size + (shm_mod->sub_info[ds].sub_count + 1) * sizeof *shm_msub;
+            new_shm_size = xpath_off + (xpath ? strlen(xpath) + 1 : 0);
             old_shm_size = conn->shm_size;
         }
 
@@ -860,27 +862,43 @@ sr_shmmod_subscription(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t
         shm_msub += shm_mod->sub_info[ds].sub_count;
         ++shm_mod->sub_info[ds].sub_count;
 
+        if (xpath) {
+            strcpy(conn->shm + xpath_off, xpath);
+            shm_msub->xpath = xpath_off;
+        } else {
+            shm_msub->xpath = 0;
+        }
         shm_msub->priority = priority;
         shm_msub->opts = subscr_opts;
     } else {
         /* find the subscription */
         shm_msub = (sr_mod_sub_t *)(conn->shm + shm_mod->sub_info[ds].subs);
         for (i = 0; i < shm_mod->sub_info[ds].sub_count; ++i) {
-            if ((shm_msub[i].priority == priority) && (shm_msub[i].opts == subscr_opts)) {
-                break;
+            if ((!xpath && !shm_msub[i].xpath) || (xpath && shm_msub[i].xpath && !strcmp(conn->shm + shm_msub[i].xpath, xpath))) {
+                if ((shm_msub[i].priority == priority) && (shm_msub[i].opts == subscr_opts)) {
+                    break;
+                }
             }
         }
         SR_CHECK_INT_RET(i == shm_mod->sub_info[ds].sub_count, err_info);
+
+        new_shm_size = conn->shm_size;
+        if (xpath && (shm_msub[i].xpath + strlen(xpath) + 1 == new_shm_size)) {
+            /* xpath was stored at the SHM end, we can shorten SHM */
+            new_shm_size -= strlen(xpath) + 1;
+        }
 
         /* replace the deleted subscription with the last one */
         if (i < shm_mod->sub_info[ds].sub_count - 1) {
             memcpy(&shm_msub[i], &shm_msub[shm_mod->sub_info[ds].sub_count - 1], sizeof *shm_msub);
         }
 
-        if (shm_mod->sub_info[ds].subs + shm_mod->sub_info[ds].sub_count * sizeof *shm_msub == conn->shm_size) {
-            /* subscriptions are at the very SHM end */
-            new_shm_size = conn->shm_size - sizeof *shm_msub;
+        if (shm_mod->sub_info[ds].subs + shm_mod->sub_info[ds].sub_count * sizeof *shm_msub == new_shm_size) {
+            /* subscriptions are stored at the very SHM end, we can shorten SHM */
+            new_shm_size -= sizeof *shm_msub;
+        }
 
+        if (conn->shm_size > new_shm_size) {
             /* remap main SHM */
             if ((err_info = sr_shmmain_remap(conn, new_shm_size))) {
                 return err_info;

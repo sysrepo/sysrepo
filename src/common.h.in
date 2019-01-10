@@ -114,6 +114,7 @@ struct sr_subscription_ctx_s {
         struct modsub_sub_s {
             sr_module_change_cb cb;
             void *private_data;
+            char *xpath;
             uint32_t priority;
             sr_subscr_options_t opts;
 
@@ -165,5 +166,7 @@ sr_error_info_t *sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val);
 void sr_ly_split(struct lyd_node *sibling);
 
 void sr_ly_link(struct lyd_node *first, struct lyd_node *sibling);
+
+sr_error_info_t *sr_ly_data_dup_filter(const struct lyd_node *data, const char *xpath, struct lyd_node **filter_data);
 
 #endif

@@ -1125,8 +1125,9 @@ sr_discard_changes(sr_session_ctx_t *session)
 }
 
 API int
-sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_module_change_cb callback,
-        void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+        sr_module_change_cb callback, void *private_data, uint32_t priority, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription)
 {
     const struct lys_module *mod;
     sr_conn_ctx_t *conn;
@@ -1158,13 +1159,14 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     }
 
     /* add module subscription into main SHM */
-    if ((err_info = sr_shmmod_subscription(conn, module_name, session->ds, priority, opts, 1))) {
+    if ((err_info = sr_shmmod_subscription(conn, module_name, xpath, session->ds, priority, opts, 1))) {
         goto error_unlock;
     }
 
     /* create separate specific SHM segment */
-    if ((err_info = sr_shmsub_add(conn, module_name, session->ds, callback, private_data, priority, opts, subscription))) {
-        sr_shmmod_subscription(conn, module_name, session->ds, priority, opts, 0);
+    err_info = sr_shmsub_add(conn, module_name, xpath, session->ds, callback, private_data, priority, opts, subscription);
+    if (err_info) {
+        sr_shmmod_subscription(conn, module_name, xpath, session->ds, priority, opts, 0);
         goto error_unlock;
     }
 
