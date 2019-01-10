@@ -623,6 +623,28 @@ sr_shmsub_notify_update_clear(struct sr_mod_info_s *mod_info)
 
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
         if (!sr_shmsub_notify_has_subscription(mod_info->conn->shm, mod, mod_info->ds, SR_EV_UPDATE, &cur_priority)) {
+            /* it is still possible that the subscription unsubscribed already */
+            if ((mod->shm_sub_fd > -1) && mod->shm_sub) {
+                shm_sub = (sr_sub_t *)mod->shm_sub;
+
+                /* SUB WRITE LOCK */
+                if ((err_info = sr_shmsub_lock(shm_sub, 1, __func__))) {
+                    return err_info;
+                }
+
+                if (shm_sub->err_code != SR_ERR_OK) {
+                    /* this must be the right subscription SHM, we still have apply-changes locks,
+                    * we must fake same priority but event_id should be correct no matter what
+                    */
+                    cur_priority = shm_sub->priority;
+                    goto clear_event;
+                }
+
+                /* SUB UNLOCK */
+                sr_shmsub_unlock(shm_sub);
+            }
+
+            /* nope, not the right subscription SHM, try next */
             continue;
         }
 
@@ -641,6 +663,7 @@ sr_shmsub_notify_update_clear(struct sr_mod_info_s *mod_info)
             }
 
             if (shm_sub->err_code != SR_ERR_OK) {
+clear_event:
                 assert((shm_sub->event_id == mod->event_id) && (shm_sub->priority == cur_priority));
 
                 /* clear it */
@@ -652,6 +675,7 @@ sr_shmsub_notify_update_clear(struct sr_mod_info_s *mod_info)
                     sr_shmsub_unlock(shm_sub);
                     return err_info;
                 }
+                shm_sub = (sr_sub_t *)mod->shm_sub;
 
                 /* SUB UNLOCK */
                 sr_shmsub_unlock(shm_sub);
@@ -796,6 +820,7 @@ sr_shmsub_notify_change_done(struct sr_mod_info_s *mod_info)
         }
 
         /* subscription SHM is kept from the "change" event */
+        assert((mod->shm_sub_fd > -1) && mod->shm_sub);
         shm_sub = (sr_sub_t *)mod->shm_sub;
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
@@ -842,11 +867,47 @@ sr_shmsub_notify_change_abort(struct sr_mod_info_s *mod_info)
         }
 
         if (!sr_shmsub_notify_has_subscription(mod_info->conn->shm, mod, mod_info->ds, SR_EV_ABORT, &cur_priority)) {
-            /* no subscriptions interested in this event */
+            /* no subscriptions interested in this event, but we still want to clear the event */
+            if ((mod->shm_sub_fd > -1) && mod->shm_sub) {
+                shm_sub = (sr_sub_t *)mod->shm_sub;
+
+                /* SUB WRITE LOCK */
+                if ((err_info = sr_shmsub_lock(shm_sub, 1, __func__))) {
+                    return err_info;
+                }
+
+                if (shm_sub->err_code != SR_ERR_OK) {
+                    /* this must be the right subscription SHM, we still have apply-changes locks */
+                    assert(shm_sub->event_id == mod->event_id);
+
+                    /* clear it */
+                    sr_shmsub_notify_write_event(mod->event_id, cur_priority, SR_EV_NONE, 0, NULL, 0, shm_sub);
+
+                    /* remap sub SHM to make it smaller */
+                    if ((err_info = sr_shmsub_remap(mod->shm_sub_fd, sizeof *shm_sub, &mod->shm_sub_size, &mod->shm_sub))) {
+                        /* SUB UNLOCK */
+                        sr_shmsub_unlock(shm_sub);
+                        return err_info;
+                    }
+                    shm_sub = (sr_sub_t *)mod->shm_sub;
+
+                    /* SUB UNLOCK */
+                    sr_shmsub_unlock(shm_sub);
+
+                    /* we have found the last subscription that processed the event */
+                    return NULL;
+                }
+
+                /* SUB UNLOCK */
+                sr_shmsub_unlock(shm_sub);
+            }
+
+            /* not the right subscription SHM, try next */
             continue;
         }
 
         /* subscription SHM is kept from the "change" event */
+        assert((mod->shm_sub_fd > -1) && mod->shm_sub);
         shm_sub = (sr_sub_t *)mod->shm_sub;
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
@@ -1084,6 +1145,9 @@ process_event:
         goto cleanup;
     }
 
+    /*
+     * prepare additional event data written into subscription SHM (after the structure)
+     */
     switch (shm_sub->event) {
     case SR_EV_UPDATE:
         if (err_code == SR_ERR_OK) {

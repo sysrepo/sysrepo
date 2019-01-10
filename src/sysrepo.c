@@ -1259,6 +1259,8 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
         ret = pthread_timedjoin_np(tid, NULL, &ts);
         if (ret) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Waiting for the subscriber thread failed (%s).", strerror(ret));
+            pthread_detach(tid);
+            pthread_cancel(tid);
         }
     }
 
