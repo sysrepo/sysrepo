@@ -27,7 +27,7 @@
 #define SR_MODULE_LOCK_TIMEOUT 5
 
 /* s */
-#define SR_SUBSCR_JOIN_TIMEOUT 1
+#define SR_SUBSCR_JOIN_TIMEOUT 5
 
 /* ms */
 #define SR_SUB_LOCK_TIMEOUT 100
