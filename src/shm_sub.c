@@ -1046,8 +1046,8 @@ sr_shmsub_listen_finish_event(struct modsub_s *mod_sub, const char *data, uint32
         SR_LOG_WRN("msync() failed (%s).", strerror(errno));
     }
 
-    SR_LOG_INF("Finished processing \"%s\" event%s with ID %u priority %u (remaining %u subscribers).", sr_ev2str(event),
-            err_code ? " (callback fail)" : "", shm_sub->event_id, shm_sub->priority, shm_sub->subscriber_count);
+    SR_LOG_INF("Finished processing \"%s\" event%s with ID %u (remaining %u subscribers).", sr_ev2str(event),
+            err_code ? " (callback fail)" : "", shm_sub->event_id, shm_sub->subscriber_count);
 }
 
 static sr_error_info_t *
@@ -1107,8 +1107,8 @@ sr_shmsub_listen_process_module_events(struct modsub_s *mod_sub, sr_conn_ctx_t *
     }
 
     /* process event */
-    SR_LOG_INF("Processing \"%s\" event with ID %u priority %u (remaining %u subscribers).",
-            sr_ev2str(shm_sub->event), shm_sub->event_id, shm_sub->priority, shm_sub->subscriber_count);
+    SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (remaining %u subscribers).",
+            mod_sub->module_name, sr_ev2str(shm_sub->event), shm_sub->event_id, shm_sub->priority, shm_sub->subscriber_count);
 
     /* prepare callback session */
     sr_shmsub_listen_prepare_sess(mod_sub, conn, &tmp_sess);
