@@ -350,6 +350,9 @@ apply_change_done_thread(void *arg)
     assert_null(str1);
     lyd_free(subtree);
 
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
     sr_session_stop(sess);
     return NULL;
 }
@@ -380,6 +383,9 @@ subscribe_change_done_thread(void *arg)
         ++count;
     }
     assert_int_equal(st->cb_called, 4);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -687,6 +693,9 @@ apply_update_thread(void *arg)
     assert_null(str1);
     lyd_free(subtree);
 
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
     sr_session_stop(sess);
     return NULL;
 }
@@ -717,6 +726,9 @@ subscribe_update_thread(void *arg)
         ++count;
     }
     assert_int_equal(st->cb_called, 2);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -806,6 +818,9 @@ apply_update_fail_thread(void *arg)
     assert_null(str1);
     lyd_free(subtree);
 
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
     sr_session_stop(sess);
     return NULL;
 }
@@ -838,6 +853,9 @@ subscribe_update_fail_thread(void *arg)
         ++count;
     }
     assert_int_equal(st->cb_called, 1);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -1162,6 +1180,9 @@ apply_change_fail_thread(void *arg)
     assert_null(str1);
     lyd_free(subtree);
 
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
     sr_session_stop(sess);
     return NULL;
 }
@@ -1202,6 +1223,9 @@ subscribe_change_fail_thread(void *arg)
         ++count;
     }
     assert_int_equal(st->cb_called, 4);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
 
     sr_unsubscribe(subscr);
 
@@ -1752,7 +1776,6 @@ apply_change_done_dflt_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_int_equal(subtrees->number, 0);
-
     ly_set_free(subtrees);
 
     pthread_barrier_wait(&st->barrier);
@@ -2154,6 +2177,9 @@ apply_change_done_when_thread(void *arg)
     assert_int_equal(subtrees->number, 0);
     ly_set_free(subtrees);
 
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
     sr_session_stop(sess);
     return NULL;
 }
@@ -2186,6 +2212,9 @@ subscribe_change_done_when_thread(void *arg)
         ++count;
     }
     assert_int_equal(st->cb_called, 12);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
