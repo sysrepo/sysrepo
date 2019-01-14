@@ -20,6 +20,10 @@
  * limitations under the License.
  */
 
+#include "sr_constants.h"
+#ifdef HAVE_LINUX_OFD_LOCK
+#define _GNU_SOURCE
+#endif
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -421,10 +425,18 @@ sr_lock_fd_internal(int fd, bool lock, bool write, bool wait)
     fl.l_whence = SEEK_SET; /* from the beginning */
     fl.l_start = 0;         /* with offset 0*/
     fl.l_len = 0;           /* to EOF */
+#ifdef HAVE_LINUX_OFD_LOCK
+    fl.l_pid = 0;
+#else
     fl.l_pid = getpid();
+#endif
 
     /* set the lock, waiting if requested and necessary */
+#ifdef HAVE_LINUX_OFD_LOCK
+    ret = fcntl(fd, wait ? F_OFD_SETLKW : F_OFD_SETLK, &fl);
+#else
     ret = fcntl(fd, wait ? F_SETLKW : F_SETLK, &fl);
+#endif
 
     if (-1 == ret) {
         SR_LOG_WRN("Unable to acquire the lock on fd %d: %s", fd, sr_strerror_safe(errno));

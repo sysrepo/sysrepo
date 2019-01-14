@@ -38,6 +38,7 @@
 #cmakedefine HAVE_STAT_ST_MTIM
 #cmakedefine HAVE_TIMED_LOCK
 #cmakedefine HAVE_FSETXATTR
+#cmakedefine HAVE_LINUX_OFD_LOCK
 
 /** Use libavl (if defined) or libredblack (if not defined) for binary tree manipulations. */
 #cmakedefine USE_AVL_LIB
