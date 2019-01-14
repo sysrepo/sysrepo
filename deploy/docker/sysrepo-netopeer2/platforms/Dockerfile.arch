@@ -1,4 +1,4 @@
-FROM pritunl/archlinux:latest
+FROM base/archlinux:latest
 
 MAINTAINER mislav.novakovic@sartura.hr
 
