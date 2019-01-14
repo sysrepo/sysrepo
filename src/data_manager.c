@@ -6474,7 +6474,7 @@ dm_validate_procedure_content(rp_ctx_t *rp_ctx, rp_session_t *session, dm_data_i
                 node = node->next;
                 backtracking = false;
             } else {
-                node = node->parent;
+                node = lys_parent(node);
             }
         }
     }
