@@ -107,6 +107,10 @@ RUN \
       make -j2 && \
       make install
 
+# update system
+RUN \
+      pacman -Syyu --noconfirm
+
 # install python2 sysrepo language bindings
 RUN pacman -S --noconfirm python2
 RUN \
