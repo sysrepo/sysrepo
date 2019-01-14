@@ -197,6 +197,8 @@ public:
     size_t val_cnt() {return _cnt;};
     /** Wrapper for [sr_dup_values](@ref sr_dup_values) */
     S_Vals dup();
+    /** Wrapper for [sr_realloc_values](@ref sr_realloc_values) */
+    sr_val_t* reallocate(size_t n);
 
     friend class Session;
     friend class Subscribe;
@@ -218,11 +220,16 @@ public:
     Vals_Holder(sr_val_t **vals, size_t *cnt);
     /** Create [sr_val_t](@ref sr_val_t) array of n size.*/
     S_Vals allocate(size_t n);
+    /** Resize [sr_val_t](@ref sr_val_t) array to n size.*/
+    S_Vals reallocate(size_t n);
+    size_t val_cnt(void) { return *p_cnt; }
+    S_Vals vals(void);
     ~Vals_Holder();
 
 private:
     size_t *p_cnt;
     sr_val_t **p_vals;
+    S_Vals p_Vals;
     bool _allocate;
 };
 

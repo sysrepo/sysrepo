@@ -567,12 +567,22 @@ S_Vals Vals::dup() {
     S_Vals vals(new Vals(new_val, _cnt, deleter));
     return vals;
 }
+sr_val_t* Vals::reallocate(size_t n) {
+    int ret = sr_realloc_values(_cnt,n,&_vals);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+    _cnt = n;
+    return _vals;
+}
 
 // Vals_Holder
 Vals_Holder::Vals_Holder(sr_val_t **vals, size_t *cnt) {
     p_vals = vals;
     p_cnt = cnt;
     _allocate = true;
+}
+S_Vals Vals_Holder::vals(void) {
+    return p_Vals;
 }
 S_Vals Vals_Holder::allocate(size_t n) {
     if (_allocate == false)
@@ -586,8 +596,16 @@ S_Vals Vals_Holder::allocate(size_t n) {
     int ret = sr_new_values(n, p_vals);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
-    S_Vals vals(new Vals(p_vals, p_cnt, nullptr));
-    return vals;
+
+    p_Vals = S_Vals(new Vals(p_vals, p_cnt, nullptr));
+    return p_Vals;
+}
+S_Vals Vals_Holder::reallocate(size_t n) {
+    if (_allocate == true)
+        throw_exception(SR_ERR_DATA_MISSING);
+    *p_vals = p_Vals->reallocate(n);
+    *p_cnt = n;
+    return p_Vals;
 }
 Vals_Holder::~Vals_Holder() {}
 

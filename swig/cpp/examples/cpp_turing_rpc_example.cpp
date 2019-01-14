@@ -53,10 +53,19 @@ class My_Callback:public sysrepo::Callback {
             std::cout << ">>> Executing RPC..." << std::endl << std::endl;
 
             /* allocate output values */
-            auto output = holder->allocate(2);
+            auto output = holder->allocate(1);
 
             /* set 'output/step-count' leaf */
             output->val(0)->set("/turing-machine:run-until/step-count", (uint64_t) 256, SR_UINT64_T);
+
+            std::cout << ">>> RPC Output:" << std::endl << std::endl;
+            for (size_t i = 0; i < output->val_cnt(); ++i) {
+                std::cout << output->val(i)->to_string();
+            }
+            std::cout << std::endl;
+
+            holder->reallocate(2);
+
             /* set 'output/halted' leaf */
             output->val(1)->set("/turing-machine:run-until/halted", false, SR_BOOL_T);
 
