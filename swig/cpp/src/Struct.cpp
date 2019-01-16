@@ -88,7 +88,7 @@ char *Data::get_string() const {
 }
 uint8_t Data::get_uint8() const {
     if (_t != SR_UINT8_T) throw_exception(SR_ERR_DATA_MISSING);
-    return _d.uint32_val;
+    return _d.uint8_val;
 }
 uint16_t Data::get_uint16() const {
     if (_t != SR_UINT16_T) throw_exception(SR_ERR_DATA_MISSING);
@@ -105,8 +105,7 @@ uint64_t Data::get_uint64() const {
 
 // Val
 Val::Val(sr_val_t *val, S_Deleter deleter) {
-    if (val == nullptr)
-        throw_exception(SR_ERR_INVAL_ARG);
+    if (val == nullptr) throw_exception(SR_ERR_INVAL_ARG);
     _val = val;
     _deleter = deleter;
 }
@@ -120,16 +119,14 @@ Val::Val(const char *value, sr_type_t type) {
     sr_val_t *val = nullptr;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
 
-    if (val == nullptr)
-        throw_exception(SR_ERR_NOMEM);
+    if (val == nullptr) throw_exception(SR_ERR_NOMEM);
 
     val->type = type;
 
     if (type == SR_BINARY_T || type == SR_BITS_T || type == SR_ENUM_T || type == SR_IDENTITYREF_T || \
         type == SR_INSTANCEID_T || type == SR_STRING_T) {
         ret = sr_val_set_str_data(val, type, value);
-        if (ret != SR_ERR_OK)
-            throw_exception(ret);
+        if (ret != SR_ERR_OK) throw_exception(ret);
     } else if (value != nullptr && ( type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
         type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T)) {
         free(val);
@@ -140,87 +137,56 @@ Val::Val(const char *value, sr_type_t type) {
     _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(bool bool_val, sr_type_t type) {
+    if (type != SR_BOOL_T) throw_exception(SR_ERR_INVAL_ARG);
     sr_val_t *val = nullptr;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
-        throw_exception(SR_ERR_NOMEM);
-    if (type == SR_BOOL_T) {
-	val->data.bool_val = bool_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
+    if (val == nullptr) throw_exception(SR_ERR_NOMEM);
+    val->data.bool_val = bool_val;
+    val->type = SR_BOOL_T;
     _val = val;
     _deleter = S_Deleter(new Deleter(val));
 }
-Val::Val(double decimal64_val) {
+Val::Val(double decimal64_val, sr_type_t type) {
+    if (type != SR_DECIMAL64_T) throw_exception(SR_ERR_INVAL_ARG);
     sr_val_t *val = nullptr;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr) {
-        throw_exception(SR_ERR_NOMEM);
-    } else {
-	val->data.decimal64_val = decimal64_val;
-    }
-
+    if (val == nullptr) throw_exception(SR_ERR_NOMEM);
+    val->data.decimal64_val = decimal64_val;
     val->type = SR_DECIMAL64_T;
     _val = val;
     _deleter = S_Deleter(new Deleter(val));
 }
-Val::Val(int8_t int8_val, sr_type_t type) {
+Val::Val(int8_t int8_val) {
     sr_val_t *val = nullptr;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
-        throw_exception(SR_ERR_NOMEM);
-    if (type == SR_INT8_T) {
-	val->data.int8_val = int8_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
+    if (val == nullptr) throw_exception(SR_ERR_NOMEM);
+    val->data.int8_val = int8_val;
+    val->type = SR_INT8_T;
     _val = val;
     _deleter = S_Deleter(new Deleter(val));
 }
-Val::Val(int16_t int16_val, sr_type_t type) {
+Val::Val(int16_t int16_val) {
     sr_val_t *val = nullptr;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
-        throw_exception(SR_ERR_NOMEM);
-    if (type == SR_INT16_T) {
-	val->data.int16_val = int16_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
+    if (val == nullptr) throw_exception(SR_ERR_NOMEM);
+    val->data.int16_val = int16_val;
+    val->type = SR_INT16_T;
     _val = val;
     _deleter = S_Deleter(new Deleter(val));
 }
-Val::Val(int32_t int32_val, sr_type_t type) {
+Val::Val(int32_t int32_val) {
     sr_val_t *val = nullptr;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
-        throw_exception(SR_ERR_NOMEM);
-    if (type == SR_INT32_T) {
-	val->data.int32_val = int32_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
+    if (val == nullptr) throw_exception(SR_ERR_NOMEM);
+    val->data.int32_val = int32_val;
+    val->type = SR_INT32_T;
     _val = val;
     _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(int64_t int64_val, sr_type_t type) {
     sr_val_t *val = nullptr;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
-        throw_exception(SR_ERR_NOMEM);
+    if (val == nullptr) throw_exception(SR_ERR_NOMEM);
     if (type == SR_UINT64_T) {
         val->data.uint64_val = (uint64_t) int64_val;
     } else if (type == SR_UINT32_T) {
@@ -237,8 +203,10 @@ Val::Val(int64_t int64_val, sr_type_t type) {
         val->data.int16_val = (int16_t) int64_val;
     } else if (type == SR_INT8_T) {
         val->data.int8_val = (int8_t) int64_val;
+    } else if (type == SR_BOOL_T) {
+        val->data.bool_val = (bool) int64_val;
     } else {
-	    printf("\nERROR \n\n\n\n");
+        printf("\nERROR \n\n\n\n");
         free(val);
         throw_exception(SR_ERR_INVAL_ARG);
     }
@@ -247,67 +215,40 @@ Val::Val(int64_t int64_val, sr_type_t type) {
     _val = val;
     _deleter = S_Deleter(new Deleter(val));
 }
-Val::Val(uint8_t uint8_val, sr_type_t type) {
+Val::Val(uint8_t uint8_val) {
     sr_val_t *val = nullptr;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
-        throw_exception(SR_ERR_NOMEM);
-    if (type == SR_UINT8_T) {
-	val->data.uint8_val = uint8_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
+    if (val == nullptr) throw_exception(SR_ERR_NOMEM);
+    val->data.uint8_val = uint8_val;
+    val->type = SR_UINT8_T;
     _val = val;
     _deleter = S_Deleter(new Deleter(val));
 }
-Val::Val(uint16_t uint16_val, sr_type_t type) {
+Val::Val(uint16_t uint16_val) {
     sr_val_t *val = nullptr;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
-        throw_exception(SR_ERR_NOMEM);
-    if (type == SR_UINT16_T) {
-	val->data.uint16_val = uint16_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
+    if (val == nullptr) throw_exception(SR_ERR_NOMEM);
+    val->data.uint16_val = uint16_val;
+    val->type = SR_UINT16_T;
     _val = val;
     _deleter = S_Deleter(new Deleter(val));
 }
-Val::Val(uint32_t uint32_val, sr_type_t type) {
+Val::Val(uint32_t uint32_val) {
     sr_val_t *val = nullptr;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
-        throw_exception(SR_ERR_NOMEM);
-    if (type == SR_UINT32_T) {
-	val->data.uint32_val = uint32_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
+    if (val == nullptr) throw_exception(SR_ERR_NOMEM);
+    val->data.uint32_val = uint32_val;
+    val->type = SR_UINT32_T;
     _val = val;
     _deleter = S_Deleter(new Deleter(val));
 }
 Val::Val(uint64_t uint64_val, sr_type_t type) {
+    if (type != SR_UINT64_T) throw_exception(SR_ERR_INVAL_ARG);
     sr_val_t *val = nullptr;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
-        throw_exception(SR_ERR_NOMEM);
-    if (type == SR_UINT64_T) {
-	val->data.uint64_val = uint64_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
+    if (val == nullptr) throw_exception(SR_ERR_NOMEM);
+    val->data.uint64_val = uint64_val;
+    val->type = SR_UINT64_T;
     _val = val;
     _deleter = S_Deleter(new Deleter(val));
 }
@@ -331,20 +272,17 @@ void Val::set(const char *xpath, const char *value, sr_type_t type) {
     }
 }
 void Val::set(const char *xpath, bool bool_val, sr_type_t type) {
+    if (type != SR_BOOL_T) throw_exception(SR_ERR_INVAL_ARG);
     if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
 
     int ret = sr_val_set_xpath(_val, xpath);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    if (type == SR_BOOL_T) {
-	    _val->data.bool_val = bool_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.bool_val = bool_val;
+    _val->type = SR_BOOL_T;
 }
-void Val::set(const char *xpath, double decimal64_val) {
+void Val::set(const char *xpath, double decimal64_val, sr_type_t type) {
+    if (type != SR_DECIMAL64_T) throw_exception(SR_ERR_INVAL_ARG);
     if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
 
     int ret = sr_val_set_xpath(_val, xpath);
@@ -354,47 +292,32 @@ void Val::set(const char *xpath, double decimal64_val) {
 
     _val->type = SR_DECIMAL64_T;
 }
-void Val::set(const char *xpath, int8_t int8_val, sr_type_t type) {
+void Val::set(const char *xpath, int8_t int8_val) {
     if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
 
     int ret = sr_val_set_xpath(_val, xpath);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    if (type == SR_INT8_T) {
-	    _val->data.int8_val = int8_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.int8_val = int8_val;
+    _val->type = SR_INT8_T;
 }
-void Val::set(const char *xpath, int16_t int16_val, sr_type_t type) {
+void Val::set(const char *xpath, int16_t int16_val) {
     if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
 
     int ret = sr_val_set_xpath(_val, xpath);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    if (type == SR_INT16_T) {
-	    _val->data.int16_val = int16_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.int16_val = int16_val;
+    _val->type = SR_INT16_T;
 }
-void Val::set(const char *xpath, int32_t int32_val, sr_type_t type) {
+void Val::set(const char *xpath, int32_t int32_val) {
     if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
 
     int ret = sr_val_set_xpath(_val, xpath);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    if (type == SR_INT32_T) {
-	    _val->data.int32_val = int32_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.int32_val = int32_val;
+    _val->type = SR_INT32_T;
 }
 
 void Val::set(const char *xpath, int64_t int64_val, sr_type_t type) {
@@ -419,71 +342,71 @@ void Val::set(const char *xpath, int64_t int64_val, sr_type_t type) {
         _val->data.int16_val = (int16_t) int64_val;
     } else if (type == SR_INT8_T) {
         _val->data.int8_val = (int8_t) int64_val;
+    } else if (type == SR_BOOL_T) {
+        _val->data.bool_val = (bool) int64_val;
     } else {
         throw_exception(SR_ERR_INVAL_ARG);
     }
 
     _val->type = type;
 }
-void Val::set(const char *xpath, uint8_t uint8_val, sr_type_t type) {
+void Val::set(const char *xpath, uint8_t uint8_val) {
     if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
 
     int ret = sr_val_set_xpath(_val, xpath);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    if (type == SR_UINT8_T) {
-	    _val->data.uint8_val = uint8_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.uint8_val = uint8_val;
+    _val->type = SR_UINT8_T;
 }
-void Val::set(const char *xpath, uint16_t uint16_val, sr_type_t type) {
+void Val::set(const char *xpath, uint16_t uint16_val) {
     if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
 
     int ret = sr_val_set_xpath(_val, xpath);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    if (type == SR_UINT16_T) {
-	    _val->data.uint16_val = uint16_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.uint16_val = uint16_val;
+    _val->type = SR_UINT16_T;
 }
-void Val::set(const char *xpath, uint32_t uint32_val, sr_type_t type) {
+void Val::set(const char *xpath, uint32_t uint32_val) {
     if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
 
     int ret = sr_val_set_xpath(_val, xpath);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    if (type == SR_UINT32_T) {
-	    _val->data.uint32_val = uint32_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.uint32_val = uint32_val;
+    _val->type = SR_UINT32_T;
 }
 void Val::set(const char *xpath, uint64_t uint64_val, sr_type_t type) {
+    if (type != SR_UINT64_T) throw_exception(SR_ERR_INVAL_ARG);
     if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
 
     int ret = sr_val_set_xpath(_val, xpath);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    if (type == SR_UINT64_T) {
-	    _val->data.uint64_val = uint64_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.uint64_val = uint64_val;
+    _val->type = SR_UINT64_T;
 }
-void Val::xpath_set(char *xpath) {
+char *Val::xpath() {
+    return (_val ? _val->xpath : nullptr);
+}
+void Val::xpath_set(const char *xpath) {
     int ret = sr_val_set_xpath(_val, xpath);
     if (ret != SR_ERR_OK) throw_exception(ret);
+}
+sr_type_t Val::type() {
+    return (_val ? _val->type : SR_UNKNOWN_T);
+}
+bool Val::dflt() {
+    return (_val ? _val->dflt : false);
+}
+void Val::dflt_set(bool data) {
+    if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
+    _val->dflt = data;
+}
+S_Data Val::data() {
+    S_Data data(new Data(_val->data, _val->type, _deleter));
+    return data;
 }
 std::string Val::to_string() {
     char *mem = nullptr;
@@ -516,8 +439,7 @@ std::string Val::val_to_string() {
 S_Val Val::dup() {
     sr_val_t *new_val = nullptr;
     int ret = sr_dup_val(_val, &new_val);
-    if (ret != SR_ERR_OK)
-        throw_exception(ret);
+    if (ret != SR_ERR_OK) throw_exception(ret);
 
     S_Deleter deleter(new Deleter(new_val));
     S_Val val(new Val(new_val, deleter));
@@ -539,8 +461,7 @@ Vals::Vals(sr_val_t **vals, size_t *cnt, S_Deleter deleter) {
 Vals::Vals(size_t cnt): Vals() {
     if (cnt) {
         int ret = sr_new_values(cnt, &_vals);
-        if (ret != SR_ERR_OK)
-            throw_exception(ret);
+        if (ret != SR_ERR_OK) throw_exception(ret);
 
         _cnt = cnt;
         _deleter = S_Deleter(new Deleter(_vals, _cnt));
@@ -549,10 +470,8 @@ Vals::Vals(size_t cnt): Vals() {
 Vals::Vals(): _cnt(0), _vals(nullptr) {}
 Vals::~Vals() {}
 S_Val Vals::val(size_t n) {
-    if (n >= _cnt)
-        throw std::out_of_range("Vals::val: index out of range");
-    if (!_vals)
-        throw std::logic_error("Vals::val: called on null Vals");
+    if (n >= _cnt) throw std::out_of_range("Vals::val: index out of range");
+    if (!_vals) throw std::logic_error("Vals::val: called on null Vals");
 
     S_Val val(new Val(&_vals[n], _deleter));
     return val;
@@ -560,8 +479,7 @@ S_Val Vals::val(size_t n) {
 S_Vals Vals::dup() {
     sr_val_t *new_val = nullptr;
     int ret = sr_dup_values(_vals, _cnt, &new_val);
-    if (ret != SR_ERR_OK)
-        throw_exception(ret);
+    if (ret != SR_ERR_OK) throw_exception(ret);
 
     S_Deleter deleter(new Deleter(new_val, _cnt));
     S_Vals vals(new Vals(new_val, _cnt, deleter));
@@ -575,8 +493,7 @@ Vals_Holder::Vals_Holder(sr_val_t **vals, size_t *cnt) {
     _allocate = true;
 }
 S_Vals Vals_Holder::allocate(size_t n) {
-    if (_allocate == false)
-        throw_exception(SR_ERR_DATA_EXISTS);
+    if (_allocate == false) throw_exception(SR_ERR_DATA_EXISTS);
     _allocate = false;
 
     if (n == 0)
@@ -608,8 +525,7 @@ Error::~Error() {}
 Errors::Errors() {_info = nullptr; _cnt = 0;}
 Errors::~Errors() {}
 S_Error Errors::error(size_t n) {
-    if (n >= _cnt)
-        throw std::out_of_range("Errors:error: index out of range");
+    if (n >= _cnt) throw std::out_of_range("Errors:error: index out of range");
 
     S_Error error(new Error(&_info[n]));
     return error;
@@ -638,15 +554,13 @@ S_Schema_Revision Yang_Schema::revision() {
     return rev;
 }
 S_Schema_Submodule Yang_Schema::submodule(size_t n) {
-    if (n >= _sch->submodule_count)
-        throw std::out_of_range("Schema_Submodule::submodule: index out of range");
+    if (n >= _sch->submodule_count) throw std::out_of_range("Schema_Submodule::submodule: index out of range");
 
     S_Schema_Submodule sub(new Schema_Submodule(_sch->submodules[n], _deleter));
     return sub;
 }
 char *Yang_Schema::enabled_features(size_t n) {
-    if (n >= _sch->enabled_feature_cnt)
-        throw std::out_of_range("Yang_Schema::enabled_features: index out of range");
+    if (n >= _sch->enabled_feature_cnt) throw std::out_of_range("Yang_Schema::enabled_features: index out of range");
 
    return _sch->enabled_features[n];
 }
@@ -659,8 +573,7 @@ Yang_Schemas::Yang_Schemas() {
 }
 Yang_Schemas::~Yang_Schemas() {}
 S_Yang_Schema Yang_Schemas::schema(size_t n) {
-    if (n >= _cnt)
-        throw std::out_of_range("Yang_Schema::schema: index out of range");
+    if (n >= _cnt) throw std::out_of_range("Yang_Schema::schema: index out of range");
 
     S_Yang_Schema rev(new Yang_Schema((sr_schema_t *) &_sch[n], _deleter));
     return rev;
@@ -674,8 +587,7 @@ Fd_Change::~Fd_Change() {}
 Fd_Changes::Fd_Changes(sr_fd_change_t *ch, size_t cnt) {_ch = ch; _cnt = cnt;}
 Fd_Changes::~Fd_Changes() {}
 S_Fd_Change Fd_Changes::fd_change(size_t n) {
-    if (n >= _cnt)
-        throw std::out_of_range("Fd_Changes::fd_change: index out of range");
+    if (n >= _cnt) throw std::out_of_range("Fd_Changes::fd_change: index out of range");
 
     S_Fd_Change change(new Fd_Change(&_ch[n]));
     return change;

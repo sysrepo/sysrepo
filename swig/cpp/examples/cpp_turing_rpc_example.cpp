@@ -56,9 +56,9 @@ class My_Callback:public sysrepo::Callback {
             auto output = holder->allocate(2);
 
             /* set 'output/step-count' leaf */
-            output->val(0)->set("/turing-machine:run-until/step-count", (uint64_t) 256, SR_UINT64_T);
+            output->val(0)->set("/turing-machine:run-until/step-count", (uint64_t) 256);
             /* set 'output/halted' leaf */
-            output->val(1)->set("/turing-machine:run-until/halted", false, SR_BOOL_T);
+            output->val(1)->set("/turing-machine:run-until/halted", false);
 
             std::cout << ">>> RPC Output:" << std::endl << std::endl;
             for (size_t i = 0; i < output->val_cnt(); ++i) {
@@ -130,8 +130,8 @@ rpc_caller(sysrepo::S_Session sess)
         sysrepo::S_Vals input(new sysrepo::Vals(7));
 
         /* set 'input/state' leaf */
-        input->val(0)->set("/turing-machine:run-until/state", (uint16_t) 10, SR_UINT16_T);
-        input->val(1)->set("/turing-machine:run-until/head-position", (int64_t) 123, SR_INT64_T);
+        input->val(0)->set("/turing-machine:run-until/state", (uint16_t) 10);
+        input->val(1)->set("/turing-machine:run-until/head-position", (int64_t) 123);
         /* set 'input/tape' list entries */
         for (int i = 0; i < 5; ++i) {
             // WTF
@@ -139,7 +139,7 @@ rpc_caller(sysrepo::S_Session sess)
             char xpath_str[100] = {0};
             sprintf(xpath_str, "/turing-machine:run-until/tape/cell[coord='%d']/symbol", i);
             sprintf(value, "%c", 'A'+i);
-            input->val(i+2)->set(xpath_str, value, SR_STRING_T);
+            input->val(i+2)->set(xpath_str, value);
         }
 
         std::cout << std::endl << std::endl << " ========== EXECUTING RPC ==========" << std::endl << std::endl;

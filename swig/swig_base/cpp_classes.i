@@ -63,6 +63,7 @@
 #ifndef SWIGLUA
 %shared_ptr(sysrepo::Data);
 #endif
+%ignore Data::Data(sr_data_t, sr_type_t, S_Deleter);
 %ignore Data::Data(sr_data_t, sr_type_t);
 %ignore Data::Data(sr_data_t);
 
