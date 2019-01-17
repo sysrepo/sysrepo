@@ -56,7 +56,7 @@ class My_Callback:public sysrepo::Callback {
             auto output = holder->allocate(2);
 
             /* set 'output/step-count' leaf */
-            output->val(0)->set("/turing-machine:run-until/step-count", (uint64_t) 256);
+            output->val(0)->set("/turing-machine:run-until/step-count", uint64_t{256});
             /* set 'output/halted' leaf */
             output->val(1)->set("/turing-machine:run-until/halted", false);
 
@@ -130,8 +130,8 @@ rpc_caller(sysrepo::S_Session sess)
         sysrepo::S_Vals input(new sysrepo::Vals(7));
 
         /* set 'input/state' leaf */
-        input->val(0)->set("/turing-machine:run-until/state", (uint16_t) 10);
-        input->val(1)->set("/turing-machine:run-until/head-position", (int64_t) 123);
+        input->val(0)->set("/turing-machine:run-until/state", uint16_t{10});
+        input->val(1)->set("/turing-machine:run-until/head-position", int64_t{123});
         /* set 'input/tape' list entries */
         for (int i = 0; i < 5; ++i) {
             // WTF

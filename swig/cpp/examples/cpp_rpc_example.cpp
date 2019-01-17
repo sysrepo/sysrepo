@@ -171,14 +171,11 @@ class My_Callback:public sysrepo::Callback {
             print_value(in_vals->val(n));
 
         out_vals->val(0)->set("/test-module:activate-software-image/status",\
-                              "The image acmefw-2.3 is being installed.",\
-                              SR_STRING_T);
+                              "The image acmefw-2.3 is being installed.");
         out_vals->val(1)->set("/test-module:activate-software-image/version",\
-                            "2.3",\
-                            SR_STRING_T);
+                            "2.3");
         out_vals->val(2)->set("/test-module:activate-software-image/location",\
-                            "/root/",\
-                            SR_STRING_T);
+                            "/root/");
 
     return SR_ERR_OK;
     }
@@ -226,11 +223,9 @@ main(int argc, char **argv)
         sysrepo::S_Vals in_vals(new sysrepo::Vals(2));
 
         in_vals->val(0)->set("/test-module:activate-software-image/image-name",\
-                           "acmefw-2.3",\
-               SR_STRING_T);
+                           "acmefw-2.3");
         in_vals->val(1)->set("/test-module:activate-software-image/location",\
-                           "/root/",\
-                           SR_STRING_T);
+                           "/root/");
 
         cout << "\n ========== START RPC CALL ==========\n" << endl;
         auto out_vals = sess->rpc_send("/test-module:activate-software-image", in_vals);
