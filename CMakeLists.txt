@@ -154,6 +154,7 @@ set(CMAKE_REQUIRED_LIBRARIES pthread)
 include(CheckFunctionExists)
 include(CheckIncludeFiles)
 include(CheckStructHasMember)
+include(CheckSymbolExists)
 check_include_file(stdatomic.h HAVE_STDATOMIC)
 CHECK_FUNCTION_EXISTS(pthread_rwlockattr_setkind_np HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
 CHECK_FUNCTION_EXISTS(getpeereid HAVE_GETPEEREID)
@@ -167,6 +168,7 @@ if(HAVE_MKSTEMPS)
     set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -DHAVE_MKSTEMPS")
 endif(HAVE_MKSTEMPS)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
+CHECK_SYMBOL_EXISTS("F_OFD_SETLKW" "fcntl.h" HAVE_LINUX_OFD_LOCK)
 
 # user options
 set(ENABLE_NACM 0 CACHE BOOL

@@ -5803,13 +5803,21 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
             if (NULL != session) {
                 ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
             }
-            fds[opened_files] = open(file_name, O_RDWR | O_TRUNC);
+            fds[opened_files] = open(file_name, O_RDWR);
             if (NULL != session) {
                 ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
             }
             if (-1 == fds[opened_files]) {
                 SR_LOG_ERR("File %s can not be opened", file_name);
                 free(file_name);
+                goto cleanup;
+            }
+            /* lock, write, blocking */
+            sr_lock_fd(fds[opened_files], true, true);
+            if (ftruncate(fds[opened_files], 0) != 0) {
+                SR_LOG_ERR("File %s can not be truncated: %s", file_name, sr_strerror_safe(errno));
+                free(file_name);
+                opened_files++;
                 goto cleanup;
             }
             opened_files++;
