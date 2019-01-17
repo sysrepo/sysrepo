@@ -5814,8 +5814,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
             }
             /* lock, write, blocking */
             sr_lock_fd(fds[opened_files], true, true);
-            if (ftruncate(fds[opened_files], 0) != 0)
-            {
+            if (ftruncate(fds[opened_files], 0) != 0) {
                 SR_LOG_ERR("File %s can not be truncated: %s", file_name, sr_strerror_safe(errno));
                 free(file_name);
                 opened_files++;
