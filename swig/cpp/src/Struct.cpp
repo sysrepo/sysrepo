@@ -68,7 +68,7 @@ char *Data::get_instanceid() const {
 }
 int8_t Data::get_int8() const {
     if (_t != SR_INT8_T) throw_exception(SR_ERR_DATA_MISSING);
-    return _d.int8_val;
+    return _d.int32_val;
 }
 int16_t Data::get_int16() const {
     if (_t != SR_INT16_T) throw_exception(SR_ERR_DATA_MISSING);
