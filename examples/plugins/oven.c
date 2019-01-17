@@ -148,7 +148,7 @@ oven_state_cb(const char *xpath, sr_val_t **values, size_t *values_cnt,
 }
 
 static int
-oven_insert_food_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+oven_insert_food_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     if (food_inside) {
@@ -172,7 +172,7 @@ oven_insert_food_cb(const char *xpath, const sr_val_t *input, const size_t input
 }
 
 static int
-oven_remove_food_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+oven_remove_food_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     if (!food_inside) {

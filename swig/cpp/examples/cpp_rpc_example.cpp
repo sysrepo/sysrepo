@@ -162,7 +162,7 @@ print_value(sysrepo::S_Val value)
 }
 
 class My_Callback:public sysrepo::Callback {
-    int rpc(const char *xpath, const sysrepo::S_Vals in_vals, sysrepo::S_Vals_Holder holder, void *private_ctx) {
+    int rpc(sysrepo::S_Session session, const char *xpath, const sysrepo::S_Vals in_vals, sysrepo::S_Vals_Holder holder, void *private_ctx) {
         cout << "\n ========== RPC CALLED ==========\n" << endl;
 
         auto out_vals = holder->allocate(3);
@@ -183,7 +183,7 @@ class My_Callback:public sysrepo::Callback {
     return SR_ERR_OK;
     }
 
-    int rpc_tree(const char *xpath, const sysrepo::S_Trees in_trees, sysrepo::S_Trees_Holder holder, void *private_ctx) {
+    int rpc_tree(sysrepo::S_Session session, const char *xpath, const sysrepo::S_Trees in_trees, sysrepo::S_Trees_Holder holder, void *private_ctx) {
         cout << "\n ========== RPC TREE CALLED ==========\n" << endl;
 
         auto out_trees = holder->allocate(3);

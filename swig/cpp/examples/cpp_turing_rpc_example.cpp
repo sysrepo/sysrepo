@@ -33,7 +33,7 @@
 volatile int exit_application = 0;
 
 class My_Callback:public sysrepo::Callback {
-    int rpc(const char *xpath, const sysrepo::S_Vals input, sysrepo::S_Vals_Holder holder, void *private_ctx) {
+    int rpc(sysrepo::S_Session session, const char *xpath, const sysrepo::S_Vals input, sysrepo::S_Vals_Holder holder, void *private_ctx) {
         int rc = SR_ERR_OK;
         try {
             sysrepo::S_Session *session = (sysrepo::S_Session *)private_ctx;

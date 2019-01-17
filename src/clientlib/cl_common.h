@@ -53,6 +53,7 @@ typedef struct sr_conn_ctx_s {
 typedef struct sr_session_ctx_s {
     sr_conn_ctx_t *conn_ctx;      /**< Associated connection context. */
     uint32_t id;                  /**< Assigned session identifier. */
+    uint32_t netconf_id;          /**< Assigned netconf server session. */
     pthread_mutex_t lock;         /**< Mutex for the session context content. */
     sr_error_t last_error;        /**< Latest error code returned from an API call. */
     sr_error_info_t *error_info;  /**< Array of detailed error information from last API call. */

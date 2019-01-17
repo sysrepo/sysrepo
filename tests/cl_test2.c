@@ -86,7 +86,7 @@ empty_module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_no
 }
 
 static int
-test_action_cb1(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+test_action_cb1(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     int *callback_called = (int*)private_ctx;
@@ -177,7 +177,7 @@ test_module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_not
 }
 
 static int
-test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+test_rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     int *callback_called = (int*)private_ctx;

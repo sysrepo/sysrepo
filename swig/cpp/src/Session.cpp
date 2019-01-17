@@ -469,29 +469,33 @@ static int subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_no
     Callback *wrap = (Callback*) private_ctx;
     return wrap->subtree_change(sess, xpath, event, wrap->private_ctx["subtree_change"]);
 }
-static int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx) {
+static int rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx) {
+    S_Session sess(new Session(session));
     S_Vals in_vals(new Vals(input, input_cnt, nullptr));
     S_Vals_Holder out_vals(new Vals_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
-    return wrap->rpc(xpath, in_vals, out_vals, wrap->private_ctx["rpc_cb"]);
+    return wrap->rpc(sess, xpath, in_vals, out_vals, wrap->private_ctx["rpc_cb"]);
 }
-static int action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx) {
+static int action_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx) {
+    S_Session sess(new Session(session));
     S_Vals in_vals(new Vals(input, input_cnt, nullptr));
     S_Vals_Holder out_vals(new Vals_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
-    return wrap->action(xpath, in_vals, out_vals, wrap->private_ctx["action_cb"]);
+    return wrap->action(sess, xpath, in_vals, out_vals, wrap->private_ctx["action_cb"]);
 }
-static int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx) {
+static int rpc_tree_cb(sr_session_ctx_t *session, const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx) {
+    S_Session sess(new Session(session));
     S_Trees in_tree(new Trees(input, input_cnt, nullptr));
     S_Trees_Holder out_tree(new Trees_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
-    return wrap->rpc_tree(xpath, in_tree, out_tree, wrap->private_ctx["rpc_tree"]);
+    return wrap->rpc_tree(sess, xpath, in_tree, out_tree, wrap->private_ctx["rpc_tree"]);
 }
-static int action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx) {
+static int action_tree_cb(sr_session_ctx_t *session, const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx) {
+    S_Session sess(new Session(session));
     S_Trees in_tree(new Trees(input, input_cnt, nullptr));
     S_Trees_Holder out_tree(new Trees_Holder(output, output_cnt));
     Callback *wrap = (Callback*) private_ctx;
-    return wrap->action_tree(xpath, in_tree, out_tree, wrap->private_ctx["action_tree"]);
+    return wrap->action_tree(sess, xpath, in_tree, out_tree, wrap->private_ctx["action_tree"]);
 }
 static void event_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
     S_Vals vals(new Vals(values, values_cnt, nullptr));

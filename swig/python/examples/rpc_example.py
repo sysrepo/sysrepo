@@ -20,7 +20,7 @@ __license__ = "Apache 2.0"
 import sysrepo as sr
 import sys
 
-def test_rpc_cb(xpath, in_vals, holder, private_ctx):
+def test_rpc_cb(session, xpath, in_vals, holder, private_ctx):
     try:
         print ("\n\n ========== RPC CALLED ==========")
         out_vals = holder.allocate(3)
@@ -38,7 +38,7 @@ def test_rpc_cb(xpath, in_vals, holder, private_ctx):
     except Exception as e:
         print (e)
 
-def test_rpc_tree_cb(xpath, in_trees, holder, private_ctx):
+def test_rpc_tree_cb(session, xpath, in_trees, holder, private_ctx):
     try:
         print ("\n ========== RPC TREE CALLED ==========\n")
 

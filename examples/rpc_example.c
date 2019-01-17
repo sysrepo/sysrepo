@@ -32,12 +32,11 @@
 volatile int exit_application = 0;
 
 static int
-rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
        sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     int rc = SR_ERR_OK;
     sr_val_t *notif = NULL;
-    sr_session_ctx_t *session = (sr_session_ctx_t *)private_ctx;
 
     /* print input values */
     printf("\n\n ========== RECEIVED RPC REQUEST ==========\n\n");

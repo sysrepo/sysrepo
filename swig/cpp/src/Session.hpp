@@ -170,13 +170,13 @@ public:
     /** Wrapper for [sr_feature_enable_cb](@ref sr_feature_enable_cb) callback.*/
     virtual void feature_enable(const char *module_name, const char *feature_name, bool enabled, void *private_ctx) {return;};
     /** Wrapper for [sr_rpc_cb](@ref sr_rpc_cb) callback.*/
-    virtual int rpc(const char *xpath, const S_Vals input, S_Vals_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int rpc(S_Session session, const char *xpath, const S_Vals input, S_Vals_Holder output, void *private_ctx) {return SR_ERR_OK;};
     /** Wrapper for [sr_action_cb](@ref sr_action_cb) callback.*/
-    virtual int action(const char *xpath, const S_Vals input, S_Vals_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int action(S_Session session, const char *xpath, const S_Vals input, S_Vals_Holder output, void *private_ctx) {return SR_ERR_OK;};
     /** Wrapper for [sr_rpc_tree_cb](@ref sr_rpc_tree_cb) callback.*/
-    virtual int rpc_tree(const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int rpc_tree(S_Session session, const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
     /** Wrapper for [sr_action_tree_cb](@ref sr_action_tree_cb) callback.*/
-    virtual int action_tree(const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int action_tree(S_Session session, const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
     /** Wrapper for [sr_dp_get_items_cb](@ref sr_dp_get_items_cb) callback.*/
     virtual int dp_get_items(const char *xpath, S_Vals_Holder vals, uint64_t request_id, const char *original_xpath, void *private_ctx) {return SR_ERR_OK;};
     /** Wrapper for [sr_event_notif_cb](@ref sr_event_notif_cb) callback.*/

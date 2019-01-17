@@ -137,7 +137,7 @@ public:
             Py_DECREF(result);
     }
 
-    int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
+    int rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
 
@@ -169,7 +169,7 @@ public:
         }
      }
 
-    int action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
+    int action_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
 
@@ -201,7 +201,7 @@ public:
         }
      }
 
-    int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
+    int rpc_tree_cb(sr_session_ctx_t *session, const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
 
@@ -232,7 +232,7 @@ public:
         }
     }
 
-    int action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
+    int action_tree_cb(sr_session_ctx_t *session, const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
 
@@ -358,32 +358,32 @@ static void g_feature_enable_cb(const char *module_name, const char *feature_nam
     ctx->feature_enable(module_name, feature_name, enabled, ctx->private_ctx);
 }
 
-static int g_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
+static int g_rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                      size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->rpc_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
+    return ctx->rpc_cb(session, xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
-static int g_action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
+static int g_action_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                      size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->action_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
+    return ctx->action_cb(session, xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
-static int g_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
+static int g_rpc_tree_cb(sr_session_ctx_t *session, const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->rpc_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
+    return ctx->rpc_tree_cb(session, xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
-static int g_action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
+static int g_action_tree_cb(sr_session_ctx_t *session, const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->action_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
+    return ctx->action_tree_cb(session, xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 }
 
 static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, void *private_ctx)

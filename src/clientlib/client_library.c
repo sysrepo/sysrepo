@@ -306,6 +306,7 @@ cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
     sm_subscription->type = type;
     sm_subscription->opts = opts;
     sm_subscription->private_ctx = private_ctx;
+    sm_subscription->data_session = session;
     if (NULL != module_name) {
         sm_subscription->module_name = strdup(module_name);
         CHECK_NULL_NOMEM_GOTO(sm_subscription->module_name, rc, cleanup);
@@ -3129,6 +3130,7 @@ cl_rpc_send(sr_session_ctx_t *session, const char *xpath, bool action,
     sr_mem_snapshot_t snapshot = { 0, };
     const char *op_name = (action ? "Action" : "RPC");
     int rc = SR_ERR_OK;
+    char *netconf_id_string = NULL;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
 
@@ -3144,7 +3146,14 @@ cl_rpc_send(sr_session_ctx_t *session, const char *xpath, bool action,
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
+    netconf_id_string = (char*)calloc(12, sizeof(char));
+    sprintf(netconf_id_string, "%d", session->netconf_id);
     msg_req->request->rpc_req->action = action;
+
+    if (netconf_id_string) {
+        sr_mem_edit_string(sr_mem, &msg_req->request->rpc_req->netconf_id, netconf_id_string);
+    }
+
     sr_mem_edit_string(sr_mem, &msg_req->request->rpc_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->rpc_req->xpath, rc, cleanup);
     msg_req->request->rpc_req->orig_api_variant = sr_api_variant_sr_to_gpb(SR_API_VALUES);
@@ -3171,6 +3180,10 @@ cl_rpc_send(sr_session_ctx_t *session, const char *xpath, bool action,
         sr_mem_restore(&snapshot);
     }
 
+    if (NULL != netconf_id_string) {
+        free(netconf_id_string);
+    }
+
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
@@ -3182,6 +3195,9 @@ cleanup:
     }
     if (snapshot.sr_mem) {
         sr_mem_restore(&snapshot);
+    }
+    if (NULL != netconf_id_string) {
+        free(netconf_id_string);
     }
     return cl_session_return(session, rc);
 }
@@ -3826,4 +3842,22 @@ sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_change_t **fd_change_set,
     pthread_mutex_unlock(&global_lock);
 
     return rc;
+}
+
+void
+sr_set_netconf_id(sr_session_ctx_t *session, uint32_t netconf_id)
+{
+    if (session) {
+        session->netconf_id = netconf_id;
+    }
+}
+
+uint32_t
+sr_get_netconf_id(sr_session_ctx_t *session)
+{
+    if (session) {
+        return session->netconf_id;
+    } else {
+        return 0;
+    }
 }

@@ -2415,7 +2415,7 @@ cl_copy_config_test2(void **state)
 }
 
 static int
-test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+test_rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     int *callback_called = (int*)private_ctx;
@@ -2566,7 +2566,7 @@ cl_rpc_test(void **state)
 }
 
 static int
-test_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,
+test_rpc_tree_cb(sr_session_ctx_t *session, const char *xpath, const sr_node_t *input, const size_t input_cnt,
         sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
     const sr_node_t *sr_in_node = NULL;
@@ -2993,7 +2993,7 @@ cl_rpc_combo_test(void **state)
 }
 
 static int
-test_failing_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+test_failing_rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     int *callback_called = (int*)private_ctx;
@@ -3045,7 +3045,7 @@ cl_failed_rpc_test(void **state)
 }
 
 static int
-test_invalid_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+test_invalid_rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     int *callback_called = (int*)private_ctx;
@@ -3122,7 +3122,7 @@ cl_invalid_rpc_test(void **state)
 }
 
 static int
-test_action_cb1(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+test_action_cb1(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     int *callback_called = (int*)private_ctx;
@@ -3155,7 +3155,7 @@ test_action_cb1(const char *xpath, const sr_val_t *input, const size_t input_cnt
 }
 
 static int
-test_action_cb2(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+test_action_cb2(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     int *callback_called = (int*)private_ctx;
@@ -3183,7 +3183,7 @@ test_action_cb2(const char *xpath, const sr_val_t *input, const size_t input_cnt
 }
 
 static int
-test_action_tree_cb1(const char *xpath, const sr_node_t *input, const size_t input_cnt,
+test_action_tree_cb1(sr_session_ctx_t *session, const char *xpath, const sr_node_t *input, const size_t input_cnt,
         sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
     const sr_node_t *sr_in_node = NULL;
@@ -3228,7 +3228,7 @@ test_action_tree_cb1(const char *xpath, const sr_node_t *input, const size_t inp
 }
 
 static int
-test_action_tree_cb2(const char *xpath, const sr_node_t *input, const size_t input_cnt,
+test_action_tree_cb2(sr_session_ctx_t *session, const char *xpath, const sr_node_t *input, const size_t input_cnt,
         sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
     int *callback_called = (int*)private_ctx;

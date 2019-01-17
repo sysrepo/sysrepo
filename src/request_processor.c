@@ -2159,7 +2159,7 @@ rp_rpc_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *
     np_subscription_t *subscription = NULL;
     Sr__Msg *req = NULL, *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
-    const char *op_name = NULL;
+    const char *op_name = NULL, *netconf_id = NULL;
     bool action = false;
     nacm_ctx_t *nacm_ctx = NULL;
     nacm_action_t nacm_action = NACM_ACTION_PERMIT;
@@ -2173,6 +2173,7 @@ rp_rpc_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *
 
     xpath = msg->request->rpc_req->xpath;
     action = msg->request->rpc_req->action;
+    netconf_id = msg->request->rpc_req->netconf_id;
     op_name = (action ? "Action" : "RPC");
     SR_LOG_DBG("Processing %s request (%s).", op_name, xpath);
 
@@ -2331,6 +2332,9 @@ rp_rpc_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *
             CHECK_NULL_NOMEM_GOTO(req->request->rpc_req->subscriber_address, rc, finalize);
             req->request->rpc_req->subscription_id = subscription->dst_id;
             req->request->rpc_req->has_subscription_id = true;
+            if (netconf_id) {
+                sr_mem_edit_string(sr_mem, &req->request->rpc_req->netconf_id, netconf_id);
+            }
             subscription_match = true;
             break;
         }

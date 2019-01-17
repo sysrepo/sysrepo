@@ -58,7 +58,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
 }
 
 static int
-rpc_initialize_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+rpc_initialize_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     SRP_LOG_DBG_MSG("turing-machine 'initialize' RPC called.");
@@ -71,7 +71,7 @@ rpc_initialize_cb(const char *xpath, const sr_val_t *input, const size_t input_c
 }
 
 static int
-rpc_run_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+rpc_run_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     SRP_LOG_DBG_MSG("turing-machine 'run' RPC called.");

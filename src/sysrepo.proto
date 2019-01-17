@@ -739,6 +739,7 @@ message RPCReq {
 
   optional string subscriber_address = 10;
   optional uint32 subscription_id = 11;
+  optional string netconf_id = 12;
 }
 
 /**

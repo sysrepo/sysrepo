@@ -755,7 +755,7 @@ perf_commit_test(void **state, int op_num, int *items) {
 }
 
 static int
-test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+test_rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     sr_val_t *v = NULL;

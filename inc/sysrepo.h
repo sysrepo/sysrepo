@@ -1466,6 +1466,7 @@ int sr_check_exec_permission(sr_session_ctx_t *session, const char *xpath, bool 
  * @brief Callback to be called by the delivery of RPC specified by xpath.
  * Subscribe to it by ::sr_rpc_subscribe call.
  *
+ * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath @ref xp_page "Data Path" identifying the RPC.
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
@@ -1476,14 +1477,15 @@ int sr_check_exec_permission(sr_session_ctx_t *session, const char *xpath, bool 
  *
  * @return Error code (SR_ERR_OK on success).
  */
-typedef int (*sr_rpc_cb)(const char *xpath, const sr_val_t *input, const size_t input_cnt,
-        sr_val_t **output, size_t *output_cnt, void *private_ctx);
+typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, 
+        const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx);
 
 /**
  * @brief Callback to be called by the delivery of RPC specified by xpath.
  * This RPC callback variant operates with sysrepo trees rather than with sysrepo values,
  * use it with ::sr_rpc_subscribe_tree and ::sr_rpc_send_tree.
  *
+ * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath @ref xp_page "Data Path" identifying the RPC.
  * @param[in] input Array of input parameters (represented as trees).
  * @param[in] input_cnt Number of input parameters.
@@ -1494,8 +1496,8 @@ typedef int (*sr_rpc_cb)(const char *xpath, const sr_val_t *input, const size_t 
  *
  * @return Error code (SR_ERR_OK on success).
  */
-typedef int (*sr_rpc_tree_cb)(const char *xpath, const sr_node_t *input, const size_t input_cnt,
-        sr_node_t **output, size_t *output_cnt, void *private_ctx);
+typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, const char *xpath, const sr_node_t *input, 
+        const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx);
 
 /**
  * @brief Subscribes for delivery of RPC specified by xpath.
@@ -2006,6 +2008,21 @@ void sr_free_tree(sr_node_t *tree);
  * @param[in] count length of array
  */
 void sr_free_trees(sr_node_t *trees, size_t count);
+
+/**
+ * @brief Store netconf session id in sr_session_ctx_t.
+ *
+ * @param[in] session
+ * @param[in] netconf_id
+ */
+void sr_set_netconf_id(sr_session_ctx_t *session, uint32_t netconf_id);
+
+ /**
+ * @brief Receive netconf sid from sr_session_ctx_t.
+ *
+ * @param[in] session
+ */
+uint32_t sr_get_netconf_id(sr_session_ctx_t *session);
 
 /**@} cl */
 

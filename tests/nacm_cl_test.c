@@ -1069,7 +1069,7 @@ sysrepo_teardown(void **state)
 }
 
 static int
-dummy_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+dummy_rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     inc_cb_call_count();

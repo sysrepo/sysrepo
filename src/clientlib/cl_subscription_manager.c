@@ -866,7 +866,7 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     sr_node_t *input_tree = NULL, *output_tree = NULL;
     sr_mem_ctx_t *sr_mem_resp = NULL;
     size_t input_cnt = 0, output_cnt = 0;
-    const char *op_name = NULL;
+    const char *op_name = NULL, *netconf_id = NULL;
     bool action = false;
     sr_rpc_cb cb = NULL;
     sr_rpc_tree_cb cb_tree = NULL;
@@ -875,6 +875,8 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->rpc_req);
 
     action = msg->request->rpc_req->action;
+    netconf_id = msg->request->rpc_req->netconf_id;
+
     op_name = action ? "Action" : "RPC";
     SR_LOG_DBG("Received %s request (%s) for subscription id=%"PRIu32".",
             op_name, msg->request->rpc_req->xpath, msg->request->rpc_req->subscription_id);
@@ -900,17 +902,21 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
         goto cleanup;
     }
 
+    if (netconf_id) {
+        sr_set_netconf_id(subscription->data_session, atoi(netconf_id));
+    }
+
     SR_LOG_DBG("Calling %s callback for subscription id=%"PRIu32".", op_name, subscription->id);
 
     if (SR_API_VALUES == subscription->api_variant) {
         cb = (action ? subscription->callback.action_cb : subscription->callback.rpc_cb);
-        op_rc = cb(msg->request->rpc_req->xpath,
+        op_rc = cb(subscription->data_session, msg->request->rpc_req->xpath,
                    input, input_cnt,
                    &output, &output_cnt,
                    subscription->private_ctx);
     } else {
         cb_tree = (action ? subscription->callback.action_tree_cb : subscription->callback.rpc_tree_cb);
-        op_rc = cb_tree(msg->request->rpc_req->xpath,
+        op_rc = cb_tree(subscription->data_session, msg->request->rpc_req->xpath,
                         input_tree, input_cnt,
                         &output_tree, &output_cnt,
                         subscription->private_ctx);
