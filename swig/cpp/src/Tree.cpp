@@ -40,8 +40,9 @@ Tree::Tree() {
 Tree::Tree(const char *root_name, const char *root_module_name) {
     sr_node_t *node;
     int ret = sr_new_tree(root_name, root_module_name, &node);
-    if (ret != SR_ERR_OK)
+    if (ret != SR_ERR_OK) {
         throw_exception(ret);
+    }
 
     _deleter = S_Deleter(new Deleter(node));
     _node = node;
@@ -57,7 +58,9 @@ S_Tree Tree::dup() {
 
     sr_node_t *tree_dup = nullptr;
     int ret = sr_dup_tree(_node, &tree_dup);
-    if (ret != SR_ERR_OK) throw_exception(ret);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
 
     S_Deleter deleter(new Deleter(tree_dup));
     S_Tree dup(new Tree(tree_dup, deleter));
@@ -135,7 +138,9 @@ std::string Tree::to_string(int depth_limit) {
 std::string Tree::value_to_string() {
     char *mem = nullptr;
 
-    if (_node == nullptr) throw_exception(SR_ERR_DATA_MISSING);
+    if (_node == nullptr) {
+        throw_exception(SR_ERR_DATA_MISSING);
+    }
 
     sr_val_t *val = (sr_val_t *) _node;
 
@@ -154,24 +159,40 @@ std::string Tree::value_to_string() {
     throw_exception(ret);
 }
 void Tree::set_name(const char *name) {
-    if (_node == nullptr) throw_exception(SR_ERR_DATA_MISSING);
+    if (_node == nullptr) {
+        throw_exception(SR_ERR_DATA_MISSING);
+    }
     int ret = sr_node_set_name(_node, name);
-    if (ret != SR_ERR_OK) throw_exception(ret);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
 }
 void Tree::set_module(const char *module_name) {
-    if (_node == nullptr) throw_exception(SR_ERR_DATA_MISSING);
+    if (_node == nullptr) {
+        throw_exception(SR_ERR_DATA_MISSING);
+    }
     int ret = sr_node_set_module(_node, module_name);
-    if (ret != SR_ERR_OK) throw_exception(ret);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
 }
 void Tree::set_str_data(sr_type_t type, const char *string_val) {
-    if (_node == nullptr) throw_exception(SR_ERR_DATA_MISSING);
+    if (_node == nullptr) {
+        throw_exception(SR_ERR_DATA_MISSING);
+    }
     int ret = sr_node_set_str_data(_node, type, string_val);
-    if (ret != SR_ERR_OK) throw_exception(ret);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
 }
 void Tree::add_child(const char *child_name, const char *child_module_name, S_Tree child) {
-    if (_node == nullptr) throw_exception(SR_ERR_DATA_MISSING);
+    if (_node == nullptr) {
+        throw_exception(SR_ERR_DATA_MISSING);
+    }
     int ret = sr_node_add_child(_node, child_name, child_module_name, &child->_node);
-    if (ret != SR_ERR_OK) throw_exception(ret);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
 }
 void Tree::set(const char *value, sr_type_t type) {
     int ret = SR_ERR_OK;
@@ -181,8 +202,9 @@ void Tree::set(const char *value, sr_type_t type) {
     if (type == SR_BINARY_T || type == SR_BITS_T || type == SR_ENUM_T || type == SR_IDENTITYREF_T || \
         type == SR_INSTANCEID_T || type == SR_STRING_T) {
         ret = sr_node_set_str_data(_node, type, value);
-        if (ret != SR_ERR_OK)
+        if (ret != SR_ERR_OK) {
             throw_exception(ret);
+        }
     } else if (value != nullptr && ( type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
         type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T)) {
         throw_exception(SR_ERR_INVAL_ARG);
@@ -267,8 +289,9 @@ void Tree::set(uint64_t uint64_val, sr_type_t type) {
 Trees::Trees(size_t cnt): Trees() {
     if (cnt) {
         int ret = sr_new_trees(cnt, &_trees);
-        if (ret != SR_ERR_OK)
+        if (ret != SR_ERR_OK) {
             throw_exception(ret);
+        }
 
         _cnt = cnt;
         _deleter = S_Deleter(new Deleter(_trees, _cnt));
@@ -307,7 +330,9 @@ S_Trees Trees::dup() {
 
     sr_node_t *tree_dup = nullptr;
     int ret = sr_dup_trees(_trees, _cnt, &tree_dup);
-    if (ret != SR_ERR_OK) throw_exception(ret);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
 
     S_Trees dup(new Trees(tree_dup, _cnt));
     return dup;
@@ -320,8 +345,9 @@ Trees_Holder::Trees_Holder(sr_node_t **trees, size_t *cnt) {
     _allocate = true;
 }
 S_Trees Trees_Holder::allocate(size_t n) {
-    if (_allocate == false)
+    if (_allocate == false) {
         throw_exception(SR_ERR_DATA_EXISTS);
+    }
     _allocate = false;
 
     if (n == 0)
@@ -329,8 +355,9 @@ S_Trees Trees_Holder::allocate(size_t n) {
 
     *p_cnt = n;
     int ret = sr_new_trees(n, p_trees);
-    if (ret != SR_ERR_OK)
+    if (ret != SR_ERR_OK) {
         throw_exception(ret);
+    }
     S_Trees trees(new Trees(p_trees, p_cnt, nullptr));
     return trees;
 }

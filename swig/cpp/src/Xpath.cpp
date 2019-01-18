@@ -32,8 +32,9 @@ Xpath_Ctx::Xpath_Ctx() {
     sr_xpath_ctx_t *state = nullptr;
     state = (sr_xpath_ctx_t *) calloc(1, sizeof(*state));
 
-    if (state == nullptr)
+    if (state == nullptr) {
         throw_exception(SR_ERR_NOMEM);
+    }
 
     _state = state;
 }
