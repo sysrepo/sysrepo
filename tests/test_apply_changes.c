@@ -35,7 +35,7 @@
 #include "sysrepo.h"
 
 struct state {
-    sr_conn_ctx_t *conn[2];
+    sr_conn_ctx_t *conn;
     volatile int cb_called;
     pthread_barrier_t barrier;
 };
@@ -48,37 +48,33 @@ setup(void **state)
     st = calloc(1, sizeof *st);
     *state = st;
 
-    if (sr_connect("test1", 0, &(st->conn[0])) != SR_ERR_OK) {
-        goto error;
-    }
-    if (sr_connect("test2", 0, &(st->conn[1])) != SR_ERR_OK) {
+    if (sr_connect("test1", 0, &(st->conn)) != SR_ERR_OK) {
         goto error;
     }
 
-    if (sr_install_module(st->conn[0], TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         goto error;
     }
-    if (sr_install_module(st->conn[0], TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         goto error;
     }
-    if (sr_install_module(st->conn[0], TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         goto error;
     }
-    if (sr_install_module(st->conn[0], TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         goto error;
     }
-    if (sr_install_module(st->conn[0], TESTS_DIR "/files/when1.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/when1.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         goto error;
     }
-    if (sr_install_module(st->conn[0], TESTS_DIR "/files/when2.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/when2.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         goto error;
     }
 
     return 0;
 
 error:
-    sr_disconnect(st->conn[0]);
-    sr_disconnect(st->conn[1]);
+    sr_disconnect(st->conn);
     free(st);
     return 1;
 }
@@ -88,15 +84,14 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    sr_remove_module(st->conn[0], "ietf-interfaces");
-    sr_remove_module(st->conn[0], "iana-if-type");
-    sr_remove_module(st->conn[0], "test");
-    sr_remove_module(st->conn[0], "defaults");
-    sr_remove_module(st->conn[0], "when2");
-    sr_remove_module(st->conn[0], "when1");
+    sr_remove_module(st->conn, "ietf-interfaces");
+    sr_remove_module(st->conn, "iana-if-type");
+    sr_remove_module(st->conn, "test");
+    sr_remove_module(st->conn, "defaults");
+    sr_remove_module(st->conn, "when2");
+    sr_remove_module(st->conn, "when1");
 
-    sr_disconnect(st->conn[0]);
-    sr_disconnect(st->conn[1]);
+    sr_disconnect(st->conn);
     free(st);
     return 0;
 }
@@ -317,14 +312,13 @@ static void *
 apply_change_done_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[0];
     sr_session_ctx_t *sess;
     struct lyd_node *subtree;
     char *str1;
     const char *str2;
     int ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", 0);
@@ -383,12 +377,11 @@ static void *
 subscribe_change_done_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[1];
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_change_done_cb, st, 0, 0, &subscr);
@@ -652,7 +645,6 @@ static void *
 apply_update_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[0];
     sr_session_ctx_t *sess;
     sr_val_t sr_val;
     struct lyd_node *subtree;
@@ -660,7 +652,7 @@ apply_update_thread(void *arg)
     const char *str2;
     int ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     sr_val.xpath = "/ietf-interfaces:interfaces/interface[name='eth52']/type";
@@ -728,12 +720,11 @@ static void *
 subscribe_update_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[1];
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_update_cb, st, 0, SR_SUBSCR_UPDATE, &subscr);
@@ -803,7 +794,6 @@ static void *
 apply_update_fail_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[0];
     sr_session_ctx_t *sess;
     const sr_error_info_t *err_info;
     sr_val_t sr_val;
@@ -811,7 +801,7 @@ apply_update_fail_thread(void *arg)
     char *str1;
     int ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     sr_val.xpath = "/ietf-interfaces:interfaces/interface[name='eth52']/type";
@@ -855,12 +845,11 @@ static void *
 subscribe_update_fail_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[1];
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_update_fail_cb, st, 0, SR_SUBSCR_UPDATE, &subscr);
@@ -1172,14 +1161,13 @@ static void *
 apply_change_fail_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[0];
     sr_session_ctx_t *sess;
     const sr_error_info_t *err_info;
     struct lyd_node *subtree;
     char *str1;
     int ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", 0);
@@ -1221,12 +1209,11 @@ static void *
 subscribe_change_fail_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[1];
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* create tesing user-ordered list data */
@@ -1652,14 +1639,13 @@ static void *
 apply_change_done_dflt_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[0];
     sr_session_ctx_t *sess;
     struct ly_set *subtrees;
     char *str1;
     const char *str2;
     int ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(sess, "/defaults:l1[k='when-true']", NULL, 0);
@@ -1820,12 +1806,11 @@ static void *
 subscribe_change_done_dflt_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[1];
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_module_change_subscribe(sess, "defaults", NULL, module_change_done_dflt_cb, st, 0, 0, &subscr);
@@ -2112,12 +2097,11 @@ static void *
 apply_change_done_when_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[0];
     sr_session_ctx_t *sess;
     struct ly_set *subtrees;
     int ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(sess, "/when2:cont/l", "bye", 0);
@@ -2223,12 +2207,11 @@ static void *
 subscribe_change_done_when_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[1];
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_module_change_subscribe(sess, "when1", NULL, module_change_done_when_cb, st, 0, 0, &subscr);
@@ -2747,11 +2730,10 @@ static void *
 apply_change_done_xpath_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[0];
     sr_session_ctx_t *sess;
     int ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(sess, "/test:l1[k='subscr']/v", "25", 0);
@@ -2797,12 +2779,11 @@ static void *
 subscribe_change_done_xpath_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    sr_conn_ctx_t *conn = st->conn[1];
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_module_change_subscribe(sess, "test", "/test:l1[k='subscr']", module_change_done_xpath_cb, st, 0, 0, &subscr);
@@ -2820,11 +2801,11 @@ subscribe_change_done_xpath_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 4) && (count < 1500)) {
+    while ((st->cb_called < 8) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 4);
+    assert_int_equal(st->cb_called, 8);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);

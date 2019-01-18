@@ -36,53 +36,13 @@
 #include "../modules/ietf_netconf_yang.h"
 #include "../modules/ietf_netconf_with_defaults_yang.h"
 
-sr_mod_t *
-sr_shmmain_getnext(char *sr_shm, sr_mod_t *last)
-{
-    if (!sr_shm) {
-        return NULL;
-    }
-
-    if (!last) {
-        return (sr_mod_t *)sr_shm;
-    }
-
-    if (!last->next) {
-        return NULL;
-    }
-
-    return (sr_mod_t *)(sr_shm + last->next);
-}
-
-sr_mod_t *
-sr_shmmain_find_module(char *sr_shm, const char *name, off_t name_off)
-{
-    sr_mod_t *cur = NULL;
-
-    assert(name || name_off);
-
-    while ((cur = sr_shmmain_getnext(sr_shm, cur))) {
-        if (name_off && (cur->name == name_off)) {
-            return cur;
-        } else if (name && !strcmp(sr_shm + cur->name, name)) {
-            return cur;
-        }
-    }
-
-    return NULL;
-}
-
 static sr_error_info_t *
 sr_shmmain_write_ver(int shm_lock, uint32_t shm_ver)
 {
     sr_error_info_t *err_info = NULL;
 
-    if (write(shm_lock, &shm_ver, sizeof shm_ver) != sizeof shm_ver) {
-        SR_ERRINFO_SYSERRNO(&err_info, "write");
-        return err_info;
-    }
-    if (lseek(shm_lock, 0, SEEK_SET) == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "lseek");
+    if (pwrite(shm_lock, &shm_ver, sizeof shm_ver, 0) != sizeof shm_ver) {
+        SR_ERRINFO_SYSERRNO(&err_info, "pwrite");
         return err_info;
     }
     if (fsync(shm_lock) == -1) {
@@ -98,135 +58,12 @@ sr_shmmain_update_ver(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
 
-    ++conn->shm_ver;
-    if ((err_info = sr_shmmain_write_ver(conn->shm_lock, conn->shm_ver))) {
+    ++conn->main_ver;
+    if ((err_info = sr_shmmain_write_ver(conn->main_plock, conn->main_ver))) {
         return err_info;
     }
 
     return err_info;
-}
-
-static sr_error_info_t *
-sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
-{
-    const struct lys_module *mod;
-    char *yang_dir;
-    sr_mod_t *shm_mod = NULL;
-    off_t *features;
-    uint16_t i;
-    sr_error_info_t *err_info = NULL;
-    int ret;
-
-    if (!conn->ly_ctx) {
-        /* very first init */
-        if (asprintf(&yang_dir, "%s/yang", sr_get_repo_path()) == -1) {
-            SR_ERRINFO_MEM(&err_info);
-            return err_info;
-        }
-        conn->ly_ctx = ly_ctx_new(yang_dir, 0);
-        free(yang_dir);
-        if (!conn->ly_ctx) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create a new libyang context.");
-            return err_info;
-        }
-
-        /* load internal modules */
-        if (!lys_parse_mem(conn->ly_ctx, sysrepo_yang, LYS_YANG)) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            return err_info;
-        }
-        if (!lys_parse_mem(conn->ly_ctx, ietf_netconf_acm_yang, LYS_YANG)) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            return err_info;
-        }
-        if (!lys_parse_mem(conn->ly_ctx, ietf_netconf_yang, LYS_YANG)) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            return err_info;
-        }
-        if (!lys_parse_mem(conn->ly_ctx, ietf_netconf_with_defaults_yang, LYS_YANG)) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            return err_info;
-        }
-    }
-
-    if (conn->shm) {
-        /* load new modules from SHM */
-        while ((shm_mod = sr_shmmain_getnext(conn->shm, shm_mod))) {
-            mod = ly_ctx_get_module(conn->ly_ctx, conn->shm + shm_mod->name, shm_mod->rev, 0);
-            if (!mod) {
-                /* add the module */
-                if (!(mod = ly_ctx_load_module(conn->ly_ctx, conn->shm + shm_mod->name, shm_mod->rev))) {
-                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                    return err_info;
-                }
-
-                /* enable features */
-                features = (off_t *)(conn->shm + shm_mod->features);
-                for (i = 0; i < shm_mod->feat_count; ++i) {
-                    ret = lys_features_enable(mod, conn->shm + features[i]);
-                    if (ret) {
-                        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                        return err_info;
-                    }
-                }
-            } else if (!mod->implemented) {
-                /* make the module implemented */
-                if (lys_set_implemented(mod)) {
-                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                    return err_info;
-                }
-            }
-        }
-    }
-
-    return NULL;
-}
-
-static sr_error_info_t *
-sr_shmmain_read_ver(int shm_lock, uint32_t *shm_ver)
-{
-    sr_error_info_t *err_info = NULL;
-
-    if (read(shm_lock, shm_ver, sizeof *shm_ver) != sizeof *shm_ver) {
-        SR_ERRINFO_SYSERRNO(&err_info, "read");
-        return err_info;
-    }
-    if (lseek(shm_lock, 0, SEEK_SET) == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "lseek");
-        return err_info;
-    }
-
-    return NULL;
-}
-
-sr_error_info_t *
-sr_shmmain_check_ver(sr_conn_ctx_t *conn)
-{
-    sr_error_info_t *err_info = NULL;
-    uint32_t shm_ver, size;
-
-    /* check SHM version and update SHM mapping as necessary */
-    if ((err_info = sr_shmmain_read_ver(conn->shm_lock, &shm_ver))) {
-        return err_info;
-    }
-    if (conn->shm_ver != shm_ver) {
-        if ((err_info = sr_file_get_size(conn->shm_fd, &size))) {
-            return err_info;
-        }
-        if ((err_info = sr_shmmain_remap(conn, size))) {
-            return err_info;
-        }
-
-        /* update libyang context (just add new modules) */
-        if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-            return err_info;
-        }
-
-        /* update version */
-        conn->shm_ver = shm_ver;
-    }
-
-    return NULL;
 }
 
 sr_error_info_t *
@@ -280,7 +117,7 @@ sr_shmmain_check_dirs(void)
 }
 
 sr_error_info_t *
-sr_shmmain_lock_open(int *shm_lock)
+sr_shmmain_pidlock_open(int *shm_lock)
 {
     sr_error_info_t *err_info = NULL;
     char *path;
@@ -312,56 +149,18 @@ sr_shmmain_lock_open(int *shm_lock)
 }
 
 sr_error_info_t *
-sr_shmmain_remap(sr_conn_ctx_t *conn, uint32_t shm_size)
-{
-    uint32_t size;
-    sr_error_info_t *err_info = NULL;
-
-    if (conn->shm) {
-        /* unmap SHM */
-        munmap(conn->shm, conn->shm_size);
-        conn->shm = NULL;
-    }
-
-    if ((err_info = sr_file_get_size(conn->shm_fd, &size))) {
-        return err_info;
-    }
-
-    /* truncate */
-    if ((size != shm_size) && (ftruncate(conn->shm_fd, shm_size) == -1)) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to truncate shared memory (%s).", strerror(errno));
-        return err_info;
-    }
-
-    /* update SHM size */
-    conn->shm_size = shm_size;
-
-    if (conn->shm_size) {
-        /* map the shared memory file to actual memory */
-        conn->shm = mmap(NULL, conn->shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, conn->shm_fd, 0);
-        if (conn->shm == MAP_FAILED) {
-            conn->shm = NULL;
-            sr_errinfo_new(&err_info, SR_ERR_NOMEM, NULL, "Failed to map shared memory (%s).", strerror(errno));
-            return err_info;
-        }
-    }
-
-    return NULL;
-}
-
-sr_error_info_t *
-sr_shmmain_lock(sr_conn_ctx_t *conn, int wr)
+sr_shmmain_pidlock(sr_conn_ctx_t *conn, int wr)
 {
     struct flock fl;
     int ret;
     sr_error_info_t *err_info = NULL;
 
-    assert(conn->shm_lock > -1);
+    assert(conn->main_plock > -1);
 
     memset(&fl, 0, sizeof fl);
     fl.l_type = (wr ? F_WRLCK : F_RDLCK);
     do {
-        ret = fcntl(conn->shm_lock, F_SETLKW, &fl);
+        ret = fcntl(conn->main_plock, F_SETLKW, &fl);
     } while ((ret == -1) && (errno == EINTR));
     if (ret == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "fcntl");
@@ -372,15 +171,27 @@ sr_shmmain_lock(sr_conn_ctx_t *conn, int wr)
 }
 
 void
-sr_shmmain_unlock(sr_conn_ctx_t *conn)
+sr_shmmain_pidunlock(sr_conn_ctx_t *conn)
 {
     struct flock fl;
 
     memset(&fl, 0, sizeof fl);
     fl.l_type = F_UNLCK;
-    if (fcntl(conn->shm_lock, F_SETLK, &fl) == -1) {
+    if (fcntl(conn->main_plock, F_SETLK, &fl) == -1) {
         assert(0);
     }
+}
+
+static sr_error_info_t *
+sr_shmmain_tidlock(sr_conn_ctx_t *conn, int wr)
+{
+    return sr_lock(&conn->main_tlock, wr, __func__);
+}
+
+static void
+sr_shmmain_tidunlock(sr_conn_ctx_t *conn)
+{
+    sr_unlock(&conn->main_tlock);
 }
 
 static sr_error_info_t *
@@ -530,36 +341,36 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
 }
 
 static sr_error_info_t *
-sr_shmmain_shm_add(sr_conn_ctx_t *conn, uint32_t new_shm_size, struct lyd_node *from_mod)
+sr_shmmain_shm_add(sr_conn_ctx_t *conn, size_t new_shm_size, struct lyd_node *from_mod)
 {
     off_t shm_end;
     sr_mod_t *shm_mod = NULL;
     sr_error_info_t *err_info = NULL;
 
-    assert(conn->shm_fd > -1);
+    assert(conn->main_shm.fd > -1);
     assert(new_shm_size);
 
     /* remember original SHM size and last module to link others to */
-    shm_end = conn->shm_size;
-    while ((shm_mod = sr_shmmain_getnext(conn->shm, shm_mod))) {
+    shm_end = conn->main_shm.size;
+    while ((shm_mod = sr_shmmain_getnext(conn->main_shm.addr, shm_mod))) {
         if (!shm_mod->next) {
             break;
         }
     }
 
     /* remap SHM */
-    if ((err_info = sr_shmmain_remap(conn, new_shm_size))) {
+    if ((err_info = sr_shm_remap(&conn->main_shm, new_shm_size))) {
         return err_info;
     }
 
     /* add all newly implemented modules into SHM */
-    if ((err_info = sr_shmmain_shm_add_modules(conn->shm, from_mod, shm_mod, &shm_end))) {
+    if ((err_info = sr_shmmain_shm_add_modules(conn->main_shm.addr, from_mod, shm_mod, &shm_end))) {
         return err_info;
     }
-    SR_CHECK_INT_RET(shm_end != conn->shm_size, err_info);
+    SR_CHECK_INT_RET((unsigned)shm_end != conn->main_shm.size, err_info);
 
     /* synchronize SHM */
-    if (msync(conn->shm, conn->shm_size, MS_SYNC | MS_INVALIDATE) == -1) {
+    if (msync(conn->main_shm.addr, conn->main_shm.size, MS_SYNC | MS_INVALIDATE) == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to write modified shared memory data (%s).", strerror(errno));
         return err_info;
     }
@@ -682,7 +493,7 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
 
     /* check the existence of the data file */
     if (access(path, R_OK) == -1) {
-        if (conn->shm) {
+        if (conn->main_shm.addr) {
             /* we have some shared memory but no file on disk, should not happen */
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" was unexpectedly deleted.", path);
             goto error;
@@ -803,67 +614,149 @@ error:
     return err_info;
 }
 
+static sr_error_info_t *
+sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
+{
+    const struct lys_module *mod;
+    char *yang_dir;
+    sr_mod_t *shm_mod = NULL;
+    off_t *features;
+    uint16_t i;
+    sr_error_info_t *err_info = NULL;
+    int ret;
+
+    if (!conn->ly_ctx) {
+        /* very first init */
+        if (asprintf(&yang_dir, "%s/yang", sr_get_repo_path()) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            return err_info;
+        }
+        conn->ly_ctx = ly_ctx_new(yang_dir, 0);
+        free(yang_dir);
+        if (!conn->ly_ctx) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create a new libyang context.");
+            return err_info;
+        }
+
+        /* load internal modules */
+        if (!lys_parse_mem(conn->ly_ctx, sysrepo_yang, LYS_YANG)) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            return err_info;
+        }
+        if (!lys_parse_mem(conn->ly_ctx, ietf_netconf_acm_yang, LYS_YANG)) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            return err_info;
+        }
+        if (!lys_parse_mem(conn->ly_ctx, ietf_netconf_yang, LYS_YANG)) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            return err_info;
+        }
+        if (!lys_parse_mem(conn->ly_ctx, ietf_netconf_with_defaults_yang, LYS_YANG)) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            return err_info;
+        }
+    }
+
+    if (conn->main_shm.addr) {
+        /* load new modules from SHM */
+        while ((shm_mod = sr_shmmain_getnext(conn->main_shm.addr, shm_mod))) {
+            mod = ly_ctx_get_module(conn->ly_ctx, conn->main_shm.addr + shm_mod->name, shm_mod->rev, 0);
+            if (!mod) {
+                /* add the module */
+                if (!(mod = ly_ctx_load_module(conn->ly_ctx, conn->main_shm.addr + shm_mod->name, shm_mod->rev))) {
+                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                    return err_info;
+                }
+
+                /* enable features */
+                features = (off_t *)(conn->main_shm.addr + shm_mod->features);
+                for (i = 0; i < shm_mod->feat_count; ++i) {
+                    ret = lys_features_enable(mod, conn->main_shm.addr + features[i]);
+                    if (ret) {
+                        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                        return err_info;
+                    }
+                }
+            } else if (!mod->implemented) {
+                /* make the module implemented */
+                if (lys_set_implemented(mod)) {
+                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                    return err_info;
+                }
+            }
+        }
+    }
+
+    return NULL;
+}
+
 sr_error_info_t *
 sr_shmmain_create(sr_conn_ctx_t *conn)
 {
     struct lyd_node *sr_mods = NULL;
-    uint32_t shm_size;
+    size_t shm_size;
     sr_error_info_t *err_info = NULL;
 
     /* create shared memory */
-    conn->shm_fd = shm_open(SR_MAIN_SHM, O_RDWR | O_CREAT | O_EXCL, 00600);
-    if (conn->shm_fd == -1) {
+    conn->main_shm.fd = shm_open(SR_MAIN_SHM, O_RDWR | O_CREAT | O_EXCL, 00600);
+    if (conn->main_shm.fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open shared memory (%s).", strerror(errno));
-        goto error;
+        return err_info;
     }
 
     /* create libyang context */
     if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-        goto error_unlock;
+        return err_info;
     }
 
     /* parse libyang data tree */
     if ((err_info = sr_shmmain_ly_int_data_parse(conn, 1, &sr_mods))) {
-        goto error_unlock;
+        return err_info;
     }
 
     /* create SHM */
     shm_size = sr_shmmain_ly_calculate_size(sr_mods);
     if (shm_size) {
         if ((err_info = sr_shmmain_shm_add(conn, shm_size, sr_mods->child))) {
-            goto error_unlock;
+            lyd_free_withsiblings(sr_mods);
+            return err_info;
         }
     }
 
-    /* free it now beacuse the context will change */
+    /* free it now because the context will change */
     lyd_free_withsiblings(sr_mods);
-    sr_mods = NULL;
 
     /* update libyang context with info from SHM */
     if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-        goto error_unlock;
+        return err_info;
     }
 
     return NULL;
+}
 
-error_unlock:
-    sr_shmmain_unlock(conn);
-error:
-    lyd_free_withsiblings(sr_mods);
-    return err_info;
+static sr_error_info_t *
+sr_shmmain_read_ver(int shm_lock, uint32_t *shm_ver)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (pread(shm_lock, shm_ver, sizeof *shm_ver, 0) != sizeof *shm_ver) {
+        SR_ERRINFO_SYSERRNO(&err_info, "pread");
+        return err_info;
+    }
+
+    return NULL;
 }
 
 sr_error_info_t *
 sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t size;
 
     *nonexistent = 0;
 
     /* try to open the shared memory */
-    conn->shm_fd = shm_open(SR_MAIN_SHM, O_RDWR, 00600);
-    if (conn->shm_fd == -1) {
+    conn->main_shm.fd = shm_open(SR_MAIN_SHM, O_RDWR, 00600);
+    if (conn->main_shm.fd == -1) {
         if (errno == ENOENT) {
             *nonexistent = 1;
             return NULL;
@@ -873,10 +766,7 @@ sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent)
     }
 
     /* get SHM size and map it */
-    if ((err_info = sr_file_get_size(conn->shm_fd, &size))) {
-        return err_info;
-    }
-    if ((err_info = sr_shmmain_remap(conn, size))) {
+    if ((err_info = sr_shm_remap(&conn->main_shm, 0))) {
         return err_info;
     }
 
@@ -886,16 +776,104 @@ sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent)
     }
 
     /* store current version */
-    if ((err_info = sr_shmmain_read_ver(conn->shm_lock, &conn->shm_ver))) {
+    if ((err_info = sr_shmmain_read_ver(conn->main_plock, &conn->main_ver))) {
         return err_info;
     }
 
     return NULL;
 }
 
+sr_mod_t *
+sr_shmmain_getnext(char *sr_shm, sr_mod_t *last)
+{
+    if (!sr_shm) {
+        return NULL;
+    }
+
+    if (!last) {
+        return (sr_mod_t *)sr_shm;
+    }
+
+    if (!last->next) {
+        return NULL;
+    }
+
+    return (sr_mod_t *)(sr_shm + last->next);
+}
+
+sr_mod_t *
+sr_shmmain_find_module(char *sr_shm, const char *name, off_t name_off)
+{
+    sr_mod_t *cur = NULL;
+
+    assert(name || name_off);
+
+    while ((cur = sr_shmmain_getnext(sr_shm, cur))) {
+        if (name_off && (cur->name == name_off)) {
+            return cur;
+        } else if (name && !strcmp(sr_shm + cur->name, name)) {
+            return cur;
+        }
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t main_ver;
+
+    /* TID LOCK */
+    if ((err_info = sr_shmmain_tidlock(conn, wr))) {
+        return err_info;
+    }
+
+    /* PID LOCK */
+    if ((err_info = sr_shmmain_pidlock(conn, wr))) {
+        goto tidunlock_error;
+    }
+
+    /* remap in case modules were added (even version changed) or some subscriptions were changed (version remains) */
+    if ((err_info = sr_shm_remap(&conn->main_shm, 0))) {
+        goto pidunlock_error;
+    }
+
+    /* check SHM version and update SHM mapping as necessary */
+    if ((err_info = sr_shmmain_read_ver(conn->main_plock, &main_ver))) {
+        goto pidunlock_error;
+    }
+
+    if (conn->main_ver != main_ver) {
+        /* update libyang context (just add new modules) */
+        if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
+            goto pidunlock_error;
+        }
+
+        /* update version */
+        conn->main_ver = main_ver;
+    }
+
+    return NULL;
+
+tidunlock_error:
+    sr_shmmain_tidunlock(conn);
+pidunlock_error:
+    sr_shmmain_pidunlock(conn);
+    return err_info;
+}
+
+void
+sr_shmmain_unlock(sr_conn_ctx_t *conn)
+{
+    sr_shmmain_pidunlock(conn);
+    sr_shmmain_tidunlock(conn);
+}
+
 static sr_error_info_t *
 sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *mod_name, const struct lys_node *node,
-        uint32_t *shm_size)
+        size_t *shm_size)
 {
     const struct lys_node *data_child;
     char *data_path = NULL, *expr;
@@ -1009,7 +987,7 @@ error:
 
 static sr_error_info_t *
 sr_moddep_cond(const char *cond, int lyxp_opt, struct lys_node *node, const struct lys_module *local_mod,
-        struct lyd_node *ly_deps, uint32_t *shm_size)
+        struct lyd_node *ly_deps, size_t *shm_size)
 {
     struct ly_set *set;
     struct lys_node *atom;
@@ -1040,7 +1018,7 @@ sr_moddep_cond(const char *cond, int lyxp_opt, struct lys_node *node, const stru
 
 static sr_error_info_t *
 sr_moddep_type(const struct lys_type *type, struct lys_node *node, const struct lys_module *local_mod,
-        struct lyd_node *ly_deps, uint32_t *shm_size)
+        struct lyd_node *ly_deps, size_t *shm_size)
 {
     const struct lys_type *t;
     const char *ptr;
@@ -1100,7 +1078,7 @@ sr_moddep_type(const struct lys_type *type, struct lys_node *node, const struct 
 
 static sr_error_info_t *
 sr_shmmain_ly_add_module(const struct lys_module *mod, struct lyd_node *sr_mods, struct lyd_node **ly_mod_p,
-        uint32_t *shm_size)
+        size_t *shm_size)
 {
     struct lys_node *root, *next, *elem;
     struct lyd_node *ly_mod, *ly_deps;
@@ -1285,7 +1263,7 @@ next_sibling:
 
 static sr_error_info_t *
 sr_shmmain_ly_add_module_with_imps(char *sr_shm, const struct lys_module *mod, struct lyd_node *sr_mods,
-        struct lyd_node **ly_mod_p, uint32_t *shm_size)
+        struct lyd_node **ly_mod_p, size_t *shm_size)
 {
     sr_error_info_t *err_info = NULL;
     uint8_t i;
@@ -1316,7 +1294,7 @@ sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mo
 {
     struct lyd_node *sr_mods = NULL, *sr_mod = NULL;
     struct ly_set *set = NULL;
-    uint32_t shm_size = 0;
+    size_t shm_size = 0;
     sr_error_info_t *err_info = NULL;
 
     /* parse current module information */
@@ -1326,7 +1304,7 @@ sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mo
 
     /* get the combined size of all newly implemented modules */
     assert(mod->implemented);
-    if ((err_info = sr_shmmain_ly_add_module_with_imps(conn->shm, mod, sr_mods, &sr_mod, &shm_size))) {
+    if ((err_info = sr_shmmain_ly_add_module_with_imps(conn->main_shm.addr, mod, sr_mods, &sr_mod, &shm_size))) {
         goto cleanup;
     }
 
@@ -1346,7 +1324,7 @@ sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mo
     }
 
     /* just adds the new modules into SHM */
-    if ((err_info = sr_shmmain_shm_add(conn, conn->shm_size + shm_size, sr_mod))) {
+    if ((err_info = sr_shmmain_shm_add(conn, conn->main_shm.size + shm_size, sr_mod))) {
         goto cleanup;
     }
 

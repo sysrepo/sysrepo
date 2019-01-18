@@ -1331,8 +1331,7 @@ op_error:
 }
 
 sr_error_info_t *
-sr_ly_edit_mod_apply(const struct lyd_node *edit, struct sr_mod_info_mod_s *mod, struct lyd_node **mod_data,
-        struct lyd_node **mod_diff)
+sr_ly_edit_mod_apply(const struct lyd_node *edit, struct sr_mod_info_mod_s *mod, struct lyd_node **mod_diff)
 {
     const struct lyd_node *root;
     sr_error_info_t *err_info = NULL;
@@ -1350,7 +1349,7 @@ sr_ly_edit_mod_apply(const struct lyd_node *edit, struct sr_mod_info_mod_s *mod,
 
     /* apply relevant nodes from the edit datatree */
     do {
-        if ((err_info = sr_ly_edit_apply_r(mod_data, NULL, (struct lyd_node *)root, EDIT_CONTINUE, NULL, mod_diff, 0))) {
+        if ((err_info = sr_ly_edit_apply_r(&mod->mod_data, NULL, (struct lyd_node *)root, EDIT_CONTINUE, NULL, mod_diff, 0))) {
             return err_info;
         }
 
@@ -1607,7 +1606,7 @@ next_iter_r:
 }
 
 sr_error_info_t *
-sr_ly_diff_mod_apply(struct lyd_node *diff, struct sr_mod_info_mod_s *mod, struct lyd_node **mod_data)
+sr_ly_diff_mod_apply(struct lyd_node *diff, struct sr_mod_info_mod_s *mod)
 {
     const struct lyd_node *root;
     sr_error_info_t *err_info = NULL;
@@ -1625,7 +1624,7 @@ sr_ly_diff_mod_apply(struct lyd_node *diff, struct sr_mod_info_mod_s *mod, struc
 
     /* apply relevant nodes from the diff datatree */
     do {
-        if ((err_info = sr_ly_diff_apply_r(mod_data, NULL, (struct lyd_node *)root))) {
+        if ((err_info = sr_ly_diff_apply_r(&mod->mod_data, NULL, (struct lyd_node *)root))) {
             return err_info;
         }
 
@@ -2080,20 +2079,13 @@ sr_edit_is_superior_op(const char *new_op, const char *cur_op)
 }
 
 sr_error_info_t *
-sr_edit_item(sr_session_ctx_t *session, const char *xpath, const char *value, const char *operation,
+sr_ly_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, const char *operation,
         const char *def_operation, const sr_move_position_t *position, const char *keys, const char *val)
 {
     struct lyd_node *node, *sibling, *parent;
     const char *op, *attr_val;
     int opts, own_oper, next_iter_oper, skip_count;
     sr_error_info_t *err_info = NULL;
-
-    assert(session && xpath && operation);
-
-    /* check context versions */
-    if ((err_info = sr_shmmain_check_ver(session->conn)) != SR_ERR_OK) {
-        return err_info;
-    }
 
     /* merge the change into existing edit */
     opts = LYD_PATH_OPT_NOPARENTRET | (!strcmp(operation, "remove") || !strcmp(operation, "delete") ? LYD_PATH_OPT_EDIT : 0);

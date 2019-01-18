@@ -125,11 +125,11 @@ sr_log_msg(sr_log_level_t ll, const char *msg, const char *path)
 
     /* stderr logging */
     if (ll <= stderr_ll) {
-        fprintf(stderr, "[%s]: %s", severity, msg);
         if (path) {
-            fprintf(stderr, " (path: %s)", path);
+            fprintf(stderr, "[%s]: %s (path: %s)\n", severity, msg, path);
+        } else {
+            fprintf(stderr, "[%s]: %s\n", severity, msg);
         }
-        fprintf(stderr, "\n");
     }
 
     /* syslog logging */

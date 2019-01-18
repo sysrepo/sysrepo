@@ -50,13 +50,13 @@
 #define SR_SUBSCR_JOIN_TIMEOUT 5
 
 /* ms */
-#define SR_SUB_LOCK_TIMEOUT 100
+#define SR_LOCK_TIMEOUT 100
 
 /* ms */
-#define SR_SUB_COMMIT_STEP_TIMEOUT 20
+#define SR_SUB_EVENT_STEP_TIMEOUT 20
 
 /* number of */
-#define SR_SUB_COMMIT_STEP_COUNT 500
+#define SR_SUB_EVENT_STEP_COUNT 500
 
 /* internal declarations + definitions
  */
@@ -69,6 +69,12 @@
 #define MOD_INFO_CHANGED 0x10 /* module data were changed */
 
 typedef struct sr_mod_s sr_mod_t;
+
+typedef struct sr_shm_s {
+    int fd;
+    size_t size;
+    char *addr;
+} sr_shm_t;
 
 struct sr_mod_info_s {
     sr_datastore_t ds;
@@ -83,9 +89,7 @@ struct sr_mod_info_s {
         struct lyd_node *mod_data;
         uint32_t event_id;
 
-        int shm_sub_fd;
-        uint32_t shm_sub_size;
-        char *shm_sub;
+        sr_shm_t conf_sub;
     } *mods;
     uint32_t mod_count;
 };
@@ -99,16 +103,17 @@ struct sr_mod_info_s {
 struct sr_conn_ctx_s {
     char *app_name;
     struct ly_ctx *ly_ctx;
+
+    pthread_mutex_t ptr_lock;
     sr_session_ctx_t **sessions;
     uint32_t session_count;
     sr_subscription_ctx_t **subscriptions;
     uint32_t subscription_count;
 
-    int shm_lock;
-    int shm_fd;
-    uint32_t shm_size;
-    uint32_t shm_ver;
-    char *shm;
+    int main_plock;
+    pthread_rwlock_t main_tlock;
+    uint32_t main_ver;
+    sr_shm_t main_shm;
 };
 
 struct sr_session_ctx_s {
@@ -128,10 +133,10 @@ struct sr_subscription_ctx_s {
     sr_conn_ctx_t *conn;
     volatile pthread_t tid;
 
-    struct modsub_s {
+    struct modsub_conf_s {
         char *module_name;
         sr_datastore_t ds;
-        struct modsub_sub_s {
+        struct modsub_confsub_s {
             sr_module_change_cb cb;
             void *private_data;
             char *xpath;
@@ -144,11 +149,23 @@ struct sr_subscription_ctx_s {
         uint32_t sub_count;
 
         struct lyd_node *diff;
-        int shm_fd;
-        uint32_t shm_size;
-        char *shm;
-    } *mod_subs;
-    uint32_t mod_sub_count;
+        sr_shm_t sub_shm;
+    } *conf_subs;
+    uint32_t conf_sub_count;
+
+    struct modsub_dp_s {
+        char *module_name;
+        struct modsub_dpsub_s {
+            sr_dp_get_items_cb cb;
+            void *private_data;
+            char *xpath;
+
+            uint32_t event_id;
+            sr_shm_t sub_shm;
+        } *subs;
+        uint32_t sub_count;
+    } *dp_subs;
+    uint32_t dp_sub_count;
 };
 
 struct sr_change_iter_s {
@@ -157,6 +174,29 @@ struct sr_change_iter_s {
     sr_change_oper_t parent_op;
     int reverse_changes;
 };
+
+/*
+ * subscription functions
+ */
+sr_error_info_t *sr_sub_conf_add(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_datastore_t ds,
+        sr_module_change_cb conf_cb, void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subs_p);
+
+sr_error_info_t *sr_sub_dp_add(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb,
+        void *private_data, sr_subscription_ctx_t **subs_p);
+
+sr_error_info_t *sr_sub_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs);
+
+/*
+ * utility functions
+ */
+/* if new_shm_size == 0 needs READ lock, otherwise needs WRITE lock! */
+sr_error_info_t *sr_shm_remap(sr_shm_t *shm, size_t new_shm_size);
+
+void sr_shm_destroy(sr_shm_t *shm);
+
+sr_error_info_t *sr_lock(pthread_rwlock_t *rwlock, int wr, const char *func);
+
+void sr_unlock(pthread_rwlock_t *rwlock);
 
 void *sr_realloc(void *ptr, size_t size);
 
@@ -173,7 +213,7 @@ const char *sr_ds2str(sr_datastore_t ds);
 
 sr_error_info_t *sr_msleep(uint32_t msec);
 
-sr_error_info_t *sr_file_get_size(int fd, uint32_t *size);
+sr_error_info_t *sr_file_get_size(int fd, size_t *size);
 
 const char *sr_ly_leaf_value_str(const struct lyd_node *leaf);
 
@@ -183,10 +223,17 @@ const char *sr_ev2str(sr_notif_event_t ev);
 
 sr_error_info_t *sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val);
 
+sr_error_info_t *sr_val_sr2ly(const sr_val_t *sr_val, struct lyd_node **node);
+
 void sr_ly_split(struct lyd_node *sibling);
 
 void sr_ly_link(struct lyd_node *first, struct lyd_node *sibling);
 
-sr_error_info_t *sr_ly_data_dup_filter(const struct lyd_node *data, const char *xpath, struct lyd_node **filter_data);
+sr_error_info_t *sr_ly_data_dup_filter(const struct lyd_node *data, char **xpaths, uint16_t xp_count,
+        struct lyd_node **filter_data);
+
+uint32_t sr_str_hash(const char *str);
+
+sr_error_info_t *sr_ly_xpath_trim_last_node(const char *xpath, char **trim_xpath);
 
 #endif

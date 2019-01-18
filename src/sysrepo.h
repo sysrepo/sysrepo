@@ -312,11 +312,10 @@ typedef uint32_t sr_sess_options_t;
  * @see @ref ds_page "Datastores & Sessions" information page.
  */
 typedef enum sr_datastore_e {
-    SR_DS_STARTUP = 0,    /**< Contains configuration data that should be loaded by the controlled application when it starts. */
-    SR_DS_RUNNING = 1,    /**< Contains currently applied configuration and state data of a running application.
-                               @note This datastore is supported only by applications that subscribe for notifications
-                               about the changes made in the datastore (e.g. ::sr_module_change_subscribe). */
-    SR_DS_COUNT           /**< Number of different datastores. */
+    SR_DS_STARTUP = 0,     /**< Contains configuration data that will be loaded when a device starts. */
+    SR_DS_RUNNING = 1,     /**< Contains current configuration data. */
+    SR_DS_OPERATIONAL = 2, /**< Contains currently used configuration and state data. */
+    SR_DS_COUNT            /**< Number of different datastores. */
 } sr_datastore_t;
 
 /**
@@ -1205,28 +1204,6 @@ int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_cha
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief Check if the owner of this session is authorized by NACM to invoke the protocol
- * operation defined in a (installed) YANG module under the given xpath (as RPC or Action).
- *
- * This call is intended for northbound management applications that need to implement
- * the NETCONF Access Control Model (RFC 6536) to restrict the protocol operations that
- * each user is authorized to execute.
- *
- * NETCONF access control is already included in the processing of ::sr_rpc_send,
- * ::sr_rpc_send_tree, ::sr_action_send and ::sr_action_send_tree and thus it should be
- * sufficient to call this function only prior to executing any of the NETCONF standard
- * protocol operations as they cannot be always directly translated to a single sysrepo
- * API call.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath @ref xp_page "Data Path" identifying the protocol operation.
- * @param[out] permitted TRUE if the user is permitted to execute the given operation, FALSE otherwise.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_check_exec_permission(sr_session_ctx_t *session, const char *xpath, bool *permitted);
-
-/**
  * @brief Callback to be called by the delivery of RPC specified by xpath.
  * Subscribe to it by ::sr_rpc_subscribe call.
  *
@@ -1603,12 +1580,12 @@ int sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subs
  * @param[in] xpath @ref xp_page "Data Path" identifying the level under which the nodes are requested.
  * @param[out] values Array of values at the selected level (allocated by the provider).
  * @param[out] values_cnt Number of values returned.
- * @param[in] request_id An ID identifying the originating request.
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_dp_get_items_subscribe call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_data);
+typedef int (*sr_dp_get_items_cb)(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+        struct lyd_node **parent, void *private_data);
 
 /**
  * @brief Registers for providing of operational data under given xpath.
@@ -1628,9 +1605,8 @@ typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_get_items_cb callback, void *private_data,
-        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
-
+int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+        sr_dp_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Schema Manipulation API
