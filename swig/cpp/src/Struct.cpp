@@ -601,7 +601,9 @@ S_Vals Vals_Holder::allocate(size_t n) {
     return p_Vals;
 }
 S_Vals Vals_Holder::reallocate(size_t n) {
-    if (_allocate) return allocate(n);
+    if (_allocate == true) {
+        return allocate(n);
+    }
     *p_vals = p_Vals->reallocate(n);
     *p_cnt = n;
     return p_Vals;
