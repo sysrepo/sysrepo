@@ -6449,7 +6449,7 @@ dm_validate_procedure_content(rp_ctx_t *rp_ctx, rp_session_t *session, dm_data_i
 
     /* load necessary data trees */
     node = proc_node;
-    while (!backtracking || node != proc_node) {
+    while (node && (!backtracking || node != proc_node)) {
         if (false == backtracking) {
             if (node->flags & LYS_XPCONF_DEP) {
                 ext_conf_ref = true;
