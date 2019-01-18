@@ -1,10 +1,10 @@
 /**
  * @file sysrepo.h
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Sysrepo Client Library public API.
+ * @author Michal Vasko <mvasko@cesnet.cz>
+ * @brief public API sysrepo header
  *
  * @copyright
- * Copyright 2015 Cisco Systems, Inc.
+ * Copyright (c) 2019 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #ifndef _SYSREPO_H
 #define _SYSREPO_H
 

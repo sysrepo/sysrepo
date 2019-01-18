@@ -1,7 +1,7 @@
 /**
- * @file config.h
+ * @file sysrepoctl.c
  * @author Michal Vasko <mvasko@cesnet.cz>
- * @brief test configuration header
+ * @brief sysrepoctl tool
  *
  * @copyright
  * Copyright (c) 2019 CESNET, z.s.p.o.
@@ -18,9 +18,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef SRTEST_CONFIG_H_
-#define SRTEST_CONFIG_H_
+#include "sysrepo.h"
 
-#define TESTS_DIR "@TESTS_DIR@"
-
-#endif /* SRTEST_CONFIG_H_ */
+int
+main(int argc, char** argv)
+{
+    return 0;
+}

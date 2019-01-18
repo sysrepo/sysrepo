@@ -58,7 +58,8 @@ include_directories("${PROJECT_SOURCE_DIR}/src")
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
-set(LIBSRC
+# objects
+set(LIB_SRC
     src/sysrepo.c
     src/common.c
     src/log.c
@@ -67,13 +68,19 @@ set(LIBSRC
     src/shm_mod.c
     src/shm_sub.c)
 
+set (SYSREPOCTL_SRC
+    src/executables/sysrepoctl.c)
+
+# libsysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-add_library(srobj OBJECT ${LIBSRC})
+add_library(srobj OBJECT ${LIB_SRC})
 add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
 
 set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
 
 # dependencies
+target_link_libraries(sysrepo rt)
+
 find_package(YANG REQUIRED)
 target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
 include_directories(${YANG_INCLUDE_DIR})
@@ -84,6 +91,10 @@ target_link_libraries(sysrepo ${CMAKE_THREAD_LIBS_INIT})
 
 # check for non-portable functions and headers
 set(CMAKE_REQUIRED_LIBRARIES pthread)
+
+# sysrepoctl tool
+add_executable(sysrepoctl ${SYSREPOCTL_SRC})
+target_link_libraries(sysrepoctl sysrepo ${LIBYANG_LIBRARIES})
 
 # tests
 if(ENABLE_TESTS)
