@@ -344,12 +344,59 @@ test_simple(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST 3 */
+static int
+fail_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
+        void *private_data)
+{
+    (void)session;
+    (void)private_data;
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(xpath, "/ietf-interfaces:interfaces-state");
+    assert_non_null(parent);
+    assert_null(*parent);
+
+    sr_set_error(session, "Callback failed with an error", "/no/special/xpath");
+    return SR_ERR_MALFORMED_MSG;
+}
+
+static void
+test_fail(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct ly_set *subtrees;
+    sr_subscription_ctx_t *subscr;
+    int ret;
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe as state data provider and listen */
+    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", fail_dp_cb,
+            NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_subscription_listen(subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from operational */
+    ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+
+    sr_unsubscribe(subscr);
+}
+
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_teardown(test_enabled_partial, clear_interfaces),
         cmocka_unit_test_teardown(test_simple, clear_interfaces),
+        cmocka_unit_test_teardown(test_fail, clear_interfaces),
     };
 
     sr_log_stderr(SR_LL_INF);

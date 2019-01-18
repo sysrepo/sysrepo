@@ -850,7 +850,7 @@ sr_shmsub_dp_xpath_notify(const struct lys_module *ly_mod, const char *xpath, co
 
     /* write the request for state data */
     event_id = sub_shm->event_id + 1;
-    if ((err_info = sr_shmsub_notify_write_event(event_id, SR_EV_CHANGE, NULL, parent_lyb, parent_lyb_len, sub_shm))) {
+    if ((err_info = sr_shmsub_notify_write_event(event_id, SR_EV_CHANGE, "data-provide", parent_lyb, parent_lyb_len, sub_shm))) {
         goto unlock_cleanup;
     }
 
@@ -861,7 +861,7 @@ sr_shmsub_dp_xpath_notify(const struct lys_module *ly_mod, const char *xpath, co
 
     if (*cb_err_info) {
         /* failed callback or timeout */
-        SR_LOG_WRN("Commit event \"data-provide\" with ID %u failed (%s).", event_id, sr_strerror((*cb_err_info)->err_code));
+        SR_LOG_WRN("Event \"data-provide\" with ID %u failed (%s).", event_id, sr_strerror((*cb_err_info)->err_code));
 
         /* SUB WRITE LOCK */
         if ((err_info = sr_lock(&sub_shm->lock, 1, __func__))) {
@@ -871,7 +871,7 @@ sr_shmsub_dp_xpath_notify(const struct lys_module *ly_mod, const char *xpath, co
         sr_shmsub_notify_write_event(event_id, SR_EV_NONE, NULL, NULL, 0, sub_shm);
         goto unlock_cleanup;
     } else {
-        SR_LOG_INF("Commit event \"data-provide\" with ID %u succeeded.", event_id);
+        SR_LOG_INF("Event \"data-provide\" with ID %u succeeded.", event_id);
     }
 
     /* SUB READ LOCK */
@@ -914,7 +914,7 @@ sr_shmsub_dp_module_notify(struct sr_mod_info_mod_s *mod, char *sr_shm, sr_error
     char *parent_xpath;
     uint16_t i, j;
     struct ly_set *set;
-    struct lyd_node *state_data;
+    struct lyd_node *state_data = NULL;
 
     for (i = 0; i < mod->shm_mod->dp_sub_count; ++i) {
         xpath = sr_shm + ((sr_mod_dp_sub_t *)(sr_shm + mod->shm_mod->dp_subs))[i].xpath;
