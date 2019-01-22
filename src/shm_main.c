@@ -516,7 +516,7 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
         }
     } else {
         /* load sysrepo data */
-        sr_mods = lyd_parse_path(conn->ly_ctx, path, LYD_LYB, LYD_OPT_CONFIG);
+        sr_mods = lyd_parse_path(conn->ly_ctx, path, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
         if (!sr_mods) {
             sr_errinfo_new_ly(&err_info, conn->ly_ctx);
             goto error;

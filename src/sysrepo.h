@@ -296,8 +296,6 @@ typedef uint32_t sr_conn_options_t;
  */
 typedef enum sr_session_flag_e {
     SR_SESS_DEFAULT = 0,       /**< Default (normal) session behavior. */
-    SR_SESS_CONFIG_ONLY = 1,   /**< Session will process only configuration data (e.g. sysrepo won't
-                                    return any state data by ::sr_get_items / ::sr_get_items_iter calls). */
 } sr_session_flag_t;
 
 /**
@@ -488,6 +486,8 @@ int sr_set_error(sr_session_ctx_t *session, const char *message, const char *xpa
  * @return session id or 0 in case of error
  */
 uint32_t sr_session_get_id(sr_session_ctx_t *session);
+
+sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Data Retrieval API (get / get-config functionality)
@@ -1037,22 +1037,16 @@ typedef enum sr_subscr_flag_e {
     SR_SUBSCR_ENABLED = 8,
 
     /**
-     * @brief The subscriber will not receive ::SR_EV_ABORT if he returns an error in verify phase
-     * (if the commit is refused by other verifier ::SR_EV_ABORT will be delivered).
-     */
-    SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG = 16,
-
-    /**
      * @brief No real-time notifications will be delivered until ::sr_event_notif_replay is called
      * and replay has finished (::SR_EV_NOTIF_T_REPLAY_COMPLETE is delivered).
      */
-    SR_SUBSCR_NOTIF_REPLAY_FIRST = 32,
+    SR_SUBSCR_NOTIF_REPLAY_FIRST = 16,
 
     /**
      * @brief The subscriber will be called before any other subscribers for the particular model
      * and is allowed to modify the particular module data.
      */
-    SR_SUBSCR_UPDATE = 64,
+    SR_SUBSCR_UPDATE = 32,
 } sr_subscr_flag_t;
 
 /**
@@ -1612,7 +1606,7 @@ int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name
 // Schema Manipulation API
 ////////////////////////////////////////////////////////////////////////////////
 
-int sr_get_context(sr_conn_ctx_t *conn, const struct ly_ctx **ly_ctx);
+const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
 
 int sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir, const char **features,
         int feat_count);

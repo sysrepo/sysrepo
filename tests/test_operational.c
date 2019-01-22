@@ -218,11 +218,12 @@ static int
 simple_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
         void *private_data)
 {
-    struct ly_ctx *ly_ctx = (struct ly_ctx *)private_data;
+    const struct ly_ctx *ly_ctx;
     struct lyd_node *node;
 
-    (void)session;
     (void)private_data;
+
+    ly_ctx = sr_get_context(sr_session_get_connection(session));
 
     assert_string_equal(module_name, "ietf-interfaces");
     assert_string_equal(xpath, "/ietf-interfaces:interfaces-state");
@@ -236,6 +237,10 @@ simple_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpa
 
     node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/oper-status",
             "testing", 0, 0);
+    assert_non_null(node);
+
+    node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/statistics/discontinuity-time",
+            "2000-01-01T00:00:00Z", 0, 0);
     assert_non_null(node);
 
     return SR_ERR_OK;
@@ -252,8 +257,8 @@ test_simple(void **state)
     const char *str2;
     int ret;
 
-    ret = sr_get_context(st->conn, &ly_ctx);
-    assert_int_equal(ret, SR_ERR_OK);
+    ly_ctx = sr_get_context(st->conn);
+    assert_non_null(ly_ctx);
 
     /* set some configuration data */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
@@ -294,7 +299,7 @@ test_simple(void **state)
 
     /* subscribe as state data provider and actually listen */
     ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", simple_dp_cb,
-            (void *)ly_ctx, SR_SUBSCR_CTX_REUSE, &subscr);
+            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_subscription_listen(subscr);
     assert_int_equal(ret, SR_ERR_OK);
@@ -333,6 +338,9 @@ test_simple(void **state)
             "<name>eth5</name>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
             "<oper-status>testing</oper-status>"
+            "<statistics>"
+                "<discontinuity-time>2000-01-01T00:00:00Z</discontinuity-time>"
+            "</statistics>"
         "</interface>"
     "</interfaces-state>";
 
@@ -384,8 +392,467 @@ test_fail(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
     ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST 4 */
+static int
+config_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
+        void *private_data)
+{
+    const struct ly_ctx *ly_ctx;
+
+    (void)private_data;
+
+    ly_ctx = sr_get_context(sr_session_get_connection(session));
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(xpath, "/ietf-interfaces:interfaces");
+    assert_non_null(parent);
+    assert_null(*parent);
+
+    *parent = lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces/interface[name='eth5']/type",
+            "iana-if-type:ethernetCsmacd", 0, 0);
+    assert_non_null(*parent);
+
+    return SR_ERR_OK;
+}
+
+static void
+test_config(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct ly_set *subtrees;
+    sr_subscription_ctx_t *subscr;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type",
+            "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to all configuration data just to enable them */
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe as config data provider and listen */
+    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", config_dp_cb,
+            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_subscription_listen(subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from operational */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
+    assert_int_equal(subtrees->number, 2);
+
+    /* print first subtree */
+    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(subtrees->set.d[0]);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth5</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* check second subtree */
+    assert_string_equal(subtrees->set.d[1]->schema->name, "interfaces-state");
+    assert_int_equal(subtrees->set.d[1]->dflt, 1);
+
+    lyd_free_withsiblings(subtrees->set.d[1]);
+
+    ly_set_free(subtrees);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST 5 */
+static int
+list_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
+        void *private_data)
+{
+    struct lyd_node *node;
+
+    (void)session;
+    (void)private_data;
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_non_null(parent);
+    assert_non_null(*parent);
+
+    if (!strcmp(xpath, "/ietf-interfaces:interfaces/interface[name='eth2']")) {
+        node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces/interface[name='eth2']/type",
+                "iana-if-type:ethernetCsmacd", 0, 0);
+        assert_non_null(node);
+    } else if (!strcmp(xpath, "/ietf-interfaces:interfaces/interface[name='eth3']")) {
+        node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces/interface[name='eth3']/type",
+                "iana-if-type:ethernetCsmacd", 0, 0);
+        assert_non_null(node);
+    } else {
+        fail();
+    }
+
+    return SR_ERR_OK;
+}
+
+static void
+test_list(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct ly_set *subtrees;
+    sr_subscription_ctx_t *subscr;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to all configuration data just to enable them */
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe as 2 list instances data provider and listen */
+    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth2']",
+            list_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth3']",
+            list_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_subscription_listen(subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from operational */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
+    assert_int_equal(subtrees->number, 2);
+
+    /* print first subtree */
+    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(subtrees->set.d[0]);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+        "<interface>"
+            "<name>eth2</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+        "<interface>"
+            "<name>eth3</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* check second subtree */
+    assert_string_equal(subtrees->set.d[1]->schema->name, "interfaces-state");
+    assert_int_equal(subtrees->set.d[1]->dflt, 1);
+
+    lyd_free_withsiblings(subtrees->set.d[1]);
+
+    ly_set_free(subtrees);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST 6 */
+static int
+nested_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
+        void *private_data)
+{
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *node;
+
+    (void)private_data;
+
+    ly_ctx = sr_get_context(sr_session_get_connection(session));
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_non_null(parent);
+
+    if (!strcmp(xpath, "/ietf-interfaces:interfaces-state/interface[name='eth2']/phys-address")) {
+        assert_non_null(*parent);
+
+        node = lyd_new_path(*parent, NULL, "phys-address",
+                "01:23:45:67:89:ab", 0, 0);
+        assert_non_null(node);
+    } else if (!strcmp(xpath, "/ietf-interfaces:interfaces-state")) {
+        assert_null(*parent);
+
+        node = lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces-state/interface[name='eth2']/type",
+                "iana-if-type:ethernetCsmacd", 0, 0);
+        assert_non_null(node);
+        *parent = node;
+
+        node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth2']/oper-status",
+                "testing", 0, 0);
+        assert_non_null(node);
+
+        node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth2']/statistics/discontinuity-time",
+                "2000-01-01T00:00:00Z", 0, 0);
+        assert_non_null(node);
+
+        node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth3']/type",
+                "iana-if-type:ethernetCsmacd", 0, 0);
+        assert_non_null(node);
+
+        node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth3']/oper-status",
+                "dormant", 0, 0);
+        assert_non_null(node);
+
+        node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth3']/statistics/discontinuity-time",
+                "2005-01-01T00:00:00Z", 0, 0);
+        assert_non_null(node);
+    } else {
+        fail();
+    }
+
+    return SR_ERR_OK;
+}
+
+static void
+test_nested(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct ly_set *subtrees;
+    sr_subscription_ctx_t *subscr;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to all configuration data just to enable them */
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe as state data provider and listen, it should be called only 2x */
+    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth4']/phys-address",
+            nested_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state",
+            nested_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth2']/phys-address",
+            nested_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_subscription_listen(subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from operational */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
+    assert_int_equal(subtrees->number, 2);
+
+    /* print first subtree */
+    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(subtrees->set.d[0]);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* print second subtree */
+    ret = lyd_print_mem(&str1, subtrees->set.d[1], LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(subtrees->set.d[1]);
+
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth2</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<oper-status>testing</oper-status>"
+            "<statistics>"
+                "<discontinuity-time>2000-01-01T00:00:00Z</discontinuity-time>"
+            "</statistics>"
+            "<phys-address>01:23:45:67:89:ab</phys-address>"
+        "</interface>"
+        "<interface>"
+            "<name>eth3</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<oper-status>dormant</oper-status>"
+            "<statistics>"
+                "<discontinuity-time>2005-01-01T00:00:00Z</discontinuity-time>"
+            "</statistics>"
+        "</interface>"
+    "</interfaces-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    ly_set_free(subtrees);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST 7 */
+static int
+mixed_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
+        void *private_data)
+{
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *node;
+
+    (void)private_data;
+
+    ly_ctx = sr_get_context(sr_session_get_connection(session));
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(xpath, "/ietf-interfaces:*");
+    assert_non_null(parent);
+    assert_null(*parent);
+
+    /* config */
+    *parent = lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces/interface[name='eth10']/type",
+            "iana-if-type:ethernetCsmacd", 0, 0);
+    assert_non_null(*parent);
+
+    /* state */
+    node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth11']/type",
+            "iana-if-type:ethernetCsmacd", 0, 0);
+    assert_non_null(node);
+
+    node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth11']/oper-status",
+            "down", 0, 0);
+    assert_non_null(node);
+
+    node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth11']/statistics/discontinuity-time",
+            "2000-01-01T00:00:00Z", 0, 0);
+    assert_non_null(node);
+
+    return SR_ERR_OK;
+}
+
+static void
+test_mixed(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct ly_set *subtrees;
+    sr_subscription_ctx_t *subscr;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to all configuration data just to enable them */
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe as config data provider and listen */
+    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_dp_cb,
+            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_subscription_listen(subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from operational */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
+    assert_int_equal(subtrees->number, 2);
+
+    /* print first subtree */
+    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(subtrees->set.d[0]);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth10</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* print second subtree */
+    ret = lyd_print_mem(&str1, subtrees->set.d[1], LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(subtrees->set.d[1]);
+
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth11</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<oper-status>down</oper-status>"
+            "<statistics>"
+                "<discontinuity-time>2000-01-01T00:00:00Z</discontinuity-time>"
+            "</statistics>"
+        "</interface>"
+    "</interfaces-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    ly_set_free(subtrees);
 
     sr_unsubscribe(subscr);
 }
@@ -397,6 +864,10 @@ main(void)
         cmocka_unit_test_teardown(test_enabled_partial, clear_interfaces),
         cmocka_unit_test_teardown(test_simple, clear_interfaces),
         cmocka_unit_test_teardown(test_fail, clear_interfaces),
+        cmocka_unit_test_teardown(test_config, clear_interfaces),
+        cmocka_unit_test_teardown(test_list, clear_interfaces),
+        cmocka_unit_test_teardown(test_nested, clear_interfaces),
+        cmocka_unit_test_teardown(test_mixed, clear_interfaces),
     };
 
     sr_log_stderr(SR_LL_INF);

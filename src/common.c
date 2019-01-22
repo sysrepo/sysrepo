@@ -256,7 +256,7 @@ sr_sub_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
 
         /* remove the subscriptions from the main SHM */
         for (j = 0; j < dp_sub->sub_count; ++j) {
-            if ((err_info = sr_shmmod_dp_subscription(conn, dp_sub->module_name, dp_sub->subs[j].xpath, 0))) {
+            if ((err_info = sr_shmmod_dp_subscription(conn, dp_sub->module_name, dp_sub->subs[j].xpath, SR_DP_SUB_NONE, 0))) {
                 return err_info;
             }
 
@@ -883,7 +883,7 @@ sr_str_hash(const char *str)
 }
 
 sr_error_info_t *
-sr_ly_xpath_trim_last_node(const char *xpath, char **trim_xpath)
+sr_ly_xpath_trim_last_node(const char *xpath, char **trim_xpath, char **last_node_xpath)
 {
     sr_error_info_t *err_info = NULL;
     const char *ptr;
@@ -891,6 +891,7 @@ sr_ly_xpath_trim_last_node(const char *xpath, char **trim_xpath)
     int skipping;
 
     *trim_xpath = NULL;
+    *last_node_xpath = NULL;
 
     assert(xpath[0] == '/');
 
@@ -912,6 +913,93 @@ sr_ly_xpath_trim_last_node(const char *xpath, char **trim_xpath)
     }
 
     *trim_xpath = strndup(xpath, ptr - xpath);
-    SR_CHECK_MEM_RET(!*trim_xpath, err_info);
+    SR_CHECK_MEM_GOTO(!*trim_xpath, err_info, error);
+    *last_node_xpath = strdup(ptr + 1);
+    SR_CHECK_MEM_GOTO(!*last_node_xpath, err_info, error);
     return NULL;
+
+error:
+    free(*trim_xpath);
+    free(*last_node_xpath);
+    return err_info;
+}
+
+size_t
+sr_xpath_len_no_predicates(const char *xpath)
+{
+    size_t len = 0;
+    int predicate = 0;
+    const char *ptr;
+    char quoted = 0;
+
+    for (ptr = xpath; ptr[0]; ++ptr) {
+        if (quoted) {
+            if (ptr[0] == quoted) {
+                quoted = 0;
+            }
+        } else {
+            switch (ptr[0]) {
+            case '[':
+                ++predicate;
+                break;
+            case ']':
+                --predicate;
+                break;
+            case '\'':
+            case '\"':
+                assert(predicate);
+                quoted = ptr[0];
+                break;
+            default:
+                ++len;
+                break;
+            }
+        }
+    }
+
+    if (quoted || predicate) {
+        return 0;
+    }
+    return len;
+}
+
+sr_error_info_t *
+sr_ly_dp_last_parent(struct lyd_node **parent)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (!*parent) {
+        return NULL;
+    }
+
+    while (*parent) {
+        switch ((*parent)->schema->nodetype) {
+        case LYS_CONTAINER:
+        case LYS_LIST:
+            if (!(*parent)->child) {
+                /* list/container without children, this is the parent */
+                return NULL;
+            } else {
+                *parent = (*parent)->child;
+            }
+            break;
+        case LYS_LEAF:
+            assert(lys_is_key((struct lys_node_leaf *)(*parent)->schema, NULL));
+            if (!(*parent)->next) {
+                /* last key of the last in-depth list, the list instance is what we are looking for */
+                *parent = (*parent)->parent;
+                return NULL;
+            } else {
+                *parent = (*parent)->next;
+            }
+            break;
+        default:
+            SR_ERRINFO_INT(&err_info);
+            return err_info;
+        }
+    }
+
+    /* should be unreachable */
+    SR_ERRINFO_INT(&err_info);
+    return err_info;
 }

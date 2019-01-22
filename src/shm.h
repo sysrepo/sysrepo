@@ -50,8 +50,16 @@ typedef struct sr_mod_conf_sub_s {
     int opts;
 } sr_mod_conf_sub_t;
 
+typedef enum sr_mod_dp_sub_type_e {
+    SR_DP_SUB_NONE = 0,
+    SR_DP_SUB_STATE,
+    SR_DP_SUB_CONFIG,
+    SR_DP_SUB_MIXED,
+} sr_mod_dp_sub_type_t;
+
 typedef struct sr_mod_dp_sub_s {
     off_t xpath;
+    sr_mod_dp_sub_type_t sub_type;
 } sr_mod_dp_sub_t;
 
 struct sr_mod_s {
@@ -181,8 +189,7 @@ sr_error_info_t *sr_shmmod_multirelock(struct sr_mod_info_s *mod_info, int upgra
 
 void sr_shmmod_multiunlock(struct sr_mod_info_s *mod_info, int applying_changes);
 
-sr_error_info_t *sr_shmmod_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, int state_data,
-        sr_error_info_t **cb_error_info);
+sr_error_info_t *sr_shmmod_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_error_info_t **cb_error_info);
 
 sr_error_info_t *sr_shmmod_get_filter(sr_session_ctx_t *session, const char *xpath, struct sr_mod_info_s *mod_info,
         struct ly_set **result);
@@ -196,7 +203,8 @@ sr_error_info_t *sr_shmmod_store(struct sr_mod_info_s *mod_info);
 sr_error_info_t *sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
         sr_datastore_t ds, uint32_t priority, int subscr_opts, int add);
 
-sr_error_info_t *sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, int add);
+sr_error_info_t *sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
+        sr_mod_dp_sub_type_t sub_type, int add);
 
 /*
  * shm_sub.c
@@ -215,7 +223,8 @@ sr_error_info_t *sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_inf
 
 sr_error_info_t *sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info);
 
-sr_error_info_t *sr_shmsub_dp_module_notify(struct sr_mod_info_mod_s *mod, char *sr_shm, sr_error_info_t **cb_error_info);
+sr_error_info_t *sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent,
+        struct lyd_node **data, sr_error_info_t **cb_err_info);
 
 void *sr_shmsub_listen_thread(void *arg);
 

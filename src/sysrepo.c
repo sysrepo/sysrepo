@@ -353,6 +353,16 @@ sr_set_error(sr_session_ctx_t *session, const char *message, const char *xpath)
     return sr_api_ret(session, err_info);
 }
 
+API sr_conn_ctx_t *
+sr_session_get_connection(sr_session_ctx_t *session)
+{
+    if (!session) {
+        return NULL;
+    }
+
+    return session->conn;
+}
+
 API int
 sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value)
 {
@@ -441,6 +451,7 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
     char *schema_path = NULL;
     const struct lys_module *mod;
     struct ly_set *set = NULL;
+    sr_mod_dp_sub_type_t sub_type;
     uint16_t i;
 
     SR_CHECK_ARG_APIRET(!session || !module_name || !xpath || !callback || !subscription, session, err_info);
@@ -471,21 +482,43 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
         goto error_unlock;
     }
 
+    /* find out what kinds of nodes are provided */
+    sub_type = SR_DP_SUB_NONE;
     for (i = 0; i < set->number; ++i) {
-        if (set->set.s[i]->flags & LYS_CONFIG_W) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Node \"%s\" is not a state node.", set->set.s[i]->name);
+        switch (set->set.s[i]->flags & LYS_CONFIG_MASK) {
+        case LYS_CONFIG_R:
+            if (sub_type == SR_DP_SUB_CONFIG) {
+                sub_type = SR_DP_SUB_MIXED;
+            } else {
+                sub_type = SR_DP_SUB_STATE;
+            }
+            break;
+        case LYS_CONFIG_W:
+            if (sub_type == SR_DP_SUB_STATE) {
+                sub_type = SR_DP_SUB_MIXED;
+            } else {
+                sub_type = SR_DP_SUB_CONFIG;
+            }
+            break;
+        default:
+            SR_ERRINFO_INT(&err_info);
             goto error_unlock;
+        }
+
+        if (sub_type == SR_DP_SUB_MIXED) {
+            /* we found both config type nodes, nothing more to look for */
+            break;
         }
     }
 
     /* add DP subscription into main SHM */
-    if ((err_info = sr_shmmod_dp_subscription(conn, module_name, xpath, 1))) {
+    if ((err_info = sr_shmmod_dp_subscription(conn, module_name, xpath, sub_type, 1))) {
         goto error_unlock;
     }
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_dp_add(conn, module_name, xpath, callback, private_data, subscription))) {
-        sr_shmmod_dp_subscription(conn, module_name, xpath, 0);
+        sr_shmmod_dp_subscription(conn, module_name, xpath, SR_DP_SUB_NONE, 0);
         goto error_unlock;
     }
 
@@ -522,15 +555,14 @@ error:
     return sr_api_ret(session, err_info);
 }
 
-API int
-sr_get_context(sr_conn_ctx_t *conn, const struct ly_ctx **ly_ctx)
+API const struct ly_ctx *
+sr_get_context(sr_conn_ctx_t *conn)
 {
-    sr_error_info_t *err_info = NULL;
+    if (!conn) {
+        return NULL;
+    }
 
-    SR_CHECK_ARG_APIRET(!conn || !ly_ctx, NULL, err_info);
-
-    *ly_ctx = conn->ly_ctx;
-    return sr_api_ret(NULL, NULL);
+    return conn->ly_ctx;
 }
 
 static sr_error_info_t *
@@ -948,7 +980,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node **s
     }
 
     /* load modules data */
-    if ((err_info = sr_shmmod_data_update(&mod_info, MOD_INFO_REQ, 1, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_shmmod_data_update(&mod_info, MOD_INFO_REQ, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -1016,7 +1048,7 @@ sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, struct ly_set **su
     }
 
     /* load modules data */
-    if ((err_info = sr_shmmod_data_update(&mod_info, MOD_INFO_REQ, 1, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_shmmod_data_update(&mod_info, MOD_INFO_REQ, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -1213,7 +1245,7 @@ sr_apply_changes(sr_session_ctx_t *session)
     }
 
     /* load all modules data (we need dependencies for validation) */
-    if ((err_info = sr_shmmod_data_update(&mod_info, MOD_INFO_TYPE_MASK, 0, NULL))) {
+    if ((err_info = sr_shmmod_data_update(&mod_info, MOD_INFO_TYPE_MASK, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -1256,7 +1288,7 @@ sr_apply_changes(sr_session_ctx_t *session)
             }
 
             /* reload possibly changed data */
-            if ((err_info = sr_shmmod_data_update(&mod_info, MOD_INFO_REQ, 0, NULL))) {
+            if ((err_info = sr_shmmod_data_update(&mod_info, MOD_INFO_REQ, NULL))) {
                 goto cleanup_mods_unlock;
             }
 

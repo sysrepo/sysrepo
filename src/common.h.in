@@ -234,6 +234,10 @@ sr_error_info_t *sr_ly_data_dup_filter(const struct lyd_node *data, char **xpath
 
 uint32_t sr_str_hash(const char *str);
 
-sr_error_info_t *sr_ly_xpath_trim_last_node(const char *xpath, char **trim_xpath);
+sr_error_info_t *sr_ly_xpath_trim_last_node(const char *xpath, char **trim_xpath, char **last_node_xpath);
+
+size_t sr_xpath_len_no_predicates(const char *xpath);
+
+sr_error_info_t *sr_ly_dp_last_parent(struct lyd_node **parent);
 
 #endif

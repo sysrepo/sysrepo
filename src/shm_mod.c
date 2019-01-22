@@ -416,7 +416,7 @@ sr_shmmod_module_config_data_get(struct ly_ctx *ly_ctx, char *shm, sr_mod_t *shm
 
     /* load data from a persistent storage */
     ly_errno = LYVE_SUCCESS;
-    *data = lyd_parse_path(ly_ctx, path, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_NOEXTDEPS);
+    *data = lyd_parse_path(ly_ctx, path, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS);
     free(path);
     if (ly_errno) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
@@ -465,14 +465,195 @@ error:
     return err_info;
 }
 
+static sr_error_info_t *
+sr_shmmod_xpath_dp_append(struct sr_mod_info_mod_s *mod, const char *xpath, const struct lyd_node *parent,
+        sr_error_info_t **cb_error_info)
+{
+    uint32_t i;
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *data = NULL, *parent_dup = NULL, *key, *key_dup;
+
+    if (parent) {
+        /* duplicate parent so that it is a stand-alone subtree */
+        parent_dup = lyd_dup(parent, LYD_DUP_OPT_WITH_PARENTS);
+        if (!parent_dup) {
+            sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+            return err_info;
+        }
+
+        /* duplicate also keys if needed */
+        if (parent->schema->nodetype == LYS_LIST) {
+            for (i = 0, key = parent->child; i < ((struct lys_node_list *)parent->schema)->keys_size; ++i) {
+                assert(key);
+                assert((struct lys_node_leaf *)key->schema == ((struct lys_node_list *)parent->schema)->keys[i]);
+
+                key_dup = lyd_dup(key, 0);
+                if (!key_dup) {
+                    lyd_free_withsiblings(parent_dup);
+                    sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+                    return err_info;
+                }
+
+                if (lyd_insert(parent_dup, key_dup)) {
+                    lyd_free_withsiblings(key_dup);
+                    lyd_free_withsiblings(parent_dup);
+                    sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+                    return err_info;
+                }
+            }
+        }
+
+        /* go top-level */
+        while (parent_dup->parent) {
+            parent_dup = parent_dup->parent;
+        }
+    }
+
+    /* get data from client */
+    err_info = sr_shmsub_dp_notify(mod->ly_mod, xpath, parent_dup, &data, cb_error_info);
+    lyd_free_withsiblings(parent_dup);
+    if (err_info) {
+        return err_info;
+    }
+
+    /* merge into full data tree */
+    if (data) {
+        if (!mod->mod_data) {
+            mod->mod_data = data;
+        } else if (lyd_merge(mod->mod_data, data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+            lyd_free_withsiblings(data);
+            sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+            return err_info;
+        }
+    }
+
+    /* add default state data so that parents exist and we ask for data that could exist */
+    if (lyd_validate_modules(&mod->mod_data, &mod->ly_mod, 1, LYD_OPT_DATA)) {
+        sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+        return err_info;
+    }
+
+    return NULL;
+}
+
+static sr_error_info_t *
+sr_shmmod_xpath_dp_remove(struct lyd_node **mod_data, struct lyd_node *parent, const char *xpath)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *del_set;
+    uint16_t i;
+
+    if (!parent) {
+        /* no data so nothing to remove */
+        return NULL;
+    }
+
+    del_set = lyd_find_path(parent, xpath);
+    if (!del_set) {
+        sr_errinfo_new_ly(&err_info, lyd_node_module(parent)->ctx);
+        return err_info;
+    }
+    for (i = 0; i < del_set->number; ++i) {
+        if (*mod_data == del_set->set.d[i]) {
+            /* removing first top-level node, do not lose the rest of data */
+            *mod_data = (*mod_data)->next;
+        }
+        lyd_free(del_set->set.d[i]);
+    }
+    ly_set_free(del_set);
+
+    return NULL;
+}
+
+static sr_error_info_t *
+sr_shmmod_module_dp_append(struct sr_mod_info_mod_s *mod, char *sr_shm, sr_error_info_t **cb_error_info)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_dp_sub_t *shm_msub;
+    const char *xpath;
+    char *parent_xpath, *last_node_xpath;
+    uint16_t i, j;
+    struct ly_set *set;
+
+    /* XPaths are ordered based on depth */
+    for (i = 0; i < mod->shm_mod->dp_sub_count; ++i) {
+        shm_msub = &((sr_mod_dp_sub_t *)(sr_shm + mod->shm_mod->dp_subs))[i];
+        xpath = sr_shm + shm_msub->xpath;
+
+        /* trim the last node to get the parent */
+        if ((err_info = sr_ly_xpath_trim_last_node(xpath, &parent_xpath, &last_node_xpath))) {
+            return err_info;
+        }
+
+        if (parent_xpath) {
+            set = NULL;
+
+            if (!mod->mod_data) {
+                /* parent does not exist for sure */
+                goto next_iter;
+            }
+
+            set = lyd_find_path(mod->mod_data, parent_xpath);
+            if (!set) {
+                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+                goto error;
+            }
+
+            if (!set->number) {
+                /* data parent does not exist */
+                goto next_iter;
+            }
+
+            /* nested data */
+            for (j = 0; j < set->number; ++j) {
+                if ((shm_msub->sub_type == SR_DP_SUB_CONFIG) || (shm_msub->sub_type == SR_DP_SUB_MIXED)) {
+                    /* remove any currently present nodes */
+                    if ((err_info = sr_shmmod_xpath_dp_remove(&mod->mod_data, set->set.d[j], last_node_xpath))) {
+                        goto error;
+                    }
+                }
+
+                /* replace them with the ones retrieved from a client */
+                if ((err_info = sr_shmmod_xpath_dp_append(mod, xpath, set->set.d[j], cb_error_info))) {
+                    goto error;
+                }
+            }
+
+next_iter:
+            /* cleanup for next iteration */
+            free(parent_xpath);
+            free(last_node_xpath);
+            ly_set_free(set);
+        } else {
+            /* top-level data */
+            if ((shm_msub->sub_type == SR_DP_SUB_CONFIG) || (shm_msub->sub_type == SR_DP_SUB_MIXED)) {
+                /* remove any currently present nodes */
+                if ((err_info = sr_shmmod_xpath_dp_remove(&mod->mod_data, mod->mod_data, xpath))) {
+                    return err_info;
+                }
+            }
+
+            if ((err_info = sr_shmmod_xpath_dp_append(mod, xpath, NULL, cb_error_info))) {
+                return err_info;
+            }
+        }
+    }
+
+    return NULL;
+
+error:
+    free(parent_xpath);
+    free(last_node_xpath);
+    ly_set_free(set);
+    return err_info;
+}
+
 sr_error_info_t *
-sr_shmmod_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, int state_data, sr_error_info_t **cb_error_info)
+sr_shmmod_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_error_info_t **cb_error_info)
 {
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
     sr_error_info_t *err_info = NULL;
-
-    assert(!state_data || cb_error_info);
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -488,9 +669,9 @@ sr_shmmod_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, int stat
                 return err_info;
             }
 
-            if (state_data) {
-                /* append any valid state data */
-                if ((err_info = sr_shmsub_dp_module_notify(mod, mod_info->conn->main_shm.addr, cb_error_info))) {
+            if (mod_info->ds == SR_DS_OPERATIONAL) {
+                /* append any valid data provided by clients */
+                if ((err_info = sr_shmmod_module_dp_append(mod, mod_info->conn->main_shm.addr, cb_error_info))) {
                     return err_info;
                 }
             }
@@ -989,16 +1170,16 @@ sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const cha
 }
 
 sr_error_info_t *
-sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, int add)
+sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_mod_dp_sub_type_t sub_type, int add)
 {
     sr_mod_t *shm_mod;
     off_t shm_mod_off, xpath_off, dp_subs_off;
     sr_mod_dp_sub_t *shm_sub;
-    uint32_t new_shm_size;
+    size_t new_shm_size, new_len, cur_len;
     uint16_t i;
     sr_error_info_t *err_info = NULL;
 
-    assert(mod_name && xpath);
+    assert(mod_name && xpath && (!add || sub_type));
 
     shm_mod = sr_shmmain_find_module(conn->main_shm.addr, mod_name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
@@ -1006,17 +1187,24 @@ sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char 
     shm_mod_off = ((char *)shm_mod) - conn->main_shm.addr;
 
     if (add) {
-        /* check that this exact subscription does not exist yet */
+        /* check that this exact subscription does not exist yet while finding its position */
+        new_len = sr_xpath_len_no_predicates(xpath);
         shm_sub = (sr_mod_dp_sub_t *)(conn->main_shm.addr + shm_mod->dp_subs);
         for (i = 0; i < shm_mod->dp_sub_count; ++i) {
-            if (!strcmp(conn->main_shm.addr + shm_sub[i].xpath, xpath)) {
+            cur_len = sr_xpath_len_no_predicates(conn->main_shm.addr + shm_sub[i].xpath);
+            if (cur_len > new_len) {
+                /* we can insert it at i-th position */
+                break;
+            }
+
+            if ((cur_len == new_len) && !strcmp(conn->main_shm.addr + shm_sub[i].xpath, xpath)) {
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL,
                         "Data provider subscription for \"%s\" on \"%s\" already exists.", mod_name, xpath);
                 return err_info;
             }
         }
 
-        /* moving all existing subscriptions (if any) and adding a new one */
+        /* get new offsets and SHM size */
         dp_subs_off = conn->main_shm.size;
         xpath_off = dp_subs_off + (shm_mod->dp_sub_count + 1) * sizeof *shm_sub;
         new_shm_size = xpath_off + (xpath ? strlen(xpath) + 1 : 0);
@@ -1027,22 +1215,29 @@ sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char 
         }
         shm_mod = (sr_mod_t *)(conn->main_shm.addr + shm_mod_off);
 
-        /* move subscriptions */
-        memcpy(conn->main_shm.addr + dp_subs_off, conn->main_shm.addr + shm_mod->dp_subs,
-                shm_mod->dp_sub_count * sizeof *shm_sub);
+        /* move preceding and succeeding subscriptions leaving place for the new one */
+        if (i) {
+            memcpy(conn->main_shm.addr + dp_subs_off, conn->main_shm.addr + shm_mod->dp_subs,
+                    i * sizeof *shm_sub);
+        }
+        if (i < shm_mod->dp_sub_count) {
+            memcpy(conn->main_shm.addr + dp_subs_off + (i + 1) * sizeof *shm_sub,
+                    conn->main_shm.addr + shm_mod->dp_subs + i * sizeof *shm_sub, (shm_mod->dp_sub_count - i) * sizeof *shm_sub);
+        }
         shm_mod->dp_subs = dp_subs_off;
 
-        /* add new subscription */
+        /* fill new subscription */
         shm_sub = (sr_mod_dp_sub_t *)(conn->main_shm.addr + shm_mod->dp_subs);
-        shm_sub += shm_mod->dp_sub_count;
-        ++shm_mod->dp_sub_count;
-
+        shm_sub += i;
         if (xpath) {
             strcpy(conn->main_shm.addr + xpath_off, xpath);
             shm_sub->xpath = xpath_off;
         } else {
             shm_sub->xpath = 0;
         }
+        shm_sub->sub_type = sub_type;
+
+        ++shm_mod->dp_sub_count;
     } else {
         /* find the subscription */
         shm_sub = (sr_mod_dp_sub_t *)(conn->main_shm.addr + shm_mod->dp_subs);
@@ -1053,15 +1248,15 @@ sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char 
         }
         SR_CHECK_INT_RET(i == shm_mod->dp_sub_count, err_info);
 
-        /* replace the deleted subscription with the last one */
-        if (i < shm_mod->dp_sub_count - 1) {
-            memcpy(&shm_sub[i], &shm_sub[shm_mod->dp_sub_count - 1], sizeof *shm_sub);
-        }
-
         --shm_mod->dp_sub_count;
         if (!shm_mod->dp_sub_count) {
             /* the only subscription removed */
             shm_mod->dp_subs = 0;
+        } else {
+            /* move all following subscriptions */
+            if (i < shm_mod->dp_sub_count) {
+                memmove(&shm_sub[i], &shm_sub[i + 1], (shm_mod->dp_sub_count - i) * sizeof *shm_sub);
+            }
         }
     }
 

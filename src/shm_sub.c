@@ -416,7 +416,7 @@ sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **u
 
             /* parse updated edit */
             ly_errno = 0;
-            edit = lyd_parse_mem(ly_ctx, mod->conf_sub.addr + sizeof *conf_sub_shm, LYD_LYB, LYD_OPT_EDIT);
+            edit = lyd_parse_mem(ly_ctx, mod->conf_sub.addr + sizeof *conf_sub_shm, LYD_LYB, LYD_OPT_EDIT | LYD_OPT_STRICT);
             if (ly_errno) {
                 sr_errinfo_new_ly(&err_info, ly_ctx);
                 sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse \"update\" edit.");
@@ -795,12 +795,11 @@ sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info)
     return err_info;
 }
 
-static sr_error_info_t *
-sr_shmsub_dp_xpath_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent,
-        struct lyd_node **state_data, sr_error_info_t **cb_err_info)
+sr_error_info_t *
+sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent,
+        struct lyd_node **data, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *parent_dup = NULL;
     char *parent_lyb = NULL;
     uint32_t parent_lyb_len, event_id;
     sr_sub_shm_t *sub_shm;
@@ -810,22 +809,8 @@ sr_shmsub_dp_xpath_notify(const struct lys_module *ly_mod, const char *xpath, co
     shm.size = 0;
     shm.addr = NULL;
 
-    if (parent) {
-        /* duplicate parent */
-        parent_dup = lyd_dup(parent, LYD_DUP_OPT_WITH_PARENTS);
-        if (!parent_dup) {
-            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-            goto cleanup;
-        }
-
-        /* go top-level */
-        while (parent_dup->parent) {
-            parent_dup = parent_dup->parent;
-        }
-    }
-
     /* print the parent (or nothing) into LYB */
-    if (lyd_print_mem(&parent_lyb, parent_dup, LYD_LYB, 0)) {
+    if (lyd_print_mem(&parent_lyb, parent, LYD_LYB, 0)) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         goto cleanup;
     }
@@ -885,12 +870,12 @@ sr_shmsub_dp_xpath_notify(const struct lys_module *ly_mod, const char *xpath, co
     }
     sub_shm = (sr_sub_shm_t *)shm.addr;
 
-    /* parse returned state data */
+    /* parse returned data */
     ly_errno = 0;
-    *state_data = lyd_parse_mem(ly_mod->ctx, shm.addr + sizeof *sub_shm, LYD_LYB, LYD_OPT_GET);
+    *data = lyd_parse_mem(ly_mod->ctx, shm.addr + sizeof *sub_shm, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT);
     if (ly_errno) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse \"data-provide\" state data.");
+        sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse returned \"data-provide\" data.");
         goto unlock_cleanup;
     }
 
@@ -901,82 +886,8 @@ unlock_cleanup:
     sr_unlock(&sub_shm->lock);
 cleanup:
     sr_shm_destroy(&shm);
-    lyd_free_withsiblings(parent_dup);
     free(parent_lyb);
     return err_info;
-}
-
-sr_error_info_t *
-sr_shmsub_dp_module_notify(struct sr_mod_info_mod_s *mod, char *sr_shm, sr_error_info_t **cb_error_info)
-{
-    sr_error_info_t *err_info = NULL;
-    const char *xpath;
-    char *parent_xpath;
-    uint16_t i, j;
-    struct ly_set *set;
-    struct lyd_node *state_data = NULL;
-
-    for (i = 0; i < mod->shm_mod->dp_sub_count; ++i) {
-        xpath = sr_shm + ((sr_mod_dp_sub_t *)(sr_shm + mod->shm_mod->dp_subs))[i].xpath;
-
-        /* trim last node to get the parent */
-        if ((err_info = sr_ly_xpath_trim_last_node(xpath, &parent_xpath))) {
-            return err_info;
-        }
-
-        if (parent_xpath) {
-            if (!mod->mod_data) {
-                /* parent does not exist for sure */
-                free(parent_xpath);
-                continue;
-            }
-
-            set = lyd_find_path(mod->mod_data, parent_xpath);
-            free(parent_xpath);
-            if (!set) {
-                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-                return err_info;
-            }
-
-            if (!set->number) {
-                /* state data parent does not exist */
-                ly_set_free(set);
-                continue;
-            }
-
-            /* nested state data (parent is provided and duplicated) */
-            for (j = 0; j < set->number; ++j) {
-                if ((err_info = sr_shmsub_dp_xpath_notify(mod->ly_mod, xpath, set->set.d[j], &state_data, cb_error_info))) {
-                    ly_set_free(set);
-                    return err_info;
-                }
-
-                /* merge into full data tree */
-                if (lyd_merge(mod->mod_data, state_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
-                    ly_set_free(set);
-                    lyd_free_withsiblings(state_data);
-                    sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-                    return err_info;
-                }
-            }
-
-            ly_set_free(set);
-        } else {
-            /* top-level state data (no parent needed) */
-            if ((err_info = sr_shmsub_dp_xpath_notify(mod->ly_mod, xpath, NULL, &state_data, cb_error_info))) {
-                return err_info;
-            }
-
-            /* merge into full data tree */
-            if (state_data && lyd_merge(mod->mod_data, state_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
-                lyd_free_withsiblings(state_data);
-                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-                return err_info;
-            }
-        }
-    }
-
-    return NULL;
 }
 
 /**
@@ -1193,7 +1104,8 @@ sr_shmsub_conf_listen_process_module_events(struct modsub_conf_s *conf_subs, sr_
         break;
     default:
         assert(!conf_subs->diff);
-        conf_subs->diff = lyd_parse_mem(conn->ly_ctx, conf_subs->sub_shm.addr + sizeof *conf_sub_shm, LYD_LYB, LYD_OPT_EDIT);
+        conf_subs->diff = lyd_parse_mem(conn->ly_ctx, conf_subs->sub_shm.addr + sizeof *conf_sub_shm, LYD_LYB,
+                LYD_OPT_EDIT | LYD_OPT_STRICT);
         SR_CHECK_INT_GOTO(!conf_subs->diff, err_info, unlock_cleanup);
         break;
     }
@@ -1372,8 +1284,12 @@ sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_c
 
         /* parse data parent */
         ly_errno = 0;
-        parent = lyd_parse_mem(conn->ly_ctx, dp_sub->sub_shm.addr + sizeof(sr_sub_shm_t), LYD_LYB, LYD_OPT_CONFIG);
+        parent = lyd_parse_mem(conn->ly_ctx, dp_sub->sub_shm.addr + sizeof(sr_sub_shm_t), LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
         SR_CHECK_INT_GOTO(ly_errno, err_info, unlock_error);
+        /* go to the actual parent, not the root */
+        if ((err_info = sr_ly_dp_last_parent(&parent))) {
+            goto unlock_error;
+        }
 
         /* process event */
         SR_LOG_INF("Processing \"data-provide\" \"%s\" event with ID %u.", dp_subs->module_name, sub_shm->event_id);
@@ -1386,6 +1302,13 @@ sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_c
 
         /* SUB UNLOCK */
         sr_unlock(&sub_shm->lock);
+
+        /* go again to the top-level root for printing */
+        if (parent) {
+            while (parent->parent) {
+                parent = parent->parent;
+            }
+        }
 
         /* SUB WRITE LOCK */
         if ((err_info = sr_lock(&sub_shm->lock, 1, __func__))) {
