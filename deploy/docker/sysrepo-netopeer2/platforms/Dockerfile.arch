@@ -1,4 +1,4 @@
-FROM pritunl/archlinux:latest
+FROM base/archlinux:latest
 
 MAINTAINER mislav.novakovic@sartura.hr
 
@@ -101,6 +101,10 @@ RUN \
       cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE:String="Release" .. && \
       make -j2 && \
       make install
+
+# update system
+RUN \
+      pacman -Syyu --noconfirm
 
 # install python2 sysrepo language bindings
 RUN pacman -S --noconfirm python2
