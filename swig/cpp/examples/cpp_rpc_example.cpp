@@ -192,11 +192,11 @@ class My_Callback:public sysrepo::Callback {
             print_tree(in_trees->tree(n));
 
         out_trees->tree(0)->set_name("status");
-        out_trees->tree(0)->set("The image acmefw-2.3 is being installed.", SR_STRING_T);
+        out_trees->tree(0)->set("The image acmefw-2.3 is being installed.");
         out_trees->tree(1)->set_name("version");
-        out_trees->tree(1)->set("2.3", SR_STRING_T);
+        out_trees->tree(1)->set("2.3");
         out_trees->tree(2)->set_name("location");
-        out_trees->tree(2)->set("/root/", SR_STRING_T);
+        out_trees->tree(2)->set("/root/");
 
     return SR_ERR_OK;
     }
@@ -245,7 +245,7 @@ main(int argc, char **argv)
         sysrepo::S_Trees in_trees(new sysrepo::Trees(1));
 
         in_trees->tree(0)->set_name("image-name");
-        in_trees->tree(0)->set("acmefw-2.3", SR_STRING_T);
+        in_trees->tree(0)->set("acmefw-2.3");
 
         cout << "\n ========== START RPC TREE CALL ==========\n" << endl;
         auto out_trees = sess->rpc_send("/test-module:activate-software-image", in_trees);
