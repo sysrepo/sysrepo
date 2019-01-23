@@ -70,6 +70,8 @@ Deleter::Deleter(sr_session_ctx_t *sess) {
 }
 Deleter::~Deleter() {
     switch(_t) {
+    case Free_Type::INVALID:
+    break;
     case Free_Type::VAL:
         if (v._val) sr_free_val(v._val);
     v._val = nullptr;
@@ -108,6 +110,10 @@ Deleter::~Deleter() {
     v._sess = nullptr;
     break;
     }
+}
+// Stop deletion from occuring on destruction, used by reallocate
+void Deleter::invalidate(void) {
+    _t = Free_Type::INVALID;
 }
 
 }

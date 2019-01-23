@@ -572,6 +572,10 @@ sr_val_t* Vals::reallocate(size_t n) {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
     _cnt = n;
+    if (_deleter) {
+        _deleter->invalidate();
+        _deleter = S_Deleter(new Deleter(_vals, _cnt));
+    }
     return _vals;
 }
 

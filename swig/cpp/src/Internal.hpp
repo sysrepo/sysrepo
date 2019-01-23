@@ -33,6 +33,7 @@ extern "C" {
 namespace sysrepo {
 
 enum class Free_Type {
+    INVALID,
     VAL,
     VALS,
     VALS_POINTER,
@@ -68,6 +69,7 @@ public:
     Deleter(sr_node_t **trees, size_t *cnt);
     Deleter(sr_schema_t *sch, size_t cnt);
     Deleter(sr_session_ctx_t *sess);
+    void invalidate(void);
     ~Deleter();
 
 private:
