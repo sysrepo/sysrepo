@@ -85,6 +85,19 @@ void test_set_item(sysrepo::S_Session sess)
     }
 }
 
+void test_vals(void)
+{
+    sysrepo::S_Vals vals(new sysrepo::Vals(5));
+    std::string xp = "/ietf-interfaces:interfaces-state/baym-fx-interfaces:ports/port[name='eth-mr/0/0']";
+    int i = 0;
+    vals->val(i++)->set((xp+"/type").c_str(),"eth-mr",SR_ENUM_T);
+    vals->val(i++)->set((xp+"/status/admin-status").c_str(),"down",SR_ENUM_T);
+    vals->val(i++)->set((xp+"/status/oper-status").c_str(),"uknown",SR_ENUM_T);
+    vals->val(i++)->set((xp+"/status/speed-value").c_str(),uint64_t{10000000},SR_UINT64_T);
+    vals->val(i++)->set((xp+"/status/max-rate").c_str(),uint64_t{10000000},SR_UINT64_T);
+    vals->reallocate(10);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -100,6 +113,7 @@ main(int argc, char **argv)
         test_get_item(sess);
         test_delete_item(sess);
         test_set_item(sess);
+        test_vals();
 
         return 0;
 }
