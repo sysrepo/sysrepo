@@ -305,7 +305,7 @@ sr_realloc(sr_mem_ctx_t *sr_mem, void *ptr, size_t old_size, size_t new_size)
     /* find the memory block of ptr */
     node_ll = sr_mem->cursor;
     used_head = sr_mem->used_head;
-    for (i = 0; node_ll && i < MAX_BLOCKS_AVAIL_FOR_ALLOC-1;
+    for (i = 0; node_ll && i < MAX_BLOCKS_AVAIL_FOR_ALLOC;
          ++i, node_ll = node_ll->prev, used_head = QUEUE_PREV(used_head, MAX_BLOCKS_AVAIL_FOR_ALLOC)) {
 
         mem_block = (sr_mem_block_t *)node_ll->data;
@@ -334,7 +334,7 @@ sr_realloc(sr_mem_ctx_t *sr_mem, void *ptr, size_t old_size, size_t new_size)
     }
 
     /* it must have been found, otherwise the input was invalid */
-    assert(node_ll && i < MAX_BLOCKS_AVAIL_FOR_ALLOC-1);
+    assert(node_ll && i < MAX_BLOCKS_AVAIL_FOR_ALLOC);
 
     /* bad case - we must move the memory somewhere else */
     new_ptr = sr_malloc(sr_mem, new_size);
