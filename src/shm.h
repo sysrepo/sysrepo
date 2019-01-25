@@ -180,7 +180,10 @@ void sr_shmmod_unlock(sr_mod_t *shm_mod, sr_datastore_t ds);
 sr_error_info_t *sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_datastore_t ds,
         struct sr_mod_info_s *mod_info);
 
-sr_error_info_t *sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
+sr_error_info_t *sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t ds,
+        struct sr_mod_info_s *mod_info);
+
+sr_error_info_t *sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds,
         struct sr_mod_info_s *mod_info);
 
 sr_error_info_t *sr_shmmod_multilock(struct sr_mod_info_s *mod_info, int wr, int applying_changes);
@@ -194,7 +197,9 @@ sr_error_info_t *sr_shmmod_data_update(struct sr_mod_info_s *mod_info, uint8_t m
 sr_error_info_t *sr_shmmod_get_filter(sr_session_ctx_t *session, const char *xpath, struct sr_mod_info_s *mod_info,
         struct ly_set **result);
 
-sr_error_info_t *sr_shmmod_create_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmmod_edit_create_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_info);
+
+sr_error_info_t *sr_shmmod_modinfo_create_diff(struct sr_mod_info_s *src_mod_info, struct sr_mod_info_s *mod_info);
 
 sr_error_info_t *sr_shmmod_validate(struct sr_mod_info_s *mod_info, int finish_diff);
 

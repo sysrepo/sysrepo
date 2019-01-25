@@ -859,6 +859,18 @@ error:
     return err_info;
 }
 
+int
+sr_ly_is_userord(const struct lyd_node *node)
+{
+    assert(node);
+
+    if ((node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) && (node->schema->flags & LYS_USERORDERED)) {
+        return 1;
+    }
+
+    return 0;
+}
+
 /*
  * Bob Jenkin's one-at-a-time hash
  * http://www.burtleburtle.net/bob/hash/doobs.html

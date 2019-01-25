@@ -171,7 +171,6 @@ struct sr_subscription_ctx_s {
 struct sr_change_iter_s {
     struct ly_set *set;
     uint32_t idx;
-    sr_change_oper_t parent_op;
     int reverse_changes;
 };
 
@@ -228,6 +227,8 @@ sr_error_info_t *sr_val_sr2ly(const sr_val_t *sr_val, struct lyd_node **node);
 void sr_ly_split(struct lyd_node *sibling);
 
 void sr_ly_link(struct lyd_node *first, struct lyd_node *sibling);
+
+int sr_ly_is_userord(const struct lyd_node *node);
 
 sr_error_info_t *sr_ly_data_dup_filter(const struct lyd_node *data, char **xpaths, uint16_t xp_count,
         struct lyd_node **filter_data);

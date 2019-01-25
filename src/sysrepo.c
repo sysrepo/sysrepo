@@ -970,7 +970,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node **s
     }
 
     /* collect all required modules */
-    if ((err_info = sr_shmmod_collect_xpath(session->conn, session->conn->ly_ctx, xpath, session->ds, &mod_info))) {
+    if ((err_info = sr_shmmod_collect_xpath(session->conn, xpath, session->ds, &mod_info))) {
         goto cleanup_shm_unlock;
     }
 
@@ -1038,7 +1038,7 @@ sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, struct ly_set **su
     }
 
     /* collect all required modules */
-    if ((err_info = sr_shmmod_collect_xpath(session->conn, session->conn->ly_ctx, xpath, session->ds, &mod_info))) {
+    if ((err_info = sr_shmmod_collect_xpath(session->conn, xpath, session->ds, &mod_info))) {
         goto cleanup_shm_unlock;
     }
 
@@ -1250,7 +1250,7 @@ sr_apply_changes(sr_session_ctx_t *session)
     }
 
     /* create diff */
-    if ((err_info = sr_shmmod_create_diff(session->dt[session->ds].edit, &mod_info))) {
+    if ((err_info = sr_shmmod_edit_create_diff(session->dt[session->ds].edit, &mod_info))) {
         goto cleanup_mods_unlock;
     }
 
@@ -1296,7 +1296,7 @@ sr_apply_changes(sr_session_ctx_t *session)
             lyd_free_withsiblings(mod_info.diff);
             mod_info.diff = NULL;
             mod_info.dflt_change = 0;
-            if ((err_info = sr_shmmod_create_diff(session->dt[session->ds].edit, &mod_info))) {
+            if ((err_info = sr_shmmod_edit_create_diff(session->dt[session->ds].edit, &mod_info))) {
                 goto cleanup_mods_unlock;
             }
 
@@ -1383,6 +1383,120 @@ sr_discard_changes(sr_session_ctx_t *session)
     lyd_free_withsiblings(session->dt[session->ds].edit);
     session->dt[session->ds].edit = NULL;
     return sr_api_ret(session, NULL);
+}
+
+API int
+sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, sr_datastore_t dst_datastore)
+{
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    struct sr_mod_info_s src_mod_info, dst_mod_info;
+    const struct lys_module *mod = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || (src_datastore == SR_DS_OPERATIONAL) || (dst_datastore == SR_DS_OPERATIONAL), session, err_info);
+
+    if (src_datastore == dst_datastore) {
+        /* nothing to do */
+        return sr_api_ret(session, NULL);
+    }
+
+    memset(&src_mod_info, 0, sizeof src_mod_info);
+    memset(&dst_mod_info, 0, sizeof dst_mod_info);
+
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    if (module_name) {
+        /* try to find this module */
+        mod = ly_ctx_get_module(session->conn->ly_ctx, module_name, NULL, 1);
+        if (!mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+            goto cleanup_shm_unlock;
+        }
+    }
+
+    /* collect all required modules for src and dst datastores */
+    if ((err_info = sr_shmmod_collect_modules(session->conn, mod, src_datastore, &src_mod_info))) {
+        goto cleanup_shm_unlock;
+    }
+    if ((err_info = sr_shmmod_collect_modules(session->conn, mod, dst_datastore, &dst_mod_info))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* MODULES READ LOCK (but setting flag for guaranteed later upgrade success) */
+    if ((err_info = sr_shmmod_multilock(&dst_mod_info, 0, 1))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* load modules data */
+    if ((err_info = sr_shmmod_data_update(&src_mod_info, MOD_INFO_REQ, NULL))) {
+        goto cleanup_mods_unlock;
+    }
+    if ((err_info = sr_shmmod_data_update(&dst_mod_info, MOD_INFO_REQ, NULL))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* create diff between the 2 mod_infos and their modules */
+    if ((err_info = sr_shmmod_modinfo_create_diff(&src_mod_info, &dst_mod_info))) {
+        goto cleanup_mods_unlock;
+    }
+
+    if (!dst_mod_info.diff) {
+        SR_LOG_INFMSG("No datastore changes to apply.");
+        if (!dst_mod_info.dflt_change) {
+            goto cleanup_mods_unlock;
+        }
+        /* while there are no changes for callbacks, some default flags changed so we must store them */
+    }
+
+    if (dst_mod_info.diff) {
+        /* publish final diff in a "change" event for any subscribers and wait for them */
+        if ((err_info = sr_shmsub_conf_notify_change(&dst_mod_info, &cb_err_info))) {
+            goto cleanup_mods_unlock;
+        }
+        if (cb_err_info) {
+            /* "change" event failed, publish "abort" event and finish */
+            err_info = sr_shmsub_conf_notify_change_abort(&dst_mod_info);
+            goto cleanup_mods_unlock;
+        }
+    }
+
+    /* MODULES WRITE LOCK (upgrade) */
+    if ((err_info = sr_shmmod_multirelock(&dst_mod_info, 1))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* store updated datastore */
+    if ((err_info = sr_shmmod_store(&dst_mod_info))) {
+        goto cleanup_mods_unlock;
+    }
+
+    if (dst_mod_info.diff) {
+        /* publish "done" event, all changes were applied */
+        if ((err_info = sr_shmsub_conf_notify_change_done(&dst_mod_info))) {
+            goto cleanup_mods_unlock;
+        }
+    }
+
+    /* success */
+
+cleanup_mods_unlock:
+    /* MODULES UNLOCK */
+    sr_shmmod_multiunlock(&dst_mod_info, 1);
+
+cleanup_shm_unlock:
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(session->conn);
+
+    sr_modinfo_free(&src_mod_info);
+    sr_modinfo_free(&dst_mod_info);
+    if (cb_err_info) {
+        /* return callback error if some was generated */
+        sr_errinfo_merge(&err_info, cb_err_info);
+        err_info->err_code = SR_ERR_CALLBACK_FAILED;
+    }
+    return sr_api_ret(session, err_info);
 }
 
 API int
@@ -1561,12 +1675,7 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
 
     (*iter)->set = lyd_find_path(session->dt[session->ds].diff, xpath);
     SR_CHECK_MEM_GOTO(!(*iter)->set, err_info, error);
-
     (*iter)->idx = 0;
-
-    /* invalid operation to inherit */
-    (*iter)->parent_op = SR_OP_MODIFIED;
-
     if (session->ev == SR_EV_ABORT) {
         (*iter)->reverse_changes = 1;
     } else {
@@ -1795,7 +1904,7 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_attr *attr, *attr2;
-    struct lyd_node *node;
+    struct lyd_node *node, *parent;
     const char *attr_name, *attr_mod_name;
     sr_change_oper_t op;
 
@@ -1808,64 +1917,64 @@ next_item:
     }
     node = iter->set->set.d[iter->idx];
 
-    /* find the operation of the current edit node */
-    for (attr = node->attr;
-         attr && strcmp(attr->name, "operation");
-         attr = attr->next);
+    /* find the (inherited) operation of the current edit node */
+    attr = NULL;
+    for (parent = node; parent; parent = parent->parent) {
+        for (attr = parent->attr; attr && strcmp(attr->name, "operation"); attr = attr->next);
+        if (attr) {
+            break;
+        }
+    }
+    if (!attr) {
+        SR_ERRINFO_INT(&err_info);
+        return sr_api_ret(session, err_info);
+    }
 
-    if (attr) {
-        if (attr->value_str[0] == 'n') {
-            assert(!strcmp(attr->annotation->module->name, SR_YANG_MOD));
-            assert(!strcmp(attr->value_str, "none"));
-            /* skip the node */
-            ++iter->idx;
+    if (lys_is_key((struct lys_node_leaf *)node->schema, NULL) && sr_ly_is_userord(node->parent) && (attr->value_str[0] == 'r')) {
+        /* skip keys of list move operations */
+        ++iter->idx;
+        goto next_item;
+    }
 
-            /* in case of lists we want to also skip all their keys */
-            if (node->schema->nodetype == LYS_LIST) {
-                iter->idx += ((struct lys_node_list *)node->schema)->keys_size;
-            }
-            goto next_item;
-        } else if (attr->value_str[0] == 'c') {
-            assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
-            assert(!strcmp(attr->value_str, "create"));
-            op = SR_OP_CREATED;
-        } else if (attr->value_str[0] == 'd') {
-            assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
-            assert(!strcmp(attr->value_str, "delete"));
+    /* decide operation */
+    if (attr->value_str[0] == 'n') {
+        assert(!strcmp(attr->annotation->module->name, SR_YANG_MOD));
+        assert(!strcmp(attr->value_str, "none"));
+        /* skip the node */
+        ++iter->idx;
+
+        /* in case of lists we want to also skip all their keys */
+        if (node->schema->nodetype == LYS_LIST) {
+            iter->idx += ((struct lys_node_list *)node->schema)->keys_size;
+        }
+        goto next_item;
+    } else if (attr->value_str[0] == 'c') {
+        assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
+        assert(!strcmp(attr->value_str, "create"));
+        op = SR_OP_CREATED;
+    } else if (attr->value_str[0] == 'd') {
+        assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
+        assert(!strcmp(attr->value_str, "delete"));
+        op = SR_OP_DELETED;
+    } else if (attr->value_str[0] == 'r') {
+        assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
+        assert(!strcmp(attr->value_str, "replace"));
+        if (node->schema->nodetype == LYS_LEAF) {
+            op = SR_OP_MODIFIED;
+        } else if (node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) {
+            op = SR_OP_MOVED;
+        } else {
+            SR_ERRINFO_INT(&err_info);
+            return sr_api_ret(session, err_info);
+        }
+    }
+    if (iter->reverse_changes) {
+        /* we are in an abort */
+        if (op == SR_OP_CREATED) {
             op = SR_OP_DELETED;
-        } else if (attr->value_str[0] == 'r') {
-            assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
-            assert(!strcmp(attr->value_str, "replace"));
-            if (node->schema->nodetype == LYS_LEAF) {
-                op = SR_OP_MODIFIED;
-            } else if (node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) {
-                op = SR_OP_MOVED;
-            } else {
-                SR_ERRINFO_INT(&err_info);
-                return sr_api_ret(session, err_info);
-            }
+        } else if (op == SR_OP_DELETED) {
+            op = SR_OP_CREATED;
         }
-        if (iter->reverse_changes) {
-            /* we are in an abort */
-            if (op == SR_OP_CREATED) {
-                op = SR_OP_DELETED;
-            } else if (op == SR_OP_DELETED) {
-                op = SR_OP_CREATED;
-            }
-        }
-    } else {
-        if (iter->parent_op == SR_OP_MOVED) {
-            /* a valid situation is us now iterating over the key of a previously returned moved list,
-             * it should not be a separate change, though */
-            if (lys_is_key((struct lys_node_leaf *)node->schema, NULL)) {
-                ++iter->idx;
-                goto next_item;
-            }
-        }
-
-        /* these operations cannot be inherited */
-        assert((iter->parent_op != SR_OP_MODIFIED) && (iter->parent_op != SR_OP_MOVED));
-        op = iter->parent_op;
     }
 
     /* create values */
@@ -1906,6 +2015,8 @@ next_item:
             }
             if (attr2) {
                 (*new_value)->dflt = 1;
+            } else {
+                (*new_value)->dflt = 0;
             }
         } else {
             if ((err_info = sr_lyd_node2sr_val(node, attr->value_str, NULL, old_value))) {
@@ -1913,6 +2024,8 @@ next_item:
             }
             if (attr2) {
                 (*old_value)->dflt = 1;
+            } else {
+                (*old_value)->dflt = 0;
             }
             if ((err_info = sr_lyd_node2sr_val(node, NULL, NULL, new_value))) {
                 return sr_api_ret(session, err_info);
@@ -1966,7 +2079,7 @@ next_item:
         break;
     }
 
-    iter->parent_op = *operation = op;
+    *operation = op;
     ++iter->idx;
     return sr_api_ret(session, NULL);
 }

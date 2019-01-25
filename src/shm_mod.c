@@ -66,8 +66,7 @@ sr_shmmod_unlock(sr_mod_t *shm_mod, sr_datastore_t ds)
 }
 
 static sr_error_info_t *
-sr_modinfo_add_mod_with_deps(sr_mod_t *shm_mod, const struct lys_module *ly_mod, int mod_type,
-        struct sr_mod_info_s *mod_info)
+sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *ly_mod, int mod_type, int with_deps, struct sr_mod_info_s *mod_info)
 {
     sr_mod_t *dep_mod;
     sr_mod_dep_t *shm_deps;
@@ -106,7 +105,7 @@ sr_modinfo_add_mod_with_deps(sr_mod_t *shm_mod, const struct lys_module *ly_mod,
         mod_info->mods[cur_i].conf_sub.fd = -1;
     }
 
-    if (mod_info->mods[cur_i].state < MOD_INFO_INV_DEP) {
+    if (!with_deps || (mod_info->mods[cur_i].state < MOD_INFO_INV_DEP)) {
         /* we do not need recursive dependencies of this module */
         return NULL;
     }
@@ -129,7 +128,7 @@ sr_modinfo_add_mod_with_deps(sr_mod_t *shm_mod, const struct lys_module *ly_mod,
             SR_CHECK_INT_RET(!ly_mod, err_info);
 
             /* add dependency */
-            if ((err_info = sr_modinfo_add_mod_with_deps(dep_mod, ly_mod, MOD_INFO_DEP, mod_info))) {
+            if ((err_info = sr_modinfo_add_mod(dep_mod, ly_mod, MOD_INFO_DEP, 1, mod_info))) {
                 return err_info;
             }
         }
@@ -152,7 +151,7 @@ sr_modinfo_add_mod_with_deps(sr_mod_t *shm_mod, const struct lys_module *ly_mod,
                     SR_CHECK_INT_RET(!ly_mod, err_info);
 
                     /* add inverse dependency */
-                    if ((err_info = sr_modinfo_add_mod_with_deps(dep_mod, ly_mod, MOD_INFO_INV_DEP, mod_info))) {
+                    if ((err_info = sr_modinfo_add_mod(dep_mod, ly_mod, MOD_INFO_INV_DEP, 1, mod_info))) {
                         return err_info;
                     }
                 }
@@ -204,7 +203,7 @@ sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_data
         /* find the module in SHM and add it with any dependencies */
         shm_mod = sr_shmmain_find_module(conn->main_shm.addr, mod->name, 0);
         SR_CHECK_INT_RET(!shm_mod, err_info);
-        if ((err_info = sr_modinfo_add_mod_with_deps(shm_mod, mod, MOD_INFO_REQ, mod_info))) {
+        if ((err_info = sr_modinfo_add_mod(shm_mod, mod, MOD_INFO_REQ, 1, mod_info))) {
             return err_info;
         }
     }
@@ -216,8 +215,7 @@ sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_data
 }
 
 sr_error_info_t *
-sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
-        struct sr_mod_info_s *mod_info)
+sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t ds, struct sr_mod_info_s *mod_info)
 {
     sr_mod_t *shm_mod;
     char *module_name;
@@ -237,7 +235,7 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, const char *
         return err_info;
     }
 
-    ly_mod = ly_ctx_get_module(ly_ctx, module_name, NULL, 1);
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Module \"%s\" not found in sysrepo.", module_name);
         free(module_name);
@@ -254,7 +252,7 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, const char *
 
     set = lys_xpath_atomize(ctx_node, LYXP_NODE_ELEM, xpath, 0);
     if (!set) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
         SR_ERRINFO_INT(&err_info);
         return err_info;
     }
@@ -263,7 +261,7 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, const char *
     assert(set->set.s[0] == ctx_node);
     shm_mod = sr_shmmain_find_module(mod_info->conn->main_shm.addr, ly_mod->name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
-    if ((err_info = sr_modinfo_add_mod_with_deps(shm_mod, ly_mod, MOD_INFO_REQ, mod_info))) {
+    if ((err_info = sr_modinfo_add_mod(shm_mod, ly_mod, MOD_INFO_REQ, 1, mod_info))) {
         goto cleanup;
     }
 
@@ -279,7 +277,7 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, const char *
         /* find the module in SHM and add it with any dependencies */
         shm_mod = sr_shmmain_find_module(mod_info->conn->main_shm.addr, ly_mod->name, 0);
         SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
-        if ((err_info = sr_modinfo_add_mod_with_deps(shm_mod, ly_mod, MOD_INFO_REQ, mod_info))) {
+        if ((err_info = sr_modinfo_add_mod(shm_mod, ly_mod, MOD_INFO_REQ, 1, mod_info))) {
             goto cleanup;
         }
     }
@@ -292,6 +290,43 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, const char *
 cleanup:
     ly_set_free(set);
     return err_info;
+}
+
+sr_error_info_t *
+sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+
+    mod_info->ds = ds;
+    mod_info->conn = conn;
+
+    if (ly_mod) {
+        /* only one module */
+        shm_mod = sr_shmmain_find_module(conn->main_shm.addr, ly_mod->name, 0);
+        SR_CHECK_INT_RET(!shm_mod, err_info);
+
+        if ((err_info = sr_modinfo_add_mod(shm_mod, ly_mod, MOD_INFO_REQ, 0, mod_info))) {
+            return err_info;
+        }
+
+        return NULL;
+    }
+
+    /* all modules */
+    shm_mod = NULL;
+    while ((shm_mod = sr_shmmain_getnext(conn->main_shm.addr, shm_mod))) {
+        ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->main_shm.addr + shm_mod->name, NULL, 1);
+        SR_CHECK_INT_RET(!ly_mod, err_info);
+
+        if ((err_info = sr_modinfo_add_mod(shm_mod, ly_mod, MOD_INFO_REQ, 0, mod_info))) {
+            return err_info;
+        }
+    }
+
+    /* we do not need to sort the modules, they were added in the correct order */
+
+    return NULL;
 }
 
 sr_error_info_t *
@@ -790,9 +825,9 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmmod_create_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_info)
+sr_shmmod_edit_create_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_info)
 {
-    struct lyd_node *diff = NULL;
+    struct lyd_node *mod_diff;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
     sr_error_info_t *err_info = NULL;
@@ -801,32 +836,80 @@ sr_shmmod_create_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_inf
         mod = &mod_info->mods[i];
 
         if (mod->state & MOD_INFO_REQ) {
+            mod_diff = NULL;
+
             /* apply relevant edit changes */
-            if ((err_info = sr_ly_edit_mod_apply(edit, mod, &diff))) {
-                goto error;
+            if ((err_info = sr_ly_edit_mod_apply(edit, mod, &mod_diff))) {
+                lyd_free_withsiblings(mod_diff);
+                return err_info;
             }
 
-            if (diff) {
+            if (mod_diff) {
                 /* there is a diff for this module */
                 mod->state |= MOD_INFO_CHANGED;
 
                 /* merge all diffs into one */
                 if (!mod_info->diff) {
-                    mod_info->diff = diff;
+                    mod_info->diff = mod_diff;
                 } else {
-                    sr_ly_link(mod_info->diff, diff);
+                    sr_ly_link(mod_info->diff, mod_diff);
                 }
-                diff = NULL;
-
             }
         }
     }
 
     return NULL;
+}
 
-error:
-    lyd_free_withsiblings(diff);
-    return err_info;
+sr_error_info_t *
+sr_shmmod_modinfo_create_diff(struct sr_mod_info_s *src_mod_info, struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_difflist *ly_diff;
+    struct sr_mod_info_mod_s *mod;
+    struct lyd_node *mod_diff;
+    uint16_t i;
+
+    assert(!mod_info->diff);
+    assert(mod_info->mod_count == src_mod_info->mod_count);
+
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        assert(mod->ly_mod == src_mod_info->mods[i].ly_mod);
+
+        /* get libyang diff */
+        ly_diff = lyd_diff(mod->mod_data, src_mod_info->mods[i].mod_data, LYD_DIFFOPT_WITHDEFAULTS);
+        if (!ly_diff) {
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            return err_info;
+        }
+
+        /* create sysrepo diff */
+        err_info = sr_ly_diff_ly2sr(ly_diff, &mod_diff);
+        lyd_free_diff(ly_diff);
+        if (err_info) {
+            return err_info;
+        }
+
+        /* make the source data the new data */
+        lyd_free_withsiblings(mod->mod_data);
+        mod->mod_data = src_mod_info->mods[i].mod_data;
+        src_mod_info->mods[i].mod_data = NULL;
+
+        if (mod_diff) {
+            /* there is a diff for this module */
+            mod->state |= MOD_INFO_CHANGED;
+
+            /* merge all diffs into one */
+            if (!mod_info->diff) {
+                mod_info->diff = mod_diff;
+            } else {
+                sr_ly_link(mod_info->diff, mod_diff);
+            }
+        }
+    }
+
+    return NULL;
 }
 
 static sr_error_info_t *
@@ -1015,7 +1098,7 @@ sr_shmmod_validate(struct sr_mod_info_s *mod_info, int finish_diff)
 
     if (finish_diff) {
         /* merge the changes made by the validation into our diff */
-        if ((err_info = sr_ly_diff_merge(&mod_info->diff, mod_info->conn->ly_ctx, diff, &mod_info->dflt_change))) {
+        if ((err_info = sr_ly_val_diff_merge(&mod_info->diff, mod_info->conn->ly_ctx, diff, &mod_info->dflt_change))) {
             goto cleanup;
         }
 
