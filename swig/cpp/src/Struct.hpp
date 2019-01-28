@@ -99,9 +99,9 @@ public:
     Val();
     /** Wrapper for [sr_val_t](@ref sr_val_t).*/
     Val(sr_val_t *val, S_Deleter deleter);
-    /** Constructor for string value, type can be SR_STRING_T, SR_BINARY_T, SR_BITS_T, SR_ENUM_T,
-     * SR_IDENTITYREF_T and SR_INSTANCEID_T.*/
-    Val(const char *val, sr_type_t type = SR_STRING_T);
+   /** Constructor for string value, , type can be any type except SR_UNKNOWN_T,
+      *  SR_ANYXML_T, SR_TREE_ITERATOR_T, SR_NOTIFICATION_T, and SR_ANYDATA_T */
+     Val(const char *val, sr_type_t type = SR_STRING_T);
     /** Constructor for bool value.*/
     explicit Val(bool bool_val, sr_type_t type = SR_BOOL_T);
     /** Constructor for decimal64 value.*/
@@ -124,8 +124,8 @@ public:
     /** Constructor for uint64 value, C++ only.*/
     explicit Val(uint64_t uint64_val);
    ~Val();
-    /** Setter for string value, type can be SR_STRING_T, SR_BINARY_T, SR_BITS_T, SR_ENUM_T,
-     * SR_IDENTITYREF_T and SR_INSTANCEID_T.*/
+    /** Setter for string value, type can be any type except SR_UNKNOWN_T,
+      * SR_ANYXML_T,S SR_TREE_ITERATOR_T, SR_NOTIFICATION_T, and SR_ANYDATA_T */
     void set(const char *xpath, const char *val, sr_type_t type = SR_STRING_T);
     /** Setter for bool value.*/
     void set(const char *xpath, bool bool_val, sr_type_t type = SR_BOOL_T);
