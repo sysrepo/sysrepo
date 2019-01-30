@@ -967,6 +967,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, si
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
+    sr_val_t *p_values = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(session, session->conn_ctx, xpath, values, value_cnt);
@@ -993,8 +994,9 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, si
 
     /* copy the content of gpb values to sr_val_t */
     rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->get_items_resp->values,
-                             msg_resp->response->get_items_resp->n_values, values, value_cnt);
+                             msg_resp->response->get_items_resp->n_values, &p_values, value_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying the values from GPB.");
+    *values = p_values;
 
 cleanup:
     if (NULL != msg_req) {
