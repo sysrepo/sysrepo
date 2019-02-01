@@ -190,7 +190,7 @@ void Tree::set(const char *value, sr_type_t type) {
 }
 void Tree::set(bool bool_val, sr_type_t type) {
     if (type == SR_BOOL_T) {
-	    _node->data.bool_val = bool_val;
+        _node->data.bool_val = bool_val;
     } else {
         throw_exception(SR_ERR_INVAL_ARG);
     }
@@ -201,32 +201,17 @@ void Tree::set(double decimal64_val) {
     _node->data.decimal64_val = decimal64_val;
     _node->type = SR_DECIMAL64_T;
 }
-void Tree::set(int8_t int8_val, sr_type_t type) {
-    if (type == SR_INT8_T) {
-	    _node->data.int8_val = int8_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _node->type = type;
+void Tree::set(int8_t int8_val) {
+    _node->data.int8_val = int8_val;
+    _node->type = SR_INT8_T;
 }
-void Tree::set(int16_t int16_val, sr_type_t type) {
-    if (type == SR_INT16_T) {
-	    _node->data.int16_val = int16_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _node->type = type;
+void Tree::set(int16_t int16_val) {
+    _node->data.int16_val = int16_val;
+    _node->type = SR_INT16_T;
 }
-void Tree::set(int32_t int32_val, sr_type_t type) {
-    if (type == SR_INT32_T) {
-	    _node->data.int32_val = int32_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _node->type = type;
+void Tree::set(int32_t int32_val) {
+    _node->data.int32_val = int32_val;
+    _node->type = SR_INT32_T;
 }
 void Tree::set(int64_t int64_val, sr_type_t type) {
     if (type == SR_UINT64_T) {
@@ -251,41 +236,21 @@ void Tree::set(int64_t int64_val, sr_type_t type) {
 
     _node->type = type;
 }
-void Tree::set(uint8_t uint8_val, sr_type_t type) {
-    if (type == SR_UINT8_T) {
-	    _node->data.uint8_val = uint8_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _node->type = type;
+void Tree::set(uint8_t uint8_val) {
+    _node->data.uint8_val = uint8_val;
+    _node->type = SR_UINT8_T;
 }
-void Tree::set(uint16_t uint16_val, sr_type_t type) {
-    if (type == SR_UINT16_T) {
-	    _node->data.uint16_val = uint16_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _node->type = type;
+void Tree::set(uint16_t uint16_val) {
+    _node->data.uint16_val = uint16_val;
+    _node->type = SR_UINT16_T;
 }
-void Tree::set(uint32_t uint32_val, sr_type_t type) {
-    if (type == SR_UINT32_T) {
-	    _node->data.uint32_val = uint32_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _node->type = type;
+void Tree::set(uint32_t uint32_val) {
+    _node->data.uint32_val = uint32_val;
+    _node->type = SR_UINT32_T;
 }
-void Tree::set(uint64_t uint64_val, sr_type_t type) {
-    if (type == SR_UINT64_T) {
-	    _node->data.uint64_val = uint64_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _node->type = type;
+void Tree::set(uint64_t uint64_val) {
+    _node->data.uint64_val = uint64_val;
+    _node->type = SR_UINT64_T;
 }
 
 Trees::Trees(size_t cnt): Trees() {

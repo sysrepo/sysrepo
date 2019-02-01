@@ -5803,13 +5803,21 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
             if (NULL != session) {
                 ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
             }
-            fds[opened_files] = open(file_name, O_RDWR | O_TRUNC);
+            fds[opened_files] = open(file_name, O_RDWR);
             if (NULL != session) {
                 ac_unset_user_identity(dm_ctx->ac_ctx, session->user_credentials);
             }
             if (-1 == fds[opened_files]) {
                 SR_LOG_ERR("File %s can not be opened", file_name);
                 free(file_name);
+                goto cleanup;
+            }
+            /* lock, write, blocking */
+            sr_lock_fd(fds[opened_files], true, true);
+            if (ftruncate(fds[opened_files], 0) != 0) {
+                SR_LOG_ERR("File %s can not be truncated: %s", file_name, sr_strerror_safe(errno));
+                free(file_name);
+                opened_files++;
                 goto cleanup;
             }
             opened_files++;
@@ -6449,7 +6457,7 @@ dm_validate_procedure_content(rp_ctx_t *rp_ctx, rp_session_t *session, dm_data_i
 
     /* load necessary data trees */
     node = proc_node;
-    while (!backtracking || node != proc_node) {
+    while (node && (!backtracking || node != proc_node)) {
         if (false == backtracking) {
             if (node->flags & LYS_XPCONF_DEP) {
                 ext_conf_ref = true;

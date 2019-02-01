@@ -23,9 +23,9 @@ std::string get_xpath(const std::string &test_name, const std::string &node_name
 }
 
 void init_test(sysrepo::S_Session sess) {
-    for (int i = LOW_BOUND; i < HIGH_BOUND; i++) {
+    for (int32_t i = LOW_BOUND; i < HIGH_BOUND; i++) {
         const auto xpath = get_xpath(get_test_name(i), "number");
-        sysrepo::S_Val vset(new sysrepo::Val((int32_t)i, SR_INT32_T));
+        sysrepo::S_Val vset(new sysrepo::Val((i)));
         sess->set_item(xpath.c_str(), vset);
     }
 
@@ -72,7 +72,7 @@ void test_set_item(sysrepo::S_Session sess)
 {
     for (int32_t i = LOW_BOUND; i < HIGH_BOUND; i++) {
         const auto xpath = get_xpath(get_test_name(i), "number");
-        sysrepo::S_Val vset(new sysrepo::Val((int32_t)i, SR_INT32_T));
+        sysrepo::S_Val vset(new sysrepo::Val(i));
         sess->set_item(xpath.c_str(), vset);
     }
 
@@ -83,6 +83,19 @@ void test_set_item(sysrepo::S_Session sess)
         sysrepo::S_Val v = sess->get_item(xpath.c_str());
         assert(i == (int32_t) v->data()->get_int32());
     }
+}
+
+void test_vals(void)
+{
+    sysrepo::S_Vals vals(new sysrepo::Vals(5));
+    std::string xp = "/ietf-interfaces:interfaces-state/baym-fx-interfaces:ports/port[name='eth-mr/0/0']";
+    int i = 0;
+    vals->val(i++)->set((xp+"/type").c_str(),"eth-mr",SR_ENUM_T);
+    vals->val(i++)->set((xp+"/status/admin-status").c_str(),"down",SR_ENUM_T);
+    vals->val(i++)->set((xp+"/status/oper-status").c_str(),"uknown",SR_ENUM_T);
+    vals->val(i++)->set((xp+"/status/speed-value").c_str(),uint64_t{10000000});
+    vals->val(i++)->set((xp+"/status/max-rate").c_str(),uint64_t{10000000});
+    vals->reallocate(10);
 }
 
 int
@@ -100,6 +113,7 @@ main(int argc, char **argv)
         test_get_item(sess);
         test_delete_item(sess);
         test_set_item(sess);
+        test_vals();
 
         return 0;
 }
