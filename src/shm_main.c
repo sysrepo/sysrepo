@@ -185,13 +185,13 @@ sr_shmmain_pidunlock(sr_conn_ctx_t *conn)
 static sr_error_info_t *
 sr_shmmain_tidlock(sr_conn_ctx_t *conn, int wr)
 {
-    return sr_lock(&conn->main_tlock, wr, __func__);
+    return sr_rwlock(&conn->main_tlock, wr, __func__);
 }
 
 static void
 sr_shmmain_tidunlock(sr_conn_ctx_t *conn)
 {
-    sr_unlock(&conn->main_tlock);
+    sr_rwunlock(&conn->main_tlock);
 }
 
 static sr_error_info_t *
@@ -690,6 +690,40 @@ sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
     return NULL;
 }
 
+static sr_error_info_t *
+sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod = NULL;
+    char *startup_path, *running_path;
+    const char *repo_path = sr_get_repo_path();
+
+    while ((shm_mod = sr_shmmain_getnext(conn->main_shm.addr, shm_mod))) {
+        if (asprintf(&startup_path, "%s/data/%s.startup", repo_path, conn->main_shm.addr + shm_mod->name) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            goto error;
+        }
+        if (asprintf(&running_path, "%s/data/%s.running", repo_path, conn->main_shm.addr + shm_mod->name) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            free(startup_path);
+            goto error;
+        }
+        err_info = sr_cp(running_path, startup_path);
+        free(startup_path);
+        free(running_path);
+        if (err_info) {
+            goto error;
+        }
+    }
+
+    SR_LOG_INFMSG("Datastore copied from <startup> to <running>.");
+    return NULL;
+
+error:
+    sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Copying datastore from <startup> to <running> failed.");
+    return err_info;
+}
+
 sr_error_info_t *
 sr_shmmain_create(sr_conn_ctx_t *conn)
 {
@@ -728,6 +762,11 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
 
     /* update libyang context with info from SHM */
     if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
+        return err_info;
+    }
+
+    /* copy full datastore from <startup> to <running> */
+    if ((err_info = sr_shmmain_files_startup2running(conn))) {
         return err_info;
     }
 
@@ -840,7 +879,7 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr)
         goto pidunlock_error;
     }
 
-    /* check SHM version and update SHM mapping as necessary */
+    /* check SHM version and update context as necessary */
     if ((err_info = sr_shmmain_read_ver(conn->main_plock, &main_ver))) {
         goto pidunlock_error;
     }

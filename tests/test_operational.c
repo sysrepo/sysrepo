@@ -87,6 +87,11 @@ clear_interfaces(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_session_switch_ds(st->sess, SR_DS_STARTUP);
+
+    sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
+    sr_apply_changes(st->sess);
+
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);
 
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
@@ -97,15 +102,93 @@ clear_interfaces(void **state)
 
 /* TEST 1 (no threads) */
 static int
-dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_notif_event_t event,
+enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_notif_event_t event,
         void *private_data)
 {
-    (void)session;
-    (void)module_name;
-    (void)xpath;
-    (void)event;
-    (void)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    sr_val_t *old_val, *new_val;
+    int ret, *called = (int *)private_data;
 
+    if (!strcmp(xpath, "/ietf-interfaces:interfaces/interface[name='eth128']")) {
+        assert_string_equal(module_name, "ietf-interfaces");
+
+        if (*called == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/ietf-interfaces:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces");
+
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth128']");
+
+        sr_free_val(new_val);
+
+        /* 3rd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth128']/name");
+
+        sr_free_val(new_val);
+
+        /* 4th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth128']/type");
+
+        sr_free_val(new_val);
+
+        /* 5th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth128']/enabled");
+        assert_int_equal(new_val->dflt, 1);
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+    } else {
+        fail();
+    }
+
+    ++(*called);
     return SR_ERR_OK;
 }
 
@@ -117,9 +200,9 @@ test_enabled_partial(void **state)
     struct lyd_node *subtree;
     char *str;
     const char *str2;
-    int ret;
+    int ret, called;
 
-    /* create some data */
+    /* create some configuration data */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
@@ -129,44 +212,24 @@ test_enabled_partial(void **state)
     ret = sr_apply_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* read them back from "running" */
-    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", &subtree);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    lyd_print_mem(&str, subtree, LYD_XML, LYP_WITHSIBLINGS);
-    lyd_free(subtree);
-
-    str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth64</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-        "<interface>"
-            "<name>eth128</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
-
-    assert_string_equal(str, str2);
-    free(str);
-
-    /* they should not be in "operational" because there is no subscription */
+    /* nothing should be in "operational" because there is no subscription */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
+    assert_null(subtree);
+
+    /* subscribe to one specific interface and also expect to be notified */
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_null(subtree);
-
-    /* subscribe to one specific interface */
+    called = 0;
     ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth128']",
-            dummy_change_cb, NULL, 0, 0, &subscr);
+            enabled_change_cb, &called, 0, SR_SUBSCR_ENABLED, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(called, 2);
 
     /* that is the only interface that should now be in "operational" */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
@@ -196,9 +259,11 @@ test_enabled_partial(void **state)
     sr_unsubscribe(subscr);
 
     /* subscribe to a not-present interface */
+    called = 0;
     ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth256']",
-            dummy_change_cb, NULL, 0, 0, &subscr);
+            enabled_change_cb, &called, 0, SR_SUBSCR_ENABLED, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(called, 0);
 
     /* "operational" should be empty again */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
@@ -268,7 +333,7 @@ test_simple(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
-    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", dummy_change_cb, NULL, 0, 0, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", enabled_change_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to read them back from operational DS */
@@ -297,11 +362,9 @@ test_simple(void **state)
 
     ly_set_free(subtrees);
 
-    /* subscribe as state data provider and actually listen */
+    /* subscribe as state data provider */
     ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", simple_dp_cb,
             NULL, SR_SUBSCR_CTX_REUSE, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_subscription_listen(subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational again */
@@ -384,11 +447,9 @@ test_fail(void **state)
     ret = sr_apply_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* subscribe as state data provider and listen */
+    /* subscribe as state data provider*/
     ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", fail_dp_cb,
             NULL, 0, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_subscription_listen(subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -445,14 +506,12 @@ test_config(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
-    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", dummy_change_cb, NULL, 0, 0, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", enabled_change_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as config data provider and listen */
     ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", config_dp_cb,
             NULL, SR_SUBSCR_CTX_REUSE, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_subscription_listen(subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -537,7 +596,7 @@ test_list(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
-    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", dummy_change_cb, NULL, 0, 0, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", enabled_change_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as 2 list instances data provider and listen */
@@ -546,8 +605,6 @@ test_list(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth3']",
             list_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_subscription_listen(subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -666,7 +723,7 @@ test_nested(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
-    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", dummy_change_cb, NULL, 0, 0, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", enabled_change_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as state data provider and listen, it should be called only 2x */
@@ -678,8 +735,6 @@ test_nested(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth2']/phys-address",
             nested_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_subscription_listen(subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -797,14 +852,12 @@ test_mixed(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
-    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", dummy_change_cb, NULL, 0, 0, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", enabled_change_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as config data provider and listen */
     ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_dp_cb,
             NULL, SR_SUBSCR_CTX_REUSE, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_subscription_listen(subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */

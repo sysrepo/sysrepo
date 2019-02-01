@@ -152,8 +152,8 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
 
     /* special case, when we have no memory, we would try to allocate rror info in vain */
     if (err_code == SR_ERR_NOMEM) {
-        /* check that both structures are the same (could be compile-time) */
-        assert(sizeof(struct sr_error_info_s) == sizeof *(*err_info)->err);
+        /* check that both private and public structures are the same (could be compile-time) */
+        assert(sizeof(struct sr_error_info_err_s) == sizeof *(*err_info)->err);
         assert(!xpath && !format);
 
         sr_errinfo_free(err_info);

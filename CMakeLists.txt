@@ -63,6 +63,7 @@ set(LIB_SRC
     src/sysrepo.c
     src/common.c
     src/log.c
+    src/modinfo.c
     src/edit_diff.c
     src/shm_main.c
     src/shm_mod.c

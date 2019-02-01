@@ -135,9 +135,6 @@ module_empty_cb(sr_session_ctx_t *session, const char *module_name, const char *
     sr_change_oper_t op;
     sr_change_iter_t *iter;
     sr_val_t *old_val, *new_val;
-    struct lyd_node *subtree;
-    char *str1;
-    const char *str2;
     int ret;
 
     assert_string_equal(module_name, "ietf-interfaces");
@@ -249,32 +246,6 @@ module_empty_cb(sr_session_ctx_t *session, const char *module_name, const char *
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);
-
-        /* check current data tree */
-        ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", &subtree);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
-        assert_int_equal(ret, 0);
-        lyd_free(subtree);
-
-        str2 =
-        "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-            " xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
-            "<interface>"
-                "<name>eth1</name>"
-                "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-                "<enabled ncwd:default=\"true\">true</enabled>"
-            "</interface>"
-            "<interface>"
-                "<name>eth2</name>"
-                "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-                "<enabled ncwd:default=\"true\">true</enabled>"
-            "</interface>"
-        "</interfaces>";
-
-        assert_string_equal(str1, str2);
-        free(str1);
         break;
     case 2:
     case 3:
@@ -381,16 +352,6 @@ module_empty_cb(sr_session_ctx_t *session, const char *module_name, const char *
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);
-
-        /* check current data tree */
-        ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", &subtree);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
-        assert_int_equal(ret, 0);
-
-        assert_null(str1);
-        lyd_free(subtree);
         break;
     default:
         fail();
@@ -489,8 +450,6 @@ subscribe_empty_thread(void *arg)
 
     ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_empty_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_subscription_listen(subscr);
-    assert_int_equal(ret, SR_ERR_OK);
 
     /* set some startup data */
     ret = sr_session_switch_ds(sess, SR_DS_STARTUP);
@@ -545,9 +504,6 @@ module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char 
     sr_change_oper_t op;
     sr_change_iter_t *iter;
     sr_val_t *old_val, *new_val;
-    struct lyd_node *subtree;
-    char *str1;
-    const char *str2;
     int ret;
 
     assert_string_equal(module_name, "ietf-interfaces");
@@ -612,33 +568,6 @@ module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char 
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);
-
-        /* check current data tree */
-        ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", &subtree);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
-        assert_int_equal(ret, 0);
-        lyd_free(subtree);
-
-        str2 =
-        "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-            " xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
-            "<interface>"
-                "<name>eth1</name>"
-                "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:sonet</type>"
-                "<enabled ncwd:default=\"true\">true</enabled>"
-                "<description>some-eth1-desc</description>"
-            "</interface>"
-            "<interface>"
-                "<name>eth2</name>"
-                "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-                "<enabled>false</enabled>"
-            "</interface>"
-        "</interfaces>";
-
-        assert_string_equal(str1, str2);
-        free(str1);
         break;
     case 2:
     case 3:
@@ -729,25 +658,6 @@ module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char 
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);
-
-        /* check current data tree */
-        ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", &subtree);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
-        assert_int_equal(ret, 0);
-        lyd_free(subtree);
-
-        str2 =
-        "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-            "<interface>"
-                "<name>eth2</name>"
-                "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "</interface>"
-        "</interfaces>";
-
-        assert_string_equal(str1, str2);
-        free(str1);
         break;
     default:
         fail();
@@ -885,8 +795,6 @@ subscribe_simple_thread(void *arg)
     /* subscribe */
     ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_simple_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_subscription_listen(subscr);
-    assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
@@ -927,8 +835,6 @@ module_userord_cb(sr_session_ctx_t *session, const char *module_name, const char
     sr_change_oper_t op;
     sr_change_iter_t *iter;
     sr_val_t *old_val, *new_val;
-    struct ly_set *subtrees;
-    struct lyd_node *node;
     int ret;
 
     assert_string_equal(module_name, "test");
@@ -978,50 +884,6 @@ module_userord_cb(sr_session_ctx_t *session, const char *module_name, const char
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);
-
-        /* check current data tree */
-        ret = sr_get_subtrees(session, "/test:*", &subtrees);
-        assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(subtrees->number, 5);
-
-        node = subtrees->set.d[0];
-        assert_string_equal(node->schema->name, "cont");
-        node = node->child;
-        assert_string_equal(node->schema->name, "l2");
-        assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "a");
-        node = node->next;
-        assert_string_equal(node->schema->name, "l2");
-        assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "b");
-        node = node->next;
-        assert_string_equal(node->schema->name, "ll2");
-        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "2");
-        node = node->next;
-        assert_string_equal(node->schema->name, "ll2");
-        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "1");
-        assert_null(node->next);
-        lyd_free_withsiblings(node->parent);
-
-        node = subtrees->set.d[1];
-        assert_string_equal(node->schema->name, "ll1");
-        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "1");
-        lyd_free_withsiblings(node);
-
-        node = subtrees->set.d[2];
-        assert_string_equal(node->schema->name, "l1");
-        assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "b");
-        lyd_free_withsiblings(node);
-
-        node = subtrees->set.d[3];
-        assert_string_equal(node->schema->name, "l1");
-        assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "a");
-        lyd_free_withsiblings(node);
-
-        node = subtrees->set.d[4];
-        assert_string_equal(node->schema->name, "ll1");
-        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "2");
-        lyd_free_withsiblings(node);
-
-        ly_set_free(subtrees);
         break;
     default:
         fail();
@@ -1203,8 +1065,6 @@ subscribe_userord_thread(void *arg)
 
     /* subscribe */
     ret = sr_module_change_subscribe(sess, "test", NULL, module_userord_cb, st, 0, 0, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_subscription_listen(subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that subscription was created */

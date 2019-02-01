@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -36,28 +37,16 @@
 #include <pthread.h>
 
 sr_error_info_t *
-sr_sub_conf_add(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb conf_cb,
-        void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subs_p)
+sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb conf_cb,
+        void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs)
 {
-    struct modsub_conf_s *conf_sub;
-    sr_subscription_ctx_t *subs;
-    uint32_t i;
     sr_error_info_t *err_info = NULL;
-    void *mem;
+    struct modsub_conf_s *conf_sub = NULL;
+    uint32_t i;
+    void *mem[4] = {NULL};
 
-    assert(!(opts & ~SR_SUBSCR_UPDATE));
-
-    /* allocate new subscription */
-    if (!*subs_p) {
-        *subs_p = calloc(1, sizeof **subs_p);
-        SR_CHECK_MEM_RET(!*subs_p, err_info);
-        (*subs_p)->conn = conn;
-    }
-    subs = *subs_p;
-
-    if (subs->tid) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL,
-                "You cannot add new subscriptions if the existing ones are already being listened on.");
+    /* SUBS LOCK */
+    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
         return err_info;
     }
 
@@ -69,22 +58,23 @@ sr_sub_conf_add(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr
     }
 
     if (i == subs->conf_sub_count) {
-        mem = realloc(subs->conf_subs, (subs->conf_sub_count + 1) * sizeof *subs->conf_subs);
-        SR_CHECK_MEM_RET(!mem, err_info);
-        subs->conf_subs = mem;
+        mem[0] = realloc(subs->conf_subs, (subs->conf_sub_count + 1) * sizeof *subs->conf_subs);
+        SR_CHECK_MEM_GOTO(!mem[0], err_info, error_unlock);
+        subs->conf_subs = mem[0];
 
         conf_sub = &subs->conf_subs[i];
         memset(conf_sub, 0, sizeof *conf_sub);
         conf_sub->sub_shm.fd = -1;
 
         /* set attributes */
-        conf_sub->module_name = strdup(mod_name);
-        SR_CHECK_MEM_RET(!conf_sub->module_name, err_info);
+        mem[1] = strdup(mod_name);
+        SR_CHECK_MEM_GOTO(!mem[1], err_info, error_unlock);
+        conf_sub->module_name = mem[1];
         conf_sub->ds = ds;
 
         /* create/open shared memory and map it */
         if ((err_info = sr_shmsub_open_map(mod_name, sr_ds2str(ds), -1, &conf_sub->sub_shm, sizeof(sr_conf_sub_shm_t)))) {
-            goto error;
+            goto error_unlock;
         }
 
         /* make the subscription visible only after everything succeeds */
@@ -94,85 +84,146 @@ sr_sub_conf_add(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr
     }
 
     /* add another XPath into module-specific subscriptions */
-    mem = realloc(conf_sub->subs, (conf_sub->sub_count + 1) * sizeof *conf_sub->subs);
-    SR_CHECK_MEM_RET(!mem, err_info);
-    conf_sub->subs = mem;
+    mem[2] = realloc(conf_sub->subs, (conf_sub->sub_count + 1) * sizeof *conf_sub->subs);
+    SR_CHECK_MEM_GOTO(!mem[2], err_info, error_unlock);
+    conf_sub->subs = mem[2];
 
     conf_sub->subs[conf_sub->sub_count].cb = conf_cb;
     conf_sub->subs[conf_sub->sub_count].private_data = private_data;
     if (xpath) {
-        conf_sub->subs[conf_sub->sub_count].xpath = strdup(xpath);
-        SR_CHECK_MEM_RET(!conf_sub->subs[conf_sub->sub_count].xpath, err_info);
+        mem[3] = strdup(xpath);
+        SR_CHECK_MEM_RET(!mem[3], err_info);
+        conf_sub->subs[conf_sub->sub_count].xpath = mem[3];
     } else {
         conf_sub->subs[conf_sub->sub_count].xpath = NULL;
     }
     conf_sub->subs[conf_sub->sub_count].priority = priority;
-    conf_sub->subs[conf_sub->sub_count].opts = opts;
+    conf_sub->subs[conf_sub->sub_count].opts = sub_opts;
     conf_sub->subs[conf_sub->sub_count].event_id = 0;
     conf_sub->subs[conf_sub->sub_count].event = SR_EV_NONE;
 
     ++conf_sub->sub_count;
 
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
     return NULL;
 
-error:
-    free(conf_sub->module_name);
-    for (i = 0; i < conf_sub->sub_count; ++i) {
-        free(conf_sub->subs[i].xpath);
-    }
-    free(conf_sub->subs);
+error_unlock:
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
 
-    if (conf_sub->sub_shm.fd > -1) {
-        close(conf_sub->sub_shm.fd);
+    for (i = 0; i < 4; ++i) {
+        free(mem[i]);
+    }
+    if (conf_sub) {
+        sr_shm_destroy(&conf_sub->sub_shm);
+    }
+    if (mem[1]) {
+        --subs->conf_sub_count;
     }
     return err_info;
 }
 
-sr_error_info_t *
-sr_sub_dp_add(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb, void *private_data,
-        sr_subscription_ctx_t **subs_p)
+void
+sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs)
 {
-    struct modsub_dp_s *dp_sub;
-    sr_subscription_ctx_t *subs;
-    uint32_t i;
     sr_error_info_t *err_info = NULL;
-    void *mem;
+    uint32_t i, j;
+    struct modsub_conf_s *conf_sub;
+
+    /* SUBS LOCK */
+    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    for (i = 0; i < subs->conf_sub_count; ++i) {
+        conf_sub = &subs->conf_subs[i];
+
+        if ((conf_sub->ds != ds) || strcmp(mod_name, conf_sub->module_name)) {
+            continue;
+        }
+
+        for (j = 0; j < conf_sub->sub_count; ++j) {
+            if ((conf_sub->subs[j].priority != priority) || (conf_sub->subs[j].opts != sub_opts)
+                    || strcmp(conf_sub->subs[j].xpath, xpath)) {
+                continue;
+            }
+
+            /* found our subscription, replace it with the last */
+            free(conf_sub->subs[j].xpath);
+            if (j < conf_sub->sub_count - 1) {
+                memcpy(&conf_sub->subs[j], &conf_sub->subs[conf_sub->sub_count - 1], sizeof *conf_sub->subs);
+            }
+            --conf_sub->sub_count;
+
+            if (!conf_sub->sub_count) {
+                /* no other subscriptions for this module, replace it with the last */
+                free(conf_sub->module_name);
+                free(conf_sub->subs);
+                lyd_free_withsiblings(conf_sub->last_change_diff);
+                sr_shm_destroy(&conf_sub->sub_shm);
+                if (i < subs->conf_sub_count - 1) {
+                    memcpy(conf_sub, &subs->conf_subs[subs->conf_sub_count - 1], sizeof *conf_sub);
+                }
+                --subs->conf_sub_count;
+
+                if (!subs->conf_sub_count) {
+                    /* no other configuration subscriptions */
+                    free(subs->conf_subs);
+                    subs->conf_subs = NULL;
+                }
+            }
+
+            /* SUBS UNLOCK */
+            sr_unlock(&subs->subs_lock);
+            return;
+        }
+    }
+
+    /* unreachable */
+    assert(0);
+
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
+    return;
+}
+
+sr_error_info_t *
+sr_sub_dp_add(const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb, void *private_data,
+        sr_subscription_ctx_t *subs)
+{
+    sr_error_info_t *err_info = NULL;
+    struct modsub_dp_s *dp_sub = NULL;
+    uint32_t i;
+    void *mem[4] = {NULL};
 
     assert(mod_name && xpath);
 
-    /* allocate new subscription */
-    if (!*subs_p) {
-        *subs_p = calloc(1, sizeof **subs_p);
-        SR_CHECK_MEM_RET(!*subs_p, err_info);
-        (*subs_p)->conn = conn;
-    }
-    subs = *subs_p;
-
-    if (subs->tid) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL,
-                "You cannot add new subscriptions if the existing ones are already being listened on.");
+    /* SUBS LOCK */
+    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
         return err_info;
     }
 
-    /* try to find this module DP subscriptions, they may already exist */
+    /* try to find this module subscription SHM mapping, it may already exist */
     for (i = 0; i < subs->dp_sub_count; ++i) {
         if (!strcmp(mod_name, subs->dp_subs[i].module_name)) {
             break;
         }
     }
 
-    /* add module subscriptions first if they do not exist */
     if (i == subs->dp_sub_count) {
-        mem = realloc(subs->dp_subs, (subs->dp_sub_count + 1) * sizeof *subs->dp_subs);
-        SR_CHECK_MEM_RET(!mem, err_info);
-        subs->dp_subs = mem;
+        mem[0] = realloc(subs->dp_subs, (subs->dp_sub_count + 1) * sizeof *subs->dp_subs);
+        SR_CHECK_MEM_GOTO(!mem[0], err_info, error_unlock);
+        subs->dp_subs = mem[0];
 
         dp_sub = &subs->dp_subs[i];
         memset(dp_sub, 0, sizeof *dp_sub);
 
         /* set attributes */
-        dp_sub->module_name = strdup(mod_name);
-        SR_CHECK_MEM_RET(!dp_sub->module_name, err_info);
+        mem[1] = strdup(mod_name);
+        SR_CHECK_MEM_GOTO(!mem[1], err_info, error_unlock);
+        dp_sub->module_name = mem[1];
 
         /* make the subscription visible only after everything succeeds */
         ++subs->dp_sub_count;
@@ -181,72 +232,137 @@ sr_sub_dp_add(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_d
     }
 
     /* add another XPath and create SHM into module-specific subscriptions */
-    mem = realloc(dp_sub->subs, (dp_sub->sub_count + 1) * sizeof *dp_sub->subs);
-    SR_CHECK_MEM_RET(!mem, err_info);
-    dp_sub->subs = mem;
+    mem[2] = realloc(dp_sub->subs, (dp_sub->sub_count + 1) * sizeof *dp_sub->subs);
+    SR_CHECK_MEM_GOTO(!mem[2], err_info, error_unlock);
+    dp_sub->subs = mem[2];
     memset(dp_sub->subs + dp_sub->sub_count, 0, sizeof *dp_sub->subs);
     dp_sub->subs[dp_sub->sub_count].sub_shm.fd = -1;
 
     /* set attributes */
     dp_sub->subs[dp_sub->sub_count].cb = dp_cb;
     dp_sub->subs[dp_sub->sub_count].private_data = private_data;
-    dp_sub->subs[dp_sub->sub_count].xpath = strdup(xpath);
-    SR_CHECK_MEM_RET(!dp_sub->subs[dp_sub->sub_count].xpath, err_info);
+    mem[3] = strdup(xpath);
+    SR_CHECK_MEM_GOTO(!mem[3], err_info, error_unlock);
+    dp_sub->subs[dp_sub->sub_count].xpath = mem[3];
 
     /* create specific SHM and map it */
     if ((err_info = sr_shmsub_open_map(mod_name, "state", sr_str_hash(xpath), &dp_sub->subs[dp_sub->sub_count].sub_shm,
             sizeof(sr_sub_shm_t)))) {
-        goto error;
+        goto error_unlock;
     }
 
     ++dp_sub->sub_count;
 
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
     return NULL;
 
-error:
-    free(dp_sub->module_name);
-    for (i = 0; i < dp_sub->sub_count; ++i) {
-        free(dp_sub->subs[i].xpath);
-        if (dp_sub->subs[i].sub_shm.fd > -1) {
-            close(dp_sub->subs[i].sub_shm.fd);
-        }
-        assert(!dp_sub->subs[i].sub_shm.addr);
-    }
-    free(dp_sub->subs);
+error_unlock:
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
 
+    for (i = 0; i < 4; ++i) {
+        free(mem[i]);
+    }
+    if (mem[1]) {
+        --subs->dp_sub_count;
+    }
     return err_info;
 }
 
+void
+sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *subs)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i, j;
+    struct modsub_dp_s *dp_sub;
+
+    /* SUBS LOCK */
+    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    for (i = 0; i < subs->dp_sub_count; ++i) {
+        dp_sub = &subs->dp_subs[i];
+
+        if (strcmp(mod_name, dp_sub->module_name)) {
+            continue;
+        }
+
+        for (j = 0; j < dp_sub->sub_count; ++j) {
+            if (strcmp(dp_sub->subs[j].xpath, xpath)) {
+                continue;
+            }
+
+            /* found our subscription, replace it with the last */
+            free(dp_sub->subs[j].xpath);
+            sr_shm_destroy(&dp_sub->subs[j].sub_shm);
+            if (j < dp_sub->sub_count - 1) {
+                memcpy(&dp_sub->subs[j], &dp_sub->subs[dp_sub->sub_count - 1], sizeof *dp_sub->subs);
+            }
+            --dp_sub->sub_count;
+
+            if (!dp_sub->sub_count) {
+                /* no other subscriptions for this module, replace it with the last */
+                free(dp_sub->module_name);
+                free(dp_sub->subs);
+                if (i < subs->dp_sub_count - 1) {
+                    memcpy(dp_sub, &subs->dp_subs[subs->dp_sub_count - 1], sizeof *dp_sub);
+                }
+                --subs->dp_sub_count;
+
+                if (!subs->dp_sub_count) {
+                    /* no other data-provide subscriptions */
+                    free(subs->dp_subs);
+                    subs->dp_subs = NULL;
+                }
+            }
+
+            /* SUBS UNLOCK */
+            sr_unlock(&subs->subs_lock);
+            return;
+        }
+    }
+
+    /* unreachable */
+    assert(0);
+
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
+    return;
+}
+
 sr_error_info_t *
-sr_sub_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
+sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
 {
     uint32_t i, j;
-    struct modsub_conf_s *conf_sub;
+    struct modsub_conf_s *conf_subs;
     struct modsub_dp_s *dp_sub;
     sr_error_info_t *err_info = NULL;
 
     /* configuration subscriptions */
     for (i = 0; i < subs->conf_sub_count; ++i) {
-        conf_sub = &subs->conf_subs[i];
+        conf_subs = &subs->conf_subs[i];
 
         /* remove the subscriptions from the main SHM */
-        for (j = 0; j < conf_sub->sub_count; ++j) {
-            if ((err_info = sr_shmmod_conf_subscription(conn, conf_sub->module_name, conf_sub->subs[j].xpath, conf_sub->ds,
-                        conf_sub->subs[j].priority, conf_sub->subs[j].opts, 0))) {
+        for (j = 0; j < conf_subs->sub_count; ++j) {
+            if ((err_info = sr_shmmod_conf_subscription(conn, conf_subs->module_name, conf_subs->subs[j].xpath, conf_subs->ds,
+                        conf_subs->subs[j].priority, conf_subs->subs[j].opts, 0))) {
                 return err_info;
             }
 
             /* free xpath */
-            free(conf_sub->subs[j].xpath);
+            free(conf_subs->subs[j].xpath);
         }
 
         /* free dynamic memory */
-        free(conf_sub->module_name);
-        free(conf_sub->subs);
-        lyd_free_withsiblings(conf_sub->diff);
+        free(conf_subs->module_name);
+        free(conf_subs->subs);
+        lyd_free_withsiblings(conf_subs->last_change_diff);
 
         /* remove specific SHM segment */
-        sr_shm_destroy(&conf_sub->sub_shm);
+        sr_shm_destroy(&conf_subs->sub_shm);
     }
     free(subs->conf_subs);
 
@@ -328,11 +444,49 @@ sr_shm_destroy(sr_shm_t *shm)
 }
 
 sr_error_info_t *
-sr_lock(pthread_rwlock_t *rwlock, int wr, const char *func)
+sr_lock(pthread_mutex_t *lock, const char *func)
 {
+    sr_error_info_t *err_info = NULL;
     struct timespec abs_ts;
     int ret;
+
+    if (clock_gettime(CLOCK_REALTIME, &abs_ts) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "clock_gettime");
+        return err_info;
+    }
+
+    abs_ts.tv_nsec += SR_LOCK_TIMEOUT * 1000000;
+    if (abs_ts.tv_nsec > 999999999) {
+        abs_ts.tv_nsec -= 1000000000;
+        ++abs_ts.tv_sec;
+    }
+
+    ret = pthread_mutex_timedlock(lock, &abs_ts);
+    if (ret) {
+        SR_ERRINFO_LOCK(&err_info, func, ret);
+        return err_info;
+    }
+
+    return NULL;
+}
+
+void
+sr_unlock(pthread_mutex_t *lock)
+{
+    int ret;
+
+    ret = pthread_mutex_unlock(lock);
+    if (ret) {
+        SR_LOG_WRN("Unlocking a mutex failed (%s).", strerror(ret));
+    }
+}
+
+sr_error_info_t *
+sr_rwlock(pthread_rwlock_t *rwlock, int wr, const char *func)
+{
     sr_error_info_t *err_info = NULL;
+    struct timespec abs_ts;
+    int ret;
 
     if (clock_gettime(CLOCK_REALTIME, &abs_ts) == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "clock_gettime");
@@ -359,7 +513,7 @@ sr_lock(pthread_rwlock_t *rwlock, int wr, const char *func)
 }
 
 void
-sr_unlock(pthread_rwlock_t *rwlock)
+sr_rwunlock(pthread_rwlock_t *rwlock)
 {
     int ret;
 
@@ -380,6 +534,56 @@ sr_realloc(void *ptr, size_t size)
     }
 
     return new_mem;
+}
+
+sr_error_info_t *
+sr_cp(const char *to, const char *from)
+{
+    sr_error_info_t *err_info = NULL;
+    int fd_to = -1, fd_from = -1;
+    char * out_ptr, buf[4096];
+    ssize_t nread, nwritten;
+
+    fd_from = open(from, O_RDONLY);
+    if (fd_from < 0) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" failed (%s).", from, strerror(errno));
+        goto cleanup;
+    }
+
+    fd_to = open(to, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fd_to < 0) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating \"%s\" failed (%s).", to, strerror(errno));
+        goto cleanup;
+    }
+
+    while ((nread = read(fd_from, buf, sizeof buf)) > 0) {
+        out_ptr = buf;
+        do {
+            nwritten = write(fd_to, out_ptr, nread);
+            if (nwritten >= 0) {
+                nread -= nwritten;
+                out_ptr += nwritten;
+            } else if (errno != EINTR) {
+                SR_ERRINFO_SYSERRNO(&err_info, "write");
+                goto cleanup;
+            }
+        } while (nread > 0);
+    }
+    if (nread == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "read");
+        goto cleanup;
+    }
+
+    /* success */
+
+cleanup:
+    if (fd_from > -1) {
+        close(fd_from);
+    }
+    if (fd_to > -1) {
+        close(fd_to);
+    }
+    return err_info;
 }
 
 const char *
@@ -609,8 +813,6 @@ sr_ev2str(sr_notif_event_t ev)
         return "done";
     case SR_EV_ABORT:
         return "abort";
-    case SR_EV_ENABLED:
-        return "enabled";
     }
 
     return NULL;
@@ -795,14 +997,14 @@ sr_ly_link(struct lyd_node *first, struct lyd_node *sibling)
 }
 
 sr_error_info_t *
-sr_ly_data_dup_filter(const struct lyd_node *data, char **xpaths, uint16_t xp_count, struct lyd_node **filter_data)
+sr_ly_data_dup_xpath_select(const struct lyd_node *data, char **xpaths, uint16_t xp_count, struct lyd_node **new_data)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *root;
     struct ly_set *cur_set, *set = NULL;
     size_t i;
 
-    *filter_data = NULL;
+    *new_data = NULL;
 
     /* get only the selected subtrees in a set */
     for (i = 0; i < xp_count; ++i) {
@@ -838,14 +1040,14 @@ sr_ly_data_dup_filter(const struct lyd_node *data, char **xpaths, uint16_t xp_co
         }
 
         /* merge into the final result */
-        if (*filter_data) {
-            if (lyd_merge(*filter_data, root, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+        if (*new_data) {
+            if (lyd_merge(*new_data, root, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
                 lyd_free_withsiblings(root);
                 sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
                 goto error;
             }
         } else {
-            *filter_data = root;
+            *new_data = root;
         }
     }
 
@@ -854,8 +1056,76 @@ sr_ly_data_dup_filter(const struct lyd_node *data, char **xpaths, uint16_t xp_co
 
 error:
     ly_set_free(set);
-    lyd_free_withsiblings(*filter_data);
-    *filter_data = NULL;
+    lyd_free_withsiblings(*new_data);
+    *new_data = NULL;
+    return err_info;
+}
+
+sr_error_info_t *
+sr_ly_data_xpath_complement(struct lyd_node **data, const char *xpath)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_ctx *ctx;
+    struct ly_set *node_set = NULL, *depth_set = NULL;
+    struct lyd_node *parent;
+    uint16_t depth, max_depth;
+    size_t i;
+
+    assert(data);
+
+    if (!*data || !xpath) {
+        return NULL;
+    }
+
+    ctx = lyd_node_module(*data)->ctx;
+
+    node_set = lyd_find_path(*data, xpath);
+    if (!node_set) {
+        sr_errinfo_new_ly(&err_info, ctx);
+        goto cleanup;
+    }
+
+    depth_set = ly_set_new();
+    if (!depth_set) {
+        sr_errinfo_new_ly(&err_info, ctx);
+        goto cleanup;
+    }
+
+    /* store the depth of every node */
+    max_depth = 1;
+    for (i = 0; i < node_set->number; ++i) {
+        for (parent = node_set->set.d[i], depth = 0; parent; parent = parent->parent, ++depth);
+
+        if (ly_set_add(depth_set, (void *)((uintptr_t)depth), LY_SET_OPT_USEASLIST) == -1) {
+            sr_errinfo_new_ly(&err_info, ctx);
+            goto cleanup;
+        }
+
+        if (depth > max_depth) {
+            max_depth = depth;
+        }
+    }
+
+    assert(node_set->number == depth_set->number);
+
+    /* free subtrees from the most nested to top-level */
+    for (depth = max_depth; depth; --depth) {
+        for (i = 0; i < node_set->number; ++i) {
+            if (depth == (uintptr_t)depth_set->set.g[i]) {
+                if (node_set->set.d[i] == *data) {
+                    /* freeing the first top-level sibling */
+                    *data = (*data)->next;
+                }
+                lyd_free(node_set->set.d[i]);
+            }
+        }
+    }
+
+    /* success */
+
+cleanup:
+    ly_set_free(node_set);
+    ly_set_free(depth_set);
     return err_info;
 }
 
@@ -895,7 +1165,7 @@ sr_str_hash(const char *str)
 }
 
 sr_error_info_t *
-sr_ly_xpath_trim_last_node(const char *xpath, char **trim_xpath, char **last_node_xpath)
+sr_xpath_trim_last_node(const char *xpath, char **trim_xpath, char **last_node_xpath)
 {
     sr_error_info_t *err_info = NULL;
     const char *ptr;
@@ -934,6 +1204,30 @@ error:
     free(*trim_xpath);
     free(*last_node_xpath);
     return err_info;
+}
+
+char *
+sr_xpath_first_node(const char *xpath)
+{
+    const char *ptr;
+    char quote = 0;
+
+    assert(xpath && (xpath[0] == '/'));
+
+    for (ptr = xpath + 1; ptr[0] && (quote || (ptr[0] != '/')); ++ptr) {
+        if (quote && (ptr[0] == quote)) {
+            quote = 0;
+        } else if (!quote && ((ptr[0] == '\'') || (ptr[0] == '\"'))) {
+            quote = ptr[0];
+        }
+    }
+
+    if (quote) {
+        /* invalid xpath */
+        return NULL;
+    }
+
+    return strndup(xpath, ptr - xpath);
 }
 
 size_t

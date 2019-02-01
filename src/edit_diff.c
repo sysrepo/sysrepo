@@ -581,7 +581,7 @@ sr_ly_edit_create_userord_predicate(const struct lyd_node *llist)
     return pred;
 }
 
-static sr_error_info_t *
+sr_error_info_t *
 sr_edit_set_oper(struct lyd_node *edit, const char *op)
 {
     const char *attr_full_name;
@@ -599,6 +599,23 @@ sr_edit_set_oper(struct lyd_node *edit, const char *op)
     }
 
     return NULL;
+}
+
+void
+sr_edit_del_attr(struct lyd_node *edit, const char *name)
+{
+    struct lyd_attr *attr;
+
+    for (attr = edit->attr; attr; attr = attr->next) {
+        if (!strcmp(attr->name, name)) {
+            if (!strcmp(attr->annotation->module->name, SR_YANG_MOD) || !strcmp(attr->annotation->module->name, "ietf-netconf")) {
+                lyd_free_attr(edit->schema->module->ctx, edit, attr, 0);
+                return;
+            }
+        }
+    }
+
+    assert(0);
 }
 
 static const char *
@@ -1629,23 +1646,6 @@ sr_ly_diff_mod_apply(struct lyd_node *diff, struct sr_mod_info_mod_s *mod)
     } while (root && (lyd_node_module(root) == mod->ly_mod));
 
     return NULL;
-}
-
-static void
-sr_edit_del_attr(struct lyd_node *edit, const char *name)
-{
-    struct lyd_attr *attr;
-
-    for (attr = edit->attr; attr; attr = attr->next) {
-        if (!strcmp(attr->name, name)) {
-            if (!strcmp(attr->annotation->module->name, SR_YANG_MOD) || !strcmp(attr->annotation->module->name, "ietf-netconf")) {
-                lyd_free_attr(edit->schema->module->ctx, edit, attr, 0);
-                return;
-            }
-        }
-    }
-
-    assert(0);
 }
 
 static sr_error_info_t *

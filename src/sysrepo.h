@@ -1005,8 +1005,8 @@ typedef enum sr_subscr_flag_e {
      *   datastore while this subscription is alive (if not already, can be changed using ::SR_SUBSCR_PASSIVE flag),
      * - configuration data of the subscribed module or subtree is copied from startup to running datastore
      *   (only if the module was not enabled before),
-     * - the callback will be called twice, once with ::SR_EV_VERIFY event and once with ::SR_EV_APPLY / ::SR_EV_ABORT
-     *   event passed in (can be changed with ::SR_SUBSCR_APPLY_ONLY flag).
+     * - the callback will be called twice, once with ::SR_EV_CHANGE event and once with ::SR_EV_DONE / ::SR_EV_ABORT
+     *   event passed in (can be changed with ::SR_SUBSCR_DONE_ONLY flag).
      */
     SR_SUBSCR_DEFAULT = 0,
 
@@ -1027,26 +1027,26 @@ typedef enum sr_subscr_flag_e {
     /**
      * @brief The subscriber does not support verification of the changes and wants to be notified only after
      * the changes has been applied in the datastore, without the possibility to deny them
-     * (it will receive only ::SR_EV_APPLY events).
+     * (it will receive only ::SR_EV_DONE events).
      */
-    SR_SUBSCR_APPLY_ONLY = 4,
+    SR_SUBSCR_DONE_ONLY = 4,
 
     /**
-     * @brief The subscriber wants ::SR_EV_ENABLED notifications to be sent to them.
+     * @brief The subscriber wants to be notified about current configuration at the moment of subscribing.
      */
     SR_SUBSCR_ENABLED = 8,
-
-    /**
-     * @brief No real-time notifications will be delivered until ::sr_event_notif_replay is called
-     * and replay has finished (::SR_EV_NOTIF_T_REPLAY_COMPLETE is delivered).
-     */
-    SR_SUBSCR_NOTIF_REPLAY_FIRST = 16,
 
     /**
      * @brief The subscriber will be called before any other subscribers for the particular model
      * and is allowed to modify the particular module data.
      */
-    SR_SUBSCR_UPDATE = 32,
+    SR_SUBSCR_UPDATE = 16,
+
+    /**
+     * @brief No real-time notifications will be delivered until ::sr_event_notif_replay is called
+     * and replay has finished (::SR_EV_NOTIF_T_REPLAY_COMPLETE is delivered).
+     */
+    SR_SUBSCR_NOTIF_REPLAY_FIRST = 32,
 } sr_subscr_flag_t;
 
 /**
@@ -1069,9 +1069,6 @@ typedef enum sr_notif_event_e {
     SR_EV_ABORT,   /**< Occurs in case that the commit transaction has failed (possibly because one of the verifiers
                         has denied the change / returned an error). The subscriber is supposed to return the managed
                         application to the state before the commit. Any returned errors are just logged and ignored. */
-    SR_EV_ENABLED, /**< Occurs just after the subscription. Subscriber gets notified about configuration that was copied
-                        from startup to running. This allows to reuse the callback for applying changes made in running to
-                        reflect the changes when the configuration is copied from startup to running during subscription process */
 } sr_notif_event_t;
 
 /**
@@ -1137,8 +1134,6 @@ typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module
 int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         sr_module_change_cb callback, void *private_data, uint32_t priority, sr_subscr_options_t opts,
         sr_subscription_ctx_t **subscription);
-
-int sr_subscription_listen(sr_subscription_ctx_t *subscription);
 
 /**
  * @brief Unsubscribes from a subscription acquired by any of sr_*_subscribe

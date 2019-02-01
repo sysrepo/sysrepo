@@ -76,7 +76,7 @@ struct sr_mod_s {
     struct {
         off_t subs;
         uint16_t sub_count;
-        uint8_t applying_changes;
+        uint8_t upgradable;
     } conf_sub[2];
 
     off_t dp_subs;
@@ -184,29 +184,16 @@ sr_error_info_t *sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath,
         struct sr_mod_info_s *mod_info);
 
 sr_error_info_t *sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds,
-        struct sr_mod_info_s *mod_info);
+        int with_deps, struct sr_mod_info_s *mod_info);
 
-sr_error_info_t *sr_shmmod_multilock(struct sr_mod_info_s *mod_info, int wr, int applying_changes);
+sr_error_info_t *sr_shmmod_multilock(struct sr_mod_info_s *mod_info, int wr, int upgradable);
 
 sr_error_info_t *sr_shmmod_multirelock(struct sr_mod_info_s *mod_info, int upgrade);
 
-void sr_shmmod_multiunlock(struct sr_mod_info_s *mod_info, int applying_changes);
-
-sr_error_info_t *sr_shmmod_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_error_info_t **cb_error_info);
-
-sr_error_info_t *sr_shmmod_get_filter(sr_session_ctx_t *session, const char *xpath, struct sr_mod_info_s *mod_info,
-        struct ly_set **result);
-
-sr_error_info_t *sr_shmmod_edit_create_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_info);
-
-sr_error_info_t *sr_shmmod_modinfo_create_diff(struct sr_mod_info_s *src_mod_info, struct sr_mod_info_s *mod_info);
-
-sr_error_info_t *sr_shmmod_validate(struct sr_mod_info_s *mod_info, int finish_diff);
-
-sr_error_info_t *sr_shmmod_store(struct sr_mod_info_s *mod_info);
+void sr_shmmod_multiunlock(struct sr_mod_info_s *mod_info, int upgradable);
 
 sr_error_info_t *sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
-        sr_datastore_t ds, uint32_t priority, int subscr_opts, int add);
+        sr_datastore_t ds, uint32_t priority, int sub_opts, int add);
 
 sr_error_info_t *sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
         sr_mod_dp_sub_type_t sub_type, int add);
@@ -220,7 +207,7 @@ sr_error_info_t *sr_shmsub_open_map(const char *name, const char *suffix1, int64
 sr_error_info_t *sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update_edit,
         sr_error_info_t **cb_err_info);
 
-sr_error_info_t *sr_shmsub_conf_notify_update_clear(struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmsub_conf_notify_clear(struct sr_mod_info_s *mod_info, sr_notif_event_t ev);
 
 sr_error_info_t *sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_error_info_t **cb_err_info);
 

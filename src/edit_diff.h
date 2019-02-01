@@ -25,6 +25,10 @@
 
 #include "common.h"
 
+sr_error_info_t *sr_edit_set_oper(struct lyd_node *edit, const char *op);
+
+void sr_edit_del_attr(struct lyd_node *edit, const char *name);
+
 sr_error_info_t *sr_ly_edit_mod_apply(const struct lyd_node *edit, struct sr_mod_info_mod_s *mod, struct lyd_node **mod_diff);
 
 sr_error_info_t *sr_ly_diff_mod_apply(struct lyd_node *diff, struct sr_mod_info_mod_s *mod);

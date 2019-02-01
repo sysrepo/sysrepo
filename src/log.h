@@ -27,6 +27,8 @@
 #define SR_ERRINFO_MEM(err_info) sr_errinfo_new(err_info, SR_ERR_NOMEM, NULL, NULL)
 #define SR_ERRINFO_RWLOCK(err_info, wr, func, ret) sr_errinfo_new(err_info, (ret == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, \
         NULL, "%s locking a rwlock failed (%s: %s).", wr ? "Write" : "Read", func, strerror(ret))
+#define SR_ERRINFO_LOCK(err_info, func, ret) sr_errinfo_new(err_info, (ret == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, \
+        NULL, "Locking a mutex failed (%s: %s).", func, strerror(ret))
 #define SR_ERRINFO_SYSERRNO(err_info, func) sr_errinfo_new(err_info, SR_ERR_SYS, NULL, "%s() failed (%s).", func, strerror(errno))
 #define SR_ERRINFO_VALID(err_info) sr_errinfo_new(err_info, SR_ERR_VALIDATION_FAILED, NULL, "Validation failed.")
 
