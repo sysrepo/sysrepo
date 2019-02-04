@@ -660,9 +660,10 @@ subscribe_update_thread(void *arg)
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_STARTUP, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
+    /* it should subscribe to "running" as well */
     ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_update_cb, st, 0, SR_SUBSCR_UPDATE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 

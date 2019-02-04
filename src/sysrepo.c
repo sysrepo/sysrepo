@@ -1611,6 +1611,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
+    sr_datastore_t ds = SR_DS_COUNT;
     sr_subscr_options_t sub_opts;
 
     SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !module_name || !callback ||
@@ -1619,6 +1620,12 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     conn = session->conn;
     /* only these options are relevant outside this function and will be stored */
     sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE);
+    if (opts & SR_SUBSCR_UPDATE) {
+        /* we must subscribe to both <running> and <startup> */
+        ds = (session->ds == SR_DS_RUNNING) ? SR_DS_STARTUP : SR_DS_RUNNING;
+        SR_LOG_INF("Subscription to \"%s\" changing data will be triggered for both running and startup DS.",
+                xpath ? xpath : module_name);
+    }
 
     /* SHM WRITE LOCK */
     if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
@@ -1638,11 +1645,21 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         sr_shmmain_unlock(conn);
         return sr_api_ret(session, err_info);
     }
+    if (ds != SR_DS_COUNT) {
+        if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 1))) {
+            sr_shmmain_unlock(conn);
+            sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0);
+            return sr_api_ret(session, err_info);
+        }
+    }
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
         if ((err_info = sr_subs_new(conn, subscription))) {
             sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0);
+            if (ds != SR_DS_COUNT) {
+                sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 0);
+            }
             sr_shmmain_unlock(conn);
             return sr_api_ret(session, err_info);
         }
@@ -1654,9 +1671,16 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         sr_shmmain_unlock(conn);
         goto error_unsubscribe;
     }
+    if (ds != SR_DS_COUNT) {
+        if ((err_info = sr_sub_conf_add(module_name, xpath, ds, callback, private_data, priority, sub_opts,
+                *subscription))) {
+            sr_shmmain_unlock(conn);
+            goto error_unsubscribe;
+        }
+    }
 
     /* call the callback with the current running configuration so that it is properly applied */
-    if ((session->ds == SR_DS_RUNNING) && (opts & SR_SUBSCR_ENABLED)) {
+    if (((session->ds == SR_DS_RUNNING) || (ds == SR_DS_RUNNING)) && (opts & SR_SUBSCR_ENABLED)) {
         if ((err_info = sr_module_change_subscribe_running_enable(conn, ly_mod, xpath, callback, private_data))) {
             sr_shmmain_unlock(conn);
             goto error_unsubscribe;
@@ -1691,6 +1715,9 @@ error_unsubscribe:
         sr_unsubscribe(*subscription);
     }
     sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0);
+    if (ds != SR_DS_COUNT) {
+        sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 0);
+    }
     return sr_api_ret(session, err_info);
 }
 
