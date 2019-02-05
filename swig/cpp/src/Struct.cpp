@@ -436,6 +436,7 @@ sr_val_t* Vals::reallocate(size_t n) {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
     _cnt = n;
+    _deleter->update_vals_with_count(_vals, _cnt);
     return _vals;
 }
 
