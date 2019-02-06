@@ -72,6 +72,8 @@ public:
     void invalidate(void);
     ~Deleter();
 
+    void update_vals_with_count(sr_val_t *val, size_t cnt);
+
 private:
     count_t c;
     value_t v;
