@@ -436,7 +436,8 @@ sr_val_t* Vals::reallocate(size_t n) {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
     _cnt = n;
-    _deleter->update_vals_with_count(_vals, _cnt);
+    if (_deleter)
+        _deleter->update_vals_with_count(_vals, _cnt);
     return _vals;
 }
 
@@ -452,21 +453,22 @@ S_Vals Vals_Holder::vals(void) {
 S_Vals Vals_Holder::allocate(size_t n) {
     if (_allocate == false)
         throw_exception(SR_ERR_DATA_EXISTS);
-    _allocate = false;
 
     if (n == 0)
         return nullptr;
 
-    *p_cnt = n;
     int ret = sr_new_values(n, p_vals);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
+
+    *p_cnt = n;
+    _allocate = false;
 
     p_Vals = S_Vals(new Vals(p_vals, p_cnt, nullptr));
     return p_Vals;
 }
 S_Vals Vals_Holder::reallocate(size_t n) {
-    if (_allocate) {
+    if (_allocate == true) {
         return allocate(n);
     }
     *p_vals = p_Vals->reallocate(n);
