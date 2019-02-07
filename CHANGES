@@ -20,6 +20,7 @@ removed functions:
 - sr_subtree_change_subscribe (use sr_module_change_subscribe() with xpath)
 - sr_session_refresh (not needed, performed automatically)
 - sr_check_exec_permission (NACM no longer included)
+- whole action API (use RPC API)
 
 added functions:
 - sr_get_context

@@ -38,6 +38,24 @@ module sysrepo {
         type empty;
     }
 
+    grouping deps-grp {
+        leaf-list module {
+            type module-ref;
+        }
+
+        list inst-id {
+            key "xpath";
+
+            leaf xpath {
+                type yang:xpath1.0;
+            }
+
+            leaf default-module {
+                type module-ref;
+            }
+        }
+    }
+
     container sysrepo-modules {
         list module {
             key "name";
@@ -79,21 +97,23 @@ module sysrepo {
                 }
             }
 
-            container dependencies {
-                leaf-list module {
-                    type module-ref;
+            container data-deps {
+                uses deps-grp;
+            }
+
+            list op-deps {
+                key "xpath";
+
+                leaf xpath {
+                    type yang:xpath1.0;
                 }
 
-                list inst-id {
-                    key "xpath";
+                container in {
+                    uses deps-grp;
+                }
 
-                    leaf xpath {
-                        type yang:xpath1.0;
-                    }
-
-                    leaf default-module {
-                        type module-ref;
-                    }
+                container out {
+                    uses deps-grp;
                 }
             }
         }

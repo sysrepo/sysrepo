@@ -35,6 +35,19 @@
 
 #include <libyang/libyang.h>
 
+API const char *
+sr_get_repo_path(void)
+{
+    char *value;
+
+    value = getenv(SR_REPO_PATH_ENV);
+    if (value) {
+        return value;
+    }
+
+    return SR_REPO_PATH;
+}
+
 static sr_error_info_t *
 sr_conn_new(const char *app_name, sr_conn_ctx_t **conn_p)
 {
@@ -286,6 +299,7 @@ sr_session_stop(sr_session_ctx_t *session)
     for (i = 0; i < SR_DS_COUNT; ++i) {
         lyd_free_withsiblings(session->dt[i].edit);
     }
+    sr_errinfo_free(&session->err_info);
     free(session);
     return sr_api_ret(NULL, err_info);
 }
@@ -580,7 +594,7 @@ sr_get_context(sr_conn_ctx_t *conn)
 }
 
 static sr_error_info_t *
-sr_store_module(const struct lys_module *mod)
+sr_store_module_file(const struct lys_module *mod)
 {
     char *path;
     sr_error_info_t *err_info = NULL;
@@ -608,32 +622,6 @@ sr_store_module(const struct lys_module *mod)
     SR_LOG_INF("Module file \"%s%s%s\" installed.",
             mod->name, mod->rev_size ? "@" : "", mod->rev_size ? mod->rev[0].date : "");
     free(path);
-    return NULL;
-}
-
-static sr_error_info_t *
-sr_store_module_with_imps_r(const struct lys_module *mod)
-{
-    struct lys_module *imp_mod;
-    sr_error_info_t *err_info = NULL;
-    uint16_t i;
-
-    if ((err_info = sr_store_module(mod))) {
-        return err_info;
-    }
-
-    for (i = 0; i < mod->imp_size; ++i) {
-        imp_mod = mod->imp[i].module;
-        if (!strcmp(imp_mod->name, "ietf-yang-types") || !strcmp(imp_mod->name, "ietf-inet-types")) {
-            /* internal modules */
-            continue;
-        }
-
-        if ((err_info = sr_store_module_with_imps_r(imp_mod))) {
-            return err_info;
-        }
-    }
-
     return NULL;
 }
 
@@ -693,6 +681,36 @@ cleanup:
     return err_info;
 }
 
+static sr_error_info_t *
+sr_create_module_files_with_imps_r(const struct lys_module *mod)
+{
+    struct lys_module *imp_mod;
+    sr_error_info_t *err_info = NULL;
+    uint16_t i;
+
+    if ((err_info = sr_store_module_file(mod))) {
+        return err_info;
+    }
+
+    if (mod->implemented && (err_info = sr_create_data_files(mod))) {
+        return err_info;
+    }
+
+    for (i = 0; i < mod->imp_size; ++i) {
+        imp_mod = mod->imp[i].module;
+        if (!strcmp(imp_mod->name, "ietf-yang-types") || !strcmp(imp_mod->name, "ietf-inet-types")) {
+            /* internal modules */
+            continue;
+        }
+
+        if ((err_info = sr_create_module_files_with_imps_r(imp_mod))) {
+            return err_info;
+        }
+    }
+
+    return NULL;
+}
+
 API int
 sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir,
         const char **features, int feat_count)
@@ -703,7 +721,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     const char * const *search_dirs;
     const char *ptr;
     char *mod_name = NULL;
-    int index, has_data;
+    int index;
 
     SR_CHECK_ARG_APIRET(!conn || !module_path, NULL, err_info);
 
@@ -745,7 +763,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
     if (mod) {
         /* it is currently in the context, but maybe marked for deletion? */
-        err_info = sr_shmmain_unsched_del_module(conn, mod_name);
+        err_info = sr_shmmain_unsched_del_module_with_imps(conn, mod);
         if (err_info && (err_info->err_code == SR_ERR_NOT_FOUND)) {
             sr_errinfo_free(&err_info);
             sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" is already in sysrepo.", mod->name);
@@ -781,7 +799,6 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
 
     /* invalid module */
     if (!mod) {
-        assert(err_info);
         sr_errinfo_new_ly(&err_info, conn->ly_ctx);
         goto cleanup_unlock;
     }
@@ -789,14 +806,13 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     /* enable all features */
     for (index = 0; index < feat_count; ++index) {
         if (lys_features_enable(mod, features[index])) {
-            assert(err_info);
             ly_ctx_remove_module(mod, NULL);
             goto cleanup_unlock;
         }
     }
 
     /* add into main SHM */
-    if ((err_info = sr_shmmain_add_module_with_imps(conn, mod, &has_data))) {
+    if ((err_info = sr_shmmain_add_module_with_imps(conn, mod))) {
         goto cleanup_unlock;
     }
 
@@ -808,16 +824,9 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     /* SHM UNLOCK */
     sr_shmmain_unlock(conn);
 
-    /* store the model file and all its imports */
-    if ((err_info = sr_store_module_with_imps_r(mod))) {
+    /* store the model file and create data files for module and all of its imports */
+    if ((err_info = sr_create_module_files_with_imps_r(mod))) {
         return sr_api_ret(NULL, err_info);
-    }
-
-    if (has_data) {
-        /* create data files */
-        if ((err_info = sr_create_data_files(mod))) {
-            return sr_api_ret(NULL, err_info);
-        }
     }
 
     return sr_api_ret(NULL, NULL);
@@ -870,7 +879,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
     }
 
     /* remove module from sysrepo */
-    if ((err_info = sr_shmmain_deferred_del_module_with_imps(conn, module_name))) {
+    if ((err_info = sr_shmmain_deferred_del_module(conn, module_name))) {
         goto error_unlock;
     }
 
@@ -955,11 +964,11 @@ sr_modinfo_free(struct sr_mod_info_s *mod_info)
     lyd_free_withsiblings(mod_info->diff);
     for (i = 0; i < mod_info->mod_count; ++i) {
         lyd_free_withsiblings(mod_info->mods[i].mod_data);
-        if (mod_info->mods[i].conf_sub.addr) {
-            munmap(mod_info->mods[i].conf_sub.addr, mod_info->mods[i].conf_sub.size);
+        if (mod_info->mods[i].shm_sub_cache.addr) {
+            munmap(mod_info->mods[i].shm_sub_cache.addr, mod_info->mods[i].shm_sub_cache.size);
         }
-        if (mod_info->mods[i].conf_sub.fd > -1) {
-            close(mod_info->mods[i].conf_sub.fd);
+        if (mod_info->mods[i].shm_sub_cache.fd > -1) {
+            close(mod_info->mods[i].shm_sub_cache.fd);
         }
     }
 
@@ -1761,7 +1770,7 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
         }
     }
 
-    /* SHM WRITE LOCK (mainly remap) */
+    /* SHM WRITE LOCK */
     if ((tmp_err = sr_shmmain_lock_remap(subscription->conn, 1))) {
         sr_errinfo_merge(&err_info, tmp_err);
         return sr_api_ret(NULL, err_info);
@@ -2214,6 +2223,305 @@ next_item:
     *operation = op;
     ++iter->idx;
     return sr_api_ret(session, NULL);
+}
+
+static int
+_sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, sr_rpc_tree_cb tree_callback,
+        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_node *op;
+    const char *module_name;
+    sr_conn_ctx_t *conn;
+
+    SR_CHECK_ARG_APIRET(!session || !xpath || (!callback && !tree_callback) || !subscription, session, err_info);
+
+    conn = session->conn;
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* is the xpath valid? */
+    op = ly_ctx_get_node(conn->ly_ctx, NULL, xpath, 0);
+    if (!op) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        sr_shmmain_unlock(conn);
+        return sr_api_ret(session, err_info);
+    }
+    if (!(op->nodetype & (LYS_RPC | LYS_ACTION))) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "XPath \"%s\" does not identify an RPC nor an action.", xpath);
+        sr_shmmain_unlock(conn);
+        return sr_api_ret(session, err_info);
+    }
+    module_name = lys_node_module(op)->name;
+
+    /* add RPC/action subscription into main SHM */
+    if ((err_info = sr_shmmod_rpc_subscription(conn, module_name, xpath, 1))) {
+        sr_shmmain_unlock(conn);
+        return sr_api_ret(session, err_info);
+    }
+
+    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
+        /* create a new subscription */
+        if ((err_info = sr_subs_new(conn, subscription))) {
+            sr_shmmod_rpc_subscription(conn, module_name, xpath, 0);
+            sr_shmmain_unlock(conn);
+            return sr_api_ret(session, err_info);
+        }
+    }
+
+    /* add subscription into structure and create separate specific SHM segment */
+    if ((err_info = sr_sub_rpc_add(module_name, xpath, callback, tree_callback, private_data, *subscription))) {
+        sr_shmmain_unlock(conn);
+        goto error_unsubscribe;
+    }
+
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(conn);
+
+    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
+        /* PTR LOCK */
+        if ((err_info = sr_lock(&conn->ptr_lock, __func__))) {
+            goto error_unsubscribe;
+        }
+
+        /* add the subscription into conn */
+        if ((err_info = sr_conn_ptr_add((void ***)&conn->subscriptions, &conn->subscription_count, *subscription))) {
+            sr_unlock(&conn->ptr_lock);
+            goto error_unsubscribe;
+        }
+
+        /* PTR UNLOCK */
+        sr_unlock(&conn->ptr_lock);
+    }
+
+    return sr_api_ret(session, NULL);
+
+error_unsubscribe:
+    if (opts & SR_SUBSCR_CTX_REUSE) {
+        sr_sub_rpc_del(xpath, *subscription);
+    } else {
+        sr_unsubscribe(*subscription);
+    }
+    sr_shmmod_rpc_subscription(conn, module_name, xpath, 0);
+    return sr_api_ret(session, err_info);
+}
+
+API int
+sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, void *private_data,
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+{
+    return _sr_rpc_subscribe(session, xpath, callback, NULL, private_data, opts, subscription);
+}
+
+API int
+sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_cb callback, void *private_data,
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+{
+    return _sr_rpc_subscribe(session, xpath, NULL, callback, private_data, opts, subscription);
+}
+
+API int
+sr_rpc_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *input_tree = NULL, *output_tree, *next, *elem;
+    char *val_str, buf[22];
+    size_t i;
+    int ret;
+
+    SR_CHECK_ARG_APIRET(!session || !output || !output_cnt, session, err_info);
+
+    *output = NULL;
+    *output_cnt = 0;
+
+    /* create the container */
+    if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, xpath, NULL, 0, 0, &input_tree))) {
+        goto cleanup;
+    }
+
+    /* transform input into a data tree */
+    for (i = 0; i < input_cnt; ++i) {
+        val_str = sr_val_sr2ly_str(session->conn->ly_ctx, &input[i], buf);
+        if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, input[i].xpath, val_str, input[i].dflt, 0, &input_tree))) {
+            goto cleanup;
+        }
+    }
+
+    /* API function */
+    if ((ret = sr_rpc_send_tree(session, input_tree, &output_tree)) != SR_ERR_OK) {
+        lyd_free_withsiblings(input_tree);
+        return ret;
+    }
+
+    /* transform data tree into an output */
+    assert(output_tree && (output_tree->schema->nodetype & (LYS_RPC | LYS_ACTION)));
+    *output_cnt = 0;
+    *output = NULL;
+    LY_TREE_DFS_BEGIN(output_tree, next, elem) {
+        if (elem != output_tree) {
+            /* allocate new sr_val */
+            *output = sr_realloc(*output, (*output_cnt + 1) * sizeof **output);
+            SR_CHECK_MEM_GOTO(!*output, err_info, cleanup);
+
+            /* fill it */
+            if ((err_info = sr_val_ly2sr(elem, &(*output)[*output_cnt]))) {
+                goto cleanup;
+            }
+
+            /* now the new value is valid */
+            ++(*output_cnt);
+        }
+
+        LY_TREE_DFS_END(output_tree, next, elem);
+    }
+
+    /* success */
+
+cleanup:
+    lyd_free_withsiblings(input_tree);
+    lyd_free_withsiblings(output_tree);
+    if (err_info) {
+        sr_free_values(*output, *output_cnt);
+    }
+    return sr_api_ret(session, err_info);
+}
+
+static sr_error_info_t *
+sr_rpc_find_subscriber(sr_conn_ctx_t *conn, const struct lys_node *rpc, char **xpath)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+    sr_mod_rpc_sub_t *shm_subs;
+    char *rpc_xpath;
+    uint16_t i;
+
+    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, lys_node_module(rpc)->name, 0);
+    SR_CHECK_INT_RET(!shm_mod, err_info);
+
+    /* get the path that could be subscribed to */
+    rpc_xpath = lys_data_path(rpc);
+    SR_CHECK_MEM_RET(!rpc_xpath, err_info);
+
+    /* try to find a subscription */
+    shm_subs = (sr_mod_rpc_sub_t *)(conn->main_shm.addr + shm_mod->rpc_subs);
+    for (i = 0; i < shm_mod->rpc_sub_count; ++i) {
+        if (!strcmp(rpc_xpath, conn->main_shm.addr + shm_subs[i].xpath)) {
+            break;
+        }
+    }
+
+    if (i < shm_mod->rpc_sub_count) {
+        *xpath = rpc_xpath;
+    } else {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "There is no subscriber to \"%s\" %s.", rpc_xpath,
+                (rpc->nodetype == LYS_RPC) ? "RPC" : "action");
+        free(rpc_xpath);
+    }
+    return err_info;
+}
+
+API int
+sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_node **output)
+{
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    struct sr_mod_info_s mod_info;
+    sr_mod_data_dep_t *shm_deps;
+    uint16_t shm_dep_count;
+    char *xpath = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || !input || !(input->schema->nodetype & (LYS_RPC | LYS_ACTION)) || !output, session, err_info);
+
+    *output = NULL;
+    memset(&mod_info, 0, sizeof mod_info);
+
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* check that there is a subscriber */
+    if ((err_info = sr_rpc_find_subscriber(session->conn, input->schema, &xpath))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* collect all required modules for input validation (including checking that the nested action/notification
+     * can be invoked meaning its parent data node exists) */
+    if ((err_info = sr_shmmod_collect_op(session->conn, xpath, input, 0, &shm_deps, &shm_dep_count, &mod_info))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* MODULES READ LOCK */
+    if ((err_info = sr_shmmod_multilock(&mod_info, 0, 0))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* load all input dependency modules data */
+    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, &cb_err_info)) || cb_err_info) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* validate the operation */
+    if ((err_info = sr_modinfo_op_validate(&mod_info, input, shm_deps, shm_dep_count, 0))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* publish RPC in an event for a subscriber and wait for a reply */
+    if ((err_info = sr_shmsub_rpc_notify(xpath, input, output, &cb_err_info)) || cb_err_info) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* MODULES UNLOCK */
+    sr_shmmod_multiunlock(&mod_info, 0);
+
+    /* collect all required modules for output validation */
+    sr_modinfo_free(&mod_info);
+    memset(&mod_info, 0, sizeof mod_info);
+    if ((err_info = sr_shmmod_collect_op(session->conn, xpath, *output, 1, &shm_deps, &shm_dep_count, &mod_info))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* MODULES READ LOCK */
+    if ((err_info = sr_shmmod_multilock(&mod_info, 0, 0))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* load all output dependency modules data */
+    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, &cb_err_info)) || cb_err_info) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* validate the operation */
+    if ((err_info = sr_modinfo_op_validate(&mod_info, *output, shm_deps, shm_dep_count, 1))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* success */
+
+cleanup_mods_unlock:
+    /* MODULES UNLOCK */
+    sr_shmmod_multiunlock(&mod_info, 0);
+
+cleanup_shm_unlock:
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(session->conn);
+
+    free(xpath);
+    sr_modinfo_free(&mod_info);
+    if (cb_err_info) {
+        /* return callback error if some was generated */
+        sr_errinfo_merge(&err_info, cb_err_info);
+        err_info->err_code = SR_ERR_CALLBACK_FAILED;
+    }
+    if (err_info) {
+        /* free any received output in case of an error */
+        lyd_free_withsiblings(*output);
+        *output = NULL;
+    }
+    return sr_api_ret(session, err_info);
 }
 
 API void

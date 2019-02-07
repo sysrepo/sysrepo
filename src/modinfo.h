@@ -46,7 +46,7 @@ struct sr_mod_info_s {
         struct lyd_node *mod_data;
         uint32_t event_id;
 
-        sr_shm_t conf_sub;
+        sr_shm_t shm_sub_cache;
     } *mods;
     uint32_t mod_count;
 };
@@ -56,6 +56,9 @@ sr_error_info_t *sr_modinfo_edit_diff(const struct lyd_node *edit, struct sr_mod
 sr_error_info_t *sr_modinfo_diff(struct sr_mod_info_s *src_mod_info, struct sr_mod_info_s *mod_info);
 
 sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff);
+
+sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_mod_data_dep_t *shm_deps,
+        uint16_t shm_dep_count, int output);
 
 sr_error_info_t *sr_modinfo_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_error_info_t **cb_error_info);
 

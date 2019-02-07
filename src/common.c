@@ -334,19 +334,115 @@ sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *su
 }
 
 sr_error_info_t *
+sr_sub_rpc_add(const char *mod_name, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb,
+        void *private_data, sr_subscription_ctx_t *subs)
+{
+    sr_error_info_t *err_info = NULL;
+    struct modsub_rpc_s *rpc_sub = NULL;
+    void *mem;
+
+    assert(mod_name && xpath && (rpc_cb || rpc_tree_cb) && (!rpc_cb || !rpc_tree_cb));
+
+    /* SUBS LOCK */
+    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+        return err_info;
+    }
+
+    /* add another subscription */
+    mem = realloc(subs->rpc_subs, (subs->rpc_sub_count + 1) * sizeof *subs->rpc_subs);
+    SR_CHECK_MEM_GOTO(!mem, err_info, error_unlock);
+    subs->rpc_subs = mem;
+    rpc_sub = &subs->rpc_subs[subs->rpc_sub_count];
+    memset(rpc_sub, 0, sizeof *rpc_sub);
+    rpc_sub->sub_shm.fd = -1;
+
+    /* set attributes */
+    rpc_sub->xpath = strdup(xpath);
+    SR_CHECK_MEM_GOTO(!rpc_sub->xpath, err_info, error_unlock);
+    rpc_sub->cb = rpc_cb;
+    rpc_sub->tree_cb = rpc_tree_cb;
+    rpc_sub->private_data = private_data;
+
+    /* create specific SHM and map it */
+    if ((err_info = sr_shmsub_open_map(mod_name, "rpc", sr_str_hash(xpath), &rpc_sub->sub_shm, sizeof(sr_sub_shm_t)))) {
+        free(rpc_sub->xpath);
+        goto error_unlock;
+    }
+
+    ++subs->rpc_sub_count;
+
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
+    return NULL;
+
+error_unlock:
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
+
+    return err_info;
+}
+
+void
+sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    struct modsub_rpc_s *rpc_sub;
+
+    /* SUBS LOCK */
+    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    for (i = 0; i < subs->rpc_sub_count; ++i) {
+        rpc_sub = &subs->rpc_subs[i];
+
+        if (strcmp(xpath, rpc_sub->xpath)) {
+            continue;
+        }
+
+        /* found our subscription, replace it with the last */
+        free(rpc_sub->xpath);
+        sr_shm_destroy(&rpc_sub->sub_shm);
+        if (i < subs->rpc_sub_count - 1) {
+            memcpy(&rpc_sub, &subs->rpc_subs[subs->rpc_sub_count - 1], sizeof *rpc_sub);
+        }
+        --subs->rpc_sub_count;
+
+        if (!subs->rpc_sub_count) {
+            /* no other RPC/action subscriptions */
+            free(subs->rpc_subs);
+            subs->rpc_subs = NULL;
+        }
+
+        /* SUBS UNLOCK */
+        sr_unlock(&subs->subs_lock);
+        return;
+    }
+
+    /* unreachable */
+    assert(0);
+
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
+    return;
+}
+
+sr_error_info_t *
 sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
 {
+    sr_error_info_t *err_info = NULL;
+    char *mod_name;
     uint32_t i, j;
     struct modsub_conf_s *conf_subs;
     struct modsub_dp_s *dp_sub;
-    sr_error_info_t *err_info = NULL;
 
     /* configuration subscriptions */
     for (i = 0; i < subs->conf_sub_count; ++i) {
         conf_subs = &subs->conf_subs[i];
-
-        /* remove the subscriptions from the main SHM */
         for (j = 0; j < conf_subs->sub_count; ++j) {
+            /* remove the subscriptions from the main SHM */
             if ((err_info = sr_shmmod_conf_subscription(conn, conf_subs->module_name, conf_subs->subs[j].xpath, conf_subs->ds,
                         conf_subs->subs[j].priority, conf_subs->subs[j].opts, 0))) {
                 return err_info;
@@ -369,9 +465,8 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
     /* data provider subscriptions */
     for (i = 0; i < subs->dp_sub_count; ++i) {
         dp_sub = &subs->dp_subs[i];
-
-        /* remove the subscriptions from the main SHM */
         for (j = 0; j < dp_sub->sub_count; ++j) {
+            /* remove the subscriptions from the main SHM */
             if ((err_info = sr_shmmod_dp_subscription(conn, dp_sub->module_name, dp_sub->subs[j].xpath, SR_DP_SUB_NONE, 0))) {
                 return err_info;
             }
@@ -388,6 +483,25 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
         free(dp_sub->subs);
     }
     free(subs->dp_subs);
+
+    /* RPC/action subscriptions */
+    for (i = 0; i < subs->rpc_sub_count; ++i) {
+        /* remove the subscriptions from the main SHM */
+        mod_name = sr_get_first_ns(subs->rpc_subs[i].xpath);
+        SR_CHECK_INT_RET(!mod_name, err_info);
+        err_info = sr_shmmod_rpc_subscription(conn, mod_name, subs->rpc_subs[i].xpath, 0);
+        free(mod_name);
+        if (err_info) {
+            return err_info;
+        }
+
+        /* free xpath */
+        free(subs->rpc_subs[i].xpath);
+
+        /* remove specific SHM segment */
+        sr_shm_destroy(&subs->rpc_subs[i].sub_shm);
+    }
+    free(subs->rpc_subs);
 
     return NULL;
 }
@@ -586,19 +700,6 @@ cleanup:
     return err_info;
 }
 
-const char *
-sr_get_repo_path(void)
-{
-    char *value;
-
-    value = getenv(SR_REPO_PATH_ENV);
-    if (value) {
-        return value;
-    }
-
-    return SR_REPO_PATH;
-}
-
 sr_error_info_t *
 sr_mkpath(char *file_path, mode_t mode, uint32_t start_idx)
 {
@@ -627,61 +728,6 @@ sr_mkpath(char *file_path, mode_t mode, uint32_t start_idx)
     }
 
     return NULL;
-}
-
-char *
-sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *value, char *buf)
-{
-    struct lys_node_leaf *sleaf;
-
-    if (!value) {
-        return NULL;
-    }
-
-    switch (value->type) {
-    case SR_STRING_T:
-    case SR_BINARY_T:
-    case SR_BITS_T:
-    case SR_ENUM_T:
-    case SR_IDENTITYREF_T:
-    case SR_INSTANCEID_T:
-    case SR_ANYDATA_T:
-    case SR_ANYXML_T:
-        return (value->data.string_val);
-    case SR_LEAF_EMPTY_T:
-        return NULL;
-    case SR_BOOL_T:
-        return value->data.bool_val ? "true" : "false";
-    case SR_DECIMAL64_T:
-        /* get fraction-digits */
-        sleaf = (struct lys_node_leaf *)ly_ctx_get_node(ctx, NULL, value->xpath, 0);
-        if (!sleaf) {
-            return NULL;
-        }
-        while (sleaf->type.base == LY_TYPE_LEAFREF) {
-            sleaf = sleaf->type.info.lref.target;
-        }
-        sprintf(buf, "%.*f", sleaf->type.info.dec64.dig, value->data.decimal64_val);
-        return buf;
-    case SR_UINT8_T:
-    case SR_UINT16_T:
-    case SR_UINT32_T:
-        sprintf(buf, "%u", value->data.uint32_val);
-        return buf;
-    case SR_UINT64_T:
-        sprintf(buf, "%"PRIu64, value->data.uint64_val);
-        return buf;
-    case SR_INT8_T:
-    case SR_INT16_T:
-    case SR_INT32_T:
-        sprintf(buf, "%d", value->data.int32_val);
-        return buf;
-    case SR_INT64_T:
-        sprintf(buf, "%"PRId64, value->data.int64_val);
-        return buf;
-    default:
-        return NULL;
-    }
 }
 
 char *
@@ -952,6 +998,83 @@ error:
     return err_info;
 }
 
+char *
+sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, char *buf)
+{
+    struct lys_node_leaf *sleaf;
+
+    if (!sr_val) {
+        return NULL;
+    }
+
+    switch (sr_val->type) {
+    case SR_STRING_T:
+    case SR_BINARY_T:
+    case SR_BITS_T:
+    case SR_ENUM_T:
+    case SR_IDENTITYREF_T:
+    case SR_INSTANCEID_T:
+    case SR_ANYDATA_T:
+    case SR_ANYXML_T:
+        return (sr_val->data.string_val);
+    case SR_LEAF_EMPTY_T:
+        return NULL;
+    case SR_BOOL_T:
+        return sr_val->data.bool_val ? "true" : "false";
+    case SR_DECIMAL64_T:
+        /* get fraction-digits */
+        sleaf = (struct lys_node_leaf *)ly_ctx_get_node(ctx, NULL, sr_val->xpath, 0);
+        if (!sleaf) {
+            return NULL;
+        }
+        while (sleaf->type.base == LY_TYPE_LEAFREF) {
+            sleaf = sleaf->type.info.lref.target;
+        }
+        sprintf(buf, "%.*f", sleaf->type.info.dec64.dig, sr_val->data.decimal64_val);
+        return buf;
+    case SR_UINT8_T:
+    case SR_UINT16_T:
+    case SR_UINT32_T:
+        sprintf(buf, "%u", sr_val->data.uint32_val);
+        return buf;
+    case SR_UINT64_T:
+        sprintf(buf, "%"PRIu64, sr_val->data.uint64_val);
+        return buf;
+    case SR_INT8_T:
+    case SR_INT16_T:
+    case SR_INT32_T:
+        sprintf(buf, "%d", sr_val->data.int32_val);
+        return buf;
+    case SR_INT64_T:
+        sprintf(buf, "%"PRId64, sr_val->data.int64_val);
+        return buf;
+    default:
+        return NULL;
+    }
+}
+
+sr_error_info_t *
+sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char *val_str, int dflt, int output, struct lyd_node **root)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *node;
+    int opts;
+
+    opts = LYD_PATH_OPT_UPDATE | (dflt ? LYD_PATH_OPT_DFLT : 0) | (output ? LYD_PATH_OPT_OUTPUT : 0);
+
+    ly_errno = 0;
+    node = lyd_new_path(*root, ctx, xpath, (void *)val_str, 0, opts);
+    if (!node && ly_errno) {
+        sr_errinfo_new_ly(&err_info, ctx);
+        return err_info;
+    }
+
+    if (!*root) {
+        *root = node;
+    }
+    return NULL;
+}
+
 void
 sr_ly_split(struct lyd_node *sibling)
 {
@@ -1005,6 +1128,11 @@ sr_ly_data_dup_xpath_select(const struct lyd_node *data, char **xpaths, uint16_t
     size_t i;
 
     *new_data = NULL;
+
+    if (!xp_count) {
+        /* no XPaths */
+        return NULL;
+    }
 
     /* get only the selected subtrees in a set */
     for (i = 0; i < xp_count; ++i) {
@@ -1270,7 +1398,7 @@ sr_xpath_len_no_predicates(const char *xpath)
 }
 
 sr_error_info_t *
-sr_ly_dp_last_parent(struct lyd_node **parent)
+sr_ly_find_last_parent(struct lyd_node **parent, int nodetype)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -1279,6 +1407,11 @@ sr_ly_dp_last_parent(struct lyd_node **parent)
     }
 
     while (*parent) {
+        if ((*parent)->schema->nodetype & nodetype) {
+            /* we found the desired node */
+            return NULL;
+        }
+
         switch ((*parent)->schema->nodetype) {
         case LYS_CONTAINER:
         case LYS_LIST:

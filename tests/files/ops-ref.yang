@@ -1,0 +1,12 @@
+module ops-ref {
+    namespace "urn:ops-ref";
+    prefix or;
+
+    leaf l1 {
+        type string;
+    }
+
+    leaf l2 {
+        type string;
+    }
+}

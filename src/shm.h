@@ -38,11 +38,20 @@ typedef enum sr_mod_dep_type_e {
     SR_DEP_INSTID,
 } sr_mod_dep_type_t;
 
-typedef struct sr_mod_dep_s {
+/* typedef sr_mod_data_dep_t */
+struct sr_mod_data_dep_s {
     sr_mod_dep_type_t type;
     off_t module;
     off_t xpath;
-} sr_mod_dep_t;
+};
+
+typedef struct sr_mod_op_dep_s {
+    off_t xpath;
+    off_t in_deps;
+    uint16_t in_dep_count;
+    off_t out_deps;
+    uint16_t out_dep_count;
+} sr_mod_op_dep_t;
 
 typedef struct sr_mod_conf_sub_s {
     off_t xpath;
@@ -62,6 +71,10 @@ typedef struct sr_mod_dp_sub_s {
     sr_mod_dp_sub_type_t sub_type;
 } sr_mod_dp_sub_t;
 
+typedef struct sr_mod_rpc_sub_s {
+    off_t xpath;
+} sr_mod_rpc_sub_t;
+
 struct sr_mod_s {
     off_t name;
     char rev[11];
@@ -69,8 +82,10 @@ struct sr_mod_s {
     int has_data;
     off_t features;
     uint16_t feat_count;
-    off_t deps;
-    uint16_t dep_count;
+    off_t data_deps;
+    uint16_t data_dep_count;
+    off_t op_deps;
+    uint16_t op_dep_count;
 
     /* subscriptions */
     struct {
@@ -81,6 +96,9 @@ struct sr_mod_s {
 
     off_t dp_subs;
     uint16_t dp_sub_count;
+
+    off_t rpc_subs;
+    uint16_t rpc_sub_count;
 
     /* next structure offset */
     off_t next;
@@ -125,11 +143,24 @@ typedef struct sr_conf_sub_shm_s {
  *
  * FOR SUBSCRIBER
  * followed by:
- * event SR_EV_DP - char *parent_lyb - existing data tree parent
+ * event SR_EV_CHANGE - char *parent_lyb - existing data tree parent
  *
  * FOR ORIGINATOR
  * followed by:
- * event SR_EV_DP - char *data_lyb - parent with state data connected
+ * event SR_EV_NONE - char *data_lyb - parent with state data connected
+ * or if err_code is set - char *error_message; char *error_xpath
+ */
+
+/*
+ * RPC subscription SHM (generic)
+ *
+ * FOR SUBSCRIBER
+ * followed by:
+ * event SR_EV_CHANGE - char *input_lyb - RPC/action with input
+ *
+ * FOR ORIGINATOR
+ * followed by:
+ * event SR_EV_NONE - char *data_lyb - RPC/action with output
  * or if err_code is set - char *error_message; char *error_xpath
  */
 
@@ -161,11 +192,11 @@ sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr);
 
 void sr_shmmain_unlock(sr_conn_ctx_t *conn);
 
-sr_error_info_t *sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod, int *has_data);
+sr_error_info_t *sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod);
 
-sr_error_info_t *sr_shmmain_unsched_del_module(sr_conn_ctx_t *conn, const char *mod_name);
+sr_error_info_t *sr_shmmain_unsched_del_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod);
 
-sr_error_info_t *sr_shmmain_deferred_del_module_with_imps(sr_conn_ctx_t *conn, const char *mod_name);
+sr_error_info_t *sr_shmmain_deferred_del_module(sr_conn_ctx_t *conn, const char *mod_name);
 
 sr_error_info_t *sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, const char *feat_name,
         int enable);
@@ -186,6 +217,9 @@ sr_error_info_t *sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath,
 sr_error_info_t *sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds,
         int with_deps, struct sr_mod_info_s *mod_info);
 
+sr_error_info_t *sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *xpath, const struct lyd_node *op, int output,
+        sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count, struct sr_mod_info_s *mod_info);
+
 sr_error_info_t *sr_shmmod_multilock(struct sr_mod_info_s *mod_info, int wr, int upgradable);
 
 sr_error_info_t *sr_shmmod_multirelock(struct sr_mod_info_s *mod_info, int upgrade);
@@ -197,6 +231,8 @@ sr_error_info_t *sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mo
 
 sr_error_info_t *sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
         sr_mod_dp_sub_type_t sub_type, int add);
+
+sr_error_info_t *sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, int add);
 
 /*
  * shm_sub.c
@@ -217,6 +253,9 @@ sr_error_info_t *sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_in
 
 sr_error_info_t *sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent,
         struct lyd_node **data, sr_error_info_t **cb_err_info);
+
+sr_error_info_t *sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, struct lyd_node **output,
+        sr_error_info_t **cb_err_info);
 
 void *sr_shmsub_listen_thread(void *arg);
 
