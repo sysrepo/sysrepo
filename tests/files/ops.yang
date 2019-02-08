@@ -72,7 +72,7 @@ module ops {
                     output {
                         leaf l8 {
                             type instance-identifier;
-                            default "/cont/list1/k";
+                            default "/o:cont/o:list1[o:k='key']/o:k";
                         }
 
                         leaf l9 {
@@ -131,7 +131,7 @@ module ops {
 
             leaf l15 {
                 type instance-identifier;
-                default "/cont/list1/cont2";
+                default "/o:cont/o:list1[o:k='key']/o:cont2";
             }
         }
     }

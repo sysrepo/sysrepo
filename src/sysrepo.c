@@ -2429,14 +2429,39 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
+    struct lyd_node *input_op;
     sr_mod_data_dep_t *shm_deps;
     uint16_t shm_dep_count;
     char *xpath = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !input || !(input->schema->nodetype & (LYS_RPC | LYS_ACTION)) || !output, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
 
     *output = NULL;
     memset(&mod_info, 0, sizeof mod_info);
+
+    /* check input data tree */
+    switch (input->schema->nodetype) {
+    case LYS_ACTION:
+        for (input_op = input; input->parent; input = input->parent);
+        break;
+    case LYS_RPC:
+        input_op = input;
+        break;
+    case LYS_CONTAINER:
+    case LYS_LIST:
+        /* find the action */
+        input_op = input;
+        if ((err_info = sr_ly_find_last_parent(&input_op, LYS_ACTION))) {
+            return sr_api_ret(session, err_info);
+        }
+        if (input_op->schema->nodetype == LYS_ACTION) {
+            break;
+        }
+        /* fallthrough */
+    default:
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Provided input is not a valid RPC or action invocation.");
+        return sr_api_ret(session, err_info);
+    }
 
     /* SHM READ LOCK */
     if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
@@ -2444,13 +2469,13 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* check that there is a subscriber */
-    if ((err_info = sr_rpc_find_subscriber(session->conn, input->schema, &xpath))) {
+    if ((err_info = sr_rpc_find_subscriber(session->conn, input_op->schema, &xpath))) {
         goto cleanup_shm_unlock;
     }
 
     /* collect all required modules for input validation (including checking that the nested action/notification
      * can be invoked meaning its parent data node exists) */
-    if ((err_info = sr_shmmod_collect_op(session->conn, xpath, input, 0, &shm_deps, &shm_dep_count, &mod_info))) {
+    if ((err_info = sr_shmmod_collect_op(session->conn, xpath, input_op, 0, &shm_deps, &shm_dep_count, &mod_info))) {
         goto cleanup_shm_unlock;
     }
 
@@ -2465,7 +2490,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* validate the operation */
-    if ((err_info = sr_modinfo_op_validate(&mod_info, input, shm_deps, shm_dep_count, 0))) {
+    if ((err_info = sr_modinfo_op_validate(&mod_info, input_op, shm_deps, shm_dep_count, 0))) {
         goto cleanup_mods_unlock;
     }
 
@@ -2476,6 +2501,11 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
 
     /* MODULES UNLOCK */
     sr_shmmod_multiunlock(&mod_info, 0);
+
+    /* find operation */
+    if ((err_info = sr_ly_find_last_parent(output, LYS_RPC | LYS_ACTION))) {
+        goto cleanup_shm_unlock;
+    }
 
     /* collect all required modules for output validation */
     sr_modinfo_free(&mod_info);

@@ -465,7 +465,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_m
         uint16_t shm_dep_count, int output)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *first_root = NULL, *mod_data, *iter;
+    struct lyd_node *first_root = NULL, *mod_data, *iter, *top_op;
     struct sr_mod_info_mod_s *mod;
     struct ly_set *dep_set = NULL;
     uint32_t i, j;
@@ -556,7 +556,8 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_m
     /* validate */
     flags = ((op->schema->nodetype & (LYS_RPC | LYS_ACTION)) ? (output ? LYD_OPT_RPCREPLY : LYD_OPT_RPC) : LYD_OPT_NOTIF)
             | LYD_OPT_WHENAUTODEL;
-    if (lyd_validate(&op, flags, first_root)) {
+    for (top_op = op; top_op->parent; top_op = top_op->parent);
+    if (lyd_validate(&top_op, flags, first_root)) {
         sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "%s %svalidation failed.",
                 (op->schema->nodetype == LYS_NOTIF) ? "Notification" : ((op->schema->nodetype == LYS_RPC) ? "RPC" : "Action"),

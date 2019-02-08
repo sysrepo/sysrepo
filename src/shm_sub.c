@@ -917,23 +917,21 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input_op, struct lyd_node **output,
+sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, struct lyd_node **output,
         sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_module *ly_mod;
-    struct lyd_node *input;
     char *input_lyb = NULL;
     uint32_t input_lyb_len, event_id;
     sr_sub_shm_t *sub_shm;
     sr_shm_t shm;
 
+    assert(!input->parent);
+
     shm.fd = -1;
     shm.size = 0;
     shm.addr = NULL;
-
-    /* find top-level node */
-    for (input = (struct lyd_node *)input_op; input->parent; input = input->parent);
     ly_mod = lyd_node_module(input);
 
     /* print the input into LYB */
@@ -1000,7 +998,7 @@ sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input_op, struct 
     /* parse returned reply */
     ly_errno = 0;
     *output = lyd_parse_mem(ly_mod->ctx, shm.addr + sizeof *sub_shm, LYD_LYB,
-            LYD_OPT_RPCREPLY | LYD_OPT_NOEXTDEPS | LYD_OPT_STRICT, input_op, NULL);
+            LYD_OPT_RPCREPLY | LYD_OPT_NOEXTDEPS | LYD_OPT_STRICT, input, NULL);
     if (ly_errno) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse returned \"RPC\" data.");

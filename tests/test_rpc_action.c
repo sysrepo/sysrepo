@@ -96,6 +96,19 @@ teardown(void **state)
     return ret;
 }
 
+static int
+clear_ops(void **state)
+{
+    struct state *st = (struct state *)*state;
+
+    sr_delete_item(st->sess, "/ops-ref:l1", 0);
+    sr_delete_item(st->sess, "/ops-ref:l2", 0);
+    sr_delete_item(st->sess, "/ops:cont", 0);
+    sr_apply_changes(st->sess);
+
+    return 0;
+}
+
 /* TEST 1 */
 static int
 rpc_fail_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, struct lyd_node *output,
@@ -262,11 +275,11 @@ test_rpc(void **state)
     int ret;
 
     /* subscribe */
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_rpc_cb, st, 0, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_rpc_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, st, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, st, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation */
@@ -363,13 +376,137 @@ test_rpc(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST 3 */
+static int
+rpc_action_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, struct lyd_node *output,
+        void *private_data)
+{
+    struct lyd_node *node;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    (void)session;
+    (void)private_data;
+
+    if (!strcmp(xpath, "/ops:cont/list1/cont2/act1")) {
+        /* check input data */
+        ret = lyd_print_mem(&str1, input, LYD_XML, LYP_WITHSIBLINGS);
+        assert_int_equal(ret, 0);
+        str2 = "<act1 xmlns=\"urn:ops\"><l6>val</l6><l7>val</l7></act1>";
+        assert_string_equal(str1, str2);
+        free(str1);
+
+        /* create output data */
+        node = lyd_new_path(output, NULL, "l9", "l12-val", 0, LYD_PATH_OPT_OUTPUT);
+        assert_non_null(node);
+    } else if (!strcmp(xpath, "/ops:cont/list1/act2")) {
+        /* check input data */
+        ret = lyd_print_mem(&str1, input, LYD_XML, LYP_WITHSIBLINGS);
+        assert_int_equal(ret, 0);
+        str2 = "<act2 xmlns=\"urn:ops\"><l10>e3</l10></act2>";
+        assert_string_equal(str1, str2);
+        free(str1);
+
+        /* create output data */
+        node = lyd_new_path(output, NULL, "l11", "-65536", 0, LYD_PATH_OPT_OUTPUT);
+        assert_non_null(node);
+    } else {
+        fail();
+    }
+
+    return SR_ERR_OK;
+}
+
+static void
+test_action(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    struct lyd_node *node, *input_op, *output_op;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* subscribe */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_action_cb, NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/act2", rpc_action_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some data needed for validation and executing the actions */
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops:cont/l12", "l12-val", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to the data so they are actually present in operational */
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /*
+     * create first action
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='key']/cont2/act1", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l6", "val", 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(input_op, NULL, "l7", "val", 0, 0);
+    assert_non_null(node);
+
+    /* send first action */
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    for (; input_op->parent; input_op = input_op->parent);
+    lyd_free_withsiblings(input_op);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check output data tree */
+    assert_non_null(output_op);
+    ret = lyd_print_mem(&str1, output_op, LYD_XML, LYP_WITHSIBLINGS);
+    for (; output_op->parent; output_op = output_op->parent);
+    lyd_free_withsiblings(output_op);
+    assert_int_equal(ret, 0);
+    str2 = "<act1 xmlns=\"urn:ops\"><l9>l12-val</l9></act1>";
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /*
+     * create second action
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='key']/act2", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l10", "e3", 0, 0);
+    assert_non_null(node);
+
+    /* send second action */
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    for (; input_op->parent; input_op = input_op->parent);
+    lyd_free_withsiblings(input_op);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check output data tree */
+    assert_non_null(output_op);
+    ret = lyd_print_mem(&str1, output_op, LYD_XML, LYP_WITHSIBLINGS);
+    for (; output_op->parent; output_op = output_op->parent);
+    lyd_free_withsiblings(output_op);
+    assert_int_equal(ret, 0);
+    str2 = "<act2 xmlns=\"urn:ops\"><l11>-65536</l11></act2>";
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    sr_unsubscribe(subscr);
+}
+
 /* MAIN */
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_fail),
-        cmocka_unit_test(test_rpc),
+        cmocka_unit_test_teardown(test_rpc, clear_ops),
+        cmocka_unit_test_teardown(test_action, clear_ops),
     };
 
     sr_log_stderr(SR_LL_INF);
