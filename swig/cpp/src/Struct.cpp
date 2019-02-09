@@ -339,6 +339,11 @@ void Val::set(const char *xpath, uint64_t uint64_val) {
     _val->data.uint64_val = uint64_val;
     _val->type = SR_UINT64_T;
 }
+char *Val::xpath() {
+    if (_val == nullptr)
+        throw_exception(SR_ERR_OPERATION_FAILED);
+    return _val->xpath;
+}
 void Val::xpath_set(const char *xpath) {
     if ((_val == nullptr) || ((xpath == nullptr) && (_val->xpath != nullptr)))
         throw_exception(SR_ERR_OPERATION_FAILED);
@@ -348,6 +353,28 @@ void Val::xpath_set(const char *xpath) {
         if (ret != SR_ERR_OK)
             throw_exception(ret);
     }
+}
+sr_type_t Val::type() {
+    if (_val == nullptr)
+        throw_exception(SR_ERR_OPERATION_FAILED);
+    return _val->type;
+}
+bool Val::dflt() {
+    if (_val == nullptr)
+        throw_exception(SR_ERR_OPERATION_FAILED);
+    return _val->dflt;
+}
+void Val::dflt_set(bool data) {
+    if (_val == nullptr)
+        throw_exception(SR_ERR_OPERATION_FAILED);
+    _val->dflt = data;
+}
+S_Data Val::data() {
+    S_Data data(new Data(_val->data, _val->type, _deleter));
+    return data;
+}
+bool Val::empty() {
+    return !_val;
 }
 std::string Val::to_string() {
     char *mem = nullptr;
@@ -396,6 +423,8 @@ Vals::Vals(const sr_val_t *vals, const size_t cnt, S_Deleter deleter) {
     _deleter = deleter;
 }
 Vals::Vals(sr_val_t **vals, size_t *cnt, S_Deleter deleter) {
+    if (!vals || !cnt || (!*vals && *cnt))
+        throw_exception(SR_ERR_INVAL_ARG);
     _vals = *vals;
     _cnt = *cnt;
     _deleter = deleter;
@@ -443,6 +472,8 @@ sr_val_t* Vals::reallocate(size_t n) {
 
 // Vals_Holder
 Vals_Holder::Vals_Holder(sr_val_t **vals, size_t *cnt) {
+    if (!vals || !cnt || (!*vals && *cnt))
+        throw_exception(SR_ERR_INVAL_ARG);
     p_vals = vals;
     p_cnt = cnt;
     _allocate = true;
