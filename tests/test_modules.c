@@ -44,15 +44,10 @@ setup_f(void **state)
     *state = st;
 
     if (sr_connect("test1", 0, &st->conn) != SR_ERR_OK) {
-        goto error;
+        return 1;
     }
 
     return 0;
-
-error:
-    sr_disconnect(st->conn);
-    free(st);
-    return 1;
 }
 
 static int

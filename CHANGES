@@ -21,6 +21,8 @@ removed functions:
 - sr_session_refresh (not needed, performed automatically)
 - sr_check_exec_permission (NACM no longer included)
 - whole action API (use RPC API)
+- sr_session_check (does not make sense anymore)
+- whole get-schema API (use context from sr_get_context)
 
 added functions:
 - sr_get_context

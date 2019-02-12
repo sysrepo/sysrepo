@@ -436,7 +436,7 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
 static sr_error_info_t *
 sr_shmmain_shm_add(sr_conn_ctx_t *conn, size_t new_shm_size, struct lyd_node *from_mod)
 {
-    off_t shm_end;
+    off_t shm_end, last_mod_off;
     sr_mod_t *shm_mod = NULL;
     sr_error_info_t *err_info = NULL;
 
@@ -451,12 +451,16 @@ sr_shmmain_shm_add(sr_conn_ctx_t *conn, size_t new_shm_size, struct lyd_node *fr
         }
     }
 
+    /* remember module offset because the memory can be moved */
+    last_mod_off = ((char *)shm_mod) - conn->main_shm.addr;
+
     /* remap SHM */
     if ((err_info = sr_shm_remap(&conn->main_shm, new_shm_size))) {
         return err_info;
     }
 
     /* add all newly implemented modules into SHM */
+    shm_mod = (sr_mod_t *)(conn->main_shm.addr + last_mod_off);
     if ((err_info = sr_shmmain_shm_add_modules(conn->main_shm.addr, from_mod, shm_mod, &shm_end))) {
         return err_info;
     }
@@ -1777,6 +1781,8 @@ sr_shmmain_deferred_del_module(sr_conn_ctx_t *conn, const char *mod_name)
     if ((err_info = sr_shmmain_ly_int_data_print(sr_mods))) {
         goto cleanup;
     }
+
+    SR_LOG_INF("Module \"%s\" scheduled for deletion.", mod_name);
 
 cleanup:
     free(path);

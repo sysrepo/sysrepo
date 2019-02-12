@@ -1719,7 +1719,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
 error_unsubscribe:
     if (opts & SR_SUBSCR_CTX_REUSE) {
-        sr_sub_conf_del(module_name, xpath, session->ds, priority, sub_opts, *subscription);
+        sr_sub_conf_del(module_name, xpath, session->ds, callback, private_data, priority, sub_opts, *subscription);
     } else {
         sr_unsubscribe(*subscription);
     }
@@ -2473,7 +2473,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
         goto cleanup_shm_unlock;
     }
 
-    /* collect all required modules for input validation (including checking that the nested action/notification
+    /* collect all required modules for input validation (including checking that the nested action
      * can be invoked meaning its parent data node exists) */
     if ((err_info = sr_shmmod_collect_op(session->conn, xpath, input_op, 0, &shm_deps, &shm_dep_count, &mod_info))) {
         goto cleanup_shm_unlock;
@@ -2550,6 +2550,296 @@ cleanup_shm_unlock:
         /* free any received output in case of an error */
         lyd_free_withsiblings(*output);
         *output = NULL;
+    }
+    return sr_api_ret(session, err_info);
+}
+
+static int
+_sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, time_t start_time,
+        time_t stop_time, sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback, void *private_data,
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *set;
+    const struct lys_node *ctx_node;
+    const struct lys_module *ly_mod;
+    uint32_t i;
+    sr_conn_ctx_t *conn;
+
+    SR_CHECK_ARG_APIRET(!session || !module_name || (start_time && (start_time < time(NULL)))
+            || (stop_time && (!start_time || (stop_time < start_time))) || (!callback && !tree_callback)
+            || !subscription, session, err_info);
+
+    conn = session->conn;
+
+    /* TODO replay, finish if stop_time <= cur_time */
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* is the module name valid? */
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        sr_shmmain_unlock(conn);
+        return sr_api_ret(session, err_info);
+    }
+
+    /* is the xpath valid, if any? */
+    if (xpath) {
+        ctx_node = lys_getnext(NULL, NULL, ly_mod, 0);
+        if (!ctx_node) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" does not define any notifications.", module_name);
+            sr_shmmain_unlock(conn);
+            return sr_api_ret(session, err_info);
+        }
+
+        set = lys_xpath_atomize(ctx_node, LYXP_NODE_ELEM, xpath, 0);
+    } else {
+        set = lys_find_path(ly_mod, NULL, "//.");
+    }
+    if (!set) {
+        SR_ERRINFO_INT(&err_info);
+        sr_shmmain_unlock(conn);
+        return sr_api_ret(session, err_info);
+    }
+
+    /* there must be some notifications selected */
+    for (i = 0; i < set->number; ++i) {
+        if (set->set.s[i]->nodetype == LYS_NOTIF) {
+            break;
+        }
+    }
+    if (i == set->number) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "XPath \"%s\" does not select any notifications.", xpath);
+        sr_shmmain_unlock(conn);
+        ly_set_free(set);
+        return sr_api_ret(session, err_info);
+    }
+    ly_set_free(set);
+
+    /* add notification subscription into main SHM */
+    if ((err_info = sr_shmmod_notif_subscription(conn, module_name, 1))) {
+        sr_shmmain_unlock(conn);
+        return sr_api_ret(session, err_info);
+    }
+
+    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
+        /* create a new subscription */
+        if ((err_info = sr_subs_new(conn, subscription))) {
+            sr_shmmod_notif_subscription(conn, module_name, 0);
+            sr_shmmain_unlock(conn);
+            return sr_api_ret(session, err_info);
+        }
+    }
+
+    /* add subscription into structure and create separate specific SHM segment */
+    if ((err_info = sr_sub_notif_add(module_name, xpath, stop_time, callback, tree_callback, private_data, *subscription))) {
+        sr_shmmain_unlock(conn);
+        goto error_unsubscribe;
+    }
+
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(conn);
+
+    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
+        /* PTR LOCK */
+        if ((err_info = sr_lock(&conn->ptr_lock, __func__))) {
+            goto error_unsubscribe;
+        }
+
+        /* add the subscription into conn */
+        if ((err_info = sr_conn_ptr_add((void ***)&conn->subscriptions, &conn->subscription_count, *subscription))) {
+            sr_unlock(&conn->ptr_lock);
+            goto error_unsubscribe;
+        }
+
+        /* PTR UNLOCK */
+        sr_unlock(&conn->ptr_lock);
+    }
+
+    return sr_api_ret(session, NULL);
+
+error_unsubscribe:
+    if (opts & SR_SUBSCR_CTX_REUSE) {
+        sr_sub_notif_del(module_name, xpath, stop_time, callback, tree_callback, private_data, *subscription);
+    } else {
+        sr_unsubscribe(*subscription);
+    }
+    sr_shmmod_notif_subscription(conn, module_name, 0);
+    return sr_api_ret(session, err_info);
+}
+
+API int
+sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, time_t start_time,
+        time_t stop_time, sr_event_notif_cb callback, void *private_data, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription)
+{
+    return _sr_event_notif_subscribe(session, module_name, xpath, start_time, stop_time, callback, NULL, private_data,
+            opts, subscription);
+}
+
+API int
+sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath, time_t start_time,
+        time_t stop_time, sr_event_notif_tree_cb callback, void *private_data, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription)
+{
+    return _sr_event_notif_subscribe(session, module_name, xpath, start_time, stop_time, NULL, callback, private_data,
+            opts, subscription);
+}
+
+API int
+sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values, const size_t values_cnt,
+        sr_ev_notif_flag_t opts)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *notif_tree = NULL;
+    char *val_str, buf[22];
+    size_t i;
+    int ret;
+
+    SR_CHECK_ARG_APIRET(!session || !xpath, session, err_info);
+
+    /* create the container */
+    if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, xpath, NULL, 0, 0, &notif_tree))) {
+        goto cleanup;
+    }
+
+    /* transform values into a data tree */
+    for (i = 0; i < values_cnt; ++i) {
+        val_str = sr_val_sr2ly_str(session->conn->ly_ctx, &values[i], buf);
+        if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, values[i].xpath, val_str, values[i].dflt, 0, &notif_tree))) {
+            goto cleanup;
+        }
+    }
+
+    /* API function */
+    if ((ret = sr_event_notif_send_tree(session, notif_tree, opts)) != SR_ERR_OK) {
+        lyd_free_withsiblings(notif_tree);
+        return ret;
+    }
+
+    /* success */
+
+cleanup:
+    lyd_free_withsiblings(notif_tree);
+    return sr_api_ret(session, err_info);
+}
+
+static sr_error_info_t *
+sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, uint32_t *notif_sub_count)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+
+    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, mod_name, 0);
+    SR_CHECK_INT_RET(!shm_mod, err_info);
+
+    *notif_sub_count = shm_mod->notif_sub_count;
+    return NULL;
+}
+
+API int
+sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, sr_ev_notif_flag_t opts)
+{
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    struct sr_mod_info_s mod_info;
+    struct lyd_node *notif_op;
+    sr_mod_data_dep_t *shm_deps;
+    time_t notif_ts;
+    uint16_t shm_dep_count;
+    uint32_t notif_sub_count;
+    char *xpath = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || !notif, session, err_info);
+
+    memset(&mod_info, 0, sizeof mod_info);
+
+    /* remember when the notification was generated */
+    notif_ts = time(NULL);
+
+    /* check notif data tree */
+    switch (notif->schema->nodetype) {
+    case LYS_NOTIF:
+        for (notif_op = notif; notif->parent; notif = notif->parent);
+        break;
+    case LYS_CONTAINER:
+    case LYS_LIST:
+        /* find the notification */
+        notif_op = notif;
+        if ((err_info = sr_ly_find_last_parent(&notif_op, LYS_NOTIF))) {
+            return sr_api_ret(session, err_info);
+        }
+        if (notif_op->schema->nodetype == LYS_NOTIF) {
+            break;
+        }
+        /* fallthrough */
+    default:
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Provided tree is not a valid notification invocation.");
+        return sr_api_ret(session, err_info);
+    }
+
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* collect all required modules for validation (including checking that the nested notification
+     * can be invoked meaning its parent data node exists) */
+    xpath = lys_data_path(notif_op->schema);
+    SR_CHECK_MEM_GOTO(!xpath, err_info, cleanup_shm_unlock);
+    if ((err_info = sr_shmmod_collect_op(session->conn, xpath, notif_op, 0, &shm_deps, &shm_dep_count, &mod_info))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* MODULES READ LOCK */
+    if ((err_info = sr_shmmod_multilock(&mod_info, 0, 0))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* load all input dependency modules data */
+    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, &cb_err_info)) || cb_err_info) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* validate the operation */
+    if ((err_info = sr_modinfo_op_validate(&mod_info, notif_op, shm_deps, shm_dep_count, 0))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* check that there is a subscriber */
+    if ((err_info = sr_notif_find_subscriber(session->conn, lyd_node_module(notif)->name, &notif_sub_count))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* check that there is a subscriber */
+    if (notif_sub_count) {
+        /* publish notif in an event, do not wait for subscribers */
+        if ((err_info = sr_shmsub_notif_notify(notif, notif_ts, notif_sub_count))) {
+            goto cleanup_mods_unlock;
+        }
+    } else {
+        SR_LOG_INF("There are no subscribers for \"%s\" notifications.", lyd_node_module(notif)->name);
+    }
+
+    /* success */
+
+cleanup_mods_unlock:
+    /* MODULES UNLOCK */
+    sr_shmmod_multiunlock(&mod_info, 0);
+
+cleanup_shm_unlock:
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(session->conn);
+
+    free(xpath);
+    sr_modinfo_free(&mod_info);
+    if (cb_err_info) {
+        /* return callback error if some was generated */
+        sr_errinfo_merge(&err_info, cb_err_info);
+        err_info->err_code = SR_ERR_CALLBACK_FAILED;
     }
     return sr_api_ret(session, err_info);
 }

@@ -49,34 +49,29 @@ setup(void **state)
     *state = st;
 
     if (sr_connect("test1", 0, &(st->conn)) != SR_ERR_OK) {
-        goto error;
+        return 1;
     }
 
     if (sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
-        goto error;
+        return 1;
     }
     if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
-        goto error;
+        return 1;
     }
     if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
-        goto error;
+        return 1;
     }
     if (sr_install_module(st->conn, TESTS_DIR "/files/when1.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
-        goto error;
+        return 1;
     }
     if (sr_install_module(st->conn, TESTS_DIR "/files/when2.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
-        goto error;
+        return 1;
     }
     if (sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
-        goto error;
+        return 1;
     }
 
     return 0;
-
-error:
-    sr_disconnect(st->conn);
-    free(st);
-    return 1;
 }
 
 static int

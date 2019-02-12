@@ -7,7 +7,7 @@ set(CMAKE_MACOSX_RPATH TRUE)
 get_filename_component(TESTS_DIR "${CMAKE_SOURCE_DIR}/tests" REALPATH)
 
 # lists of all the tests
-set(tests test_modules test_validation test_edit test_operational test_apply_changes test_copy_config test_rpc_action)
+set(tests test_modules test_validation test_edit test_operational test_apply_changes test_copy_config test_rpc_action test_notif)
 
 include_directories(SYSTEM ${CMOCKA_INCLUDE_DIR})
 

@@ -115,11 +115,11 @@ struct sr_subscription_ctx_s {
         char *module_name;
         sr_datastore_t ds;
         struct modsub_confsub_s {
-            sr_module_change_cb cb;
-            void *private_data;
             char *xpath;
             uint32_t priority;
             sr_subscr_options_t opts;
+            sr_module_change_cb cb;
+            void *private_data;
 
             uint32_t event_id;
             sr_notif_event_t event;
@@ -134,9 +134,9 @@ struct sr_subscription_ctx_s {
     struct modsub_dp_s {
         char *module_name;
         struct modsub_dpsub_s {
+            char *xpath;
             sr_dp_get_items_cb cb;
             void *private_data;
-            char *xpath;
 
             uint32_t event_id;
             sr_shm_t sub_shm;
@@ -155,6 +155,22 @@ struct sr_subscription_ctx_s {
         sr_shm_t sub_shm;
     } *rpc_subs;
     uint32_t rpc_sub_count;
+
+    struct modsub_notif_s {
+        char *module_name;
+        struct modsub_notifsub_s {
+            char *xpath;
+            time_t stop_time;
+            sr_event_notif_cb cb;
+            sr_event_notif_tree_cb tree_cb;
+            void *private_data;
+        } *subs;
+        uint32_t sub_count;
+
+        uint32_t event_id;
+        sr_shm_t sub_shm;
+    } *notif_subs;
+    uint32_t notif_sub_count;
 };
 
 struct sr_change_iter_s {
@@ -169,8 +185,8 @@ struct sr_change_iter_s {
 sr_error_info_t *sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb conf_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs);
 
-void sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, uint32_t priority,
-        sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs);
+void sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb conf_cb,
+        void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs);
 
 sr_error_info_t *sr_sub_dp_add(const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb, void *private_data,
         sr_subscription_ctx_t *subs);
@@ -181,6 +197,12 @@ sr_error_info_t *sr_sub_rpc_add(const char *mod_name, const char *xpath, sr_rpc_
         void *private_data, sr_subscription_ctx_t *subs);
 
 void sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs);
+
+sr_error_info_t *sr_sub_notif_add(const char *mod_name, const char *xpath, time_t stop_time, sr_event_notif_cb callback,
+        sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs);
+
+void sr_sub_notif_del(const char *mod_name, const char *xpath, time_t stop_time, sr_event_notif_cb callback,
+        sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs);
 
 sr_error_info_t *sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs);
 

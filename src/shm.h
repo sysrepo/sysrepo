@@ -100,12 +100,14 @@ struct sr_mod_s {
     off_t rpc_subs;
     uint16_t rpc_sub_count;
 
+    uint16_t notif_sub_count;
+
     /* next structure offset */
     off_t next;
 };
 
 /*
- * generic subscription SHM
+ * generic (single-subscriber) subscription SHM
  */
 typedef struct sr_sub_shm_s {
     pthread_rwlock_t lock;
@@ -115,9 +117,9 @@ typedef struct sr_sub_shm_s {
 } sr_sub_shm_t;
 
 /*
- * config subscription SHM
+ * multi-subscriber subscription SHM
  */
-typedef struct sr_conf_sub_shm_s {
+typedef struct sr_multi_sub_shm_s {
     pthread_rwlock_t lock;
     uint32_t event_id;
     sr_notif_event_t event;
@@ -126,8 +128,10 @@ typedef struct sr_conf_sub_shm_s {
     /* specific fields */
     uint32_t priority;
     uint32_t subscriber_count;
-} sr_conf_sub_shm_t;
+} sr_multi_sub_shm_t;
 /*
+ * config data subscription SHM (multi)
+ *
  * FOR SUBSCRIBERS
  * followed by:
  * event SR_EV_UPDATE, SR_EV_CHANGE, SR_EV_DONE, SR_EV_ABORT - char *diff_lyb - diff tree
@@ -136,6 +140,14 @@ typedef struct sr_conf_sub_shm_s {
  * followed by:
  * event SR_EV_UPDATE - char *edit_lyb
  * or if err_code is set - char *error_message; char *error_xpath
+ */
+
+/*
+ * notification subscription SHM (multi)
+ *
+ * FOR SUBSCRIBERS
+ * followed by:
+ * event SR_EV_CHANGE - time_t notif_timestamp; char *notif_lyb - notification
  */
 
 /*
@@ -234,6 +246,8 @@ sr_error_info_t *sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_
 
 sr_error_info_t *sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, int add);
 
+sr_error_info_t *sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *mod_name, int add);
+
 /*
  * shm_sub.c
  */
@@ -256,6 +270,8 @@ sr_error_info_t *sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char
 
 sr_error_info_t *sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, struct lyd_node **output,
         sr_error_info_t **cb_err_info);
+
+sr_error_info_t *sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, uint32_t notif_sub_count);
 
 void *sr_shmsub_listen_thread(void *arg);
 

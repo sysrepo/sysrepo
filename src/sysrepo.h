@@ -407,26 +407,6 @@ int sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, const 
 int sr_session_stop(sr_session_ctx_t *session);
 
 /**
- * @brief Checks aliveness and validity of the session & connection tied to it.
- *
- * If the connection to the Sysrepo Engine has been lost in the meantime, returns SR_ERR_DICONNECT.
- * In this case, the application is supposed to stop the session (::sr_session_stop), disconnect (::sr_disconnect)
- * and then reconnect (::sr_connect) and start a new session (::sr_session_start).
- *
- * @note If the client library loses connection to the Sysrepo Engine during the lifetime of the application,
- * all Sysrepo API calls will start returning SR_ERR_DISCONNECT error on active sessions. This is the primary
- * mechanism that can be used to detect connection issues, ::sr_session_check is just an addition to it. Since
- * ::sr_session_check sends a message to the Sysrepo Engine and waits for the response, it costs some extra overhead
- * in contrast to catching SR_ERR_DISCONNECT error.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- *
- * @return Error code (SR_ERR_OK in case that the session is healthy,
- * SR_ERR_DICONNECT in case that connection to the Sysrepo Engine has been lost).
- */
-int sr_session_check(sr_session_ctx_t *session);
-
-/**
  * @brief Changes datastore to which the session is tied to. All subsequent
  * calls will be issued on the chosen datastore.
  *
@@ -543,54 +523,6 @@ typedef enum sr_schema_format_e {
  * @brief Iterator used for accessing data nodes via ::sr_get_items_iter call.
  */
 typedef struct sr_val_iter_s sr_val_iter_t;
-
-/**
- * @brief Retrieves list of schemas installed in the sysrepo datastore.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[out] schemas Array of installed schemas information (allocated by
- * the function, it is supposed to be freed by caller using ::sr_free_schemas call).
- * @param[out] schema_cnt Number of schemas returned in the array.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema_cnt);
-
-/**
- * @brief Retrieves the content of specified schema file. If the module
- * can not be found SR_ERR_NOT_FOUND is returned.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] module_name Name of the requested module.
- * @param[in] revision Requested revision of the module. If NULL
- * is passed, the latest revision will be returned.
- * @param[in] submodule_name Name of the requested submodule. Pass NULL if you are
- * requesting the content of the main module.
- * @param[in] format of the returned schema
- * @param[out] schema_content Content of the specified schema file. Automatically
- * allocated by the function, should be freed by the caller.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *revision,
-         const char *submodule_name, sr_schema_format_t format, char **schema_content);
-
-/**
- * @brief Retrieves the content of the specified submodule schema file. If the submodule
- * cannot be found, SR_ERR_NOT_FOUND is returned.
- *
- * @param[in] session Session context acquired from ::sr_session_start call.
- * @param[in] submodule_name Name of the requested submodule.
- * @param[in] submodule_revision Requested revision of the submodule. If NULL
- * is passed, the latest revision will be returned.
- * @param[in] format of the returned schema.
- * @param[out] schema_content Content of the specified schema file. Automatically
- * allocated by the function, should be freed by the caller.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_get_submodule_schema(sr_session_ctx_t *session, const char *submodule_name, const char *submodule_revision,
-                            sr_schema_format_t format, char **schema_content);
 
 /**
  * @brief Retrieves a single data element stored under provided XPath. If multiple
@@ -1043,11 +975,6 @@ typedef enum sr_subscr_flag_e {
      */
     SR_SUBSCR_UPDATE = 16,
 
-    /**
-     * @brief No real-time notifications will be delivered until ::sr_event_notif_replay is called
-     * and replay has finished (::SR_EV_NOTIF_T_REPLAY_COMPLETE is delivered).
-     */
-    SR_SUBSCR_NOTIF_REPLAY_FIRST = 32,
 } sr_subscr_flag_t;
 
 /**
@@ -1351,8 +1278,8 @@ typedef void (*sr_event_notif_cb)(const sr_ev_notif_type_t notif_type, const cha
  *
  * @return Error code (SR_ERR_OK on success).
  */
-typedef void (*sr_event_notif_tree_cb)(const sr_ev_notif_type_t notif_type, const char *xpath,
-        const struct lyd_node *trees, const size_t tree_cnt, time_t timestamp, void *private_data);
+typedef void (*sr_event_notif_tree_cb)(const sr_ev_notif_type_t notif_type, const struct lyd_node *notif,
+        time_t timestamp, void *private_data);
 
 /**
  * @brief Subscribes for delivery of an event notification specified by xpath.
@@ -1369,8 +1296,8 @@ typedef void (*sr_event_notif_tree_cb)(const sr_ev_notif_type_t notif_type, cons
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath,
-        sr_event_notif_cb callback, void *private_data, sr_subscr_options_t opts,
+int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, time_t start_time,
+        time_t stop_time, sr_event_notif_cb callback, void *private_data, sr_subscr_options_t opts,
         sr_subscription_ctx_t **subscription);
 
 /**
@@ -1391,9 +1318,9 @@ int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath,
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *xpath,
-        sr_event_notif_tree_cb callback, void *private_data, sr_subscr_options_t opts,
-        sr_subscription_ctx_t **subscription);
+int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+        time_t start_time, time_t stop_time, sr_event_notif_tree_cb callback, void *private_data,
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Sends an event notification specified by xpath and waits for the result.
@@ -1425,26 +1352,7 @@ int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_v
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *trees,
-        const size_t tree_cnt, sr_ev_notif_flag_t opts);
-
-/**
- * @brief Replays already generated notifications stored in the notification store related to
- * the provided notification subscription (or subscriptions, in case that ::SR_SUBSCR_CTX_REUSE
- * was used). Notification callbacks of the given susbscriptions will be called with the type set to
- * ::SR_EV_NOTIF_T_REPLAY, ::SR_EV_NOTIF_T_REPLAY_COMPLETE or ::SR_EV_NOTIF_T_REPLAY_STOP.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] subscription Session context acquired with ::sr_session_start call.
- * @param[in] start_time Starting time of the desired time window for notification replay.
- * @param[in] stop_time End time of the desired time window for notification replay. If set to 0,
- * no stop time will be applied (all notifications up to the current time will be delivered,
- * ::SR_EV_NOTIF_T_REPLAY_STOP notification won't be delivered).
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_event_notif_replay(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription,
-        time_t start_time, time_t stop_time);
+int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, sr_ev_notif_flag_t opts);
 
 
 ////////////////////////////////////////////////////////////////////////////////

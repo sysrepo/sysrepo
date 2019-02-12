@@ -73,7 +73,7 @@ sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
         conf_sub->ds = ds;
 
         /* create/open shared memory and map it */
-        if ((err_info = sr_shmsub_open_map(mod_name, sr_ds2str(ds), -1, &conf_sub->sub_shm, sizeof(sr_conf_sub_shm_t)))) {
+        if ((err_info = sr_shmsub_open_map(mod_name, sr_ds2str(ds), -1, &conf_sub->sub_shm, sizeof(sr_multi_sub_shm_t)))) {
             goto error_unlock;
         }
 
@@ -88,8 +88,6 @@ sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
     SR_CHECK_MEM_GOTO(!mem[2], err_info, error_unlock);
     conf_sub->subs = mem[2];
 
-    conf_sub->subs[conf_sub->sub_count].cb = conf_cb;
-    conf_sub->subs[conf_sub->sub_count].private_data = private_data;
     if (xpath) {
         mem[3] = strdup(xpath);
         SR_CHECK_MEM_RET(!mem[3], err_info);
@@ -99,6 +97,8 @@ sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
     }
     conf_sub->subs[conf_sub->sub_count].priority = priority;
     conf_sub->subs[conf_sub->sub_count].opts = sub_opts;
+    conf_sub->subs[conf_sub->sub_count].cb = conf_cb;
+    conf_sub->subs[conf_sub->sub_count].private_data = private_data;
     conf_sub->subs[conf_sub->sub_count].event_id = 0;
     conf_sub->subs[conf_sub->sub_count].event = SR_EV_NONE;
 
@@ -125,7 +125,8 @@ error_unlock:
 }
 
 void
-sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs)
+sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb conf_cb,
+        void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
@@ -145,8 +146,12 @@ sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, uint
         }
 
         for (j = 0; j < conf_sub->sub_count; ++j) {
-            if ((conf_sub->subs[j].priority != priority) || (conf_sub->subs[j].opts != sub_opts)
+            if ((!xpath && conf_sub->subs[j].xpath) || (xpath && !conf_sub->subs[j].xpath)
                     || strcmp(conf_sub->subs[j].xpath, xpath)) {
+                continue;
+            }
+            if ((conf_sub->subs[j].priority != priority) || (conf_sub->subs[j].opts != sub_opts)
+                    || (conf_sub->subs[j].cb != conf_cb) || (conf_sub->subs[j].private_data != private_data)) {
                 continue;
             }
 
@@ -239,11 +244,11 @@ sr_sub_dp_add(const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb,
     dp_sub->subs[dp_sub->sub_count].sub_shm.fd = -1;
 
     /* set attributes */
-    dp_sub->subs[dp_sub->sub_count].cb = dp_cb;
-    dp_sub->subs[dp_sub->sub_count].private_data = private_data;
     mem[3] = strdup(xpath);
     SR_CHECK_MEM_GOTO(!mem[3], err_info, error_unlock);
     dp_sub->subs[dp_sub->sub_count].xpath = mem[3];
+    dp_sub->subs[dp_sub->sub_count].cb = dp_cb;
+    dp_sub->subs[dp_sub->sub_count].private_data = private_data;
 
     /* create specific SHM and map it */
     if ((err_info = sr_shmsub_open_map(mod_name, "state", sr_str_hash(xpath), &dp_sub->subs[dp_sub->sub_count].sub_shm,
@@ -430,6 +435,162 @@ sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs)
 }
 
 sr_error_info_t *
+sr_sub_notif_add(const char *mod_name, const char *xpath, time_t stop_time, sr_event_notif_cb callback,
+        sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs)
+{
+    sr_error_info_t *err_info = NULL;
+    struct modsub_notif_s *notif_sub = NULL;
+    uint32_t i;
+    void *mem[4] = {NULL};
+
+    assert(mod_name);
+
+    /* SUBS LOCK */
+    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+        return err_info;
+    }
+
+    /* try to find this module subscriptions, they may already exist */
+    for (i = 0; i < subs->notif_sub_count; ++i) {
+        if (!strcmp(mod_name, subs->notif_subs[i].module_name)) {
+            break;
+        }
+    }
+
+    if (i == subs->notif_sub_count) {
+        mem[0] = realloc(subs->notif_subs, (subs->notif_sub_count + 1) * sizeof *subs->notif_subs);
+        SR_CHECK_MEM_GOTO(!mem[0], err_info, error_unlock);
+        subs->notif_subs = mem[0];
+
+        notif_sub = &subs->notif_subs[i];
+        memset(notif_sub, 0, sizeof *notif_sub);
+        notif_sub->sub_shm.fd = -1;
+
+        /* set attributes */
+        mem[1] = strdup(mod_name);
+        SR_CHECK_MEM_GOTO(!mem[1], err_info, error_unlock);
+        notif_sub->module_name = mem[1];
+
+        /* create specific SHM and map it */
+        if ((err_info = sr_shmsub_open_map(mod_name, "notif", -1, &notif_sub->sub_shm, sizeof(sr_sub_shm_t)))) {
+            goto error_unlock;
+        }
+
+        /* make the subscription visible only after everything succeeds */
+        ++subs->notif_sub_count;
+    } else {
+        notif_sub = &subs->notif_subs[i];
+    }
+
+    /* add another subscription */
+    mem[2] = realloc(notif_sub->subs, (notif_sub->sub_count + 1) * sizeof *notif_sub->subs);
+    SR_CHECK_MEM_GOTO(!mem[2], err_info, error_unlock);
+    notif_sub->subs = mem[2];
+    memset(notif_sub->subs + notif_sub->sub_count, 0, sizeof *notif_sub->subs);
+
+    /* set attributes */
+    if (xpath) {
+        mem[3] = strdup(xpath);
+        SR_CHECK_MEM_GOTO(!mem[3], err_info, error_unlock);
+        notif_sub->subs[notif_sub->sub_count].xpath = mem[3];
+    } else {
+        notif_sub->subs[notif_sub->sub_count].xpath = NULL;
+    }
+    notif_sub->subs[notif_sub->sub_count].stop_time = stop_time;
+    notif_sub->subs[notif_sub->sub_count].cb = callback;
+    notif_sub->subs[notif_sub->sub_count].tree_cb = tree_callback;
+    notif_sub->subs[notif_sub->sub_count].private_data = private_data;
+
+    ++notif_sub->sub_count;
+
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
+    return NULL;
+
+error_unlock:
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
+
+    for (i = 0; i < 4; ++i) {
+        free(mem[i]);
+    }
+    if (mem[1]) {
+        --subs->notif_sub_count;
+        sr_shm_destroy(&notif_sub->sub_shm);
+    }
+    return err_info;
+}
+
+void
+sr_sub_notif_del(const char *mod_name, const char *xpath, time_t stop_time, sr_event_notif_cb callback,
+        sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i, j;
+    struct modsub_notif_s *notif_sub;
+
+    /* SUBS LOCK */
+    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    for (i = 0; i < subs->notif_sub_count; ++i) {
+        notif_sub = &subs->notif_subs[i];
+
+        if (strcmp(mod_name, notif_sub->module_name)) {
+            continue;
+        }
+
+        for (j = 0; j < notif_sub->sub_count; ++j) {
+            if ((!xpath && notif_sub->subs[j].xpath) || (xpath && !notif_sub->subs[j].xpath)
+                    || strcmp(notif_sub->subs[j].xpath, xpath)) {
+                continue;
+            }
+            if ((stop_time != notif_sub->subs[j].stop_time) || (callback != notif_sub->subs[j].cb)
+                    || (tree_callback != notif_sub->subs[j].tree_cb) || (private_data != notif_sub->subs[j].private_data)) {
+                continue;
+            }
+
+            /* found our subscription, replace it with the last */
+            free(notif_sub->subs[j].xpath);
+            if (j < notif_sub->sub_count - 1) {
+                memcpy(&notif_sub->subs[j], &notif_sub->subs[notif_sub->sub_count - 1], sizeof *notif_sub->subs);
+            }
+            --notif_sub->sub_count;
+
+            if (!notif_sub->sub_count) {
+                /* no other subscriptions for this module, replace it with the last */
+                free(notif_sub->module_name);
+                sr_shm_destroy(&notif_sub->sub_shm);
+                free(notif_sub->subs);
+                if (i < subs->notif_sub_count - 1) {
+                    memcpy(notif_sub, &subs->notif_subs[subs->notif_sub_count - 1], sizeof *notif_sub);
+                }
+                --subs->notif_sub_count;
+
+                if (!subs->notif_sub_count) {
+                    /* no other notification subscriptions */
+                    free(subs->notif_subs);
+                    subs->notif_subs = NULL;
+                }
+            }
+
+            /* SUBS UNLOCK */
+            sr_unlock(&subs->subs_lock);
+            return;
+        }
+    }
+
+    /* unreachable */
+    assert(0);
+
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
+    return;
+}
+
+sr_error_info_t *
 sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
@@ -437,6 +598,7 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
     uint32_t i, j;
     struct modsub_conf_s *conf_subs;
     struct modsub_dp_s *dp_sub;
+    struct modsub_notif_s *notif_sub;
 
     /* configuration subscriptions */
     for (i = 0; i < subs->conf_sub_count; ++i) {
@@ -502,6 +664,28 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
         sr_shm_destroy(&subs->rpc_subs[i].sub_shm);
     }
     free(subs->rpc_subs);
+
+    /* notification subscriptions */
+    for (i = 0; i < subs->notif_sub_count; ++i) {
+        notif_sub = &subs->notif_subs[i];
+        for (j = 0; j < notif_sub->sub_count; ++j) {
+            /* remove the subscriptions from the main SHM */
+            if ((err_info = sr_shmmod_notif_subscription(conn, notif_sub->module_name, 0))) {
+                return err_info;
+            }
+
+            /* free xpath */
+            free(notif_sub->subs[j].xpath);
+        }
+
+        /* free dynamic memory */
+        free(notif_sub->module_name);
+        free(notif_sub->subs);
+
+        /* remove specific SHM segment */
+        sr_shm_destroy(&notif_sub->sub_shm);
+    }
+    free(subs->notif_subs);
 
     return NULL;
 }

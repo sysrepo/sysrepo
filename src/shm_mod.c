@@ -727,3 +727,26 @@ sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char
 
     return NULL;
 }
+
+sr_error_info_t *
+sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *mod_name, int add)
+{
+    sr_mod_t *shm_mod;
+    sr_error_info_t *err_info = NULL;
+
+    assert(mod_name);
+
+    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, mod_name, 0);
+    SR_CHECK_INT_RET(!shm_mod, err_info);
+
+    if (add) {
+        /* simply add a subscriber */
+        ++shm_mod->notif_sub_count;
+    } else {
+        /* simply remove a subscriber */
+        SR_CHECK_INT_RET(!shm_mod->notif_sub_count, err_info);
+        --shm_mod->notif_sub_count;
+    }
+
+    return NULL;
+}
