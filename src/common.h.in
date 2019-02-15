@@ -43,6 +43,9 @@
 #define SR_REPO_PATH "@REPO_PATH@"
 #define SR_REPO_PATH_ENV "SYSREPO_REPOSITORY_PATH"
 
+/* kbs */
+#define SR_EV_NOTIF_FILE_MAX_SIZE 1024
+
 /* s */
 #define SR_MODULE_LOCK_TIMEOUT 5
 
@@ -70,12 +73,14 @@ typedef struct sr_shm_s {
     char *addr;
 } sr_shm_t;
 
+#include "replay.h"
 #include "modinfo.h"
 #include "edit_diff.h"
 #include "shm.h"
 #include "log.h"
 
-/* public definitions
+/*
+ * public definitions
  */
 struct sr_conn_ctx_s {
     char *app_name;
@@ -160,6 +165,8 @@ struct sr_subscription_ctx_s {
         char *module_name;
         struct modsub_notifsub_s {
             char *xpath;
+            time_t start_time;
+            int replayed;
             time_t stop_time;
             sr_event_notif_cb cb;
             sr_event_notif_tree_cb tree_cb;
@@ -198,13 +205,16 @@ sr_error_info_t *sr_sub_rpc_add(const char *mod_name, const char *xpath, sr_rpc_
 
 void sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs);
 
-sr_error_info_t *sr_sub_notif_add(const char *mod_name, const char *xpath, time_t stop_time, sr_event_notif_cb callback,
-        sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs);
+sr_error_info_t *sr_sub_notif_add(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time,
+        sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs);
 
-void sr_sub_notif_del(const char *mod_name, const char *xpath, time_t stop_time, sr_event_notif_cb callback,
-        sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs);
+void sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb callback,
+        sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs, int has_subs_lock);
 
 sr_error_info_t *sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs);
+
+sr_error_info_t *sr_notif_call_callback(sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
+        const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts);
 
 /*
  * utility functions

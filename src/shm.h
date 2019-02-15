@@ -75,11 +75,15 @@ typedef struct sr_mod_rpc_sub_s {
     off_t xpath;
 } sr_mod_rpc_sub_t;
 
+#define SR_MOD_HAS_DATA       0x01
+#define SR_MOD_REPLAY_SUPPORT 0x02
+
 struct sr_mod_s {
     off_t name;
     char rev[11];
-    pthread_rwlock_t lock[2];
-    int has_data;
+    uint8_t flags;
+    pthread_rwlock_t data_lock[2];
+    pthread_rwlock_t replay_lock;
     off_t features;
     uint16_t feat_count;
     off_t data_deps;
@@ -196,17 +200,17 @@ sr_error_info_t *sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent);
 /*
  * shm_main.c common functions
  */
-sr_mod_t *sr_shmmain_getnext(char *sr_shm, sr_mod_t *last);
+sr_mod_t *sr_shmmain_getnext(char *main_shm_addr, sr_mod_t *last);
 
-sr_mod_t *sr_shmmain_find_module(char *sr_shm, const char *name, off_t name_off);
+sr_mod_t *sr_shmmain_find_module(char *main_shm_addr, const char *name, off_t name_off);
 
 sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr);
 
 void sr_shmmain_unlock(sr_conn_ctx_t *conn);
 
-sr_error_info_t *sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod);
+sr_error_info_t *sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod, int replay_support);
 
-sr_error_info_t *sr_shmmain_unsched_del_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod);
+sr_error_info_t *sr_shmmain_unsched_del_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod, int replay_support);
 
 sr_error_info_t *sr_shmmain_deferred_del_module(sr_conn_ctx_t *conn, const char *mod_name);
 

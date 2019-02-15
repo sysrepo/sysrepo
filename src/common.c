@@ -435,7 +435,7 @@ sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs)
 }
 
 sr_error_info_t *
-sr_sub_notif_add(const char *mod_name, const char *xpath, time_t stop_time, sr_event_notif_cb callback,
+sr_sub_notif_add(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb callback,
         sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
@@ -496,6 +496,8 @@ sr_sub_notif_add(const char *mod_name, const char *xpath, time_t stop_time, sr_e
     } else {
         notif_sub->subs[notif_sub->sub_count].xpath = NULL;
     }
+    notif_sub->subs[notif_sub->sub_count].start_time = start_time;
+    notif_sub->subs[notif_sub->sub_count].replayed = 0;
     notif_sub->subs[notif_sub->sub_count].stop_time = stop_time;
     notif_sub->subs[notif_sub->sub_count].cb = callback;
     notif_sub->subs[notif_sub->sub_count].tree_cb = tree_callback;
@@ -522,17 +524,19 @@ error_unlock:
 }
 
 void
-sr_sub_notif_del(const char *mod_name, const char *xpath, time_t stop_time, sr_event_notif_cb callback,
-        sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs)
+sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb callback,
+        sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs, int has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
     struct modsub_notif_s *notif_sub;
 
-    /* SUBS LOCK */
-    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
-        sr_errinfo_free(&err_info);
-        return;
+    if (!has_subs_lock) {
+        /* SUBS LOCK */
+        if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+            sr_errinfo_free(&err_info);
+            return;
+        }
     }
 
     for (i = 0; i < subs->notif_sub_count; ++i) {
@@ -543,12 +547,13 @@ sr_sub_notif_del(const char *mod_name, const char *xpath, time_t stop_time, sr_e
         }
 
         for (j = 0; j < notif_sub->sub_count; ++j) {
-            if ((!xpath && notif_sub->subs[j].xpath) || (xpath && !notif_sub->subs[j].xpath)
-                    || strcmp(notif_sub->subs[j].xpath, xpath)) {
+            if ((!xpath && notif_sub->subs[j].xpath) || (xpath && (!notif_sub->subs[j].xpath
+                    || strcmp(notif_sub->subs[j].xpath, xpath)))) {
                 continue;
             }
-            if ((stop_time != notif_sub->subs[j].stop_time) || (callback != notif_sub->subs[j].cb)
-                    || (tree_callback != notif_sub->subs[j].tree_cb) || (private_data != notif_sub->subs[j].private_data)) {
+            if ((start_time != notif_sub->subs[j].start_time) || (stop_time != notif_sub->subs[j].stop_time)
+                    || (callback != notif_sub->subs[j].cb) || (tree_callback != notif_sub->subs[j].tree_cb)
+                    || (private_data != notif_sub->subs[j].private_data)) {
                 continue;
             }
 
@@ -576,8 +581,10 @@ sr_sub_notif_del(const char *mod_name, const char *xpath, time_t stop_time, sr_e
                 }
             }
 
-            /* SUBS UNLOCK */
-            sr_unlock(&subs->subs_lock);
+            if (!has_subs_lock) {
+                /* SUBS UNLOCK */
+                sr_unlock(&subs->subs_lock);
+            }
             return;
         }
     }
@@ -585,8 +592,10 @@ sr_sub_notif_del(const char *mod_name, const char *xpath, time_t stop_time, sr_e
     /* unreachable */
     assert(0);
 
-    /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    if (!has_subs_lock) {
+        /* SUBS UNLOCK */
+        sr_unlock(&subs->subs_lock);
+    }
     return;
 }
 
@@ -688,6 +697,63 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
     free(subs->notif_subs);
 
     return NULL;
+}
+
+sr_error_info_t *
+sr_notif_call_callback(sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
+        const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lyd_node *next, *elem;
+    void *mem;
+    char *notif_xpath = NULL;
+    sr_val_t *vals = NULL;
+    size_t val_count = 0;
+
+    assert(!notif_op || (notif_op->schema->nodetype == LYS_NOTIF));
+    assert((tree_cb && !cb) || (!tree_cb && cb));
+
+    if (tree_cb) {
+        /* callback */
+        tree_cb(notif_type, notif_op, notif_ts, private_data);
+    } else {
+        if (notif_op) {
+            /* prepare XPath */
+            notif_xpath = lyd_path(notif_op);
+            SR_CHECK_INT_GOTO(!notif_xpath, err_info, cleanup);
+
+            /* prepare input for sr_val CB */
+            LY_TREE_DFS_BEGIN(notif_op, next, elem) {
+                /* skip op node */
+                if (elem != notif_op) {
+                    mem = realloc(vals, (val_count + 1) * sizeof *vals);
+                    if (!mem) {
+                        SR_ERRINFO_MEM(&err_info);
+                        goto cleanup;
+                    }
+                    vals = mem;
+
+                    if ((err_info = sr_val_ly2sr(elem, &vals[val_count]))) {
+                        goto cleanup;
+                    }
+
+                    ++val_count;
+                }
+
+                LY_TREE_DFS_END(notif_op, next, elem);
+            }
+        }
+
+        /* callback */
+        cb(notif_type, notif_xpath, vals, val_count, notif_ts, private_data);
+    }
+
+    /* success */
+
+cleanup:
+    free(notif_xpath);
+    sr_free_values(vals, val_count);
+    return err_info;
 }
 
 sr_error_info_t *

@@ -69,8 +69,11 @@ module sysrepo {
             }
 
             leaf has-data {
-                type boolean;
-                mandatory true;
+                type empty;
+            }
+
+            leaf replay-support {
+                type empty;
             }
 
             leaf removed {

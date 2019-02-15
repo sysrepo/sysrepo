@@ -42,9 +42,9 @@ sr_shmmod_lock(sr_mod_t *shm_mod, sr_datastore_t ds, int wr)
     abs_ts.tv_sec += SR_MODULE_LOCK_TIMEOUT;
 
     if (wr) {
-        ret = pthread_rwlock_timedwrlock(&shm_mod->lock[ds], &abs_ts);
+        ret = pthread_rwlock_timedwrlock(&shm_mod->data_lock[ds], &abs_ts);
     } else {
-        ret = pthread_rwlock_timedrdlock(&shm_mod->lock[ds], &abs_ts);
+        ret = pthread_rwlock_timedrdlock(&shm_mod->data_lock[ds], &abs_ts);
     }
     if (ret) {
         SR_ERRINFO_RWLOCK(&err_info, wr, __func__, ret);
@@ -59,7 +59,7 @@ sr_shmmod_unlock(sr_mod_t *shm_mod, sr_datastore_t ds)
 {
     int ret;
 
-    ret = pthread_rwlock_unlock(&shm_mod->lock[ds]);
+    ret = pthread_rwlock_unlock(&shm_mod->data_lock[ds]);
     if (ret) {
         SR_LOG_WRN("Unlocking a rwlock failed (%s).", strerror(ret));
     }

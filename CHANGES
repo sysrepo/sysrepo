@@ -13,6 +13,8 @@
             - then n+m sessions for n threads - do not share one session between several threads
 - session options removed, did not make sense anymore
 - NO_ABORT_FOR_REFUSED_CFG subscription option removed, default behaviour
+- SR_EV_NOTIF_T_REPLAY_STOP -> SR_EV_NOTIF_STOP
+- removed option SR_NOTIF_EPHEMERAL (only whole modules can be set that way)
 
 removed functions:
 - sr_module_install_subscribe (use notifications)

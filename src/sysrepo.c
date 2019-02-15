@@ -713,7 +713,7 @@ sr_create_module_files_with_imps_r(const struct lys_module *mod)
 
 API int
 sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir,
-        const char **features, int feat_count)
+        const char **features, int feat_count, int replay_support)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *mod;
@@ -763,7 +763,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
     if (mod) {
         /* it is currently in the context, but maybe marked for deletion? */
-        err_info = sr_shmmain_unsched_del_module_with_imps(conn, mod);
+        err_info = sr_shmmain_unsched_del_module_with_imps(conn, mod, replay_support);
         if (err_info && (err_info->err_code == SR_ERR_NOT_FOUND)) {
             sr_errinfo_free(&err_info);
             sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" is already in sysrepo.", mod->name);
@@ -812,7 +812,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     }
 
     /* add into main SHM */
-    if ((err_info = sr_shmmain_add_module_with_imps(conn, mod))) {
+    if ((err_info = sr_shmmain_add_module_with_imps(conn, mod, replay_support))) {
         goto cleanup_unlock;
     }
 
@@ -2554,46 +2554,25 @@ cleanup_shm_unlock:
     return sr_api_ret(session, err_info);
 }
 
-static int
-_sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, time_t start_time,
+static sr_error_info_t *
+_sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, const char *xpath, time_t start_time,
         time_t stop_time, sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback, void *private_data,
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err_info;
     struct ly_set *set;
     const struct lys_node *ctx_node;
-    const struct lys_module *ly_mod;
     uint32_t i;
-    sr_conn_ctx_t *conn;
+    int shm_locked = 0;
 
-    SR_CHECK_ARG_APIRET(!session || !module_name || (start_time && (start_time < time(NULL)))
-            || (stop_time && (!start_time || (stop_time < start_time))) || (!callback && !tree_callback)
-            || !subscription, session, err_info);
-
-    conn = session->conn;
-
-    /* TODO replay, finish if stop_time <= cur_time */
-
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
-        return sr_api_ret(session, err_info);
-    }
-
-    /* is the module name valid? */
-    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        sr_shmmain_unlock(conn);
-        return sr_api_ret(session, err_info);
-    }
+    assert((callback && !tree_callback) || (!callback && tree_callback));
 
     /* is the xpath valid, if any? */
     if (xpath) {
         ctx_node = lys_getnext(NULL, NULL, ly_mod, 0);
         if (!ctx_node) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" does not define any notifications.", module_name);
-            sr_shmmain_unlock(conn);
-            return sr_api_ret(session, err_info);
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" does not define any notifications.", ly_mod->name);
+            return err_info;
         }
 
         set = lys_xpath_atomize(ctx_node, LYXP_NODE_ELEM, xpath, 0);
@@ -2602,8 +2581,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, co
     }
     if (!set) {
         SR_ERRINFO_INT(&err_info);
-        sr_shmmain_unlock(conn);
-        return sr_api_ret(session, err_info);
+        return err_info;
     }
 
     /* there must be some notifications selected */
@@ -2614,35 +2592,43 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, co
     }
     if (i == set->number) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "XPath \"%s\" does not select any notifications.", xpath);
-        sr_shmmain_unlock(conn);
         ly_set_free(set);
-        return sr_api_ret(session, err_info);
+        return err_info;
     }
     ly_set_free(set);
 
-    /* add notification subscription into main SHM */
-    if ((err_info = sr_shmmod_notif_subscription(conn, module_name, 1))) {
-        sr_shmmain_unlock(conn);
-        return sr_api_ret(session, err_info);
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+        return err_info;
+    }
+    shm_locked = 1;
+
+    if (!start_time) {
+        /* add notification subscription into main SHM if replay was not requested */
+        if ((err_info = sr_shmmod_notif_subscription(conn, ly_mod->name, 1))) {
+            sr_shmmain_unlock(conn);
+            return err_info;
+        }
     }
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
         if ((err_info = sr_subs_new(conn, subscription))) {
-            sr_shmmod_notif_subscription(conn, module_name, 0);
+            sr_shmmod_notif_subscription(conn, ly_mod->name, 0);
             sr_shmmain_unlock(conn);
-            return sr_api_ret(session, err_info);
+            return err_info;
         }
     }
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_notif_add(module_name, xpath, stop_time, callback, tree_callback, private_data, *subscription))) {
-        sr_shmmain_unlock(conn);
+    if ((err_info = sr_sub_notif_add(ly_mod->name, xpath, start_time, stop_time, callback, tree_callback, private_data,
+            *subscription))) {
         goto error_unsubscribe;
     }
 
     /* SHM UNLOCK */
     sr_shmmain_unlock(conn);
+    shm_locked = 0;
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* PTR LOCK */
@@ -2660,16 +2646,26 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, co
         sr_unlock(&conn->ptr_lock);
     }
 
-    return sr_api_ret(session, NULL);
+    return NULL;
 
 error_unsubscribe:
+    if (!shm_locked) {
+        /* SHM WRITE LOCK */
+        tmp_err_info = sr_shmmain_lock_remap(conn, 1);
+        sr_errinfo_free(&tmp_err_info);
+    }
+
+    sr_shmmod_notif_subscription(conn, ly_mod->name, 0);
+
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(conn);
+
     if (opts & SR_SUBSCR_CTX_REUSE) {
-        sr_sub_notif_del(module_name, xpath, stop_time, callback, tree_callback, private_data, *subscription);
+        sr_sub_notif_del(ly_mod->name, xpath, start_time, stop_time, callback, tree_callback, private_data, *subscription, 0);
     } else {
         sr_unsubscribe(*subscription);
     }
-    sr_shmmod_notif_subscription(conn, module_name, 0);
-    return sr_api_ret(session, err_info);
+    return err_info;
 }
 
 API int
@@ -2677,8 +2673,33 @@ sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, con
         time_t stop_time, sr_event_notif_cb callback, void *private_data, sr_subscr_options_t opts,
         sr_subscription_ctx_t **subscription)
 {
-    return _sr_event_notif_subscribe(session, module_name, xpath, start_time, stop_time, callback, NULL, private_data,
-            opts, subscription);
+    sr_error_info_t *err_info = NULL;
+    time_t cur_ts = time(NULL);
+    const struct lys_module *ly_mod;
+
+    SR_CHECK_ARG_APIRET(!session || !module_name || (start_time && (start_time > cur_ts))
+            || (stop_time && (!start_time || (stop_time < start_time))) || !callback || !subscription, session, err_info);
+
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* is the module name valid? */
+    ly_mod = ly_ctx_get_module(session->conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        sr_shmmain_unlock(session->conn);
+        return sr_api_ret(session, err_info);
+    }
+
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(session->conn);
+
+    /* subscribe */
+    err_info = _sr_event_notif_subscribe(session->conn, ly_mod, xpath, start_time, stop_time, callback, NULL,
+            private_data, opts, subscription);
+    return sr_api_ret(session, err_info);
 }
 
 API int
@@ -2686,8 +2707,33 @@ sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name
         time_t stop_time, sr_event_notif_tree_cb callback, void *private_data, sr_subscr_options_t opts,
         sr_subscription_ctx_t **subscription)
 {
-    return _sr_event_notif_subscribe(session, module_name, xpath, start_time, stop_time, NULL, callback, private_data,
-            opts, subscription);
+    sr_error_info_t *err_info = NULL;
+    time_t cur_ts = time(NULL);
+    const struct lys_module *ly_mod;
+
+    SR_CHECK_ARG_APIRET(!session || !module_name || (start_time && (start_time > cur_ts))
+            || (stop_time && (!start_time || (stop_time < start_time))) || !callback || !subscription, session, err_info);
+
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* is the module name valid? */
+    ly_mod = ly_ctx_get_module(session->conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        sr_shmmain_unlock(session->conn);
+        return sr_api_ret(session, err_info);
+    }
+
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(session->conn);
+
+    /* subscribe */
+    err_info = _sr_event_notif_subscribe(session->conn, ly_mod, xpath, start_time, stop_time, NULL, callback,
+            private_data, opts, subscription);
+    return sr_api_ret(session, err_info);
 }
 
 API int
@@ -2744,7 +2790,7 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, uint32_t *no
 API int
 sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, sr_ev_notif_flag_t opts)
 {
-    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL, *tmp_err_info = NULL;
     struct sr_mod_info_s mod_info;
     struct lyd_node *notif_op;
     sr_mod_data_dep_t *shm_deps;
@@ -2809,22 +2855,28 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, sr_e
         goto cleanup_mods_unlock;
     }
 
-    /* check that there is a subscriber */
-    if ((err_info = sr_notif_find_subscriber(session->conn, lyd_node_module(notif)->name, &notif_sub_count))) {
-        goto cleanup_mods_unlock;
-    }
+    /* MODULES UNLOCK */
+    sr_shmmod_multiunlock(&mod_info, 0);
+
+    /* store the notification for a replay, we continue on failure */
+    err_info = sr_replay_store(session->conn, notif, notif_ts);
 
     /* check that there is a subscriber */
+    if ((tmp_err_info = sr_notif_find_subscriber(session->conn, lyd_node_module(notif)->name, &notif_sub_count))) {
+        goto cleanup_shm_unlock;
+    }
+
     if (notif_sub_count) {
         /* publish notif in an event, do not wait for subscribers */
-        if ((err_info = sr_shmsub_notif_notify(notif, notif_ts, notif_sub_count))) {
-            goto cleanup_mods_unlock;
+        if ((tmp_err_info = sr_shmsub_notif_notify(notif, notif_ts, notif_sub_count))) {
+            goto cleanup_shm_unlock;
         }
     } else {
         SR_LOG_INF("There are no subscribers for \"%s\" notifications.", lyd_node_module(notif)->name);
     }
 
     /* success */
+    goto cleanup_shm_unlock;
 
 cleanup_mods_unlock:
     /* MODULES UNLOCK */
@@ -2836,6 +2888,9 @@ cleanup_shm_unlock:
 
     free(xpath);
     sr_modinfo_free(&mod_info);
+    if (tmp_err_info) {
+        sr_errinfo_merge(&err_info, tmp_err_info);
+    }
     if (cb_err_info) {
         /* return callback error if some was generated */
         sr_errinfo_merge(&err_info, cb_err_info);

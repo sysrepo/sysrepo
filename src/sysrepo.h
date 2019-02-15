@@ -1230,21 +1230,19 @@ int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct l
  * @brief Type of the notification passed to the ::sr_event_notif_cb and ::sr_event_notif_tree_cb callbacks.
  */
 typedef enum sr_ev_notif_type_e {
-    SR_EV_NOTIF_T_REALTIME,         /**< Real-time notification. The only possible type if you don't use ::sr_event_notif_replay. */
-    SR_EV_NOTIF_T_REPLAY,           /**< Replayed notification. */
-    SR_EV_NOTIF_T_REPLAY_COMPLETE,  /**< Not a real notification, just a signal that the notification replay has completed
-                                         (all the stored notifications from the given time interval have been delivered). */
-    SR_EV_NOTIF_T_REPLAY_STOP,      /**< Not a real notification, just a signal that replay stop time has been reached
-                                         (delivered only if stop_time was specified to ::sr_event_notif_replay). */
+    SR_EV_NOTIF_REALTIME,         /**< Real-time notification. The only possible type if you don't use ::sr_event_notif_replay. */
+    SR_EV_NOTIF_REPLAY,           /**< Replayed notification. */
+    SR_EV_NOTIF_REPLAY_COMPLETE,  /**< Not a real notification, just a signal that the notification replay has completed
+                                       (all the stored notifications from the given time interval have been delivered). */
+    SR_EV_NOTIF_STOP,             /**< Not a real notification, just a signal that replay stop time has been reached
+                                       (delivered only if stop_time was specified to ::sr_event_notif_replay). */
 } sr_ev_notif_type_t;
 
 /**
  * @brief Flags used to override default notification handling i the datastore.
  */
 typedef enum sr_ev_notif_flag_e {
-    SR_EV_NOTIF_DEFAULT = 0,      /**< Notification will be handled normally. */
-    SR_EV_NOTIF_EPHEMERAL = 1,    /**< Notification will not be stored in the notification store
-                                       (and therefore will be also delivered faster). */
+    SR_NOTIF_DEFAULT = 0,      /**< Notification will be handled normally. */
 } sr_ev_notif_flag_t;
 
 /**
@@ -1414,7 +1412,7 @@ int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name
 const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
 
 int sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir, const char **features,
-        int feat_count);
+        int feat_count, int replay_support);
 
 int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
 

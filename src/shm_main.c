@@ -108,7 +108,26 @@ sr_shmmain_check_dirs(void)
         return err_info;
     }
     if (ret) {
-        /* skip checking the repository path, we have just checked it */
+        /* skip checking the repository path, we have already checked it */
+        if ((err_info = sr_mkpath(dir_path, 00770, strlen(repo_path)))) {
+            free(dir_path);
+            return err_info;
+        }
+    }
+    free(dir_path);
+
+    /* notif dir */
+    if (asprintf(&dir_path, "%s/data/notif", repo_path) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
+    }
+    if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
+        free(dir_path);
+        SR_ERRINFO_SYSERRNO(&err_info, "access");
+        return err_info;
+    }
+    if (ret) {
+        /* skip checking the repository path, we have already checked it */
         if ((err_info = sr_mkpath(dir_path, 00770, strlen(repo_path)))) {
             free(dir_path);
             return err_info;
@@ -198,8 +217,8 @@ sr_shmmain_tidunlock(sr_conn_ctx_t *conn)
 }
 
 static sr_error_info_t *
-sr_shmmain_shm_fill_data_deps(char *sr_shm, struct lyd_node *ly_dep_parent, sr_mod_data_dep_t *shm_deps, uint32_t *dep_i,
-        char **shm_cur)
+sr_shmmain_shm_fill_data_deps(char *main_shm_addr, struct lyd_node *ly_dep_parent, sr_mod_data_dep_t *shm_deps,
+        uint32_t *dep_i, char **shm_cur)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *ref_shm_mod = NULL;
@@ -220,7 +239,7 @@ sr_shmmain_shm_fill_data_deps(char *sr_shm, struct lyd_node *ly_dep_parent, sr_m
 
             /* copy module name offset */
             str = sr_ly_leaf_value_str(ly_dep);
-            ref_shm_mod = sr_shmmain_find_module(sr_shm, str, 0);
+            ref_shm_mod = sr_shmmain_find_module(main_shm_addr, str, 0);
             SR_CHECK_INT_RET(!ref_shm_mod, err_info);
             shm_deps[*dep_i].module = ref_shm_mod->name;
 
@@ -240,12 +259,12 @@ sr_shmmain_shm_fill_data_deps(char *sr_shm, struct lyd_node *ly_dep_parent, sr_m
                     /* copy xpath */
                     str = sr_ly_leaf_value_str(ly_instid);
                     strcpy(*shm_cur, str);
-                    shm_deps[*dep_i].xpath = *shm_cur - sr_shm;
+                    shm_deps[*dep_i].xpath = *shm_cur - main_shm_addr;
                     *shm_cur += strlen(str) + 1;
                 } else if (!strcmp(ly_instid->schema->name, "default-module")) {
                     /* copy module name offset */
                     str = sr_ly_leaf_value_str(ly_instid);
-                    ref_shm_mod = sr_shmmain_find_module(sr_shm, str, 0);
+                    ref_shm_mod = sr_shmmain_find_module(main_shm_addr, str, 0);
                     SR_CHECK_INT_RET(!ref_shm_mod, err_info);
                     shm_deps[*dep_i].module = ref_shm_mod->name;
                 }
@@ -262,7 +281,7 @@ sr_shmmain_shm_fill_data_deps(char *sr_shm, struct lyd_node *ly_dep_parent, sr_m
 }
 
 static sr_error_info_t *
-sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t *shm_last_mod, off_t *shm_end)
+sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, sr_mod_t *shm_last_mod, off_t *shm_end)
 {
     struct lyd_node *ly_mod, *ly_child, *ly_dep, *ly_op, *ly_op_dep;
     sr_mod_t *shm_mod;
@@ -275,23 +294,27 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
     sr_error_info_t *err_info = NULL;
 
     /* 1st loop */
-    shm_cur = sr_shm + *shm_end;
+    shm_cur = main_shm_addr + *shm_end;
     shm_mod = shm_last_mod;
     LY_TREE_FOR(ly_start_mod, ly_mod) {
         /* next pointer of previous item */
         if (shm_mod) {
-            shm_mod->next = shm_cur - sr_shm;
+            shm_mod->next = shm_cur - main_shm_addr;
         }
 
         /* allocate the module structure, */
         shm_mod = (sr_mod_t *)shm_cur;
         shm_cur += sizeof *shm_mod;
+        shm_mod->flags = 0;
 
         /* init shared rwlock */
-        if ((err_info = sr_shared_rwlock_init(&shm_mod->lock[SR_DS_STARTUP]))) {
+        if ((err_info = sr_shared_rwlock_init(&shm_mod->data_lock[SR_DS_STARTUP]))) {
             return err_info;
         }
-        if ((err_info = sr_shared_rwlock_init(&shm_mod->lock[SR_DS_RUNNING]))) {
+        if ((err_info = sr_shared_rwlock_init(&shm_mod->data_lock[SR_DS_RUNNING]))) {
+            return err_info;
+        }
+        if ((err_info = sr_shared_rwlock_init(&shm_mod->replay_lock))) {
             return err_info;
         }
 
@@ -300,7 +323,7 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
                 /* copy module name */
                 str = sr_ly_leaf_value_str(ly_child);
                 strcpy(shm_cur, str);
-                shm_mod->name = shm_cur - sr_shm;
+                shm_mod->name = shm_cur - main_shm_addr;
                 shm_cur += strlen(str) + 1;
             } else if (!strcmp(ly_child->schema->name, "revision")) {
                 /* copy revision */
@@ -308,11 +331,10 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
                 strcpy(shm_mod->rev, str);
             } else if (!strcmp(ly_child->schema->name, "has-data")) {
                 /* set has-data flag */
-                if (((struct lyd_node_leaf_list *)ly_child)->value.bln) {
-                    shm_mod->has_data = 1;
-                } else {
-                    shm_mod->has_data = 0;
-                }
+                shm_mod->flags |= SR_MOD_HAS_DATA;
+            } else if (!strcmp(ly_child->schema->name, "replay-support")) {
+                /* set replay-support flag */
+                shm_mod->flags |= SR_MOD_REPLAY_SUPPORT;
             } else if (!strcmp(ly_child->schema->name, "enabled-feature")) {
                 /* just count features */
                 ++shm_mod->feat_count;
@@ -329,15 +351,15 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
 
         /* allocate arrays */
         if (shm_mod->feat_count) {
-            shm_mod->features = shm_cur - sr_shm;
+            shm_mod->features = shm_cur - main_shm_addr;
             shm_cur += shm_mod->feat_count * sizeof(off_t);
         }
         if (shm_mod->data_dep_count) {
-            shm_mod->data_deps = shm_cur - sr_shm;
+            shm_mod->data_deps = shm_cur - main_shm_addr;
             shm_cur += shm_mod->data_dep_count * sizeof(sr_mod_data_dep_t);
         }
         if (shm_mod->op_dep_count) {
-            shm_mod->op_deps = shm_cur - sr_shm;
+            shm_mod->op_deps = shm_cur - main_shm_addr;
             shm_cur += shm_mod->op_dep_count * sizeof(sr_mod_op_dep_t);
         }
     }
@@ -345,15 +367,15 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
     shm_mod->next = 0;
 
     /* 2nd loop */
-    shm_mod = shm_last_mod ? (sr_mod_t *)(sr_shm + shm_last_mod->next) : (sr_mod_t *)sr_shm;
+    shm_mod = shm_last_mod ? (sr_mod_t *)(main_shm_addr + shm_last_mod->next) : (sr_mod_t *)main_shm_addr;
     LY_TREE_FOR(ly_start_mod, ly_mod) {
-        shm_features = (off_t *)(sr_shm + shm_mod->features);
+        shm_features = (off_t *)(main_shm_addr + shm_mod->features);
         feat_i = 0;
 
-        shm_data_deps = (sr_mod_data_dep_t *)(sr_shm + shm_mod->data_deps);
+        shm_data_deps = (sr_mod_data_dep_t *)(main_shm_addr + shm_mod->data_deps);
         data_dep_i = 0;
 
-        shm_op_deps = (sr_mod_op_dep_t *)(sr_shm + shm_mod->op_deps);
+        shm_op_deps = (sr_mod_op_dep_t *)(main_shm_addr + shm_mod->op_deps);
         op_dep_i = 0;
 
         LY_TREE_FOR(ly_mod->child, ly_child) {
@@ -361,12 +383,12 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
                 /* copy feature name */
                 str = sr_ly_leaf_value_str(ly_child);
                 strcpy(shm_cur, str);
-                shm_features[feat_i] = shm_cur - sr_shm;
+                shm_features[feat_i] = shm_cur - main_shm_addr;
                 shm_cur += strlen(str) + 1;
                 ++feat_i;
             } else if (!strcmp(ly_child->schema->name, "data-deps")) {
                 /* now fill the dependency array */
-                if ((err_info = sr_shmmain_shm_fill_data_deps(sr_shm, ly_child, shm_data_deps, &data_dep_i, &shm_cur))) {
+                if ((err_info = sr_shmmain_shm_fill_data_deps(main_shm_addr, ly_child, shm_data_deps, &data_dep_i, &shm_cur))) {
                     return err_info;
                 }
             } else if (!strcmp(ly_child->schema->name, "op-deps")) {
@@ -375,7 +397,7 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
                         /* copy xpath name */
                         str = sr_ly_leaf_value_str(ly_op);
                         strcpy(shm_cur, str);
-                        shm_op_deps[op_dep_i].xpath = shm_cur - sr_shm;
+                        shm_op_deps[op_dep_i].xpath = shm_cur - main_shm_addr;
                         shm_cur += strlen(str) + 1;
                     } else if (!strcmp(ly_op->schema->name, "in")) {
                         LY_TREE_FOR(ly_op->child, ly_op_dep) {
@@ -385,14 +407,14 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
 
                         /* allocate array */
                         if (shm_op_deps[op_dep_i].in_dep_count) {
-                            shm_op_deps[op_dep_i].in_deps = shm_cur - sr_shm;
+                            shm_op_deps[op_dep_i].in_deps = shm_cur - main_shm_addr;
                             shm_cur += shm_op_deps[op_dep_i].in_dep_count * sizeof(sr_mod_data_dep_t);
                         }
 
                         /* fill the array */
-                        shm_op_data_deps = (sr_mod_data_dep_t *)(sr_shm + shm_op_deps[op_dep_i].in_deps);
+                        shm_op_data_deps = (sr_mod_data_dep_t *)(main_shm_addr + shm_op_deps[op_dep_i].in_deps);
                         op_data_dep_i = 0;
-                        if ((err_info = sr_shmmain_shm_fill_data_deps(sr_shm, ly_op, shm_op_data_deps, &op_data_dep_i, &shm_cur))) {
+                        if ((err_info = sr_shmmain_shm_fill_data_deps(main_shm_addr, ly_op, shm_op_data_deps, &op_data_dep_i, &shm_cur))) {
                             return err_info;
                         }
                         SR_CHECK_INT_RET(op_data_dep_i != shm_op_deps[op_dep_i].in_dep_count, err_info);
@@ -404,14 +426,15 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
 
                         /* allocate array */
                         if (shm_op_deps[op_dep_i].out_dep_count) {
-                            shm_op_deps[op_dep_i].out_deps = shm_cur - sr_shm;
+                            shm_op_deps[op_dep_i].out_deps = shm_cur - main_shm_addr;
                             shm_cur += shm_op_deps[op_dep_i].out_dep_count * sizeof(sr_mod_data_dep_t);
                         }
 
                         /* fill the array */
-                        shm_op_data_deps = (sr_mod_data_dep_t *)(sr_shm + shm_op_deps[op_dep_i].out_deps);
+                        shm_op_data_deps = (sr_mod_data_dep_t *)(main_shm_addr + shm_op_deps[op_dep_i].out_deps);
                         op_data_dep_i = 0;
-                        if ((err_info = sr_shmmain_shm_fill_data_deps(sr_shm, ly_op, shm_op_data_deps, &op_data_dep_i, &shm_cur))) {
+                        if ((err_info = sr_shmmain_shm_fill_data_deps(main_shm_addr, ly_op, shm_op_data_deps,
+                                &op_data_dep_i, &shm_cur))) {
                             return err_info;
                         }
                         SR_CHECK_INT_RET(op_data_dep_i != shm_op_deps[op_dep_i].out_dep_count, err_info);
@@ -426,10 +449,10 @@ sr_shmmain_shm_add_modules(char *sr_shm, struct lyd_node *ly_start_mod, sr_mod_t
         SR_CHECK_INT_RET(op_dep_i != shm_mod->op_dep_count, err_info);
 
         /* next */
-        shm_mod = (sr_mod_t *)(sr_shm + shm_mod->next);
+        shm_mod = (sr_mod_t *)(main_shm_addr + shm_mod->next);
     }
 
-    *shm_end = shm_cur - sr_shm;
+    *shm_end = shm_cur - main_shm_addr;
     return NULL;
 }
 
@@ -948,34 +971,34 @@ sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent)
 }
 
 sr_mod_t *
-sr_shmmain_getnext(char *sr_shm, sr_mod_t *last)
+sr_shmmain_getnext(char *main_shm_addr, sr_mod_t *last)
 {
-    if (!sr_shm) {
+    if (!main_shm_addr) {
         return NULL;
     }
 
     if (!last) {
-        return (sr_mod_t *)sr_shm;
+        return (sr_mod_t *)main_shm_addr;
     }
 
     if (!last->next) {
         return NULL;
     }
 
-    return (sr_mod_t *)(sr_shm + last->next);
+    return (sr_mod_t *)(main_shm_addr + last->next);
 }
 
 sr_mod_t *
-sr_shmmain_find_module(char *sr_shm, const char *name, off_t name_off)
+sr_shmmain_find_module(char *main_shm_addr, const char *name, off_t name_off)
 {
     sr_mod_t *cur = NULL;
 
     assert(name || name_off);
 
-    while ((cur = sr_shmmain_getnext(sr_shm, cur))) {
+    while ((cur = sr_shmmain_getnext(main_shm_addr, cur))) {
         if (name_off && (cur->name == name_off)) {
             return cur;
-        } else if (name && !strcmp(sr_shm + cur->name, name)) {
+        } else if (name && !strcmp(main_shm_addr + cur->name, name)) {
             return cur;
         }
     }
@@ -1514,8 +1537,8 @@ next_sibling:
 }
 
 static sr_error_info_t *
-sr_shmmain_ly_add_module(const struct lys_module *mod, struct lyd_node *sr_mods, struct lyd_node **ly_mod_p,
-        size_t *shm_size)
+sr_shmmain_ly_add_module(const struct lys_module *mod, int replay_support, struct lyd_node *sr_mods,
+        struct lyd_node **ly_mod_p, size_t *shm_size)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_node *root, *elem;
@@ -1554,7 +1577,12 @@ sr_shmmain_ly_add_module(const struct lys_module *mod, struct lyd_node *sr_mods,
             break;
         }
     }
-    if (!lyd_new_leaf(ly_mod, NULL, "has-data", elem ? "true" : "false")) {
+    if (elem && !lyd_new_leaf(ly_mod, NULL, "has-data", NULL)) {
+        sr_errinfo_new_ly(&err_info, mod->ctx);
+        return err_info;
+    }
+
+    if (replay_support && !lyd_new_leaf(ly_mod, NULL, "replay-support", NULL)) {
         sr_errinfo_new_ly(&err_info, mod->ctx);
         return err_info;
     }
@@ -1594,25 +1622,26 @@ sr_shmmain_ly_add_module(const struct lys_module *mod, struct lyd_node *sr_mods,
 }
 
 static sr_error_info_t *
-sr_shmmain_ly_add_module_with_imps(char *sr_shm, const struct lys_module *mod, struct lyd_node *sr_mods,
-        struct lyd_node **ly_mod_p, size_t *shm_size)
+sr_shmmain_ly_add_module_with_imps(char *main_shm_addr, const struct lys_module *mod, int replay_support,
+        struct lyd_node *sr_mods, struct lyd_node **ly_mod_p, size_t *shm_size)
 {
     sr_error_info_t *err_info = NULL;
     uint8_t i;
 
-    if (sr_shmmain_find_module(sr_shm, mod->name, 0)) {
+    if (sr_shmmain_find_module(main_shm_addr, mod->name, 0)) {
         /* module has already been added */
         return NULL;
     }
 
-    if ((err_info = sr_shmmain_ly_add_module(mod, sr_mods, ly_mod_p, shm_size))) {
+    if ((err_info = sr_shmmain_ly_add_module(mod, replay_support, sr_mods, ly_mod_p, shm_size))) {
         return err_info;
     }
 
     /* all newly implemented modules will be added also from imports */
     for (i = 0; i < mod->imp_size; ++i) {
         if (mod->imp[i].module->implemented) {
-            if ((err_info = sr_shmmain_ly_add_module_with_imps(sr_shm, mod->imp[i].module, sr_mods, ly_mod_p, shm_size))) {
+            if ((err_info = sr_shmmain_ly_add_module_with_imps(main_shm_addr, mod->imp[i].module, replay_support, sr_mods,
+                    ly_mod_p, shm_size))) {
                 return err_info;
             }
         }
@@ -1622,7 +1651,7 @@ sr_shmmain_ly_add_module_with_imps(char *sr_shm, const struct lys_module *mod, s
 }
 
 sr_error_info_t *
-sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod)
+sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod, int replay_support)
 {
     struct lyd_node *sr_mods = NULL, *sr_mod = NULL;
     size_t shm_size = 0;
@@ -1635,7 +1664,7 @@ sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mo
 
     /* get the combined size of all newly implemented modules */
     assert(mod->implemented);
-    if ((err_info = sr_shmmain_ly_add_module_with_imps(conn->main_shm.addr, mod, sr_mods, &sr_mod, &shm_size))) {
+    if ((err_info = sr_shmmain_ly_add_module_with_imps(conn->main_shm.addr, mod, replay_support, sr_mods, &sr_mod, &shm_size))) {
         goto cleanup;
     }
 
@@ -1665,7 +1694,65 @@ cleanup:
 }
 
 static sr_error_info_t *
-sr_shmmain_unsched_del_module_r(struct lyd_node *sr_mods, const struct lys_module *mod, int first)
+sr_shmmain_ly_update_replay_support(const char *mod_name, int replay_support, struct lyd_node *sr_mods)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path = NULL;
+    struct lyd_node *node;
+    struct ly_set *set = NULL;
+
+    if (asprintf(&path, "/" SR_YANG_MOD ":sysrepo-modules/module[name=\"%s\"]/replay-support", mod_name) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+    set = lyd_find_path(sr_mods, path);
+    SR_CHECK_INT_GOTO(!set, err_info, cleanup);
+    if (!replay_support && (set->number == 1)) {
+        /* remove replay support */
+        lyd_free(set->set.d[0]);
+    } else if (replay_support && !set->number) {
+        /* add replay support */
+        node = lyd_new_path(sr_mods, NULL, path, NULL, 0, 0);
+        if (!node) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mods)->ctx);
+            SR_ERRINFO_INT(&err_info);
+            goto cleanup;
+        }
+    }
+
+    /* success */
+
+cleanup:
+    free(path);
+    ly_set_free(set);
+    return err_info;
+}
+
+static sr_error_info_t *
+sr_shmmain_shm_update_replay_support(char *main_shm_addr, const char *mod_name, int replay_support)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+
+    shm_mod = sr_shmmain_find_module(main_shm_addr, mod_name, 0);
+    SR_CHECK_INT_RET(!shm_mod, err_info);
+
+    if ((replay_support && !(shm_mod->flags & SR_MOD_REPLAY_SUPPORT))
+            || (!replay_support && (shm_mod->flags & SR_MOD_REPLAY_SUPPORT))) {
+        /* update flag */
+        if (replay_support) {
+            shm_mod->flags |= SR_MOD_REPLAY_SUPPORT;
+        } else {
+            shm_mod->flags &= ~SR_MOD_REPLAY_SUPPORT;
+        }
+    }
+
+    return NULL;
+}
+
+static sr_error_info_t *
+sr_shmmain_unsched_del_module_r(char *main_shm_addr, struct lyd_node *sr_mods, const struct lys_module *mod,
+        int replay_support, int first)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
@@ -1688,13 +1775,21 @@ sr_shmmain_unsched_del_module_r(struct lyd_node *sr_mods, const struct lys_modul
         assert(set->number == 1);
         lyd_free(set->set.d[0]);
         SR_LOG_INF("Module \"%s\" deletion unscheduled.", mod->name);
+
+        /* update replay support */
+        if ((err_info = sr_shmmain_ly_update_replay_support(mod->name, replay_support, sr_mods))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_shmmain_shm_update_replay_support(main_shm_addr, mod->name, replay_support))) {
+            goto cleanup;
+        }
     }
     first = 0;
 
     /* recursively check all imported implemented modules */
     for (i = 0; i < mod->imp_size; ++i) {
         if (mod->imp[i].module->implemented) {
-            if ((err_info = sr_shmmain_unsched_del_module_r(sr_mods, mod->imp[i].module, 0))) {
+            if ((err_info = sr_shmmain_unsched_del_module_r(main_shm_addr, sr_mods, mod->imp[i].module, replay_support, 0))) {
                 goto cleanup;
             }
         }
@@ -1707,7 +1802,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmmain_unsched_del_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod)
+sr_shmmain_unsched_del_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod, int replay_support)
 {
     struct lyd_node *sr_mods = NULL;
     sr_error_info_t *err_info = NULL;
@@ -1718,7 +1813,7 @@ sr_shmmain_unsched_del_module_with_imps(sr_conn_ctx_t *conn, const struct lys_mo
     }
 
     /* try to unschedule deletion */
-    if ((err_info = sr_shmmain_unsched_del_module_r(sr_mods, mod, 1))) {
+    if ((err_info = sr_shmmain_unsched_del_module_r(conn->main_shm.addr, sr_mods, mod, replay_support, 1))) {
         goto cleanup;
     }
 

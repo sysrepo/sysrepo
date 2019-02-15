@@ -79,7 +79,9 @@ cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
     assert_non_null(set);
     assert_int_equal(set->number, 1);
 
-    /* check current internal data */
+    /* check current internal (sorted) data */
+    ret = lyd_schema_sort(set->set.d[0], 1);
+    assert_int_equal(ret, 0);
     ret = lyd_print_mem(&str, set->set.d[0], LYD_XML, 0);
     ly_set_free(set);
     lyd_free_withsiblings(data);
@@ -95,13 +97,13 @@ test_data_deps(void **state)
     struct state *st = (struct state *)*state;
     int ret;
 
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/refs.yang", TESTS_DIR "/files", NULL, 0);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/refs.yang", TESTS_DIR "/files", NULL, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_remove_module(st->conn, "refs");
@@ -117,7 +119,7 @@ test_data_deps(void **state)
     cmp_int_data(st->conn, "test",
     "<module xmlns=\"urn:sysrepo\">"
         "<name>test</name>"
-        "<has-data>true</has-data>"
+        "<has-data/>"
         "<removed/>"
     "</module>"
     );
@@ -125,7 +127,8 @@ test_data_deps(void **state)
     "<module xmlns=\"urn:sysrepo\">"
         "<name>ietf-interfaces</name>"
         "<revision>2014-05-08</revision>"
-        "<has-data>true</has-data>"
+        "<has-data/>"
+        "<replay-support/>"
         "<removed/>"
     "</module>"
     );
@@ -133,15 +136,17 @@ test_data_deps(void **state)
     "<module xmlns=\"urn:sysrepo\">"
         "<name>iana-if-type</name>"
         "<revision>2014-05-08</revision>"
-        "<has-data>false</has-data>"
         "<removed/>"
     "</module>"
     );
     cmp_int_data(st->conn, "refs",
     "<module xmlns=\"urn:sysrepo\">"
         "<name>refs</name>"
-        "<has-data>true</has-data>"
+        "<has-data/>"
+        "<replay-support/>"
+        "<removed/>"
         "<data-deps>"
+            "<module>test</module>"
             "<inst-id>"
                 "<xpath xmlns:r=\"urn:refs\">/r:cont/r:def-inst-id</xpath>"
                 "<default-module>test</default-module>"
@@ -149,9 +154,7 @@ test_data_deps(void **state)
             "<inst-id>"
                 "<xpath xmlns:r=\"urn:refs\">/r:inst-id</xpath>"
             "</inst-id>"
-            "<module>test</module>"
         "</data-deps>"
-        "<removed/>"
     "</module>"
     );
 }
@@ -162,9 +165,9 @@ test_op_deps(void **state)
     struct state *st = (struct state *)*state;
     int ret;
 
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_remove_module(st->conn, "ops");
@@ -173,10 +176,20 @@ test_op_deps(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current internal data */
+    cmp_int_data(st->conn, "ops-ref",
+    "<module xmlns=\"urn:sysrepo\">"
+        "<name>ops-ref</name>"
+        "<has-data/>"
+        "<replay-support/>"
+        "<removed/>"
+    "</module>"
+    );
+
     cmp_int_data(st->conn, "ops",
     "<module xmlns=\"urn:sysrepo\">"
         "<name>ops</name>"
-        "<has-data>true</has-data>"
+        "<has-data/>"
+        "<removed/>"
         "<op-deps>"
             "<xpath xmlns:o=\"urn:ops\">/o:rpc1</xpath>"
             "<in>"
@@ -199,11 +212,11 @@ test_op_deps(void **state)
         "<op-deps>"
             "<xpath xmlns:o=\"urn:ops\">/o:cont/o:list1/o:cont2/o:act1</xpath>"
             "<out>"
+                "<module>ops</module>"
                 "<inst-id>"
                     "<xpath xmlns:o=\"urn:ops\">/o:cont/o:list1/o:cont2/o:act1/o:l8</xpath>"
                     "<default-module>ops</default-module>"
                 "</inst-id>"
-                "<module>ops</module>"
             "</out>"
         "</op-deps>"
         "<op-deps>"
@@ -227,7 +240,6 @@ test_op_deps(void **state)
                 "</inst-id>"
             "</in>"
         "</op-deps>"
-        "<removed/>"
     "</module>"
     );
 }

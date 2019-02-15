@@ -288,14 +288,14 @@ sr_shmsub_is_valid(sr_notif_event_t ev, sr_subscr_options_t sub_opts)
 }
 
 static int
-sr_shmsub_conf_notify_has_subscription(char *sr_shm, struct sr_mod_info_mod_s *mod, sr_datastore_t ds, sr_notif_event_t ev,
-        uint32_t *max_priority_p)
+sr_shmsub_conf_notify_has_subscription(char *main_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
+        sr_notif_event_t ev, uint32_t *max_priority_p)
 {
     int has_sub = 0;
     uint32_t i;
     sr_mod_conf_sub_t *shm_msub;
 
-    shm_msub = (sr_mod_conf_sub_t *)(sr_shm + mod->shm_mod->conf_sub[ds].subs);
+    shm_msub = (sr_mod_conf_sub_t *)(main_shm_addr + mod->shm_mod->conf_sub[ds].subs);
     *max_priority_p = 0;
     for (i = 0; i < mod->shm_mod->conf_sub[ds].sub_count; ++i) {
         if (!sr_shmsub_is_valid(ev, shm_msub[i].opts)) {
@@ -313,13 +313,13 @@ sr_shmsub_conf_notify_has_subscription(char *sr_shm, struct sr_mod_info_mod_s *m
 }
 
 static void
-sr_shmsub_conf_notify_next_subscription(char *sr_shm, struct sr_mod_info_mod_s *mod, sr_datastore_t ds, sr_notif_event_t ev,
+sr_shmsub_conf_notify_next_subscription(char *main_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds, sr_notif_event_t ev,
         uint32_t last_priority, uint32_t *next_priority_p, uint32_t *sub_count_p)
 {
     uint32_t i;
     sr_mod_conf_sub_t *shm_msub;
 
-    shm_msub = (sr_mod_conf_sub_t *)(sr_shm + mod->shm_mod->conf_sub[ds].subs);
+    shm_msub = (sr_mod_conf_sub_t *)(main_shm_addr + mod->shm_mod->conf_sub[ds].subs);
     *sub_count_p = 0;
     for (i = 0; i < mod->shm_mod->conf_sub[ds].sub_count; ++i) {
         if (!sr_shmsub_is_valid(ev, shm_msub[i].opts)) {
@@ -1746,62 +1746,6 @@ cleanup:
 }
 
 static sr_error_info_t *
-sr_shmsub_notif_listen_call_callback(struct modsub_notifsub_s *notif_sub, const struct lyd_node *notif_op, time_t notif_ts)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lyd_node *next, *elem;
-    void *mem;
-    char *notif_xpath = NULL;
-    sr_val_t *vals = NULL;
-    size_t val_count = 0;
-
-    assert(notif_op->schema->nodetype == LYS_NOTIF);
-    assert((notif_sub->tree_cb && !notif_sub->cb) || (!notif_sub->tree_cb && notif_sub->cb));
-
-    if (notif_sub->tree_cb) {
-        /* callback */
-        notif_sub->tree_cb(SR_EV_NOTIF_T_REALTIME, notif_op, notif_ts, notif_sub->private_data);
-    } else {
-        /* prepare XPath */
-        notif_xpath = lyd_path(notif_op);
-        SR_CHECK_INT_GOTO(!notif_xpath, err_info, cleanup);
-
-        /* prepare input for sr_val CB */
-        vals = NULL;
-        val_count = 0;
-        LY_TREE_DFS_BEGIN(notif_op, next, elem) {
-            /* skip op node */
-            if (elem != notif_op) {
-                mem = realloc(vals, (val_count + 1) * sizeof *vals);
-                if (!mem) {
-                    SR_ERRINFO_MEM(&err_info);
-                    goto cleanup;
-                }
-                vals = mem;
-
-                if ((err_info = sr_val_ly2sr(elem, &vals[val_count]))) {
-                    goto cleanup;
-                }
-
-                ++val_count;
-            }
-
-            LY_TREE_DFS_END(notif_op, next, elem);
-        }
-
-        /* callback */
-        notif_sub->cb(SR_EV_NOTIF_T_REALTIME, notif_xpath, vals, val_count, notif_ts, notif_sub->private_data);
-    }
-
-    /* success */
-
-cleanup:
-    free(notif_xpath);
-    sr_free_values(vals, val_count);
-    return err_info;
-}
-
-static sr_error_info_t *
 sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, sr_conn_ctx_t *conn, int *new_event)
 {
     uint32_t i;
@@ -1879,7 +1823,8 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
             ly_set_free(set);
         }
 
-        if ((err_info = sr_shmsub_notif_listen_call_callback(&notif_subs->subs[i], notif_op, notif_ts))) {
+        if ((err_info = sr_notif_call_callback(notif_subs->subs[i].cb, notif_subs->subs[i].tree_cb,
+                notif_subs->subs[i].private_data, SR_EV_NOTIF_REALTIME, notif_op, notif_ts))) {
             goto cleanup;
         }
     }
@@ -1895,10 +1840,107 @@ cleanup:
     return err_info;
 }
 
+static sr_error_info_t *
+sr_shmsub_notif_listen_module_check_stop_time(struct modsub_notif_s *notif_subs, sr_subscription_ctx_t *subs,
+        int *module_finished)
+{
+    sr_error_info_t *err_info = NULL;
+    time_t cur_ts;
+    struct modsub_notifsub_s *notif_sub;
+    uint32_t i;
+
+    *module_finished = 0;
+    cur_ts = time(NULL);
+
+    i = 0;
+    while (i < notif_subs->sub_count) {
+        notif_sub = &notif_subs->subs[i];
+        if (notif_sub->stop_time && (notif_sub->stop_time < cur_ts)) {
+            /* subscription is finished */
+            if ((err_info = sr_notif_call_callback(notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
+                    SR_EV_NOTIF_STOP, NULL, notif_sub->stop_time))) {
+                return err_info;
+            }
+
+            /* SHM WRITE LOCK */
+            if ((err_info = sr_shmmain_lock_remap(subs->conn, 1))) {
+                return err_info;
+            }
+
+            /* remove the subscription from main SHM */
+            if ((err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, 0))) {
+                sr_shmmain_unlock(subs->conn);
+                return err_info;
+            }
+
+            /* SHM UNLOCK */
+            sr_shmmain_unlock(subs->conn);
+
+            if (notif_subs->sub_count == 1) {
+                /* removing last subscription to this module */
+                *module_finished = 1;
+            }
+
+            /* remove the subscription from the sub structure */
+            sr_sub_notif_del(notif_subs->module_name, notif_sub->xpath, notif_sub->start_time, notif_sub->stop_time,
+                    notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data, subs, 1);
+
+            if (*module_finished) {
+                /* do not check other modules */
+                break;
+            }
+        } else {
+            ++i;
+        }
+    }
+
+    return NULL;
+}
+
+static sr_error_info_t *
+sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subscription_ctx_t *subs)
+{
+    sr_error_info_t *err_info = NULL;
+    struct modsub_notifsub_s *notif_sub;
+    uint32_t i;
+
+    for (i = 0; i < notif_subs->sub_count; ++i) {
+        notif_sub = &notif_subs->subs[i];
+        if (notif_sub->start_time && !notif_sub->replayed) {
+            /* we need to perform the requested replay */
+            if ((err_info = sr_replay_notify(subs->conn, notif_subs->module_name, notif_sub->xpath, notif_sub->start_time,
+                    notif_sub->stop_time, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data))) {
+                return err_info;
+            }
+
+            /* SHM WRITE LOCK */
+            if ((err_info = sr_shmmain_lock_remap(subs->conn, 1))) {
+                return err_info;
+            }
+
+            /* now we can add notification subscription into main SHM because it will process realtime notifications */
+            err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, 1);
+
+            /* SHM UNLOCK */
+            sr_shmmain_unlock(subs->conn);
+
+            if (err_info) {
+                return err_info;
+            }
+
+            /* all notifications were replayed and it is now a standard subscription */
+            notif_sub->replayed = 1;
+        }
+
+    }
+
+    return NULL;
+}
+
 void *
 sr_shmsub_listen_thread(void *arg)
 {
-    int new_event;
+    int new_event, module_finished;
     uint32_t i;
     sr_error_info_t *err_info = NULL;
     sr_subscription_ctx_t *subs = (sr_subscription_ctx_t *)arg;
@@ -1914,33 +1956,47 @@ sr_shmsub_listen_thread(void *arg)
         /* configuration subscriptions */
         for (i = 0; i < subs->conf_sub_count; ++i) {
             if ((err_info = sr_shmsub_conf_listen_process_module_events(&subs->conf_subs[i], subs->conn, &new_event))) {
-                sr_unlock(&subs->subs_lock);
-                goto error;
+                goto error_unlock;
             }
         }
 
         /* data provider subscriptions */
         for (i = 0; i < subs->dp_sub_count; ++i) {
             if ((err_info = sr_shmsub_dp_listen_process_module_events(&subs->dp_subs[i], subs->conn, &new_event))) {
-                sr_unlock(&subs->subs_lock);
-                goto error;
+                goto error_unlock;
             }
         }
 
         /* RPC/action subscriptions */
         for (i = 0; i < subs->rpc_sub_count; ++i) {
             if ((err_info = sr_shmsub_rpc_listen_process_events(&subs->rpc_subs[i], subs->conn, &new_event))) {
-                sr_unlock(&subs->subs_lock);
-                goto error;
+                goto error_unlock;
             }
         }
 
         /* notification subscriptions */
-        for (i = 0; i < subs->notif_sub_count; ++i) {
-            if ((err_info = sr_shmsub_notif_listen_process_module_events(&subs->notif_subs[i], subs->conn, &new_event))) {
-                sr_unlock(&subs->subs_lock);
-                goto error;
+        i = 0;
+        while (i < subs->notif_sub_count) {
+            /* perform any replays requested */
+            if ((err_info = sr_shmsub_notif_listen_module_replay(&subs->notif_subs[i], subs))) {
+                goto error_unlock;
             }
+
+            /* check whether a subscription did not finish */
+            if ((err_info = sr_shmsub_notif_listen_module_check_stop_time(&subs->notif_subs[i], subs, &module_finished))) {
+                goto error_unlock;
+            }
+            if (module_finished) {
+                /* all subscriptions of this module have finished, try the next */
+                continue;
+            }
+
+            if ((err_info = sr_shmsub_notif_listen_process_module_events(&subs->notif_subs[i], subs->conn, &new_event))) {
+                goto error_unlock;
+            }
+
+            /* next iteration */
+            ++i;
         }
 
         /* SUBS UNLOCK */
@@ -1953,6 +2009,10 @@ sr_shmsub_listen_thread(void *arg)
     }
 
     return NULL;
+
+error_unlock:
+    /* SUBS UNLOCK */
+    sr_unlock(&subs->subs_lock);
 
 error:
     /* free our own resources */

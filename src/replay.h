@@ -1,7 +1,7 @@
 /**
- * @file config.h
+ * @file replay.h
  * @author Michal Vasko <mvasko@cesnet.cz>
- * @brief test configuration header
+ * @brief header for notification replay routines
  *
  * @copyright
  * Copyright (c) 2019 CESNET, z.s.p.o.
@@ -18,10 +18,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef SRTEST_CONFIG_H_
-#define SRTEST_CONFIG_H_
+#ifndef _REPLAY_H
+#define _REPLAY_H
 
-#define TESTS_DIR "@TESTS_DIR@"
-#define NOTIF_DIR "@REPO_PATH@/data/notif"
+#include <time.h>
 
-#endif /* SRTEST_CONFIG_H_ */
+#include <libyang/libyang.h>
+
+#include "common.h"
+
+sr_error_info_t *sr_replay_store(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_ts);
+
+sr_error_info_t *sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, time_t start_time,
+        time_t stop_time, sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback, void *private_data);
+
+#endif

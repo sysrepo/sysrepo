@@ -175,7 +175,8 @@ cleanup:
 }
 
 static sr_error_info_t *
-sr_module_config_data_get(struct ly_ctx *ly_ctx, char *sr_shm, sr_mod_t *shm_mod, sr_datastore_t ds, struct lyd_node **data)
+sr_module_config_data_get(struct ly_ctx *ly_ctx, char *main_shm_addr, sr_mod_t *shm_mod, sr_datastore_t ds,
+        struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_conf_sub_t *shm_confsubs;
@@ -198,7 +199,7 @@ sr_module_config_data_get(struct ly_ctx *ly_ctx, char *sr_shm, sr_mod_t *shm_mod
     }
 
     /* prepare correct file path */
-    if (asprintf(&path, "%s/data/%s.%s", sr_get_repo_path(), sr_shm + shm_mod->name, sr_ds2str(file_ds)) == -1) {
+    if (asprintf(&path, "%s/data/%s.%s", sr_get_repo_path(), main_shm_addr + shm_mod->name, sr_ds2str(file_ds)) == -1) {
         SR_ERRINFO_MEM(&err_info);
         goto error;
     }
@@ -220,7 +221,7 @@ sr_module_config_data_get(struct ly_ctx *ly_ctx, char *sr_shm, sr_mod_t *shm_mod
     case SR_DS_OPERATIONAL:
         if (*data) {
             /* first try to find a subscription for the whole module */
-            shm_confsubs = (sr_mod_conf_sub_t *)(sr_shm + shm_mod->conf_sub[SR_DS_RUNNING].subs);
+            shm_confsubs = (sr_mod_conf_sub_t *)(main_shm_addr + shm_mod->conf_sub[SR_DS_RUNNING].subs);
             for (i = 0; i < shm_mod->conf_sub[SR_DS_RUNNING].sub_count; ++i) {
                 if (!shm_confsubs[i].xpath && !(shm_confsubs[i].opts & SR_SUBSCR_PASSIVE)) {
                     break;
@@ -235,7 +236,7 @@ sr_module_config_data_get(struct ly_ctx *ly_ctx, char *sr_shm, sr_mod_t *shm_mod
                         xpaths = sr_realloc(xpaths, (xp_i + 1) * sizeof *xpaths);
                         SR_CHECK_MEM_GOTO(!xpaths, err_info, error);
 
-                        xpaths[xp_i] = sr_shm + shm_confsubs[i].xpath;
+                        xpaths[xp_i] = main_shm_addr + shm_confsubs[i].xpath;
                         ++xp_i;
                     }
                 }
@@ -714,7 +715,7 @@ sr_xpath_dp_remove(struct lyd_node **mod_data, struct lyd_node *parent, const ch
 }
 
 static sr_error_info_t *
-sr_module_dp_append(struct sr_mod_info_mod_s *mod, char *sr_shm, sr_error_info_t **cb_error_info)
+sr_module_dp_append(struct sr_mod_info_mod_s *mod, char *main_shm_addr, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_dp_sub_t *shm_msub;
@@ -725,8 +726,8 @@ sr_module_dp_append(struct sr_mod_info_mod_s *mod, char *sr_shm, sr_error_info_t
 
     /* XPaths are ordered based on depth */
     for (i = 0; i < mod->shm_mod->dp_sub_count; ++i) {
-        shm_msub = &((sr_mod_dp_sub_t *)(sr_shm + mod->shm_mod->dp_subs))[i];
-        xpath = sr_shm + shm_msub->xpath;
+        shm_msub = &((sr_mod_dp_sub_t *)(main_shm_addr + mod->shm_mod->dp_subs))[i];
+        xpath = main_shm_addr + shm_msub->xpath;
 
         /* trim the last node to get the parent */
         if ((err_info = sr_xpath_trim_last_node(xpath, &parent_xpath, &last_node_xpath))) {
