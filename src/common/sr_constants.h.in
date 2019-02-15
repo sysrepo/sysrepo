@@ -126,6 +126,12 @@
 /** Directory local to SR_SUBSCRIPTIONS_SOCKET_DIR containing sysrepo-global subscription sockets. */
 #define SR_GLOBAL_SUBSCRIPTIONS_SUBDIR "_global-subscriptions"
 
+/** Time that the function cl_sm_event_notif_process waits for the replaying flag to be modified by the function sr_event_notif_replay. */
+#define SR_REPLAYING_FLAG_TIMEOUT_MS 500
+
+/** Maximum number of retry times to wait for the replaying flag to be modified. */
+#define SR_REPLAYING_RETRIES 3
+
 /** Maximum size of a GPB message. */
 #define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
 

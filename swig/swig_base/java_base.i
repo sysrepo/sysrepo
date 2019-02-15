@@ -18,85 +18,30 @@
 // temporary fix
 %warnfilter(477);
 
-%typemap(javadirectorin) std::shared_ptr<Session> "new $typemap(jstype, Session)($1,false)";
-%typemap(directorin,descriptor="L$typemap(jstype, Session);") std::shared_ptr<Session> %{
+%typemap(javadirectorin) std::shared_ptr<sysrepo::Session> "new $typemap(jstype, sysrepo::Session)($1,false)";
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, sysrepo::Session);") std::shared_ptr<sysrepo::Session> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
-%typemap(javadirectorin) std::shared_ptr<Vals> "new $typemap(jstype, Vals)($1,false)";
-%typemap(directorin,descriptor="L$typemap(jstype, Vals);") std::shared_ptr<Vals> %{
+%typemap(javadirectorin) std::shared_ptr<sysrepo::Vals> "new $typemap(jstype, sysrepo::Vals)($1,false)";
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, sysrepo::Vals);") std::shared_ptr<sysrepo::Vals> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
-%typemap(javadirectorin) std::shared_ptr<Vals_Holder> "new $typemap(jstype, Vals_Holder)($1,false)";
-%typemap(directorin,descriptor="L$typemap(jstype, Vals_Holder);") std::shared_ptr<Vals_Holder> %{
+%typemap(javadirectorin) std::shared_ptr<sysrepo::Vals_Holder> "new $typemap(jstype, sysrepo::Vals_Holder)($1,false)";
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, sysrepo::Vals_Holder);") std::shared_ptr<sysrepo::Vals_Holder> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
-%typemap(javadirectorin) std::shared_ptr<Trees> "new $typemap(jstype, Trees)($1,false)";
-%typemap(directorin,descriptor="L$typemap(jstype, Trees);") std::shared_ptr<Trees> %{
+%typemap(javadirectorin) std::shared_ptr<sysrepo::Trees> "new $typemap(jstype, sysrepo::Trees)($1,false)";
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, sysrepo::Trees);") std::shared_ptr<sysrepo::Trees> %{
   *($&1_type*)&j$1 = &$1;
 %}
 
-%typemap(javadirectorin) std::shared_ptr<Trees_Holder> "new $typemap(jstype, Trees_Holder)($1,false)";
-%typemap(directorin,descriptor="L$typemap(jstype, Trees_Holder);") std::shared_ptr<Trees_Holder> %{
+%typemap(javadirectorin) std::shared_ptr<sysrepo::Trees_Holder> "new $typemap(jstype, sysrepo::Trees_Holder)($1,false)";
+%typemap(directorin,descriptor="L$packagepath/$typemap(jstype, sysrepo::Trees_Holder);") std::shared_ptr<sysrepo::Trees_Holder> %{
   *($&1_type*)&j$1 = &$1;
 %}
-
-
-%ignore Val::Val(int8_t,sr_type_t);
-%ignore Val::Val(int16_t,sr_type_t);
-//%ignore Val::Val(int32_t,sr_type_t);
-%ignore Val::Val(int64_t,sr_type_t);
-%ignore Val::Val(uint8_t,sr_type_t);
-%ignore Val::Val(uint16_t,sr_type_t);
-%ignore Val::Val(uint32_t,sr_type_t);
-%ignore Val::Val(uint64_t,sr_type_t);
-
-%ignore Val::Val(int8_t);
-%ignore Val::Val(int16_t);
-%ignore Val::Val(int32_t);
-%ignore Val::Val(int64_t);
-%ignore Val::Val(uint8_t);
-%ignore Val::Val(uint16_t);
-%ignore Val::Val(uint32_t);
-%ignore Val::Val(uint64_t);
-
-%ignore Val::set(char const *,int8_t,sr_type_t);
-%ignore Val::set(char const *,int16_t,sr_type_t);
-%ignore Val::set(char const *,int32_t,sr_type_t);
-%ignore Val::set(char const *,int64_t,sr_type_t);
-%ignore Val::set(char const *,uint8_t,sr_type_t);
-%ignore Val::set(char const *,uint16_t,sr_type_t);
-%ignore Val::set(char const *,uint32_t,sr_type_t);
-%ignore Val::set(char const *,uint64_t,sr_type_t);
-
-%ignore Tree::Tree(int8_t,sr_type_t);
-%ignore Tree::Tree(int16_t,sr_type_t);
-%ignore Tree::Tree(int32_t,sr_type_t);
-%ignore Tree::Tree(int64_t,sr_type_t);
-%ignore Tree::Tree(uint8_t,sr_type_t);
-%ignore Tree::Tree(uint16_t,sr_type_t);
-%ignore Tree::Tree(uint32_t,sr_type_t);
-%ignore Tree::Tree(uint64_t,sr_type_t);
-
-%ignore Tree::set(char const *,int8_t,sr_type_t);
-%ignore Tree::set(char const *,int16_t,sr_type_t);
-%ignore Tree::set(char const *,int32_t,sr_type_t);
-%ignore Tree::set(char const *,int64_t,sr_type_t);
-%ignore Tree::set(char const *,uint8_t,sr_type_t);
-%ignore Tree::set(char const *,uint16_t,sr_type_t);
-%ignore Tree::set(char const *,uint32_t,sr_type_t);
-%ignore Tree::set(char const *,uint64_t,sr_type_t);
-
-%ignore Tree::set(int8_t,sr_type_t);
-%ignore Tree::set(int16_t,sr_type_t);
-%ignore Tree::set(int32_t,sr_type_t);
-%ignore Tree::set(int64_t,sr_type_t);
-%ignore Tree::set(uint8_t,sr_type_t);
-%ignore Tree::set(uint16_t,sr_type_t);
-%ignore Tree::set(uint32_t,sr_type_t);
-%ignore Tree::set(uint64_t,sr_type_t);
 
 %include "../swig_base/base.i"
 %include "../swig_base/libsysrepoEnums.i"

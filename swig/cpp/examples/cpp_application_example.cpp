@@ -25,7 +25,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "Session.h"
+#include "Session.hpp"
 
 #define MAX_LEN 100
 
@@ -36,7 +36,7 @@ volatile int exit_application = 0;
 /* Function to print current configuration state.
  * It does so by loading all the items of a session and printing them out. */
 static void
-print_current_config(S_Session session, const char *module_name)
+print_current_config(sysrepo::S_Session session, const char *module_name)
 {
     char select_xpath[MAX_LEN];
     try {
@@ -53,10 +53,10 @@ print_current_config(S_Session session, const char *module_name)
     }
 }
 
-class My_Callback:public Callback {
+class My_Callback:public sysrepo::Callback {
     public:
     /* Function to be called for subscribed client of given session whenever configuration changes. */
-    int module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
+    int module_change(sysrepo::S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
     {
         cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
 
@@ -85,15 +85,15 @@ main(int argc, char **argv)
         }
 
         cout << "Application will watch for changes in "<< module_name << endl;
-        S_Connection conn(new Connection("examples_application"));
+        sysrepo::S_Connection conn(new sysrepo::Connection("examples_application"));
 
-        S_Session sess(new Session(conn));
+        sysrepo::S_Session sess(new sysrepo::Session(conn));
 
         /* read startup config */
         cout << "\n\n ========== READING STARTUP CONFIG: ==========\n" << endl;
 
-        S_Subscribe subscribe(new Subscribe(sess));
-	S_Callback cb(new My_Callback());
+        sysrepo::S_Subscribe subscribe(new sysrepo::Subscribe(sess));
+        sysrepo::S_Callback cb(new My_Callback());
 
         subscribe->module_change_subscribe(module_name, cb, nullptr, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY);
 

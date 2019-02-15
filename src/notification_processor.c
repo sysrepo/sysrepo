@@ -370,7 +370,7 @@ np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *dat
         ac_set_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
     }
 
-    fd = open(data_filename, (read_only ? O_RDONLY : O_RDWR));
+    fd = open(data_filename, O_RDWR);
 
     if (NULL != user_cred) {
         ac_unset_user_identity(np_ctx->rp_ctx->ac_ctx, user_cred);
@@ -410,7 +410,7 @@ np_load_data_tree(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, const char *dat
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to lock data file '%s'.", data_filename);
 
     ly_errno = LY_SUCCESS;
-    *data_tree = lyd_parse_fd(np_ctx->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+    *data_tree = sr_lyd_parse_fd(np_ctx->ly_ctx, fd, SR_FILE_FORMAT_LY, LYD_OPT_STRICT | LYD_OPT_CONFIG);
     if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Parsing data from file '%s' failed: %s", data_filename, ly_errmsg(np_ctx->ly_ctx));
         rc = SR_ERR_INTERNAL;
@@ -1459,6 +1459,40 @@ np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_s
             CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->subscriber_address, rc);
             /* identification of the request that asked for data */
             req->request->data_provide_req->request_id = session->req->request->_id;
+            switch (session->req->request->operation) {
+            case SR__OPERATION__GET_ITEM:
+                if (session->req->request->get_item_req->xpath) {
+                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_item_req->xpath);
+                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
+                }
+                break;
+            case SR__OPERATION__GET_ITEMS:
+                if (session->req->request->get_items_req->xpath) {
+                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_items_req->xpath);
+                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
+                }
+                break;
+            case SR__OPERATION__GET_SUBTREE:
+                if (session->req->request->get_subtree_req->xpath) {
+                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_subtree_req->xpath);
+                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
+                }
+                break;
+            case SR__OPERATION__GET_SUBTREES:
+                if (session->req->request->get_subtrees_req->xpath) {
+                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_subtrees_req->xpath);
+                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
+                }
+                break;
+            case SR__OPERATION__GET_SUBTREE_CHUNK:
+                if (session->req->request->get_subtree_chunk_req->xpath) {
+                    req->request->data_provide_req->original_xpath = strdup(session->req->request->get_subtree_chunk_req->xpath);
+                    CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->original_xpath, rc);
+                }
+                break;
+            default:
+                break;
+            }
         }
     }
 

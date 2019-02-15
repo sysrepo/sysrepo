@@ -23,15 +23,17 @@
 #include <memory>
 #include <string.h>
 
-#include "Struct.h"
-#include "Sysrepo.h"
-#include "Internal.h"
+#include "Struct.hpp"
+#include "Sysrepo.hpp"
+#include "Internal.hpp"
 
 extern "C" {
 #include "sysrepo.h"
 #include "sysrepo/values.h"
 #include "sysrepo/trees.h"
 }
+
+namespace sysrepo {
 
 // Data
 Data::Data(sr_data_t data, sr_type_t type, S_Deleter deleter) {_d = data; _t = type; _deleter = deleter;}
@@ -479,6 +481,10 @@ void Val::set(const char *xpath, uint64_t uint64_val, sr_type_t type) {
 
     _val->type = type;
 }
+void Val::xpath_set(char *xpath) {
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
 std::string Val::to_string() {
     char *mem = nullptr;
 
@@ -557,7 +563,8 @@ S_Vals Vals::dup() {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Vals vals(new Vals(new_val, _cnt));
+    S_Deleter deleter(new Deleter(new_val, _cnt));
+    S_Vals vals(new Vals(new_val, _cnt, deleter));
     return vals;
 }
 
@@ -710,4 +717,6 @@ Change::~Change() {
         sr_free_val(_new);
     if (_old)
         sr_free_val(_old);
+}
+
 }

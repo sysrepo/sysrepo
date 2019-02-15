@@ -1,3 +1,5 @@
+import org.sysrepo.*;
+
 import java.io.*;
 import org.junit.Test;
 import java.util.Scanner;

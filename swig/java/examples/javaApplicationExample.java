@@ -18,6 +18,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import org.sysrepo.*;
 
 import java.io.*;
 import java.util.Scanner;
@@ -51,7 +52,8 @@ class My_Callback extends Callback {
  * Here it is useful because `Conenction`, `Session` and `Subscribe` could throw an exception. */
 public class javaApplicationExample {
 	static {
-		System.loadLibrary("libsysrepoJava");
+		System.loadLibrary("sysrepoJava");
+		// System.loadLibrary("libsysrepoJava");
 	}
 	public static void main(String argv[]) {
 		try {

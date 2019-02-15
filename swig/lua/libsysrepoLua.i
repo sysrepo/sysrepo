@@ -27,9 +27,9 @@
 #include <vector>
 #include <memory>
 
-#include "Sysrepo.h"
-#include "Struct.h"
-#include "Session.h"
+#include "Sysrepo.hpp"
+#include "Struct.hpp"
+#include "Session.hpp"
 
 class Callback_lua {
 public:
@@ -192,7 +192,7 @@ public:
         return ret;
     }
 
-    int dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx) {
+    int dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, void *private_ctx) {
         swiglua_ref_get(&fn);
         if (!lua_isfunction(fn.L,-1)) {
             throw std::runtime_error("Lua error in function callback");
@@ -201,6 +201,7 @@ public:
         lua_pushstring(fn.L, xpath);
         SWIG_NewPointerObj(fn.L, out_vals, SWIGTYPE_p_Vals_Holder, 0);
         lua_pushnumber(fn.L, request_id);
+        lua_pushstring(fn.L, original_xpath);
         SWIG_NewPointerObj(fn.L, private_ctx, SWIGTYPE_p_void, 0);
         lua_call(fn.L, 3, 1);
         out_vals->~Vals_Holder();
