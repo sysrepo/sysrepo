@@ -872,7 +872,7 @@ sr_modinfo_get_filter(sr_session_ctx_t *session, const char *xpath, struct sr_mo
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
             /* apply any performed changes to get the session-specific data tree */
-            if (session->ev == SR_EV_NONE) {
+            if ((session->ev == SR_EV_NONE) && (session->ds != SR_DS_OPERATIONAL)) {
                 if ((err_info = sr_ly_edit_mod_apply(session->dt[session->ds].edit, mod, NULL))) {
                     goto cleanup;
                 }

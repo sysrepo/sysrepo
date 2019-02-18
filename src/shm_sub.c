@@ -1113,11 +1113,15 @@ sr_shmsub_conf_listen_prepare_sess(struct modsub_conf_s *conf_subs, struct modsu
 static void
 sr_shmsub_listen_clear_sess(sr_session_ctx_t *tmp_sess)
 {
+    uint16_t i;
+
     sr_errinfo_free(&tmp_sess->err_info);
-    lyd_free_withsiblings(tmp_sess->dt[tmp_sess->ds].edit);
-    tmp_sess->dt[tmp_sess->ds].edit = NULL;
-    lyd_free_withsiblings(tmp_sess->dt[tmp_sess->ds].diff);
-    tmp_sess->dt[tmp_sess->ds].diff = NULL;
+    for (i = 0; i < 2; ++i) {
+        lyd_free_withsiblings(tmp_sess->dt[i].edit);
+        tmp_sess->dt[i].edit = NULL;
+        lyd_free_withsiblings(tmp_sess->dt[i].diff);
+        tmp_sess->dt[i].diff = NULL;
+    }
 }
 
 static int
