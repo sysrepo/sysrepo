@@ -1015,8 +1015,6 @@ sr_ds2str(sr_datastore_t ds)
         return "startup";
     case SR_DS_OPERATIONAL:
         return "operational";
-    case SR_DS_COUNT:
-        return NULL;
     }
 
     return NULL;

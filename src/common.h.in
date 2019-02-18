@@ -108,7 +108,7 @@ struct sr_session_ctx_s {
     struct {
         struct lyd_node *edit;
         struct lyd_node *diff;
-    } dt[SR_DS_COUNT];
+    } dt[2];
 };
 
 struct sr_subscription_ctx_s {

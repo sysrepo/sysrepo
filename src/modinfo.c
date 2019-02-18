@@ -185,7 +185,6 @@ sr_module_config_data_get(struct ly_ctx *ly_ctx, char *main_shm_addr, sr_mod_t *
     uint16_t i, xp_i;
     char *path, **xpaths;
 
-    assert(ds != SR_DS_COUNT);
     *data = NULL;
 
     if (ds == SR_DS_OPERATIONAL) {
@@ -254,9 +253,6 @@ sr_module_config_data_get(struct ly_ctx *ly_ctx, char *main_shm_addr, sr_mod_t *
             }
         }
         break;
-    case SR_DS_COUNT:
-        SR_ERRINFO_INT(&err_info);
-        goto error;
     }
 
     return NULL;

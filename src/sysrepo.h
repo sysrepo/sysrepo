@@ -314,7 +314,6 @@ typedef enum sr_datastore_e {
     SR_DS_STARTUP = 0,     /**< Contains configuration data that will be loaded when a device starts. */
     SR_DS_RUNNING = 1,     /**< Contains current configuration data. */
     SR_DS_OPERATIONAL = 2, /**< Contains currently used configuration and state data. */
-    SR_DS_COUNT            /**< Number of different datastores. */
 } sr_datastore_t;
 
 /**
