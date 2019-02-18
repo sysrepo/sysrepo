@@ -19,7 +19,6 @@
 #### (Optional) Bindings for other languages:
 [Swig](http://www.swig.org/) must be installed. Bindigs are generated during `make` phase.
 - Python bindings require `python-dev` to be installed.
-- Lua bindings require `lua5.2` to be installed.
 
 #### (Optional) Netopeer2 NETCONF server
 Can be installed to enable remote management via NETCONF. Requires [libnetconf2](https://github.com/CESNET/libnetconf2) library. Follow the instructions on [Netopeer2](https://github.com/CESNET/Netopeer2) site, or have a look at the [Dockerfile](deploy/docker/sysrepo-netopeer2/Dockerfile) for Sysrepo & Netopeer2 integration.
