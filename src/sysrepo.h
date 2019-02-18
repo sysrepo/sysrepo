@@ -851,9 +851,11 @@ int sr_discard_changes(sr_session_ctx_t *session);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_copy_config(sr_session_ctx_t *session, const char *module_name,
-        sr_datastore_t src_datastore, sr_datastore_t dst_datastore);
+int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore,
+        sr_datastore_t dst_datastore);
 
+int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
+        sr_datastore_t dst_datastore);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Locking API

@@ -100,6 +100,7 @@ teardown_f(void **state)
     sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
     sr_delete_item(sess, "/test:l1[k='a']", 0);
     sr_delete_item(sess, "/test:l1[k='b']", 0);
+    sr_delete_item(sess, "/test:l1[k='c']", 0);
     sr_delete_item(sess, "/test:ll1[.='1']", 0);
     sr_delete_item(sess, "/test:ll1[.='2']", 0);
     sr_delete_item(sess, "/test:cont", 0);
@@ -1092,6 +1093,392 @@ test_userord(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST 4 */
+static int
+module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_notif_event_t event,
+        void *private_ctx)
+{
+    struct state *st = (struct state *)private_ctx;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    sr_val_t *old_val, *new_val;
+    int ret;
+
+    assert_null(xpath);
+
+    switch (st->cb_called) {
+    case 0:
+    case 1:
+        assert_string_equal(module_name, "ietf-interfaces");
+        if (st->cb_called == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/ietf-interfaces:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_MODIFIED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled");
+        assert_int_equal(old_val->data.bool_val, true);
+        assert_int_equal(old_val->dflt, 1);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled");
+        assert_int_equal(new_val->data.bool_val, true);
+        assert_int_equal(new_val->dflt, 0);
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/description");
+
+        sr_free_val(new_val);
+
+        /* 3rd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']");
+        assert_null(new_val);
+
+        sr_free_val(old_val);
+
+        /* 4th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/name");
+        assert_null(new_val);
+
+        sr_free_val(old_val);
+
+        /* 5th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/type");
+        assert_null(new_val);
+
+        sr_free_val(old_val);
+
+        /* 6th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled");
+        assert_null(new_val);
+
+        sr_free_val(old_val);
+
+        /* 7th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']");
+
+        sr_free_val(new_val);
+
+        /* 8th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/name");
+
+        sr_free_val(new_val);
+
+        /* 9th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/type");
+
+        sr_free_val(new_val);
+
+        /* 10th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/enabled");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 2:
+    case 3:
+        assert_string_equal(module_name, "test");
+        if (st->cb_called == 2) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_MOVED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l1[k='c']");
+
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_MOVED);
+        assert_non_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(old_val->xpath, "/test:cont/ll2[.='2']");
+        assert_string_equal(new_val->xpath, "/test:cont/ll2[.='1']");
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    default:
+        fail();
+    }
+
+    ++st->cb_called;
+    return SR_ERR_OK;
+}
+
+static void *
+replace_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    struct lyd_node *config, *node;
+    struct ly_set *subtrees;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before replacing */
+    pthread_barrier_wait(&st->barrier);
+
+    /* prepare some ietf-interfaces config */
+    config = lyd_new_path(NULL, sr_get_context(st->conn), "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", 0, 0);
+    assert_non_null(config);
+    node = lyd_new_path(config, NULL, "/ietf-interfaces:interfaces/interface[name='eth1']/description", "some-eth1-desc", 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(config, NULL, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", "true", 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(config, NULL, "/ietf-interfaces:interfaces/interface[name='eth3']/type", "iana-if-type:sonet", 0, 0);
+    assert_non_null(node);
+
+    /* perform 1st replace-config */
+    ret = sr_replace_config(sess, "ietf-interfaces", config, SR_DS_RUNNING);
+    config = NULL;
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_subtrees(sess, "/ietf-interfaces:interfaces", &subtrees);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(subtrees->number, 1);
+
+    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    lyd_free_withsiblings(subtrees->set.d[0]);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<description>some-eth1-desc</description>"
+            "<enabled>true</enabled>"
+        "</interface>"
+        "<interface>"
+            "<name>eth3</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:sonet</type>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+    ly_set_free(subtrees);
+
+    /* prepare some test config */
+    config = lyd_new_path(NULL, sr_get_context(st->conn), "/test:l1[k='c']", NULL, 0, 0);
+    assert_non_null(config);
+    node = lyd_new_path(config, NULL, "/test:l1[k='a']", NULL, 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(config, NULL, "/test:l1[k='b']", NULL, 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(config, NULL, "/test:cont/ll2[.='2']", NULL, 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(config, NULL, "/test:cont/ll2[.='1']", NULL, 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(config, NULL, "/test:cont/ll2[.='3']", NULL, 0, 0);
+    assert_non_null(node);
+
+    /* perform 2nd replace-config */
+    ret = sr_replace_config(sess, "test", config, SR_DS_RUNNING);
+    config = NULL;
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_subtrees(sess, "/test:*", &subtrees);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(subtrees->number, 4);
+
+    assert_string_equal(subtrees->set.d[0]->schema->name, "l1");
+    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[0]->child)->value_str, "c");
+    lyd_free_withsiblings(subtrees->set.d[0]);
+
+    assert_string_equal(subtrees->set.d[1]->schema->name, "l1");
+    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[1]->child)->value_str, "a");
+    lyd_free_withsiblings(subtrees->set.d[1]);
+
+    assert_string_equal(subtrees->set.d[2]->schema->name, "l1");
+    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[2]->child)->value_str, "b");
+    lyd_free_withsiblings(subtrees->set.d[2]);
+
+    ret = lyd_print_mem(&str1, subtrees->set.d[3], LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    lyd_free_withsiblings(subtrees->set.d[3]);
+
+    str2 = "<cont xmlns=\"urn:test\"><ll2>2</ll2><ll2>1</ll2><ll2>3</ll2></cont>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+    ly_set_free(subtrees);
+
+    /* signal that we have finished */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_replace_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int count, ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some running ietf-interfaces data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_replace_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some running test data */
+    ret = sr_set_item_str(sess, "/test:l1[k='a']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:l1[k='b']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:l1[k='c']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:cont/ll2[.='1']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:cont/ll2[.='2']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:cont/ll2[.='3']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_replace_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscriptions were created */
+    pthread_barrier_wait(&st->barrier);
+
+    count = 0;
+    while ((st->cb_called < 4) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 4);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_replace(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, replace_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_replace_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1100,6 +1487,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_empty, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_simple, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_userord, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_replace, setup_f, teardown_f),
     };
 
     sr_log_stderr(SR_LL_INF);

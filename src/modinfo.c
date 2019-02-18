@@ -411,44 +411,9 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff)
     /* success */
 
 cleanup:
-    /* disconnect all the data trees and split them back into modules removing any instid-dependency data */
-    while (first_root) {
-        for (i = 0; i < mod_info->mod_count; ++i) {
-            mod = &mod_info->mods[i];
-
-            if (lyd_node_module(first_root) != mod->ly_mod) {
-                /* wrong module */
-                continue;
-            }
-
-            /* find all the succeeding siblings from one module */
-            for (iter = first_root->next; iter && (lyd_node_module(iter) == mod->ly_mod); iter = iter->next);
-
-            /* unlink and connect them to their module */
-            if (iter) {
-                sr_ly_split(iter);
-            }
-            if (!mod->mod_data) {
-                mod->mod_data = first_root;
-            } else {
-                sr_ly_link(mod->mod_data, first_root);
-            }
-
-            /* continue with the leftover data */
-            first_root = iter;
-            break;
-        }
-
-        if (i == mod_info->mod_count) {
-            /* we have not found this data module, it must be data from an instid dependency, just free them and continue */
-            for (iter = first_root->next; iter && (lyd_node_module(iter) == lyd_node_module(first_root)); iter = iter->next);
-            if (iter) {
-                sr_ly_split(iter);
-            }
-            lyd_free_withsiblings(first_root);
-            first_root = iter;
-        }
-    }
+    /* disconnect all the data trees and split them back into modules removing any leftover instid-dependency data */
+    sr_modinfo_data_replace(mod_info, MOD_INFO_TYPE_MASK, &first_root);
+    assert(!first_root);
 
     /* other cleanup */
     lyd_free_val_diff(diff);
@@ -824,6 +789,61 @@ sr_modinfo_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_erro
     }
 
     return NULL;
+}
+
+void
+sr_modinfo_data_replace(struct sr_mod_info_s *mod_info, uint8_t mod_type, struct lyd_node **config_p)
+{
+    struct sr_mod_info_mod_s *mod;
+    uint32_t i;
+    struct lyd_node *config, *iter;
+
+    assert(config_p);
+
+    config = *config_p;
+    while (config) {
+        for (i = 0; i < mod_info->mod_count; ++i) {
+            mod = &mod_info->mods[i];
+            if (!(mod->state & mod_type)) {
+                /* we ignore this module completely */
+                continue;
+            }
+
+            if (lyd_node_module(config) != mod->ly_mod) {
+                /* wrong module */
+                continue;
+            }
+
+            /* find all the succeeding siblings from one module */
+            for (iter = config->next; iter && (lyd_node_module(iter) == mod->ly_mod); iter = iter->next);
+
+            /* unlink and connect them to their module */
+            if (iter) {
+                sr_ly_split(iter);
+            }
+            if (!mod->mod_data) {
+                mod->mod_data = config;
+            } else {
+                sr_ly_link(mod->mod_data, config);
+            }
+
+            /* continue with the leftover data */
+            config = iter;
+            break;
+        }
+
+        if (i == mod_info->mod_count) {
+            /* we have not found this data module, so just free it and continue */
+            for (iter = config->next; iter && (lyd_node_module(iter) == lyd_node_module(config)); iter = iter->next);
+            if (iter) {
+                sr_ly_split(iter);
+            }
+            lyd_free_withsiblings(config);
+            config = iter;
+        }
+    }
+
+    *config_p = NULL;
 }
 
 sr_error_info_t *

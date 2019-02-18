@@ -1522,6 +1522,126 @@ cleanup_shm_unlock:
     return sr_api_ret(session, err_info);
 }
 
+API int
+sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
+        sr_datastore_t dst_datastore)
+{
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    struct sr_mod_info_s src_mod_info, dst_mod_info;
+    const struct lys_module *mod = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || (dst_datastore == SR_DS_OPERATIONAL), session, err_info);
+
+    memset(&src_mod_info, 0, sizeof src_mod_info);
+    memset(&dst_mod_info, 0, sizeof dst_mod_info);
+
+    /* find first sibling */
+    for (; src_config && src_config->prev->next; src_config = src_config->prev);
+
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    if (module_name) {
+        /* try to find this module */
+        mod = ly_ctx_get_module(session->conn->ly_ctx, module_name, NULL, 1);
+        if (!mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+            goto cleanup_shm_unlock;
+        }
+    }
+
+    /* collect all required modules for src and dst datastores */
+    if ((err_info = sr_shmmod_collect_modules(session->conn, mod, SR_DS_RUNNING, MOD_INFO_DEP | MOD_INFO_INV_DEP,
+            &src_mod_info))) {
+        goto cleanup_shm_unlock;
+    }
+    if ((err_info = sr_shmmod_collect_modules(session->conn, mod, dst_datastore, 0, &dst_mod_info))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* MODULES READ LOCK (but setting flag for guaranteed later upgrade success) */
+    if ((err_info = sr_shmmod_multilock(&dst_mod_info, 0, 1))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* replace modules data with the new config */
+    sr_modinfo_data_replace(&src_mod_info, MOD_INFO_REQ, &src_config);
+
+    /* validate the new config */
+    if ((err_info = sr_modinfo_validate(&src_mod_info, 0))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* load current modules data */
+    if ((err_info = sr_modinfo_data_update(&dst_mod_info, MOD_INFO_REQ, NULL))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* create diff between the 2 mod_infos and their modules */
+    if ((err_info = sr_modinfo_diff(&src_mod_info, &dst_mod_info))) {
+        goto cleanup_mods_unlock;
+    }
+
+    if (!dst_mod_info.diff) {
+        SR_LOG_INFMSG("No datastore changes to apply.");
+        if (!dst_mod_info.dflt_change) {
+            goto cleanup_mods_unlock;
+        }
+        /* while there are no changes for callbacks, some default flags changed so we must store them */
+    }
+
+    if (dst_mod_info.diff) {
+        /* publish final diff in a "change" event for any subscribers and wait for them */
+        if ((err_info = sr_shmsub_conf_notify_change(&dst_mod_info, &cb_err_info))) {
+            goto cleanup_mods_unlock;
+        }
+        if (cb_err_info) {
+            /* "change" event failed, publish "abort" event and finish */
+            err_info = sr_shmsub_conf_notify_change_abort(&dst_mod_info);
+            goto cleanup_mods_unlock;
+        }
+    }
+
+    /* MODULES WRITE LOCK (upgrade) */
+    if ((err_info = sr_shmmod_multirelock(&dst_mod_info, 1))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* store updated datastore */
+    if ((err_info = sr_modinfo_store(&dst_mod_info))) {
+        goto cleanup_mods_unlock;
+    }
+
+    if (dst_mod_info.diff) {
+        /* publish "done" event, all changes were applied */
+        if ((err_info = sr_shmsub_conf_notify_change_done(&dst_mod_info))) {
+            goto cleanup_mods_unlock;
+        }
+    }
+
+    /* success */
+
+cleanup_mods_unlock:
+    /* MODULES UNLOCK */
+    sr_shmmod_multiunlock(&dst_mod_info, 1);
+
+cleanup_shm_unlock:
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(session->conn);
+
+    lyd_free_withsiblings(src_config);
+    sr_modinfo_free(&src_mod_info);
+    sr_modinfo_free(&dst_mod_info);
+    if (cb_err_info) {
+        /* return callback error if some was generated */
+        sr_errinfo_merge(&err_info, cb_err_info);
+        err_info->err_code = SR_ERR_CALLBACK_FAILED;
+    }
+    return sr_api_ret(session, err_info);
+}
+
 static sr_error_info_t *
 sr_module_change_subscribe_running_enable(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, const char *xpath,
         sr_module_change_cb callback, void *private_data)

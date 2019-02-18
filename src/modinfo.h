@@ -62,6 +62,8 @@ sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct l
 
 sr_error_info_t *sr_modinfo_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_error_info_t **cb_error_info);
 
+void sr_modinfo_data_replace(struct sr_mod_info_s *mod_info, uint8_t mod_type, struct lyd_node **config_p);
+
 sr_error_info_t *sr_modinfo_get_filter(sr_session_ctx_t *session, const char *xpath, struct sr_mod_info_s *mod_info,
         struct ly_set **result);
 
