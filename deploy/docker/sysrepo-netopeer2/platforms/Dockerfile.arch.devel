@@ -119,27 +119,11 @@ RUN \
       make -j2 && \
       make install
 
-# install lua5.1 sysrepo language bindings
-RUN pacman -S --noconfirm lua51
-RUN \
-      cd /opt/dev/sysrepo/build && \
-      cmake -DGEN_LUA_VERSION=5.1 .. && \
-      make -j2 && \
-      make install
-
 # install python3 sysrepo language bindings
 RUN pacman -S --noconfirm python3
 RUN \
       cd /opt/dev/sysrepo/build && \
       cmake -DGEN_PYTHON_VERSION=3 .. && \
-      make -j2 && \
-      make install
-
-# install lua5.2 sysrepo language bindings
-RUN pacman -S --noconfirm lua52
-RUN \
-      cd /opt/dev/sysrepo/build && \
-      cmake -DGEN_LUA_VERSION=5.2 .. && \
       make -j2 && \
       make install
 

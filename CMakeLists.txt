@@ -17,12 +17,10 @@ set(CMAKE_MACOSX_RPATH TRUE)
 # setup bindings
 set(GEN_LANGUAGE_BINDINGS 1 CACHE BOOL "Enable language bindings generation.")
 set(GEN_PYTHON_BINDINGS 1 CACHE BOOL "Enable python bindings.")
-set(GEN_LUA_BINDINGS 1 CACHE BOOL "Enable Lua bindings.")
 set(GEN_CPP_BINDINGS 1 CACHE BOOL "Enable C++ bindings.")
 set(BUILD_CPP_EXAMPLES 1 CACHE BOOL "Build C++ examples.")
 set(GEN_JAVA_BINDINGS 0 CACHE BOOL "Enable Java bindings.")
 set(GEN_PYTHON_VERSION "2" CACHE STRING "Python version")
-set(GEN_LUA_VERSION "5.1" CACHE STRING "Lua version")
 set(GEN_PYTHON2_TESTS 1 CACHE BOOL "Enable Python2 tests.")
 
 # set default build type if not specified by user
