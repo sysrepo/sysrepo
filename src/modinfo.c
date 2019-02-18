@@ -68,45 +68,56 @@ sr_modinfo_diff(struct sr_mod_info_s *src_mod_info, struct sr_mod_info_s *mod_in
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_difflist *ly_diff;
-    struct sr_mod_info_mod_s *mod;
+    struct sr_mod_info_mod_s *src_mod, *mod;
     struct lyd_node *mod_diff;
-    uint16_t i;
+    uint16_t i, j;
 
     assert(!mod_info->diff);
-    assert(mod_info->mod_count == src_mod_info->mod_count);
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        assert(mod->ly_mod == src_mod_info->mods[i].ly_mod);
 
-        /* get libyang diff */
-        ly_diff = lyd_diff(mod->mod_data, src_mod_info->mods[i].mod_data, LYD_DIFFOPT_WITHDEFAULTS);
-        if (!ly_diff) {
-            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
-            return err_info;
-        }
+        /* only these modules can be changed */
+        if (mod->state & MOD_INFO_REQ) {
+            /* find the module in the other mod_info */
+            for (j = 0; j < src_mod_info->mod_count; ++j) {
+                src_mod = &src_mod_info->mods[j];
+                if (mod->ly_mod == src_mod->ly_mod) {
+                    assert(src_mod->state & MOD_INFO_REQ);
+                    break;
+                }
+            }
+            assert(j < src_mod_info->mod_count);
 
-        /* create sysrepo diff */
-        err_info = sr_ly_diff_ly2sr(ly_diff, &mod_diff);
-        lyd_free_diff(ly_diff);
-        if (err_info) {
-            return err_info;
-        }
+            /* get libyang diff */
+            ly_diff = lyd_diff(mod->mod_data, src_mod->mod_data, LYD_DIFFOPT_WITHDEFAULTS);
+            if (!ly_diff) {
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                return err_info;
+            }
 
-        /* make the source data the new data */
-        lyd_free_withsiblings(mod->mod_data);
-        mod->mod_data = src_mod_info->mods[i].mod_data;
-        src_mod_info->mods[i].mod_data = NULL;
+            /* create sysrepo diff */
+            err_info = sr_ly_diff_ly2sr(ly_diff, &mod_diff);
+            lyd_free_diff(ly_diff);
+            if (err_info) {
+                return err_info;
+            }
 
-        if (mod_diff) {
-            /* there is a diff for this module */
-            mod->state |= MOD_INFO_CHANGED;
+            /* make the source data the new data */
+            lyd_free_withsiblings(mod->mod_data);
+            mod->mod_data = src_mod->mod_data;
+            src_mod_info->mods[i].mod_data = NULL;
 
-            /* merge all diffs into one */
-            if (!mod_info->diff) {
-                mod_info->diff = mod_diff;
-            } else {
-                sr_ly_link(mod_info->diff, mod_diff);
+            if (mod_diff) {
+                /* there is a diff for this module */
+                mod->state |= MOD_INFO_CHANGED;
+
+                /* merge all diffs into one */
+                if (!mod_info->diff) {
+                    mod_info->diff = mod_diff;
+                } else {
+                    sr_ly_link(mod_info->diff, mod_diff);
+                }
             }
         }
     }
