@@ -645,12 +645,10 @@ sr_get_context(sr_conn_ctx_t *conn)
 static sr_error_info_t *
 sr_store_module_file(const struct lys_module *mod)
 {
-    char *path;
     sr_error_info_t *err_info = NULL;
+    char *path;
 
-    if (asprintf(&path, "%s/yang/%s%s%s.yang", sr_get_repo_path(), mod->name,
-                 mod->rev_size ? "@" : "", mod->rev_size ? mod->rev[0].date : "") == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_yang_file(mod->name, mod->rev_size ? mod->rev[0].date : NULL, &path))) {
         return err_info;
     }
 
@@ -677,9 +675,9 @@ sr_store_module_file(const struct lys_module *mod)
 static sr_error_info_t *
 sr_create_data_files(const struct lys_module *mod)
 {
+    sr_error_info_t *err_info = NULL;
     struct lyd_node *root = NULL;
     char *path = NULL;
-    sr_error_info_t *err_info = NULL;
 
     /* get default values */
     if (lyd_validate_modules(&root, &mod, 1, LYD_OPT_CONFIG)) {
@@ -689,8 +687,7 @@ sr_create_data_files(const struct lys_module *mod)
     }
 
     /* print them into a file */
-    if (asprintf(&path, "%s/data/%s.startup", sr_get_repo_path(), mod->name) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_startup_file(mod->name, &path))) {
         goto cleanup;
     }
     if (lyd_print_path(path, root, LYD_LYB, LYP_WITHSIBLINGS)) {
@@ -708,8 +705,7 @@ sr_create_data_files(const struct lys_module *mod)
     /* repeat for running DS */
     free(path);
     path = NULL;
-    if (asprintf(&path, "%s/data/%s.running", sr_get_repo_path(),  mod->name) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_running_file(mod->name, &path))) {
         return err_info;
     }
     if (lyd_print_path(path, root, LYD_LYB, LYP_WITHSIBLINGS)) {

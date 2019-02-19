@@ -15,7 +15,7 @@ set(CMAKE_MACOSX_RPATH TRUE)
 
 # set default build type if not specified by user
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE debug)
+    set(CMAKE_BUILD_TYPE Debug)
 endif()
 string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
 
@@ -38,17 +38,44 @@ else()
     option(ENABLE_VALGRIND_TESTS "Build tests with valgrind" OFF)
 endif()
 
-# location of sysrepo repository
+# paths
 if(NOT REPO_PATH)
     if(CMAKE_BUILD_TYPE_LOWER STREQUAL debug)
-        set(REPO_PATH "${CMAKE_BINARY_DIR}/repository" CACHE PATH "Repository path, contains configuration schema and data files.")
+        set(REPO_PATH "${CMAKE_BINARY_DIR}/repository")
     else()
-        set(REPO_PATH "/etc/sysrepo" CACHE PATH "Repository path, contains configuration schema and data files.")
+        set(REPO_PATH "/etc/sysrepo")
     endif()
-else()
-    set(REPO_PATH "${REPO_PATH}" CACHE PATH "Repository path, contains configuration schema and data files.")
 endif()
-message(STATUS "Sysrepo repository location: ${REPO_PATH}")
+set(REPO_PATH "${REPO_PATH}" CACHE PATH "Repository path, contains configuration schema and data files.")
+message(STATUS "Sysrepo repository: ${REPO_PATH}")
+
+set(RUNNING_DATA_PATH "${RUNNING_DATA_PATH}" CACHE PATH "Running data path, contains running datastore module files.")
+if(RUNNING_DATA_PATH)
+    message(STATUS "Running data path:  ${RUNNING_DATA_PATH}")
+else()
+    message(STATUS "Running data path:  ${REPO_PATH}/data")
+endif()
+
+set(STARTUP_DATA_PATH "${STARTUP_DATA_PATH}" CACHE PATH "Startup data path, contains startup datastore module files.")
+if(STARTUP_DATA_PATH)
+    message(STATUS "Startup data path:  ${STARTUP_DATA_PATH}")
+else()
+    message(STATUS "Startup data path:  ${REPO_PATH}/data")
+endif()
+
+set(NOTIFICATION_PATH "${NOTIFICATION_PATH}" CACHE PATH "Notification path, contains stored notifications.")
+if(NOTIFICATION_PATH)
+    message(STATUS "Notification path:  ${NOTIFICATION_PATH}")
+else()
+    message(STATUS "Notification path:  ${REPO_PATH}/data/notif")
+endif()
+
+set(YANG_MODULE_PATH "${YANG_MODULE_PATH}" CACHE PATH "YANG module path, contains all used YANG module files.")
+if(YANG_MODULE_PATH)
+    message(STATUS "YANG module path:   ${YANG_MODULE_PATH}")
+else()
+    message(STATUS "YANG module path:   ${REPO_PATH}/yang")
+endif()
 
 # generate common file
 configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)

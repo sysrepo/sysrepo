@@ -120,7 +120,7 @@ clear_ops_notif(void **state)
     char *cmd;
     (void)state;
 
-    asprintf(&cmd, "rm -rf %s/sr_ops.notif*", NOTIF_DIR);
+    asprintf(&cmd, "rm -rf %s/ops.notif*", TESTS_NOTIF_DIR);
     system(cmd);
     free(cmd);
 
@@ -162,7 +162,7 @@ create_ops_notif(void **state)
     /*
      * create first notif file
      */
-    asprintf(&path, "%s/sr_ops.notif.%lu-%lu", NOTIF_DIR, start_ts, start_ts + 2);
+    asprintf(&path, "%s/ops.notif.%lu-%lu", TESTS_NOTIF_DIR, start_ts, start_ts + 2);
     fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 00600);
     free(path);
     if (fd == -1) {
@@ -185,7 +185,7 @@ create_ops_notif(void **state)
     /*
      * create second notif file
      */
-    asprintf(&path, "%s/sr_ops.notif.%lu-%lu", NOTIF_DIR, start_ts + 5, start_ts + 10);
+    asprintf(&path, "%s/ops.notif.%lu-%lu", TESTS_NOTIF_DIR, start_ts + 5, start_ts + 10);
     fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 00600);
     free(path);
     if (fd == -1) {
@@ -211,7 +211,7 @@ create_ops_notif(void **state)
     /*
      * create third notif file
      */
-    asprintf(&path, "%s/sr_ops.notif.%lu-%lu", NOTIF_DIR, start_ts + 12, start_ts + 15);
+    asprintf(&path, "%s/ops.notif.%lu-%lu", TESTS_NOTIF_DIR, start_ts + 12, start_ts + 15);
     fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 00600);
     free(path);
     if (fd == -1) {

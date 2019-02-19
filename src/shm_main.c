@@ -72,16 +72,12 @@ sr_shmmain_update_ver(sr_conn_ctx_t *conn)
 sr_error_info_t *
 sr_shmmain_check_dirs(void)
 {
-    const char *repo_path;
     char *dir_path;
     sr_error_info_t *err_info = NULL;
     int ret;
 
-    repo_path = sr_get_repo_path();
-
-    /* schema dir */
-    if (asprintf(&dir_path, "%s/yang", repo_path) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    /* running data dir */
+    if ((err_info = sr_path_running_dir(&dir_path))) {
         return err_info;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
@@ -89,17 +85,14 @@ sr_shmmain_check_dirs(void)
         SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
-    if (ret) {
-        if ((err_info = sr_mkpath(dir_path, 00770, 0))) {
-            free(dir_path);
-            return err_info;
-        }
+    if (ret && (err_info = sr_mkpath(dir_path, 00770))) {
+        free(dir_path);
+        return err_info;
     }
     free(dir_path);
 
-    /* data dir */
-    if (asprintf(&dir_path, "%s/data/internal", repo_path) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    /* startup data dir */
+    if ((err_info = sr_path_startup_dir(&dir_path))) {
         return err_info;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
@@ -107,18 +100,14 @@ sr_shmmain_check_dirs(void)
         SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
-    if (ret) {
-        /* skip checking the repository path, we have already checked it */
-        if ((err_info = sr_mkpath(dir_path, 00770, strlen(repo_path)))) {
-            free(dir_path);
-            return err_info;
-        }
+    if (ret && (err_info = sr_mkpath(dir_path, 00770))) {
+        free(dir_path);
+        return err_info;
     }
     free(dir_path);
 
     /* notif dir */
-    if (asprintf(&dir_path, "%s/data/notif", repo_path) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_notif_dir(&dir_path))) {
         return err_info;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
@@ -126,12 +115,24 @@ sr_shmmain_check_dirs(void)
         SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
-    if (ret) {
-        /* skip checking the repository path, we have already checked it */
-        if ((err_info = sr_mkpath(dir_path, 00770, strlen(repo_path)))) {
-            free(dir_path);
-            return err_info;
-        }
+    if (ret && (err_info = sr_mkpath(dir_path, 00770))) {
+        free(dir_path);
+        return err_info;
+    }
+    free(dir_path);
+
+    /* YANG module dir */
+    if ((err_info = sr_path_yang_dir(&dir_path))) {
+        return err_info;
+    }
+    if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
+        free(dir_path);
+        SR_ERRINFO_SYSERRNO(&err_info, "access");
+        return err_info;
+    }
+    if (ret && (err_info = sr_mkpath(dir_path, 00770))) {
+        free(dir_path);
+        return err_info;
     }
     free(dir_path);
 
@@ -570,16 +571,15 @@ sr_shmmain_ly_calculate_size(struct lyd_node *sr_mods)
 static sr_error_info_t *
 sr_shmmain_ly_int_data_print(const struct lyd_node *sr_mods)
 {
-    char *path;
     sr_error_info_t *err_info = NULL;
+    char *path;
 
-    if (sr_mods && strcmp(sr_mods->schema->module->name, "sysrepo")) {
+    if (sr_mods && strcmp(sr_mods->schema->module->name, SR_YANG_MOD)) {
         SR_ERRINFO_INT(&err_info);
         return err_info;
     }
 
-    if (asprintf(&path, "%s/data/internal/sysrepo.startup", sr_get_repo_path()) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
         return err_info;
     }
 
@@ -600,8 +600,7 @@ sr_remove_data_files(const char *mod_name)
     sr_error_info_t *err_info = NULL;
     char *path;
 
-    if (asprintf(&path, "%s/data/%s.startup", sr_get_repo_path(), mod_name) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_startup_file(mod_name, &path))) {
         return err_info;
     }
 
@@ -610,8 +609,7 @@ sr_remove_data_files(const char *mod_name)
     }
     free(path);
 
-    if (asprintf(&path, "%s/data/%s.running", sr_get_repo_path(), mod_name) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_running_file(mod_name, &path))) {
         return err_info;
     }
 
@@ -626,8 +624,8 @@ sr_remove_data_files(const char *mod_name)
 static sr_error_info_t *
 sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_node **sr_mods_p)
 {
-    uint32_t i;
     sr_error_info_t *err_info = NULL;
+    uint32_t i;
     struct ly_set *set, *set2;
     const struct lys_module *mod;
     struct lyd_node *sr_mods = NULL, *feat_node;
@@ -636,8 +634,7 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
 
     assert(sr_mods_p);
 
-    if (asprintf(&path, "%s/data/internal/%s.startup", sr_get_repo_path(), SR_YANG_MOD) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
         return err_info;
     }
 
@@ -767,18 +764,17 @@ error:
 static sr_error_info_t *
 sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
 {
+    sr_error_info_t *err_info = NULL;
     const struct lys_module *mod;
     char *yang_dir;
     sr_mod_t *shm_mod = NULL;
     off_t *features;
     uint16_t i;
-    sr_error_info_t *err_info = NULL;
     int ret;
 
     if (!conn->ly_ctx) {
         /* very first init */
-        if (asprintf(&yang_dir, "%s/yang", sr_get_repo_path()) == -1) {
-            SR_ERRINFO_MEM(&err_info);
+        if ((err_info = sr_path_yang_dir(&yang_dir))) {
             return err_info;
         }
         conn->ly_ctx = ly_ctx_new(yang_dir, 0);
@@ -846,16 +842,13 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod = NULL;
     char *startup_path, *running_path;
-    const char *repo_path = sr_get_repo_path();
 
     while ((shm_mod = sr_shmmain_getnext(conn->main_shm.addr, shm_mod))) {
-        if (asprintf(&startup_path, "%s/data/%s.startup", repo_path, conn->main_shm.addr + shm_mod->name) == -1) {
-            SR_ERRINFO_MEM(&err_info);
+        if ((err_info = sr_path_running_file(conn->main_shm.addr + shm_mod->name, &running_path))) {
             goto error;
         }
-        if (asprintf(&running_path, "%s/data/%s.running", repo_path, conn->main_shm.addr + shm_mod->name) == -1) {
-            SR_ERRINFO_MEM(&err_info);
-            free(startup_path);
+        if ((err_info = sr_path_startup_file(conn->main_shm.addr + shm_mod->name, &startup_path))) {
+            free(running_path);
             goto error;
         }
         err_info = sr_cp(running_path, startup_path);

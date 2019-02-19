@@ -22,6 +22,6 @@
 #define SRTEST_CONFIG_H_
 
 #define TESTS_DIR "@TESTS_DIR@"
-#define NOTIF_DIR "@REPO_PATH@/data/notif"
+#define TESTS_NOTIF_DIR "@TESTS_NOTIF_DIR@"
 
 #endif /* SRTEST_CONFIG_H_ */

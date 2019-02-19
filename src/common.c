@@ -757,6 +757,158 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_path_running_dir(char **path)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (SR_RUNNING_PATH[0]) {
+        *path = strdup(SR_RUNNING_PATH);
+    } else {
+        if (asprintf(path, "%s/data", sr_get_repo_path()) == -1) {
+            *path = NULL;
+        }
+    }
+
+    if (!*path) {
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_startup_dir(char **path)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (SR_STARTUP_PATH[0]) {
+        *path = strdup(SR_STARTUP_PATH);
+    } else {
+        if (asprintf(path, "%s/data", sr_get_repo_path()) == -1) {
+            *path = NULL;
+        }
+    }
+
+    if (!*path) {
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_notif_dir(char **path)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (SR_NOTIFICATION_PATH[0]) {
+        *path = strdup(SR_NOTIFICATION_PATH);
+    } else {
+        if (asprintf(path, "%s/data/notif", sr_get_repo_path()) == -1) {
+            *path = NULL;
+        }
+    }
+
+    if (!*path) {
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_yang_dir(char **path)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (SR_YANG_PATH[0]) {
+        *path = strdup(SR_YANG_PATH);
+    } else {
+        if (asprintf(path, "%s/yang", sr_get_repo_path()) == -1) {
+            *path = NULL;
+        }
+    }
+
+    if (!*path) {
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_running_file(const char *mod_name, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+
+    if (SR_RUNNING_PATH[0]) {
+        ret = asprintf(path, "%s/%s.running", SR_RUNNING_PATH, mod_name);
+    } else {
+        ret = asprintf(path, "%s/data/%s.running", sr_get_repo_path(), mod_name);
+    }
+
+    if (ret == -1) {
+        *path = NULL;
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_startup_file(const char *mod_name, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+
+    if (SR_STARTUP_PATH[0]) {
+        ret = asprintf(path, "%s/%s.startup", SR_STARTUP_PATH, mod_name);
+    } else {
+        ret = asprintf(path, "%s/data/%s.startup", sr_get_repo_path(), mod_name);
+    }
+
+    if (ret == -1) {
+        *path = NULL;
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_notif_file(const char *mod_name, time_t from_ts, time_t to_ts, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+
+    if (SR_NOTIFICATION_PATH[0]) {
+        ret = asprintf(path, "%s/%s.notif.%lu-%lu", SR_NOTIFICATION_PATH, mod_name, from_ts, to_ts);
+    } else {
+        ret = asprintf(path, "%s/data/notif/%s.notif.%lu-%lu", sr_get_repo_path(), mod_name, from_ts, to_ts);
+    }
+
+    if (ret == -1) {
+        *path = NULL;
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+
+    if (SR_YANG_PATH[0]) {
+        ret = asprintf(path, "%s/%s%s%s.yang", SR_YANG_PATH, mod_name, mod_rev ? "@" : "", mod_rev ? mod_rev : "");
+    } else {
+        ret = asprintf(path, "%s/yang/%s%s%s.yang", sr_get_repo_path(), mod_name, mod_rev ? "@" : "", mod_rev ? mod_rev : "");
+    }
+
+    if (ret == -1) {
+        *path = NULL;
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
+}
+
+sr_error_info_t *
 sr_shm_remap(sr_shm_t *shm, size_t new_shm_size)
 {
     sr_error_info_t *err_info = NULL;
@@ -951,16 +1103,16 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_mkpath(char *file_path, mode_t mode, uint32_t start_idx)
+sr_mkpath(char *path, mode_t mode)
 {
     char *p;
     sr_error_info_t *err_info = NULL;
 
-    assert(file_path[start_idx] == '/');
+    assert(path[0] == '/');
 
-    for (p = strchr(file_path + start_idx + 1, '/'); p; p = strchr(p + 1, '/')) {
+    for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
-        if (mkdir(file_path, mode) == -1) {
+        if (mkdir(path, mode) == -1) {
             if (errno != EEXIST) {
                 *p = '/';
                 SR_ERRINFO_SYSERRNO(&err_info, "mkdir");
@@ -970,7 +1122,7 @@ sr_mkpath(char *file_path, mode_t mode, uint32_t start_idx)
         *p = '/';
     }
 
-    if (mkdir(file_path, mode) == -1) {
+    if (mkdir(path, mode) == -1) {
         if (errno != EEXIST) {
             SR_ERRINFO_SYSERRNO(&err_info, "mkdir");
             return err_info;

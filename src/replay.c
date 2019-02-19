@@ -88,8 +88,7 @@ sr_replay_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flag
 
     *notif_fd = -1;
 
-    if (asprintf(&path, "%s/data/notif/sr_%s.notif.%lu-%lu", sr_get_repo_path(), mod_name, from_ts, to_ts) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_notif_file(mod_name, from_ts, to_ts, &path))) {
         goto cleanup;
     }
 
@@ -138,8 +137,7 @@ sr_replay_find_file(const char *mod_name, time_t from_ts, time_t to_ts, time_t *
     *file_from_ts = 0;
     *file_to_ts = 0;
 
-    if (asprintf(&dir_path, "%s/data/notif", sr_get_repo_path()) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_notif_dir(&dir_path))) {
         goto cleanup;
     }
 
@@ -149,8 +147,8 @@ sr_replay_find_file(const char *mod_name, time_t from_ts, time_t to_ts, time_t *
         goto cleanup;
     }
 
-    /* this is the prefix for all notification files */
-    pref_len = asprintf(&prefix, "sr_%s.notif.", mod_name);
+    /* this is the prefix for all notification files of this module */
+    pref_len = asprintf(&prefix, "%s.notif.", mod_name);
     if (pref_len == -1) {
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
@@ -266,14 +264,12 @@ sr_replay_rename_file(const char *mod_name, time_t old_from_ts, time_t old_to_ts
     }
 
     /* old file name */
-    if (asprintf(&old_path, "%s/data/notif/sr_%s.notif.%lu-%lu", sr_get_repo_path(), mod_name, old_from_ts, old_to_ts) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_notif_file(mod_name, old_from_ts, old_to_ts, &old_path))) {
         goto cleanup;
     }
 
     /* new file name */
-    if (asprintf(&new_path, "%s/data/notif/sr_%s.notif.%lu-%lu", sr_get_repo_path(), mod_name, old_from_ts, new_to_ts) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_notif_file(mod_name, old_from_ts, new_to_ts, &new_path))) {
         goto cleanup;
     }
 

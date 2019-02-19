@@ -69,7 +69,7 @@ cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
     int ret;
 
     /* parse internal data */
-    sprintf(buf, "%s/data/internal/sysrepo.startup", sr_get_repo_path());
+    sprintf(buf, "%s/data/sysrepo.startup", sr_get_repo_path());
     data = lyd_parse_path((struct ly_ctx *)sr_get_context(conn), buf, LYD_LYB, LYD_OPT_CONFIG);
     assert_non_null(data);
 

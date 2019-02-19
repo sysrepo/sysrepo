@@ -209,8 +209,12 @@ sr_module_config_data_get(struct ly_ctx *ly_ctx, char *main_shm_addr, sr_mod_t *
     }
 
     /* prepare correct file path */
-    if (asprintf(&path, "%s/data/%s.%s", sr_get_repo_path(), main_shm_addr + shm_mod->name, sr_ds2str(file_ds)) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if (file_ds == SR_DS_RUNNING) {
+        err_info = sr_path_running_file(main_shm_addr + shm_mod->name, &path);
+    } else {
+        err_info = sr_path_startup_file(main_shm_addr + shm_mod->name, &path);
+    }
+    if (err_info) {
         goto error;
     }
 
@@ -930,8 +934,14 @@ sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_no
     char *path;
     sr_error_info_t *err_info = NULL;
 
-    if (asprintf(&path, "%s/data/%s.%s", sr_get_repo_path(), mod_name, sr_ds2str(ds)) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    assert(ds != SR_DS_OPERATIONAL);
+
+    if (ds == SR_DS_RUNNING) {
+        err_info = sr_path_running_file(mod_name, &path);
+    } else {
+        err_info = sr_path_startup_file(mod_name, &path);
+    }
+    if (err_info) {
         return err_info;
     }
 

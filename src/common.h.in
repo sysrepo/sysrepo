@@ -40,7 +40,21 @@
 #define API __attribute__((visibility("default")))
 
 #define SR_YANG_MOD "sysrepo"
+
 #define SR_REPO_PATH "@REPO_PATH@"
+
+/* if not set, defaults to "SR_REPO_PATH/data" */
+#define SR_RUNNING_PATH "@RUNNING_DATA_PATH@"
+
+/* if not set, defaults to "SR_REPO_PATH/data" */
+#define SR_STARTUP_PATH "@STARTUP_DATA_PATH@"
+
+/* if not set, defaults to "SR_REPO_PATH/data/notif" */
+#define SR_NOTIFICATION_PATH "@NOTIFICATION_PATH@"
+
+/* if not set, defaults to "SR_REPO_PATH/yang" */
+#define SR_YANG_PATH "@YANG_MODULE_PATH@"
+
 #define SR_REPO_PATH_ENV "SYSREPO_REPOSITORY_PATH"
 
 /* kbs */
@@ -225,6 +239,22 @@ sr_error_info_t *sr_notif_call_callback(sr_event_notif_cb cb, sr_event_notif_tre
 /*
  * utility functions
  */
+sr_error_info_t *sr_path_running_dir(char **path);
+
+sr_error_info_t *sr_path_startup_dir(char **path);
+
+sr_error_info_t *sr_path_notif_dir(char **path);
+
+sr_error_info_t *sr_path_yang_dir(char **path);
+
+sr_error_info_t *sr_path_running_file(const char *mod_name, char **path);
+
+sr_error_info_t *sr_path_startup_file(const char *mod_name, char **path);
+
+sr_error_info_t *sr_path_notif_file(const char *mod_name, time_t from_ts, time_t to_ts, char **path);
+
+sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path);
+
 /* if new_shm_size == 0 needs READ lock, otherwise needs WRITE lock! */
 sr_error_info_t *sr_shm_remap(sr_shm_t *shm, size_t new_shm_size);
 
@@ -242,7 +272,7 @@ void *sr_realloc(void *ptr, size_t size);
 
 sr_error_info_t *sr_cp(const char *to, const char *from);
 
-sr_error_info_t *sr_mkpath(char *file_path, mode_t mode, uint32_t start_idx);
+sr_error_info_t *sr_mkpath(char *path, mode_t mode);
 
 char *sr_get_first_ns(const char *expr);
 

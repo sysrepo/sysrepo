@@ -22,6 +22,13 @@ foreach(test_name IN LISTS tests)
     set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT "MALLOC_CHECK_=3 CMOCKA_TEST_ABORT=1")
 endforeach(test_name)
 
+# get notification directory
+if(NOTIFICATION_PATH)
+    set(TESTS_NOTIF_DIR "${NOTIFICATION_PATH}")
+else()
+    set(TESTS_NOTIF_DIR "${REPO_PATH}/data/notif")
+endif()
+
 # generate config
 configure_file("${PROJECT_SOURCE_DIR}/tests/config.h.in" "${PROJECT_BINARY_DIR}/tests/config.h" ESCAPE_QUOTES @ONLY)
 
