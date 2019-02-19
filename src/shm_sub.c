@@ -1969,7 +1969,7 @@ sr_shmsub_listen_thread(void *arg)
         new_event = 0;
 
         /* SUBS LOCK */
-        if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+        if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
             goto error;
         }
 
@@ -2032,7 +2032,7 @@ sr_shmsub_listen_thread(void *arg)
 
 error_unlock:
     /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    sr_munlock(&subs->subs_lock);
 
 error:
     /* free our own resources */

@@ -46,7 +46,7 @@ sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
     void *mem[4] = {NULL};
 
     /* SUBS LOCK */
-    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
         return err_info;
     }
 
@@ -105,12 +105,12 @@ sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
     ++conf_sub->sub_count;
 
     /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    sr_munlock(&subs->subs_lock);
     return NULL;
 
 error_unlock:
     /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    sr_munlock(&subs->subs_lock);
 
     for (i = 0; i < 4; ++i) {
         free(mem[i]);
@@ -133,7 +133,7 @@ sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
     struct modsub_conf_s *conf_sub;
 
     /* SUBS LOCK */
-    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
         sr_errinfo_free(&err_info);
         return;
     }
@@ -181,7 +181,7 @@ sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
             }
 
             /* SUBS UNLOCK */
-            sr_unlock(&subs->subs_lock);
+            sr_munlock(&subs->subs_lock);
             return;
         }
     }
@@ -190,7 +190,7 @@ sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
     assert(0);
 
     /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    sr_munlock(&subs->subs_lock);
     return;
 }
 
@@ -206,7 +206,7 @@ sr_sub_dp_add(const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb,
     assert(mod_name && xpath);
 
     /* SUBS LOCK */
-    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
         return err_info;
     }
 
@@ -259,12 +259,12 @@ sr_sub_dp_add(const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb,
     ++dp_sub->sub_count;
 
     /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    sr_munlock(&subs->subs_lock);
     return NULL;
 
 error_unlock:
     /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    sr_munlock(&subs->subs_lock);
 
     for (i = 0; i < 4; ++i) {
         free(mem[i]);
@@ -283,7 +283,7 @@ sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *su
     struct modsub_dp_s *dp_sub;
 
     /* SUBS LOCK */
-    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
         sr_errinfo_free(&err_info);
         return;
     }
@@ -325,7 +325,7 @@ sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *su
             }
 
             /* SUBS UNLOCK */
-            sr_unlock(&subs->subs_lock);
+            sr_munlock(&subs->subs_lock);
             return;
         }
     }
@@ -334,7 +334,7 @@ sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *su
     assert(0);
 
     /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    sr_munlock(&subs->subs_lock);
     return;
 }
 
@@ -349,7 +349,7 @@ sr_sub_rpc_add(const char *mod_name, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc
     assert(mod_name && xpath && (rpc_cb || rpc_tree_cb) && (!rpc_cb || !rpc_tree_cb));
 
     /* SUBS LOCK */
-    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
         return err_info;
     }
 
@@ -377,12 +377,12 @@ sr_sub_rpc_add(const char *mod_name, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc
     ++subs->rpc_sub_count;
 
     /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    sr_munlock(&subs->subs_lock);
     return NULL;
 
 error_unlock:
     /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    sr_munlock(&subs->subs_lock);
 
     return err_info;
 }
@@ -395,7 +395,7 @@ sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs)
     struct modsub_rpc_s *rpc_sub;
 
     /* SUBS LOCK */
-    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
         sr_errinfo_free(&err_info);
         return;
     }
@@ -422,7 +422,7 @@ sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs)
         }
 
         /* SUBS UNLOCK */
-        sr_unlock(&subs->subs_lock);
+        sr_munlock(&subs->subs_lock);
         return;
     }
 
@@ -430,7 +430,7 @@ sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs)
     assert(0);
 
     /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    sr_munlock(&subs->subs_lock);
     return;
 }
 
@@ -446,7 +446,7 @@ sr_sub_notif_add(const char *mod_name, const char *xpath, time_t start_time, tim
     assert(mod_name);
 
     /* SUBS LOCK */
-    if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
         return err_info;
     }
 
@@ -506,12 +506,12 @@ sr_sub_notif_add(const char *mod_name, const char *xpath, time_t start_time, tim
     ++notif_sub->sub_count;
 
     /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    sr_munlock(&subs->subs_lock);
     return NULL;
 
 error_unlock:
     /* SUBS UNLOCK */
-    sr_unlock(&subs->subs_lock);
+    sr_munlock(&subs->subs_lock);
 
     for (i = 0; i < 4; ++i) {
         free(mem[i]);
@@ -533,7 +533,7 @@ sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, tim
 
     if (!has_subs_lock) {
         /* SUBS LOCK */
-        if ((err_info = sr_lock(&subs->subs_lock, __func__))) {
+        if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
             sr_errinfo_free(&err_info);
             return;
         }
@@ -583,7 +583,7 @@ sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, tim
 
             if (!has_subs_lock) {
                 /* SUBS UNLOCK */
-                sr_unlock(&subs->subs_lock);
+                sr_munlock(&subs->subs_lock);
             }
             return;
         }
@@ -594,7 +594,7 @@ sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, tim
 
     if (!has_subs_lock) {
         /* SUBS UNLOCK */
-        sr_unlock(&subs->subs_lock);
+        sr_munlock(&subs->subs_lock);
     }
     return;
 }
@@ -808,7 +808,7 @@ sr_shm_destroy(sr_shm_t *shm)
 }
 
 sr_error_info_t *
-sr_lock(pthread_mutex_t *lock, const char *func)
+sr_mlock(pthread_mutex_t *lock, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec abs_ts;
@@ -835,7 +835,7 @@ sr_lock(pthread_mutex_t *lock, const char *func)
 }
 
 void
-sr_unlock(pthread_mutex_t *lock)
+sr_munlock(pthread_mutex_t *lock)
 {
     int ret;
 

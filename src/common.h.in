@@ -230,9 +230,9 @@ sr_error_info_t *sr_shm_remap(sr_shm_t *shm, size_t new_shm_size);
 
 void sr_shm_destroy(sr_shm_t *shm);
 
-sr_error_info_t *sr_lock(pthread_mutex_t *lock, const char *func);
+sr_error_info_t *sr_mlock(pthread_mutex_t *lock, const char *func);
 
-void sr_unlock(pthread_mutex_t *lock);
+void sr_munlock(pthread_mutex_t *lock);
 
 sr_error_info_t *sr_rwlock(pthread_rwlock_t *rwlock, int wr, const char *func);
 

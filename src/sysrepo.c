@@ -286,7 +286,7 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, const sr_s
     }
 
     /* PTR UNLOCK */
-    sr_unlock(&conn->ptr_lock);
+    sr_munlock(&conn->ptr_lock);
 
     (*session)->conn = conn;
     (*session)->ds = datastore;
@@ -305,7 +305,7 @@ sr_session_stop(sr_session_ctx_t *session)
     }
 
     /* PTR LOCK */
-    if ((err_info = sr_lock(&session->conn->ptr_lock, __func__))) {
+    if ((err_info = sr_mlock(&session->conn->ptr_lock, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -313,7 +313,7 @@ sr_session_stop(sr_session_ctx_t *session)
     sr_conn_ptr_del((void ***)&session->conn->sessions, &session->conn->session_count, session);
 
     /* PTR UNLOCK */
-    sr_unlock(&session->conn->ptr_lock);
+    sr_munlock(&session->conn->ptr_lock);
 
     for (i = 0; i < 2; ++i) {
         lyd_free_withsiblings(session->dt[i].edit);
@@ -602,18 +602,18 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* PTR LOCK */
-        if ((err_info = sr_lock(&conn->ptr_lock, __func__))) {
+        if ((err_info = sr_mlock(&conn->ptr_lock, __func__))) {
             goto error_unsubscribe;
         }
 
         /* add the subscription into conn */
         if ((err_info = sr_conn_ptr_add((void ***)&conn->subscriptions, &conn->subscription_count, *subscription))) {
-            sr_unlock(&conn->ptr_lock);
+            sr_munlock(&conn->ptr_lock);
             goto error_unsubscribe;
         }
 
         /* PTR UNLOCK */
-        sr_unlock(&conn->ptr_lock);
+        sr_munlock(&conn->ptr_lock);
     }
 
     free(schema_path);
@@ -1870,18 +1870,18 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* PTR LOCK */
-        if ((err_info = sr_lock(&conn->ptr_lock, __func__))) {
+        if ((err_info = sr_mlock(&conn->ptr_lock, __func__))) {
             goto error_unsubscribe;
         }
 
         /* add the subscription into conn */
         if ((err_info = sr_conn_ptr_add((void ***)&conn->subscriptions, &conn->subscription_count, *subscription))) {
-            sr_unlock(&conn->ptr_lock);
+            sr_munlock(&conn->ptr_lock);
             goto error_unsubscribe;
         }
 
         /* PTR UNLOCK */
-        sr_unlock(&conn->ptr_lock);
+        sr_munlock(&conn->ptr_lock);
     }
 
     return sr_api_ret(session, NULL);
@@ -1912,7 +1912,7 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     }
 
     /* PTR LOCK */
-    if ((err_info = sr_lock(&subscription->conn->ptr_lock, __func__))) {
+    if ((err_info = sr_mlock(&subscription->conn->ptr_lock, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -1920,7 +1920,7 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     sr_conn_ptr_del((void ***)&subscription->conn->subscriptions, &subscription->conn->subscription_count, subscription);
 
     /* PTR UNLOCK */
-    sr_unlock(&subscription->conn->ptr_lock);
+    sr_munlock(&subscription->conn->ptr_lock);
 
     if (subscription->tid) {
         tid = subscription->tid;
@@ -2452,18 +2452,18 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* PTR LOCK */
-        if ((err_info = sr_lock(&conn->ptr_lock, __func__))) {
+        if ((err_info = sr_mlock(&conn->ptr_lock, __func__))) {
             goto error_unsubscribe;
         }
 
         /* add the subscription into conn */
         if ((err_info = sr_conn_ptr_add((void ***)&conn->subscriptions, &conn->subscription_count, *subscription))) {
-            sr_unlock(&conn->ptr_lock);
+            sr_munlock(&conn->ptr_lock);
             goto error_unsubscribe;
         }
 
         /* PTR UNLOCK */
-        sr_unlock(&conn->ptr_lock);
+        sr_munlock(&conn->ptr_lock);
     }
 
     return sr_api_ret(session, NULL);
@@ -2801,18 +2801,18 @@ _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* PTR LOCK */
-        if ((err_info = sr_lock(&conn->ptr_lock, __func__))) {
+        if ((err_info = sr_mlock(&conn->ptr_lock, __func__))) {
             goto error_unsubscribe;
         }
 
         /* add the subscription into conn */
         if ((err_info = sr_conn_ptr_add((void ***)&conn->subscriptions, &conn->subscription_count, *subscription))) {
-            sr_unlock(&conn->ptr_lock);
+            sr_munlock(&conn->ptr_lock);
             goto error_unsubscribe;
         }
 
         /* PTR UNLOCK */
-        sr_unlock(&conn->ptr_lock);
+        sr_munlock(&conn->ptr_lock);
     }
 
     return NULL;

@@ -1,7 +1,7 @@
 - sr_*_item flag SR_EDIT_NON_RECURSIVE not supported for sr_delete_item()
 - sr_commit() renamed to sr_apply_changes()
 - sr_node_t -> struct lyd_node *
-- sr_get_subtree(s) removed opts (no iterative retrieval, does not make sense)
+- sr_get_subtree(s) removed opts (no iterative retrieval)
 - sr_unsubscribe first parameter removed
 - SR_EV_VERIFY -> SR_EV_CHANGE, SR_EV_APPLY -> SR_EV_DONE
 - new event SR_EV_UPDATE (called first, but if several subscriptions, they will not get changes from the previous callbacks unless in one subscription)
