@@ -22,6 +22,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <string.h>
 #include <assert.h>
@@ -245,6 +246,7 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, const sr_s
         sr_session_ctx_t **session)
 {
     sr_error_info_t *err_info = NULL;
+    sr_main_shm_t *main_shm;
 
     SR_CHECK_ARG_APIRET(!conn || !session, NULL, err_info);
 
@@ -254,8 +256,25 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, const sr_s
         return sr_api_ret(NULL, err_info);
     }
 
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* use new SR session ID and increment it */
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+    (*session)->sid.sr = main_shm->new_sr_sid;
+    if (main_shm->new_sr_sid == UINT32_MAX) {
+        main_shm->new_sr_sid = 1;
+    } else {
+        ++main_shm->new_sr_sid;
+    }
+
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(conn);
+
     /* PTR LOCK */
-    if ((err_info = sr_lock(&conn->ptr_lock, __func__))) {
+    if ((err_info = sr_mlock(&conn->ptr_lock, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -339,6 +358,36 @@ sr_set_error(sr_session_ctx_t *session, const char *message, const char *xpath)
 
     /* set the error and return its return code (SR_ERR_OK) */
     return sr_api_ret(session, err_info);
+}
+
+API uint32_t
+sr_session_get_id(sr_session_ctx_t *session)
+{
+    if (!session) {
+        return 0;
+    }
+
+    return session->sid.sr;
+}
+
+API void
+sr_session_set_nc_id(sr_session_ctx_t *session, uint32_t nc_sid)
+{
+    if (!session) {
+        return;
+    }
+
+    session->sid.nc = nc_sid;
+}
+
+API uint32_t
+sr_session_get_nc_id(sr_session_ctx_t *session)
+{
+    if (!session) {
+        return 0;
+    }
+
+    return session->sid.nc;
 }
 
 API sr_conn_ctx_t *
@@ -443,7 +492,7 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscription_ctx_t **subs_p)
     pthread_mutex_init(&(*subs_p)->subs_lock, NULL);
     (*subs_p)->conn = conn;
 
-    /* set TID to non-zero so that thread does not immediatelly quit */
+    /* set TID to non-zero so that thread does not immediately quit */
     (*subs_p)->tid = (pthread_t)1;
 
     /* start the listen thread */
@@ -1003,7 +1052,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node **s
     }
 
     /* load modules data */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_REQ, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_REQ, &session->sid, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -1071,7 +1120,7 @@ sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, struct ly_set **su
     }
 
     /* load modules data */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_REQ, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_REQ, &session->sid, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -1268,7 +1317,7 @@ sr_apply_changes(sr_session_ctx_t *session)
     }
 
     /* load all modules data (we need dependencies for validation) */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, NULL))) {
+    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, NULL, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -1292,7 +1341,7 @@ sr_apply_changes(sr_session_ctx_t *session)
 
     if (mod_info.diff) {
         /* publish current diff in an "update" event for the subscribers to update it */
-        if ((err_info = sr_shmsub_conf_notify_update(&mod_info, &update_edit, &cb_err_info))) {
+        if ((err_info = sr_shmsub_conf_notify_update(&mod_info, session->sid, &update_edit, &cb_err_info))) {
             goto cleanup_mods_unlock;
         }
         if (cb_err_info) {
@@ -1311,7 +1360,7 @@ sr_apply_changes(sr_session_ctx_t *session)
             }
 
             /* reload possibly changed data */
-            if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_REQ, NULL))) {
+            if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_REQ, NULL, NULL))) {
                 goto cleanup_mods_unlock;
             }
 
@@ -1339,12 +1388,12 @@ sr_apply_changes(sr_session_ctx_t *session)
 
         if (mod_info.diff) {
             /* publish final diff in a "change" event for any subscribers and wait for them */
-            if ((err_info = sr_shmsub_conf_notify_change(&mod_info, &cb_err_info))) {
+            if ((err_info = sr_shmsub_conf_notify_change(&mod_info, session->sid, &cb_err_info))) {
                 goto cleanup_mods_unlock;
             }
             if (cb_err_info) {
                 /* "change" event failed, publish "abort" event and finish */
-                err_info = sr_shmsub_conf_notify_change_abort(&mod_info);
+                err_info = sr_shmsub_conf_notify_change_abort(&mod_info, session->sid);
                 goto cleanup_mods_unlock;
             }
         }
@@ -1362,7 +1411,7 @@ sr_apply_changes(sr_session_ctx_t *session)
 
     if (mod_info.diff) {
         /* publish "done" event, all changes were applied */
-        if ((err_info = sr_shmsub_conf_notify_change_done(&mod_info))) {
+        if ((err_info = sr_shmsub_conf_notify_change_done(&mod_info, session->sid))) {
             goto cleanup_mods_unlock;
         }
     }
@@ -1453,10 +1502,10 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     }
 
     /* load modules data */
-    if ((err_info = sr_modinfo_data_update(&src_mod_info, MOD_INFO_REQ, NULL))) {
+    if ((err_info = sr_modinfo_data_update(&src_mod_info, MOD_INFO_REQ, NULL, NULL))) {
         goto cleanup_mods_unlock;
     }
-    if ((err_info = sr_modinfo_data_update(&dst_mod_info, MOD_INFO_REQ, NULL))) {
+    if ((err_info = sr_modinfo_data_update(&dst_mod_info, MOD_INFO_REQ, NULL, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -1475,12 +1524,12 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     if (dst_mod_info.diff) {
         /* publish final diff in a "change" event for any subscribers and wait for them */
-        if ((err_info = sr_shmsub_conf_notify_change(&dst_mod_info, &cb_err_info))) {
+        if ((err_info = sr_shmsub_conf_notify_change(&dst_mod_info, session->sid, &cb_err_info))) {
             goto cleanup_mods_unlock;
         }
         if (cb_err_info) {
             /* "change" event failed, publish "abort" event and finish */
-            err_info = sr_shmsub_conf_notify_change_abort(&dst_mod_info);
+            err_info = sr_shmsub_conf_notify_change_abort(&dst_mod_info, session->sid);
             goto cleanup_mods_unlock;
         }
     }
@@ -1497,7 +1546,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     if (dst_mod_info.diff) {
         /* publish "done" event, all changes were applied */
-        if ((err_info = sr_shmsub_conf_notify_change_done(&dst_mod_info))) {
+        if ((err_info = sr_shmsub_conf_notify_change_done(&dst_mod_info, session->sid))) {
             goto cleanup_mods_unlock;
         }
     }
@@ -1575,7 +1624,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     }
 
     /* load current modules data */
-    if ((err_info = sr_modinfo_data_update(&dst_mod_info, MOD_INFO_REQ, NULL))) {
+    if ((err_info = sr_modinfo_data_update(&dst_mod_info, MOD_INFO_REQ, NULL, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -1594,12 +1643,12 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
 
     if (dst_mod_info.diff) {
         /* publish final diff in a "change" event for any subscribers and wait for them */
-        if ((err_info = sr_shmsub_conf_notify_change(&dst_mod_info, &cb_err_info))) {
+        if ((err_info = sr_shmsub_conf_notify_change(&dst_mod_info, session->sid, &cb_err_info))) {
             goto cleanup_mods_unlock;
         }
         if (cb_err_info) {
             /* "change" event failed, publish "abort" event and finish */
-            err_info = sr_shmsub_conf_notify_change_abort(&dst_mod_info);
+            err_info = sr_shmsub_conf_notify_change_abort(&dst_mod_info, session->sid);
             goto cleanup_mods_unlock;
         }
     }
@@ -1616,7 +1665,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
 
     if (dst_mod_info.diff) {
         /* publish "done" event, all changes were applied */
-        if ((err_info = sr_shmsub_conf_notify_change_done(&dst_mod_info))) {
+        if ((err_info = sr_shmsub_conf_notify_change_done(&dst_mod_info, session->sid))) {
             goto cleanup_mods_unlock;
         }
     }
@@ -1667,7 +1716,7 @@ sr_module_change_subscribe_running_enable(sr_conn_ctx_t *conn, const struct lys_
     }
 
     /* get the current running datastore data */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_REQ, NULL))) {
+    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_REQ, NULL, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -2605,7 +2654,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* load all input dependency modules data */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, &session->sid, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -2615,7 +2664,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* publish RPC in an event for a subscriber and wait for a reply */
-    if ((err_info = sr_shmsub_rpc_notify(xpath, input, output, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_shmsub_rpc_notify(xpath, input, session->sid, output, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -2640,7 +2689,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* load all output dependency modules data */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, &session->sid, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -2966,7 +3015,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, sr_e
     }
 
     /* load all input dependency modules data */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, &session->sid, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -2988,7 +3037,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, sr_e
 
     if (notif_sub_count) {
         /* publish notif in an event, do not wait for subscribers */
-        if ((tmp_err_info = sr_shmsub_notif_notify(notif, notif_ts, notif_sub_count))) {
+        if ((tmp_err_info = sr_shmsub_notif_notify(notif, notif_ts, session->sid, notif_sub_count))) {
             goto cleanup_shm_unlock;
         }
     } else {

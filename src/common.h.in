@@ -73,6 +73,11 @@ typedef struct sr_shm_s {
     char *addr;
 } sr_shm_t;
 
+typedef struct sr_sid_s {
+    uint32_t sr;
+    uint32_t nc;
+} sr_sid_t;
+
 #include "replay.h"
 #include "modinfo.h"
 #include "edit_diff.h"
@@ -102,6 +107,7 @@ struct sr_session_ctx_s {
     sr_conn_ctx_t *conn;
     sr_datastore_t ds;
     sr_notif_event_t ev;
+    sr_sid_t sid;
     uint8_t flags;
     sr_error_info_t *err_info;
 

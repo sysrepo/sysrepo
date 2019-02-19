@@ -71,6 +71,8 @@ setup(void **state)
         return 1;
     }
 
+    sr_session_set_nc_id(st->sess, 128);
+
     return 0;
 }
 
@@ -116,6 +118,7 @@ rpc_fail_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node 
     (void)output;
     (void)private_data;
 
+    assert_int_equal(sr_session_get_nc_id(session), 128);
     assert_string_equal(xpath, "/ops:rpc1");
 
     /* check input data tree */

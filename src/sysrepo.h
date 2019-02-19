@@ -467,6 +467,10 @@ int sr_set_error(sr_session_ctx_t *session, const char *message, const char *xpa
  */
 uint32_t sr_session_get_id(sr_session_ctx_t *session);
 
+void sr_session_set_nc_id(sr_session_ctx_t *session, uint32_t nc_sid);
+
+uint32_t sr_session_get_nc_id(sr_session_ctx_t *session);
+
 sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -95,7 +95,7 @@ struct sr_mod_s {
     struct {
         off_t subs;
         uint16_t sub_count;
-        uint8_t upgradable;
+        uint8_t write_locked;
     } conf_sub[2];
 
     off_t dp_subs;
@@ -110,6 +110,11 @@ struct sr_mod_s {
     off_t next;
 };
 
+typedef struct sr_main_shm_s {
+    uint32_t new_sr_sid;
+    off_t first_mod;
+} sr_main_shm_t;
+
 /*
  * generic (single-subscriber) subscription SHM
  */
@@ -117,6 +122,7 @@ typedef struct sr_sub_shm_s {
     pthread_rwlock_t lock;
     uint32_t event_id;
     sr_notif_event_t event;
+    sr_sid_t sid;
     sr_error_t err_code;
 } sr_sub_shm_t;
 
@@ -127,6 +133,7 @@ typedef struct sr_multi_sub_shm_s {
     pthread_rwlock_t lock;
     uint32_t event_id;
     sr_notif_event_t event;
+    sr_sid_t sid;
     sr_error_t err_code;
 
     /* specific fields */
@@ -258,24 +265,25 @@ sr_error_info_t *sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *m
 sr_error_info_t *sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_shm_t *shm,
         size_t shm_struct_size);
 
-sr_error_info_t *sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update_edit,
+sr_error_info_t *sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, struct lyd_node **update_edit,
         sr_error_info_t **cb_err_info);
 
 sr_error_info_t *sr_shmsub_conf_notify_clear(struct sr_mod_info_s *mod_info, sr_notif_event_t ev);
 
-sr_error_info_t *sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_error_info_t **cb_err_info);
+sr_error_info_t *sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, sr_error_info_t **cb_err_info);
 
-sr_error_info_t *sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid);
 
-sr_error_info_t *sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid);
 
 sr_error_info_t *sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent,
-        struct lyd_node **data, sr_error_info_t **cb_err_info);
+        sr_sid_t sid, struct lyd_node **data, sr_error_info_t **cb_err_info);
 
-sr_error_info_t *sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, struct lyd_node **output,
-        sr_error_info_t **cb_err_info);
+sr_error_info_t *sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, sr_sid_t sid,
+        struct lyd_node **output, sr_error_info_t **cb_err_info);
 
-sr_error_info_t *sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, uint32_t notif_sub_count);
+sr_error_info_t *sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t sid,
+        uint32_t notif_sub_count);
 
 void *sr_shmsub_listen_thread(void *arg);
 

@@ -300,6 +300,8 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
         /* next pointer of previous item */
         if (shm_mod) {
             shm_mod->next = shm_cur - main_shm_addr;
+        } else {
+            ((sr_main_shm_t *)main_shm_addr)->first_mod = shm_cur - main_shm_addr;
         }
 
         /* allocate the module structure, */
@@ -367,7 +369,7 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
     shm_mod->next = 0;
 
     /* 2nd loop */
-    shm_mod = shm_last_mod ? (sr_mod_t *)(main_shm_addr + shm_last_mod->next) : (sr_mod_t *)main_shm_addr;
+    shm_mod = sr_shmmain_getnext(main_shm_addr, shm_last_mod);
     LY_TREE_FOR(ly_start_mod, ly_mod) {
         shm_features = (off_t *)(main_shm_addr + shm_mod->features);
         feat_i = 0;
@@ -449,7 +451,7 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
         SR_CHECK_INT_RET(op_dep_i != shm_mod->op_dep_count, err_info);
 
         /* next */
-        shm_mod = (sr_mod_t *)(main_shm_addr + shm_mod->next);
+        shm_mod = sr_shmmain_getnext(main_shm_addr, shm_mod);
     }
 
     *shm_end = shm_cur - main_shm_addr;
@@ -641,8 +643,8 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
 
     /* check the existence of the data file */
     if (access(path, R_OK) == -1) {
-        if (conn->main_shm.addr) {
-            /* we have some shared memory but no file on disk, should not happen */
+        if (sr_shmmain_getnext(conn->main_shm.addr, NULL)) {
+            /* we have some modules but no file on disk, should not happen */
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" was unexpectedly deleted.", path);
             goto error;
         }
@@ -805,7 +807,7 @@ sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
         }
     }
 
-    if (conn->main_shm.addr) {
+    if (sr_shmmain_getnext(conn->main_shm.addr, NULL)) {
         /* load new modules from SHM */
         while ((shm_mod = sr_shmmain_getnext(conn->main_shm.addr, shm_mod))) {
             mod = ly_ctx_get_module(conn->ly_ctx, conn->main_shm.addr + shm_mod->name, shm_mod->rev, 0);
@@ -875,14 +877,31 @@ error:
 sr_error_info_t *
 sr_shmmain_create(sr_conn_ctx_t *conn)
 {
-    struct lyd_node *sr_mods = NULL;
-    size_t shm_size;
     sr_error_info_t *err_info = NULL;
+    sr_main_shm_t *main_shm;
+    size_t mod_shm_size;
+    struct lyd_node *sr_mods = NULL;
 
     /* create shared memory */
     conn->main_shm.fd = shm_open(SR_MAIN_SHM, O_RDWR | O_CREAT | O_EXCL, 00600);
     if (conn->main_shm.fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open shared memory (%s).", strerror(errno));
+        return err_info;
+    }
+
+    /* map it */
+    if ((err_info = sr_shm_remap(&conn->main_shm, sizeof *main_shm))) {
+        return err_info;
+    }
+
+    /* fill attributes */
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+    main_shm->new_sr_sid = 1;
+    main_shm->first_mod = 0;
+
+    /* msync */
+    if (msync(conn->main_shm.addr, conn->main_shm.size, MS_SYNC)) {
+        SR_ERRINFO_SYSERRNO(&err_info, "msync");
         return err_info;
     }
 
@@ -896,10 +915,10 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
         return err_info;
     }
 
-    /* create SHM */
-    shm_size = sr_shmmain_ly_calculate_size(sr_mods);
-    if (shm_size) {
-        if ((err_info = sr_shmmain_shm_add(conn, shm_size, sr_mods->child))) {
+    /* create SHM content */
+    mod_shm_size = sr_shmmain_ly_calculate_size(sr_mods);
+    if (mod_shm_size) {
+        if ((err_info = sr_shmmain_shm_add(conn, conn->main_shm.size + mod_shm_size, sr_mods->child))) {
             lyd_free_withsiblings(sr_mods);
             return err_info;
         }
@@ -973,19 +992,17 @@ sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent)
 sr_mod_t *
 sr_shmmain_getnext(char *main_shm_addr, sr_mod_t *last)
 {
-    if (!main_shm_addr) {
-        return NULL;
-    }
+    off_t next;
+
+    assert(main_shm_addr);
 
     if (!last) {
-        return (sr_mod_t *)main_shm_addr;
+        next = ((sr_main_shm_t *)main_shm_addr)->first_mod;
+    } else {
+        next = last->next;
     }
 
-    if (!last->next) {
-        return NULL;
-    }
-
-    return (sr_mod_t *)(main_shm_addr + last->next);
+    return next ? (sr_mod_t *)(main_shm_addr + next) : NULL;
 }
 
 sr_mod_t *

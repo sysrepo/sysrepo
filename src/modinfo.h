@@ -60,7 +60,8 @@ sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_
 sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_mod_data_dep_t *shm_deps,
         uint16_t shm_dep_count, int output);
 
-sr_error_info_t *sr_modinfo_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_error_info_t **cb_error_info);
+sr_error_info_t *sr_modinfo_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_sid_t *sid,
+        sr_error_info_t **cb_error_info);
 
 void sr_modinfo_data_replace(struct sr_mod_info_s *mod_info, uint8_t mod_type, struct lyd_node **config_p);
 

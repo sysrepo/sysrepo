@@ -124,6 +124,7 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
     const char *str2;
     int ret;
 
+    assert_int_equal(sr_session_get_nc_id(session), 52);
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
 
@@ -320,6 +321,9 @@ apply_change_done_thread(void *arg)
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
     assert_int_equal(ret, SR_ERR_OK);
+
+    /* set NC SID so we can read it in the callback */
+    sr_session_set_nc_id(sess, 52);
 
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", 0);
     assert_int_equal(ret, SR_ERR_OK);

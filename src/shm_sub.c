@@ -189,14 +189,19 @@ sr_shmsub_notify_finish_event_unlock(sr_sub_shm_t *sub_shm, size_t shm_struct_si
 }
 
 static sr_error_info_t *
-sr_shmsub_notify_write_event(uint32_t event_id, sr_notif_event_t event, const char *event_str, const char *data,
-        uint32_t data_len, sr_sub_shm_t *sub_shm)
+sr_shmsub_notify_write_event(uint32_t event_id, sr_notif_event_t event, const char *event_str, struct sr_sid_s *sid,
+        const char *data, uint32_t data_len, sr_sub_shm_t *sub_shm)
 {
     uint32_t changed_shm_size;
     sr_error_info_t *err_info = NULL;
 
     sub_shm->event_id = event_id;
     sub_shm->event = event;
+    if (sid) {
+        sub_shm->sid = *sid;
+    } else {
+        memset(&sub_shm->sid, 0, sizeof sub_shm->sid);
+    }
     sub_shm->err_code = SR_ERR_OK;
 
     changed_shm_size = sizeof *sub_shm;
@@ -221,14 +226,19 @@ sr_shmsub_notify_write_event(uint32_t event_id, sr_notif_event_t event, const ch
 }
 
 static sr_error_info_t *
-sr_shmsub_multi_notify_write_event(uint32_t event_id, uint32_t priority, sr_notif_event_t event, uint32_t subscriber_count,
-        const char *data, uint32_t data_len, sr_multi_sub_shm_t *multi_sub_shm, time_t notif_ts)
+sr_shmsub_multi_notify_write_event(uint32_t event_id, uint32_t priority, sr_notif_event_t event, struct sr_sid_s *sid,
+        uint32_t subscriber_count, const char *data, uint32_t data_len, sr_multi_sub_shm_t *multi_sub_shm, time_t notif_ts)
 {
     uint32_t changed_shm_size;
     sr_error_info_t *err_info = NULL;
 
     multi_sub_shm->event_id = event_id;
     multi_sub_shm->event = event;
+    if (sid) {
+        multi_sub_shm->sid = *sid;
+    } else {
+        memset(&multi_sub_shm->sid, 0, sizeof multi_sub_shm->sid);
+    }
     multi_sub_shm->err_code = SR_ERR_OK;
     multi_sub_shm->priority = priority;
     multi_sub_shm->subscriber_count = subscriber_count;
@@ -348,7 +358,8 @@ sr_shmsub_conf_notify_next_subscription(char *main_shm_addr, struct sr_mod_info_
 }
 
 sr_error_info_t *
-sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **update_edit, sr_error_info_t **cb_err_info)
+sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, struct lyd_node **update_edit,
+        sr_error_info_t **cb_err_info)
 {
     sr_multi_sub_shm_t *multi_sub_shm;
     struct sr_mod_info_mod_s *mod;
@@ -410,7 +421,7 @@ sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, struct lyd_node **u
             if (!mod->event_id) {
                 mod->event_id = ++multi_sub_shm->event_id;
             }
-            sr_shmsub_multi_notify_write_event(mod->event_id, cur_priority, SR_EV_UPDATE, subscriber_count, diff_lyb,
+            sr_shmsub_multi_notify_write_event(mod->event_id, cur_priority, SR_EV_UPDATE, &sid, subscriber_count, diff_lyb,
                     diff_lyb_len, multi_sub_shm, 0);
 
             /* wait until all the subscribers have processed the event */
@@ -542,7 +553,7 @@ clear_event:
                 assert((multi_sub_shm->event_id == mod->event_id) && (multi_sub_shm->priority == cur_priority));
 
                 /* clear it */
-                sr_shmsub_multi_notify_write_event(mod->event_id, cur_priority, SR_EV_NONE, 0, NULL, 0, multi_sub_shm, 0);
+                sr_shmsub_multi_notify_write_event(mod->event_id, cur_priority, SR_EV_NONE, NULL, 0, NULL, 0, multi_sub_shm, 0);
 
                 /* remap sub SHM to make it smaller */
                 if ((err_info = sr_shm_remap(&mod->shm_sub_cache, sizeof *multi_sub_shm))) {
@@ -576,7 +587,7 @@ clear_event:
 }
 
 sr_error_info_t *
-sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_error_info_t **cb_err_info)
+sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, sr_error_info_t **cb_err_info)
 {
     sr_multi_sub_shm_t *multi_sub_shm;
     struct sr_mod_info_mod_s *mod;
@@ -635,7 +646,7 @@ sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_error_info_t **c
             if (!mod->event_id) {
                 mod->event_id = ++multi_sub_shm->event_id;
             }
-            sr_shmsub_multi_notify_write_event(mod->event_id, cur_priority, SR_EV_CHANGE, subscriber_count, diff_lyb,
+            sr_shmsub_multi_notify_write_event(mod->event_id, cur_priority, SR_EV_CHANGE, &sid, subscriber_count, diff_lyb,
                     diff_lyb_len, multi_sub_shm, 0);
 
             /* wait until all the subscribers have processed the event */
@@ -670,7 +681,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info)
+sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 {
     sr_multi_sub_shm_t *multi_sub_shm;
     struct sr_mod_info_mod_s *mod;
@@ -706,7 +717,7 @@ sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info)
             }
 
             /* write "done" event with the same LYB data trees (even if not, they were cached), do not wait for subscribers */
-            sr_shmsub_multi_notify_write_event(mod->event_id, cur_priority, SR_EV_DONE, subscriber_count, NULL,
+            sr_shmsub_multi_notify_write_event(mod->event_id, cur_priority, SR_EV_DONE, &sid, subscriber_count, NULL,
                     0, multi_sub_shm, 0);
 
             /* SUB UNLOCK */
@@ -722,7 +733,7 @@ sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info)
 }
 
 sr_error_info_t *
-sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info)
+sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 {
     sr_multi_sub_shm_t *multi_sub_shm;
     struct sr_mod_info_mod_s *mod;
@@ -752,7 +763,8 @@ sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info)
                     assert(multi_sub_shm->event_id == mod->event_id);
 
                     /* clear it */
-                    sr_shmsub_multi_notify_write_event(mod->event_id, cur_priority, SR_EV_NONE, 0, NULL, 0, multi_sub_shm, 0);
+                    sr_shmsub_multi_notify_write_event(mod->event_id, cur_priority, SR_EV_NONE, NULL, 0, NULL, 0,
+                            multi_sub_shm, 0);
 
                     /* remap sub SHM to make it smaller */
                     if ((err_info = sr_shm_remap(&mod->shm_sub_cache, sizeof *multi_sub_shm))) {
@@ -802,7 +814,7 @@ sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info)
             }
 
             /* write "abort" event with the same LYB data trees (even if not, they were cached), do not wait for subscribers */
-            sr_shmsub_multi_notify_write_event(mod->event_id, cur_priority, SR_EV_ABORT, subscriber_count, NULL,
+            sr_shmsub_multi_notify_write_event(mod->event_id, cur_priority, SR_EV_ABORT, &sid, subscriber_count, NULL,
                     0, multi_sub_shm, 0);
 
             /* SUB UNLOCK */
@@ -825,7 +837,7 @@ sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info)
 }
 
 sr_error_info_t *
-sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent,
+sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent, sr_sid_t sid,
         struct lyd_node **data, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -864,7 +876,8 @@ sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const st
 
     /* write the request for state data */
     event_id = sub_shm->event_id + 1;
-    if ((err_info = sr_shmsub_notify_write_event(event_id, SR_EV_CHANGE, "data-provide", parent_lyb, parent_lyb_len, sub_shm))) {
+    if ((err_info = sr_shmsub_notify_write_event(event_id, SR_EV_CHANGE, "data-provide", &sid, parent_lyb,
+            parent_lyb_len, sub_shm))) {
         goto cleanup_unlock;
     }
 
@@ -882,7 +895,7 @@ sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const st
             goto cleanup;
         }
         /* clear SHM */
-        sr_shmsub_notify_write_event(event_id, SR_EV_NONE, NULL, NULL, 0, sub_shm);
+        sr_shmsub_notify_write_event(event_id, SR_EV_NONE, NULL, NULL, NULL, 0, sub_shm);
         goto cleanup_unlock;
     } else {
         SR_LOG_INF("Event \"data-provide\" with ID %u succeeded.", event_id);
@@ -920,7 +933,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, struct lyd_node **output,
+sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, sr_sid_t sid, struct lyd_node **output,
         sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -963,7 +976,7 @@ sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, struct lyd
 
     /* write the RPC input */
     event_id = sub_shm->event_id + 1;
-    if ((err_info = sr_shmsub_notify_write_event(event_id, SR_EV_CHANGE, "RPC", input_lyb, input_lyb_len, sub_shm))) {
+    if ((err_info = sr_shmsub_notify_write_event(event_id, SR_EV_CHANGE, "RPC", &sid, input_lyb, input_lyb_len, sub_shm))) {
         goto cleanup_unlock;
     }
 
@@ -981,7 +994,7 @@ sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, struct lyd
             goto cleanup;
         }
         /* clear SHM */
-        sr_shmsub_notify_write_event(event_id, SR_EV_NONE, NULL, NULL, 0, sub_shm);
+        sr_shmsub_notify_write_event(event_id, SR_EV_NONE, NULL, NULL, NULL, 0, sub_shm);
         goto cleanup_unlock;
     } else {
         SR_LOG_INF("Event \"RPC\" with ID %u succeeded.", event_id);
@@ -1020,7 +1033,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, uint32_t notif_sub_count)
+sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t sid, uint32_t notif_sub_count)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_module *ly_mod;
@@ -1062,7 +1075,7 @@ sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, uint32_t n
 
     /* write the notification, we do not wait for any reply */
     event_id = multi_sub_shm->event_id + 1;
-    if ((err_info = sr_shmsub_multi_notify_write_event(event_id, 0, SR_EV_CHANGE, notif_sub_count, notif_lyb,
+    if ((err_info = sr_shmsub_multi_notify_write_event(event_id, 0, SR_EV_CHANGE, &sid, notif_sub_count, notif_lyb,
             notif_lyb_len, multi_sub_shm, notif_ts))) {
         goto cleanup_unlock;
     }
@@ -1092,6 +1105,7 @@ sr_shmsub_conf_listen_prepare_sess(struct modsub_conf_s *conf_subs, struct modsu
     tmp_sess->conn = conn;
     tmp_sess->ds = conf_subs->ds;
     tmp_sess->ev = ((sr_multi_sub_shm_t *)conf_subs->sub_shm.addr)->event;
+    tmp_sess->sid = ((sr_multi_sub_shm_t *)conf_subs->sub_shm.addr)->sid;
     lyd_free_withsiblings(tmp_sess->dt[tmp_sess->ds].diff);
 
     /* duplicate (filtered) diff */
@@ -1446,9 +1460,10 @@ sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_c
             continue;
         }
 
-        /* there is an event */
+        /* there is an event, read SID */
         *new_event = 1;
         assert(sub_shm->event == SR_EV_CHANGE);
+        tmp_sess.sid = sub_shm->sid;
 
         /* remap SHM */
         if ((err_info = sr_shm_remap(&dp_sub->sub_shm, 0))) {
@@ -1665,9 +1680,10 @@ sr_shmsub_rpc_listen_process_events(struct modsub_rpc_s *rpc_sub, sr_conn_ctx_t 
         goto cleanup_unlock;
     }
 
-    /* there is an event */
+    /* there is an event, read SID */
     *new_event = 1;
     assert(sub_shm->event == SR_EV_CHANGE);
+    tmp_sess.sid = sub_shm->sid;
 
     /* remap SHM */
     if ((err_info = sr_shm_remap(&rpc_sub->sub_shm, 0))) {
@@ -2004,7 +2020,7 @@ sr_shmsub_listen_thread(void *arg)
         }
 
         /* SUBS UNLOCK */
-        sr_unlock(&subs->subs_lock);
+        sr_munlock(&subs->subs_lock);
 
         /* sleep if no event occured */
         if (!new_event) {

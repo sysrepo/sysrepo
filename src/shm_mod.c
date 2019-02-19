@@ -413,7 +413,7 @@ sr_shmmod_multilock(struct sr_mod_info_s *mod_info, int wr, int upgradable)
                 return err_info;
             }
 
-            if (!upgradable || !mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].upgradable) {
+            if (!upgradable || !mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].write_locked) {
                 break;
             }
 
@@ -430,8 +430,8 @@ sr_shmmod_multilock(struct sr_mod_info_s *mod_info, int wr, int upgradable)
         }
 
         if (upgradable && mod_wr) {
-            /* set upgradable and downgrade lock to the required read lock for now */
-            mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].upgradable = 1;
+            /* set flag and downgrade lock to the required read lock for now */
+            mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].write_locked = 1;
 
             sr_shmmod_unlock(mod_info->mods[i].shm_mod, mod_info->ds);
             if ((err_info = sr_shmmod_lock(mod_info->mods[i].shm_mod, mod_info->ds, 0))) {
@@ -454,7 +454,7 @@ sr_shmmod_multirelock(struct sr_mod_info_s *mod_info, int upgrade)
     for (i = 0; i < mod_info->mod_count; ++i) {
         if ((mod_info->mods[i].state & (MOD_INFO_REQ | MOD_INFO_LOCK)) == (MOD_INFO_REQ | MOD_INFO_LOCK)) {
             /* when relocking, the flag must always be set so that a success is guaranteed */
-            SR_CHECK_INT_RET(!mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].upgradable, err_info);
+            SR_CHECK_INT_RET(!mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].write_locked, err_info);
 
             /* properly unlock the module for possible error recovery */
             sr_shmmod_unlock(mod_info->mods[i].shm_mod, mod_info->ds);
@@ -478,8 +478,8 @@ sr_shmmod_multiunlock(struct sr_mod_info_s *mod_info, int upgradable)
     for (i = 0; i < mod_info->mod_count; ++i) {
         if (mod_info->mods[i].state & MOD_INFO_LOCK) {
             if ((mod_info->mods[i].state & MOD_INFO_REQ) && upgradable) {
-                assert(mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].upgradable);
-                mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].upgradable = 0;
+                assert(mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].write_locked);
+                mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].write_locked = 0;
             }
             sr_shmmod_unlock(mod_info->mods[i].shm_mod, mod_info->ds);
         }

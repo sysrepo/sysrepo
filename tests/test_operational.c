@@ -65,6 +65,8 @@ setup(void **state)
         return 1;
     }
 
+    sr_session_set_nc_id(st->sess, 64);
+
     return 0;
 }
 
@@ -286,6 +288,7 @@ simple_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpa
     const struct ly_ctx *ly_ctx;
     struct lyd_node *node;
 
+    assert_int_equal(sr_session_get_nc_id(session), 64);
     (void)private_data;
 
     ly_ctx = sr_get_context(sr_session_get_connection(session));

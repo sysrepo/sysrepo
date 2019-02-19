@@ -588,7 +588,7 @@ cleanup:
 
 static sr_error_info_t *
 sr_xpath_dp_append(struct sr_mod_info_mod_s *mod, const char *xpath, const struct lyd_node *parent,
-        sr_error_info_t **cb_error_info)
+        sr_sid_t sid, sr_error_info_t **cb_error_info)
 {
     uint32_t i;
     sr_error_info_t *err_info = NULL;
@@ -631,7 +631,7 @@ sr_xpath_dp_append(struct sr_mod_info_mod_s *mod, const char *xpath, const struc
     }
 
     /* get data from client */
-    err_info = sr_shmsub_dp_notify(mod->ly_mod, xpath, parent_dup, &data, cb_error_info);
+    err_info = sr_shmsub_dp_notify(mod->ly_mod, xpath, parent_dup, sid, &data, cb_error_info);
     lyd_free_withsiblings(parent_dup);
     if (err_info) {
         return err_info;
@@ -687,7 +687,7 @@ sr_xpath_dp_remove(struct lyd_node **mod_data, struct lyd_node *parent, const ch
 }
 
 static sr_error_info_t *
-sr_module_dp_append(struct sr_mod_info_mod_s *mod, char *main_shm_addr, sr_error_info_t **cb_error_info)
+sr_module_dp_append(struct sr_mod_info_mod_s *mod, sr_sid_t sid, char *main_shm_addr, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_dp_sub_t *shm_msub;
@@ -735,7 +735,7 @@ sr_module_dp_append(struct sr_mod_info_mod_s *mod, char *main_shm_addr, sr_error
                 }
 
                 /* replace them with the ones retrieved from a client */
-                if ((err_info = sr_xpath_dp_append(mod, xpath, set->set.d[j], cb_error_info))) {
+                if ((err_info = sr_xpath_dp_append(mod, xpath, set->set.d[j], sid, cb_error_info))) {
                     goto error;
                 }
             }
@@ -754,7 +754,7 @@ next_iter:
                 }
             }
 
-            if ((err_info = sr_xpath_dp_append(mod, xpath, NULL, cb_error_info))) {
+            if ((err_info = sr_xpath_dp_append(mod, xpath, NULL, sid, cb_error_info))) {
                 return err_info;
             }
         }
@@ -770,11 +770,13 @@ error:
 }
 
 sr_error_info_t *
-sr_modinfo_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_error_info_t **cb_error_info)
+sr_modinfo_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_sid_t *sid, sr_error_info_t **cb_error_info)
 {
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
     sr_error_info_t *err_info = NULL;
+
+    assert((mod_info->ds != SR_DS_OPERATIONAL) || sid);
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -792,7 +794,7 @@ sr_modinfo_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_erro
 
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* append any valid data provided by clients */
-                if ((err_info = sr_module_dp_append(mod, mod_info->conn->main_shm.addr, cb_error_info))) {
+                if ((err_info = sr_module_dp_append(mod, *sid, mod_info->conn->main_shm.addr, cb_error_info))) {
                     return err_info;
                 }
             }
