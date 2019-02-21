@@ -945,8 +945,8 @@ typedef enum sr_subscr_flag_e {
     SR_SUBSCR_ENABLED = 8,
 
     /**
-     * @brief The subscriber will be called before any other subscribers for the particular model
-     * and is allowed to modify the particular module data.
+     * @brief The subscriber will be called before any other subscribers for the particular module
+     * and is allowed to modify the new module data.
      */
     SR_SUBSCR_UPDATE = 16,
 

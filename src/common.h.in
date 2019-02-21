@@ -60,9 +60,6 @@
 /* notification file will never exceed this size (kbs) */
 #define SR_EV_NOTIF_FILE_MAX_SIZE 1024
 
-/* timeout for waiting for subscriber thread to terminate (s) */
-#define SR_SUBSCR_JOIN_TIMEOUT 5
-
 /* time slept when wanting a write lock on a module that is already locked (ms) */
 #define SR_MOD_WRITE_LOCK_SLEEP 10
 

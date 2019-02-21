@@ -2023,7 +2023,6 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     int ret;
-    struct timespec ts;
     pthread_t tid;
 
     if (!subscription) {
@@ -2042,19 +2041,14 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     sr_munlock(&subscription->conn->ptr_lock);
 
     if (subscription->tid) {
-        tid = subscription->tid;
-
         /* signal the thread to quit */
+        tid = subscription->tid;
         subscription->tid = 0;
 
         /* join the thread */
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += SR_SUBSCR_JOIN_TIMEOUT;
-        ret = pthread_timedjoin_np(tid, NULL, &ts);
+        ret = pthread_join(tid, NULL);
         if (ret) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Waiting for the subscriber thread failed (%s).", strerror(ret));
-            pthread_detach(tid);
-            pthread_cancel(tid);
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Joining the subscriber thread failed (%s).", strerror(ret));
         }
     }
 
