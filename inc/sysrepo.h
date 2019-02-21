@@ -1169,7 +1169,8 @@ typedef enum sr_subscr_flag_e {
     SR_SUBSCR_APPLY_ONLY = 4,
 
     /**
-     * @brief The subscriber wants ::SR_EV_ENABLED notifications to be sent to them.
+     * @brief The subscriber wants ::SR_EV_ENABLED notifications to be sent to them. Does not work for passive
+     * (::SR_SUBSCR_PASSIVE) subscriptions.
      */
     SR_SUBSCR_EV_ENABLED = 8,
 
