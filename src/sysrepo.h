@@ -866,36 +866,6 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief Locks the datastore which the session is tied to. If there is
- * a module locked by the other session SR_ERR_LOCKED is returned.
- * Operation fails if there is a modified data tree in session.
- *
- * All data models within the datastore will be locked for writing until
- * ::sr_unlock_datastore is called or until the session is stopped or terminated
- * for any reason.
- *
- * The lock operation will not be allowed if the user does not have sufficient
- * permissions for writing into each of the data models in the datastore.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_lock_datastore(sr_session_ctx_t *session);
-
-/**
- * @brief Unlocks the datastore which the session is tied to.
- *
- * All data models within the datastore will be unlocked if they were locked
- * by this session.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_unlock_datastore(sr_session_ctx_t *session);
-
-/**
  * @brief Locks specified data module within the datastore which the session
  * is tied to. Operation fails if the data tree has been modified.
  *
@@ -911,7 +881,7 @@ int sr_unlock_datastore(sr_session_ctx_t *session);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_lock_module(sr_session_ctx_t *session, const char *module_name);
+int sr_lock(sr_session_ctx_t *session, const char *module_name);
 
 /**
  * @brief Unlocks specified data module within the datastore which the session
@@ -925,7 +895,7 @@ int sr_lock_module(sr_session_ctx_t *session, const char *module_name);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
+int sr_unlock(sr_session_ctx_t *session, const char *module_name);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -990,7 +960,6 @@ typedef enum sr_subscr_flag_e {
  * ::SR_SUBSCR_APPLY_ONLY subscription flag.
  */
 typedef enum sr_notif_event_e {
-    SR_EV_NONE = 0, /**< Used just internally. */
     SR_EV_UPDATE,  /**< Occurs before any other events and the subscriber can update the apply-changes diff. */
     SR_EV_CHANGE,  /**< Occurs just before the changes are committed to the datastore,
                         the subscriber is supposed to verify that the changes are valid and can be applied

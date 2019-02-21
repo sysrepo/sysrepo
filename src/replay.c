@@ -330,7 +330,7 @@ sr_replay_store(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_
     SR_CHECK_INT_GOTO(notif_lyb_len == -1, err_info, cleanup);
 
     /* REPLAY WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->replay_lock, 1, __func__))) {
+    if ((err_info = sr_rwlock(&shm_mod->replay_lock, SR_MOD_LOCK_TIMEOUT, 1, __func__))) {
         goto cleanup;
     }
 

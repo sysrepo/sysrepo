@@ -82,7 +82,12 @@ struct sr_mod_s {
     off_t name;
     char rev[11];
     uint8_t flags;
-    pthread_rwlock_t data_lock[2];
+    struct sr_mod_lock_s {
+        pthread_rwlock_t lock;
+        uint8_t write_locked;
+        uint8_t ds_locked;
+        sr_sid_t sid;
+    } data_lock_info[2];
     pthread_rwlock_t replay_lock;
     off_t features;
     uint16_t feat_count;
@@ -95,7 +100,6 @@ struct sr_mod_s {
     struct {
         off_t subs;
         uint16_t sub_count;
-        uint8_t write_locked;
     } conf_sub[2];
 
     off_t dp_subs;
@@ -115,26 +119,51 @@ typedef struct sr_main_shm_s {
     off_t first_mod;
 } sr_main_shm_t;
 
+typedef enum sr_sub_event_e {
+    SR_SUB_EV_NONE = 0,
+    SR_SUB_EV_SUCCESS,
+    SR_SUB_EV_ERROR,
+
+    SR_SUB_EV_UPDATE,
+    SR_SUB_EV_CHANGE,
+    SR_SUB_EV_DONE,
+    SR_SUB_EV_ABORT,
+    SR_SUB_EV_DP,
+    SR_SUB_EV_RPC,
+    SR_SUB_EV_NOTIF,
+} sr_sub_event_t;
+
+#define SR_IS_LISTEN_EVENT(ev) ((ev == SR_SUB_EV_UPDATE) || (ev == SR_SUB_EV_CHANGE) || (ev == SR_SUB_EV_DONE) \
+        || (ev == SR_SUB_EV_ABORT) || (ev == SR_SUB_EV_DP) || (ev == SR_SUB_EV_RPC) || (ev == SR_SUB_EV_NOTIF))
+
+#define SR_IS_NOTIFY_EVENT(ev) ((ev == SR_SUB_EV_SUCCESS) || (ev == SR_SUB_EV_ERROR))
+
 /*
  * generic (single-subscriber) subscription SHM
  */
 typedef struct sr_sub_shm_s {
-    pthread_rwlock_t lock;
+    /* synchronization */
+    pthread_mutex_t lock;
+    uint16_t readers;
+    pthread_cond_t cond;
+
     uint32_t event_id;
-    sr_notif_event_t event;
+    sr_sub_event_t event;
     sr_sid_t sid;
-    sr_error_t err_code;
 } sr_sub_shm_t;
 
 /*
  * multi-subscriber subscription SHM
  */
 typedef struct sr_multi_sub_shm_s {
-    pthread_rwlock_t lock;
+    /* synchronization */
+    pthread_mutex_t lock;
+    uint16_t readers;
+    pthread_cond_t cond;
+
     uint32_t event_id;
-    sr_notif_event_t event;
+    sr_sub_event_t event;
     sr_sid_t sid;
-    sr_error_t err_code;
 
     /* specific fields */
     uint32_t priority;
@@ -227,10 +256,6 @@ sr_error_info_t *sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const c
 /*
  * shm_mod.c
  */
-sr_error_info_t *sr_shmmod_lock(sr_mod_t *shm_mod, sr_datastore_t ds, int wr);
-
-void sr_shmmod_unlock(sr_mod_t *shm_mod, sr_datastore_t ds);
-
 sr_error_info_t *sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_datastore_t ds,
         struct sr_mod_info_s *mod_info);
 
@@ -243,11 +268,11 @@ sr_error_info_t *sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys
 sr_error_info_t *sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *xpath, const struct lyd_node *op, int output,
         sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count, struct sr_mod_info_s *mod_info);
 
-sr_error_info_t *sr_shmmod_multilock(struct sr_mod_info_s *mod_info, int wr, int upgradable);
+sr_error_info_t *sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_t sid);
 
-sr_error_info_t *sr_shmmod_multirelock(struct sr_mod_info_s *mod_info, int upgrade);
+sr_error_info_t *sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid);
 
-void sr_shmmod_multiunlock(struct sr_mod_info_s *mod_info, int upgradable);
+void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable);
 
 sr_error_info_t *sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
         sr_datastore_t ds, uint32_t priority, int sub_opts, int add);
@@ -268,7 +293,7 @@ sr_error_info_t *sr_shmsub_open_map(const char *name, const char *suffix1, int64
 sr_error_info_t *sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, struct lyd_node **update_edit,
         sr_error_info_t **cb_err_info);
 
-sr_error_info_t *sr_shmsub_conf_notify_clear(struct sr_mod_info_s *mod_info, sr_notif_event_t ev);
+sr_error_info_t *sr_shmsub_conf_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev);
 
 sr_error_info_t *sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, sr_error_info_t **cb_err_info);
 

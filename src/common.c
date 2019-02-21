@@ -46,7 +46,7 @@ sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
     void *mem[4] = {NULL};
 
     /* SUBS LOCK */
-    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
         return err_info;
     }
 
@@ -100,7 +100,7 @@ sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
     conf_sub->subs[conf_sub->sub_count].cb = conf_cb;
     conf_sub->subs[conf_sub->sub_count].private_data = private_data;
     conf_sub->subs[conf_sub->sub_count].event_id = 0;
-    conf_sub->subs[conf_sub->sub_count].event = SR_EV_NONE;
+    conf_sub->subs[conf_sub->sub_count].event = SR_SUB_EV_NONE;
 
     ++conf_sub->sub_count;
 
@@ -133,7 +133,7 @@ sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
     struct modsub_conf_s *conf_sub;
 
     /* SUBS LOCK */
-    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
         sr_errinfo_free(&err_info);
         return;
     }
@@ -206,7 +206,7 @@ sr_sub_dp_add(const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb,
     assert(mod_name && xpath);
 
     /* SUBS LOCK */
-    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
         return err_info;
     }
 
@@ -283,7 +283,7 @@ sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *su
     struct modsub_dp_s *dp_sub;
 
     /* SUBS LOCK */
-    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
         sr_errinfo_free(&err_info);
         return;
     }
@@ -349,7 +349,7 @@ sr_sub_rpc_add(const char *mod_name, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc
     assert(mod_name && xpath && (rpc_cb || rpc_tree_cb) && (!rpc_cb || !rpc_tree_cb));
 
     /* SUBS LOCK */
-    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
         return err_info;
     }
 
@@ -395,7 +395,7 @@ sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs)
     struct modsub_rpc_s *rpc_sub;
 
     /* SUBS LOCK */
-    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
         sr_errinfo_free(&err_info);
         return;
     }
@@ -446,7 +446,7 @@ sr_sub_notif_add(const char *mod_name, const char *xpath, time_t start_time, tim
     assert(mod_name);
 
     /* SUBS LOCK */
-    if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
+    if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
         return err_info;
     }
 
@@ -533,7 +533,7 @@ sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, tim
 
     if (!has_subs_lock) {
         /* SUBS LOCK */
-        if ((err_info = sr_mlock(&subs->subs_lock, __func__))) {
+        if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
             sr_errinfo_free(&err_info);
             return;
         }
@@ -908,6 +908,40 @@ sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path)
     return err_info;
 }
 
+void
+sr_time_get(struct timespec *ts, uint32_t add_ms)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (clock_gettime(CLOCK_REALTIME, ts) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "clock_gettime");
+        /* will not happen anyway */
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    add_ms += ts->tv_nsec / 1000000;
+    ts->tv_nsec %= 1000000;
+    ts->tv_nsec += (add_ms % 1000) * 1000000;
+    ts->tv_sec += add_ms / 1000;
+}
+
+int
+sr_time_is_timeout(struct timespec *ts)
+{
+    struct timespec cur_ts;
+
+    sr_time_get(&cur_ts, 0);
+
+    if (ts->tv_sec < cur_ts.tv_sec) {
+        return 1;
+    }
+    if ((ts->tv_sec == cur_ts.tv_sec) && (ts->tv_nsec <= cur_ts.tv_nsec)) {
+        return 1;
+    }
+    return 0;
+}
+
 sr_error_info_t *
 sr_shm_remap(sr_shm_t *shm, size_t new_shm_size)
 {
@@ -960,24 +994,20 @@ sr_shm_destroy(sr_shm_t *shm)
 }
 
 sr_error_info_t *
-sr_mlock(pthread_mutex_t *lock, const char *func)
+sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec abs_ts;
     int ret;
 
-    if (clock_gettime(CLOCK_REALTIME, &abs_ts) == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "clock_gettime");
-        return err_info;
-    }
+    assert(timeout_ms);
 
-    abs_ts.tv_nsec += SR_LOCK_TIMEOUT * 1000000;
-    if (abs_ts.tv_nsec > 999999999) {
-        abs_ts.tv_nsec -= 1000000000;
-        ++abs_ts.tv_sec;
+    if (timeout_ms == -1) {
+        ret = pthread_mutex_lock(lock);
+    } else {
+        sr_time_get(&abs_ts, (uint32_t)timeout_ms);
+        ret = pthread_mutex_timedlock(lock, &abs_ts);
     }
-
-    ret = pthread_mutex_timedlock(lock, &abs_ts);
     if (ret) {
         SR_ERRINFO_LOCK(&err_info, func, ret);
         return err_info;
@@ -998,23 +1028,15 @@ sr_munlock(pthread_mutex_t *lock)
 }
 
 sr_error_info_t *
-sr_rwlock(pthread_rwlock_t *rwlock, int wr, const char *func)
+sr_rwlock(pthread_rwlock_t *rwlock, int timeout_ms, int wr, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec abs_ts;
     int ret;
 
-    if (clock_gettime(CLOCK_REALTIME, &abs_ts) == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "clock_gettime");
-        return err_info;
-    }
+    assert(timeout_ms > 0);
 
-    abs_ts.tv_nsec += SR_LOCK_TIMEOUT * 1000000;
-    if (abs_ts.tv_nsec > 999999999) {
-        abs_ts.tv_nsec -= 1000000000;
-        ++abs_ts.tv_sec;
-    }
-
+    sr_time_get(&abs_ts, (uint32_t)timeout_ms);
     if (wr) {
         ret = pthread_rwlock_timedwrlock(rwlock, &abs_ts);
     } else {
@@ -1022,10 +1044,9 @@ sr_rwlock(pthread_rwlock_t *rwlock, int wr, const char *func)
     }
     if (ret) {
         SR_ERRINFO_RWLOCK(&err_info, wr, func, ret);
-        return err_info;
     }
 
-    return NULL;
+    return err_info;
 }
 
 void
@@ -1218,50 +1239,160 @@ sr_ly_leaf_value_str(const struct lyd_node *leaf)
 }
 
 sr_error_info_t *
-sr_shared_rwlock_init(pthread_rwlock_t *rwlock)
+sr_mutex_init(pthread_mutex_t *lock, int shared)
 {
     sr_error_info_t *err_info = NULL;
-    pthread_rwlockattr_t lock_attr;
+    pthread_mutexattr_t attr;
     int ret;
 
-    /* init attr */
-    if ((ret = pthread_rwlockattr_init(&lock_attr))) {
-        sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlockattr failed (%s).", strerror(ret));
-        return err_info;
-    }
-    if ((ret = pthread_rwlockattr_setpshared(&lock_attr, PTHREAD_PROCESS_SHARED))) {
-        pthread_rwlockattr_destroy(&lock_attr);
-        sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread rwlockattr failed (%s).", strerror(ret));
-        return err_info;
+    if (shared) {
+        /* init attr */
+        if ((ret = pthread_mutexattr_init(&attr))) {
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
+            return err_info;
+        }
+        if ((ret = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
+            pthread_mutexattr_destroy(&attr);
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            return err_info;
+        }
+
+        if ((ret = pthread_mutex_init(lock, &attr))) {
+            pthread_mutexattr_destroy(&attr);
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
+            return err_info;
+        }
+        pthread_mutexattr_destroy(&attr);
+    } else {
+        if ((ret = pthread_mutex_init(lock, NULL))) {
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
+            return err_info;
+        }
     }
 
-    if ((ret = pthread_rwlock_init(rwlock, &lock_attr))) {
-        pthread_rwlockattr_destroy(&lock_attr);
-        sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
-        return err_info;
+    return NULL;
+}
+
+sr_error_info_t *
+sr_rwlock_init(pthread_rwlock_t *rwlock, int shared)
+{
+    sr_error_info_t *err_info = NULL;
+    pthread_rwlockattr_t attr;
+    int ret;
+
+    if (shared) {
+        /* init attr */
+        if ((ret = pthread_rwlockattr_init(&attr))) {
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
+            return err_info;
+        }
+        if ((ret = pthread_rwlockattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
+            pthread_rwlockattr_destroy(&attr);
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            return err_info;
+        }
+
+        if ((ret = pthread_rwlock_init(rwlock, &attr))) {
+            pthread_rwlockattr_destroy(&attr);
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+            return err_info;
+        }
+        pthread_rwlockattr_destroy(&attr);
+    } else {
+        if ((ret = pthread_rwlock_init(rwlock, NULL))) {
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+            return err_info;
+        }
     }
 
-    pthread_rwlockattr_destroy(&lock_attr);
+    return NULL;
+}
+
+sr_error_info_t *
+sr_cond_init(pthread_cond_t *cond, int shared)
+{
+    sr_error_info_t *err_info = NULL;
+    pthread_condattr_t attr;
+    int ret;
+
+    if (shared) {
+        /* init attr */
+        if ((ret = pthread_condattr_init(&attr))) {
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
+            return err_info;
+        }
+        if ((ret = pthread_condattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
+            pthread_condattr_destroy(&attr);
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            return err_info;
+        }
+
+        if ((ret = pthread_cond_init(cond, &attr))) {
+            pthread_condattr_destroy(&attr);
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+            return err_info;
+        }
+        pthread_condattr_destroy(&attr);
+    } else {
+        if ((ret = pthread_cond_init(cond, NULL))) {
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+            return err_info;
+        }
+    }
+
     return NULL;
 }
 
 const char *
-sr_ev2str(sr_notif_event_t ev)
+sr_ev2str(sr_sub_event_t ev)
 {
+    sr_error_info_t *err_info = NULL;
+
     switch (ev) {
-    case SR_EV_NONE:
-        return "none";
-    case SR_EV_UPDATE:
+    case SR_SUB_EV_UPDATE:
         return "update";
-    case SR_EV_CHANGE:
+    case SR_SUB_EV_CHANGE:
         return "change";
-    case SR_EV_DONE:
+    case SR_SUB_EV_DONE:
         return "done";
-    case SR_EV_ABORT:
+    case SR_SUB_EV_ABORT:
         return "abort";
+    case SR_SUB_EV_DP:
+        return "data-provide";
+    case SR_SUB_EV_RPC:
+        return "rpc";
+    case SR_SUB_EV_NOTIF:
+        return "notif";
+    default:
+        SR_ERRINFO_INT(&err_info);
+        sr_errinfo_free(&err_info);
+        break;
     }
 
     return NULL;
+}
+
+sr_notif_event_t
+sr_ev2api(sr_sub_event_t ev)
+{
+    sr_error_info_t *err_info = NULL;
+
+    switch (ev) {
+    case SR_SUB_EV_UPDATE:
+        return SR_EV_UPDATE;
+    case SR_SUB_EV_CHANGE:
+        return SR_EV_CHANGE;
+    case SR_SUB_EV_DONE:
+        return SR_EV_DONE;
+    case SR_SUB_EV_ABORT:
+        return SR_EV_ABORT;
+    default:
+        SR_ERRINFO_INT(&err_info);
+        sr_errinfo_free(&err_info);
+        break;
+    }
+
+    return 0;
 }
 
 sr_error_info_t *

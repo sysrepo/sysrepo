@@ -43,6 +43,8 @@
 
 #define SR_REPO_PATH "@REPO_PATH@"
 
+#define SR_REPO_PATH_ENV "SYSREPO_REPOSITORY_PATH"
+
 /* if not set, defaults to "SR_REPO_PATH/data" */
 #define SR_RUNNING_PATH "@RUNNING_DATA_PATH@"
 
@@ -55,25 +57,32 @@
 /* if not set, defaults to "SR_REPO_PATH/yang" */
 #define SR_YANG_PATH "@YANG_MODULE_PATH@"
 
-#define SR_REPO_PATH_ENV "SYSREPO_REPOSITORY_PATH"
-
-/* kbs */
+/* notification file will never exceed this size (kbs) */
 #define SR_EV_NOTIF_FILE_MAX_SIZE 1024
 
-/* s */
-#define SR_MODULE_LOCK_TIMEOUT 5
-
-/* s */
+/* timeout for waiting for subscriber thread to terminate (s) */
 #define SR_SUBSCR_JOIN_TIMEOUT 5
 
-/* ms */
-#define SR_LOCK_TIMEOUT 100
+/* time slept when wanting a write lock on a module that is already locked (ms) */
+#define SR_MOD_WRITE_LOCK_SLEEP 10
 
-/* ms */
-#define SR_SUB_EVENT_STEP_TIMEOUT 20
+/* time a subscriber thread sleeps if no event occurs (ms) */
+#define SR_SUB_NOEVENT_SLEEP 50
 
-/* number of */
-#define SR_SUB_EVENT_STEP_COUNT 500
+/* timeout for processing all events on all subscriptions of one subscriber thread; used when modifying subscriptions (s) */
+#define SR_SUB_EVENT_LOOP_TIMEOUT 30
+
+/* timeout for locking subscriptions lock, used when modifying subscriptions (ms) */
+#define SR_SUB_SUBS_LOCK_TIMEOUT 100
+
+/* timeout for processing a single event in a subscription SHM (s) */
+#define SR_SUB_EVENT_TIMEOUT 10
+
+/* maximum time a lock on a subscription SHM is expected to be held; how long to wait for a write lock (ms) */
+#define SR_SUB_LOCK_TIME 1000
+
+/* timeout for locking (data of) a module; maximum time a write lock is expected to be held (s) */
+#define SR_MOD_LOCK_TIMEOUT 2
 
 /* internal declarations + definitions
  */
@@ -120,7 +129,7 @@ struct sr_conn_ctx_s {
 struct sr_session_ctx_s {
     sr_conn_ctx_t *conn;
     sr_datastore_t ds;
-    sr_notif_event_t ev;
+    sr_sub_event_t ev;
     sr_sid_t sid;
     uint8_t flags;
     sr_error_info_t *err_info;
@@ -147,7 +156,7 @@ struct sr_subscription_ctx_s {
             void *private_data;
 
             uint32_t event_id;
-            sr_notif_event_t event;
+            sr_sub_event_t event;
         } *subs;
         uint32_t sub_count;
 
@@ -255,16 +264,20 @@ sr_error_info_t *sr_path_notif_file(const char *mod_name, time_t from_ts, time_t
 
 sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path);
 
+void sr_time_get(struct timespec *ts, uint32_t add_ms);
+
+int sr_time_is_timeout(struct timespec *ts);
+
 /* if new_shm_size == 0 needs READ lock, otherwise needs WRITE lock! */
 sr_error_info_t *sr_shm_remap(sr_shm_t *shm, size_t new_shm_size);
 
 void sr_shm_destroy(sr_shm_t *shm);
 
-sr_error_info_t *sr_mlock(pthread_mutex_t *lock, const char *func);
+sr_error_info_t *sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func);
 
 void sr_munlock(pthread_mutex_t *lock);
 
-sr_error_info_t *sr_rwlock(pthread_rwlock_t *rwlock, int wr, const char *func);
+sr_error_info_t *sr_rwlock(pthread_rwlock_t *rwlock, int timeout_ms, int wr, const char *func);
 
 void sr_rwunlock(pthread_rwlock_t *rwlock);
 
@@ -284,9 +297,15 @@ sr_error_info_t *sr_file_get_size(int fd, size_t *size);
 
 const char *sr_ly_leaf_value_str(const struct lyd_node *leaf);
 
-sr_error_info_t *sr_shared_rwlock_init(pthread_rwlock_t *rwlock);
+sr_error_info_t *sr_mutex_init(pthread_mutex_t *lock, int shared);
 
-const char *sr_ev2str(sr_notif_event_t ev);
+sr_error_info_t *sr_rwlock_init(pthread_rwlock_t *rwlock, int shared);
+
+sr_error_info_t *sr_cond_init(pthread_cond_t *cond, int shared);
+
+const char *sr_ev2str(sr_sub_event_t ev);
+
+sr_notif_event_t sr_ev2api(sr_sub_event_t ev);
 
 sr_error_info_t *sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val);
 

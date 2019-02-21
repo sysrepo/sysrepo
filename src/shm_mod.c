@@ -27,42 +27,46 @@
 
 #include <libyang/libyang.h>
 
-sr_error_info_t *
-sr_shmmod_lock(sr_mod_t *shm_mod, sr_datastore_t ds, int wr)
+static sr_error_info_t *
+sr_shmmod_lock(const char *mod_name, struct sr_mod_lock_s *shm_lock, uint32_t timeout_ms, int wr, sr_sid_t sid)
 {
-    struct timespec abs_ts;
     sr_error_info_t *err_info = NULL;
+    struct timespec abs_ts;
     int ret;
 
-    if (clock_gettime(CLOCK_REALTIME, &abs_ts) == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "clock_gettime");
-        return err_info;
-    }
+    sr_time_get(&abs_ts, timeout_ms);
+    if (!wr) {
+        /* we either get the lock or receive an error, nothing more to do in both cases */
+        ret = pthread_rwlock_timedrdlock(&shm_lock->lock, &abs_ts);
+    } else do {
+        ret = pthread_rwlock_timedwrlock(&shm_lock->lock, &abs_ts);
+        if (ret || ((!shm_lock->write_locked && !shm_lock->ds_locked) || (shm_lock->sid.sr == sid.sr))) {
+            break;
+        }
 
-    abs_ts.tv_sec += SR_MODULE_LOCK_TIMEOUT;
+        /* we have the lock but it belongs to some other session, give it a chance to take it */
+        pthread_rwlock_unlock(&shm_lock->lock);
+        sr_msleep(SR_MOD_WRITE_LOCK_SLEEP);
+        /* fake timeout */
+        ret = ETIMEDOUT;
+    } while (!sr_time_is_timeout(&abs_ts));
 
-    if (wr) {
-        ret = pthread_rwlock_timedwrlock(&shm_mod->data_lock[ds], &abs_ts);
-    } else {
-        ret = pthread_rwlock_timedrdlock(&shm_mod->data_lock[ds], &abs_ts);
-    }
     if (ret) {
-        SR_ERRINFO_RWLOCK(&err_info, wr, __func__, ret);
-        return err_info;
+        if ((ret == ETIMEDOUT) && (shm_lock->write_locked || shm_lock->ds_locked)) {
+            sr_errinfo_new(&err_info, SR_ERR_LOCKED, NULL, "Module \"%s\" is %s by session %u (NC SID %u).",
+                    mod_name, shm_lock->ds_locked ? "locked" : "being used", shm_lock->sid.sr, shm_lock->sid.nc);
+        } else {
+            SR_ERRINFO_RWLOCK(&err_info, wr, __func__, ret);
+        }
     }
 
-    return NULL;
+    return err_info;
 }
 
-void
-sr_shmmod_unlock(sr_mod_t *shm_mod, sr_datastore_t ds)
+static void
+sr_shmmod_unlock(struct sr_mod_lock_s *shm_lock)
 {
-    int ret;
-
-    ret = pthread_rwlock_unlock(&shm_mod->data_lock[ds]);
-    if (ret) {
-        SR_LOG_WRN("Unlocking a rwlock failed (%s).", strerror(ret));
-    }
+    sr_rwunlock(&shm_lock->lock);
 }
 
 static sr_error_info_t *
@@ -396,74 +400,73 @@ sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *xpath, const struct lyd_no
 }
 
 sr_error_info_t *
-sr_shmmod_multilock(struct sr_mod_info_s *mod_info, int wr, int upgradable)
+sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_t sid)
 {
-    int mod_wr;
-    uint32_t i, steps;
     sr_error_info_t *err_info = NULL;
-
-    assert(!wr || !upgradable);
+    int mod_wr;
+    uint32_t i;
+    struct sr_mod_info_mod_s *mod;
+    struct sr_mod_lock_s *shm_lock;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
-        /* write-lock data-required modules (if write lock even required), read-lock dependency modules */
-        mod_wr = (wr || upgradable) && (mod_info->mods[i].state & MOD_INFO_REQ) ? 1 : 0;
-        steps = SR_SUB_EVENT_STEP_COUNT;
-        while (steps) {
-            if ((err_info = sr_shmmod_lock(mod_info->mods[i].shm_mod, mod_info->ds, mod_wr))) {
-                return err_info;
-            }
+        mod = &mod_info->mods[i];
+        shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
 
-            if (!upgradable || !mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].write_locked) {
-                break;
-            }
+        /* WRITE-lock data-required modules, READ-lock dependency modules */
+        mod_wr = upgradable && (mod->state & MOD_INFO_REQ) ? 1 : 0;
 
-            sr_shmmod_unlock(mod_info->mods[i].shm_mod, mod_info->ds);
-
-            /* sleep */
-            sr_msleep(SR_SUB_EVENT_STEP_TIMEOUT);
-            --steps;
-        }
-        if (!steps) {
-            sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Locking module \"%s\" in %s DS for applying changes timed out.",
-                    mod_info->mods[i].ly_mod->name, sr_ds2str(mod_info->ds));
+        /* MOD READ/WRITE LOCK */
+        if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, mod_wr, sid))) {
             return err_info;
         }
 
-        if (upgradable && mod_wr) {
-            /* set flag and downgrade lock to the required read lock for now */
-            mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].write_locked = 1;
+        if (mod_wr) {
+            /* set flag, store SID, and downgrade lock to the required read lock for now */
+            assert(!shm_lock->write_locked);
+            shm_lock->write_locked = 1;
+            shm_lock->sid = sid;
 
-            sr_shmmod_unlock(mod_info->mods[i].shm_mod, mod_info->ds);
-            if ((err_info = sr_shmmod_lock(mod_info->mods[i].shm_mod, mod_info->ds, 0))) {
+            /* MOD UNLOCK */
+            sr_shmmod_unlock(shm_lock);
+
+            /* MOD READ LOCK */
+            if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, 0, sid))) {
                 return err_info;
             }
         }
 
-        mod_info->mods[i].state |= MOD_INFO_LOCK;
+        /* set the flag for unlocking */
+        mod->state |= MOD_INFO_LOCK;
     }
 
     return NULL;
 }
 
 sr_error_info_t *
-sr_shmmod_multirelock(struct sr_mod_info_s *mod_info, int upgrade)
+sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
+    struct sr_mod_info_mod_s *mod;
+    struct sr_mod_lock_s *shm_lock;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
-        if ((mod_info->mods[i].state & (MOD_INFO_REQ | MOD_INFO_LOCK)) == (MOD_INFO_REQ | MOD_INFO_LOCK)) {
-            /* when relocking, the flag must always be set so that a success is guaranteed */
-            SR_CHECK_INT_RET(!mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].write_locked, err_info);
+        mod = &mod_info->mods[i];
+        shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
 
-            /* properly unlock the module for possible error recovery */
-            sr_shmmod_unlock(mod_info->mods[i].shm_mod, mod_info->ds);
-            mod_info->mods[i].state &= ~MOD_INFO_LOCK;
+        /* upgrade only required modules */
+        if ((mod->state & (MOD_INFO_REQ | MOD_INFO_LOCK)) == (MOD_INFO_REQ | MOD_INFO_LOCK)) {
+            /* MOD UNLOCK */
+            sr_shmmod_unlock(shm_lock);
 
-            if ((err_info = sr_shmmod_lock(mod_info->mods[i].shm_mod, mod_info->ds, upgrade))) {
+            /* remove flag for correct error recovery */
+            mod->state &= ~MOD_INFO_LOCK;
+
+            /* MOD WRITE LOCK */
+            if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, 1, sid))) {
                 return err_info;
             }
-            mod_info->mods[i].state |= MOD_INFO_LOCK;
+            mod->state |= MOD_INFO_LOCK;
         }
     }
 
@@ -471,17 +474,28 @@ sr_shmmod_multirelock(struct sr_mod_info_s *mod_info, int upgrade)
 }
 
 void
-sr_shmmod_multiunlock(struct sr_mod_info_s *mod_info, int upgradable)
+sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable)
 {
     uint32_t i;
+    struct sr_mod_info_mod_s *mod;
+    struct sr_mod_lock_s *shm_lock;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
-        if (mod_info->mods[i].state & MOD_INFO_LOCK) {
-            if ((mod_info->mods[i].state & MOD_INFO_REQ) && upgradable) {
-                assert(mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].write_locked);
-                mod_info->mods[i].shm_mod->conf_sub[mod_info->ds].write_locked = 0;
+        mod = &mod_info->mods[i];
+        shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
+
+        if (mod->state & MOD_INFO_LOCK) {
+            if ((mod->state & MOD_INFO_REQ) && upgradable) {
+                /* this module's lock was upgraded (WRITE-locked), correctly clean everything */
+                assert(shm_lock->write_locked);
+                shm_lock->write_locked = 0;
+                if (!shm_lock->ds_locked) {
+                    memset(&shm_lock->sid, 0, sizeof shm_lock->sid);
+                }
             }
-            sr_shmmod_unlock(mod_info->mods[i].shm_mod, mod_info->ds);
+
+            /* MOD UNLOCK */
+            sr_shmmod_unlock(shm_lock);
         }
     }
 }

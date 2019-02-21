@@ -208,7 +208,7 @@ sr_shmmain_pidunlock(sr_conn_ctx_t *conn)
 static sr_error_info_t *
 sr_shmmain_tidlock(sr_conn_ctx_t *conn, int wr)
 {
-    return sr_rwlock(&conn->main_tlock, wr, __func__);
+    return sr_rwlock(&conn->main_tlock, SR_MOD_LOCK_TIMEOUT * 1000, wr, __func__);
 }
 
 static void
@@ -311,13 +311,13 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
         shm_mod->flags = 0;
 
         /* init shared rwlock */
-        if ((err_info = sr_shared_rwlock_init(&shm_mod->data_lock[SR_DS_STARTUP]))) {
+        if ((err_info = sr_rwlock_init(&shm_mod->data_lock_info[SR_DS_STARTUP].lock, 1))) {
             return err_info;
         }
-        if ((err_info = sr_shared_rwlock_init(&shm_mod->data_lock[SR_DS_RUNNING]))) {
+        if ((err_info = sr_rwlock_init(&shm_mod->data_lock_info[SR_DS_RUNNING].lock, 1))) {
             return err_info;
         }
-        if ((err_info = sr_shared_rwlock_init(&shm_mod->replay_lock))) {
+        if ((err_info = sr_rwlock_init(&shm_mod->replay_lock, 1))) {
             return err_info;
         }
 
@@ -1029,23 +1029,23 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr)
 
     /* PID LOCK */
     if ((err_info = sr_shmmain_pidlock(conn, wr))) {
-        goto tidunlock_error;
+        goto error_tidunlock;
     }
 
     /* remap in case modules were added (even version changed) or some subscriptions were changed (version remains) */
     if ((err_info = sr_shm_remap(&conn->main_shm, 0))) {
-        goto pidunlock_error;
+        goto error_pidunlock;
     }
 
     /* check SHM version and update context as necessary */
     if ((err_info = sr_shmmain_read_ver(conn->main_plock, &main_ver))) {
-        goto pidunlock_error;
+        goto error_pidunlock;
     }
 
     if (conn->main_ver != main_ver) {
         /* update libyang context (just add new modules) */
         if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-            goto pidunlock_error;
+            goto error_pidunlock;
         }
 
         /* update version */
@@ -1054,10 +1054,10 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr)
 
     return NULL;
 
-tidunlock_error:
-    sr_shmmain_tidunlock(conn);
-pidunlock_error:
+error_pidunlock:
     sr_shmmain_pidunlock(conn);
+error_tidunlock:
+    sr_shmmain_tidunlock(conn);
     return err_info;
 }
 
