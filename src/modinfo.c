@@ -51,7 +51,7 @@ sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr)
 }
 
 sr_error_info_t *
-sr_modinfo_edit_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_info)
+sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_diff;
@@ -65,7 +65,7 @@ sr_modinfo_edit_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_info
             mod_diff = NULL;
 
             /* apply relevant edit changes */
-            if ((err_info = sr_ly_edit_mod_apply(edit, mod, &mod_diff))) {
+            if ((err_info = sr_ly_edit_mod_apply(edit, mod, create_diff ? &mod_diff : NULL))) {
                 lyd_free_withsiblings(mod_diff);
                 return err_info;
             }
@@ -888,7 +888,7 @@ sr_modinfo_data_replace(struct sr_mod_info_s *mod_info, uint8_t mod_type, struct
 }
 
 sr_error_info_t *
-sr_modinfo_get_filter(sr_session_ctx_t *session, const char *xpath, struct sr_mod_info_s *mod_info, struct ly_set **result)
+sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session, struct ly_set **result)
 {
     struct lyd_node *root = NULL;
     struct sr_mod_info_mod_s *mod;

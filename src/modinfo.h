@@ -53,7 +53,7 @@ struct sr_mod_info_s {
 
 sr_error_info_t *sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr);
 
-sr_error_info_t *sr_modinfo_edit_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff);
 
 sr_error_info_t *sr_modinfo_diff(struct sr_mod_info_s *src_mod_info, struct sr_mod_info_s *mod_info);
 
@@ -67,7 +67,7 @@ sr_error_info_t *sr_modinfo_data_update(struct sr_mod_info_s *mod_info, uint8_t 
 
 void sr_modinfo_data_replace(struct sr_mod_info_s *mod_info, uint8_t mod_type, struct lyd_node **config_p);
 
-sr_error_info_t *sr_modinfo_get_filter(sr_session_ctx_t *session, const char *xpath, struct sr_mod_info_s *mod_info,
+sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
         struct ly_set **result);
 
 sr_error_info_t *sr_modinfo_store(struct sr_mod_info_s *mod_info);

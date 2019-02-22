@@ -116,14 +116,14 @@ test_leafref(void **state)
     /* cause leafref not to point at a node (2x) */
     ret = sr_set_item_str(st->sess, "/refs:lref", "8", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_validate(st->sess);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(st->sess, "/test:test-leaf", "8", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_validate(st->sess);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
