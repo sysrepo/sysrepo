@@ -51,6 +51,8 @@ struct sr_mod_info_s {
     uint32_t mod_count;
 };
 
+sr_error_info_t *sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr);
+
 sr_error_info_t *sr_modinfo_edit_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_info);
 
 sr_error_info_t *sr_modinfo_diff(struct sr_mod_info_s *src_mod_info, struct sr_mod_info_s *mod_info);
@@ -69,5 +71,7 @@ sr_error_info_t *sr_modinfo_get_filter(sr_session_ctx_t *session, const char *xp
         struct ly_set **result);
 
 sr_error_info_t *sr_modinfo_store(struct sr_mod_info_s *mod_info);
+
+void sr_modinfo_free(struct sr_mod_info_s *mod_info);
 
 #endif

@@ -55,10 +55,10 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
         return err_info;
     }
     created = 1;
-    shm->fd = shm_open(path, O_RDWR | O_CREAT | O_EXCL, 00600);
+    shm->fd = shm_open(path, O_RDWR | O_CREAT | O_EXCL, SR_SUB_SHM_PERM);
     if ((shm->fd == -1) && (errno == EEXIST)) {
         created = 0;
-        shm->fd = shm_open(path, O_RDWR, 00600);
+        shm->fd = shm_open(path, O_RDWR, SR_SUB_SHM_PERM);
     }
     free(path);
     if (shm->fd == -1) {

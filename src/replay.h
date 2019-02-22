@@ -27,6 +27,9 @@
 
 #include "common.h"
 
+sr_error_info_t *sr_replay_find_file(const char *mod_name, time_t from_ts, time_t to_ts, time_t *file_from_ts,
+        time_t *file_to_ts);
+
 sr_error_info_t *sr_replay_store(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_ts);
 
 sr_error_info_t *sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, time_t start_time,

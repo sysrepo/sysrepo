@@ -26,6 +26,7 @@ removed functions:
 - whole action API (use RPC API)
 - sr_session_check (does not make sense anymore)
 - whole get-schema API (use context from sr_get_context)
+- sr_get_items_iter, sr_get_item_next (not supported for now)
 
 added functions:
 - sr_session_set_nc_id

@@ -119,7 +119,6 @@ test_data_deps(void **state)
     cmp_int_data(st->conn, "test",
     "<module xmlns=\"urn:sysrepo\">"
         "<name>test</name>"
-        "<has-data/>"
         "<removed/>"
     "</module>"
     );
@@ -127,7 +126,6 @@ test_data_deps(void **state)
     "<module xmlns=\"urn:sysrepo\">"
         "<name>ietf-interfaces</name>"
         "<revision>2014-05-08</revision>"
-        "<has-data/>"
         "<replay-support/>"
         "<removed/>"
     "</module>"
@@ -142,7 +140,6 @@ test_data_deps(void **state)
     cmp_int_data(st->conn, "refs",
     "<module xmlns=\"urn:sysrepo\">"
         "<name>refs</name>"
-        "<has-data/>"
         "<replay-support/>"
         "<removed/>"
         "<data-deps>"
@@ -179,7 +176,6 @@ test_op_deps(void **state)
     cmp_int_data(st->conn, "ops-ref",
     "<module xmlns=\"urn:sysrepo\">"
         "<name>ops-ref</name>"
-        "<has-data/>"
         "<replay-support/>"
         "<removed/>"
     "</module>"
@@ -188,7 +184,6 @@ test_op_deps(void **state)
     cmp_int_data(st->conn, "ops",
     "<module xmlns=\"urn:sysrepo\">"
         "<name>ops</name>"
-        "<has-data/>"
         "<removed/>"
         "<op-deps>"
             "<xpath xmlns:o=\"urn:ops\">/o:rpc1</xpath>"

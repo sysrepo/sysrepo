@@ -85,7 +85,7 @@ sr_shmmain_check_dirs(void)
         SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
-    if (ret && (err_info = sr_mkpath(dir_path, 00770))) {
+    if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
         free(dir_path);
         return err_info;
     }
@@ -100,7 +100,7 @@ sr_shmmain_check_dirs(void)
         SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
-    if (ret && (err_info = sr_mkpath(dir_path, 00770))) {
+    if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
         free(dir_path);
         return err_info;
     }
@@ -115,7 +115,7 @@ sr_shmmain_check_dirs(void)
         SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
-    if (ret && (err_info = sr_mkpath(dir_path, 00770))) {
+    if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
         free(dir_path);
         return err_info;
     }
@@ -130,7 +130,7 @@ sr_shmmain_check_dirs(void)
         SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
-    if (ret && (err_info = sr_mkpath(dir_path, 00770))) {
+    if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
         free(dir_path);
         return err_info;
     }
@@ -150,7 +150,7 @@ sr_shmmain_pidlock_open(int *shm_lock)
         return err_info;
     }
 
-    *shm_lock = open(path, O_RDWR | O_CREAT | O_EXCL, 00600);
+    *shm_lock = open(path, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
     if (*shm_lock > -1) {
         free(path);
 
@@ -332,9 +332,6 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
                 /* copy revision */
                 str = sr_ly_leaf_value_str(ly_child);
                 strcpy(shm_mod->rev, str);
-            } else if (!strcmp(ly_child->schema->name, "has-data")) {
-                /* set has-data flag */
-                shm_mod->flags |= SR_MOD_HAS_DATA;
             } else if (!strcmp(ly_child->schema->name, "replay-support")) {
                 /* set replay-support flag */
                 shm_mod->flags |= SR_MOD_REPLAY_SUPPORT;
@@ -682,21 +679,10 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
                 change = 1;
             }
             for (i = 0; i < set->number; ++i) {
-                set2 = lyd_find_path(set->set.d[i]->parent, "has-data");
-                if (!set2 || (set2->number != 1)) {
-                    ly_set_free(set);
-                    ly_set_free(set2);
-                    SR_ERRINFO_INT(&err_info);
+                /* remove data files */
+                if ((err_info = sr_remove_data_files(sr_ly_leaf_value_str(set->set.d[i]->parent->child)))) {
                     goto error;
                 }
-
-                if (((struct lyd_node_leaf_list *)set2->set.d[0])->value.bln) {
-                    /* remove data files */
-                    if ((err_info = sr_remove_data_files(sr_ly_leaf_value_str(set->set.d[i]->parent->child)))) {
-                        goto error;
-                    }
-                }
-                ly_set_free(set2);
 
                 /* free the module entry */
                 lyd_free(set->set.d[i]->parent);
@@ -876,7 +862,7 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
     struct lyd_node *sr_mods = NULL;
 
     /* create shared memory */
-    conn->main_shm.fd = shm_open(SR_MAIN_SHM, O_RDWR | O_CREAT | O_EXCL, 00600);
+    conn->main_shm.fd = shm_open(SR_MAIN_SHM, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
     if (conn->main_shm.fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open shared memory (%s).", strerror(errno));
         return err_info;
@@ -954,7 +940,7 @@ sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent)
     *nonexistent = 0;
 
     /* try to open the shared memory */
-    conn->main_shm.fd = shm_open(SR_MAIN_SHM, O_RDWR, 00600);
+    conn->main_shm.fd = shm_open(SR_MAIN_SHM, O_RDWR, SR_MAIN_SHM_PERM);
     if (conn->main_shm.fd == -1) {
         if (errno == ENOENT) {
             *nonexistent = 1;
@@ -1551,7 +1537,7 @@ sr_shmmain_ly_add_module(const struct lys_module *mod, int replay_support, struc
         struct lyd_node **ly_mod_p, size_t *shm_size)
 {
     sr_error_info_t *err_info = NULL;
-    struct lys_node *root, *elem;
+    struct lys_node *root;
     struct lyd_node *ly_mod, *ly_data_deps;
     uint8_t i;
 
@@ -1577,17 +1563,6 @@ sr_shmmain_ly_add_module(const struct lys_module *mod, int replay_support, struc
         return err_info;
     }
     if (mod->rev_size && !lyd_new_leaf(ly_mod, NULL, "revision", mod->rev[0].date)) {
-        sr_errinfo_new_ly(&err_info, mod->ctx);
-        return err_info;
-    }
-
-    elem = NULL;
-    while ((elem = (struct lys_node *)lys_getnext(elem, NULL, mod, 0))) {
-        if (elem->flags & LYS_CONFIG_W) {
-            break;
-        }
-    }
-    if (elem && !lyd_new_leaf(ly_mod, NULL, "has-data", NULL)) {
         sr_errinfo_new_ly(&err_info, mod->ctx);
         return err_info;
     }

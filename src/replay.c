@@ -92,7 +92,7 @@ sr_replay_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flag
         goto cleanup;
     }
 
-    *notif_fd = open(path, flags, 00600);
+    *notif_fd = open(path, flags, SR_FILE_PERM);
     if (*notif_fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open file \"%s\" (%s).", path, strerror(errno));
         goto cleanup;
@@ -122,7 +122,7 @@ cleanup:
  * to_ts =/= 0
  * - find next file
  */
-static sr_error_info_t *
+sr_error_info_t *
 sr_replay_find_file(const char *mod_name, time_t from_ts, time_t to_ts, time_t *file_from_ts, time_t *file_to_ts)
 {
     sr_error_info_t *err_info = NULL;

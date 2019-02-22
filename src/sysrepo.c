@@ -536,6 +536,12 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
         return sr_api_ret(session, err_info);
     }
 
+    /* check write perm */
+    if ((err_info = sr_perm_check(module_name, 1))) {
+        sr_shmmain_unlock(conn);
+        return sr_api_ret(session, err_info);
+    }
+
     schema_path = ly_path_data2schema(conn->ly_ctx, xpath);
     set = lys_find_path(mod, NULL, schema_path);
     if (!set) {
@@ -669,6 +675,12 @@ sr_store_module_file(const struct lys_module *mod)
         return err_info;
     }
 
+    /* set permissions */
+    if (chmod(path, SR_YANG_PERM)) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+        return err_info;
+    }
+
     SR_LOG_INF("Module file \"%s%s%s\" installed.",
             mod->name, mod->rev_size ? "@" : "", mod->rev_size ? mod->rev[0].date : "");
     free(path);
@@ -700,7 +712,7 @@ sr_create_data_files(const struct lys_module *mod)
     }
 
     /* set permissions */
-    if (chmod(path, 00660)) {
+    if (chmod(path, SR_FILE_PERM)) {
         SR_ERRINFO_SYSERRNO(&err_info, "chmod");
         goto cleanup;
     }
@@ -718,7 +730,7 @@ sr_create_data_files(const struct lys_module *mod)
     }
 
     /* set permissions */
-    if (chmod(path, 00660)) {
+    if (chmod(path, SR_FILE_PERM)) {
         SR_ERRINFO_SYSERRNO(&err_info, "chmod");
         goto cleanup;
     }
@@ -886,16 +898,87 @@ cleanup_unlock:
 }
 
 API int
-sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
+sr_change_module(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm)
 {
-    const struct lys_module *mod;
-    uint32_t ver;
     sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+    time_t from_ts, to_ts;
+    char *path;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
 
-    /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 0))) {
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* try to find this module in main SHM */
+    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, module_name, 0);
+    if (!shm_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup_unlock;
+    }
+
+    /* get running file path */
+    if ((err_info = sr_path_running_file(module_name, &path))) {
+        goto cleanup_unlock;
+    }
+
+    /* update running file permissions and owner */
+    err_info = sr_chmodown(path, owner, group, perm);
+    free(path);
+    if (err_info) {
+        goto cleanup_unlock;
+    }
+
+    /* get startup file path */
+    if ((err_info = sr_path_startup_file(module_name, &path))) {
+        goto cleanup_unlock;
+    }
+
+    /* update startup file permissions and owner */
+    err_info = sr_chmodown(path, owner, group, perm);
+    free(path);
+    if (err_info) {
+        goto cleanup_unlock;
+    }
+
+    if (shm_mod->flags & SR_MOD_REPLAY_SUPPORT) {
+        if ((err_info = sr_replay_find_file(module_name, 1, 1, &from_ts, &to_ts))) {
+            goto cleanup_unlock;
+        }
+        while (from_ts && to_ts) {
+            /* get next notification file path */
+            if ((err_info = sr_path_notif_file(module_name, from_ts, to_ts, &path))) {
+                goto cleanup_unlock;
+            }
+
+            /* update notification file permissions and owner */
+            err_info = sr_chmodown(path, owner, group, perm);
+            free(path);
+            if (err_info) {
+                goto cleanup_unlock;
+            }
+        }
+    }
+
+    /* success */
+
+cleanup_unlock:
+    sr_shmmain_unlock(conn);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *mod;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -906,24 +989,9 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
         goto error_unlock;
     }
 
-    /* remember current SHM version */
-    ver = conn->main_ver;
-
-    /* SHM UNLOCK (to prevent deadlocks) */
-    sr_shmmain_unlock(conn);
-
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* get module again if context has changed */
-    if (ver != conn->main_ver) {
-        mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-        if (!mod) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-            goto error_unlock;
-        }
+    /* check write permission */
+    if ((err_info = sr_perm_check(module_name, 1))) {
+        goto error_unlock;
     }
 
     /* remove module from sysrepo */
@@ -948,8 +1016,8 @@ sr_change_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feat
     sr_error_info_t *err_info = NULL;
     int ret;
 
-    /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 0))) {
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
         return err_info;
     }
 
@@ -957,6 +1025,11 @@ sr_change_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feat
     mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
     if (!mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup;
+    }
+
+    /* check write perm */
+    if ((err_info = sr_perm_check(module_name, 1))) {
         goto cleanup;
     }
 
@@ -1004,25 +1077,6 @@ sr_disable_feature(sr_conn_ctx_t *conn, const char *module_name, const char *fea
     return sr_api_ret(NULL, err_info);
 }
 
-static void
-sr_modinfo_free(struct sr_mod_info_s *mod_info)
-{
-    uint32_t i;
-
-    lyd_free_withsiblings(mod_info->diff);
-    for (i = 0; i < mod_info->mod_count; ++i) {
-        lyd_free_withsiblings(mod_info->mods[i].mod_data);
-        if (mod_info->mods[i].shm_sub_cache.addr) {
-            munmap(mod_info->mods[i].shm_sub_cache.addr, mod_info->mods[i].shm_sub_cache.size);
-        }
-        if (mod_info->mods[i].shm_sub_cache.fd > -1) {
-            close(mod_info->mods[i].shm_sub_cache.fd);
-        }
-    }
-
-    free(mod_info->mods);
-}
-
 API int
 sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node **subtree)
 {
@@ -1042,6 +1096,11 @@ sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node **s
 
     /* collect all required modules */
     if ((err_info = sr_shmmod_collect_xpath(session->conn, xpath, session->ds, &mod_info))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* check read perm */
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 0))) {
         goto cleanup_shm_unlock;
     }
 
@@ -1110,6 +1169,11 @@ sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, struct ly_set **su
 
     /* collect all required modules */
     if ((err_info = sr_shmmod_collect_xpath(session->conn, xpath, session->ds, &mod_info))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* check read perm */
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 0))) {
         goto cleanup_shm_unlock;
     }
 
@@ -1330,6 +1394,11 @@ sr_apply_changes(sr_session_ctx_t *session)
         goto cleanup_mods_unlock;
     }
 
+    /* check write perm (we must wait until after validation, some additional modules can be modified) */
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 1))) {
+        goto cleanup_shm_unlock;
+    }
+
     if (!mod_info.diff) {
         SR_LOG_INFMSG("No datastore changes to apply.");
         if (!mod_info.dflt_change) {
@@ -1495,6 +1564,11 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         goto cleanup_shm_unlock;
     }
 
+    /* check write perm */
+    if ((err_info = sr_modinfo_perm_check(&src_mod_info, 1))) {
+        goto cleanup_shm_unlock;
+    }
+
     /* MODULES READ LOCK (but setting flag for guaranteed later upgrade success) */
     if ((err_info = sr_shmmod_modinfo_rdlock(&dst_mod_info, 1, session->sid))) {
         goto cleanup_shm_unlock;
@@ -1606,6 +1680,11 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
         goto cleanup_shm_unlock;
     }
     if ((err_info = sr_shmmod_collect_modules(session->conn, mod, dst_datastore, 0, &dst_mod_info))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* check write perm */
+    if ((err_info = sr_modinfo_perm_check(&src_mod_info, 1))) {
         goto cleanup_shm_unlock;
     }
 
@@ -1772,6 +1851,11 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock)
         goto cleanup_shm_unlock;
     }
 
+    /* check read perm */
+    if (lock && (err_info = sr_modinfo_perm_check(&mod_info, 0))) {
+        goto cleanup_shm_unlock;
+    }
+
     /* MODULES READ LOCK (but setting flag to forbid write locking) */
     if ((err_info = sr_shmmod_modinfo_rdlock(&mod_info, 1, session->sid))) {
         goto cleanup_mods_unlock;
@@ -1932,6 +2016,12 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        sr_shmmain_unlock(conn);
+        return sr_api_ret(session, err_info);
+    }
+
+    /* check write/read perm */
+    if ((err_info = sr_perm_check(module_name, (opts & SR_SUBSCR_PASSIVE) ? 0 : 1))) {
         sr_shmmain_unlock(conn);
         return sr_api_ret(session, err_info);
     }
@@ -2539,6 +2629,12 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     }
     module_name = lys_node_module(op)->name;
 
+    /* check write perm */
+    if ((err_info = sr_perm_check(module_name, 1))) {
+        sr_shmmain_unlock(conn);
+        return sr_api_ret(session, err_info);
+    }
+
     /* add RPC/action subscription into main SHM */
     if ((err_info = sr_shmmod_rpc_subscription(conn, module_name, xpath, 1))) {
         sr_shmmain_unlock(conn);
@@ -2749,6 +2845,11 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     /* SHM READ LOCK */
     if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
         return sr_api_ret(session, err_info);
+    }
+
+    /* check read perm */
+    if ((err_info = sr_perm_check(lyd_node_module(input)->name, 0))) {
+        goto cleanup_shm_unlock;
     }
 
     /* check that there is a subscriber */
@@ -2977,6 +3078,12 @@ sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, con
         return sr_api_ret(session, err_info);
     }
 
+    /* check write perm */
+    if ((err_info = sr_perm_check(module_name, 1))) {
+        sr_shmmain_unlock(session->conn);
+        return sr_api_ret(session, err_info);
+    }
+
     /* SHM UNLOCK */
     sr_shmmain_unlock(session->conn);
 
@@ -3007,6 +3114,12 @@ sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name
     ly_mod = ly_ctx_get_module(session->conn->ly_ctx, module_name, NULL, 1);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        sr_shmmain_unlock(session->conn);
+        return sr_api_ret(session, err_info);
+    }
+
+    /* check write perm */
+    if ((err_info = sr_perm_check(module_name, 1))) {
         sr_shmmain_unlock(session->conn);
         return sr_api_ret(session, err_info);
     }
@@ -3078,6 +3191,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, sr_e
     struct sr_mod_info_s mod_info;
     struct lyd_node *notif_op;
     sr_mod_data_dep_t *shm_deps;
+    sr_mod_t *shm_mod;
     time_t notif_ts;
     uint16_t shm_dep_count;
     uint32_t notif_sub_count;
@@ -3114,6 +3228,13 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, sr_e
     /* SHM READ LOCK */
     if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
         return sr_api_ret(session, err_info);
+    }
+
+    /* check write/read perm */
+    shm_mod = sr_shmmain_find_module(session->conn->main_shm.addr, lyd_node_module(notif)->name, 0);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_shm_unlock);
+    if ((err_info = sr_perm_check(lyd_node_module(notif)->name, (shm_mod->flags & SR_MOD_REPLAY_SUPPORT) ? 1 : 0))) {
+        goto cleanup_shm_unlock;
     }
 
     /* collect all required modules for validation (including checking that the nested notification

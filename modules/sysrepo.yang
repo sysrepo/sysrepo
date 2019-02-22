@@ -68,10 +68,6 @@ module sysrepo {
                 type string;
             }
 
-            leaf has-data {
-                type empty;
-            }
-
             leaf replay-support {
                 type empty;
             }

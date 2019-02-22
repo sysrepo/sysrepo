@@ -75,8 +75,7 @@ typedef struct sr_mod_rpc_sub_s {
     off_t xpath;
 } sr_mod_rpc_sub_t;
 
-#define SR_MOD_HAS_DATA       0x01
-#define SR_MOD_REPLAY_SUPPORT 0x02
+#define SR_MOD_REPLAY_SUPPORT 0x01
 
 struct sr_mod_s {
     off_t name;

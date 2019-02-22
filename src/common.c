@@ -31,6 +31,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mman.h>
+#include <pwd.h>
+#include <grp.h>
 #include <inttypes.h>
 #include <time.h>
 #include <assert.h>
@@ -905,6 +907,134 @@ sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path)
         *path = NULL;
         SR_ERRINFO_MEM(&err_info);
     }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_error_t err_code;
+    int ret;
+    char *buf;
+    ssize_t buflen;
+    struct passwd pwd, *pwd_p;
+    struct group grp, *grp_p;
+    uid_t uid = -1;
+    gid_t gid = -1;
+
+    assert(path);
+
+    /* we are going to change the owner */
+    if (owner) {
+        /* learn what buffer size is needed */
+        buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
+        if (buflen == -1) {
+            buflen = 4096;
+        }
+
+getpwnam_retry:
+        buf = malloc(buflen);
+        SR_CHECK_MEM_RET(!buf, err_info);
+
+        ret = getpwnam_r(owner, &pwd, buf, buflen, &pwd_p);
+        /* we need only the UID, no strings */
+        free(buf);
+        if (ret) {
+            if (ret == ERANGE) {
+                /* buffer was too small */
+                buflen += 1024;
+                goto getpwnam_retry;
+            }
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving user \"%s\" passwd entry failed (%s).", strerror(ret));
+            return err_info;
+        } else if (!pwd_p) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving user \"%s\" passwd entry failed (No such user).");
+            return err_info;
+        }
+
+        /* store new UID */
+        uid = pwd.pw_uid;
+    }
+
+    /* we are going to change the group */
+    if (group) {
+        /* learn what buffer size is needed */
+        buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
+        if (buflen == -1) {
+            buflen = 4096;
+        }
+
+getgrnam_retry:
+        buf = malloc(buflen);
+        SR_CHECK_MEM_RET(!buf, err_info);
+
+        ret = getgrnam_r(group, &grp, buf, buflen, &grp_p);
+        /* we need only the GID, no strings */
+        free(buf);
+        if (ret) {
+            if (ret == ERANGE) {
+                /* buffer was too small */
+                buflen += 1024;
+                goto getgrnam_retry;
+            }
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving group \"%s\" grp entry failed (%s).", strerror(ret));
+            return err_info;
+        } else if (!grp_p) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving group \"%s\" grp entry failed (No such group).");
+            return err_info;
+        }
+
+        /* store new GID */
+        gid = grp.gr_gid;
+    }
+
+    /* apply owner changes, if any */
+    if (chown(path, uid, gid) == -1) {
+        if ((errno == EACCES) || (errno = EPERM)) {
+            err_code = SR_ERR_UNAUTHORIZED;
+        } else {
+            err_code = SR_ERR_INTERNAL;
+        }
+        sr_errinfo_new(&err_info, err_code, NULL, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
+        return err_info;
+    }
+
+    /* apply permission changes, if any */
+    if (perm && (chmod(path, perm) == -1)) {
+        if ((errno == EACCES) || (errno = EPERM)) {
+            err_code = SR_ERR_UNAUTHORIZED;
+        } else {
+            err_code = SR_ERR_INTERNAL;
+        }
+        sr_errinfo_new(&err_info, err_code, NULL, "Changing permissions (mode) of \"%s\" failed (%s).", path, strerror(errno));
+        return err_info;
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_perm_check(const char *mod_name, int wr)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path;
+
+    /* use startup file, it does not matter */
+    if ((err_info = sr_path_startup_file(mod_name, &path))) {
+        return err_info;
+    }
+
+    if (access(path, (wr ? W_OK : R_OK)) == -1) {
+        if (errno == EACCES) {
+            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "%s permission \"%s\" check failed.",
+                    wr ? "Write" : "Read", mod_name);
+        } else {
+            SR_ERRINFO_SYSERRNO(&err_info, "access");
+        }
+    }
+
+    free(path);
     return err_info;
 }
 

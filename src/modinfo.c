@@ -23,16 +23,40 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <unistd.h>
+#include <sys/mman.h>
 
 #include <libyang/libyang.h>
 
 sr_error_info_t *
+sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_mod_s *mod;
+    uint32_t i;
+
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+
+        /* check also modules additionaly modified by validation */
+        if (mod->state & (MOD_INFO_REQ | MOD_INFO_CHANGED)) {
+            /* check perm */
+            if ((err_info = sr_perm_check(mod->ly_mod->name, wr))) {
+                return err_info;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
 sr_modinfo_edit_diff(const struct lyd_node *edit, struct sr_mod_info_s *mod_info)
 {
+    sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_diff;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
-    sr_error_info_t *err_info = NULL;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -974,4 +998,23 @@ sr_modinfo_store(struct sr_mod_info_s *mod_info)
     }
 
     return NULL;
+}
+
+void
+sr_modinfo_free(struct sr_mod_info_s *mod_info)
+{
+    uint32_t i;
+
+    lyd_free_withsiblings(mod_info->diff);
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        lyd_free_withsiblings(mod_info->mods[i].mod_data);
+        if (mod_info->mods[i].shm_sub_cache.addr) {
+            munmap(mod_info->mods[i].shm_sub_cache.addr, mod_info->mods[i].shm_sub_cache.size);
+        }
+        if (mod_info->mods[i].shm_sub_cache.fd > -1) {
+            close(mod_info->mods[i].shm_sub_cache.fd);
+        }
+    }
+
+    free(mod_info->mods);
 }

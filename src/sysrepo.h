@@ -478,56 +478,6 @@ sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief Structure that contains information about one particular schema file installed in sysrepo.
- */
-typedef struct sr_sch_revision_s {
-    const char *revision;         /**< Revision of the module/submodule. */
-    const char *file_path_yang;   /**< Absolute path to file where the module/submodule is stored (YANG format). */
-    const char *file_path_yin;    /**< Absolute path to file where the module/submodule is stored (.yin format). */
-} sr_sch_revision_t;
-
-/**
- * @brief Structure that contains information about submodules of a module installed in sysrepo.
- */
-typedef struct sr_sch_submodule_s {
-    const char *submodule_name;    /**< Submodule name. */
-    sr_sch_revision_t revision;    /**< Revision of the submodule. */
-} sr_sch_submodule_t;
-
-/**
- * @brief Structure that contains information about a module installed in sysrepo.
- */
-typedef struct sr_schema_s {
-    const char *module_name;         /**< Name of the module. */
-    const char *ns;                  /**< Namespace of the module used in @ref xp_page "XPath". */
-    const char *prefix;              /**< Prefix of the module. */
-    bool installed;                  /**< TRUE if the module was explicitly installed. */
-    bool implemented;                /**< TRUE if the module is implemented (does not have to be installed),
-                                          not just imported. */
-
-    sr_sch_revision_t revision;      /**< Revision the module. */
-
-    sr_sch_submodule_t *submodules;  /**< Array of all installed submodules of the module. */
-    size_t submodule_count;          /**< Number of module's submodules. */
-
-    char **enabled_features;         /**< Array of enabled features */
-    size_t enabled_feature_cnt;      /**< Number of enabled feature */
-} sr_schema_t;
-
-/**
- * @brief Format types of ::sr_get_schema result
- */
-typedef enum sr_schema_format_e {
-    SR_SCHEMA_YANG,                         /**< YANG format */
-    SR_SCHEMA_YIN                           /**< YIN format */
-} sr_schema_format_t;
-
-/**
- * @brief Iterator used for accessing data nodes via ::sr_get_items_iter call.
- */
-typedef struct sr_val_iter_s sr_val_iter_t;
-
-/**
  * @brief Retrieves a single data element stored under provided XPath. If multiple
  * nodes matches the xpath SR_ERR_INVAL_ARG is returned.
  *
@@ -581,45 +531,6 @@ int sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value);
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, size_t *value_cnt);
-
-/**
- * @brief Creates an iterator for retrieving of the data elements stored under provided xpath.
- *
- * Requested data elements are transferred from the datastore in larger chunks
- * of pre-defined size, which is much more efficient that calling multiple
- * ::sr_get_item calls, and may be less memory demanding than calling ::sr_get_items
- * on very large datasets.
- *
- * @see @ref xp_page "Path Addressing" documentation, or
- * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
- * for XPath syntax used for identification of yang nodes in sysrepo calls.
- *
- * @see ::sr_get_item_next for iterating over returned data elements.
- * @note Iterator allows to iterate through the values once. To start iteration
- *  from the beginning new iterator must be created.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath @ref xp_page "Data Path" identifier of the data element / subtree to be retrieved.
- * @param[out] iter Iterator context that can be used to retrieve individual data
- * elements via ::sr_get_item_next calls. Allocated by the function, should be
- * freed with ::sr_free_val_iter.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_get_items_iter(sr_session_ctx_t *session, const char *xpath, sr_val_iter_t **iter);
-
-/**
- * @brief Returns the next item from the dataset of provided iterator created
- * by ::sr_get_items_iter call. If there is no item left SR_ERR_NOT_FOUND is returned.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in,out] iter Iterator acquired with ::sr_get_items_iter call.
- * @param[out] value Structure containing information about requested element
- * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_val).
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **value);
 
 /**
  * @brief Retrieves a single subtree whose root node is stored under the provided XPath.
@@ -1388,6 +1299,8 @@ const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
 int sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir, const char **features,
         int feat_count, int replay_support);
 
+int sr_change_module(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm);
+
 int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
 
 int sr_enable_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
@@ -1415,27 +1328,11 @@ void sr_free_val(sr_val_t *value);
 void sr_free_values(sr_val_t *values, size_t count);
 
 /**
- * @brief Frees ::sr_val_iter_t iterator and all memory allocated within it.
- *
- * @param[in] iter Iterator to be freed.
- */
-void sr_free_val_iter(sr_val_iter_t *iter);
-
-/**
  * @brief Frees ::sr_change_iter_t iterator and all memory allocated within it.
  *
  * @param[in] iter Iterator to be freed.
  */
 void sr_free_change_iter(sr_change_iter_t *iter);
-
-/**
- * @brief Frees array of ::sr_schema_t structures (and all memory allocated
- * within of each array element).
- *
- * @param [in] schemas Array of schemas to be freed.
- * @param [in] count Number of elements stored in the array.
- */
-void sr_free_schemas(sr_schema_t *schemas, size_t count);
 
 /**@} cl */
 

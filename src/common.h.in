@@ -39,10 +39,13 @@
  */
 #define API __attribute__((visibility("default")))
 
+/* name of sysrepo YANG module */
 #define SR_YANG_MOD "sysrepo"
 
+/* main sysrepo repository path; prefix of all other paths by default */
 #define SR_REPO_PATH "@REPO_PATH@"
 
+/* environment variable overriding the compiled-in value */
 #define SR_REPO_PATH_ENV "SYSREPO_REPOSITORY_PATH"
 
 /* if not set, defaults to "SR_REPO_PATH/data" */
@@ -81,7 +84,23 @@
 /* timeout for locking (data of) a module; maximum time a write lock is expected to be held (s) */
 #define SR_MOD_LOCK_TIMEOUT 2
 
-/* internal declarations + definitions
+/* permissions of main SHM lock file and main SHM itself */
+#define SR_MAIN_SHM_PERM 00666
+
+/* permissions of all subscription SHMs */
+#define SR_SUB_SHM_PERM 00666
+
+/* permissions of directories for sysrepo files */
+#define SR_DIR_PERM 00777
+
+/* permissions of used YANG modules */
+#define SR_YANG_PERM 00664
+
+/* permissions of stored notifications and data files */
+#define SR_FILE_PERM 00600
+
+/*
+ * internal declarations + definitions
  */
 typedef struct sr_mod_s sr_mod_t;
 
@@ -260,6 +279,10 @@ sr_error_info_t *sr_path_startup_file(const char *mod_name, char **path);
 sr_error_info_t *sr_path_notif_file(const char *mod_name, time_t from_ts, time_t to_ts, char **path);
 
 sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path);
+
+sr_error_info_t *sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm);
+
+sr_error_info_t *sr_perm_check(const char *mod_name, int wr);
 
 void sr_time_get(struct timespec *ts, uint32_t add_ms);
 
