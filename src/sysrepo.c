@@ -3149,9 +3149,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     }
 
     /* update version */
-    if ((err_info = sr_shmmain_update_ver(conn))) {
-        goto cleanup_unlock;
-    }
+    conn->main_ver = ++((sr_main_shm_t *)conn->main_shm.addr)->ver;
 
     /* SHM UNLOCK */
     sr_shmmain_unlock(conn, 1);
