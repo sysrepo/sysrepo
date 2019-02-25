@@ -62,7 +62,7 @@ sr_shmmain_update_ver(sr_conn_ctx_t *conn)
     sr_error_info_t *err_info = NULL;
 
     ++conn->main_ver;
-    if ((err_info = sr_shmmain_write_ver(conn->main_plock, conn->main_ver))) {
+    if ((err_info = sr_shmmain_write_ver(conn->main_shm_create_lock, conn->main_ver))) {
         return err_info;
     }
 
@@ -140,7 +140,7 @@ sr_shmmain_check_dirs(void)
 }
 
 sr_error_info_t *
-sr_shmmain_pidlock_open(int *shm_lock)
+sr_shmmain_createlock_open(int *shm_lock)
 {
     sr_error_info_t *err_info = NULL;
     char *path;
@@ -172,18 +172,18 @@ sr_shmmain_pidlock_open(int *shm_lock)
 }
 
 sr_error_info_t *
-sr_shmmain_pidlock(sr_conn_ctx_t *conn, int wr)
+sr_shmmain_createlock(sr_conn_ctx_t *conn)
 {
     struct flock fl;
     int ret;
     sr_error_info_t *err_info = NULL;
 
-    assert(conn->main_plock > -1);
+    assert(conn->main_shm_create_lock > -1);
 
     memset(&fl, 0, sizeof fl);
-    fl.l_type = (wr ? F_WRLCK : F_RDLCK);
+    fl.l_type = F_WRLCK;
     do {
-        ret = fcntl(conn->main_plock, F_SETLKW, &fl);
+        ret = fcntl(conn->main_shm_create_lock, F_SETLKW, &fl);
     } while ((ret == -1) && (errno == EINTR));
     if (ret == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "fcntl");
@@ -194,27 +194,15 @@ sr_shmmain_pidlock(sr_conn_ctx_t *conn, int wr)
 }
 
 void
-sr_shmmain_pidunlock(sr_conn_ctx_t *conn)
+sr_shmmain_createunlock(sr_conn_ctx_t *conn)
 {
     struct flock fl;
 
     memset(&fl, 0, sizeof fl);
     fl.l_type = F_UNLCK;
-    if (fcntl(conn->main_plock, F_SETLK, &fl) == -1) {
+    if (fcntl(conn->main_shm_create_lock, F_SETLK, &fl) == -1) {
         assert(0);
     }
-}
-
-static sr_error_info_t *
-sr_shmmain_tidlock(sr_conn_ctx_t *conn, int wr)
-{
-    return sr_rwlock(&conn->main_tlock, SR_MOD_LOCK_TIMEOUT * 1000, wr, __func__);
-}
-
-static void
-sr_shmmain_tidunlock(sr_conn_ctx_t *conn)
-{
-    sr_rwunlock(&conn->main_tlock);
 }
 
 static sr_error_info_t *
@@ -481,9 +469,9 @@ sr_shmmain_shm_add(sr_conn_ctx_t *conn, size_t new_shm_size, struct lyd_node *fr
     if ((err_info = sr_shm_remap(&conn->main_shm, new_shm_size))) {
         return err_info;
     }
+    shm_mod = (sr_mod_t *)(conn->main_shm.addr + last_mod_off);
 
     /* add all newly implemented modules into SHM */
-    shm_mod = (sr_mod_t *)(conn->main_shm.addr + last_mod_off);
     if ((err_info = sr_shmmain_shm_add_modules(conn->main_shm.addr, from_mod, shm_mod, &shm_end))) {
         return err_info;
     }
@@ -875,14 +863,11 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
 
     /* fill attributes */
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-    main_shm->new_sr_sid = 1;
-    main_shm->first_mod = 0;
-
-    /* msync */
-    if (msync(conn->main_shm.addr, conn->main_shm.size, MS_SYNC)) {
-        SR_ERRINFO_SYSERRNO(&err_info, "msync");
+    if ((err_info = sr_rwlock_init(&main_shm->lock, 1))) {
         return err_info;
     }
+    main_shm->new_sr_sid = 1;
+    main_shm->first_mod = 0;
 
     /* create libyang context */
     if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
@@ -901,6 +886,12 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
             lyd_free_withsiblings(sr_mods);
             return err_info;
         }
+    }
+
+    /* msync */
+    if (msync(conn->main_shm.addr, conn->main_shm.size, MS_SYNC)) {
+        SR_ERRINFO_SYSERRNO(&err_info, "msync");
+        return err_info;
     }
 
     /* free it now because the context will change */
@@ -961,7 +952,7 @@ sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent)
     }
 
     /* store current version */
-    if ((err_info = sr_shmmain_read_ver(conn->main_plock, &conn->main_ver))) {
+    if ((err_info = sr_shmmain_read_ver(conn->main_shm_create_lock, &conn->main_ver))) {
         return err_info;
     }
 
@@ -1003,55 +994,77 @@ sr_shmmain_find_module(char *main_shm_addr, const char *name, off_t name_off)
 }
 
 sr_error_info_t *
-sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr)
+sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int keep_remap)
 {
     sr_error_info_t *err_info = NULL;
+    size_t main_shm_size;
     uint32_t main_ver;
 
-    /* TID LOCK */
-    if ((err_info = sr_shmmain_tidlock(conn, wr))) {
+    /* REMAP LOCK */
+    if ((err_info = sr_mlock(&conn->main_shm_remap_lock, -1, __func__))) {
         return err_info;
     }
 
-    /* PID LOCK */
-    if ((err_info = sr_shmmain_pidlock(conn, wr))) {
-        goto error_tidunlock;
+    /* MAIN SHM WRITE/READ LOCK */
+    if ((err_info = sr_rwlock(&((sr_main_shm_t *)conn->main_shm.addr)->lock, SR_MAIN_LOCK_TIMEOUT * 1000, wr, __func__))) {
+        goto error_remap_unlock;
     }
 
-    /* remap in case modules were added (even version changed) or some subscriptions were changed (version remains) */
-    if ((err_info = sr_shm_remap(&conn->main_shm, 0))) {
-        goto error_pidunlock;
+    /* if SHM changed, we can safely remap it because no other session can be using the mapping (because SHM cannot
+     * change while an API call is executing and SHM would be remapped already if the change happened before
+     */
+
+    /* check whether main SHM changed */
+    if ((err_info = sr_file_get_size(conn->main_shm.fd, &main_shm_size))) {
+        goto error_remap_shm_unlock;
     }
 
-    /* check SHM version and update context as necessary */
-    if ((err_info = sr_shmmain_read_ver(conn->main_plock, &main_ver))) {
-        goto error_pidunlock;
-    }
-
-    if (conn->main_ver != main_ver) {
-        /* update libyang context (just add new modules) */
-        if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-            goto error_pidunlock;
+    if (main_shm_size != conn->main_shm.size) {
+        /* remap in case modules were added (even version changed) or some subscriptions were changed (version remains) */
+        if ((err_info = sr_shm_remap(&conn->main_shm, 0))) {
+            goto error_remap_shm_unlock;
         }
 
-        /* update version */
-        conn->main_ver = main_ver;
+        /* check SHM version and update context as necessary */
+        if ((err_info = sr_shmmain_read_ver(conn->main_shm_create_lock, &main_ver))) {
+            goto error_remap_shm_unlock;
+        }
+
+        if (conn->main_ver != main_ver) {
+            /* update libyang context (just add new modules) */
+            if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
+                goto error_remap_shm_unlock;
+            }
+
+            /* update version */
+            conn->main_ver = main_ver;
+        }
+    }
+
+    if (!keep_remap) {
+        /* REMAP UNLOCK */
+        sr_munlock(&conn->main_shm_remap_lock);
     }
 
     return NULL;
 
-error_pidunlock:
-    sr_shmmain_pidunlock(conn);
-error_tidunlock:
-    sr_shmmain_tidunlock(conn);
+error_remap_shm_unlock:
+    sr_rwunlock(&((sr_main_shm_t *)conn->main_shm.addr)->lock);
+error_remap_unlock:
+    sr_munlock(&conn->main_shm_remap_lock);
     return err_info;
 }
 
 void
-sr_shmmain_unlock(sr_conn_ctx_t *conn)
+sr_shmmain_unlock(sr_conn_ctx_t *conn, int kept_remap)
 {
-    sr_shmmain_pidunlock(conn);
-    sr_shmmain_tidunlock(conn);
+    /* MAIN SHM UNLOCK */
+    sr_rwunlock(&((sr_main_shm_t *)conn->main_shm.addr)->lock);
+
+    if (kept_remap) {
+        /* REMAP UNLOCK */
+        sr_munlock(&conn->main_shm_remap_lock);
+    }
 }
 
 static sr_error_info_t *

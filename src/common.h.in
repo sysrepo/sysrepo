@@ -75,13 +75,13 @@
 /* timeout for locking subscriptions lock, used when modifying subscriptions (ms) */
 #define SR_SUB_SUBS_LOCK_TIMEOUT 100
 
-/* timeout for processing a single event in a subscription SHM (s) */
-#define SR_SUB_EVENT_TIMEOUT 10
+/* timeout for locking main SHM and subscription SHM; maximum time an API call (sr_apply_changes()) is expected to take (s) */
+#define SR_MAIN_LOCK_TIMEOUT 15
 
 /* maximum time a lock on a subscription SHM is expected to be held; how long to wait for a write lock (ms) */
 #define SR_SUB_LOCK_TIME 1000
 
-/* timeout for locking (data of) a module; maximum time a write lock is expected to be held (s) */
+/* timeout for locking (data of) a module; maximum time a module write lock is expected to be held (s) */
 #define SR_MOD_LOCK_TIMEOUT 2
 
 /* permissions of main SHM lock file and main SHM itself */
@@ -130,16 +130,19 @@ struct sr_conn_ctx_s {
     char *app_name;
     struct ly_ctx *ly_ctx;
 
+    /* session-shared lock */
     pthread_mutex_t ptr_lock;
     sr_session_ctx_t **sessions;
     uint32_t session_count;
     sr_subscription_ctx_t **subscriptions;
     uint32_t subscription_count;
 
-    int main_plock;
-    pthread_rwlock_t main_tlock;
-    uint32_t main_ver;
+    /* process-shared lock */
+    int main_shm_create_lock;
+    /* session-shared lock */
+    pthread_mutex_t main_shm_remap_lock;
     sr_shm_t main_shm;
+    uint32_t main_ver;
 };
 
 struct sr_session_ctx_s {

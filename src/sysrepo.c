@@ -60,36 +60,34 @@ sr_conn_new(const char *app_name, sr_conn_ctx_t **conn_p)
 
     conn->app_name = strdup(app_name);
     if (!conn->app_name) {
-        free(conn);
         SR_ERRINFO_MEM(&err_info);
-        return err_info;
+        goto error;
     }
 
     if ((err_info = sr_mutex_init(&conn->ptr_lock, 0))) {
-        free(conn->app_name);
-        free(conn);
-        return err_info;
+        goto error;
     }
 
-    if ((err_info = sr_rwlock_init(&conn->main_tlock, 0))) {
+    if ((err_info = sr_shmmain_createlock_open(&conn->main_shm_create_lock))) {
         pthread_mutex_destroy(&conn->ptr_lock);
-        free(conn->app_name);
-        free(conn);
-        return err_info;
+        goto error;
     }
 
-    if ((err_info = sr_shmmain_pidlock_open(&conn->main_plock))) {
-        pthread_rwlock_destroy(&conn->main_tlock);
+    if ((err_info = sr_mutex_init(&conn->main_shm_remap_lock, 0))) {
         pthread_mutex_destroy(&conn->ptr_lock);
-        free(conn->app_name);
-        free(conn);
-        return err_info;
+        close(conn->main_shm_create_lock);
+        goto error;
     }
 
     conn->main_shm.fd = -1;
 
     *conn_p = conn;
     return NULL;
+
+error:
+    free(conn->app_name);
+    free(conn);
+    return err_info;
 }
 
 API int
@@ -106,12 +104,13 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
         goto error_unlock;
     }
 
+    /* create basic onnection structure */
     if ((err_info = sr_conn_new(app_name, &conn))) {
         goto error;
     }
 
-    /* READ LOCK */
-    if ((err_info = sr_shmmain_pidlock(conn, 0))) {
+    /* CREATE LOCK */
+    if ((err_info = sr_shmmain_createlock(conn))) {
         goto error;
     }
 
@@ -120,37 +119,21 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
         goto error_unlock;
     }
     if (nonexistent) {
-        /* shared memory does not exist yet, try to create it */
-
-        /* UNLOCK (to prevent deadlocks) */
-        sr_shmmain_pidunlock(conn);
-
-        /* WRITE LOCK */
-        if ((err_info = sr_shmmain_pidlock(conn, 1))) {
-            goto error;
-        }
-
-        /* only when holding the write lock there can be no race condition, check again */
-        if ((err_info = sr_shmmain_open(conn, &nonexistent))) {
+        /* shared memory does not exist yet, create it */
+        if ((err_info = sr_shmmain_create(conn))) {
             goto error_unlock;
-        }
-        if (nonexistent) {
-            /* we can now create the shared memory safely */
-            if ((err_info = sr_shmmain_create(conn))) {
-                goto error_unlock;
-            }
         }
     }
 
-    /* UNLOCK */
-    sr_shmmain_pidunlock(conn);
+    /* CREATE UNLOCK */
+    sr_shmmain_createunlock(conn);
 
     *conn_p = conn;
     return sr_api_ret(NULL, NULL);
 
 error_unlock:
-    /* UNLOCK */
-    sr_shmmain_pidunlock(conn);
+    /* CREATE UNLOCK */
+    sr_shmmain_createunlock(conn);
 error:
     sr_disconnect(conn);
     return sr_api_ret(NULL, err_info);
@@ -176,16 +159,11 @@ sr_disconnect(sr_conn_ctx_t *conn)
     free(conn->app_name);
     ly_ctx_destroy(conn->ly_ctx, NULL);
     pthread_mutex_destroy(&conn->ptr_lock);
-    if (conn->main_plock > -1) {
-        close(conn->main_plock);
+    if (conn->main_shm_create_lock > -1) {
+        close(conn->main_shm_create_lock);
     }
-    pthread_rwlock_destroy(&conn->main_tlock);
-    if (conn->main_shm.fd > -1) {
-        close(conn->main_shm.fd);
-    }
-    if (conn->main_shm.addr) {
-        munmap(conn->main_shm.addr, conn->main_shm.size);
-    }
+    pthread_mutex_destroy(&conn->main_shm_remap_lock);
+    sr_shm_destroy(&conn->main_shm);
     free(conn);
 }
 
@@ -254,7 +232,7 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, const sr_s
     }
 
     /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -268,7 +246,7 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, const sr_s
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn);
+    sr_shmmain_unlock(conn, 0);
 
     /* PTR LOCK */
     if ((err_info = sr_mlock(&conn->ptr_lock, -1, __func__))) {
@@ -494,7 +472,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node **s
     memset(&mod_info, 0, sizeof mod_info);
 
     /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -544,7 +522,7 @@ cleanup_mods_unlock:
 
 cleanup_shm_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     ly_set_free(set);
     sr_modinfo_free(&mod_info);
@@ -567,7 +545,7 @@ sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, struct ly_set **su
     memset(&mod_info, 0, sizeof mod_info);
 
     /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -604,7 +582,7 @@ cleanup_mods_unlock:
 
 cleanup_shm_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     sr_modinfo_free(&mod_info);
     if (cb_err_info) {
@@ -641,12 +619,12 @@ sr_edit_item(sr_session_ctx_t *session, const char *xpath, const char *value, co
     assert(session && xpath && operation);
 
     /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0)) != SR_ERR_OK) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0)) != SR_ERR_OK) {
         return err_info;
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     /* add the operation into edit */
     if ((err_info = sr_ly_edit_add(session, xpath, value, operation, def_operation, position, keys, val))) {
@@ -715,12 +693,12 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     }
 
     /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
         return sr_api_ret(session, err_info);
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     valid_edit = lyd_dup_withsiblings(edit, LYD_DUP_OPT_RECURSIVE);
     if (!valid_edit) {
@@ -768,7 +746,7 @@ sr_validate(sr_session_ctx_t *session)
     memset(&mod_info, 0, sizeof mod_info);
 
     /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -814,7 +792,7 @@ cleanup_mods_unlock:
 
 cleanup_shm_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     sr_modinfo_free(&mod_info);
     return sr_api_ret(session, err_info);
@@ -836,7 +814,7 @@ sr_apply_changes(sr_session_ctx_t *session)
     memset(&mod_info, 0, sizeof mod_info);
 
     /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -963,7 +941,7 @@ cleanup_mods_unlock:
 
 cleanup_shm_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     if (!err_info) {
         /* free applied edit */
@@ -1014,7 +992,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     memset(&dst_mod_info, 0, sizeof dst_mod_info);
 
     /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -1103,7 +1081,7 @@ cleanup_mods_unlock:
 
 cleanup_shm_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     sr_modinfo_free(&src_mod_info);
     sr_modinfo_free(&dst_mod_info);
@@ -1132,7 +1110,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     for (; src_config && src_config->prev->next; src_config = src_config->prev);
 
     /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -1227,7 +1205,7 @@ cleanup_mods_unlock:
 
 cleanup_shm_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     lyd_free_withsiblings(src_config);
     sr_modinfo_free(&src_mod_info);
@@ -1304,7 +1282,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock)
     memset(&mod_info, 0, sizeof mod_info);
 
     /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 1))) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 1, 0))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -1345,7 +1323,7 @@ cleanup_mods_unlock:
 
 cleanup_shm_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     sr_modinfo_free(&mod_info);
     return sr_api_ret(session, err_info);
@@ -1506,7 +1484,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -1514,24 +1492,24 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     }
 
     /* check write/read perm */
     if ((err_info = sr_perm_check(module_name, (opts & SR_SUBSCR_PASSIVE) ? 0 : 1))) {
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     }
 
     /* add module subscription into main SHM */
     if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 1))) {
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     }
     if (ds != SR_DS_OPERATIONAL) {
         if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 1))) {
-            sr_shmmain_unlock(conn);
+            sr_shmmain_unlock(conn, 1);
             sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0);
             return sr_api_ret(session, err_info);
         }
@@ -1544,7 +1522,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
             if (ds != SR_DS_OPERATIONAL) {
                 sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 0);
             }
-            sr_shmmain_unlock(conn);
+            sr_shmmain_unlock(conn, 1);
             return sr_api_ret(session, err_info);
         }
     }
@@ -1552,13 +1530,13 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_conf_add(module_name, xpath, session->ds, callback, private_data, priority, sub_opts,
             *subscription))) {
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         goto error_unsubscribe;
     }
     if (ds != SR_DS_OPERATIONAL) {
         if ((err_info = sr_sub_conf_add(module_name, xpath, ds, callback, private_data, priority, sub_opts,
                 *subscription))) {
-            sr_shmmain_unlock(conn);
+            sr_shmmain_unlock(conn, 1);
             goto error_unsubscribe;
         }
     }
@@ -1566,13 +1544,13 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     /* call the callback with the current running configuration so that it is properly applied */
     if (((session->ds == SR_DS_RUNNING) || (ds == SR_DS_RUNNING)) && (opts & SR_SUBSCR_ENABLED)) {
         if ((err_info = sr_module_change_subscribe_running_enable(session, ly_mod, xpath, callback, private_data))) {
-            sr_shmmain_unlock(conn);
+            sr_shmmain_unlock(conn, 1);
             goto error_unsubscribe;
         }
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn);
+    sr_shmmain_unlock(conn, 1);
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* PTR LOCK */
@@ -1641,20 +1619,20 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     }
 
     /* SHM WRITE LOCK */
-    if ((tmp_err = sr_shmmain_lock_remap(subscription->conn, 1))) {
+    if ((tmp_err = sr_shmmain_lock_remap(subscription->conn, 1, 1))) {
         sr_errinfo_merge(&err_info, tmp_err);
         return sr_api_ret(NULL, err_info);
     }
 
     if ((tmp_err = sr_subs_del_all(subscription->conn, subscription))) {
         /* SHM UNLOCK */
-        sr_shmmain_unlock(subscription->conn);
+        sr_shmmain_unlock(subscription->conn, 1);
         sr_errinfo_merge(&err_info, tmp_err);
         return sr_api_ret(NULL, err_info);
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(subscription->conn);
+    sr_shmmain_unlock(subscription->conn, 1);
 
     pthread_mutex_destroy(&subscription->subs_lock);
     free(subscription);
@@ -2109,7 +2087,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     conn = session->conn;
 
     /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -2117,25 +2095,25 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     op = ly_ctx_get_node(conn->ly_ctx, NULL, xpath, 0);
     if (!op) {
         sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     }
     if (!(op->nodetype & (LYS_RPC | LYS_ACTION))) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "XPath \"%s\" does not identify an RPC nor an action.", xpath);
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     }
     module_name = lys_node_module(op)->name;
 
     /* check write perm */
     if ((err_info = sr_perm_check(module_name, 1))) {
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     }
 
     /* add RPC/action subscription into main SHM */
     if ((err_info = sr_shmmod_rpc_subscription(conn, module_name, xpath, 1))) {
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     }
 
@@ -2143,19 +2121,19 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
         /* create a new subscription */
         if ((err_info = sr_subs_new(conn, subscription))) {
             sr_shmmod_rpc_subscription(conn, module_name, xpath, 0);
-            sr_shmmain_unlock(conn);
+            sr_shmmain_unlock(conn, 1);
             return sr_api_ret(session, err_info);
         }
     }
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_rpc_add(module_name, xpath, callback, tree_callback, private_data, *subscription))) {
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         goto error_unsubscribe;
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn);
+    sr_shmmain_unlock(conn, 1);
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* PTR LOCK */
@@ -2341,7 +2319,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -2419,7 +2397,7 @@ cleanup_mods_unlock:
 
 cleanup_shm_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     free(xpath);
     sr_modinfo_free(&mod_info);
@@ -2480,7 +2458,7 @@ _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
     ly_set_free(set);
 
     /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
         return err_info;
     }
     shm_locked = 1;
@@ -2488,7 +2466,7 @@ _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
     if (!start_time) {
         /* add notification subscription into main SHM if replay was not requested */
         if ((err_info = sr_shmmod_notif_subscription(conn, ly_mod->name, 1))) {
-            sr_shmmain_unlock(conn);
+            sr_shmmain_unlock(conn, 0);
             return err_info;
         }
     }
@@ -2497,7 +2475,7 @@ _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
         /* create a new subscription */
         if ((err_info = sr_subs_new(conn, subscription))) {
             sr_shmmod_notif_subscription(conn, ly_mod->name, 0);
-            sr_shmmain_unlock(conn);
+            sr_shmmain_unlock(conn, 0);
             return err_info;
         }
     }
@@ -2509,7 +2487,7 @@ _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn);
+    sr_shmmain_unlock(conn, 0);
     shm_locked = 0;
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
@@ -2534,14 +2512,14 @@ _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
 error_unsubscribe:
     if (!shm_locked) {
         /* SHM WRITE LOCK */
-        tmp_err_info = sr_shmmain_lock_remap(conn, 1);
+        tmp_err_info = sr_shmmain_lock_remap(conn, 1, 0);
         sr_errinfo_free(&tmp_err_info);
     }
 
     sr_shmmod_notif_subscription(conn, ly_mod->name, 0);
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn);
+    sr_shmmain_unlock(conn, 0);
 
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_sub_notif_del(ly_mod->name, xpath, start_time, stop_time, callback, tree_callback, private_data, *subscription, 0);
@@ -2564,7 +2542,7 @@ sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, con
             || (stop_time && (!start_time || (stop_time < start_time))) || !callback || !subscription, session, err_info);
 
     /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -2572,18 +2550,18 @@ sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, con
     ly_mod = ly_ctx_get_module(session->conn->ly_ctx, module_name, NULL, 1);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        sr_shmmain_unlock(session->conn);
+        sr_shmmain_unlock(session->conn, 0);
         return sr_api_ret(session, err_info);
     }
 
     /* check write perm */
     if ((err_info = sr_perm_check(module_name, 1))) {
-        sr_shmmain_unlock(session->conn);
+        sr_shmmain_unlock(session->conn, 0);
         return sr_api_ret(session, err_info);
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     /* subscribe */
     err_info = _sr_event_notif_subscribe(session->conn, ly_mod, xpath, start_time, stop_time, callback, NULL,
@@ -2604,7 +2582,7 @@ sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name
             || (stop_time && (!start_time || (stop_time < start_time))) || !callback || !subscription, session, err_info);
 
     /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -2612,18 +2590,18 @@ sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name
     ly_mod = ly_ctx_get_module(session->conn->ly_ctx, module_name, NULL, 1);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        sr_shmmain_unlock(session->conn);
+        sr_shmmain_unlock(session->conn, 0);
         return sr_api_ret(session, err_info);
     }
 
     /* check write perm */
     if ((err_info = sr_perm_check(module_name, 1))) {
-        sr_shmmain_unlock(session->conn);
+        sr_shmmain_unlock(session->conn, 0);
         return sr_api_ret(session, err_info);
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     /* subscribe */
     err_info = _sr_event_notif_subscribe(session->conn, ly_mod, xpath, start_time, stop_time, NULL, callback,
@@ -2724,7 +2702,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, sr_e
     }
 
     /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0))) {
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -2787,7 +2765,7 @@ cleanup_mods_unlock:
 
 cleanup_shm_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn);
+    sr_shmmain_unlock(session->conn, 0);
 
     free(xpath);
     sr_modinfo_free(&mod_info);
@@ -2819,20 +2797,20 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
     conn = session->conn;
 
     /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
         return sr_api_ret(session, err_info);
     }
 
     mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
     if (!mod) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     }
 
     /* check write perm */
     if ((err_info = sr_perm_check(module_name, 1))) {
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     }
 
@@ -2840,11 +2818,11 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
     set = lys_find_path(mod, NULL, schema_path);
     if (!set) {
         sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     } else if (!set->number) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "XPath \"%s\" does not point to any nodes.", xpath);
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     }
 
@@ -2868,7 +2846,7 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
             break;
         default:
             SR_ERRINFO_INT(&err_info);
-            sr_shmmain_unlock(conn);
+            sr_shmmain_unlock(conn, 1);
             return sr_api_ret(session, err_info);
         }
 
@@ -2880,7 +2858,7 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
 
     /* add DP subscription into main SHM */
     if ((err_info = sr_shmmod_dp_subscription(conn, module_name, xpath, sub_type, 1))) {
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     }
 
@@ -2888,19 +2866,19 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
         /* create a new subscription */
         if ((err_info = sr_subs_new(conn, subscription))) {
             sr_shmmod_dp_subscription(conn, module_name, xpath, SR_DP_SUB_NONE, 0);
-            sr_shmmain_unlock(conn);
+            sr_shmmain_unlock(conn, 1);
             return sr_api_ret(session, err_info);
         }
     }
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_dp_add(module_name, xpath, callback, private_data, *subscription))) {
-        sr_shmmain_unlock(conn);
+        sr_shmmain_unlock(conn, 1);
         goto error_unsubscribe;
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn);
+    sr_shmmain_unlock(conn, 1);
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* PTR LOCK */
@@ -3108,7 +3086,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     }
 
     /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
         free(mod_name);
         return sr_api_ret(NULL, err_info);
     }
@@ -3176,7 +3154,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn);
+    sr_shmmain_unlock(conn, 1);
 
     /* store the model file and create data files for module and all of its imports */
     if ((err_info = sr_create_module_files_with_imps_r(mod))) {
@@ -3186,7 +3164,9 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     return sr_api_ret(NULL, NULL);
 
 cleanup_unlock:
-    sr_shmmain_unlock(conn);
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(conn, 1);
+
     free(mod_name);
     return sr_api_ret(NULL, err_info);
 }
@@ -3202,7 +3182,7 @@ sr_change_module(sr_conn_ctx_t *conn, const char *module_name, const char *owner
     SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
 
     /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -3259,7 +3239,8 @@ sr_change_module(sr_conn_ctx_t *conn, const char *module_name, const char *owner
     /* success */
 
 cleanup_unlock:
-    sr_shmmain_unlock(conn);
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(conn, 0);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -3272,7 +3253,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
     SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
 
     /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -3294,12 +3275,13 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn);
+    sr_shmmain_unlock(conn, 0);
 
     return sr_api_ret(NULL, NULL);
 
 error_unlock:
-    sr_shmmain_unlock(conn);
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(conn, 0);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -3311,7 +3293,7 @@ sr_change_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feat
     int ret;
 
     /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
         return err_info;
     }
 
@@ -3343,7 +3325,7 @@ sr_change_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feat
 
 cleanup:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn);
+    sr_shmmain_unlock(conn, 0);
     return err_info;
 }
 

@@ -100,7 +100,7 @@ sr_shmsub_wrlock(sr_sub_shm_t *sub_shm, const char *func)
     struct timespec timeout_ts;
     int ret;
 
-    sr_time_get(&timeout_ts, SR_SUB_EVENT_TIMEOUT * 1000);
+    sr_time_get(&timeout_ts, SR_MAIN_LOCK_TIMEOUT * 1000);
 
     /* SUB LOCK */
     if ((err_info = sr_mlock(&sub_shm->lock, SR_SUB_LOCK_TIME, func))) {
@@ -189,7 +189,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *mod_name)
     struct timespec timeout_ts;
     int ret;
 
-    sr_time_get(&timeout_ts, SR_SUB_EVENT_TIMEOUT * 1000);
+    sr_time_get(&timeout_ts, SR_MAIN_LOCK_TIMEOUT * 1000);
 
     /* SUB LOCK */
     if ((err_info = sr_mlock(&sub_shm->lock, SR_SUB_LOCK_TIME, __func__))) {
@@ -229,7 +229,7 @@ sr_shmsub_notify_finish_wrunlock(sr_sub_shm_t *sub_shm, size_t shm_struct_size, 
     char *ptr, *err_msg, *err_xpath;
     int ret;
 
-    sr_time_get(&timeout_ts, SR_SUB_EVENT_TIMEOUT * 1000);
+    sr_time_get(&timeout_ts, SR_MAIN_LOCK_TIMEOUT * 1000);
 
     /* wait until this event was processed */
     ret = 0;
@@ -2044,18 +2044,19 @@ sr_shmsub_notif_listen_module_check_stop_time(struct modsub_notif_s *notif_subs,
             }
 
             /* SHM WRITE LOCK */
-            if ((err_info = sr_shmmain_lock_remap(subs->conn, 1))) {
+            if ((err_info = sr_shmmain_lock_remap(subs->conn, 1, 0))) {
                 return err_info;
             }
 
             /* remove the subscription from main SHM */
-            if ((err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, 0))) {
-                sr_shmmain_unlock(subs->conn);
-                return err_info;
-            }
+            err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, 0);
 
             /* SHM UNLOCK */
-            sr_shmmain_unlock(subs->conn);
+            sr_shmmain_unlock(subs->conn, 0);
+
+            if (err_info) {
+                return err_info;
+            }
 
             if (notif_subs->sub_count == 1) {
                 /* removing last subscription to this module */
@@ -2095,7 +2096,7 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
             }
 
             /* SHM WRITE LOCK */
-            if ((err_info = sr_shmmain_lock_remap(subs->conn, 1))) {
+            if ((err_info = sr_shmmain_lock_remap(subs->conn, 1, 0))) {
                 return err_info;
             }
 
@@ -2103,7 +2104,7 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
             err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, 1);
 
             /* SHM UNLOCK */
-            sr_shmmain_unlock(subs->conn);
+            sr_shmmain_unlock(subs->conn, 0);
 
             if (err_info) {
                 return err_info;

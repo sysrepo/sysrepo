@@ -114,6 +114,8 @@ struct sr_mod_s {
 };
 
 typedef struct sr_main_shm_s {
+    /* process-thread-shared lock */
+    pthread_rwlock_t lock;
     uint32_t new_sr_sid;
     off_t first_mod;
 } sr_main_shm_t;
@@ -222,11 +224,11 @@ sr_error_info_t *sr_shmmain_update_ver(sr_conn_ctx_t *conn);
 
 sr_error_info_t *sr_shmmain_check_dirs(void);
 
-sr_error_info_t *sr_shmmain_pidlock_open(int *shm_lock);
+sr_error_info_t *sr_shmmain_createlock_open(int *shm_lock);
 
-sr_error_info_t *sr_shmmain_pidlock(sr_conn_ctx_t *conn, int wr);
+sr_error_info_t *sr_shmmain_createlock(sr_conn_ctx_t *conn);
 
-void sr_shmmain_pidunlock(sr_conn_ctx_t *conn);
+void sr_shmmain_createunlock(sr_conn_ctx_t *conn);
 
 sr_error_info_t *sr_shmmain_create(sr_conn_ctx_t *conn);
 
@@ -239,9 +241,9 @@ sr_mod_t *sr_shmmain_getnext(char *main_shm_addr, sr_mod_t *last);
 
 sr_mod_t *sr_shmmain_find_module(char *main_shm_addr, const char *name, off_t name_off);
 
-sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr);
+sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int keep_remap);
 
-void sr_shmmain_unlock(sr_conn_ctx_t *conn);
+void sr_shmmain_unlock(sr_conn_ctx_t *conn, int kept_remap);
 
 sr_error_info_t *sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod, int replay_support);
 
