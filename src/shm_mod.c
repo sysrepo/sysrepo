@@ -530,6 +530,9 @@ sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const cha
         }
         shm_mod = (sr_mod_t *)(conn->main_shm.addr + shm_mod_off);
 
+        /* add wasted memory */
+        ((sr_main_shm_t *)conn->main_shm.addr)->wasted_mem += shm_mod->conf_sub[ds].sub_count * sizeof *shm_sub;
+
         /* move subscriptions */
         memcpy(conn->main_shm.addr + conf_subs_off, conn->main_shm.addr + shm_mod->conf_sub[ds].subs,
                 shm_mod->conf_sub[ds].sub_count * sizeof *shm_sub);
@@ -560,6 +563,9 @@ sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const cha
             }
         }
         SR_CHECK_INT_RET(i == shm_mod->conf_sub[ds].sub_count, err_info);
+
+        /* add wasted memory */
+        ((sr_main_shm_t *)conn->main_shm.addr)->wasted_mem += sizeof *shm_sub + (xpath ? strlen(xpath) + 1 : 0);
 
         --shm_mod->conf_sub[ds].sub_count;
         if (!shm_mod->conf_sub[ds].sub_count) {
@@ -620,6 +626,9 @@ sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char 
         }
         shm_mod = (sr_mod_t *)(conn->main_shm.addr + shm_mod_off);
 
+        /* add wasted memory */
+        ((sr_main_shm_t *)conn->main_shm.addr)->wasted_mem += shm_mod->dp_sub_count * sizeof *shm_sub;
+
         /* move preceding and succeeding subscriptions leaving place for the new one */
         if (i) {
             memcpy(conn->main_shm.addr + dp_subs_off, conn->main_shm.addr + shm_mod->dp_subs,
@@ -652,6 +661,9 @@ sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char 
             }
         }
         SR_CHECK_INT_RET(i == shm_mod->dp_sub_count, err_info);
+
+        /* add wasted memory */
+        ((sr_main_shm_t *)conn->main_shm.addr)->wasted_mem += sizeof *shm_sub + strlen(xpath) + 1;
 
         --shm_mod->dp_sub_count;
         if (!shm_mod->dp_sub_count) {
@@ -707,6 +719,9 @@ sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char
         }
         shm_mod = (sr_mod_t *)(conn->main_shm.addr + shm_mod_off);
 
+        /* add wasted memory */
+        ((sr_main_shm_t *)conn->main_shm.addr)->wasted_mem += shm_mod->rpc_sub_count * sizeof *shm_sub;
+
         /* move subscriptions */
         memcpy(conn->main_shm.addr + rpc_subs_off, conn->main_shm.addr + shm_mod->rpc_subs,
                 shm_mod->rpc_sub_count * sizeof *shm_sub);
@@ -728,6 +743,9 @@ sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char
             }
         }
         SR_CHECK_INT_RET(i == shm_mod->rpc_sub_count, err_info);
+
+        /* add wasted memory */
+        ((sr_main_shm_t *)conn->main_shm.addr)->wasted_mem += sizeof *shm_sub + strlen(xpath) + 1;
 
         --shm_mod->rpc_sub_count;
         if (!shm_mod->rpc_sub_count) {

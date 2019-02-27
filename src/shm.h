@@ -118,6 +118,7 @@ typedef struct sr_main_shm_s {
     pthread_rwlock_t lock;
     uint32_t ver;
     uint32_t new_sr_sid;
+    size_t wasted_mem;
     off_t first_mod;
 } sr_main_shm_t;
 
@@ -221,6 +222,8 @@ typedef struct sr_multi_sub_shm_s {
 /*
  * shm_main.c unsafe functions, use with caution
  */
+sr_error_info_t *sr_shmmain_defrag(char *main_shm_addr, size_t main_shm_size, size_t wasted_mem, char **defrag_mem);
+
 sr_error_info_t *sr_shmmain_check_dirs(void);
 
 sr_error_info_t *sr_shmmain_createlock_open(int *shm_lock);

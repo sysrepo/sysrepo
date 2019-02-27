@@ -1459,6 +1459,49 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscription_ctx_t **subs_p)
     return NULL;
 }
 
+static sr_error_info_t *
+sr_check_main_shm_defrag(sr_conn_ctx_t *conn)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_main_shm_t *main_shm;
+    char *mem;
+
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+    if (main_shm->wasted_mem <= SR_MAIN_SHM_WASTED_MAX_MEM) {
+        /* not enough wasted memory, leave it as it is */
+        return NULL;
+    }
+
+    /* defrag mem into a separate memory */
+    if ((err_info = sr_shmmain_defrag(conn->main_shm.addr, conn->main_shm.size, main_shm->wasted_mem, &mem))) {
+        return err_info;
+    }
+
+    /* remap main SHM */
+    if ((err_info = sr_shm_remap(&conn->main_shm, conn->main_shm.size - main_shm->wasted_mem))) {
+        goto cleanup;
+    }
+
+    /* copy the defragmented memory into SHM */
+    memcpy(conn->main_shm.addr, mem, conn->main_shm.size);
+
+    /* reset wasted counter */
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+    main_shm->wasted_mem = 0;
+
+    /* msync */
+    if (msync(conn->main_shm.addr, conn->main_shm.size, MS_SYNC | MS_INVALIDATE) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "msync");
+        goto cleanup;
+    }
+
+    /* success */
+
+cleanup:
+    free(mem);
+    return err_info;
+}
+
 API int
 sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         sr_module_change_cb callback, void *private_data, uint32_t priority, sr_subscr_options_t opts,
@@ -1549,6 +1592,12 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         }
     }
 
+    /* defrag main SHM if needed */
+    if ((err_info = sr_check_main_shm_defrag(conn))) {
+        sr_shmmain_unlock(conn, 1);
+        goto error_unsubscribe;
+    }
+
     /* SHM UNLOCK */
     sr_shmmain_unlock(conn, 1);
 
@@ -1625,7 +1674,13 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     }
 
     if ((tmp_err = sr_subs_del_all(subscription->conn, subscription))) {
-        /* SHM UNLOCK */
+        sr_shmmain_unlock(subscription->conn, 1);
+        sr_errinfo_merge(&err_info, tmp_err);
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* defrag main SHM if needed */
+    if ((tmp_err = sr_check_main_shm_defrag(subscription->conn))) {
         sr_shmmain_unlock(subscription->conn, 1);
         sr_errinfo_merge(&err_info, tmp_err);
         return sr_api_ret(NULL, err_info);
@@ -2128,6 +2183,12 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_rpc_add(module_name, xpath, callback, tree_callback, private_data, *subscription))) {
+        sr_shmmain_unlock(conn, 1);
+        goto error_unsubscribe;
+    }
+
+    /* defrag main SHM if needed */
+    if ((err_info = sr_check_main_shm_defrag(conn))) {
         sr_shmmain_unlock(conn, 1);
         goto error_unsubscribe;
     }
@@ -2873,6 +2934,12 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_dp_add(module_name, xpath, callback, private_data, *subscription))) {
+        sr_shmmain_unlock(conn, 1);
+        goto error_unsubscribe;
+    }
+
+    /* defrag main SHM if needed */
+    if ((err_info = sr_check_main_shm_defrag(conn))) {
         sr_shmmain_unlock(conn, 1);
         goto error_unsubscribe;
     }

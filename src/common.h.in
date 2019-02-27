@@ -60,8 +60,11 @@
 /* if not set, defaults to "SR_REPO_PATH/yang" */
 #define SR_YANG_PATH "@YANG_MODULE_PATH@"
 
-/* notification file will never exceed this size (kbs) */
+/* notification file will never exceed this size (kB) */
 #define SR_EV_NOTIF_FILE_MAX_SIZE 1024
+
+/* maximum main SHM wasted memory (B) */
+#define SR_MAIN_SHM_WASTED_MAX_MEM 4096
 
 /* time slept when wanting a write lock on a module that is already locked (ms) */
 #define SR_MOD_WRITE_LOCK_SLEEP 10
@@ -295,6 +298,8 @@ int sr_time_is_timeout(struct timespec *ts);
 sr_error_info_t *sr_shm_remap(sr_shm_t *shm, size_t new_shm_size);
 
 void sr_shm_destroy(sr_shm_t *shm);
+
+off_t sr_shmcpy(char *shm_addr, const void *src, size_t size, char **shm_end);
 
 sr_error_info_t *sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func);
 

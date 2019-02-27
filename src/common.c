@@ -1123,6 +1123,24 @@ sr_shm_destroy(sr_shm_t *shm)
     }
 }
 
+off_t
+sr_shmcpy(char *shm_addr, const void *src, size_t size, char **shm_end)
+{
+    off_t ret;
+
+    if (!size) {
+        return 0;
+    }
+
+    if (src) {
+        memcpy(*shm_end, src, size);
+    }
+    ret = *shm_end - shm_addr;
+    *shm_end += size;
+
+    return ret;
+}
+
 sr_error_info_t *
 sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func)
 {
