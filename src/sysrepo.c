@@ -3237,14 +3237,14 @@ cleanup_unlock:
 }
 
 API int
-sr_change_module(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm)
+sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     time_t from_ts, to_ts;
     char *path;
 
-    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!conn || !module_name || (!owner && !group && ((int)perm == -1)), NULL, err_info);
 
     /* SHM WRITE LOCK */
     if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
@@ -3299,6 +3299,39 @@ sr_change_module(sr_conn_ctx_t *conn, const char *module_name, const char *owner
                 goto cleanup_unlock;
             }
         }
+    }
+
+    /* success */
+
+cleanup_unlock:
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(conn, 0);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner, char **group, mode_t *perm)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name || (!owner && !group && !perm), NULL, err_info);
+
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 0, 0))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* try to find this module */
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup_unlock;
+    }
+
+    /* learn owner and permissions */
+    if ((err_info = sr_perm_get(module_name, owner, group, perm))) {
+        goto cleanup_unlock;
     }
 
     /* success */
@@ -3377,7 +3410,8 @@ sr_change_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feat
     /* check feature in the current context */
     ret = lys_features_state(mod, feature_name);
     if (ret == -1) {
-        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Feature \"%s\" was not found in module \"%s\".",
+                feature_name, module_name);
         goto cleanup;
     }
 
@@ -3414,6 +3448,18 @@ sr_disable_feature(sr_conn_ctx_t *conn, const char *module_name, const char *fea
     SR_CHECK_ARG_APIRET(!conn || !module_name || !feature_name, NULL, err_info);
 
     err_info = sr_change_feature(conn, module_name, feature_name, 0);
+
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_get_schema_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data)
+{
+    sr_error_info_t *err_info;
+
+    SR_CHECK_ARG_APIRET(!conn || !sysrepo_data, NULL, err_info);
+
+    err_info = sr_shmmain_ly_int_data_parse(conn, 0, sysrepo_data);
 
     return sr_api_ret(NULL, err_info);
 }

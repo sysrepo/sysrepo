@@ -228,6 +228,25 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, struct ly_ctx *ly_ctx)
 }
 
 void
+sr_log_wrn_ly(struct ly_ctx *ly_ctx)
+{
+    struct ly_err_item *e;
+
+    e = ly_err_first(ly_ctx);
+    /* this function is called only when an error is expected */
+    assert(e);
+
+    do {
+        /* print everything as warnings */
+        sr_log_msg(SR_LL_WRN, e->msg, e->path);
+
+        e = e->next;
+    } while (e);
+
+    ly_err_clean(ly_ctx, NULL);
+}
+
+void
 sr_errinfo_free(sr_error_info_t **err_info)
 {
     size_t i;

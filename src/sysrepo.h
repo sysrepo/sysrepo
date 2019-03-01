@@ -1299,13 +1299,17 @@ const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
 int sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir, const char **features,
         int feat_count, int replay_support);
 
-int sr_change_module(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm);
+int sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm);
+
+int sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner, char **group, mode_t *perm);
 
 int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
 
 int sr_enable_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
 
 int sr_disable_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
+
+int sr_get_schema_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Cleanup Routines

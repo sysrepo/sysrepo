@@ -910,83 +910,174 @@ sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path)
     return err_info;
 }
 
+static sr_error_info_t *
+sr_get_pwd(uid_t *uid, char **user)
+{
+    sr_error_info_t *err_info = NULL;
+    struct passwd pwd, *pwd_p;
+    char *buf = NULL;
+    ssize_t buflen = 0;
+    int ret;
+
+    assert(uid && user);
+
+    do {
+        if (!buflen) {
+            /* learn suitable buffer size */
+            buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
+            if (buflen == -1) {
+                buflen = 2048;
+            }
+        } else {
+            /* enlarge buffer */
+            buflen += 2048;
+        }
+
+        /* allocate some buffer */
+        buf = sr_realloc(buf, buflen);
+        SR_CHECK_MEM_RET(!buf, err_info);
+
+        if (*user) {
+            /* user -> UID */
+            ret = getpwnam_r(*user, &pwd, buf, buflen, &pwd_p);
+        } else {
+            /* UID -> user */
+            ret = getpwuid_r(*uid, &pwd, buf, buflen, &pwd_p);
+        }
+    } while (ret && (ret == ERANGE));
+    if (ret) {
+        if (*user) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving user \"%s\" passwd entry failed (%s).",
+                    *user, strerror(ret));
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving UID \"%lu\" passwd entry failed (%s).",
+                    (unsigned long int)*uid, strerror(ret));
+        }
+        goto cleanup;
+    } else if (!pwd_p) {
+        if (*user) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Retrieving user \"%s\" passwd entry failed (No such user).",
+                    *user);
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Retrieving UID \"%lu\" passwd entry failed (No such UID).",
+                    (unsigned long int)*uid);
+        }
+        goto cleanup;
+    }
+
+    if (*user) {
+        /* assign UID */
+        *uid = pwd.pw_uid;
+    } else {
+        /* assign user */
+        *user = strdup(pwd.pw_name);
+        SR_CHECK_MEM_GOTO(!*user, err_info, cleanup);
+    }
+
+    /* success */
+
+cleanup:
+    free(buf);
+    return err_info;
+}
+
+static sr_error_info_t *
+sr_get_grp(gid_t *gid, char **group)
+{
+    sr_error_info_t *err_info = NULL;
+    struct group grp, *grp_p;
+    char *buf = NULL;
+    ssize_t buflen = 0;
+    int ret;
+
+    assert(gid && group);
+
+    do {
+        if (!buflen) {
+            /* learn suitable buffer size */
+            buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
+            if (buflen == -1) {
+                buflen = 2048;
+            }
+        } else {
+            /* enlarge buffer */
+            buflen += 2048;
+        }
+
+        /* allocate some buffer */
+        buf = sr_realloc(buf, buflen);
+        SR_CHECK_MEM_RET(!buf, err_info);
+
+        if (*group) {
+            /* group -> GID */
+            ret = getgrnam_r(*group, &grp, buf, buflen, &grp_p);
+        } else {
+            /* GID -> group */
+            ret = getgrgid_r(*gid, &grp, buf, buflen, &grp_p);
+        }
+    } while (ret && (ret == ERANGE));
+    if (ret) {
+        if (*group) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving group \"%s\" grp entry failed (%s).",
+                    *group, strerror(ret));
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving GID \"%lu\" grp entry failed (%s).",
+                    (unsigned long int)*gid, strerror(ret));
+        }
+        goto cleanup;
+    } else if (!grp_p) {
+        if (*group) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Retrieving group \"%s\" grp entry failed (No such group).",
+                    *group);
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Retrieving GID \"%lu\" grp entry failed (No such GID).",
+                    (unsigned long int)*gid);
+        }
+        goto cleanup;
+    }
+
+    if (*group) {
+        /* assign GID */
+        *gid = grp.gr_gid;
+    } else {
+        /* assign group */
+        *group = strdup(grp.gr_name);
+        SR_CHECK_MEM_GOTO(!*group, err_info, cleanup);
+    }
+
+    /* success */
+
+cleanup:
+    free(buf);
+    return err_info;
+}
+
 sr_error_info_t *
 sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
 {
     sr_error_info_t *err_info = NULL;
     sr_error_t err_code;
-    int ret;
-    char *buf;
-    ssize_t buflen;
-    struct passwd pwd, *pwd_p;
-    struct group grp, *grp_p;
     uid_t uid = -1;
     gid_t gid = -1;
 
     assert(path);
 
+    if (perm > 00666) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Only read and write permissions can be set.");
+        return err_info;
+    } else if (perm & 00111) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Setting execute permissions has no effect.");
+        return err_info;
+    }
+
     /* we are going to change the owner */
-    if (owner) {
-        /* learn what buffer size is needed */
-        buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
-        if (buflen == -1) {
-            buflen = 4096;
-        }
-
-getpwnam_retry:
-        buf = malloc(buflen);
-        SR_CHECK_MEM_RET(!buf, err_info);
-
-        ret = getpwnam_r(owner, &pwd, buf, buflen, &pwd_p);
-        /* we need only the UID, no strings */
-        free(buf);
-        if (ret) {
-            if (ret == ERANGE) {
-                /* buffer was too small */
-                buflen += 1024;
-                goto getpwnam_retry;
-            }
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving user \"%s\" passwd entry failed (%s).", strerror(ret));
-            return err_info;
-        } else if (!pwd_p) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving user \"%s\" passwd entry failed (No such user).");
-            return err_info;
-        }
-
-        /* store new UID */
-        uid = pwd.pw_uid;
+    if (owner && (err_info = sr_get_pwd(&uid, (char **)&owner))) {
+        return err_info;
     }
 
     /* we are going to change the group */
-    if (group) {
-        /* learn what buffer size is needed */
-        buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
-        if (buflen == -1) {
-            buflen = 4096;
-        }
-
-getgrnam_retry:
-        buf = malloc(buflen);
-        SR_CHECK_MEM_RET(!buf, err_info);
-
-        ret = getgrnam_r(group, &grp, buf, buflen, &grp_p);
-        /* we need only the GID, no strings */
-        free(buf);
-        if (ret) {
-            if (ret == ERANGE) {
-                /* buffer was too small */
-                buflen += 1024;
-                goto getgrnam_retry;
-            }
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving group \"%s\" grp entry failed (%s).", strerror(ret));
-            return err_info;
-        } else if (!grp_p) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving group \"%s\" grp entry failed (No such group).");
-            return err_info;
-        }
-
-        /* store new GID */
-        gid = grp.gr_gid;
+    if (group && (err_info = sr_get_grp(&gid, (char **)&group))) {
+        return err_info;
     }
 
     /* apply owner changes, if any */
@@ -1001,7 +1092,7 @@ getgrnam_retry:
     }
 
     /* apply permission changes, if any */
-    if (perm && (chmod(path, perm) == -1)) {
+    if (((int)perm != -1) && (chmod(path, perm) == -1)) {
         if ((errno == EACCES) || (errno = EPERM)) {
             err_code = SR_ERR_UNAUTHORIZED;
         } else {
@@ -1035,6 +1126,65 @@ sr_perm_check(const char *mod_name, int wr)
     }
 
     free(path);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_perm_get(const char *mod_name, char **owner, char **group, mode_t *perm)
+{
+    sr_error_info_t *err_info = NULL;
+    struct stat st;
+    char *path;
+    int ret;
+
+    if (owner) {
+        *owner = NULL;
+    }
+    if (group) {
+        *group = NULL;
+    }
+
+    /* use startup file, it does not matter */
+    if ((err_info = sr_path_startup_file(mod_name, &path))) {
+        return err_info;
+    }
+
+    /* stat */
+    ret = stat(path, &st);
+    free(path);
+    if (ret == -1) {
+        if (errno == EACCES) {
+            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Learning \"%s\" permissions failed.", mod_name);
+        } else {
+            SR_ERRINFO_SYSERRNO(&err_info, "stat");
+        }
+        return err_info;
+    }
+
+    /* get owner */
+    if (owner && (err_info = sr_get_pwd(&st.st_uid, owner))) {
+        goto error;
+    }
+
+    /* get group */
+    if (group && (err_info = sr_get_grp(&st.st_gid, group))) {
+        goto error;
+    }
+
+    /* get perms */
+    if (perm) {
+        *perm = st.st_mode & 0007777;
+    }
+
+    return NULL;
+
+error:
+    if (owner) {
+        free(*owner);
+    }
+    if (group) {
+        free(*group);
+    }
     return err_info;
 }
 

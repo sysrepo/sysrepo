@@ -239,12 +239,52 @@ test_op_deps(void **state)
     );
 }
 
+static void
+test_remove_dep_module(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+
+    /* install modules with one dependeing on the other */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* remove module required by the other module */
+    ret = sr_remove_module(st->conn, "ops-ref");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* close connection, remove main shared memory so that changes are applied */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = unlink("/dev/shm/sr_main");
+    assert_int_equal(ret, 0);
+
+    /* recreate connection, changes fail to be applied and should remain scheduled */
+    ret = sr_connect("test1", 0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "ops-ref",
+    "<module xmlns=\"urn:sysrepo\">"
+        "<name>ops-ref</name>"
+        "<replay-support/>"
+        "<removed/>"
+    "</module>"
+    );
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "ops");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(test_data_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_op_deps, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_remove_dep_module, setup_f, teardown_f),
     };
 
     sr_log_stderr(SR_LL_INF);

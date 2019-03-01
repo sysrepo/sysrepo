@@ -232,6 +232,8 @@ sr_error_info_t *sr_shmmain_createlock(sr_conn_ctx_t *conn);
 
 void sr_shmmain_createunlock(sr_conn_ctx_t *conn);
 
+sr_error_info_t *sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_node **sr_mods_p);
+
 sr_error_info_t *sr_shmmain_create(sr_conn_ctx_t *conn);
 
 sr_error_info_t *sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent);

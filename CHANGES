@@ -25,7 +25,7 @@ removed functions:
 - sr_check_exec_permission (NACM no longer included)
 - whole action API (use RPC API)
 - sr_session_check (does not make sense anymore)
-- whole get-schema API (use context from sr_get_context)
+- whole get-schema API (use sr_get_schema_info)
 - sr_get_items_iter, sr_get_item_next (not supported for now)
 
 added functions:
@@ -33,7 +33,10 @@ added functions:
 - sr_session_get_nc_id
 - sr_get_context
 - sr_install_module
+- sr_set_module_access
+- sr_get_module_access
 - sr_remove_module
 - sr_enable_feature
 - sr_disable_feature
+- sr_get_schema_info
 - sr_edit_batch
