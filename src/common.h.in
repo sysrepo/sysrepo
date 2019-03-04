@@ -270,6 +270,8 @@ sr_error_info_t *sr_notif_call_callback(sr_event_notif_cb cb, sr_event_notif_tre
 /*
  * utility functions
  */
+sr_error_info_t *sr_create_module_files_with_imps_r(const struct lys_module *mod);
+
 sr_error_info_t *sr_path_running_dir(char **path);
 
 sr_error_info_t *sr_path_startup_dir(char **path);

@@ -237,8 +237,9 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t d
     /* get the module */
     module_name = sr_get_first_ns(xpath);
     if (!module_name) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "XPath missing module name of the first node (%s).", xpath);
-        return err_info;
+        /* there is no module name, use sysrepo module */
+        module_name = strdup(SR_YANG_MOD);
+        SR_CHECK_MEM_RET(!module_name, err_info);
     }
 
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
@@ -263,22 +264,25 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t d
         return err_info;
     }
 
-    /* find the context node module in SHM and add it with any dependencies */
-    assert(set->set.s[0] == ctx_node);
-    shm_mod = sr_shmmain_find_module(mod_info->conn->main_shm.addr, ly_mod->name, 0);
-    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
-    if ((err_info = sr_modinfo_add_mod(shm_mod, ly_mod, MOD_INFO_REQ, MOD_INFO_DEP | MOD_INFO_INV_DEP, mod_info))) {
-        goto cleanup;
-    }
-
     /* add all the other modules */
-    for (i = 1; i < set->number; ++i) {
-        if (lys_node_module(set->set.s[i]) == ly_mod) {
+    ly_mod = NULL;
+    for (i = 0; i < set->number; ++i) {
+        /* skip uninteresting nodes */
+        if ((set->set.s[i]->nodetype & (LYS_RPC | LYS_NOTIF))
+                || ((set->set.s[i]->flags & LYS_CONFIG_R) && (ds != SR_DS_OPERATIONAL))) {
             continue;
         }
 
-        /* remember last mod, good chance it will also be the module of some next schema nodes */
+        if (lys_node_module(set->set.s[i]) == ly_mod) {
+            /* skip already-added modules */
+            continue;
+        }
         ly_mod = lys_node_module(set->set.s[i]);
+
+        if (!ly_mod->implemented || !strcmp(ly_mod->name, SR_YANG_MOD) || !strcmp(ly_mod->name, "ietf-netconf")) {
+            /* skip import-only modules, the internal sysrepo module, and ietf-netconf (as it has no data, only in libyang) */
+            continue;
+        }
 
         /* find the module in SHM and add it with any dependencies */
         shm_mod = sr_shmmain_find_module(mod_info->conn->main_shm.addr, ly_mod->name, 0);

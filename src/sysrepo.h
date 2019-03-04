@@ -415,6 +415,8 @@ int sr_session_stop(sr_session_ctx_t *session);
  */
 int sr_session_switch_ds(sr_session_ctx_t *session, sr_datastore_t ds);
 
+sr_datastore_t sr_session_get_ds(sr_session_ctx_t *session);
+
 /**
  * @brief Alter the session options. E.g.: set/unset SR_SESS_CONFIG_ONLY flag.
  *

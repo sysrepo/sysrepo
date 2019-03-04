@@ -100,6 +100,9 @@ set(LIB_SRC
 set (SYSREPOCTL_SRC
     src/executables/sysrepoctl.c)
 
+set (SYSREPOCFG_SRC
+    src/executables/sysrepocfg.c)
+
 # libsysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_library(srobj OBJECT ${LIB_SRC})
@@ -124,6 +127,10 @@ set(CMAKE_REQUIRED_LIBRARIES pthread)
 # sysrepoctl tool
 add_executable(sysrepoctl ${SYSREPOCTL_SRC})
 target_link_libraries(sysrepoctl sysrepo ${LIBYANG_LIBRARIES})
+
+# sysrepocfg tool
+add_executable(sysrepocfg ${SYSREPOCFG_SRC})
+target_link_libraries(sysrepocfg sysrepo ${LIBYANG_LIBRARIES})
 
 # tests
 if(ENABLE_TESTS)

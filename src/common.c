@@ -758,6 +758,126 @@ cleanup:
     return err_info;
 }
 
+static sr_error_info_t *
+sr_store_module_file(const struct lys_module *mod)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path;
+
+    if ((err_info = sr_path_yang_file(mod->name, mod->rev_size ? mod->rev[0].date : NULL, &path))) {
+        return err_info;
+    }
+
+    if (!access(path, R_OK)) {
+        /* already exists */
+        SR_LOG_INF("Module file \"%s%s%s\" already exists.",
+                mod->name, mod->rev_size ? "@" : "", mod->rev_size ? mod->rev[0].date : "");
+        free(path);
+        return NULL;
+    }
+
+    if (lys_print_path(path, mod, LYS_YANG, NULL, 0, 0)) {
+        free(path);
+        sr_errinfo_new_ly(&err_info, mod->ctx);
+        return err_info;
+    }
+
+    /* set permissions */
+    if (chmod(path, SR_YANG_PERM)) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+        return err_info;
+    }
+
+    SR_LOG_INF("Module file \"%s%s%s\" installed.",
+            mod->name, mod->rev_size ? "@" : "", mod->rev_size ? mod->rev[0].date : "");
+    free(path);
+    return NULL;
+}
+
+static sr_error_info_t *
+sr_create_data_files(const struct lys_module *mod)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *root = NULL;
+    char *path = NULL;
+
+    /* get default values */
+    if (lyd_validate_modules(&root, &mod, 1, LYD_OPT_CONFIG)) {
+        sr_errinfo_new_ly(&err_info, mod->ctx);
+        SR_ERRINFO_VALID(&err_info);
+        return err_info;
+    }
+
+    /* print them into a file */
+    if ((err_info = sr_path_startup_file(mod->name, &path))) {
+        goto cleanup;
+    }
+    if (lyd_print_path(path, root, LYD_LYB, LYP_WITHSIBLINGS)) {
+        sr_errinfo_new_ly(&err_info, mod->ctx);
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
+        goto cleanup;
+    }
+
+    /* set permissions */
+    if (chmod(path, SR_FILE_PERM)) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+        goto cleanup;
+    }
+
+    /* repeat for running DS */
+    free(path);
+    path = NULL;
+    if ((err_info = sr_path_running_file(mod->name, &path))) {
+        return err_info;
+    }
+    if (lyd_print_path(path, root, LYD_LYB, LYP_WITHSIBLINGS)) {
+        sr_errinfo_new_ly(&err_info, mod->ctx);
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
+        goto cleanup;
+    }
+
+    /* set permissions */
+    if (chmod(path, SR_FILE_PERM)) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+        goto cleanup;
+    }
+
+cleanup:
+    free(path);
+    lyd_free_withsiblings(root);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_create_module_files_with_imps_r(const struct lys_module *mod)
+{
+    struct lys_module *imp_mod;
+    sr_error_info_t *err_info = NULL;
+    uint16_t i;
+
+    if ((err_info = sr_store_module_file(mod))) {
+        return err_info;
+    }
+
+    if (mod->implemented && (err_info = sr_create_data_files(mod))) {
+        return err_info;
+    }
+
+    for (i = 0; i < mod->imp_size; ++i) {
+        imp_mod = mod->imp[i].module;
+        if (!strcmp(imp_mod->name, "ietf-yang-types") || !strcmp(imp_mod->name, "ietf-inet-types")) {
+            /* internal modules */
+            continue;
+        }
+
+        if ((err_info = sr_create_module_files_with_imps_r(imp_mod))) {
+            return err_info;
+        }
+    }
+
+    return NULL;
+}
+
 sr_error_info_t *
 sr_path_running_dir(char **path)
 {

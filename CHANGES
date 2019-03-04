@@ -29,6 +29,7 @@ removed functions:
 - sr_get_items_iter, sr_get_item_next (not supported for now)
 
 added functions:
+- sr_session_get_ds
 - sr_session_set_nc_id
 - sr_session_get_nc_id
 - sr_get_context

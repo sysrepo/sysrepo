@@ -32,12 +32,14 @@
 #include <assert.h>
 
 #include "../modules/sysrepo_yang.h"
-#include "../modules/ietf_netconf_acm_yang.h"
 #include "../modules/ietf_netconf_yang.h"
 #include "../modules/ietf_netconf_with_defaults_yang.h"
 
 static sr_error_info_t *sr_shmmain_ly_add_data_deps_r(struct lyd_node *ly_module, struct lys_node *data_root,
         struct lyd_node *ly_deps, size_t *shm_size);
+
+static sr_error_info_t *sr_shmmain_ly_add_module(const struct lys_module *mod, int replay_support,
+        struct lyd_node *sr_mods, struct lyd_node **sr_mod_p, size_t *shm_size);
 
 struct shm_item {
     off_t start;
@@ -601,6 +603,493 @@ sr_shmmain_createunlock(sr_conn_ctx_t *conn)
     }
 }
 
+static size_t
+sr_shmmain_ly_calculate_size(struct lyd_node *sr_mods)
+{
+    struct lyd_node *ly_mod, *ly_child, *ly_op_dep, *ly_dep, *ly_instid;
+    size_t shm_size = 0;
+
+    assert(sr_mods);
+
+    LY_TREE_FOR(sr_mods->child, ly_mod) {
+        /* a module */
+        shm_size += sizeof(sr_mod_t);
+
+        LY_TREE_FOR(ly_mod->child, ly_child) {
+            if (!strcmp(ly_child->schema->name, "name")) {
+                /* a string */
+                shm_size += strlen(((struct lyd_node_leaf_list *)ly_child)->value_str) + 1;
+            } else if (!strcmp(ly_child->schema->name, "enabled-feature")) {
+                /* another feature */
+                shm_size += sizeof(char *);
+                /* a string */
+                shm_size += strlen(((struct lyd_node_leaf_list *)ly_child)->value_str) + 1;
+            } else if (!strcmp(ly_child->schema->name, "data-deps")) {
+                LY_TREE_FOR(ly_child->child, ly_dep) {
+                    /* another data dependency */
+                    shm_size += sizeof(sr_mod_data_dep_t);
+
+                    /* module name was already counted and type is an enum */
+                    if (!strcmp(ly_dep->schema->name, "inst-id")) {
+                        LY_TREE_FOR(ly_dep->child, ly_instid) {
+                            if (!strcmp(ly_instid->schema->name, "xpath")) {
+                                /* a string */
+                                shm_size += strlen(((struct lyd_node_leaf_list *)ly_instid)->value_str) + 1;
+                            }
+                        }
+                    }
+                }
+            } else if (!strcmp(ly_child->schema->name, "op-deps")) {
+                /* another op with dependencies */
+                shm_size += sizeof(sr_mod_op_dep_t);
+
+                LY_TREE_FOR(ly_child->child, ly_op_dep) {
+                    if (!strcmp(ly_op_dep->schema->name, "xpath")) {
+                        /* operation xpath (a string) */
+                        shm_size += strlen(((struct lyd_node_leaf_list *)ly_op_dep)->value_str) + 1;
+                    } else if (!strcmp(ly_op_dep->schema->name, "in") || !strcmp(ly_op_dep->schema->name, "out")) {
+                        LY_TREE_FOR(ly_op_dep->child, ly_dep) {
+                            /* another data dependency */
+                            shm_size += sizeof(sr_mod_data_dep_t);
+
+                            if (!strcmp(ly_dep->schema->name, "inst-id")) {
+                                LY_TREE_FOR(ly_dep->child, ly_instid) {
+                                    if (!strcmp(ly_instid->schema->name, "xpath")) {
+                                        /* a string */
+                                        shm_size += strlen(((struct lyd_node_leaf_list *)ly_instid)->value_str) + 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return shm_size;
+}
+
+static sr_error_info_t *
+sr_shmmain_ly_int_data_print(struct lyd_node **sr_mods, const struct lys_module *sr_ly_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path;
+
+    assert(sr_mods && (!*sr_mods || !strcmp((*sr_mods)->schema->module->name, SR_YANG_MOD)));
+    assert(*sr_mods || (sr_ly_mod && !strcmp(sr_ly_mod->name, SR_YANG_MOD)));
+
+    /* get the module */
+    if (!sr_ly_mod) {
+        sr_ly_mod = (*sr_mods)->schema->module;
+    }
+
+    /* validate */
+    if (lyd_validate_modules(sr_mods, &sr_ly_mod, 1, LYD_OPT_CONFIG)) {
+        sr_errinfo_new_ly(&err_info, sr_ly_mod->ctx);
+        return err_info;
+    }
+
+    /* get path */
+    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
+        return err_info;
+    }
+
+    /* store the data tree */
+    if (lyd_print_path(path, *sr_mods, LYD_LYB, LYP_WITHSIBLINGS)) {
+        free(path);
+        sr_errinfo_new_ly(&err_info, sr_ly_mod->ctx);
+        return err_info;
+    }
+    free(path);
+
+    return NULL;
+}
+
+static sr_error_info_t *
+sr_remove_data_files(const char *mod_name)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path;
+
+    if ((err_info = sr_path_startup_file(mod_name, &path))) {
+        return err_info;
+    }
+
+    if (unlink(path) == -1) {
+        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+    }
+    free(path);
+
+    if ((err_info = sr_path_running_file(mod_name, &path))) {
+        return err_info;
+    }
+
+    if (unlink(path) == -1) {
+        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+    }
+    free(path);
+
+    return NULL;
+}
+
+static sr_error_info_t *
+sr_shmmain_ly_int_data_sched_remove_modules(struct lyd_node *sr_mods, int *change, int *apply_sched)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *sr_ly_mod;
+    struct ly_set *set = NULL;
+    uint32_t i;
+
+    assert(sr_mods);
+
+    sr_ly_mod = lyd_node_module(sr_mods);
+
+    /* find removed modules */
+    set = lyd_find_path(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/module/removed");
+    if (!set) {
+        sr_errinfo_new_ly(&err_info, sr_ly_mod->ctx);
+        return err_info;
+    }
+    for (i = 0; i < set->number; ++i) {
+        /* unlink the module entry from the data tree */
+        lyd_unlink(set->set.d[i]->parent);
+    }
+
+    /* validate the updated data tree, if there are any missing dependencies, it will fail */
+    if (set->number && lyd_validate_modules(&sr_mods, &sr_ly_mod, 1, LYD_OPT_CONFIG)) {
+        /* print the validation errors as warnings */
+        sr_log_wrn_ly(sr_ly_mod->ctx);
+        SR_LOG_WRNMSG("Failed to apply scheduled module changes, leaving them scheduled.");
+
+        /* do not apply any scheduled changes */
+        *apply_sched = 0;
+        goto cleanup;
+    }
+
+    for (i = 0; i < set->number; ++i) {
+        /* remove data files */
+        if ((err_info = sr_remove_data_files(sr_ly_leaf_value_str(set->set.d[i]->parent->child)))) {
+            goto cleanup;
+        }
+    }
+
+    /* success */
+    if (set->number) {
+        *change = 1;
+    }
+
+cleanup:
+    for (i = 0; i < set->number; ++i) {
+        lyd_free_withsiblings(set->set.d[i]->parent);
+    }
+    ly_set_free(set);
+    return err_info;
+}
+
+static sr_error_info_t *
+sr_shmmain_ly_int_data_sched_change_features(struct lyd_node *sr_mods, int *change)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *feat_node;
+    struct ly_set *set = NULL, *set2;
+    uint32_t i;
+    char *xpath;
+
+    assert(sr_mods);
+
+    /* find all changed features */
+    set = lyd_find_path(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/module/changed-feature");
+    if (!set) {
+        SR_ERRINFO_INT(&err_info);
+        return err_info;
+    }
+
+    for (i = 0; i < set->number; ++i) {
+        feat_node = set->set.d[i];
+        assert(feat_node->child && feat_node->child->next);
+
+        /* enable feature node */
+        if (!strcmp(sr_ly_leaf_value_str(feat_node->child->next), "enable")) {
+            /* add feature node */
+            if (!lyd_new_leaf(feat_node->parent, NULL, "enabled-features", sr_ly_leaf_value_str(feat_node->child))) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mods)->ctx);
+                goto cleanup;
+            }
+
+        /* disable feature */
+        } else {
+            assert(!strcmp(sr_ly_leaf_value_str(feat_node->child->next), "disable"));
+            if (asprintf(&xpath, "enabled-feature[.='%s']", sr_ly_leaf_value_str(feat_node->child)) == -1) {
+                SR_ERRINFO_MEM(&err_info);
+                goto cleanup;
+            }
+
+            /* remove feature node */
+            set2 = lyd_find_path(feat_node->parent, xpath);
+            free(xpath);
+            if (!set2 || (set2->number != 1)) {
+                ly_set_free(set2);
+                SR_ERRINFO_INT(&err_info);
+                goto cleanup;
+            }
+            lyd_free(set2->set.d[0]);
+            ly_set_free(set2);
+        }
+    }
+
+    /* success */
+    if (set->number) {
+        *change = 1;
+    }
+
+cleanup:
+    for (i = 0; i < set->number; ++i) {
+        lyd_free_withsiblings(set->set.d[i]->parent);
+    }
+    ly_set_free(set);
+    return err_info;
+}
+
+static sr_error_info_t *
+sr_shmmain_ly_int_data_create(sr_conn_ctx_t *conn, struct lyd_node **sr_mods_p)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod, *ly_mod2;
+    struct lyd_node *sr_mods = NULL, *sr_mod;
+    size_t shm_size = 0;
+    uint32_t i;
+
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, SR_YANG_MOD, NULL, 1);
+    SR_CHECK_INT_RET(!ly_mod, err_info);
+
+    /* create empty container */
+    sr_mods = lyd_new(NULL, ly_mod, "sysrepo-modules");
+    SR_CHECK_INT_RET(!sr_mods, err_info);
+
+    /* for internal libyang modules create files and store in the persistent module data tree */
+    i = 0;
+    while ((i < ly_ctx_internal_modules_count(conn->ly_ctx)) && (ly_mod = ly_ctx_get_module_iter(conn->ly_ctx, &i))) {
+        /* module must be implemented and have some data */
+        if (ly_mod->implemented && lys_getnext(NULL, NULL, ly_mod, LYS_GETNEXT_NOSTATECHECK)) {
+            if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
+                goto error;
+            }
+            sr_mod = NULL;
+            if ((err_info = sr_shmmain_ly_add_module(ly_mod, 1, sr_mods, &sr_mod, &shm_size))) {
+                goto error;
+            }
+        }
+    }
+
+    /* parse and create files for ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
+    if (!(ly_mod = lys_parse_mem(conn->ly_ctx, ietf_netconf_yang, LYS_YANG))) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        goto error;
+    }
+    if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
+        goto error;
+    }
+
+    if (!(ly_mod2 = lys_parse_mem(conn->ly_ctx, ietf_netconf_with_defaults_yang, LYS_YANG))) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        goto error;
+    }
+    if ((err_info = sr_create_module_files_with_imps_r(ly_mod2))) {
+        goto error;
+    }
+
+    /* store both modules in the presistent module data tree (output parameters not used) */
+    sr_mod = NULL;
+    if ((err_info = sr_shmmain_ly_add_module(ly_mod2, 0, sr_mods, &sr_mod, &shm_size))) {
+        goto error;
+    }
+    if ((err_info = sr_shmmain_ly_add_module(ly_mod, 1, sr_mods, &sr_mod, &shm_size))) {
+        goto error;
+    }
+
+    /* store the updated persistent data tree */
+    if ((err_info = sr_shmmain_ly_int_data_print(&sr_mods, NULL))) {
+        goto error;
+    }
+
+    *sr_mods_p = sr_mods;
+    return NULL;
+
+error:
+    lyd_free_withsiblings(sr_mods);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_node **sr_mods_p)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_mods = NULL;
+    char *path;
+    int change;
+
+    assert(sr_mods_p);
+
+    /* get internal startup file path */
+    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
+        return err_info;
+    }
+
+    /* check the existence of the data file */
+    if (access(path, R_OK) == -1) {
+        if (sr_shmmain_getnext(conn->main_shm.addr, NULL)) {
+            /* we have some modules but no file on disk, should not happen */
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" was unexpectedly deleted.", path);
+            goto cleanup;
+        }
+
+        /* create new persistent module data file */
+        if ((err_info = sr_shmmain_ly_int_data_create(conn, &sr_mods))) {
+            goto cleanup;
+        }
+    } else {
+        /* load sysrepo data */
+parse_int_sr_data:
+        sr_mods = lyd_parse_path(conn->ly_ctx, path, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
+        if (!sr_mods) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            goto cleanup;
+        }
+
+        /* apply all the scheduled changes now that it is safe */
+        if (apply_sched) {
+            change = 0;
+
+            /* remove modules */
+            if ((err_info = sr_shmmain_ly_int_data_sched_remove_modules(sr_mods, &change, &apply_sched))) {
+                goto cleanup;
+            }
+
+            if (!apply_sched) {
+                /* scheduled modules could not be removed, do not apply any scheduled changes */
+                lyd_free_withsiblings(sr_mods);
+                goto parse_int_sr_data;
+            }
+
+            /* change features */
+            if ((err_info = sr_shmmain_ly_int_data_sched_change_features(sr_mods, &change))) {
+                goto cleanup;
+            }
+
+            /* store updated data tree */
+            if (change && (err_info = sr_shmmain_ly_int_data_print(&sr_mods, NULL))) {
+                goto cleanup;
+            }
+        }
+    }
+
+    /* success */
+
+cleanup:
+    free(path);
+    if (err_info) {
+        lyd_free_withsiblings(sr_mods);
+    } else {
+        *sr_mods_p = sr_mods;
+    }
+    return err_info;
+}
+
+static sr_error_info_t *
+sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *mod;
+    char *yang_dir;
+    sr_mod_t *shm_mod = NULL;
+    off_t *features;
+    uint16_t i;
+    int ret;
+
+    if (!conn->ly_ctx) {
+        /* very first init */
+        if ((err_info = sr_path_yang_dir(&yang_dir))) {
+            return err_info;
+        }
+        conn->ly_ctx = ly_ctx_new(yang_dir, 0);
+        free(yang_dir);
+        if (!conn->ly_ctx) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create a new libyang context.");
+            return err_info;
+        }
+
+        /* load just the internal module */
+        if (!lys_parse_mem(conn->ly_ctx, sysrepo_yang, LYS_YANG)) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            return err_info;
+        }
+    }
+
+    if (sr_shmmain_getnext(conn->main_shm.addr, NULL)) {
+        /* load new modules from SHM */
+        while ((shm_mod = sr_shmmain_getnext(conn->main_shm.addr, shm_mod))) {
+            mod = ly_ctx_get_module(conn->ly_ctx, conn->main_shm.addr + shm_mod->name, shm_mod->rev, 0);
+            if (!mod) {
+                /* add the module */
+                if (!(mod = ly_ctx_load_module(conn->ly_ctx, conn->main_shm.addr + shm_mod->name, shm_mod->rev))) {
+                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                    return err_info;
+                }
+
+                /* enable features */
+                features = (off_t *)(conn->main_shm.addr + shm_mod->features);
+                for (i = 0; i < shm_mod->feat_count; ++i) {
+                    ret = lys_features_enable(mod, conn->main_shm.addr + features[i]);
+                    if (ret) {
+                        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                        return err_info;
+                    }
+                }
+            } else if (!mod->implemented) {
+                /* make the module implemented */
+                if (lys_set_implemented(mod)) {
+                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                    return err_info;
+                }
+            }
+        }
+    }
+
+    return NULL;
+}
+
+static sr_error_info_t *
+sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod = NULL;
+    char *startup_path, *running_path;
+
+    while ((shm_mod = sr_shmmain_getnext(conn->main_shm.addr, shm_mod))) {
+        if ((err_info = sr_path_running_file(conn->main_shm.addr + shm_mod->name, &running_path))) {
+            goto error;
+        }
+        if ((err_info = sr_path_startup_file(conn->main_shm.addr + shm_mod->name, &startup_path))) {
+            free(running_path);
+            goto error;
+        }
+        err_info = sr_cp(running_path, startup_path);
+        free(startup_path);
+        free(running_path);
+        if (err_info) {
+            goto error;
+        }
+    }
+
+    SR_LOG_INFMSG("Datastore copied from <startup> to <running>.");
+    return NULL;
+
+error:
+    sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Copying datastore from <startup> to <running> failed.");
+    return err_info;
+}
+
 static sr_error_info_t *
 sr_shmmain_shm_fill_data_deps(char *main_shm_addr, struct lyd_node *ly_dep_parent, sr_mod_data_dep_t *shm_deps,
         uint32_t *dep_i, char **shm_cur)
@@ -824,29 +1313,27 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
 static sr_error_info_t *
 sr_shmmain_shm_add(sr_conn_ctx_t *conn, size_t new_shm_size, struct lyd_node *from_mod)
 {
-    off_t shm_end, last_mod_off;
+    off_t shm_end;
     sr_mod_t *shm_mod = NULL;
     sr_error_info_t *err_info = NULL;
 
     assert(conn->main_shm.fd > -1);
     assert(new_shm_size);
 
-    /* remember original SHM size and last module to link others to */
+    /* remember original SHM size */
     shm_end = conn->main_shm.size;
-    while ((shm_mod = sr_shmmain_getnext(conn->main_shm.addr, shm_mod))) {
-        if (!shm_mod->next) {
-            break;
-        }
-    }
-
-    /* remember module offset because the memory can be moved */
-    last_mod_off = ((char *)shm_mod) - conn->main_shm.addr;
 
     /* remap SHM */
     if ((err_info = sr_shm_remap(&conn->main_shm, new_shm_size))) {
         return err_info;
     }
-    shm_mod = (sr_mod_t *)(conn->main_shm.addr + last_mod_off);
+
+    /* find last module to link others to */
+    while ((shm_mod = sr_shmmain_getnext(conn->main_shm.addr, shm_mod))) {
+        if (!shm_mod->next) {
+            break;
+        }
+    }
 
     /* add all newly implemented modules into SHM */
     if ((err_info = sr_shmmain_shm_add_modules(conn->main_shm.addr, from_mod, shm_mod, &shm_end))) {
@@ -861,443 +1348,6 @@ sr_shmmain_shm_add(sr_conn_ctx_t *conn, size_t new_shm_size, struct lyd_node *fr
     }
 
     return NULL;
-}
-
-static uint32_t
-sr_shmmain_ly_calculate_size(struct lyd_node *sr_mods)
-{
-    struct lyd_node *ly_mod, *ly_child, *ly_op_dep, *ly_dep, *ly_instid;
-    uint32_t shm_size = 0;
-
-    if (sr_mods) {
-        LY_TREE_FOR(sr_mods->child, ly_mod) {
-            /* a module */
-            shm_size += sizeof(sr_mod_t);
-
-            LY_TREE_FOR(ly_mod->child, ly_child) {
-                if (!strcmp(ly_child->schema->name, "name")) {
-                    /* a string */
-                    shm_size += strlen(((struct lyd_node_leaf_list *)ly_child)->value_str) + 1;
-                } else if (!strcmp(ly_child->schema->name, "enabled-feature")) {
-                    /* another feature */
-                    shm_size += sizeof(char *);
-                    /* a string */
-                    shm_size += strlen(((struct lyd_node_leaf_list *)ly_child)->value_str) + 1;
-                } else if (!strcmp(ly_child->schema->name, "data-deps")) {
-                    LY_TREE_FOR(ly_child->child, ly_dep) {
-                        /* another data dependency */
-                        shm_size += sizeof(sr_mod_data_dep_t);
-
-                        /* module name was already counted and type is an enum */
-                        if (!strcmp(ly_dep->schema->name, "inst-id")) {
-                            LY_TREE_FOR(ly_dep->child, ly_instid) {
-                                if (!strcmp(ly_instid->schema->name, "xpath")) {
-                                    /* a string */
-                                    shm_size += strlen(((struct lyd_node_leaf_list *)ly_instid)->value_str) + 1;
-                                }
-                            }
-                        }
-                    }
-                } else if (!strcmp(ly_child->schema->name, "op-deps")) {
-                    /* another op with dependencies */
-                    shm_size += sizeof(sr_mod_op_dep_t);
-
-                    LY_TREE_FOR(ly_child->child, ly_op_dep) {
-                        if (!strcmp(ly_op_dep->schema->name, "xpath")) {
-                            /* operation xpath (a string) */
-                            shm_size += strlen(((struct lyd_node_leaf_list *)ly_op_dep)->value_str) + 1;
-                        } else if (!strcmp(ly_op_dep->schema->name, "in") || !strcmp(ly_op_dep->schema->name, "out")) {
-                            LY_TREE_FOR(ly_op_dep->child, ly_dep) {
-                                /* another data dependency */
-                                shm_size += sizeof(sr_mod_data_dep_t);
-
-                                if (!strcmp(ly_dep->schema->name, "inst-id")) {
-                                    LY_TREE_FOR(ly_dep->child, ly_instid) {
-                                        if (!strcmp(ly_instid->schema->name, "xpath")) {
-                                            /* a string */
-                                            shm_size += strlen(((struct lyd_node_leaf_list *)ly_instid)->value_str) + 1;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    return shm_size;
-}
-
-static sr_error_info_t *
-sr_shmmain_ly_int_data_print(struct lyd_node **sr_mods, const struct lys_module *sr_ly_mod)
-{
-    sr_error_info_t *err_info = NULL;
-    char *path;
-
-    assert(sr_mods && (!*sr_mods || !strcmp((*sr_mods)->schema->module->name, SR_YANG_MOD)));
-    assert(*sr_mods || (sr_ly_mod && !strcmp(sr_ly_mod->name, SR_YANG_MOD)));
-
-    /* get the module */
-    if (!sr_ly_mod) {
-        sr_ly_mod = (*sr_mods)->schema->module;
-    }
-
-    /* validate */
-    if (lyd_validate_modules(sr_mods, &sr_ly_mod, 1, LYD_OPT_CONFIG)) {
-        sr_errinfo_new_ly(&err_info, sr_ly_mod->ctx);
-        return err_info;
-    }
-
-    /* get path */
-    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
-        return err_info;
-    }
-
-    /* store the data tree */
-    if (lyd_print_path(path, *sr_mods, LYD_LYB, LYP_WITHSIBLINGS)) {
-        free(path);
-        sr_errinfo_new_ly(&err_info, sr_ly_mod->ctx);
-        return err_info;
-    }
-    free(path);
-
-    return NULL;
-}
-
-static sr_error_info_t *
-sr_remove_data_files(const char *mod_name)
-{
-    sr_error_info_t *err_info = NULL;
-    char *path;
-
-    if ((err_info = sr_path_startup_file(mod_name, &path))) {
-        return err_info;
-    }
-
-    if (unlink(path) == -1) {
-        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
-    }
-    free(path);
-
-    if ((err_info = sr_path_running_file(mod_name, &path))) {
-        return err_info;
-    }
-
-    if (unlink(path) == -1) {
-        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
-    }
-    free(path);
-
-    return NULL;
-}
-
-static sr_error_info_t *
-sr_shmmain_ly_int_data_sched_remove_modules(struct lyd_node *sr_mods, int *change, int *apply_sched)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *sr_ly_mod;
-    struct ly_set *set = NULL;
-    uint32_t i;
-
-    assert(sr_mods);
-
-    sr_ly_mod = lyd_node_module(sr_mods);
-
-    /* find removed modules */
-    set = lyd_find_path(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/module/removed");
-    if (!set) {
-        sr_errinfo_new_ly(&err_info, sr_ly_mod->ctx);
-        return err_info;
-    }
-    for (i = 0; i < set->number; ++i) {
-        /* unlink the module entry from the data tree */
-        lyd_unlink(set->set.d[i]->parent);
-    }
-
-    /* validate the updated data tree, if there are any missing dependencies, it will fail */
-    if (set->number && lyd_validate_modules(&sr_mods, &sr_ly_mod, 1, LYD_OPT_CONFIG)) {
-        /* print the validation errors as warnings */
-        sr_log_wrn_ly(sr_ly_mod->ctx);
-        SR_LOG_WRNMSG("Failed to apply scheduled module changes, leaving them scheduled.");
-
-        /* do not apply any scheduled changes */
-        *apply_sched = 0;
-        goto cleanup;
-    }
-
-    for (i = 0; i < set->number; ++i) {
-        /* remove data files */
-        if ((err_info = sr_remove_data_files(sr_ly_leaf_value_str(set->set.d[i]->parent->child)))) {
-            goto cleanup;
-        }
-    }
-
-    /* success */
-    if (set->number) {
-        *change = 1;
-    }
-
-cleanup:
-    for (i = 0; i < set->number; ++i) {
-        lyd_free_withsiblings(set->set.d[i]->parent);
-    }
-    ly_set_free(set);
-    return err_info;
-}
-
-static sr_error_info_t *
-sr_shmmain_ly_int_data_sched_change_features(struct lyd_node *sr_mods, int *change)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *feat_node;
-    struct ly_set *set = NULL, *set2;
-    uint32_t i;
-    char *xpath;
-
-    assert(sr_mods);
-
-    /* find all changed features */
-    set = lyd_find_path(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/module/changed-feature");
-    if (!set) {
-        SR_ERRINFO_INT(&err_info);
-        return err_info;
-    }
-
-    for (i = 0; i < set->number; ++i) {
-        feat_node = set->set.d[i];
-        assert(feat_node->child && feat_node->child->next);
-
-        /* enable feature node */
-        if (!strcmp(sr_ly_leaf_value_str(feat_node->child->next), "enable")) {
-            /* add feature node */
-            if (!lyd_new_leaf(feat_node->parent, NULL, "enabled-features", sr_ly_leaf_value_str(feat_node->child))) {
-                sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mods)->ctx);
-                goto cleanup;
-            }
-
-        /* disable feature */
-        } else {
-            assert(!strcmp(sr_ly_leaf_value_str(feat_node->child->next), "disable"));
-            if (asprintf(&xpath, "enabled-feature[.='%s']", sr_ly_leaf_value_str(feat_node->child)) == -1) {
-                SR_ERRINFO_MEM(&err_info);
-                goto cleanup;
-            }
-
-            /* remove feature node */
-            set2 = lyd_find_path(feat_node->parent, xpath);
-            free(xpath);
-            if (!set2 || (set2->number != 1)) {
-                ly_set_free(set2);
-                SR_ERRINFO_INT(&err_info);
-                goto cleanup;
-            }
-            lyd_free(set2->set.d[0]);
-            ly_set_free(set2);
-        }
-    }
-
-    /* success */
-    if (set->number) {
-        *change = 1;
-    }
-
-cleanup:
-    for (i = 0; i < set->number; ++i) {
-        lyd_free_withsiblings(set->set.d[i]->parent);
-    }
-    ly_set_free(set);
-    return err_info;
-}
-
-sr_error_info_t *
-sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_node **sr_mods_p)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *sr_ly_mod;
-    struct lyd_node *sr_mods = NULL;
-    char *path;
-    int change;
-
-    assert(sr_mods_p);
-
-    /* get internal startup file path */
-    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
-        return err_info;
-    }
-
-    /* check the existence of the data file */
-    if (access(path, R_OK) == -1) {
-        if (sr_shmmain_getnext(conn->main_shm.addr, NULL)) {
-            /* we have some modules but no file on disk, should not happen */
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" was unexpectedly deleted.", path);
-            goto cleanup;
-        }
-
-        /* get the sysrepo module for validation */
-        sr_ly_mod = ly_ctx_get_module(conn->ly_ctx, SR_YANG_MOD, NULL, 1);
-        if (!sr_ly_mod) {
-            SR_ERRINFO_INT(&err_info);
-            goto cleanup;
-        }
-
-        /* store empty data tree */
-        if ((err_info = sr_shmmain_ly_int_data_print(&sr_mods, sr_ly_mod))) {
-            goto cleanup;
-        }
-    } else {
-        /* load sysrepo data */
-parse_int_sr_data:
-        sr_mods = lyd_parse_path(conn->ly_ctx, path, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
-        if (!sr_mods) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            goto cleanup;
-        }
-
-        /* apply all the scheduled changes now that it is safe */
-        if (apply_sched) {
-            change = 0;
-
-            /* remove modules */
-            if ((err_info = sr_shmmain_ly_int_data_sched_remove_modules(sr_mods, &change, &apply_sched))) {
-                goto cleanup;
-            }
-
-            if (!apply_sched) {
-                /* scheduled modules could not be removed, do not apply any scheduled changes */
-                lyd_free_withsiblings(sr_mods);
-                goto parse_int_sr_data;
-            }
-
-            /* change features */
-            if ((err_info = sr_shmmain_ly_int_data_sched_change_features(sr_mods, &change))) {
-                goto cleanup;
-            }
-
-            /* store updated data tree */
-            if (change && (err_info = sr_shmmain_ly_int_data_print(&sr_mods, NULL))) {
-                goto cleanup;
-            }
-        }
-    }
-
-    /* success */
-
-cleanup:
-    free(path);
-    if (err_info) {
-        lyd_free_withsiblings(sr_mods);
-    } else {
-        *sr_mods_p = sr_mods;
-    }
-    return err_info;
-}
-
-static sr_error_info_t *
-sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *mod;
-    char *yang_dir;
-    sr_mod_t *shm_mod = NULL;
-    off_t *features;
-    uint16_t i;
-    int ret;
-
-    if (!conn->ly_ctx) {
-        /* very first init */
-        if ((err_info = sr_path_yang_dir(&yang_dir))) {
-            return err_info;
-        }
-        conn->ly_ctx = ly_ctx_new(yang_dir, 0);
-        free(yang_dir);
-        if (!conn->ly_ctx) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create a new libyang context.");
-            return err_info;
-        }
-
-        /* load internal modules */
-        if (!lys_parse_mem(conn->ly_ctx, sysrepo_yang, LYS_YANG)) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            return err_info;
-        }
-        if (!lys_parse_mem(conn->ly_ctx, ietf_netconf_acm_yang, LYS_YANG)) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            return err_info;
-        }
-        if (!lys_parse_mem(conn->ly_ctx, ietf_netconf_yang, LYS_YANG)) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            return err_info;
-        }
-        if (!lys_parse_mem(conn->ly_ctx, ietf_netconf_with_defaults_yang, LYS_YANG)) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            return err_info;
-        }
-    }
-
-    if (sr_shmmain_getnext(conn->main_shm.addr, NULL)) {
-        /* load new modules from SHM */
-        while ((shm_mod = sr_shmmain_getnext(conn->main_shm.addr, shm_mod))) {
-            mod = ly_ctx_get_module(conn->ly_ctx, conn->main_shm.addr + shm_mod->name, shm_mod->rev, 0);
-            if (!mod) {
-                /* add the module */
-                if (!(mod = ly_ctx_load_module(conn->ly_ctx, conn->main_shm.addr + shm_mod->name, shm_mod->rev))) {
-                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                    return err_info;
-                }
-
-                /* enable features */
-                features = (off_t *)(conn->main_shm.addr + shm_mod->features);
-                for (i = 0; i < shm_mod->feat_count; ++i) {
-                    ret = lys_features_enable(mod, conn->main_shm.addr + features[i]);
-                    if (ret) {
-                        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                        return err_info;
-                    }
-                }
-            } else if (!mod->implemented) {
-                /* make the module implemented */
-                if (lys_set_implemented(mod)) {
-                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                    return err_info;
-                }
-            }
-        }
-    }
-
-    return NULL;
-}
-
-static sr_error_info_t *
-sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_mod_t *shm_mod = NULL;
-    char *startup_path, *running_path;
-
-    while ((shm_mod = sr_shmmain_getnext(conn->main_shm.addr, shm_mod))) {
-        if ((err_info = sr_path_running_file(conn->main_shm.addr + shm_mod->name, &running_path))) {
-            goto error;
-        }
-        if ((err_info = sr_path_startup_file(conn->main_shm.addr + shm_mod->name, &startup_path))) {
-            free(running_path);
-            goto error;
-        }
-        err_info = sr_cp(running_path, startup_path);
-        free(startup_path);
-        free(running_path);
-        if (err_info) {
-            goto error;
-        }
-    }
-
-    SR_LOG_INFMSG("Datastore copied from <startup> to <running>.");
-    return NULL;
-
-error:
-    sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Copying datastore from <startup> to <running> failed.");
-    return err_info;
 }
 
 sr_error_info_t *
@@ -1334,18 +1384,17 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
         return err_info;
     }
 
-    /* parse libyang data tree */
+    /* parse libyang internal data tree */
     if ((err_info = sr_shmmain_ly_int_data_parse(conn, 1, &sr_mods))) {
         return err_info;
     }
 
     /* create SHM content */
     mod_shm_size = sr_shmmain_ly_calculate_size(sr_mods);
-    if (mod_shm_size) {
-        if ((err_info = sr_shmmain_shm_add(conn, conn->main_shm.size + mod_shm_size, sr_mods->child))) {
-            lyd_free_withsiblings(sr_mods);
-            return err_info;
-        }
+    assert(mod_shm_size);
+    if ((err_info = sr_shmmain_shm_add(conn, conn->main_shm.size + mod_shm_size, sr_mods->child))) {
+        lyd_free_withsiblings(sr_mods);
+        return err_info;
     }
 
     /* msync */
@@ -1987,40 +2036,40 @@ next_sibling:
 
 static sr_error_info_t *
 sr_shmmain_ly_add_module(const struct lys_module *mod, int replay_support, struct lyd_node *sr_mods,
-        struct lyd_node **ly_mod_p, size_t *shm_size)
+        struct lyd_node **sr_mod_p, size_t *shm_size)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_node *root;
-    struct lyd_node *ly_mod, *ly_data_deps;
+    struct lyd_node *sr_mod, *ly_data_deps;
     uint8_t i;
 
-    assert(ly_mod_p);
+    assert(sr_mod_p && shm_size);
 
     /* structure itself */
     *shm_size += sizeof(sr_mod_t);
     /* model name */
     *shm_size += strlen(mod->name) + 1;
 
-    ly_mod = lyd_new(sr_mods, NULL, "module");
-    if (!ly_mod) {
+    sr_mod = lyd_new(sr_mods, NULL, "module");
+    if (!sr_mod) {
         sr_errinfo_new_ly(&err_info, mod->ctx);
         return err_info;
-    } else if (!*ly_mod_p) {
-        *ly_mod_p = ly_mod;
+    } else if (!*sr_mod_p) {
+        *sr_mod_p = sr_mod;
         SR_LOG_INF("Module \"%s\" installed.", mod->name);
     } else {
         SR_LOG_INF("Dependency module \"%s\" installed.", mod->name);
     }
-    if (!lyd_new_leaf(ly_mod, NULL, "name", mod->name)) {
+    if (!lyd_new_leaf(sr_mod, NULL, "name", mod->name)) {
         sr_errinfo_new_ly(&err_info, mod->ctx);
         return err_info;
     }
-    if (mod->rev_size && !lyd_new_leaf(ly_mod, NULL, "revision", mod->rev[0].date)) {
+    if (mod->rev_size && !lyd_new_leaf(sr_mod, NULL, "revision", mod->rev[0].date)) {
         sr_errinfo_new_ly(&err_info, mod->ctx);
         return err_info;
     }
 
-    if (replay_support && !lyd_new_leaf(ly_mod, NULL, "replay-support", NULL)) {
+    if (replay_support && !lyd_new_leaf(sr_mod, NULL, "replay-support", NULL)) {
         sr_errinfo_new_ly(&err_info, mod->ctx);
         return err_info;
     }
@@ -2032,14 +2081,14 @@ sr_shmmain_ly_add_module(const struct lys_module *mod, int replay_support, struc
             /* feature name */
             *shm_size += strlen(mod->features[i].name) + 1;
 
-            if (!lyd_new_leaf(ly_mod, NULL, "enabled-feature", mod->features[i].name)) {
+            if (!lyd_new_leaf(sr_mod, NULL, "enabled-feature", mod->features[i].name)) {
                 sr_errinfo_new_ly(&err_info, mod->ctx);
                 return err_info;
             }
         }
     }
 
-    ly_data_deps = lyd_new(ly_mod, NULL, "data-deps");
+    ly_data_deps = lyd_new(sr_mod, NULL, "data-deps");
     if (!ly_data_deps) {
         sr_errinfo_new_ly(&err_info, mod->ctx);
         return err_info;
@@ -2051,7 +2100,7 @@ sr_shmmain_ly_add_module(const struct lys_module *mod, int replay_support, struc
             continue;
         }
 
-        if ((err_info = sr_shmmain_ly_add_data_deps_r(ly_mod, root, ly_data_deps, shm_size))) {
+        if ((err_info = sr_shmmain_ly_add_data_deps_r(sr_mod, root, ly_data_deps, shm_size))) {
             return err_info;
         }
     }
@@ -2061,7 +2110,7 @@ sr_shmmain_ly_add_module(const struct lys_module *mod, int replay_support, struc
 
 static sr_error_info_t *
 sr_shmmain_ly_add_module_with_imps(char *main_shm_addr, const struct lys_module *mod, int replay_support,
-        struct lyd_node *sr_mods, struct lyd_node **ly_mod_p, size_t *shm_size)
+        struct lyd_node *sr_mods, struct lyd_node **sr_mod_p, size_t *shm_size)
 {
     sr_error_info_t *err_info = NULL;
     uint8_t i;
@@ -2071,7 +2120,7 @@ sr_shmmain_ly_add_module_with_imps(char *main_shm_addr, const struct lys_module 
         return NULL;
     }
 
-    if ((err_info = sr_shmmain_ly_add_module(mod, replay_support, sr_mods, ly_mod_p, shm_size))) {
+    if ((err_info = sr_shmmain_ly_add_module(mod, replay_support, sr_mods, sr_mod_p, shm_size))) {
         return err_info;
     }
 
@@ -2079,7 +2128,7 @@ sr_shmmain_ly_add_module_with_imps(char *main_shm_addr, const struct lys_module 
     for (i = 0; i < mod->imp_size; ++i) {
         if (mod->imp[i].module->implemented) {
             if ((err_info = sr_shmmain_ly_add_module_with_imps(main_shm_addr, mod->imp[i].module, replay_support, sr_mods,
-                    ly_mod_p, shm_size))) {
+                    sr_mod_p, shm_size))) {
                 return err_info;
             }
         }
@@ -2100,7 +2149,7 @@ sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mo
         goto cleanup;
     }
 
-    /* get the combined size of all newly implemented modules */
+    /* add module into persistent data tree and get the combined size of all newly implemented modules */
     assert(mod->implemented);
     if ((err_info = sr_shmmain_ly_add_module_with_imps(conn->main_shm.addr, mod, replay_support, sr_mods, &sr_mod, &shm_size))) {
         goto cleanup;
