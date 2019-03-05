@@ -69,14 +69,14 @@ help_print(void)
         "  -l, --list            List YANG modules in sysrepo.\n"
         "  -i, --install         Install the specified schema into sysrepo.\n"
         "  -u, --uninstall       Uninstall the specified module from sysrepo.\n"
-        "  -c, --change          Change permissions or features of the specified module.\n"
+        "  -c, --change          Change access rights, features, or replay support of the specified module.\n"
         "\n"
         "Available other-options:\n"
         "  -s, --search-dir      Directory to search for include/import modules. Directory with already-installed\n"
         "                        modules is always searched (install op).\n"
         "  -e, --enable-feature  Enabled specific feature. Can be specified multiple times (install, change op).\n"
         "  -d, --disable-feature Disable specific feature. Can be specified multiple times (change op).\n"
-        "  -n, --no-replay       Disable replay - do not store notifications for this module (install op).\n"
+        "  -r, --replay          Enable replay - store notifications for this module (change op).\n"
         "  -o, --owner           Set filesystem owner of a module (change op).\n"
         "  -g, --group           Set filesystem group of a module (change op).\n"
         "  -p, --permissions     Set filesystem permissions of a module (chmod format) (change op).\n"
@@ -391,7 +391,7 @@ main(int argc, char** argv)
     char **features = NULL, **dis_features = NULL, *ptr;
     mode_t perms = -1;
     sr_log_level_t log_level = 0;
-    int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = 1;
+    int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = 0;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
         {"verbosity",       required_argument, NULL, 'v'},
@@ -402,7 +402,7 @@ main(int argc, char** argv)
         {"search-dir",      required_argument, NULL, 's'},
         {"enable-feature",  required_argument, NULL, 'e'},
         {"disable-feature", required_argument, NULL, 'd'},
-        {"no-replay",       no_argument,       NULL, 'n'},
+        {"replay",          no_argument,       NULL, 'r'},
         {"owner",           required_argument, NULL, 'o'},
         {"group",           required_argument, NULL, 'g'},
         {"permissions",     required_argument, NULL, 'p'},
@@ -415,7 +415,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hv:li:u:c:s:e:d:no:g:p:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hv:li:u:c:s:e:d:ro:g:p:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             help_print();
@@ -486,8 +486,8 @@ main(int argc, char** argv)
             dis_features = realloc(dis_features, (dis_feat_count + 1) * sizeof *dis_features);
             dis_features[dis_feat_count++] = optarg;
             break;
-        case 'n':
-            replay = 0;
+        case 'r':
+            replay = 1;
             break;
         case 'o':
             if (owner) {
@@ -544,7 +544,7 @@ main(int argc, char** argv)
         break;
     case 'i':
         /* install */
-        if ((r = sr_install_module(conn, file_path, search_dir, (const char **)features, feat_count, replay)) != SR_ERR_OK) {
+        if ((r = sr_install_module(conn, file_path, search_dir, (const char **)features, feat_count)) != SR_ERR_OK) {
             error_print(r, "Failed to install module \"%s\"", file_path);
             goto cleanup;
         }
@@ -581,6 +581,14 @@ main(int argc, char** argv)
         for (i = 0; i < dis_feat_count; ++i) {
             if ((r = sr_disable_feature(conn, module_name, dis_features[i])) != SR_ERR_OK) {
                 error_print(r, "Failed to disable feature \"%s\"", dis_features[i]);
+                goto cleanup;
+            }
+        }
+
+        /* enable replay */
+        if (replay) {
+            if ((r = sr_set_module_replay_support(conn, module_name, replay))) {
+                error_print(r, "Failed to enable replay");
                 goto cleanup;
             }
         }

@@ -3002,7 +3002,7 @@ sr_get_context(sr_conn_ctx_t *conn)
 
 API int
 sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir,
-        const char **features, int feat_count, int replay_support)
+        const char **features, int feat_count)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *mod;
@@ -3052,7 +3052,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
     if (mod) {
         /* it is currently in the context, but maybe marked for deletion? */
-        err_info = sr_shmmain_unsched_del_module_with_imps(conn, mod, replay_support);
+        err_info = sr_shmmain_unsched_del_module_with_imps(conn, mod);
         if (err_info && (err_info->err_code == SR_ERR_NOT_FOUND)) {
             sr_errinfo_free(&err_info);
             sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" is already in sysrepo.", mod->name);
@@ -3101,7 +3101,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     }
 
     /* add into main SHM */
-    if ((err_info = sr_shmmain_add_module_with_imps(conn, mod, replay_support))) {
+    if ((err_info = sr_shmmain_add_module_with_imps(conn, mod))) {
         goto cleanup_unlock;
     }
 
@@ -3123,6 +3123,39 @@ cleanup_unlock:
     sr_shmmain_unlock(conn, 1);
 
     free(mod_name);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int replay_support)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* try to find this module */
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup_unlock;
+    }
+
+    /* update replay-support flag both in LY data tree and in main SHM */
+    if ((err_info = sr_shmmain_update_replay_support(conn, module_name, replay_support))) {
+        goto cleanup_unlock;
+    }
+
+    /* success */
+
+cleanup_unlock:
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(conn, 0);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -3236,7 +3269,7 @@ API int
 sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *mod;
+    const struct lys_module *ly_mod;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
 
@@ -3246,8 +3279,8 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
     }
 
     /* try to find this module */
-    mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!mod) {
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
         goto error_unlock;
     }
@@ -3276,8 +3309,8 @@ error_unlock:
 static sr_error_info_t *
 sr_change_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int enable)
 {
-    const struct lys_module *mod;
     sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
     int ret;
 
     /* SHM WRITE LOCK */
@@ -3286,8 +3319,8 @@ sr_change_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feat
     }
 
     /* try to find this module */
-    mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!mod) {
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
     }
@@ -3298,7 +3331,7 @@ sr_change_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feat
     }
 
     /* check feature in the current context */
-    ret = lys_features_state(mod, feature_name);
+    ret = lys_features_state(ly_mod, feature_name);
     if (ret == -1) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Feature \"%s\" was not found in module \"%s\".",
                 feature_name, module_name);
@@ -3306,7 +3339,7 @@ sr_change_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feat
     }
 
     /* mark the change in LY data tree */
-    if ((err_info = sr_shmmain_deferred_change_feature(conn, mod->name, feature_name, enable))) {
+    if ((err_info = sr_shmmain_deferred_change_feature(conn, ly_mod->name, feature_name, enable))) {
         goto cleanup;
     }
 

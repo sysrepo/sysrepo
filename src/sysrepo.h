@@ -1299,7 +1299,9 @@ int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name
 const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
 
 int sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir, const char **features,
-        int feat_count, int replay_support);
+        int feat_count);
+
+int sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int replay_support);
 
 int sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm);
 

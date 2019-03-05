@@ -51,10 +51,10 @@ setup_f(void **state)
         return 1;
     }
 
-    if (sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/refs.yang", TESTS_DIR "/files", NULL, 0, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/refs.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
 

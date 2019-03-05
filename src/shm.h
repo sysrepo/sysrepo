@@ -249,9 +249,11 @@ sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int keep_rem
 
 void sr_shmmain_unlock(sr_conn_ctx_t *conn, int kept_remap);
 
-sr_error_info_t *sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod, int replay_support);
+sr_error_info_t *sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod);
 
-sr_error_info_t *sr_shmmain_unsched_del_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod, int replay_support);
+sr_error_info_t *sr_shmmain_update_replay_support(sr_conn_ctx_t *conn, const char *mod_name, int replay_support);
+
+sr_error_info_t *sr_shmmain_unsched_del_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *mod);
 
 sr_error_info_t *sr_shmmain_deferred_del_module(sr_conn_ctx_t *conn, const char *mod_name);
 

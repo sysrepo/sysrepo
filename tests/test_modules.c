@@ -97,13 +97,17 @@ test_data_deps(void **state)
     struct state *st = (struct state *)*state;
     int ret;
 
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0, 0);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0, 1);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0, 0);
+    ret = sr_set_module_replay_support(st->conn, "ietf-interfaces", 1);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/refs.yang", TESTS_DIR "/files", NULL, 0, 1);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/refs.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_module_replay_support(st->conn, "refs", 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_remove_module(st->conn, "refs");
@@ -162,9 +166,13 @@ test_op_deps(void **state)
     struct state *st = (struct state *)*state;
     int ret;
 
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0, 1);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0, 0);
+    ret = sr_set_module_replay_support(st->conn, "ops-ref", 1);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_module_replay_support(st->conn, "ops", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_remove_module(st->conn, "ops");
@@ -246,9 +254,11 @@ test_remove_dep_module(void **state)
     int ret;
 
     /* install modules with one dependeing on the other */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0, 1);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0, 0);
+    ret = sr_set_module_replay_support(st->conn, "ops-ref", 1);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* remove module required by the other module */
