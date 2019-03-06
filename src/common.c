@@ -1236,12 +1236,13 @@ sr_perm_check(const char *mod_name, int wr)
         return err_info;
     }
 
-    if (access(path, (wr ? W_OK : R_OK)) == -1) {
+    /* check against effective permissions */
+    if (eaccess(path, (wr ? W_OK : R_OK)) == -1) {
         if (errno == EACCES) {
             sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "%s permission \"%s\" check failed.",
                     wr ? "Write" : "Read", mod_name);
         } else {
-            SR_ERRINFO_SYSERRNO(&err_info, "access");
+            SR_ERRINFO_SYSERRNO(&err_info, "eaccess");
         }
     }
 

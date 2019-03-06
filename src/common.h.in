@@ -39,6 +39,12 @@
  */
 #define API __attribute__((visibility("default")))
 
+/* use access() if eaccess() is not available (it may adversely affect access control, however) */
+#cmakedefine SR_HAVE_EACCESS
+#ifndef SR_HAVE_EACCESS
+#   define eaccess access
+#endif
+
 /* name of sysrepo YANG module */
 #define SR_YANG_MOD "sysrepo"
 

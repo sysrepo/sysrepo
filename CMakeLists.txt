@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 2.8.12)
 project(sysrepo)
 set(SYSREPO_DESC "YANG-based system repository")
 include(GNUInstallDirs)
+include(CheckSymbolExists)
 
 # setup version
 set(SYSREPO_MAJOR_VERSION 1)
@@ -75,6 +76,14 @@ if(YANG_MODULE_PATH)
     message(STATUS "YANG module path:   ${YANG_MODULE_PATH}")
 else()
     message(STATUS "YANG module path:   ${REPO_PATH}/yang")
+endif()
+
+# required functions
+set(CMAKE_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS} -D_GNU_SOURCE")
+check_symbol_exists(eaccess "unistd.h" SR_HAVE_EACCESS)
+if(NOT SR_HAVE_EACCESS)
+    message(WARNING "Function eaccess() is not supported, using access() instead which may "
+        "change results of access control checks!")
 endif()
 
 # generate common file
