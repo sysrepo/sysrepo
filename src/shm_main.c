@@ -739,10 +739,14 @@ sr_shmmain_ly_int_data_sched_remove_modules(struct lyd_node *sr_mods, int *chang
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *sr_ly_mod;
+    struct lyd_node *sr_mod, *node;
     struct ly_set *set = NULL;
-    uint32_t i;
+    const char *mod_name, *revision;
+    const struct lys_module *ly_mod;
+    uint32_t i, idx;
 
     assert(sr_mods);
+    assert(*apply_sched);
 
     sr_ly_mod = lyd_node_module(sr_mods);
 
@@ -757,20 +761,52 @@ sr_shmmain_ly_int_data_sched_remove_modules(struct lyd_node *sr_mods, int *chang
         lyd_unlink(set->set.d[i]->parent);
     }
 
-    /* validate the updated data tree, if there are any missing dependencies, it will fail */
-    if (set->number && lyd_validate_modules(&sr_mods, &sr_ly_mod, 1, LYD_OPT_CONFIG)) {
-        /* print the validation errors as warnings */
-        sr_log_wrn_ly(sr_ly_mod->ctx);
-        SR_LOG_WRNMSG("Failed to apply scheduled module changes, leaving them scheduled.");
+    /* we need to check for some possible broken dependencies, so load all the models
+     * and check there are no removed ones in the context */
+    if (set->number) {
+        LY_TREE_FOR(sr_mods->child, sr_mod) {
+            /* learn about the module */
+            assert(!strcmp(sr_mod->child->schema->name, "name"));
+            mod_name = sr_ly_leaf_value_str(sr_mod->child);
 
-        /* do not apply any scheduled changes */
-        *apply_sched = 0;
-        goto cleanup;
+            revision = NULL;
+            LY_TREE_FOR(sr_mods->child->next, node) {
+                if (!strcmp(node->schema->name, "revision")) {
+                    revision = sr_ly_leaf_value_str(node);
+                    break;
+                }
+            }
+
+            /* load it */
+            if (!ly_ctx_load_module(sr_ly_mod->ctx, mod_name, revision)) {
+                sr_errinfo_new_ly(&err_info, sr_ly_mod->ctx);
+                goto cleanup;
+            }
+        }
+
+        /* compare the loaded implemented modules to the removed ones */
+        idx = ly_ctx_internal_modules_count(sr_ly_mod->ctx);
+        while ((ly_mod = ly_ctx_get_module_iter(sr_ly_mod->ctx, &idx))) {
+            for (i = 0; i < set->number; ++i) {
+                mod_name = sr_ly_leaf_value_str(set->set.d[i]->parent->child);
+                if (!strcmp(ly_mod->name, mod_name)) {
+                    /* this module cannot be removed */
+                    SR_LOG_WRN("Cannot remove module \"%s\" because some other installed module depends on it.", mod_name);
+
+                    /* do not apply any scheduled changes */
+                    *apply_sched = 0;
+                    goto cleanup;
+                }
+            }
+        }
     }
 
+    /* now all the modules can really be removed with their data files */
     for (i = 0; i < set->number; ++i) {
-        /* remove data files */
-        if ((err_info = sr_remove_data_files(sr_ly_leaf_value_str(set->set.d[i]->parent->child)))) {
+        mod_name = sr_ly_leaf_value_str(set->set.d[i]->parent->child);
+        SR_LOG_INF("Module \"%s\" was removed.", mod_name);
+
+        if ((err_info = sr_remove_data_files(mod_name))) {
             goto cleanup;
         }
     }
@@ -785,6 +821,9 @@ cleanup:
         lyd_free_withsiblings(set->set.d[i]->parent);
     }
     ly_set_free(set);
+    if (!*apply_sched) {
+        SR_LOG_WRNMSG("Failed to apply scheduled module changes, leaving them scheduled.");
+    }
     return err_info;
 }
 
@@ -943,6 +982,7 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
     char *path;
     int change;
 
+    assert(conn->ly_ctx);
     assert(sr_mods_p);
 
     /* get internal startup file path */
@@ -1398,39 +1438,39 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
         return err_info;
     }
 
-    /* parse libyang internal data tree */
+    /* parse libyang internal data tree and apply any scheduled changes */
     if ((err_info = sr_shmmain_ly_int_data_parse(conn, 1, &sr_mods))) {
-        return err_info;
+        goto cleanup;
     }
 
     /* create SHM content */
     mod_shm_size = sr_shmmain_ly_calculate_size(sr_mods);
     assert(mod_shm_size);
     if ((err_info = sr_shmmain_shm_add(conn, conn->main_shm.size + mod_shm_size, sr_mods->child))) {
-        lyd_free_withsiblings(sr_mods);
-        return err_info;
+        goto cleanup;
     }
 
     /* msync */
     if (msync(conn->main_shm.addr, conn->main_shm.size, MS_SYNC)) {
         SR_ERRINFO_SYSERRNO(&err_info, "msync");
-        return err_info;
+        goto cleanup;
     }
-
-    /* free it now because the context will change */
-    lyd_free_withsiblings(sr_mods);
 
     /* update libyang context with info from SHM */
     if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-        return err_info;
+        goto cleanup;
     }
 
     /* copy full datastore from <startup> to <running> */
     if ((err_info = sr_shmmain_files_startup2running(conn))) {
-        return err_info;
+        goto cleanup;
     }
 
-    return NULL;
+    /* success */
+
+cleanup:
+    lyd_free_withsiblings(sr_mods);
+    return err_info;
 }
 
 sr_error_info_t *
