@@ -222,6 +222,7 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, const sr_s
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
+    uid_t uid;
 
     SR_CHECK_ARG_APIRET(!conn || !session, NULL, err_info);
 
@@ -248,6 +249,12 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, const sr_s
     /* SHM UNLOCK */
     sr_shmmain_unlock(conn, 0);
 
+    /* remember current real process owner */
+    uid = getuid();
+    if ((err_info = sr_get_pwd(&uid, &(*session)->sid.user))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
     /* PTR LOCK */
     if ((err_info = sr_mlock(&conn->ptr_lock, -1, __func__))) {
         return sr_api_ret(NULL, err_info);
@@ -268,7 +275,7 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, const sr_s
     (*session)->conn = conn;
     (*session)->ds = datastore;
 
-    SR_LOG_INF("Session %u created.", (*session)->sid.sr);
+    SR_LOG_INF("Session %u (user \"%s\") created.", (*session)->sid.sr, (*session)->sid.user);
 
     return sr_api_ret(NULL, NULL);
 }
@@ -294,6 +301,7 @@ sr_session_stop(sr_session_ctx_t *session)
     /* PTR UNLOCK */
     sr_munlock(&session->conn->ptr_lock);
 
+    free(session->sid.user);
     for (i = 0; i < 2; ++i) {
         lyd_free_withsiblings(session->dt[i].edit);
     }
@@ -378,6 +386,52 @@ sr_session_get_nc_id(sr_session_ctx_t *session)
     }
 
     return session->sid.nc;
+}
+
+API void
+sr_session_set_user(sr_session_ctx_t *session, const char *user)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (!session) {
+        return;
+    }
+
+    if (geteuid()) {
+        /* not a root */
+        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Root access required.");
+        sr_api_ret(session, err_info);
+        return;
+    }
+
+    /* replace the user */
+    free(session->sid.user);
+    session->sid.user = strdup(user);
+    if (!session->sid.user) {
+        SR_ERRINFO_MEM(&err_info);
+        sr_api_ret(session, err_info);
+        return;
+    }
+}
+
+API const char *
+sr_session_get_user(sr_session_ctx_t *session)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (!session) {
+        return NULL;
+    }
+
+    if (geteuid()) {
+        /* not a root */
+        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Root access required.");
+        sr_api_ret(session, err_info);
+        return NULL;
+    }
+
+    /* return the user */
+    return session->sid.user;
 }
 
 API sr_conn_ctx_t *
@@ -941,6 +995,11 @@ sr_apply_changes(sr_session_ctx_t *session)
         if ((err_info = sr_shmsub_conf_notify_change_done(&mod_info, session->sid))) {
             goto cleanup_mods_unlock;
         }
+
+        /* generate netconf-config-change notification */
+        if ((err_info = sr_modinfo_generate_config_change_notif(&mod_info, session))) {
+            goto cleanup_mods_unlock;
+        }
     }
 
     /* success */
@@ -1081,6 +1140,11 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         if ((err_info = sr_shmsub_conf_notify_change_done(&dst_mod_info, session->sid))) {
             goto cleanup_mods_unlock;
         }
+
+        /* generate netconf-config-change notification */
+        if ((err_info = sr_modinfo_generate_config_change_notif(&dst_mod_info, session))) {
+            goto cleanup_mods_unlock;
+        }
     }
 
     /* success */
@@ -1203,6 +1267,11 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     if (dst_mod_info.diff) {
         /* publish "done" event, all changes were applied */
         if ((err_info = sr_shmsub_conf_notify_change_done(&dst_mod_info, session->sid))) {
+            goto cleanup_mods_unlock;
+        }
+
+        /* generate netconf-config-change notification */
+        if ((err_info = sr_modinfo_generate_config_change_notif(&dst_mod_info, session))) {
             goto cleanup_mods_unlock;
         }
     }
@@ -1958,70 +2027,23 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_attr *attr, *attr2;
-    struct lyd_node *node, *parent;
+    struct lyd_node *node;
     const char *attr_name, *attr_mod_name;
     sr_change_oper_t op;
 
     SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !iter || !operation || !old_value || !new_value,
             session, err_info);
 
-next_item:
-    if (iter->idx == iter->set->number) {
-        return SR_ERR_NOT_FOUND;
-    }
-    node = iter->set->set.d[iter->idx];
-
-    /* find the (inherited) operation of the current edit node */
-    attr = NULL;
-    for (parent = node; parent; parent = parent->parent) {
-        for (attr = parent->attr; attr && strcmp(attr->name, "operation"); attr = attr->next);
-        if (attr) {
-            break;
-        }
-    }
-    if (!attr) {
-        SR_ERRINFO_INT(&err_info);
+    /* get next change */
+    if ((err_info = sr_diff_set_getnext(iter->set, &iter->idx, &node, &op))) {
         return sr_api_ret(session, err_info);
     }
 
-    if (lys_is_key((struct lys_node_leaf *)node->schema, NULL) && sr_ly_is_userord(node->parent) && (attr->value_str[0] == 'r')) {
-        /* skip keys of list move operations */
-        ++iter->idx;
-        goto next_item;
+    if (!node) {
+        /* no more changes */
+        return SR_ERR_NOT_FOUND;
     }
 
-    /* decide operation */
-    if (attr->value_str[0] == 'n') {
-        assert(!strcmp(attr->annotation->module->name, SR_YANG_MOD));
-        assert(!strcmp(attr->value_str, "none"));
-        /* skip the node */
-        ++iter->idx;
-
-        /* in case of lists we want to also skip all their keys */
-        if (node->schema->nodetype == LYS_LIST) {
-            iter->idx += ((struct lys_node_list *)node->schema)->keys_size;
-        }
-        goto next_item;
-    } else if (attr->value_str[0] == 'c') {
-        assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
-        assert(!strcmp(attr->value_str, "create"));
-        op = SR_OP_CREATED;
-    } else if (attr->value_str[0] == 'd') {
-        assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
-        assert(!strcmp(attr->value_str, "delete"));
-        op = SR_OP_DELETED;
-    } else if (attr->value_str[0] == 'r') {
-        assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
-        assert(!strcmp(attr->value_str, "replace"));
-        if (node->schema->nodetype == LYS_LEAF) {
-            op = SR_OP_MODIFIED;
-        } else if (node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) {
-            op = SR_OP_MOVED;
-        } else {
-            SR_ERRINFO_INT(&err_info);
-            return sr_api_ret(session, err_info);
-        }
-    }
     if (iter->reverse_changes) {
         /* we are in an abort */
         if (op == SR_OP_CREATED) {
@@ -2134,7 +2156,6 @@ next_item:
     }
 
     *operation = op;
-    ++iter->idx;
     return sr_api_ret(session, NULL);
 }
 
@@ -2716,19 +2737,6 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t
 cleanup:
     lyd_free_withsiblings(notif_tree);
     return sr_api_ret(session, err_info);
-}
-
-static sr_error_info_t *
-sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, uint32_t *notif_sub_count)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_mod_t *shm_mod;
-
-    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, mod_name, 0);
-    SR_CHECK_INT_RET(!shm_mod, err_info);
-
-    *notif_sub_count = shm_mod->notif_sub_count;
-    return NULL;
 }
 
 API int

@@ -30,6 +30,8 @@ removed functions:
 
 added functions:
 - sr_session_get_ds
+- sr_session_set_user
+- sr_session_get_user
 - sr_session_set_nc_id
 - sr_session_get_nc_id
 - sr_get_context

@@ -702,6 +702,19 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
 }
 
 sr_error_info_t *
+sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, uint32_t *notif_sub_count)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+
+    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, mod_name, 0);
+    SR_CHECK_INT_RET(!shm_mod, err_info);
+
+    *notif_sub_count = shm_mod->notif_sub_count;
+    return NULL;
+}
+
+sr_error_info_t *
 sr_notif_call_callback(sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
         const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts)
 {
@@ -1030,7 +1043,7 @@ sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path)
     return err_info;
 }
 
-static sr_error_info_t *
+sr_error_info_t *
 sr_get_pwd(uid_t *uid, char **user)
 {
     sr_error_info_t *err_info = NULL;

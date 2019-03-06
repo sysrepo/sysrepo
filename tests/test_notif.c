@@ -747,6 +747,198 @@ test_no_replay(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST 6 */
+static void
+notif_config_change_cb(const sr_ev_notif_type_t notif_type, const struct lyd_node *notif, time_t timestamp, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    char *str1;
+    const char *str2;
+
+    assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
+    assert_non_null(notif);
+    assert_string_equal(notif->schema->name, "netconf-config-change");
+    assert_string_equal(notif->child->schema->name, "changed-by");
+    (void)timestamp;
+
+    switch (st->cb_called) {
+    case 0:
+        lyd_print_mem(&str1, notif->child->next, LYD_XML, LYP_WITHSIBLINGS);
+        str2 =
+        "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:o=\"urn:ops\">/o:cont/o:list1[o:k='key']</target>"
+            "<operation>create</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:o=\"urn:ops\">/o:cont/o:list1[o:k='key']/o:k</target>"
+            "<operation>create</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:o=\"urn:ops\">/o:cont/o:list1[o:k='key']/o:cont2</target>"
+            "<operation>create</operation>"
+        "</edit>";
+
+        assert_string_equal(str1, str2);
+        free(str1);
+        break;
+    case 1:
+        lyd_print_mem(&str1, notif->child->next, LYD_XML, LYP_WITHSIBLINGS);
+        str2 =
+        "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:t=\"urn:test\">/t:test-leaf</target>"
+            "<operation>create</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']</target>"
+            "<operation>create</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']/t:k</target>"
+            "<operation>create</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two']</target>"
+            "<operation>create</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two']/t:k</target>"
+            "<operation>create</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:or=\"urn:ops-ref\">/or:l1</target>"
+            "<operation>create</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:or=\"urn:ops-ref\">/or:l2</target>"
+            "<operation>create</operation>"
+        "</edit>";
+
+        assert_string_equal(str1, str2);
+        free(str1);
+        break;
+    case 2:
+        lyd_print_mem(&str1, notif->child->next, LYD_XML, LYP_WITHSIBLINGS);
+        str2 =
+        "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']</target>"
+            "<operation>merge</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:or=\"urn:ops-ref\">/or:l1</target>"
+            "<operation>replace</operation>"
+        "</edit>";
+
+        assert_string_equal(str1, str2);
+        free(str1);
+        break;
+    case 3:
+        lyd_print_mem(&str1, notif->child->next, LYD_XML, LYP_WITHSIBLINGS);
+        str2 =
+        "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:t=\"urn:test\">/t:test-leaf</target>"
+            "<operation>delete</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']</target>"
+            "<operation>delete</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']/t:k</target>"
+            "<operation>delete</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two']</target>"
+            "<operation>delete</operation>"
+        "</edit>"
+        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two']/t:k</target>"
+            "<operation>delete</operation>"
+        "</edit>";
+
+        assert_string_equal(str1, str2);
+        free(str1);
+        break;
+    default:
+        fail();
+    }
+
+    /* signal that we were called */
+    ++st->cb_called;
+    pthread_barrier_wait(&st->barrier);
+}
+
+static void
+test_notif_config_change(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    int ret;
+
+    st->cb_called = 0;
+
+    /* subscribe to netconf-config-change */
+    ret = sr_event_notif_subscribe_tree(st->sess, "ietf-netconf-notifications",
+            "/ietf-netconf-notifications:netconf-config-change", 0, 0, notif_config_change_cb, st, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* repeatedly set some data and check the notification */
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the notification */
+    pthread_barrier_wait(&st->barrier);
+    assert_int_equal(st->cb_called, 1);
+
+    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "val", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops-ref:l2", "other-val", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "52", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='one']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='two']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the notification */
+    pthread_barrier_wait(&st->barrier);
+    assert_int_equal(st->cb_called, 2);
+
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='one']", SR_MOVE_AFTER, "[k='two']", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "val2", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the notification */
+    pthread_barrier_wait(&st->barrier);
+    assert_int_equal(st->cb_called, 3);
+
+    ret = sr_delete_item(st->sess, "/test:test-leaf", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/test:cont/l2[k='one']", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/test:cont/l2[k='two']", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the notification */
+    pthread_barrier_wait(&st->barrier);
+    assert_int_equal(st->cb_called, 4);
+
+    sr_unsubscribe(subscr);
+}
+
 /* MAIN */
 int
 main(void)
@@ -757,6 +949,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_replay_simple, clear_ops_notif, clear_ops),
         cmocka_unit_test_setup(test_replay_interval, create_ops_notif),
         cmocka_unit_test_setup_teardown(test_no_replay, clear_ops_notif, clear_ops),
+        cmocka_unit_test_teardown(test_notif_config_change, clear_ops),
     };
 
     sr_log_stderr(SR_LL_INF);

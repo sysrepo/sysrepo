@@ -41,4 +41,6 @@ sr_error_info_t *sr_ly_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node 
 sr_error_info_t *sr_ly_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, const char *operation,
         const char *def_operation, const sr_move_position_t *position, const char *keys, const char *val);
 
+sr_error_info_t *sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, sr_change_oper_t *op);
+
 #endif

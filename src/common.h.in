@@ -124,6 +124,7 @@ typedef struct sr_shm_s {
 typedef struct sr_sid_s {
     uint32_t sr;
     uint32_t nc;
+    char *user;
 } sr_sid_t;
 
 #include "replay.h"
@@ -270,6 +271,8 @@ void sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time
 
 sr_error_info_t *sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs);
 
+sr_error_info_t *sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, uint32_t *notif_sub_count);
+
 sr_error_info_t *sr_notif_call_callback(sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
         const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts);
 
@@ -293,6 +296,8 @@ sr_error_info_t *sr_path_startup_file(const char *mod_name, char **path);
 sr_error_info_t *sr_path_notif_file(const char *mod_name, time_t from_ts, time_t to_ts, char **path);
 
 sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path);
+
+sr_error_info_t *sr_get_pwd(uid_t *uid, char **user);
 
 sr_error_info_t *sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm);
 

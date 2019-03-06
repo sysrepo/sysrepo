@@ -473,6 +473,10 @@ void sr_session_set_nc_id(sr_session_ctx_t *session, uint32_t nc_sid);
 
 uint32_t sr_session_get_nc_id(sr_session_ctx_t *session);
 
+void sr_session_set_user(sr_session_ctx_t *session, const char *user);
+
+const char *sr_session_get_user(sr_session_ctx_t *session);
+
 sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -662,6 +666,7 @@ int sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *va
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_set_item_str(sr_session_ctx_t *session, const char *xpath, const char *value, const sr_edit_options_t opts);
+
 /**
  * @brief Deletes the nodes under the specified xpath.
  *

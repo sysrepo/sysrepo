@@ -34,6 +34,7 @@
 #include "../modules/sysrepo_yang.h"
 #include "../modules/ietf_netconf_yang.h"
 #include "../modules/ietf_netconf_with_defaults_yang.h"
+#include "../modules/ietf_netconf_notifications_yang.h"
 
 static sr_error_info_t *sr_shmmain_ly_add_data_deps_r(struct lyd_node *ly_module, struct lys_node *data_root,
         struct lyd_node *ly_deps, size_t *shm_size);
@@ -882,7 +883,7 @@ sr_shmmain_ly_int_data_create(sr_conn_ctx_t *conn, struct lyd_node **sr_mods_p)
         }
     }
 
-    /* parse and create files for ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
+    /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
     if (!(ly_mod = lys_parse_mem(conn->ly_ctx, ietf_netconf_yang, LYS_YANG))) {
         sr_errinfo_new_ly(&err_info, conn->ly_ctx);
         goto error;
@@ -899,11 +900,24 @@ sr_shmmain_ly_int_data_create(sr_conn_ctx_t *conn, struct lyd_node **sr_mods_p)
         goto error;
     }
 
-    /* store both modules in the presistent module data tree (output parameters not used) */
     sr_mod = NULL;
     if ((err_info = sr_shmmain_ly_add_module(ly_mod2, sr_mods, &sr_mod, &shm_size))) {
         goto error;
     }
+    if ((err_info = sr_shmmain_ly_add_module(ly_mod, sr_mods, &sr_mod, &shm_size))) {
+        goto error;
+    }
+
+    /* install ietf-netconf-notifications */
+    if (!(ly_mod = lys_parse_mem(conn->ly_ctx, ietf_netconf_notifications_yang, LYS_YANG))) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        goto error;
+    }
+    if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
+        goto error;
+    }
+
+    sr_mod = NULL;
     if ((err_info = sr_shmmain_ly_add_module(ly_mod, sr_mods, &sr_mod, &shm_size))) {
         goto error;
     }
@@ -1721,11 +1735,8 @@ sr_moddep_expr_get_dep_mods(struct lys_node *ctx_node, const char *expr, int lyx
         return err_info;
     }
 
-    /* first node is always the context node, skip it */
-    assert(set->set.s[0] == ctx_node);
-
     /* find all top-level foreign nodes (augment nodes are not considered foreign now) */
-    for (i = 1; i < set->number; ++i) {
+    for (i = 0; i < set->number; ++i) {
         if ((dep_mod = sr_moddep_expr_atom_is_foreign(set->set.s[i], top_node))) {
             /* check for duplicities */
             for (j = 0; j < *dep_mod_count; ++j) {

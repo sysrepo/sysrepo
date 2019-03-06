@@ -559,7 +559,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_m
             | LYD_OPT_WHENAUTODEL;
     for (top_op = op; top_op->parent; top_op = top_op->parent);
     if (lyd_validate(&top_op, flags, first_root)) {
-        sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "%s %svalidation failed.",
                 (op->schema->nodetype == LYS_NOTIF) ? "Notification" : ((op->schema->nodetype == LYS_RPC) ? "RPC" : "Action"),
                 (op->schema->nodetype == LYS_NOTIF) ? "" : (output ? "output " : "input "));
@@ -948,6 +948,156 @@ cleanup:
     if (err_info) {
         ly_set_free(*result);
         *result = NULL;
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err_info = NULL;
+    struct lyd_node *root, *next, *elem, *notif = NULL;
+    struct ly_set *set;
+    sr_mod_t *shm_mod;
+    time_t notif_ts;
+    uint32_t idx = 0, notif_sub_count;
+    char *xpath, nc_str[11];
+    const char *op_enum;
+    sr_change_oper_t op;
+
+    assert(mod_info->diff);
+
+    /* remember when the notification was generated */
+    notif_ts = time(NULL);
+
+    /* get subscriber count */
+    if ((err_info = sr_notif_find_subscriber(session->conn, "ietf-netconf-notifications", &notif_sub_count))) {
+        return err_info;
+    }
+
+    /* get this module and check replay support */
+    shm_mod = sr_shmmain_find_module(mod_info->conn->main_shm.addr, "ietf-netconf-notifications", 0);
+    SR_CHECK_INT_RET(!shm_mod, err_info);
+    if (!(shm_mod->flags & SR_MOD_REPLAY_SUPPORT) && !notif_sub_count) {
+        /* nothing to do */
+        return NULL;
+    }
+
+    set = ly_set_new();
+    SR_CHECK_MEM_GOTO(!set, err_info, cleanup);
+
+    /* just put all the nodes into a set */
+    LY_TREE_FOR(mod_info->diff, root) {
+        LY_TREE_DFS_BEGIN(root, next, elem) {
+            if (ly_set_add(set, elem, LY_SET_OPT_USEASLIST) == -1) {
+                SR_ERRINFO_INT(&err_info);
+                goto cleanup;
+            }
+
+            LY_TREE_DFS_END(root, next, elem);
+        }
+    }
+
+    /* generate notifcation with all the changes */
+    notif = lyd_new_path(NULL, mod_info->conn->ly_ctx, "/ietf-netconf-notifications:netconf-config-change", NULL, 0, 0);
+    if (!notif) {
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        goto cleanup;
+    }
+
+    /* changed-by (everything was caused by user, we do not know what changes are implicit) */
+    root = lyd_new(notif, NULL, "changed-by");
+    if (!root) {
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        goto cleanup;
+    }
+
+    /* changed-by username */
+    next = lyd_new_leaf(root, NULL, "username", session->sid.user);
+    if (!next) {
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        goto cleanup;
+    }
+
+    /* changed-by session-id */
+    sprintf(nc_str, "%u", session->sid.nc);
+    next = lyd_new_leaf(root, NULL, "session-id", nc_str);
+    if (!next) {
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        goto cleanup;
+    }
+
+    /* datastore */
+    next = lyd_new_leaf(notif, NULL, "datastore", sr_ds2str(mod_info->ds));
+    if (!next) {
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        goto cleanup;
+    }
+
+    while (!(err_info = sr_diff_set_getnext(set, &idx, &elem, &op)) && elem) {
+        /* edit (list instance) */
+        root = lyd_new(notif, NULL, "edit");
+        if (!root) {
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            goto cleanup;
+        }
+
+        /* edit target */
+        xpath = lyd_path(elem);
+        if (!xpath) {
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            goto cleanup;
+        }
+        next = lyd_new_leaf(root, NULL, "target", xpath);
+        free(xpath);
+        if (!next) {
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            goto cleanup;
+        }
+
+        /* operation */
+        switch (op) {
+        case SR_OP_CREATED:
+            op_enum = "create";
+            break;
+        case SR_OP_MODIFIED:
+            op_enum = "replace";
+            break;
+        case SR_OP_DELETED:
+            op_enum = "delete";
+            break;
+        case SR_OP_MOVED:
+            /* exact move position will not be known */
+            op_enum = "merge";
+            break;
+        }
+        next = lyd_new_leaf(root, NULL, "operation", op_enum);
+        if (!next) {
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            goto cleanup;
+        }
+    }
+
+    /* store the notification for a replay, we continue on failure */
+    tmp_err_info = sr_replay_store(session->conn, notif, notif_ts);
+
+    /* send the notification (non-validated, if everything works correctly it must be valid) */
+    if (notif_sub_count && (err_info = sr_shmsub_notif_notify(notif, notif_ts, session->sid, notif_sub_count))) {
+        goto cleanup;
+    }
+
+    /* success */
+
+cleanup:
+    ly_set_free(set);
+    lyd_free_withsiblings(notif);
+    if (err_info) {
+        /* write this only if the notification failed to be created/sent */
+        sr_errinfo_new(&err_info, err_info->err_code, NULL, "Failed to generate netconf-config-change notification, "
+                "but configuration changes were applied.");
+    }
+    if (tmp_err_info) {
+        sr_errinfo_merge(&err_info, tmp_err_info);
     }
     return err_info;
 }

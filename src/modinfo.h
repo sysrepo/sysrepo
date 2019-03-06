@@ -70,6 +70,8 @@ void sr_modinfo_data_replace(struct sr_mod_info_s *mod_info, uint8_t mod_type, s
 sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
         struct ly_set **result);
 
+sr_error_info_t *sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sess);
+
 sr_error_info_t *sr_modinfo_store(struct sr_mod_info_s *mod_info);
 
 void sr_modinfo_free(struct sr_mod_info_s *mod_info);

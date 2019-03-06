@@ -1735,6 +1735,11 @@ sr_ly_diff_merge_created_r(struct lyd_node *val_diff, struct lyd_node **first_di
                 if ((err_info = sr_ly_diff_merge_created_r(val_iter->child, &diff_match->child, dflt_change))) {
                     return err_info;
                 }
+
+                /* correct parent pointers */
+                LY_TREE_FOR(diff_match->child, dup_iter) {
+                    dup_iter->parent = diff_match;
+                }
             }
 
             if (!strcmp(op, "none") && (!(diff_match->schema->nodetype & (LYS_CONTAINER | LYS_LIST)) || !diff_match->child)) {
@@ -1888,6 +1893,11 @@ sr_ly_diff_merge_deleted_r(struct lyd_node *val_diff, struct lyd_node **first_di
             if (val_iter->schema->nodetype & (LYS_CONTAINER | LYS_LIST)) {
                 if (val_iter->child) {
                     err_info = sr_ly_diff_merge_deleted_r(val_iter->child, &diff_match->child, update_all_desc);
+
+                    /* correct parent pointers */
+                    LY_TREE_FOR(diff_match->child, dup_iter) {
+                        dup_iter->parent = diff_match;
+                    }
                 } else if (update_all_desc) {
                     /* we must manually update operations on all descendants in our diff */
                     err_info = sr_ly_diff_merge_deleted_update_r(diff_match->child);
@@ -1992,6 +2002,13 @@ sr_ly_val_diff_merge(struct lyd_node **diff, struct ly_ctx *ly_ctx, struct lyd_d
         }
         if (err_info) {
             return err_info;
+        }
+
+        /* correct parent pointers */
+        if (diff_parent) {
+            LY_TREE_FOR(diff_parent->child, tmp) {
+                tmp->parent = diff_parent;
+            }
         }
 
         /* remove possibly redundant nodes */
@@ -2382,4 +2399,77 @@ error:
     }
     session->dt[session->ds].edit = NULL;
     return err_info;
+}
+
+sr_error_info_t *
+sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, sr_change_oper_t *op)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_attr *attr;
+    struct lyd_node *parent;
+
+    while (*idx < set->number) {
+        *node = set->set.d[*idx];
+
+        /* find the (inherited) operation of the current edit node */
+        attr = NULL;
+        for (parent = *node; parent; parent = parent->parent) {
+            for (attr = parent->attr; attr && strcmp(attr->name, "operation"); attr = attr->next);
+            if (attr) {
+                break;
+            }
+        }
+        if (!attr) {
+            SR_ERRINFO_INT(&err_info);
+            return err_info;
+        }
+
+        if (lys_is_key((struct lys_node_leaf *)(*node)->schema, NULL) && sr_ly_is_userord((*node)->parent)
+                && (attr->value_str[0] == 'r')) {
+            /* skip keys of list move operations */
+            ++(*idx);
+            continue;
+        }
+
+        /* decide operation */
+        if (attr->value_str[0] == 'n') {
+            assert(!strcmp(attr->annotation->module->name, SR_YANG_MOD));
+            assert(!strcmp(attr->value_str, "none"));
+            /* skip the node */
+            ++(*idx);
+
+            /* in case of lists we want to also skip all their keys */
+            if ((*node)->schema->nodetype == LYS_LIST) {
+                *idx += ((struct lys_node_list *)(*node)->schema)->keys_size;
+            }
+            continue;
+        } else if (attr->value_str[0] == 'c') {
+            assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
+            assert(!strcmp(attr->value_str, "create"));
+            *op = SR_OP_CREATED;
+        } else if (attr->value_str[0] == 'd') {
+            assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
+            assert(!strcmp(attr->value_str, "delete"));
+            *op = SR_OP_DELETED;
+        } else if (attr->value_str[0] == 'r') {
+            assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
+            assert(!strcmp(attr->value_str, "replace"));
+            if ((*node)->schema->nodetype == LYS_LEAF) {
+                *op = SR_OP_MODIFIED;
+            } else if ((*node)->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) {
+                *op = SR_OP_MOVED;
+            } else {
+                SR_ERRINFO_INT(&err_info);
+                return err_info;
+            }
+        }
+
+        /* success */
+        ++(*idx);
+        return NULL;
+    }
+
+    /* no more changes */
+    *node = NULL;
+    return NULL;
 }
