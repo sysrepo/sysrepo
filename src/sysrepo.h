@@ -1297,6 +1297,7 @@ typedef int (*sr_dp_get_items_cb)(sr_session_ctx_t *session, const char *module_
 int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         sr_dp_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
+
 ////////////////////////////////////////////////////////////////////////////////
 // Schema Manipulation API
 ////////////////////////////////////////////////////////////////////////////////
@@ -1306,19 +1307,24 @@ const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
 int sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir, const char **features,
         int feat_count);
 
+int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
+
+int sr_update_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir);
+
+int sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name);
+
 int sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int replay_support);
 
 int sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm);
 
 int sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner, char **group, mode_t *perm);
 
-int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
+int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
 
-int sr_enable_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
+int sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
 
-int sr_disable_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
+int sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data);
 
-int sr_get_schema_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Cleanup Routines

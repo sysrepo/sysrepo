@@ -58,6 +58,8 @@ void sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char 
 
 void sr_errinfo_new_ly(sr_error_info_t **err_info, struct ly_ctx *ly_ctx);
 
+void sr_errinfo_new_ly_first(sr_error_info_t **err_info, struct ly_ctx *ly_ctx);
+
 void sr_log_wrn_ly(struct ly_ctx *ly_ctx);
 
 void sr_errinfo_free(sr_error_info_t **err_info);

@@ -72,8 +72,15 @@ module sysrepo {
                 type empty;
             }
 
-            leaf removed {
-                type empty;
+            choice changed-module {
+                leaf removed {
+                    type empty;
+                }
+
+                leaf updated {
+                    // revision
+                    type string;
+                }
             }
 
             leaf-list enabled-feature {

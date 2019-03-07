@@ -771,20 +771,38 @@ cleanup:
     return err_info;
 }
 
+sr_error_info_t *
+sr_ly_ctx_new(struct ly_ctx **ly_ctx)
+{
+    sr_error_info_t *err_info = NULL;
+    char *yang_dir;
+
+    if ((err_info = sr_path_yang_dir(&yang_dir))) {
+        return err_info;
+    }
+    *ly_ctx = ly_ctx_new(yang_dir, 0);
+    free(yang_dir);
+
+    if (!*ly_ctx) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create a new libyang context.");
+        return err_info;
+    }
+
+    return NULL;
+}
+
 static sr_error_info_t *
-sr_store_module_file(const struct lys_module *mod)
+sr_store_module_file(const struct lys_module *mod, int upd_module)
 {
     sr_error_info_t *err_info = NULL;
     char *path;
 
-    if ((err_info = sr_path_yang_file(mod->name, mod->rev_size ? mod->rev[0].date : NULL, &path))) {
+    if ((err_info = sr_path_yang_file(mod->name, mod->rev_size ? mod->rev[0].date : NULL, upd_module, &path))) {
         return err_info;
     }
 
     if (!access(path, R_OK)) {
         /* already exists */
-        SR_LOG_INF("Module file \"%s%s%s\" already exists.",
-                mod->name, mod->rev_size ? "@" : "", mod->rev_size ? mod->rev[0].date : "");
         free(path);
         return NULL;
     }
@@ -801,7 +819,7 @@ sr_store_module_file(const struct lys_module *mod)
         return err_info;
     }
 
-    SR_LOG_INF("Module file \"%s%s%s\" installed.",
+    SR_LOG_INF("Module%s file \"%s%s%s\" installed.", upd_module ? " update" : "",
             mod->name, mod->rev_size ? "@" : "", mod->rev_size ? mod->rev[0].date : "");
     free(path);
     return NULL;
@@ -814,6 +832,16 @@ sr_create_data_files(const struct lys_module *mod)
     struct lyd_node *root = NULL;
     char *path = NULL;
 
+    /* get startup file path */
+    if ((err_info = sr_path_startup_file(mod->name, &path))) {
+        goto cleanup;
+    }
+
+    if (!access(path, F_OK)) {
+        /* already exists */
+        goto cleanup;
+    }
+
     /* get default values */
     if (lyd_validate_modules(&root, &mod, 1, LYD_OPT_CONFIG)) {
         sr_errinfo_new_ly(&err_info, mod->ctx);
@@ -822,9 +850,6 @@ sr_create_data_files(const struct lys_module *mod)
     }
 
     /* print them into a file */
-    if ((err_info = sr_path_startup_file(mod->name, &path))) {
-        goto cleanup;
-    }
     if (lyd_print_path(path, root, LYD_LYB, LYP_WITHSIBLINGS)) {
         sr_errinfo_new_ly(&err_info, mod->ctx);
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
@@ -861,29 +886,72 @@ cleanup:
     return err_info;
 }
 
+static int
+sr_ly_module_is_internal(const struct lys_module *mod)
+{
+    if (!mod->rev_size) {
+        return 0;
+    }
+
+    if (!strcmp(mod->name, "ietf-yang-metadata") && !strcmp(mod->rev[0].date, "2016-08-05")) {
+        return 1;
+    } else if (!strcmp(mod->name, "yang") && !strcmp(mod->rev[0].date, "2017-02-20")) {
+        return 1;
+    } else if (!strcmp(mod->name, "ietf-inet-types") && !strcmp(mod->rev[0].date, "2013-07-15")) {
+        return 1;
+    } else if (!strcmp(mod->name, "ietf-yang-types") && !strcmp(mod->rev[0].date, "2013-07-15")) {
+        return 1;
+    } else if (!strcmp(mod->name, "ietf-datastores") && !strcmp(mod->rev[0].date, "2017-08-17")) {
+        return 1;
+    } else if (!strcmp(mod->name, "ietf-yang-library") && !strcmp(mod->rev[0].date, "2018-01-17")) {
+        return 1;
+    }
+
+    return 0;
+}
+
 sr_error_info_t *
 sr_create_module_files_with_imps_r(const struct lys_module *mod)
 {
-    struct lys_module *imp_mod;
     sr_error_info_t *err_info = NULL;
     uint16_t i;
-
-    if ((err_info = sr_store_module_file(mod))) {
-        return err_info;
-    }
 
     if (mod->implemented && (err_info = sr_create_data_files(mod))) {
         return err_info;
     }
 
+    if (!sr_ly_module_is_internal(mod) && (err_info = sr_store_module_file(mod, 0))) {
+        return err_info;
+    }
+
+    for (i = 0; i < mod->imp_size; ++i) {
+        if ((err_info = sr_create_module_files_with_imps_r(mod->imp[i].module))) {
+            return err_info;
+        }
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_create_module_update_files_with_imps_r(const struct lys_module *mod, int first_upd_module)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lys_module *imp_mod;
+    uint16_t i;
+
+    if ((err_info = sr_store_module_file(mod, first_upd_module))) {
+        return err_info;
+    }
+
     for (i = 0; i < mod->imp_size; ++i) {
         imp_mod = mod->imp[i].module;
-        if (!strcmp(imp_mod->name, "ietf-yang-types") || !strcmp(imp_mod->name, "ietf-inet-types")) {
-            /* internal modules */
+        if (sr_ly_module_is_internal(imp_mod)) {
+            /* skip */
             continue;
         }
 
-        if ((err_info = sr_create_module_files_with_imps_r(imp_mod))) {
+        if ((err_info = sr_create_module_update_files_with_imps_r(imp_mod, 0))) {
             return err_info;
         }
     }
@@ -1025,15 +1093,17 @@ sr_path_notif_file(const char *mod_name, time_t from_ts, time_t to_ts, char **pa
 }
 
 sr_error_info_t *
-sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path)
+sr_path_yang_file(const char *mod_name, const char *mod_rev, int update_prefix, char **path)
 {
     sr_error_info_t *err_info = NULL;
     int ret;
 
     if (SR_YANG_PATH[0]) {
-        ret = asprintf(path, "%s/%s%s%s.yang", SR_YANG_PATH, mod_name, mod_rev ? "@" : "", mod_rev ? mod_rev : "");
+        ret = asprintf(path, "%s/%s%s%s%s.yang", SR_YANG_PATH, update_prefix ? "(update)" : "",
+                mod_name, mod_rev ? "@" : "", mod_rev ? mod_rev : "");
     } else {
-        ret = asprintf(path, "%s/yang/%s%s%s.yang", sr_get_repo_path(), mod_name, mod_rev ? "@" : "", mod_rev ? mod_rev : "");
+        ret = asprintf(path, "%s/yang/%s%s%s%s.yang", sr_get_repo_path(), update_prefix ? "(update)" : "",
+                mod_name, mod_rev ? "@" : "", mod_rev ? mod_rev : "");
     }
 
     if (ret == -1) {

@@ -288,6 +288,72 @@ test_remove_dep_module(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_update_module(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+
+    /* install rev */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/rev.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "rev",
+    "<module xmlns=\"urn:sysrepo\">"
+        "<name>rev</name>"
+    "</module>"
+    );
+
+    /* schedule an update */
+    ret = sr_update_module(st->conn, TESTS_DIR "/files/rev@1970-01-01.yang", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_update_module(st->conn, TESTS_DIR "/files/rev@1970-01-01.yang", NULL);
+    assert_int_equal(ret, SR_ERR_EXISTS);
+
+    /* cancel the update */
+    ret = sr_cancel_update_module(st->conn, "rev");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* reschedule */
+    ret = sr_update_module(st->conn, TESTS_DIR "/files/rev@1970-01-01.yang", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* close connection, remove main shared memory so that changes are applied */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = unlink("/dev/shm/sr_main");
+    assert_int_equal(ret, 0);
+
+    /* recreate connection */
+    ret = sr_connect("test1", 0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check that the module was updated */
+    cmp_int_data(st->conn, "rev",
+    "<module xmlns=\"urn:sysrepo\">"
+        "<name>rev</name>"
+        "<revision>1970-01-01</revision>"
+        "<op-deps>"
+            "<xpath xmlns:r=\"urn:rev\">/r:notif</xpath>"
+        "</op-deps>"
+    "</module>"
+    );
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "rev");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* actually delete it */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = unlink("/dev/shm/sr_main");
+    assert_int_equal(ret, 0);
+
+    /* recreate connection */
+    ret = sr_connect("test1", 0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -295,6 +361,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_data_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_op_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_remove_dep_module, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_update_module, setup_f, teardown_f),
     };
 
     sr_log_stderr(SR_LL_INF);

@@ -279,7 +279,11 @@ sr_error_info_t *sr_notif_call_callback(sr_event_notif_cb cb, sr_event_notif_tre
 /*
  * utility functions
  */
+sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
+
 sr_error_info_t *sr_create_module_files_with_imps_r(const struct lys_module *mod);
+
+sr_error_info_t *sr_create_module_update_files_with_imps_r(const struct lys_module *mod, int first_upd_module);
 
 sr_error_info_t *sr_path_running_dir(char **path);
 
@@ -295,7 +299,7 @@ sr_error_info_t *sr_path_startup_file(const char *mod_name, char **path);
 
 sr_error_info_t *sr_path_notif_file(const char *mod_name, time_t from_ts, time_t to_ts, char **path);
 
-sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path);
+sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, int update_prefix, char **path);
 
 sr_error_info_t *sr_get_pwd(uid_t *uid, char **user);
 

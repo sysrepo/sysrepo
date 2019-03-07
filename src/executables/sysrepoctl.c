@@ -297,8 +297,8 @@ srctl_list(sr_conn_ctx_t *conn)
     /* get context */
     ly_ctx = sr_get_context(conn);
 
-    /* get SR schema info data */
-    if ((ret = sr_get_schema_info(conn, &data)) != SR_ERR_OK) {
+    /* get SR module info data */
+    if ((ret = sr_get_module_info(conn, &data)) != SR_ERR_OK) {
         goto cleanup;
     }
 
@@ -571,7 +571,7 @@ main(int argc, char** argv)
 
         /* change enabled features */
         for (i = 0; i < feat_count; ++i) {
-            if ((r = sr_enable_feature(conn, module_name, features[i])) != SR_ERR_OK) {
+            if ((r = sr_enable_module_feature(conn, module_name, features[i])) != SR_ERR_OK) {
                 error_print(r, "Failed to enable feature \"%s\"", features[i]);
                 goto cleanup;
             }
@@ -579,7 +579,7 @@ main(int argc, char** argv)
 
         /* change disabled features */
         for (i = 0; i < dis_feat_count; ++i) {
-            if ((r = sr_disable_feature(conn, module_name, dis_features[i])) != SR_ERR_OK) {
+            if ((r = sr_disable_module_feature(conn, module_name, dis_features[i])) != SR_ERR_OK) {
                 error_print(r, "Failed to disable feature \"%s\"", dis_features[i]);
                 goto cleanup;
             }
