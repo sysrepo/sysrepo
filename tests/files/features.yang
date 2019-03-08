@@ -1,0 +1,19 @@
+module features {
+    namespace "urn:features";
+    prefix feat;
+
+    feature feat1;
+
+    leaf l1 {
+        type string;
+    }
+
+    leaf l2 {
+        if-feature feat1;
+        type string;
+    }
+
+    leaf l3 {
+        type string;
+    }
+}

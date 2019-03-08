@@ -3504,8 +3504,8 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         goto cleanup;
     }
 
-    /* mark the change in LY data tree */
-    if ((err_info = sr_shmmain_deferred_change_feature(conn, ly_mod->name, feature_name, enable))) {
+    /* mark the change (if any) in LY data tree */
+    if ((err_info = sr_shmmain_deferred_change_feature(conn, ly_mod->name, feature_name, enable, ret))) {
         goto cleanup;
     }
 

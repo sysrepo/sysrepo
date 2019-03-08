@@ -354,6 +354,75 @@ test_update_module(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_change_feature(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess;
+    const char *en_feat = "feat1";
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_STARTUP, 0, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* install features with feat1 */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/features.yang", TESTS_DIR "/files", &en_feat, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "features",
+    "<module xmlns=\"urn:sysrepo\">"
+        "<name>features</name>"
+        "<enabled-feature>feat1</enabled-feature>"
+    "</module>"
+    );
+
+    /* set all data */
+    ret = sr_set_item_str(sess, "/features:l1", "val1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/features:l2", "val2", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/features:l3", "val3", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* disable feature */
+    ret = sr_disable_module_feature(st->conn, "features", "feat1");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* close connection (also frees session), remove main shared memory so that changes are applied */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = unlink("/dev/shm/sr_main");
+    assert_int_equal(ret, 0);
+
+    /* recreate connection */
+    ret = sr_connect("test1", 0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check that the feature was not disabled */
+    cmp_int_data(st->conn, "features",
+    "<module xmlns=\"urn:sysrepo\">"
+        "<name>features</name>"
+        "<enabled-feature>feat1</enabled-feature>"
+        "<changed-feature>"
+            "<name>feat1</name>"
+            "<change>disable</change>"
+        "</changed-feature>"
+    "</module>"
+    );
+
+    /* unschedule disabling */
+    ret = sr_enable_module_feature(st->conn, "features", "feat1");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_enable_module_feature(st->conn, "features", "feat1");
+    assert_int_equal(ret, SR_ERR_EXISTS);
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "features");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -362,6 +431,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_op_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_remove_dep_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_module, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_feature, setup_f, teardown_f),
     };
 
     sr_log_stderr(SR_LL_INF);

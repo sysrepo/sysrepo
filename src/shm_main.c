@@ -822,7 +822,7 @@ cleanup:
     }
     ly_set_free(set);
     if (!*apply_sched) {
-        SR_LOG_WRNMSG("Failed to apply scheduled module changes, leaving them scheduled.");
+        SR_LOG_WRNMSG("Failed to remove scheduled modules, leaving all changes scheduled.");
     }
     return err_info;
 }
@@ -1020,15 +1020,98 @@ cleanup:
 }
 
 static sr_error_info_t *
+sr_shmmain_ly_int_data_sched_change_feature(const char *mod_name, const char *rev, struct ly_set *ly_feat_set,
+        const char *feat_name, int enable, struct ly_ctx *ly_ctx, int *fail)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    uint32_t i;
+    struct lyd_node *startup = NULL;
+    char *startup_path = NULL, *startup_json = NULL;
+
+    /* load the module */
+    if (!(ly_mod = ly_ctx_load_module(ly_ctx, mod_name, rev))) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        goto cleanup;
+    }
+
+    /* enable all the original features */
+    for (i = 0; i < ly_feat_set->number; ++i) {
+        if (lys_features_enable(ly_mod, sr_ly_leaf_value_str(ly_feat_set->set.d[i]))) {
+            SR_ERRINFO_INT(&err_info);
+            goto cleanup;
+        }
+    }
+
+    /* load "startup" data */
+    if ((err_info = sr_path_startup_file(mod_name, &startup_path))) {
+        goto cleanup;
+    }
+    ly_errno = 0;
+    startup = lyd_parse_path(ly_ctx, startup_path, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
+    if (ly_errno) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        goto cleanup;
+    }
+
+    /* print them into JSON */
+    if (lyd_print_mem(&startup_json, startup, LYD_JSON, LYP_WITHSIBLINGS)) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        goto cleanup;
+    }
+
+    /* change the feature */
+    if (enable) {
+        if (lys_features_enable(ly_mod, feat_name)) {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            goto cleanup;
+        }
+    } else {
+        if (lys_features_disable(ly_mod, feat_name)) {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            goto cleanup;
+        }
+    }
+
+    /* load "startup" data with the new feature set (if we load from JSON instead of LYB, we get a nicer error) */
+    lyd_free_withsiblings(startup);
+    startup = lyd_parse_mem(ly_ctx, startup_json, LYD_JSON, LYD_OPT_CONFIG | LYD_OPT_STRICT);
+    if (ly_errno) {
+        /* failed to parse current startup data with the updated features */
+        sr_log_wrn_ly(ly_ctx);
+        *fail = 1;
+
+        if (enable) {
+            lys_features_disable(ly_mod, feat_name);
+        } else {
+            lys_features_enable(ly_mod, feat_name);
+        }
+        goto cleanup;
+    }
+
+    /* success */
+
+cleanup:
+    lyd_free_withsiblings(startup);
+    free(startup_path);
+    free(startup_json);
+    return err_info;
+}
+
+static sr_error_info_t *
 sr_shmmain_ly_int_data_sched_change_features(struct lyd_node *sr_mods, int *change)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *feat_node;
-    struct ly_set *set = NULL, *set2;
+    struct lyd_node *sr_ly_mod, *node;
+    struct ly_ctx *ly_ctx;
+    struct ly_set *set = NULL, *feat_set;
+    const char *mod_name, *revision, *feat_name;
     uint32_t i;
     char *xpath;
+    int fail, enable;
 
     assert(sr_mods);
+    ly_ctx = lyd_node_module(sr_mods)->ctx;
 
     /* find all changed features */
     set = lyd_find_path(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/module/changed-feature");
@@ -1038,47 +1121,83 @@ sr_shmmain_ly_int_data_sched_change_features(struct lyd_node *sr_mods, int *chan
     }
 
     for (i = 0; i < set->number; ++i) {
-        feat_node = set->set.d[i];
-        assert(feat_node->child && feat_node->child->next);
+        assert(set->set.d[i]->child && set->set.d[i]->child->next);
+        sr_ly_mod = set->set.d[i]->parent;
 
-        /* enable feature node */
-        if (!strcmp(sr_ly_leaf_value_str(feat_node->child->next), "enable")) {
-            /* add feature node */
-            if (!lyd_new_leaf(feat_node->parent, NULL, "enabled-features", sr_ly_leaf_value_str(feat_node->child))) {
-                sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mods)->ctx);
-                goto cleanup;
-            }
-
-        /* disable feature */
+        /* learn about the feature changed */
+        feat_name = sr_ly_leaf_value_str(set->set.d[i]->child);
+        if (!strcmp(sr_ly_leaf_value_str(set->set.d[i]->child->next), "enable")) {
+            enable = 1;
         } else {
-            assert(!strcmp(sr_ly_leaf_value_str(feat_node->child->next), "disable"));
-            if (asprintf(&xpath, "enabled-feature[.='%s']", sr_ly_leaf_value_str(feat_node->child)) == -1) {
-                SR_ERRINFO_MEM(&err_info);
-                goto cleanup;
+            assert(!strcmp(sr_ly_leaf_value_str(set->set.d[i]->child->next), "disable"));
+            enable = 0;
+        }
+
+        /* learn about the module */
+        mod_name = NULL;
+        revision = NULL;
+        LY_TREE_FOR(sr_ly_mod->child, node) {
+            if (!strcmp(node->schema->name, "name")) {
+                mod_name = sr_ly_leaf_value_str(node);
+            } else if (!strcmp(node->schema->name, "revision")) {
+                revision = sr_ly_leaf_value_str(node);
+                break;
+            }
+        }
+        assert(mod_name);
+
+        /* collect all currently enabled features */
+        feat_set = lyd_find_path(sr_ly_mod, "enabled-feature");
+        if (!feat_set) {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            goto cleanup;
+        }
+
+        /* try loading the stored data using the new feature set */
+        fail = 0;
+        err_info = sr_shmmain_ly_int_data_sched_change_feature(mod_name, revision, feat_set, feat_name, enable, ly_ctx, &fail);
+        ly_set_free(feat_set);
+        if (err_info) {
+            goto cleanup;
+        }
+
+        if (!fail) {
+            /* enable feature in the internal module data tree */
+            if (enable) {
+                if (!lyd_new_leaf(sr_ly_mod, NULL, "enabled-features", feat_name)) {
+                    sr_errinfo_new_ly(&err_info, ly_ctx);
+                    goto cleanup;
+                }
+
+            /* disable feature */
+            } else {
+                if (asprintf(&xpath, "enabled-feature[.='%s']", feat_name) == -1) {
+                    SR_ERRINFO_MEM(&err_info);
+                    goto cleanup;
+                }
+
+                feat_set = lyd_find_path(sr_ly_mod, xpath);
+                free(xpath);
+                if (!feat_set || (feat_set->number != 1)) {
+                    ly_set_free(feat_set);
+                    SR_ERRINFO_INT(&err_info);
+                    goto cleanup;
+                }
+                lyd_free(feat_set->set.d[0]);
+                ly_set_free(feat_set);
             }
 
-            /* remove feature node */
-            set2 = lyd_find_path(feat_node->parent, xpath);
-            free(xpath);
-            if (!set2 || (set2->number != 1)) {
-                ly_set_free(set2);
-                SR_ERRINFO_INT(&err_info);
-                goto cleanup;
-            }
-            lyd_free(set2->set.d[0]);
-            ly_set_free(set2);
+            SR_LOG_INF("Module \"%s\" feature \"%s\" was %s.", mod_name, feat_name, enable ? "enabled" : "disabled");
+            lyd_free(set->set.d[i]);
+            *change = 1;
+        } else {
+            SR_LOG_WRN("Failed to %s module \"%s\" feature \"%s\".", enable ? "enable" : "disable", mod_name, feat_name);
         }
     }
 
     /* success */
-    if (set->number) {
-        *change = 1;
-    }
 
 cleanup:
-    for (i = 0; i < set->number; ++i) {
-        lyd_free_withsiblings(set->set.d[i]->parent);
-    }
     ly_set_free(set);
     return err_info;
 }
@@ -2690,14 +2809,14 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, const char *feat_name, int enable)
+sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, const char *feat_name, int to_enable,
+        int is_enabled)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL;
     struct lyd_node_leaf_list *leaf;
     struct ly_set *set = NULL;
     char *path = NULL;
-    int unsched = 0;
 
     /* parse current module information */
     if ((err_info = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods))) {
@@ -2715,33 +2834,28 @@ sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, co
     if (set->number == 1) {
         leaf = (struct lyd_node_leaf_list *)set->set.d[0];
 
-        if (enable) {
-            if (!strcmp(leaf->value_str, "enable")) {
-                sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Feature \"%s\" already scheduled to be enabled.", feat_name);
-                goto cleanup;
-            }
-
-            assert(!strcmp(leaf->value_str, "disable"));
-            unsched = 1;
-        } else {
-            if (!strcmp(leaf->value_str, "disable")) {
-                sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Feature \"%s\" already scheduled to be disabled.", feat_name);
-                goto cleanup;
-            }
-
-            assert(!strcmp(leaf->value_str, "enable"));
-            unsched = 1;
+        if ((to_enable && !strcmp(leaf->value_str, "enable")) || (!to_enable && !strcmp(leaf->value_str, "disable"))) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" feature \"%s\" already scheduled to be %s.",
+                    mod_name, feat_name, to_enable ? "enabled" : "disabled");
+            goto cleanup;
         }
-    }
 
-    /* mark the change */
-    if (!lyd_new_path(sr_mods, NULL, path, enable ? "enable" : "disable", 0, LYD_PATH_OPT_NOPARENT | LYD_PATH_OPT_UPDATE)) {
-        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        goto cleanup;
-    }
+        /* unschedule the feature change */
+        lyd_free(set->set.d[0]->parent);
+        SR_LOG_INF("Module \"%s\" feature \"%s\" %s unscheduled.", mod_name, feat_name, to_enable ? "disabling" : "enabling");
+    } else {
+        if ((to_enable && is_enabled) || (!to_enable && !is_enabled)) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" feature \"%s\" is already %s.",
+                    mod_name, feat_name, to_enable ? "enabled" : "disabled");
+            goto cleanup;
+        }
 
-    if (unsched) {
-        SR_LOG_INF("Feature \"%s\" %s unscheduled.", feat_name, enable ? "disabling" : "enabling");
+        /* schedule the feature change */
+        if (!lyd_new_path(sr_mods, NULL, path, to_enable ? "enable" : "disable", 0, 0)) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            goto cleanup;
+        }
+        SR_LOG_INF("Module \"%s\" feature \"%s\" %s scheduled.", mod_name, feat_name, to_enable ? "enabling" : "disabling");
     }
 
     /* store the updated persistent data tree */

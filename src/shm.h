@@ -262,7 +262,7 @@ sr_error_info_t *sr_shmmain_deferred_upd_module(sr_conn_ctx_t *conn, const char 
 sr_error_info_t *sr_shmmain_unsched_upd_module(sr_conn_ctx_t *conn, const char *mod_name, char **revision);
 
 sr_error_info_t *sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, const char *feat_name,
-        int enable);
+        int to_enable, int is_enabled);
 
 /*
  * shm_mod.c
