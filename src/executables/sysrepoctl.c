@@ -163,7 +163,7 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
     struct list_item *cur_item;
     const struct lys_module *ly_mod;
     struct lyd_node *module, *child;
-    char *changed_features = NULL, *feat, *ptr, *next_feat, *owner, *group;
+    char *changed_features, *feat, *ptr, *next_feat, *owner, *group;
     const char *str;
     int ret = SR_ERR_OK;
     uint32_t i;
@@ -180,6 +180,8 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
         cur_item->submodules = strdup("");
         cur_item->features = strdup("");
 
+        changed_features = NULL;
+
         /* collect information from sysrepo data */
         LY_TREE_FOR(module->child, child) {
             if (!strcmp(child->schema->name, "name")) {
@@ -195,7 +197,9 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
             } else if (!strcmp(child->schema->name, "enabled-feature")) {
                 str = ((struct lyd_node_leaf_list *)child)->value_str;
                 cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + 1 + strlen(str) + 1);
-                strcat(cur_item->features, " ");
+                if (cur_item->features[0]) {
+                    strcat(cur_item->features, " ");
+                }
                 strcat(cur_item->features, str);
             } else if (!strcmp(child->schema->name, "changed-feature")) {
                 str = ((struct lyd_node_leaf_list *)child->child)->value_str;
@@ -223,7 +227,7 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
                     if (next_feat[0] == ' ') {
                         ++next_feat;
                     }
-                    memmove(ptr, next_feat, strlen(next_feat));
+                    memmove(ptr, next_feat, strlen(next_feat) + 1);
                 } else {
                     /* enabling feature */
                     cur_item->updated_features = realloc(cur_item->updated_features,
