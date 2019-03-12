@@ -1341,30 +1341,23 @@ op_error:
 }
 
 sr_error_info_t *
-sr_ly_edit_mod_apply(const struct lyd_node *edit, struct sr_mod_info_mod_s *mod, struct lyd_node **mod_diff)
+sr_ly_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, struct lyd_node **data,
+        struct lyd_node **mod_diff)
 {
-    const struct lyd_node *root;
     sr_error_info_t *err_info = NULL;
+    const struct lyd_node *root;
 
-    /* skip data nodes from different modules */
     LY_TREE_FOR(edit, root) {
-        if (lyd_node_module(root) == mod->ly_mod) {
-            break;
+        if (lyd_node_module(root) != ly_mod) {
+            /* skip data nodes from different modules */
+            continue;
         }
-    }
-    if (!root) {
-        /* no relevant changes */
-        return NULL;
-    }
 
-    /* apply relevant nodes from the edit datatree */
-    do {
-        if ((err_info = sr_ly_edit_apply_r(&mod->mod_data, NULL, (struct lyd_node *)root, EDIT_CONTINUE, NULL, mod_diff, 0))) {
+        /* apply relevant nodes from the edit datatree */
+        if ((err_info = sr_ly_edit_apply_r(data, NULL, (struct lyd_node *)root, EDIT_CONTINUE, NULL, mod_diff, 0))) {
             return err_info;
         }
-
-        root = root->next;
-    } while (root && (lyd_node_module(root) == mod->ly_mod));
+    }
 
     return NULL;
 }
@@ -1620,30 +1613,22 @@ next_iter_r:
 }
 
 sr_error_info_t *
-sr_ly_diff_mod_apply(struct lyd_node *diff, struct sr_mod_info_mod_s *mod)
+sr_ly_diff_mod_apply(const struct lyd_node *diff, const struct lys_module *ly_mod, struct lyd_node **data)
 {
-    const struct lyd_node *root;
     sr_error_info_t *err_info = NULL;
+    const struct lyd_node *root;
 
-    /* skip data nodes from different modules */
     LY_TREE_FOR(diff, root) {
-        if (lyd_node_module(root) == mod->ly_mod) {
-            break;
+        if (lyd_node_module(root) != ly_mod) {
+            /* skip data nodes from different modules */
+            continue;
         }
-    }
-    if (!root) {
-        /* no relevant changes */
-        return NULL;
-    }
 
-    /* apply relevant nodes from the diff datatree */
-    do {
-        if ((err_info = sr_ly_diff_apply_r(&mod->mod_data, NULL, (struct lyd_node *)root))) {
+        /* apply relevant nodes from the diff datatree */
+        if ((err_info = sr_ly_diff_apply_r(data, NULL, (struct lyd_node *)root))) {
             return err_info;
         }
-
-        root = root->next;
-    } while (root && (lyd_node_module(root) == mod->ly_mod));
+    }
 
     return NULL;
 }

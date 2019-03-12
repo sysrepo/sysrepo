@@ -277,12 +277,9 @@ const char *sr_get_repo_path(void);
  * @brief Flags used to override default connection handling by ::sr_connect call.
  */
 typedef enum sr_conn_flag_e {
-    SR_CONN_DEFAULT = 0,          /**< Default behavior - instantiate library-local Sysrepo Engine if
-                                       the connection to sysrepo daemon is not possible. */
-    SR_CONN_DAEMON_REQUIRED = 1,  /**< Require daemon connection - do not instantiate library-local Sysrepo Engine
-                                       if the library cannot connect to the sysrepo daemon  (and return an error instead). */
-    SR_CONN_DAEMON_START = 2,     /**< If sysrepo daemon is not running, and SR_CONN_DAEMON_REQUIRED was specified,
-                                       start it (only if the process calling ::sr_connect is running under root privileges). */
+    SR_CONN_DEFAULT = 0,          /**< No special behaviour. */
+    SR_CONN_CACHE_RUNNING = 1,    /**< Always cache running datastore data which makes mainly repeated retrieval of data
+                                       faster. Affects all sessions created on this connection. */
 } sr_conn_flag_t;
 
 /**

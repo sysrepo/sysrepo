@@ -134,11 +134,12 @@ typedef struct sr_sid_s {
 #include "log.h"
 
 /*
- * public definitions
+ * private definitions of public declarations
  */
 struct sr_conn_ctx_s {
     char *app_name;
     struct ly_ctx *ly_ctx;
+    sr_conn_options_t opts;
 
     /* session-shared lock */
     pthread_mutex_t ptr_lock;
@@ -147,7 +148,7 @@ struct sr_conn_ctx_s {
     sr_subscription_ctx_t **subscriptions;
     uint32_t subscription_count;
 
-    /* process-shared lock */
+    /* process-shared file lock */
     int main_shm_create_lock;
     /* session-shared lock */
     pthread_mutex_t main_shm_remap_lock;

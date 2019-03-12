@@ -2141,7 +2141,7 @@ sr_ly_link(struct lyd_node *first, struct lyd_node *sibling)
         return;
     }
 
-    assert(!first->prev->next && !sibling->prev->next);
+    assert(!first->prev->next && !sibling->prev->next && (first != sibling));
 
     /* remember the last node */
     last = sibling->prev;

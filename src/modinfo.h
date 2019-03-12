@@ -37,19 +37,22 @@ struct sr_mod_info_s {
     sr_datastore_t ds;
     struct lyd_node *diff;
     int dflt_change;
+    struct lyd_node *data;
     sr_conn_ctx_t *conn;
 
     struct sr_mod_info_mod_s {
         sr_mod_t *shm_mod;
         uint8_t state;
         const struct lys_module *ly_mod;
-        struct lyd_node *mod_data;
         uint32_t event_id;
 
         sr_shm_t shm_sub_cache;
     } *mods;
     uint32_t mod_count;
 };
+
+sr_error_info_t *sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *ly_mod, int mod_type, int mod_req_deps,
+        struct sr_mod_info_s *mod_info);
 
 sr_error_info_t *sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr);
 
@@ -64,8 +67,6 @@ sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct l
 
 sr_error_info_t *sr_modinfo_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_sid_t *sid,
         sr_error_info_t **cb_error_info);
-
-void sr_modinfo_data_replace(struct sr_mod_info_s *mod_info, uint8_t mod_type, struct lyd_node **config_p);
 
 sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
         struct ly_set **result);

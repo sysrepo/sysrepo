@@ -50,7 +50,7 @@ sr_get_repo_path(void)
 }
 
 static sr_error_info_t *
-sr_conn_new(const char *app_name, sr_conn_ctx_t **conn_p)
+sr_conn_new(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 {
     sr_conn_ctx_t *conn;
     sr_error_info_t *err_info = NULL;
@@ -63,6 +63,7 @@ sr_conn_new(const char *app_name, sr_conn_ctx_t **conn_p)
         SR_ERRINFO_MEM(&err_info);
         goto error;
     }
+    conn->opts = opts;
 
     if ((err_info = sr_mutex_init(&conn->ptr_lock, 0))) {
         goto error;
@@ -104,8 +105,8 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
         goto error_unlock;
     }
 
-    /* create basic onnection structure */
-    if ((err_info = sr_conn_new(app_name, &conn))) {
+    /* create basic connection structure */
+    if ((err_info = sr_conn_new(app_name, opts, &conn))) {
         goto error;
     }
 
@@ -1217,7 +1218,8 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     }
 
     /* replace modules data with the new config */
-    sr_modinfo_data_replace(&src_mod_info, MOD_INFO_REQ, &src_config);
+    src_mod_info.data = src_config;
+    src_config = NULL;
 
     /* validate the new config */
     if ((err_info = sr_modinfo_validate(&src_mod_info, 0))) {
@@ -1451,14 +1453,14 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
     }
 
     /* select only the subscribed-to subtree */
-    if (mod_info.mods[0].mod_data) {
+    if (mod_info.data) {
         if (xpath) {
-            if ((err_info = sr_ly_data_dup_xpath_select(mod_info.mods[0].mod_data, (char **)&xpath, 1, &enabled_data))) {
+            if ((err_info = sr_ly_data_dup_xpath_select(mod_info.data, (char **)&xpath, 1, &enabled_data))) {
                 goto cleanup_mods_unlock;
             }
         } else {
-            enabled_data = mod_info.mods[0].mod_data;
-            mod_info.mods[0].mod_data = NULL;
+            enabled_data = mod_info.data;
+            mod_info.data = NULL;
         }
     }
 
