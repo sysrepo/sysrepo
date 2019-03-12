@@ -3388,9 +3388,6 @@ int main() {
     sr_log_stderr(SR_LL_DBG);
     sr_log_syslog(SR_LL_NONE);
 
-    watchdog_start(300);
-    int ret = cmocka_run_group_tests(tests, nacm_tests_setup, nacm_tests_teardown);
-    watchdog_stop();
-    return ret;
+    return cmocka_run_group_tests(tests, nacm_tests_setup, nacm_tests_teardown);
 }
 

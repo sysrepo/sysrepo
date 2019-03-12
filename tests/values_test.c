@@ -944,8 +944,5 @@ main() {
         cmocka_unit_test(sr_val_to_buff_test),
     };
 
-    watchdog_start(300);
-    int ret = cmocka_run_group_tests(tests, NULL, NULL);
-    watchdog_stop();
-    return ret;
+    return cmocka_run_group_tests(tests, NULL, NULL);
 }
