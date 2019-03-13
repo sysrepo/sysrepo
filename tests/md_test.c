@@ -2132,9 +2132,6 @@ int main(){
             cmocka_unit_test(md_test_has_data),
     };
 
-    watchdog_start(300);
-    int ret = cmocka_run_group_tests(tests, md_tests_setup, md_tests_teardown);
-    watchdog_stop();
-    return ret;
+    return cmocka_run_group_tests(tests, md_tests_setup, md_tests_teardown);
 }
 

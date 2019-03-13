@@ -230,8 +230,5 @@ main()
             cmocka_unit_test_setup_teardown(concurr_connections_test, sysrepo_setup, sysrepo_teardown),
     };
 
-    watchdog_start(300);
-    int ret = cmocka_run_group_tests(tests, NULL, NULL);
-    watchdog_stop();
-    return ret;
+    return cmocka_run_group_tests(tests, NULL, NULL);
 }

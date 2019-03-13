@@ -4215,9 +4215,7 @@ main() {
         assert_int_equal(SR_ERR_OK, sr_list_init(&log_history.logs));
     }
 
-    watchdog_start(30000);
     int ret = cmocka_run_group_tests(tests, NULL, NULL);
-    watchdog_stop();
     sr_list_cleanup(log_history.logs);
     return ret;
 }
