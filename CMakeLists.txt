@@ -328,12 +328,9 @@ if(ENABLE_NACM)
     INSTALL_YANG("ietf-netconf-acm" "@2018-02-14" "644")
 endif(ENABLE_NACM)
 
-find_package(PkgConfig QUIET)
-if(PKG_CONFIG_FOUND)
-    # generate and install pkg-config file
-    configure_file("libsysrepo.pc.in" "libsysrepo.pc" @ONLY)
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
-endif()
+# generate and install pkg-config file
+configure_file("libsysrepo.pc.in" "libsysrepo.pc" @ONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
 # install doc (man)
 install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepoctl.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
