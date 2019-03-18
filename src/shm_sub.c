@@ -32,9 +32,9 @@
 sr_error_info_t *
 sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_shm_t *shm, size_t shm_struct_size)
 {
-    char *path;
-    int created, ret;
     sr_error_info_t *err_info = NULL;
+    char *path;
+    int created;
     sr_sub_shm_t *sub_shm;
 
     assert(name && suffix1);
@@ -45,13 +45,7 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
     }
 
     /* create/open shared memory */
-    if (suffix2 > -1) {
-        ret = asprintf(&path, "/sr_%s.%s.%08x", name, suffix1, (uint32_t)suffix2);
-    } else {
-        ret = asprintf(&path, "/sr_%s.%s", name, suffix1);
-    }
-    if (ret == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if ((err_info = sr_path_sub_shm(name, suffix1, suffix2, 0, &path))) {
         return err_info;
     }
     created = 1;
@@ -2040,7 +2034,7 @@ sr_shmsub_notif_listen_module_check_stop_time(struct modsub_notif_s *notif_subs,
             }
 
             /* remove the subscription from main SHM */
-            err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, 0);
+            err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, 0, NULL);
 
             /* SHM UNLOCK */
             sr_shmmain_unlock(subs->conn, 0);
@@ -2092,7 +2086,7 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
             }
 
             /* now we can add notification subscription into main SHM because it will process realtime notifications */
-            err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, 1);
+            err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, 1, NULL);
 
             /* SHM UNLOCK */
             sr_shmmain_unlock(subs->conn, 0);

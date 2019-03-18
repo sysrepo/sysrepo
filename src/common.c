@@ -605,8 +605,9 @@ sr_error_info_t *
 sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
-    char *mod_name;
+    char *mod_name, *path;
     uint32_t i, j;
+    int last_removed;
     struct modsub_conf_s *conf_subs;
     struct modsub_dp_s *dp_sub;
     struct modsub_notif_s *notif_sub;
@@ -617,12 +618,23 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
         for (j = 0; j < conf_subs->sub_count; ++j) {
             /* remove the subscriptions from the main SHM */
             if ((err_info = sr_shmmod_conf_subscription(conn, conf_subs->module_name, conf_subs->subs[j].xpath, conf_subs->ds,
-                        conf_subs->subs[j].priority, conf_subs->subs[j].opts, 0))) {
+                        conf_subs->subs[j].priority, conf_subs->subs[j].opts, 0, &last_removed))) {
                 return err_info;
             }
 
             /* free xpath */
             free(conf_subs->subs[j].xpath);
+        }
+
+        if (last_removed) {
+            /* delete the SHM file itself so that there is no leftover event */
+            if ((err_info = sr_path_sub_shm(conf_subs->module_name, sr_ds2str(conf_subs->ds), -1, 1, &path))) {
+                return err_info;
+            }
+            if (unlink(path) == -1) {
+                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
+            }
+            free(path);
         }
 
         /* free dynamic memory */
@@ -644,6 +656,15 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
                 return err_info;
             }
 
+            /* delete the SHM file itself so that there is no leftover event */
+            if ((err_info = sr_path_sub_shm(dp_sub->module_name, "state", sr_str_hash(dp_sub->subs[j].xpath), 1, &path))) {
+                return err_info;
+            }
+            if (unlink(path) == -1) {
+                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
+            }
+            free(path);
+
             /* free xpath */
             free(dp_sub->subs[j].xpath);
 
@@ -662,11 +683,21 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
         /* remove the subscriptions from the main SHM */
         mod_name = sr_get_first_ns(subs->rpc_subs[i].xpath);
         SR_CHECK_INT_RET(!mod_name, err_info);
-        err_info = sr_shmmod_rpc_subscription(conn, mod_name, subs->rpc_subs[i].xpath, 0);
-        free(mod_name);
-        if (err_info) {
+        if ((err_info = sr_shmmod_rpc_subscription(conn, mod_name, subs->rpc_subs[i].xpath, 0))) {
+            free(mod_name);
             return err_info;
         }
+
+        /* delete the SHM file itself so that there is no leftover event */
+        if ((err_info = sr_path_sub_shm(mod_name, "rpc", sr_str_hash(subs->rpc_subs[i].xpath), 1, &path))) {
+            free(mod_name);
+            return err_info;
+        }
+        if (unlink(path) == -1) {
+            SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
+        }
+        free(path);
+        free(mod_name);
 
         /* free xpath */
         free(subs->rpc_subs[i].xpath);
@@ -681,12 +712,23 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
         notif_sub = &subs->notif_subs[i];
         for (j = 0; j < notif_sub->sub_count; ++j) {
             /* remove the subscriptions from the main SHM */
-            if ((err_info = sr_shmmod_notif_subscription(conn, notif_sub->module_name, 0))) {
+            if ((err_info = sr_shmmod_notif_subscription(conn, notif_sub->module_name, 0, &last_removed))) {
                 return err_info;
             }
 
             /* free xpath */
             free(notif_sub->subs[j].xpath);
+        }
+
+        if (last_removed) {
+            /* delete the SHM file itself so that there is no leftover event */
+            if ((err_info = sr_path_sub_shm(notif_sub->module_name, "notif", -1, 1, &path))) {
+                return err_info;
+            }
+            if (unlink(path) == -1) {
+                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
+            }
+            free(path);
         }
 
         /* free dynamic memory */
@@ -980,6 +1022,24 @@ sr_create_module_update_files_with_imps_r(const struct lys_module *mod, int firs
     }
 
     return NULL;
+}
+
+sr_error_info_t *
+sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, int abs_path, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+
+    if (suffix2 > -1) {
+        ret = asprintf(path, "%s/sr_%s.%s.%08x", abs_path ? SR_SHM_DIR : "", mod_name, suffix1, (uint32_t)suffix2);
+    } else {
+        ret = asprintf(path, "%s/sr_%s.%s", abs_path ? SR_SHM_DIR : "", mod_name, suffix1);
+    }
+
+    if (ret == -1) {
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
 }
 
 sr_error_info_t *

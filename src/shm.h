@@ -288,14 +288,14 @@ sr_error_info_t *sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info
 void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable);
 
 sr_error_info_t *sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
-        sr_datastore_t ds, uint32_t priority, int sub_opts, int add);
+        sr_datastore_t ds, uint32_t priority, int sub_opts, int add, int *last_removed);
 
 sr_error_info_t *sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
         sr_mod_dp_sub_type_t sub_type, int add);
 
 sr_error_info_t *sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, int add);
 
-sr_error_info_t *sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *mod_name, int add);
+sr_error_info_t *sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *mod_name, int add, int *last_removed);
 
 /*
  * shm_sub.c

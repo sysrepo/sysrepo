@@ -66,6 +66,9 @@
 /* if not set, defaults to "SR_REPO_PATH/yang" */
 #define SR_YANG_PATH "@YANG_MODULE_PATH@"
 
+/* where SHM files are stored */
+#define SR_SHM_DIR "/dev/shm"
+
 /* notification file will never exceed this size (kB) */
 #define SR_EV_NOTIF_FILE_MAX_SIZE 1024
 
@@ -304,6 +307,8 @@ sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
 sr_error_info_t *sr_create_module_files_with_imps_r(const struct lys_module *mod);
 
 sr_error_info_t *sr_create_module_update_files_with_imps_r(const struct lys_module *mod, int first_upd_module);
+
+sr_error_info_t *sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, int abs_path, char **path);
 
 sr_error_info_t *sr_path_running_dir(char **path);
 

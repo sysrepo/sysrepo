@@ -1590,14 +1590,14 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* add module subscription into main SHM */
-    if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 1))) {
+    if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 1, NULL))) {
         sr_shmmain_unlock(conn, 1);
         return sr_api_ret(session, err_info);
     }
     if (ds != SR_DS_OPERATIONAL) {
-        if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 1))) {
+        if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 1, NULL))) {
             sr_shmmain_unlock(conn, 1);
-            sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0);
+            sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0, NULL);
             return sr_api_ret(session, err_info);
         }
     }
@@ -1605,9 +1605,9 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
         if ((err_info = sr_subs_new(conn, subscription))) {
-            sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0);
+            sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0, NULL);
             if (ds != SR_DS_OPERATIONAL) {
-                sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 0);
+                sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 0, NULL);
             }
             sr_shmmain_unlock(conn, 1);
             return sr_api_ret(session, err_info);
@@ -1670,9 +1670,9 @@ error_unsubscribe:
     } else {
         sr_unsubscribe(*subscription);
     }
-    sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0);
+    sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0, NULL);
     if (ds != SR_DS_OPERATIONAL) {
-        sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 0);
+        sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 0, NULL);
     }
     return sr_api_ret(session, err_info);
 }
@@ -2528,7 +2528,7 @@ _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
 
     if (!start_time) {
         /* add notification subscription into main SHM if replay was not requested */
-        if ((err_info = sr_shmmod_notif_subscription(conn, ly_mod->name, 1))) {
+        if ((err_info = sr_shmmod_notif_subscription(conn, ly_mod->name, 1, NULL))) {
             sr_shmmain_unlock(conn, 0);
             return err_info;
         }
@@ -2537,7 +2537,7 @@ _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
         if ((err_info = sr_subs_new(conn, subscription))) {
-            sr_shmmod_notif_subscription(conn, ly_mod->name, 0);
+            sr_shmmod_notif_subscription(conn, ly_mod->name, 0, NULL);
             sr_shmmain_unlock(conn, 0);
             return err_info;
         }
@@ -2579,7 +2579,7 @@ error_unsubscribe:
         sr_errinfo_free(&tmp_err_info);
     }
 
-    sr_shmmod_notif_subscription(conn, ly_mod->name, 0);
+    sr_shmmod_notif_subscription(conn, ly_mod->name, 0, NULL);
 
     /* SHM UNLOCK */
     sr_shmmain_unlock(conn, 0);
