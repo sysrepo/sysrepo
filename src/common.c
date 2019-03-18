@@ -715,8 +715,8 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, uint32_t *no
 }
 
 sr_error_info_t *
-sr_notif_call_callback(sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
-        const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts)
+sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
+        const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts, sr_sid_t sid)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *next, *elem;
@@ -724,13 +724,21 @@ sr_notif_call_callback(sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, voi
     char *notif_xpath = NULL;
     sr_val_t *vals = NULL;
     size_t val_count = 0;
+    sr_session_ctx_t tmp_sess;
 
     assert(!notif_op || (notif_op->schema->nodetype == LYS_NOTIF));
     assert((tree_cb && !cb) || (!tree_cb && cb));
 
+    /* prepare temporary session */
+    memset(&tmp_sess, 0, sizeof tmp_sess);
+    tmp_sess.conn = conn;
+    tmp_sess.ds = SR_DS_OPERATIONAL;
+    tmp_sess.ev = SR_SUB_EV_NOTIF;
+    tmp_sess.sid = sid;
+
     if (tree_cb) {
         /* callback */
-        tree_cb(notif_type, notif_op, notif_ts, private_data);
+        tree_cb(&tmp_sess, notif_type, notif_op, notif_ts, private_data);
     } else {
         if (notif_op) {
             /* prepare XPath */
@@ -760,7 +768,7 @@ sr_notif_call_callback(sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, voi
         }
 
         /* callback */
-        cb(notif_type, notif_xpath, vals, val_count, notif_ts, private_data);
+        cb(&tmp_sess, notif_type, notif_xpath, vals, val_count, notif_ts, private_data);
     }
 
     /* success */
@@ -768,7 +776,22 @@ sr_notif_call_callback(sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, voi
 cleanup:
     free(notif_xpath);
     sr_free_values(vals, val_count);
+    sr_clear_sess(&tmp_sess);
     return err_info;
+}
+
+void
+sr_clear_sess(sr_session_ctx_t *tmp_sess)
+{
+    uint16_t i;
+
+    sr_errinfo_free(&tmp_sess->err_info);
+    for (i = 0; i < 2; ++i) {
+        lyd_free_withsiblings(tmp_sess->dt[i].edit);
+        tmp_sess->dt[i].edit = NULL;
+        lyd_free_withsiblings(tmp_sess->dt[i].diff);
+        tmp_sess->dt[i].diff = NULL;
+    }
 }
 
 sr_error_info_t *

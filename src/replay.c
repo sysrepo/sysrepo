@@ -463,6 +463,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
     struct ly_set *set = NULL;
     struct lyd_node *notif = NULL, *notif_op;
     int fd = -1;
+    sr_sid_t sid = {0};
 
     /* find SHM mod for replay lock and check if replay is even supported */
     shm_mod = sr_shmmain_find_module(conn->main_shm.addr, mod_name, 0);
@@ -525,7 +526,8 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
                 SR_CHECK_INT_GOTO(notif_op->schema->nodetype != LYS_NOTIF, err_info, cleanup);
 
                 /* call callback */
-                if ((err_info = sr_notif_call_callback(cb, tree_cb, private_data, SR_EV_NOTIF_REPLAY, notif_op, notif_ts))) {
+                if ((err_info = sr_notif_call_callback(conn, cb, tree_cb, private_data, SR_EV_NOTIF_REPLAY, notif_op,
+                        notif_ts, sid))) {
                     goto cleanup;
                 }
             }
@@ -549,8 +551,8 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
 
     /* replay last notification if the subscription continues */
     notif_ts = time(NULL);
-    if ((!stop_time || (stop_time >= notif_ts)) && (err_info = sr_notif_call_callback(cb, tree_cb, private_data,
-            SR_EV_NOTIF_REPLAY_COMPLETE, NULL, stop_time ? stop_time : notif_ts))) {
+    if ((!stop_time || (stop_time >= notif_ts)) && (err_info = sr_notif_call_callback(conn, cb, tree_cb, private_data,
+            SR_EV_NOTIF_REPLAY_COMPLETE, NULL, stop_time ? stop_time : notif_ts, sid))) {
         goto cleanup;
     }
 

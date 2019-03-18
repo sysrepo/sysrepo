@@ -80,6 +80,7 @@ setup(void **state)
     if (sr_session_start(st->conn, SR_DS_RUNNING, 0, &st->sess) != SR_ERR_OK) {
         return 1;
     }
+    sr_session_set_nc_id(st->sess, 1000);
 
     pthread_barrier_init(&st->barrier, NULL, 2);
 
@@ -242,14 +243,15 @@ create_ops_notif(void **state)
 
 /* TEST 1 */
 static void
-notif_simple_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt,
-        time_t timestamp, void *private_data)
+notif_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values,
+        const size_t values_cnt, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)timestamp;
 
     assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
+    assert_int_equal(sr_session_get_nc_id(session), 1000);
 
     /* check input data */
     if (!strcmp(xpath, "/ops:notif3")) {
@@ -393,10 +395,12 @@ test_simple(void **state)
 
 /* TEST 2 */
 static void
-notif_stop_cb(const sr_ev_notif_type_t notif_type, const struct lyd_node *notif, time_t timestamp, void *private_data)
+notif_stop_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif,
+        time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
+    (void)session;
     (void)timestamp;
 
     switch (st->cb_called) {
@@ -435,10 +439,12 @@ test_stop(void **state)
 
 /* TEST 3 */
 static void
-notif_replay_simple_cb(const sr_ev_notif_type_t notif_type, const struct lyd_node *notif, time_t timestamp, void *private_data)
+notif_replay_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif,
+        time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
+    (void)session;
     (void)timestamp;
 
     switch (st->cb_called) {
@@ -515,10 +521,12 @@ test_replay_simple(void **state)
 
 /* TEST 4 */
 static void
-notif_replay_interval_cb(const sr_ev_notif_type_t notif_type, const struct lyd_node *notif, time_t timestamp, void *private_data)
+notif_replay_interval_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif,
+        time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
+    (void)session;
     (void)timestamp;
 
     switch (st->cb_called) {
@@ -675,10 +683,12 @@ test_replay_interval(void **state)
 
 /* TEST 5 */
 static void
-notif_no_replay_cb(const sr_ev_notif_type_t notif_type, const struct lyd_node *notif, time_t timestamp, void *private_data)
+notif_no_replay_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif,
+        time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
+    (void)session;
     (void)timestamp;
 
     switch (st->cb_called) {
@@ -749,7 +759,8 @@ test_no_replay(void **state)
 
 /* TEST 6 */
 static void
-notif_config_change_cb(const sr_ev_notif_type_t notif_type, const struct lyd_node *notif, time_t timestamp, void *private_data)
+notif_config_change_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif,
+        time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     char *str1;
@@ -759,6 +770,7 @@ notif_config_change_cb(const sr_ev_notif_type_t notif_type, const struct lyd_nod
     assert_non_null(notif);
     assert_string_equal(notif->schema->name, "netconf-config-change");
     assert_string_equal(notif->child->schema->name, "changed-by");
+    (void)session;
     (void)timestamp;
 
     switch (st->cb_called) {

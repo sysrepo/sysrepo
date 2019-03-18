@@ -1148,7 +1148,7 @@ typedef enum sr_ev_notif_flag_e {
  *
  * @return Error code (SR_ERR_OK on success).
  */
-typedef void (*sr_event_notif_cb)(const sr_ev_notif_type_t notif_type, const char *xpath,
+typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data);
 
 /**
@@ -1165,8 +1165,8 @@ typedef void (*sr_event_notif_cb)(const sr_ev_notif_type_t notif_type, const cha
  *
  * @return Error code (SR_ERR_OK on success).
  */
-typedef void (*sr_event_notif_tree_cb)(const sr_ev_notif_type_t notif_type, const struct lyd_node *notif,
-        time_t timestamp, void *private_data);
+typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type,
+        const struct lyd_node *notif, time_t timestamp, void *private_data);
 
 /**
  * @brief Subscribes for delivery of an event notification specified by xpath.

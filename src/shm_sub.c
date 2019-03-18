@@ -1220,20 +1220,6 @@ sr_shmsub_conf_listen_prepare_sess(struct modsub_conf_s *conf_subs, struct modsu
     return NULL;
 }
 
-static void
-sr_shmsub_listen_clear_sess(sr_session_ctx_t *tmp_sess)
-{
-    uint16_t i;
-
-    sr_errinfo_free(&tmp_sess->err_info);
-    for (i = 0; i < 2; ++i) {
-        lyd_free_withsiblings(tmp_sess->dt[i].edit);
-        tmp_sess->dt[i].edit = NULL;
-        lyd_free_withsiblings(tmp_sess->dt[i].diff);
-        tmp_sess->dt[i].diff = NULL;
-    }
-}
-
 static int
 sr_shmsub_conf_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct modsub_confsub_s *sub)
 {
@@ -1533,7 +1519,7 @@ cleanup_rdunlock:
 
 cleanup:
     /* clear callback session */
-    sr_shmsub_listen_clear_sess(&tmp_sess);
+    sr_clear_sess(&tmp_sess);
 
     lyd_free_withsiblings(diff);
     free(data);
@@ -1691,7 +1677,7 @@ sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_c
     }
 
     /* success */
-    sr_shmsub_listen_clear_sess(&tmp_sess);
+    sr_clear_sess(&tmp_sess);
     return NULL;
 
 error_wrunlock:
@@ -1703,7 +1689,7 @@ error_rdunlock:
     /* SUB READ UNLOCK */
     sr_shmsub_rdunlock(sub_shm);
 error:
-    sr_shmsub_listen_clear_sess(&tmp_sess);
+    sr_clear_sess(&tmp_sess);
     free(data);
     lyd_free_withsiblings(parent);
     return err_info;
@@ -1919,7 +1905,7 @@ cleanup_rdunlock:
     /* SUB READ UNLOCK */
     sr_shmsub_rdunlock(sub_shm);
 cleanup:
-    sr_shmsub_listen_clear_sess(&tmp_sess);
+    sr_clear_sess(&tmp_sess);
     free(data);
     lyd_free_withsiblings(input);
     lyd_free_withsiblings(output);
@@ -1936,6 +1922,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     struct ly_set *set;
     time_t notif_ts;
     sr_multi_sub_shm_t *multi_sub_shm;
+    sr_sid_t sid;
 
     multi_sub_shm = (sr_multi_sub_shm_t *)notif_subs->sub_shm.addr;
 
@@ -1969,6 +1956,9 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
 
     /* remember event ID so that we do not process it again */
     notif_subs->event_id = multi_sub_shm->event_id;
+
+    /* read SID */
+    sid = multi_sub_shm->sid;
 
     /* SUB READ UNLOCK */
     sr_shmsub_rdunlock((sr_sub_shm_t *)multi_sub_shm);
@@ -2004,8 +1994,8 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
             ly_set_free(set);
         }
 
-        if ((err_info = sr_notif_call_callback(notif_subs->subs[i].cb, notif_subs->subs[i].tree_cb,
-                notif_subs->subs[i].private_data, SR_EV_NOTIF_REALTIME, notif_op, notif_ts))) {
+        if ((err_info = sr_notif_call_callback(conn, notif_subs->subs[i].cb, notif_subs->subs[i].tree_cb,
+                notif_subs->subs[i].private_data, SR_EV_NOTIF_REALTIME, notif_op, notif_ts, sid))) {
             goto cleanup;
         }
     }
@@ -2029,6 +2019,7 @@ sr_shmsub_notif_listen_module_check_stop_time(struct modsub_notif_s *notif_subs,
     time_t cur_ts;
     struct modsub_notifsub_s *notif_sub;
     uint32_t i;
+    sr_sid_t sid = {0};
 
     *module_finished = 0;
     cur_ts = time(NULL);
@@ -2038,8 +2029,8 @@ sr_shmsub_notif_listen_module_check_stop_time(struct modsub_notif_s *notif_subs,
         notif_sub = &notif_subs->subs[i];
         if (notif_sub->stop_time && (notif_sub->stop_time < cur_ts)) {
             /* subscription is finished */
-            if ((err_info = sr_notif_call_callback(notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-                    SR_EV_NOTIF_STOP, NULL, notif_sub->stop_time))) {
+            if ((err_info = sr_notif_call_callback(subs->conn, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
+                    SR_EV_NOTIF_STOP, NULL, notif_sub->stop_time, sid))) {
                 return err_info;
             }
 

@@ -290,12 +290,15 @@ sr_error_info_t *sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *sub
 
 sr_error_info_t *sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, uint32_t *notif_sub_count);
 
-sr_error_info_t *sr_notif_call_callback(sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
-        const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts);
+sr_error_info_t *sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb,
+        void *private_data, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts,
+        sr_sid_t sid);
 
 /*
  * utility functions
  */
+void sr_clear_sess(sr_session_ctx_t *tmp_sess);
+
 sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
 
 sr_error_info_t *sr_create_module_files_with_imps_r(const struct lys_module *mod);
