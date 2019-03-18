@@ -157,6 +157,13 @@ sr_disconnect(sr_conn_ctx_t *conn)
         sr_session_stop(conn->sessions[0]);
     }
 
+    /* free cache */
+    if (conn->opts & SR_CONN_CACHE_RUNNING) {
+        pthread_rwlock_destroy(&conn->mod_cache.lock);
+        lyd_free_withsiblings(conn->mod_cache.data);
+        free(conn->mod_cache.mods);
+    }
+
     free(conn->app_name);
     ly_ctx_destroy(conn->ly_ctx, NULL);
     pthread_mutex_destroy(&conn->ptr_lock);
@@ -557,7 +564,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node **s
     }
 
     /* load modules data */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_REQ, &session->sid, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -630,7 +637,7 @@ sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, struct ly_set **su
     }
 
     /* load modules data */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_REQ, &session->sid, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -746,11 +753,9 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     struct lyd_node *valid_edit = NULL;
 
     SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !edit || !default_operation, session, err_info);
+    SR_CHECK_ARG_APIRET(strcmp(default_operation, "merge") && strcmp(default_operation, "replace")
+            && strcmp(default_operation, "none"), session, err_info);
 
-    if (strcmp(default_operation, "merge") && strcmp(default_operation, "replace") && strcmp(default_operation, "none")) {
-        /* TODO */
-        return SR_ERR_INVAL_ARG;
-    }
     if (session->dt[session->ds].edit) {
         /* do not allow merging NETCONF edits into sysrepo ones, it can cause some unexpected results */
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "There are already some session changes.");
@@ -799,7 +804,7 @@ error:
 API int
 sr_validate(sr_session_ctx_t *session)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
 
     SR_CHECK_ARG_APIRET(!session, session, err_info);
@@ -833,7 +838,7 @@ sr_validate(sr_session_ctx_t *session)
     }
 
     /* load all modules data (we need dependencies for validation) */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, NULL, NULL))) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 0, NULL, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -845,7 +850,7 @@ sr_validate(sr_session_ctx_t *session)
     }
 
     /* validate the data trees */
-    if ((err_info = sr_modinfo_validate(&mod_info, 0))) {
+    if ((err_info = sr_modinfo_validate(&mod_info, 0, &session->sid, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -860,6 +865,11 @@ cleanup_shm_unlock:
     sr_shmmain_unlock(session->conn, 0);
 
     sr_modinfo_free(&mod_info);
+    if (cb_err_info) {
+        /* return callback error if some was generated */
+        sr_errinfo_merge(&err_info, cb_err_info);
+        err_info->err_code = SR_ERR_CALLBACK_FAILED;
+    }
     return sr_api_ret(session, err_info);
 }
 
@@ -894,7 +904,7 @@ sr_apply_changes(sr_session_ctx_t *session)
     }
 
     /* load all modules data (we need dependencies for validation) */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, NULL, NULL))) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 0, NULL, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -904,7 +914,7 @@ sr_apply_changes(sr_session_ctx_t *session)
     }
 
     /* validate new data trees */
-    if ((err_info = sr_modinfo_validate(&mod_info, 1))) {
+    if ((err_info = sr_modinfo_validate(&mod_info, 1, NULL, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -941,8 +951,13 @@ sr_apply_changes(sr_session_ctx_t *session)
                 goto cleanup_mods_unlock;
             }
 
-            /* reload possibly changed data */
-            if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_REQ, NULL, NULL))) {
+            /* free current changed data */
+            assert(!mod_info.data_cached);
+            lyd_free_withsiblings(mod_info.data);
+            mod_info.data = NULL;
+
+            /* reload unchanged data back */
+            if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 0, NULL, NULL))) {
                 goto cleanup_mods_unlock;
             }
 
@@ -955,7 +970,7 @@ sr_apply_changes(sr_session_ctx_t *session)
             }
 
             /* validate updated data trees */
-            if ((err_info = sr_modinfo_validate(&mod_info, 1))) {
+            if ((err_info = sr_modinfo_validate(&mod_info, 1, NULL, NULL))) {
                 goto cleanup_mods_unlock;
             }
 
@@ -987,7 +1002,7 @@ sr_apply_changes(sr_session_ctx_t *session)
     }
 
     /* store updated datastore */
-    if ((err_info = sr_modinfo_store(&mod_info))) {
+    if ((err_info = sr_modinfo_data_store(&mod_info))) {
         goto cleanup_mods_unlock;
     }
 
@@ -1044,106 +1059,84 @@ sr_discard_changes(sr_session_ctx_t *session)
     return sr_api_ret(session, NULL);
 }
 
-API int
-sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, sr_datastore_t dst_datastore)
+static sr_error_info_t *
+_sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, struct lyd_node **src_data,
+        sr_datastore_t dst_datastore)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
-    struct sr_mod_info_s src_mod_info, dst_mod_info;
-    const struct lys_module *mod = NULL;
+    struct sr_mod_info_s mod_info;
 
-    SR_CHECK_ARG_APIRET(!session || (src_datastore == SR_DS_OPERATIONAL) || (dst_datastore == SR_DS_OPERATIONAL), session, err_info);
+    assert(!*src_data || !(*src_data)->prev->next);
+    memset(&mod_info, 0, sizeof mod_info);
 
-    if (src_datastore == dst_datastore) {
-        /* nothing to do */
-        return sr_api_ret(session, NULL);
-    }
-
-    memset(&src_mod_info, 0, sizeof src_mod_info);
-    memset(&dst_mod_info, 0, sizeof dst_mod_info);
-
-    /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
-        return sr_api_ret(session, err_info);
-    }
-
-    if (module_name) {
-        /* try to find this module */
-        mod = ly_ctx_get_module(session->conn->ly_ctx, module_name, NULL, 1);
-        if (!mod) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-            goto cleanup_shm_unlock;
-        }
-    }
-
-    /* collect all required modules for src and dst datastores */
-    if ((err_info = sr_shmmod_collect_modules(session->conn, mod, src_datastore, 0, &src_mod_info))) {
-        goto cleanup_shm_unlock;
-    }
-    if ((err_info = sr_shmmod_collect_modules(session->conn, mod, dst_datastore, 0, &dst_mod_info))) {
-        goto cleanup_shm_unlock;
+    /* collect all required modules */
+    if ((err_info = sr_shmmod_collect_modules(session->conn, ly_mod, dst_datastore, MOD_INFO_DEP | MOD_INFO_INV_DEP, &mod_info))) {
+        return err_info;
     }
 
     /* check write perm */
-    if ((err_info = sr_modinfo_perm_check(&src_mod_info, 1))) {
-        goto cleanup_shm_unlock;
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 1))) {
+        return err_info;
     }
 
     /* MODULES READ LOCK (but setting flag for guaranteed later upgrade success) */
-    if ((err_info = sr_shmmod_modinfo_rdlock(&dst_mod_info, 1, session->sid))) {
-        goto cleanup_shm_unlock;
+    if ((err_info = sr_shmmod_modinfo_rdlock(&mod_info, 1, session->sid))) {
+        return err_info;
     }
 
-    /* load modules data */
-    if ((err_info = sr_modinfo_data_update(&src_mod_info, MOD_INFO_REQ, NULL, NULL))) {
-        goto cleanup_mods_unlock;
-    }
-    if ((err_info = sr_modinfo_data_update(&dst_mod_info, MOD_INFO_REQ, NULL, NULL))) {
+    /* load all current modules data */
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 0, NULL, NULL))) {
         goto cleanup_mods_unlock;
     }
 
-    /* create diff between the 2 mod_infos and their modules */
-    if ((err_info = sr_modinfo_diff(&src_mod_info, &dst_mod_info))) {
+    /* update affected data and create corresponding diff */
+    if ((err_info = sr_modinfo_replace(&mod_info, src_data))) {
         goto cleanup_mods_unlock;
     }
 
-    if (!dst_mod_info.diff) {
+    if (!mod_info.diff) {
         SR_LOG_INFMSG("No datastore changes to apply.");
-        if (!dst_mod_info.dflt_change) {
+        if (!mod_info.dflt_change) {
             goto cleanup_mods_unlock;
         }
         /* while there are no changes for callbacks, some default flags changed so we must store them */
+    } else {
+        /* validate the new config */
+        if ((err_info = sr_modinfo_validate(&mod_info, 1, NULL, NULL))) {
+            goto cleanup_mods_unlock;
+        }
     }
 
-    if (dst_mod_info.diff) {
+    if (mod_info.diff) {
         /* publish final diff in a "change" event for any subscribers and wait for them */
-        if ((err_info = sr_shmsub_conf_notify_change(&dst_mod_info, session->sid, &cb_err_info))) {
+        if ((err_info = sr_shmsub_conf_notify_change(&mod_info, session->sid, &cb_err_info))) {
             goto cleanup_mods_unlock;
         }
         if (cb_err_info) {
             /* "change" event failed, publish "abort" event and finish */
-            err_info = sr_shmsub_conf_notify_change_abort(&dst_mod_info, session->sid);
+            err_info = sr_shmsub_conf_notify_change_abort(&mod_info, session->sid);
             goto cleanup_mods_unlock;
         }
     }
 
     /* MODULES WRITE LOCK (upgrade) */
-    if ((err_info = sr_shmmod_modinfo_rdlock_upgrade(&dst_mod_info, session->sid))) {
+    if ((err_info = sr_shmmod_modinfo_rdlock_upgrade(&mod_info, session->sid))) {
         goto cleanup_mods_unlock;
     }
 
     /* store updated datastore */
-    if ((err_info = sr_modinfo_store(&dst_mod_info))) {
+    if ((err_info = sr_modinfo_data_store(&mod_info))) {
         goto cleanup_mods_unlock;
     }
 
-    if (dst_mod_info.diff) {
+    if (mod_info.diff) {
         /* publish "done" event, all changes were applied */
-        if ((err_info = sr_shmsub_conf_notify_change_done(&dst_mod_info, session->sid))) {
+        if ((err_info = sr_shmsub_conf_notify_change_done(&mod_info, session->sid))) {
             goto cleanup_mods_unlock;
         }
 
         /* generate netconf-config-change notification */
-        if ((err_info = sr_modinfo_generate_config_change_notif(&dst_mod_info, session))) {
+        if ((err_info = sr_modinfo_generate_config_change_notif(&mod_info, session))) {
             goto cleanup_mods_unlock;
         }
     }
@@ -1152,34 +1145,25 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
 cleanup_mods_unlock:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&dst_mod_info, 1);
+    sr_shmmod_modinfo_unlock(&mod_info, 1);
 
-cleanup_shm_unlock:
-    /* SHM UNLOCK */
-    sr_shmmain_unlock(session->conn, 0);
-
-    sr_modinfo_free(&src_mod_info);
-    sr_modinfo_free(&dst_mod_info);
+    sr_modinfo_free(&mod_info);
     if (cb_err_info) {
         /* return callback error if some was generated */
         sr_errinfo_merge(&err_info, cb_err_info);
         err_info->err_code = SR_ERR_CALLBACK_FAILED;
     }
-    return sr_api_ret(session, err_info);
+    return err_info;
 }
 
 API int
 sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
         sr_datastore_t dst_datastore)
 {
-    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
-    struct sr_mod_info_s src_mod_info, dst_mod_info;
-    const struct lys_module *mod = NULL;
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod = NULL;
 
     SR_CHECK_ARG_APIRET(!session || (dst_datastore == SR_DS_OPERATIONAL), session, err_info);
-
-    memset(&src_mod_info, 0, sizeof src_mod_info);
-    memset(&dst_mod_info, 0, sizeof dst_mod_info);
 
     /* find first sibling */
     for (; src_config && src_config->prev->next; src_config = src_config->prev);
@@ -1191,111 +1175,90 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
 
     if (module_name) {
         /* try to find this module */
-        mod = ly_ctx_get_module(session->conn->ly_ctx, module_name, NULL, 1);
-        if (!mod) {
+        ly_mod = ly_ctx_get_module(session->conn->ly_ctx, module_name, NULL, 1);
+        if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
             goto cleanup_shm_unlock;
         }
     }
 
-    /* collect all required modules for src and dst datastores */
-    if ((err_info = sr_shmmod_collect_modules(session->conn, mod, SR_DS_RUNNING, MOD_INFO_DEP | MOD_INFO_INV_DEP,
-            &src_mod_info))) {
+    /* replace the configuration */
+    if ((err_info = _sr_replace_config(session, ly_mod, &src_config, dst_datastore))) {
         goto cleanup_shm_unlock;
-    }
-    if ((err_info = sr_shmmod_collect_modules(session->conn, mod, dst_datastore, 0, &dst_mod_info))) {
-        goto cleanup_shm_unlock;
-    }
-
-    /* check write perm */
-    if ((err_info = sr_modinfo_perm_check(&src_mod_info, 1))) {
-        goto cleanup_shm_unlock;
-    }
-
-    /* MODULES READ LOCK (but setting flag for guaranteed later upgrade success) */
-    if ((err_info = sr_shmmod_modinfo_rdlock(&dst_mod_info, 1, session->sid))) {
-        goto cleanup_shm_unlock;
-    }
-
-    /* replace modules data with the new config */
-    src_mod_info.data = src_config;
-    src_config = NULL;
-
-    /* validate the new config */
-    if ((err_info = sr_modinfo_validate(&src_mod_info, 0))) {
-        goto cleanup_mods_unlock;
-    }
-
-    /* load current modules data */
-    if ((err_info = sr_modinfo_data_update(&dst_mod_info, MOD_INFO_REQ, NULL, NULL))) {
-        goto cleanup_mods_unlock;
-    }
-
-    /* create diff between the 2 mod_infos and their modules */
-    if ((err_info = sr_modinfo_diff(&src_mod_info, &dst_mod_info))) {
-        goto cleanup_mods_unlock;
-    }
-
-    if (!dst_mod_info.diff) {
-        SR_LOG_INFMSG("No datastore changes to apply.");
-        if (!dst_mod_info.dflt_change) {
-            goto cleanup_mods_unlock;
-        }
-        /* while there are no changes for callbacks, some default flags changed so we must store them */
-    }
-
-    if (dst_mod_info.diff) {
-        /* publish final diff in a "change" event for any subscribers and wait for them */
-        if ((err_info = sr_shmsub_conf_notify_change(&dst_mod_info, session->sid, &cb_err_info))) {
-            goto cleanup_mods_unlock;
-        }
-        if (cb_err_info) {
-            /* "change" event failed, publish "abort" event and finish */
-            err_info = sr_shmsub_conf_notify_change_abort(&dst_mod_info, session->sid);
-            goto cleanup_mods_unlock;
-        }
-    }
-
-    /* MODULES WRITE LOCK (upgrade) */
-    if ((err_info = sr_shmmod_modinfo_rdlock_upgrade(&dst_mod_info, session->sid))) {
-        goto cleanup_mods_unlock;
-    }
-
-    /* store updated datastore */
-    if ((err_info = sr_modinfo_store(&dst_mod_info))) {
-        goto cleanup_mods_unlock;
-    }
-
-    if (dst_mod_info.diff) {
-        /* publish "done" event, all changes were applied */
-        if ((err_info = sr_shmsub_conf_notify_change_done(&dst_mod_info, session->sid))) {
-            goto cleanup_mods_unlock;
-        }
-
-        /* generate netconf-config-change notification */
-        if ((err_info = sr_modinfo_generate_config_change_notif(&dst_mod_info, session))) {
-            goto cleanup_mods_unlock;
-        }
     }
 
     /* success */
-
-cleanup_mods_unlock:
-    /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&dst_mod_info, 1);
 
 cleanup_shm_unlock:
     /* SHM UNLOCK */
     sr_shmmain_unlock(session->conn, 0);
 
     lyd_free_withsiblings(src_config);
-    sr_modinfo_free(&src_mod_info);
-    sr_modinfo_free(&dst_mod_info);
-    if (cb_err_info) {
-        /* return callback error if some was generated */
-        sr_errinfo_merge(&err_info, cb_err_info);
-        err_info->err_code = SR_ERR_CALLBACK_FAILED;
+    return sr_api_ret(session, err_info);
+}
+
+API int
+sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, sr_datastore_t dst_datastore)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_s src_mod_info;
+    const struct lys_module *ly_mod = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || (src_datastore == SR_DS_OPERATIONAL) || (dst_datastore == SR_DS_OPERATIONAL), session, err_info);
+
+    if (src_datastore == dst_datastore) {
+        /* nothing to do */
+        return sr_api_ret(session, NULL);
     }
+
+    memset(&src_mod_info, 0, sizeof src_mod_info);
+
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    if (module_name) {
+        /* try to find this module */
+        ly_mod = ly_ctx_get_module(session->conn->ly_ctx, module_name, NULL, 1);
+        if (!ly_mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+            goto cleanup_shm_unlock;
+        }
+    }
+
+    /* collect all required modules (dependencies are not needed for a single module) */
+    if ((err_info = sr_shmmod_collect_modules(session->conn, ly_mod, src_datastore, 0, &src_mod_info))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* MODULES READ LOCK */
+    if ((err_info = sr_shmmod_modinfo_rdlock(&src_mod_info, 0, session->sid))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* get their data */
+    err_info = sr_modinfo_data_load(&src_mod_info, MOD_INFO_REQ, 0, NULL, NULL);
+
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&src_mod_info, 0);
+
+    if (err_info) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* replace the configuration */
+    if ((err_info = _sr_replace_config(session, ly_mod, &src_mod_info.data, dst_datastore))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* success */
+
+cleanup_shm_unlock:
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(session->conn, 0);
+
+    sr_modinfo_free(&src_mod_info);
     return sr_api_ret(session, err_info);
 }
 
@@ -1448,7 +1411,7 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
     }
 
     /* get the current running datastore data */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_REQ, NULL, NULL))) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, NULL, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -2439,12 +2402,15 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* load all input dependency modules data */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, &session->sid, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, &session->sid, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
     /* validate the operation */
-    if ((err_info = sr_modinfo_op_validate(&mod_info, input_op, shm_deps, shm_dep_count, 0))) {
+    if ((err_info = sr_modinfo_op_validate(&mod_info, input_op, shm_deps, shm_dep_count, 0, &session->sid, &cb_err_info))) {
+        goto cleanup_mods_unlock;
+    }
+    if (cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -2474,12 +2440,15 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* load all output dependency modules data */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, &session->sid, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, &session->sid, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
     /* validate the operation */
-    if ((err_info = sr_modinfo_op_validate(&mod_info, *output, shm_deps, shm_dep_count, 1))) {
+    if ((err_info = sr_modinfo_op_validate(&mod_info, *output, shm_deps, shm_dep_count, 1, &session->sid, &cb_err_info))) {
+        goto cleanup_mods_unlock;
+    }
+    if (cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -2808,12 +2777,15 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, sr_e
     }
 
     /* load all input dependency modules data */
-    if ((err_info = sr_modinfo_data_update(&mod_info, MOD_INFO_TYPE_MASK, &session->sid, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, &session->sid, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
     /* validate the operation */
-    if ((err_info = sr_modinfo_op_validate(&mod_info, notif_op, shm_deps, shm_dep_count, 0))) {
+    if ((err_info = sr_modinfo_op_validate(&mod_info, notif_op, shm_deps, shm_dep_count, 0, &session->sid, &cb_err_info))) {
+        goto cleanup_mods_unlock;
+    }
+    if (cb_err_info) {
         goto cleanup_mods_unlock;
     }
 

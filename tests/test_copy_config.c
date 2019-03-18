@@ -1221,7 +1221,7 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/type");
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/enabled");
 
         sr_free_val(new_val);
 
@@ -1232,7 +1232,7 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/enabled");
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/type");
 
         sr_free_val(new_val);
 

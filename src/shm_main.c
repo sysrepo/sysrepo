@@ -1543,6 +1543,7 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
         shm_mod = (sr_mod_t *)shm_cur;
         shm_cur += sizeof *shm_mod;
         shm_mod->flags = 0;
+        shm_mod->ver = 1;
 
         /* init shared rwlock */
         if ((err_info = sr_rwlock_init(&shm_mod->data_lock_info[SR_DS_STARTUP].lock, 1))) {

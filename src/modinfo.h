@@ -38,6 +38,8 @@ struct sr_mod_info_s {
     struct lyd_node *diff;
     int dflt_change;
     struct lyd_node *data;
+    /* a conn cache lock (read/write) is held while this is true */
+    int data_cached;
     sr_conn_ctx_t *conn;
 
     struct sr_mod_info_mod_s {
@@ -58,14 +60,15 @@ sr_error_info_t *sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr);
 
 sr_error_info_t *sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff);
 
-sr_error_info_t *sr_modinfo_diff(struct sr_mod_info_s *src_mod_info, struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data);
 
-sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff);
+sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *sid,
+        sr_error_info_t **cb_error_info);
 
 sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_mod_data_dep_t *shm_deps,
-        uint16_t shm_dep_count, int output);
+        uint16_t shm_dep_count, int output, sr_sid_t *sid, sr_error_info_t **cb_error_info);
 
-sr_error_info_t *sr_modinfo_data_update(struct sr_mod_info_s *mod_info, uint8_t mod_type, sr_sid_t *sid,
+sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache, sr_sid_t *sid,
         sr_error_info_t **cb_error_info);
 
 sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
@@ -73,7 +76,7 @@ sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const cha
 
 sr_error_info_t *sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sess);
 
-sr_error_info_t *sr_modinfo_store(struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_modinfo_data_store(struct sr_mod_info_s *mod_info);
 
 void sr_modinfo_free(struct sr_mod_info_s *mod_info);
 

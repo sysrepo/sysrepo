@@ -81,6 +81,8 @@ struct sr_mod_s {
     off_t name;
     char rev[11];
     uint8_t flags;
+    /* this value is protected by this module lock (data lock), must be higher than 0 */
+    uint32_t ver;
     struct sr_mod_lock_s {
         pthread_rwlock_t lock;
         uint8_t write_locked;

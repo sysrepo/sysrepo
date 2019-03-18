@@ -93,6 +93,9 @@
 /* timeout for locking (data of) a module; maximum time a module write lock is expected to be held (s) */
 #define SR_MOD_LOCK_TIMEOUT 2
 
+/* timeout for locking module cache (s) */
+#define SR_MOD_CACHE_LOCK_TIMEOUT 5
+
 /* permissions of main SHM lock file and main SHM itself */
 #define SR_MAIN_SHM_PERM 00666
 
@@ -154,6 +157,19 @@ struct sr_conn_ctx_s {
     pthread_mutex_t main_shm_remap_lock;
     sr_shm_t main_shm;
     uint32_t main_ver;
+
+    struct sr_mod_cache_s {
+        /* session-shared lock */
+        pthread_rwlock_t lock;
+        struct lyd_node *data;
+
+        struct {
+            const struct lys_module *ly_mod;
+            /* 0 is not valid */
+            uint32_t ver;
+        } *mods;
+        uint32_t mod_count;
+    } mod_cache;
 };
 
 struct sr_session_ctx_s {
