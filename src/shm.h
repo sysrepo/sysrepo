@@ -84,12 +84,12 @@ struct sr_mod_s {
     /* this value is protected by this module lock (data lock), must be higher than 0 */
     uint32_t ver;
     struct sr_mod_lock_s {
-        pthread_rwlock_t lock;
+        sr_rwlock_t lock;
         uint8_t write_locked;
         uint8_t ds_locked;
         sr_sid_t sid;
     } data_lock_info[2];
-    pthread_rwlock_t replay_lock;
+    sr_rwlock_t replay_lock;
     off_t features;
     uint16_t feat_count;
     off_t data_deps;
@@ -117,9 +117,9 @@ struct sr_mod_s {
 
 typedef struct sr_main_shm_s {
     /* process-thread-shared lock */
-    pthread_rwlock_t lock;
+    sr_rwlock_t lock;
     uint32_t ver;
-    uint32_t new_sr_sid;
+    ATOMIC_T new_sr_sid;
     size_t wasted_mem;
     off_t first_mod;
 } sr_main_shm_t;
@@ -148,9 +148,7 @@ typedef enum sr_sub_event_e {
  */
 typedef struct sr_sub_shm_s {
     /* synchronization */
-    pthread_mutex_t lock;
-    uint16_t readers;
-    pthread_cond_t cond;
+    sr_rwlock_t lock;
 
     uint32_t event_id;
     sr_sub_event_t event;
@@ -162,9 +160,7 @@ typedef struct sr_sub_shm_s {
  */
 typedef struct sr_multi_sub_shm_s {
     /* synchronization */
-    pthread_mutex_t lock;
-    uint16_t readers;
-    pthread_cond_t cond;
+    sr_rwlock_t lock;
 
     uint32_t event_id;
     sr_sub_event_t event;
@@ -249,7 +245,7 @@ sr_mod_t *sr_shmmain_find_module(char *main_shm_addr, const char *name, off_t na
 
 sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int keep_remap);
 
-void sr_shmmain_unlock(sr_conn_ctx_t *conn, int kept_remap);
+void sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int kept_remap);
 
 sr_error_info_t *sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *ly_mod);
 

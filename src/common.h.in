@@ -45,6 +45,26 @@
 #   define eaccess access
 #endif
 
+/* atomic variables */
+#cmakedefine SR_HAVE_STDATOMIC
+#ifdef SR_HAVE_STDATOMIC
+# include <stdatomic.h>
+
+# define ATOMIC_T atomic_uint_fast32_t
+# define ATOMIC_T_MAX UINT_FAST32_MAX
+
+# define ATOMIC_STORE_RELAXED(var, x) atomic_store_explicit(&(var), x, memory_order_relaxed)
+# define ATOMIC_LOAD_RELAXED(var) atomic_load_explicit(&(var), memory_order_relaxed)
+# define ATOMIC_INC_RELAXED(var) atomic_fetch_add_explicit(&(var), 1, memory_order_relaxed)
+#else
+# define ATOMIC_T uint32_t
+# define ATOMIC_T_MAX UINT32_MAX
+
+# define ATOMIC_STORE_RELAXED(var, x) ((var) = (x))
+# define ATOMIC_LOAD_RELAXED(var) (var)
+# define ATOMIC_INC_RELAXED(var) __sync_fetch_and_add(&(var), 1)
+#endif
+
 /* name of sysrepo YANG module */
 #define SR_YANG_MOD "sysrepo"
 
@@ -75,8 +95,8 @@
 /* maximum main SHM wasted memory (B) */
 #define SR_MAIN_SHM_WASTED_MAX_MEM 4096
 
-/* time slept when wanting a write lock on a module that is already locked (ms) */
-#define SR_MOD_WRITE_LOCK_SLEEP 10
+/* maximum time read lock can be held on rwlocks; used when unlocking (ms) */
+#define SR_RWLOCK_READ_TIMEOUT 100
 
 /* time a subscriber thread sleeps if no event occurs (ms) */
 #define SR_SUB_NOEVENT_SLEEP 50
@@ -89,9 +109,6 @@
 
 /* timeout for locking main SHM and subscription SHM; maximum time an API call (sr_apply_changes()) is expected to take (s) */
 #define SR_MAIN_LOCK_TIMEOUT 15
-
-/* maximum time a lock on a subscription SHM is expected to be held; how long to wait for a write lock (ms) */
-#define SR_SUB_LOCK_TIME 1000
 
 /* timeout for locking (data of) a module; maximum time a module write lock is expected to be held (s) */
 #define SR_MOD_LOCK_TIMEOUT 2
@@ -133,6 +150,12 @@ typedef struct sr_sid_s {
     char *user;
 } sr_sid_t;
 
+typedef struct sr_rwlock_s {
+    pthread_mutex_t mutex;
+    uint16_t readers;
+    pthread_cond_t cond;
+} sr_rwlock_t;
+
 #include "replay.h"
 #include "modinfo.h"
 #include "edit_diff.h"
@@ -163,7 +186,7 @@ struct sr_conn_ctx_s {
 
     struct sr_mod_cache_s {
         /* session-shared lock */
-        pthread_rwlock_t lock;
+        sr_rwlock_t lock;
         struct lyd_node *data;
 
         struct {
@@ -191,7 +214,9 @@ struct sr_session_ctx_s {
 
 struct sr_subscription_ctx_s {
     sr_conn_ctx_t *conn;
-    volatile pthread_t tid;
+    ATOMIC_T thread_running;
+    pthread_t tid;
+    /* session-shared lock */
     pthread_mutex_t subs_lock;
 
     struct modsub_conf_s {
@@ -336,8 +361,6 @@ sr_error_info_t *sr_perm_get(const char *mod_name, char **owner, char **group, m
 
 void sr_time_get(struct timespec *ts, uint32_t add_ms);
 
-int sr_time_is_timeout(struct timespec *ts);
-
 /* if new_shm_size == 0 needs READ lock, otherwise needs WRITE lock! */
 sr_error_info_t *sr_shm_remap(sr_shm_t *shm, size_t new_shm_size);
 
@@ -345,13 +368,19 @@ void sr_shm_destroy(sr_shm_t *shm);
 
 off_t sr_shmcpy(char *shm_addr, const void *src, size_t size, char **shm_end);
 
+sr_error_info_t *sr_mutex_init(pthread_mutex_t *lock, int shared);
+
 sr_error_info_t *sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func);
 
 void sr_munlock(pthread_mutex_t *lock);
 
-sr_error_info_t *sr_rwlock(pthread_rwlock_t *rwlock, int timeout_ms, int wr, const char *func);
+sr_error_info_t *sr_rwlock_init(sr_rwlock_t *rwlock, int shared);
 
-void sr_rwunlock(pthread_rwlock_t *rwlock);
+void sr_rwlock_destroy(sr_rwlock_t *rwlock);
+
+sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, int wr, const char *func);
+
+void sr_rwunlock(sr_rwlock_t *rwlock, int wr);
 
 void *sr_realloc(void *ptr, size_t size);
 
@@ -368,12 +397,6 @@ sr_error_info_t *sr_msleep(uint32_t msec);
 sr_error_info_t *sr_file_get_size(int fd, size_t *size);
 
 const char *sr_ly_leaf_value_str(const struct lyd_node *leaf);
-
-sr_error_info_t *sr_mutex_init(pthread_mutex_t *lock, int shared);
-
-sr_error_info_t *sr_rwlock_init(pthread_rwlock_t *rwlock, int shared);
-
-sr_error_info_t *sr_cond_init(pthread_cond_t *cond, int shared);
 
 const char *sr_ev2str(sr_sub_event_t ev);
 

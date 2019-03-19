@@ -1493,22 +1493,6 @@ sr_time_get(struct timespec *ts, uint32_t add_ms)
     ts->tv_sec += add_ms / 1000;
 }
 
-int
-sr_time_is_timeout(struct timespec *ts)
-{
-    struct timespec cur_ts;
-
-    sr_time_get(&cur_ts, 0);
-
-    if (ts->tv_sec < cur_ts.tv_sec) {
-        return 1;
-    }
-    if ((ts->tv_sec == cur_ts.tv_sec) && (ts->tv_nsec <= cur_ts.tv_nsec)) {
-        return 1;
-    }
-    return 0;
-}
-
 sr_error_info_t *
 sr_shm_remap(sr_shm_t *shm, size_t new_shm_size)
 {
@@ -1579,6 +1563,41 @@ sr_shmcpy(char *shm_addr, const void *src, size_t size, char **shm_end)
 }
 
 sr_error_info_t *
+sr_mutex_init(pthread_mutex_t *lock, int shared)
+{
+    sr_error_info_t *err_info = NULL;
+    pthread_mutexattr_t attr;
+    int ret;
+
+    if (shared) {
+        /* init attr */
+        if ((ret = pthread_mutexattr_init(&attr))) {
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
+            return err_info;
+        }
+        if ((ret = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
+            pthread_mutexattr_destroy(&attr);
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            return err_info;
+        }
+
+        if ((ret = pthread_mutex_init(lock, &attr))) {
+            pthread_mutexattr_destroy(&attr);
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
+            return err_info;
+        }
+        pthread_mutexattr_destroy(&attr);
+    } else {
+        if ((ret = pthread_mutex_init(lock, NULL))) {
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
+            return err_info;
+        }
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
 sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func)
 {
     sr_error_info_t *err_info = NULL;
@@ -1612,37 +1631,145 @@ sr_munlock(pthread_mutex_t *lock)
     }
 }
 
-sr_error_info_t *
-sr_rwlock(pthread_rwlock_t *rwlock, int timeout_ms, int wr, const char *func)
+static sr_error_info_t *
+sr_cond_init(pthread_cond_t *cond, int shared)
 {
     sr_error_info_t *err_info = NULL;
-    struct timespec abs_ts;
+    pthread_condattr_t attr;
+    int ret;
+
+    if (shared) {
+        /* init attr */
+        if ((ret = pthread_condattr_init(&attr))) {
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
+            return err_info;
+        }
+        if ((ret = pthread_condattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
+            pthread_condattr_destroy(&attr);
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            return err_info;
+        }
+
+        if ((ret = pthread_cond_init(cond, &attr))) {
+            pthread_condattr_destroy(&attr);
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+            return err_info;
+        }
+        pthread_condattr_destroy(&attr);
+    } else {
+        if ((ret = pthread_cond_init(cond, NULL))) {
+            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+            return err_info;
+        }
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if ((err_info = sr_mutex_init(&rwlock->mutex, shared))) {
+        return err_info;
+    }
+    rwlock->readers = 0;
+    if ((err_info = sr_cond_init(&rwlock->cond, shared))) {
+        pthread_mutex_destroy(&rwlock->mutex);
+        return err_info;
+    }
+
+    return NULL;
+}
+
+void
+sr_rwlock_destroy(sr_rwlock_t *rwlock)
+{
+    pthread_mutex_destroy(&rwlock->mutex);
+    pthread_cond_destroy(&rwlock->cond);
+}
+
+sr_error_info_t *
+sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, int wr, const char *func)
+{
+    sr_error_info_t *err_info = NULL;
+    struct timespec timeout_ts;
     int ret;
 
     assert(timeout_ms > 0);
 
-    sr_time_get(&abs_ts, (uint32_t)timeout_ms);
-    if (wr) {
-        ret = pthread_rwlock_timedwrlock(rwlock, &abs_ts);
-    } else {
-        ret = pthread_rwlock_timedrdlock(rwlock, &abs_ts);
-    }
+    sr_time_get(&timeout_ts, timeout_ms);
+
+    /* MUTEX LOCK */
+    ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
     if (ret) {
-        SR_ERRINFO_RWLOCK(&err_info, wr, func, ret);
+        SR_ERRINFO_LOCK(&err_info, func, ret);
+        return err_info;
     }
 
-    return err_info;
+    if (wr) {
+        /* write lock */
+        ret = 0;
+        while (!ret && rwlock->readers) {
+            /* COND WAIT */
+            ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
+        }
+
+        if (ret) {
+            /* MUTEX UNLOCK */
+            pthread_mutex_unlock(&rwlock->mutex);
+
+            SR_ERRINFO_COND(&err_info, func, ret);
+            return err_info;
+        }
+    } else {
+        /* read lock */
+        ++rwlock->readers;
+
+        /* MUTEX UNLOCK */
+        pthread_mutex_unlock(&rwlock->mutex);
+    }
+
+    return NULL;
 }
 
 void
-sr_rwunlock(pthread_rwlock_t *rwlock)
+sr_rwunlock(sr_rwlock_t *rwlock, int wr)
 {
+    sr_error_info_t *err_info = NULL;
+    struct timespec timeout_ts;
     int ret;
 
-    ret = pthread_rwlock_unlock(rwlock);
-    if (ret) {
-        SR_LOG_WRN("Unlocking a rwlock failed (%s).", strerror(ret));
+    if (!wr) {
+        sr_time_get(&timeout_ts, SR_RWLOCK_READ_TIMEOUT);
+
+        /* MUTEX LOCK */
+        ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
+        if (ret) {
+            SR_ERRINFO_LOCK(&err_info, __func__, ret);
+            sr_errinfo_free(&err_info);
+        }
+
+        if (!rwlock->readers) {
+            SR_ERRINFO_INT(&err_info);
+            sr_errinfo_free(&err_info);
+        } else {
+            /* remove a reader */
+            --rwlock->readers;
+        }
     }
+
+    /* we are unlocking a write lock, there can be no readers */
+    assert(!wr || !rwlock->readers);
+
+    if (!rwlock->readers) {
+        /* broadcast on condition */
+        pthread_cond_broadcast(&rwlock->cond);
+    }
+
+    /* MUTEX UNLOCK */
+    pthread_mutex_unlock(&rwlock->mutex);
 }
 
 void *
@@ -1821,111 +1948,6 @@ sr_ly_leaf_value_str(const struct lyd_node *leaf)
 {
     assert(leaf->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST));
     return ((struct lyd_node_leaf_list *)leaf)->value_str;
-}
-
-sr_error_info_t *
-sr_mutex_init(pthread_mutex_t *lock, int shared)
-{
-    sr_error_info_t *err_info = NULL;
-    pthread_mutexattr_t attr;
-    int ret;
-
-    if (shared) {
-        /* init attr */
-        if ((ret = pthread_mutexattr_init(&attr))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
-            return err_info;
-        }
-        if ((ret = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
-            pthread_mutexattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread attr failed (%s).", strerror(ret));
-            return err_info;
-        }
-
-        if ((ret = pthread_mutex_init(lock, &attr))) {
-            pthread_mutexattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
-            return err_info;
-        }
-        pthread_mutexattr_destroy(&attr);
-    } else {
-        if ((ret = pthread_mutex_init(lock, NULL))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
-            return err_info;
-        }
-    }
-
-    return NULL;
-}
-
-sr_error_info_t *
-sr_rwlock_init(pthread_rwlock_t *rwlock, int shared)
-{
-    sr_error_info_t *err_info = NULL;
-    pthread_rwlockattr_t attr;
-    int ret;
-
-    if (shared) {
-        /* init attr */
-        if ((ret = pthread_rwlockattr_init(&attr))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
-            return err_info;
-        }
-        if ((ret = pthread_rwlockattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
-            pthread_rwlockattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread attr failed (%s).", strerror(ret));
-            return err_info;
-        }
-
-        if ((ret = pthread_rwlock_init(rwlock, &attr))) {
-            pthread_rwlockattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
-            return err_info;
-        }
-        pthread_rwlockattr_destroy(&attr);
-    } else {
-        if ((ret = pthread_rwlock_init(rwlock, NULL))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
-            return err_info;
-        }
-    }
-
-    return NULL;
-}
-
-sr_error_info_t *
-sr_cond_init(pthread_cond_t *cond, int shared)
-{
-    sr_error_info_t *err_info = NULL;
-    pthread_condattr_t attr;
-    int ret;
-
-    if (shared) {
-        /* init attr */
-        if ((ret = pthread_condattr_init(&attr))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
-            return err_info;
-        }
-        if ((ret = pthread_condattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
-            pthread_condattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread attr failed (%s).", strerror(ret));
-            return err_info;
-        }
-
-        if ((ret = pthread_cond_init(cond, &attr))) {
-            pthread_condattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
-            return err_info;
-        }
-        pthread_condattr_destroy(&attr);
-    } else {
-        if ((ret = pthread_cond_init(cond, NULL))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
-            return err_info;
-        }
-    }
-
-    return NULL;
 }
 
 const char *

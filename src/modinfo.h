@@ -30,8 +30,9 @@
 #define MOD_INFO_REQ     0x04 /* required module, its data can be changed and it will be validated */
 #define MOD_INFO_TYPE_MASK 0x07 /* just a mask for all module types */
 
-#define MOD_INFO_LOCK    0x08 /* locked module */
-#define MOD_INFO_CHANGED 0x10 /* module data were changed */
+#define MOD_INFO_RLOCK   0x08 /* read-locked module */
+#define MOD_INFO_WLOCK   0x10 /* write-locked module */
+#define MOD_INFO_CHANGED 0x20 /* module data were changed */
 
 struct sr_mod_info_s {
     sr_datastore_t ds;

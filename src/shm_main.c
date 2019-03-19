@@ -1740,7 +1740,7 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
         return err_info;
     }
     main_shm->ver = 0;
-    main_shm->new_sr_sid = 1;
+    ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
     main_shm->first_mod = 0;
 
     /* create libyang context */
@@ -1856,14 +1856,16 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int keep_remap)
 {
     sr_error_info_t *err_info = NULL;
     size_t main_shm_size;
+    sr_main_shm_t *main_shm;
 
     /* REMAP LOCK */
     if ((err_info = sr_mlock(&conn->main_shm_remap_lock, -1, __func__))) {
         return err_info;
     }
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
     /* MAIN SHM WRITE/READ LOCK */
-    if ((err_info = sr_rwlock(&((sr_main_shm_t *)conn->main_shm.addr)->lock, SR_MAIN_LOCK_TIMEOUT * 1000, wr, __func__))) {
+    if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, wr, __func__))) {
         goto error_remap_unlock;
     }
 
@@ -1881,16 +1883,17 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int keep_remap)
         if ((err_info = sr_shm_remap(&conn->main_shm, 0))) {
             goto error_remap_shm_unlock;
         }
+        main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
         /* check SHM version and update context as necessary */
-        if (conn->main_ver != ((sr_main_shm_t *)conn->main_shm.addr)->ver) {
+        if (conn->main_ver != main_shm->ver) {
             /* update libyang context (just add new modules) */
             if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
                 goto error_remap_shm_unlock;
             }
 
             /* update version */
-            conn->main_ver = ((sr_main_shm_t *)conn->main_shm.addr)->ver;
+            conn->main_ver = main_shm->ver;
         }
     }
 
@@ -1902,17 +1905,22 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int keep_remap)
     return NULL;
 
 error_remap_shm_unlock:
-    sr_rwunlock(&((sr_main_shm_t *)conn->main_shm.addr)->lock);
+    sr_rwunlock(&main_shm->lock, wr);
 error_remap_unlock:
     sr_munlock(&conn->main_shm_remap_lock);
     return err_info;
 }
 
 void
-sr_shmmain_unlock(sr_conn_ctx_t *conn, int kept_remap)
+sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int kept_remap)
 {
+    sr_main_shm_t *main_shm;
+
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+    assert(main_shm);
+
     /* MAIN SHM UNLOCK */
-    sr_rwunlock(&((sr_main_shm_t *)conn->main_shm.addr)->lock);
+    sr_rwunlock(&main_shm->lock, wr);
 
     if (kept_remap) {
         /* REMAP UNLOCK */

@@ -85,20 +85,28 @@ sr_replay_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flag
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
+    mode_t perm = SR_FILE_PERM;
 
     *notif_fd = -1;
+
+    if ((flags & O_CREAT) && (flags & O_EXCL)) {
+        /* creating a file, learn module permissions */
+        if ((err_info = sr_perm_get(mod_name, NULL, NULL, &perm))) {
+            goto cleanup;
+        }
+    }
 
     if ((err_info = sr_path_notif_file(mod_name, from_ts, to_ts, &path))) {
         goto cleanup;
     }
 
-    *notif_fd = open(path, flags, SR_FILE_PERM);
+    *notif_fd = open(path, flags, perm);
     if (*notif_fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open file \"%s\" (%s).", path, strerror(errno));
         goto cleanup;
     }
 
-    if ((flags & (O_CREAT | O_EXCL)) == (O_CREAT | O_EXCL)) {
+    if ((flags & O_CREAT) && (flags & O_EXCL)) {
         SR_LOG_INF("Replay file \"%s\" created.", strrchr(path, '/') + 1);
     }
 
@@ -383,8 +391,8 @@ sr_replay_store(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_
     /* success */
 
 cleanup_unlock:
-    /* REPLAY UNLOCK */
-    sr_rwunlock(&shm_mod->replay_lock);
+    /* REPLAY WRITE UNLOCK */
+    sr_rwunlock(&shm_mod->replay_lock, 1);
 cleanup:
     if (fd > -1) {
         close(fd);

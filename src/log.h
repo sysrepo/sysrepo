@@ -25,8 +25,6 @@
 
 #define SR_ERRINFO_INT(err_info) sr_errinfo_new(err_info, SR_ERR_INTERNAL, NULL, "Internal error (%s:%d).", __FILE__, __LINE__)
 #define SR_ERRINFO_MEM(err_info) sr_errinfo_new(err_info, SR_ERR_NOMEM, NULL, NULL)
-#define SR_ERRINFO_RWLOCK(err_info, wr, func, ret) sr_errinfo_new(err_info, (ret == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, \
-        NULL, "%s locking a rwlock failed (%s: %s).", wr ? "Write" : "Read", func, strerror(ret))
 #define SR_ERRINFO_LOCK(err_info, func, ret) sr_errinfo_new(err_info, (ret == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, \
         NULL, "Locking a mutex failed (%s: %s).", func, strerror(ret))
 #define SR_ERRINFO_COND(err_info, func, ret) sr_errinfo_new(err_info, (ret == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, \

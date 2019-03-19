@@ -3,6 +3,7 @@ project(sysrepo)
 set(SYSREPO_DESC "YANG-based system repository")
 include(GNUInstallDirs)
 include(CheckSymbolExists)
+include(CheckIncludeFile)
 
 # setup version
 set(SYSREPO_MAJOR_VERSION 1)
@@ -85,6 +86,7 @@ if(NOT SR_HAVE_EACCESS)
     message(WARNING "Function eaccess() is not supported, using access() instead which may "
         "change results of access control checks!")
 endif()
+check_include_file("stdatomic.h" SR_HAVE_STDATOMIC)
 
 # generate common file
 configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)

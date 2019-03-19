@@ -614,8 +614,8 @@ sr_modcache_module_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_m
         assert(mod->shm_mod->ver >= mod_cache->mods[i].ver);
         if (mod->shm_mod->ver > mod_cache->mods[i].ver) {
             if (read_locked) {
-                /* CACHE UNLOCK */
-                sr_rwunlock(&mod_cache->lock);
+                /* CACHE READ UNLOCK */
+                sr_rwunlock(&mod_cache->lock, 0);
             }
 
             /* CACHE WRITE LOCK */
@@ -629,8 +629,8 @@ sr_modcache_module_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_m
         }
     } else {
         if (read_locked) {
-            /* CACHE UNLOCK */
-            sr_rwunlock(&mod_cache->lock);
+            /* CACHE READ UNLOCK */
+            sr_rwunlock(&mod_cache->lock, 0);
         }
 
         /* CACHE WRITE LOCK */
@@ -666,8 +666,8 @@ sr_modcache_module_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_m
         }
         mod_cache->mods[i].ver = mod->shm_mod->ver;
 
-        /* CACHE UNLOCK */
-        sr_rwunlock(&mod_cache->lock);
+        /* CACHE WRITE UNLOCK */
+        sr_rwunlock(&mod_cache->lock, 1);
 
         if (read_locked) {
             /* CACHE READ LOCK */
@@ -1079,8 +1079,8 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                     mod_info->data = lyd_dup_withsiblings(mod_info->data, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_WHEN);
                     mod_info->data_cached = 0;
 
-                    /* CACHE UNLOCK */
-                    sr_rwunlock(&mod_info->conn->mod_cache.lock);
+                    /* CACHE READ UNLOCK */
+                    sr_rwunlock(&mod_info->conn->mod_cache.lock, 0);
                 }
 
                 /* apply any performed changes to get the session-specific data */
@@ -1364,8 +1364,8 @@ sr_modinfo_free(struct sr_mod_info_s *mod_info)
     if (mod_info->data_cached) {
         mod_info->data_cached = 0;
 
-        /* CACHE UNLOCK */
-        sr_rwunlock(&mod_info->conn->mod_cache.lock);
+        /* CACHE READ UNLOCK */
+        sr_rwunlock(&mod_info->conn->mod_cache.lock, 0);
     } else {
         lyd_free_withsiblings(mod_info->data);
     }
