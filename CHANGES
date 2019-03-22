@@ -26,6 +26,7 @@ removed functions:
 - whole action API (use RPC API)
 - sr_session_check (does not make sense anymore)
 - whole get-schema API (use sr_get_module_info)
+- sr_session_start_user (create a normal session followed by calling sr_session_set_user)
 - sr_get_items_iter, sr_get_item_next (not supported for now)
 
 added functions:

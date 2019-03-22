@@ -32,6 +32,14 @@
 #include <time.h>
 #include <assert.h>
 
+/**
+ * @brief Wrapper for write().
+ *
+ * @param[in] fd File desriptor.
+ * @param[in] buf Buffer to write.
+ * @param[in] count Number of bytes to write.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_write(int fd, const void *buf, size_t count)
 {
@@ -54,6 +62,14 @@ sr_write(int fd, const void *buf, size_t count)
     return NULL;
 }
 
+/**
+ * @brief Wrapper for read().
+ *
+ * @param[in] fd File desriptor.
+ * @param[out] buf Read memory.
+ * @param[in] count Number of bytes to read.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_read(int fd, void *buf, size_t count)
 {
@@ -80,6 +96,16 @@ sr_read(int fd, void *buf, size_t count)
     return NULL;
 }
 
+/**
+ * @brief Open notification replay file.
+ *
+ * @param[in] mod_name Module name.
+ * @param[in] from_ts Earliest stored notification.
+ * @param[in] to_ts Latest stored notification.
+ * @param[in] flags Open flags to use.
+ * @param[out] notif_fd Opened file descriptor.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_replay_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flags, int *notif_fd)
 {
@@ -117,19 +143,6 @@ cleanup:
     return err_info;
 }
 
-/*
- * from_ts = 0
- * to_ts = 0
- * - find latest file
- *
- * from_ts =/= 0
- * to_ts = 0
- * - find file possibly containing no-earlier-than from_ts (replay start_time)
- *
- * from_ts =/= 0
- * to_ts =/= 0
- * - find next file
- */
 sr_error_info_t *
 sr_replay_find_file(const char *mod_name, time_t from_ts, time_t to_ts, time_t *file_from_ts, time_t *file_to_ts)
 {
@@ -227,6 +240,16 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Write timestamp and notification into a file.
+ *
+ * @param[in] notif_fd Notification file destriptor.
+ * @param[in] notif_lyb Notification in LYB format.
+ * @param[in] notif_lyb_len Length of notification in LYB format.
+ * @param[in] notif_ts Notification timestamp.
+ * @param[in] notif_name Notification schema name, for logging.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_replay_write_ts_notif(int notif_fd, const char *notif_lyb, uint32_t notif_lyb_len, time_t notif_ts, const char *notif_name)
 {
@@ -258,6 +281,15 @@ sr_replay_write_ts_notif(int notif_fd, const char *notif_lyb, uint32_t notif_lyb
     return NULL;
 }
 
+/**
+ * @brief Rename notification file after new notifications were stored in it.
+ *
+ * @param[in] mod_name Module name.
+ * @param[in] old_from_ts Current earliest stored notification.
+ * @param[in] old_to_ts Current latest stored notification.
+ * @param[in] new_to_ts Newly latest stored notification.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_replay_rename_file(const char *mod_name, time_t old_from_ts, time_t old_to_ts, time_t new_to_ts)
 {
@@ -401,6 +433,13 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Read timestamp from a notification file.
+ *
+ * @param[in] notif_fd Notification file descriptor.
+ * @param[out] notif_ts Notification timestamp.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_replay_read_ts(int notif_fd, time_t *notif_ts)
 {
@@ -408,6 +447,14 @@ sr_replay_read_ts(int notif_fd, time_t *notif_ts)
     return sr_read(notif_fd, notif_ts, sizeof *notif_ts);
 }
 
+/**
+ * @brief Read notification from a notification file.
+ *
+ * @param[in] notif_fd Notification file descriptor.
+ * @param[in] ly_ctx libyang context.
+ * @param[out] notif Notification data tree.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_replay_read_notif(int notif_fd, struct ly_ctx *ly_ctx, struct lyd_node **notif)
 {
@@ -441,6 +488,12 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Skip a notification in a notification file.
+ *
+ * @param[in] notif_fd Notification file descriptor.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_replay_skip_notif(int notif_fd)
 {

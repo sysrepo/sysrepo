@@ -95,7 +95,7 @@ sr_shmmain_print_cmp(const void *ptr1, const void *ptr2)
     return 1;
 }
 
-/* unused, for main SHM debugging */
+/* unused, printer for main SHM debugging */
 void
 sr_shmmain_print(char *main_shm_addr, size_t main_shm_size)
 {
@@ -303,6 +303,16 @@ sr_shmmain_print(char *main_shm_addr, size_t main_shm_size)
     SR_LOG_INF("#SHM:\n%s", msg);
 }
 
+/**
+ * @brief Copy data deps array from main SHM to memory to defragment it.
+ *
+ * @param[in] main_shm_addr Main SHM mapping address.
+ * @param[in] data_deps SHM offset of data deps.
+ * @param[in] data_dep_count Data dep count.
+ * @param[in] shm_buf SHM memory copy.
+ * @param[in,out] shm_buf_cur Current SHM memory position.
+ * @return Memory offset of the copy.
+ */
 static off_t
 sr_shmmain_defrag_copy_data_deps(char *main_shm_addr, off_t data_deps, uint16_t data_dep_count, char *shm_buf,
         char **shm_buf_cur)
@@ -346,6 +356,17 @@ sr_shmmain_defrag_copy_data_deps(char *main_shm_addr, off_t data_deps, uint16_t 
     return ret;
 }
 
+/**
+ * @brief Copy an array from main SHM to memory to defragment it.
+ *
+ * @param[in] main_shm_addr Main SHM mapping address.
+ * @param[in] array SHM offset of the array.
+ * @param[in] size Array item size.
+ * @param[in] count Array item count.
+ * @param[in] shm_buf SHM memory copy.
+ * @param[in,out] shm_buf_cur Current SHM memory position.
+ * @return Memory offset of the copy.
+ */
 static off_t
 sr_shmmain_defrag_copy_array_with_string(char *main_shm_addr, off_t array, size_t size, uint16_t count, char *shm_buf,
         char **shm_buf_cur)
@@ -605,6 +626,12 @@ sr_shmmain_createunlock(sr_conn_ctx_t *conn)
     }
 }
 
+/**
+ * @brief Calculate SHM size based on internal persistent data.
+ *
+ * @param[in] sr_mods Internal persistent data.
+ * @return Main SHM size.
+ */
 static size_t
 sr_shmmain_ly_calculate_size(struct lyd_node *sr_mods)
 {
@@ -672,6 +699,12 @@ sr_shmmain_ly_calculate_size(struct lyd_node *sr_mods)
     return shm_size;
 }
 
+/**
+ * @brief Store (print) internal persistent data.
+ *
+ * @param[in,out] sr_mods Data to store, are validated so could be (in theory) modified.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_ly_int_data_print(struct lyd_node **sr_mods)
 {
@@ -706,6 +739,12 @@ sr_shmmain_ly_int_data_print(struct lyd_node **sr_mods)
     return NULL;
 }
 
+/**
+ * @brief Unlink startup and running file of a module.
+ *
+ * @param[in] mod_name Module name.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_remove_data_files(const char *mod_name)
 {
@@ -733,6 +772,14 @@ sr_remove_data_files(const char *mod_name)
     return NULL;
 }
 
+/**
+ * @brief Perform scheduled module removal.
+ *
+ * @param[in] sr_mods Internal data to modify.
+ * @param[out] change Whether any change to the data was performed.
+ * @param[in,out] apply_sched Whether to continue with applying scheduled changes.
+ * @return err_info, NULL on error.
+ */
 static sr_error_info_t *
 sr_shmmain_ly_int_data_sched_remove_modules(struct lyd_node *sr_mods, int *change, int *apply_sched)
 {
@@ -827,6 +874,19 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Update scheduled module YANG file and check module persistent data can still be parsed.
+ *
+ * @param[in] mod_name Module name.
+ * @param[in] old_rev Current revision of the module.
+ * @param[in] new_revision Updated revision of the module.
+ * @param[in] ly_feat_set Enabled features set.
+ * @param[in] ly_ctx1 Context to use for loading old module.
+ * @param[in] ly_ctx2 Context to use for loading new updated module.
+ * @param[out] upd_ly_mod Updated module.
+ * @param[out] fail Whether the stored data could not be parsed with the updated module (not a sysrepo error).
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_ly_int_data_sched_update_module(const char *mod_name, const char *old_rev, const char *new_rev,
         struct ly_set *ly_feat_set, struct ly_ctx *ly_ctx1, struct ly_ctx *ly_ctx2, const struct lys_module **upd_ly_mod,
@@ -923,6 +983,13 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Perform scheduled module updates.
+ *
+ * @param[in] sr_mods Internal data to modify.
+ * @param[out] change Whether any change to the data was performed.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_ly_int_data_sched_update_modules(struct lyd_node *sr_mods, int *change)
 {
@@ -1019,6 +1086,18 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Change scheduled feature and check module persistent data can still be parsed.
+ *
+ * @param[in] mod_name Module name.
+ * @param[in] rev Module revision.
+ * @param[in] ly_feat_set Enabled feature set.
+ * @param[in] feat_name Feature to change.
+ * @param[in] enable Whether to enable or disable the feature.
+ * @param[in] ly_ctx Context to use for changing the feature.
+ * @param[out] fail Whether the stored data could not be parsed with the changed feature (not a sysrepo error).
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_ly_int_data_sched_change_feature(const char *mod_name, const char *rev, struct ly_set *ly_feat_set,
         const char *feat_name, int enable, struct ly_ctx *ly_ctx, int *fail)
@@ -1098,6 +1177,13 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Perform scheduled feature changes.
+ *
+ * @param[in] sr_mods Internal data to modify.
+ * @param[out] change Whether any change to the data was performed.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_ly_int_data_sched_change_features(struct lyd_node *sr_mods, int *change)
 {
@@ -1202,6 +1288,15 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Create default internal persistent data. All libyang internal implemented modules
+ * are installed also into sysrepo. Sysrepo internal modules ietf-netconf, ietf-netconf-with-defaults,
+ * and ietf-netconf-notifications are also installed.
+ *
+ * @param[in] conn Connection to use.
+ * @param[out] sr_mods_p Created default internal data.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_ly_int_data_create(sr_conn_ctx_t *conn, struct lyd_node **sr_mods_p)
 {
@@ -1366,6 +1461,12 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Update libyang context to reflect main SHM modules.
+ *
+ * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
 {
@@ -1422,6 +1523,12 @@ sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
     return NULL;
 }
 
+/**
+ * @brief Copy startup files into running files.
+ *
+ * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
 {
@@ -1453,6 +1560,16 @@ error:
     return err_info;
 }
 
+/**
+ * @brief Fill main SHM data dependency information based on internal sysrepo data.
+ *
+ * @param[in] main_shm_addr Main SHM mapping address.
+ * @param[in] ly_dep_parent Dependencies in internal sysrepo data.
+ * @param[in] shm_deps Main SHM data dependencies to fill.
+ * @param[out] dep_i Number of dependencies filled.
+ * @param[in,out] shm_cur Current main SHM position.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_shm_fill_data_deps(char *main_shm_addr, struct lyd_node *ly_dep_parent, sr_mod_data_dep_t *shm_deps,
         uint32_t *dep_i, char **shm_cur)
@@ -1515,6 +1632,15 @@ sr_shmmain_shm_fill_data_deps(char *main_shm_addr, struct lyd_node *ly_dep_paren
     return NULL;
 }
 
+/**
+ * @brief Add modules into main SHM.
+ *
+ * @param[in] main_shm_addr Main SHM mapping address.
+ * @param[in] ly_start_mod First module to add.
+ * @param[in] shm_last_mod Current last main SHM module.
+ * @param[in,out] shm_end Current main SHM position, is updated.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, sr_mod_t *shm_last_mod, off_t *shm_end)
 {
@@ -1674,8 +1800,16 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
     return NULL;
 }
 
+/**
+ * @brief Remap main SHM and add modules into it.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] new_shm_size Expected new main SHM size.
+ * @param[in] ly_start_mod First module to add.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
-sr_shmmain_shm_add(sr_conn_ctx_t *conn, size_t new_shm_size, struct lyd_node *from_mod)
+sr_shmmain_shm_add(sr_conn_ctx_t *conn, size_t new_shm_size, struct lyd_node *ly_start_mod)
 {
     off_t shm_end;
     sr_mod_t *shm_mod = NULL;
@@ -1700,7 +1834,7 @@ sr_shmmain_shm_add(sr_conn_ctx_t *conn, size_t new_shm_size, struct lyd_node *fr
     }
 
     /* add all newly implemented modules into SHM */
-    if ((err_info = sr_shmmain_shm_add_modules(conn->main_shm.addr, from_mod, shm_mod, &shm_end))) {
+    if ((err_info = sr_shmmain_shm_add_modules(conn->main_shm.addr, ly_start_mod, shm_mod, &shm_end))) {
         return err_info;
     }
     SR_CHECK_INT_RET((unsigned)shm_end != conn->main_shm.size, err_info);
@@ -1928,6 +2062,16 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int kept_remap)
     }
 }
 
+/**
+ * @brief Add a dependency into internal sysrepo data.
+ *
+ * @param[in] ly_deps Internal sysrepo data dependencies to add to.
+ * @param[in] dep_type Dependency type.
+ * @param[in] mod_name Name of the module with the dependency.
+ * @param[in] node Node causing the dependency.
+ * @param[in,out] shm_size New main SHM size with the dependency.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *mod_name, const struct lys_node *node,
         size_t *shm_size)
@@ -2042,6 +2186,13 @@ error:
     return err_info;
 }
 
+/**
+ * @brief Check whether an atom (node) is foreign with respect to the expression.
+ *
+ * @param[in] atom Node to check.
+ * @param[in] top_node Top-level node for the expression.
+ * @return Foreign dependency module, NULL if atom is not foreign.
+ */
 static struct lys_module *
 sr_moddep_expr_atom_is_foreign(struct lys_node *atom, struct lys_node *top_node)
 {
@@ -2070,6 +2221,16 @@ sr_moddep_expr_atom_is_foreign(struct lys_node *atom, struct lys_node *top_node)
     return NULL;
 }
 
+/**
+ * @brief Collect dependencies from an XPath expression.
+ *
+ * @param[in] ctx_node Expression context node.
+ * @param[in] expr Expression.
+ * @param[in] lyxp_opt libyang lyxp options.
+ * @param[out] dep_mods Array of dependent modules.
+ * @param[out] dep_mod_count Dependent module count.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_moddep_expr_get_dep_mods(struct lys_node *ctx_node, const char *expr, int lyxp_opt, struct lys_module ***dep_mods,
         size_t *dep_mod_count)
@@ -2125,6 +2286,15 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Collect dependencies from a type.
+ *
+ * @param[in] type Type to inspect.
+ * @param[in] node Type node.
+ * @param[in] ly_deps Internal sysrepo data dependencies to add to.
+ * @param[in,out] shm_size New main SHM size with these dependencies.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_moddep_type(const struct lys_type *type, struct lys_node *node, struct lyd_node *ly_deps, size_t *shm_size)
 {
@@ -2181,6 +2351,14 @@ sr_moddep_type(const struct lys_type *type, struct lys_node *node, struct lyd_no
     return NULL;
 }
 
+/**
+ * @brief Add (collect) operation data dependencies into internal sysrepo data.
+ *
+ * @param[in] ly_module Module of the data.
+ * @param[in] op_root Root node of the operation data to inspect.
+ * @param[in,out] shm_size New main SHM size with these dependencies.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_ly_add_op_deps(struct lyd_node *ly_module, struct lys_node *op_root, size_t *shm_size)
 {
@@ -2248,6 +2426,15 @@ sr_shmmain_ly_add_op_deps(struct lyd_node *ly_module, struct lys_node *op_root, 
     return err_info;
 }
 
+/**
+ * @brief Add (collect) data dependencies into internal sysrepo data.
+ *
+ * @param[in] ly_module Module of the data.
+ * @param[in] data_root Root node of the data to inspect.
+ * @param[in] ly_deps Internal sysrepo data dependencies to add to.
+ * @param[in,out] shm_size New main SHM size with these dependencies.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_ly_add_data_deps_r(struct lyd_node *ly_module, struct lys_node *data_root, struct lyd_node *ly_deps,
         size_t *shm_size)
@@ -2403,6 +2590,15 @@ next_sibling:
     return NULL;
 }
 
+/**
+ * @brief Add module into internal sysrepo data.
+ *
+ * @param[in] ly_mod Module to add.
+ * @param[in] sr_mods Internal sysrepo data.
+ * @param[out] sr_mod_p Added internal sysrepo module.
+ * @param[out] shm_size New main SHM size with this module.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_ly_add_module(const struct lys_module *ly_mod, struct lyd_node *sr_mods, struct lyd_node **sr_mod_p,
         size_t *shm_size)
@@ -2472,6 +2668,16 @@ sr_shmmain_ly_add_module(const struct lys_module *ly_mod, struct lyd_node *sr_mo
     return NULL;
 }
 
+/**
+ * @brief Add module with imports into internal sysrepo data.
+ *
+ * @param[in] main_shm_addr Main SHM mapping address.
+ * @param[in] ly_mod Module to add.
+ * @param[in] sr_mods Internal sysrepo data.
+ * @param[out] sr_mod_p Added internal sysrepo module.
+ * @param[out] shm_size New main SHM size with this module.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_ly_add_module_with_imps(char *main_shm_addr, const struct lys_module *ly_mod, struct lyd_node *sr_mods,
         struct lyd_node **sr_mod_p, size_t *shm_size)
@@ -2534,6 +2740,14 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Change replay support of a module in main SHM.
+ *
+ * @param[in] main_shm_addr Main SHM mapping address.
+ * @param[in] mod_name Module name.
+ * @param[in] replay_support Whether replay support should be enabled or disabled.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_shm_update_replay_support(char *main_shm_addr, const char *mod_name, int replay_support)
 {
@@ -2609,6 +2823,15 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Unchedule module (with any implemented dependencies) deletion from internal sysrepo data.
+ *
+ * @param[in] main_shm_add Main SHM mapping address.
+ * @param[in] sr_mods Internal sysrepo data to modify.
+ * @param[in] ly_mod Module whose removal to unschedule.
+ * @param[in] first Whether this is the first module or just a dependency.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shmmain_unsched_del_module_r(char *main_shm_addr, struct lyd_node *sr_mods, const struct lys_module *ly_mod, int first)
 {

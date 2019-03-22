@@ -77,7 +77,7 @@ setup(void **state)
         return 1;
     }
 
-    if (sr_session_start(st->conn, SR_DS_RUNNING, 0, &st->sess) != SR_ERR_OK) {
+    if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
         return 1;
     }
     sr_session_set_nc_id(st->sess, 1000);
@@ -323,7 +323,7 @@ test_simple(void **state)
     input[1].dflt = 0;
 
     /* try to send the first notif, expect an error */
-    ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2, 0);
+    ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
@@ -338,7 +338,7 @@ test_simple(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send the first notif again, still fails */
-    ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2, 0);
+    ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
@@ -353,7 +353,7 @@ test_simple(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send the first notif for the last time, should succeed */
-    ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2, 0);
+    ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the callback */
@@ -369,7 +369,7 @@ test_simple(void **state)
     input[0].dflt = 0;
 
     /* try to send the second notif, expect an error */
-    ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1, 0);
+    ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
@@ -383,7 +383,7 @@ test_simple(void **state)
     input[0].data.string_val = "/ops-ref:l2";
 
     /* try to send the second notif again, should succeed */
-    ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1, 0);
+    ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the callback */
@@ -501,7 +501,7 @@ test_replay_simple(void **state)
     cur_ts = time(NULL);
 
     /* send the notification, it should be stored for replay */
-    ret = sr_event_notif_send_tree(st->sess, notif, 0);
+    ret = sr_event_notif_send_tree(st->sess, notif);
     lyd_free_withsiblings(notif);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -746,7 +746,7 @@ test_no_replay(void **state)
     assert_int_equal(st->cb_called, 1);
 
     /* send the realtime notification */
-    ret = sr_event_notif_send_tree(st->sess, notif, 0);
+    ret = sr_event_notif_send_tree(st->sess, notif);
     lyd_free_withsiblings(notif);
     assert_int_equal(ret, SR_ERR_OK);
 

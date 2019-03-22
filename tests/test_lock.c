@@ -93,7 +93,7 @@ test_one_session(void **state)
     sr_session_ctx_t *sess;
     int ret;
 
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* lock all modules */
@@ -152,9 +152,9 @@ test_two_sessions(void **state)
     struct lyd_node *subtree;
     int ret;
 
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess1);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess1);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess2);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* lock all modules */

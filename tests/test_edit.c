@@ -61,7 +61,7 @@ setup_f(void **state)
         return 1;
     }
 
-    if (sr_session_start(st->conn, SR_DS_RUNNING, 0, &st->sess) != SR_ERR_OK) {
+    if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
         return 1;
     }
 

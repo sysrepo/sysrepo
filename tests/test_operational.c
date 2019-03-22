@@ -61,7 +61,7 @@ setup(void **state)
         return 1;
     }
 
-    if (sr_session_start(st->conn, SR_DS_RUNNING, 0, &st->sess) != SR_ERR_OK) {
+    if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
         return 1;
     }
 
@@ -432,7 +432,7 @@ fail_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath
     assert_null(*parent);
 
     sr_set_error(session, "Callback failed with an error", "/no/special/xpath");
-    return SR_ERR_MALFORMED_MSG;
+    return SR_ERR_UNAUTHORIZED;
 }
 
 static void

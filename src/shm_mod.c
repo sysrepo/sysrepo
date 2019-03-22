@@ -27,6 +27,15 @@
 
 #include <libyang/libyang.h>
 
+/**
+ * @brief READ/WRITE lock a main SHM module.
+ *
+ * @param[in] mod_name Module name.
+ * @param[in] shm_lock Main SHM module lock.
+ * @param[in] timeout_ms Timeout in ms.
+ * @param[in] wr Whether to WRITE or READ lock the module.
+ * @param[in] sid Sysrepo session ID.
+ */
 static sr_error_info_t *
 sr_shmmod_lock(const char *mod_name, struct sr_mod_lock_s *shm_lock, int timeout_ms, int wr, sr_sid_t sid)
 {
@@ -78,6 +87,14 @@ sr_shmmod_lock(const char *mod_name, struct sr_mod_lock_s *shm_lock, int timeout
     return NULL;
 }
 
+/**
+ * @brief Comparator function for qsort of mod info modules.
+ *
+ * @param[in] ptr1 First value pointer.
+ * @param[in] ptr2 Second value pointer.
+ * @return Less than, equal to, or greater than 0 if the first value is found
+ * to be less than, equal to, or greater to the second value.
+ */
 static int
 sr_modinfo_qsort_cmp(const void *ptr1, const void *ptr2)
 {

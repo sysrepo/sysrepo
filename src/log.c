@@ -26,11 +26,14 @@
 #include <assert.h>
 #include <syslog.h>
 
-sr_log_level_t stderr_ll = SR_LL_NONE;
-sr_log_level_t syslog_ll = SR_LL_NONE;
-int syslog_open;
-sr_log_cb log_cb;
+sr_log_level_t stderr_ll = SR_LL_NONE;  /**< stderr log level */
+sr_log_level_t syslog_ll = SR_LL_NONE;  /**< syslog log level */
+int syslog_open;                        /**< Whether syslog was opened */
+sr_log_cb log_cb;                       /**< Logging callback */
 
+/**
+ * @brief String error list.
+ */
 static const char *const sr_errlist[] = {
         "Operation succeeded",                  /* SR_ERR_OK */
         "Invalid argument",                     /* SR_ERR_INVAL_ARG */
@@ -41,8 +44,6 @@ static const char *const sr_errlist[] = {
         "Item already exists",                  /* SR_ERR_EXISTS */
         "Internal error",                       /* SR_ERR_INTERNAL */
         "Initialization failed",                /* SR_ERR_INIT_FAILED */
-        "The peer disconnected",                /* SR_ERR_DISCONNECT */
-        "Malformed message",                    /* SR_ERR_MALFORMED_MSG */
         "Operation not supported",              /* SR_ERR_UNSUPPORTED */
         "Unknown schema model",                 /* SR_ERR_UNKNOWN_MODEL */
         "Unknown element",                      /* SR_ERR_BAD_ELEMENT */
@@ -65,6 +66,9 @@ static struct sr_error_info_err_s mem_err = {
     .xpath = NULL
 };
 
+/**
+ * @brief Internal static error structure after a memory allocation error.
+ */
 static sr_error_info_t sr_errinfo_mem = {
     .err_code = SR_ERR_NOMEM,
     .err = (void *)&mem_err,

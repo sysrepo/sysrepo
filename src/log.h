@@ -48,22 +48,80 @@
 #define SR_CHECK_ARG_APIRET(cond, session, err_info) if (cond) { sr_errinfo_new(&(err_info), SR_ERR_INVAL_ARG, NULL, \
         "Invalid arguments for function \"%s\".", __func__); return sr_api_ret(session, err_info); }
 
+/**
+ * @brief Set error info to a session and return corresponding error code, if any.
+ *
+ * @param[in] session Session to modify.
+ * @param[in] err_info Optional error info to set.
+ * @return Error code to be returned from an API function based on error info.
+ */
 sr_error_t sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info);
 
+/**
+ * @brief Log a message.
+ *
+ * @param[in] ll Log level (severity).
+ * @param[in] msg Message.
+ * @param[in] path Optional XPath of the concerned node.
+ */
 void sr_log_msg(sr_log_level_t ll, const char *msg, const char *path);
 
+/**
+ * @brief Log the error and add the error into an error info structure.
+ *
+ * @param[in,out] err_info Exisiting error info.
+ * @param[in] err_code Error code of the error.
+ * @param[in] xpath Optional XPath of the error.
+ * @param[in] format Error message format.
+ * @param[in] ... Error message format arguments.
+ */
 void sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpath, const char *format, ...);
 
+/**
+ * @brief Log the error(s) from a libyang context and add them into an error info structure.
+ *
+ * @param[in,out] err_info Existing error info.
+ * @param[in] ly_ctx libyang context to use.
+ */
 void sr_errinfo_new_ly(sr_error_info_t **err_info, struct ly_ctx *ly_ctx);
 
+/**
+ * @brief Log the first error from a libyang context and add it into an error info structure.
+ *
+ * @param[in,out] err_info Existing error info.
+ * @param[in] ly_ctx libyang context to use.
+ */
 void sr_errinfo_new_ly_first(sr_error_info_t **err_info, struct ly_ctx *ly_ctx);
 
+/**
+ * @brief Log the errors from a libyang context as warnings.
+ *
+ * @param[in] ly_ctx libyang context to use.
+ */
 void sr_log_wrn_ly(struct ly_ctx *ly_ctx);
 
+/**
+ * @brief Free an error info structure.
+ *
+ * @param[in,out] err_info Error info to free.
+ */
 void sr_errinfo_free(sr_error_info_t **err_info);
 
+/**
+ * @brief Merge error info structure into another.
+ *
+ * @param[in,out] err_info Resulting error info.
+ * @param[in] err_info2 Merged error info (unusable afterwards).
+ */
 void sr_errinfo_merge(sr_error_info_t **err_info, sr_error_info_t *err_info2);
 
+/**
+ * @brief Log a message with variable arguments.
+ *
+ * @param[in] ll Log level (severity).
+ * @param[in] format Message format.
+ * @param[in] ... message format arguments.
+ */
 void sr_log(sr_log_level_t ll, const char *format, ...);
 
 #endif

@@ -39,13 +39,13 @@
  */
 #define API __attribute__((visibility("default")))
 
-/* use access() if eaccess() is not available (it may adversely affect access control, however) */
+/** use access() if eaccess() is not available (it may adversely affect access control, however) */
 #cmakedefine SR_HAVE_EACCESS
 #ifndef SR_HAVE_EACCESS
 #   define eaccess access
 #endif
 
-/* atomic variables */
+/** atomic variables */
 #cmakedefine SR_HAVE_STDATOMIC
 #ifdef SR_HAVE_STDATOMIC
 # include <stdatomic.h>
@@ -65,91 +65,101 @@
 # define ATOMIC_INC_RELAXED(var) __sync_fetch_and_add(&(var), 1)
 #endif
 
-/* name of sysrepo YANG module */
+/** name of sysrepo YANG module */
 #define SR_YANG_MOD "sysrepo"
 
-/* main sysrepo repository path; prefix of all other paths by default */
+/** main sysrepo repository path; prefix of all other paths by default */
 #define SR_REPO_PATH "@REPO_PATH@"
 
-/* environment variable overriding the compiled-in value */
+/** environment variable overriding the compiled-in value */
 #define SR_REPO_PATH_ENV "SYSREPO_REPOSITORY_PATH"
 
-/* if not set, defaults to "SR_REPO_PATH/data" */
+/** if not set, defaults to "SR_REPO_PATH/data" */
 #define SR_RUNNING_PATH "@RUNNING_DATA_PATH@"
 
-/* if not set, defaults to "SR_REPO_PATH/data" */
+/** if not set, defaults to "SR_REPO_PATH/data" */
 #define SR_STARTUP_PATH "@STARTUP_DATA_PATH@"
 
-/* if not set, defaults to "SR_REPO_PATH/data/notif" */
+/** if not set, defaults to "SR_REPO_PATH/data/notif" */
 #define SR_NOTIFICATION_PATH "@NOTIFICATION_PATH@"
 
-/* if not set, defaults to "SR_REPO_PATH/yang" */
+/** if not set, defaults to "SR_REPO_PATH/yang" */
 #define SR_YANG_PATH "@YANG_MODULE_PATH@"
 
-/* where SHM files are stored */
+/** where SHM files are stored */
 #define SR_SHM_DIR "/dev/shm"
 
-/* notification file will never exceed this size (kB) */
+/** notification file will never exceed this size (kB) */
 #define SR_EV_NOTIF_FILE_MAX_SIZE 1024
 
-/* maximum main SHM wasted memory (B) */
+/** maximum main SHM wasted memory (B) */
 #define SR_MAIN_SHM_WASTED_MAX_MEM 4096
 
-/* maximum time read lock can be held on rwlocks; used when unlocking (ms) */
+/** maximum time read lock can be held on rwlocks; used when unlocking (ms) */
 #define SR_RWLOCK_READ_TIMEOUT 100
 
-/* time a subscriber thread sleeps if no event occurs (ms) */
+/** time a subscriber thread sleeps if no event occurs (ms) */
 #define SR_SUB_NOEVENT_SLEEP 50
 
-/* timeout for processing all events on all subscriptions of one subscriber thread; used when modifying subscriptions (s) */
+/** timeout for processing all events on all subscriptions of one subscriber thread; used when modifying subscriptions (s) */
 #define SR_SUB_EVENT_LOOP_TIMEOUT 30
 
-/* timeout for locking subscriptions lock, used when modifying subscriptions (ms) */
+/** timeout for locking subscriptions lock, used when modifying subscriptions (ms) */
 #define SR_SUB_SUBS_LOCK_TIMEOUT 100
 
-/* timeout for locking main SHM and subscription SHM; maximum time an API call (sr_apply_changes()) is expected to take (s) */
+/** timeout for locking main SHM and subscription SHM; maximum time an API call (sr_apply_changes()) is expected to take (s) */
 #define SR_MAIN_LOCK_TIMEOUT 15
 
-/* timeout for locking (data of) a module; maximum time a module write lock is expected to be held (s) */
+/** timeout for locking (data of) a module; maximum time a module write lock is expected to be held (s) */
 #define SR_MOD_LOCK_TIMEOUT 2
 
-/* timeout for locking module cache (s) */
+/** timeout for locking module cache (s) */
 #define SR_MOD_CACHE_LOCK_TIMEOUT 5
 
-/* permissions of main SHM lock file and main SHM itself */
+/** permissions of main SHM lock file and main SHM itself */
 #define SR_MAIN_SHM_PERM 00666
 
-/* permissions of all subscription SHMs */
+/** permissions of all subscription SHMs */
 #define SR_SUB_SHM_PERM 00666
 
-/* permissions of directories for sysrepo files */
+/** permissions of directories for sysrepo files */
 #define SR_DIR_PERM 00777
 
-/* permissions of used YANG modules */
+/** permissions of used YANG modules */
 #define SR_YANG_PERM 00664
 
-/* permissions of stored notifications and data files */
+/** permissions of stored notifications and data files */
 #define SR_FILE_PERM 00600
 
 /*
- * internal declarations + definitions
+ * Internal declarations + definitions
  */
+
 typedef struct sr_mod_s sr_mod_t;
 
 typedef struct sr_mod_data_dep_s sr_mod_data_dep_t;
 
+/**
+ * @brief Generic shared memory information structure.
+ */
 typedef struct sr_shm_s {
     int fd;
     size_t size;
     char *addr;
 } sr_shm_t;
 
+/**
+ * @brief Session information structure.
+ */
 typedef struct sr_sid_s {
     uint32_t sr;
     uint32_t nc;
     char *user;
 } sr_sid_t;
 
+/**
+ * @brief Sysrepo read-write lock.
+ */
 typedef struct sr_rwlock_s {
     pthread_mutex_t mutex;
     uint16_t readers;
@@ -163,272 +173,747 @@ typedef struct sr_rwlock_s {
 #include "log.h"
 
 /*
- * private definitions of public declarations
+ * Private definitions of public declarations
+ */
+
+/**
+ * @brief Sysrepo connection.
  */
 struct sr_conn_ctx_s {
-    char *app_name;
-    struct ly_ctx *ly_ctx;
-    sr_conn_options_t opts;
+    char *app_name;                 /**< Application name, used only for logging. */
+    struct ly_ctx *ly_ctx;          /**< Libyang context, also available to user. */
+    sr_conn_options_t opts;         /**< Connection options. */
 
-    /* session-shared lock */
-    pthread_mutex_t ptr_lock;
-    sr_session_ctx_t **sessions;
-    uint32_t session_count;
-    sr_subscription_ctx_t **subscriptions;
-    uint32_t subscription_count;
+    pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions and subscriptions. */
+    sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
+    uint32_t session_count;         /**< Session count. */
+    sr_subscription_ctx_t **subscriptions;  /**< Array of subscriptions for these connection sessions. */
+    uint32_t subscription_count;    /**< Subscription count. */
 
-    /* process-shared file lock */
-    int main_shm_create_lock;
-    /* session-shared lock */
-    pthread_mutex_t main_shm_remap_lock;
-    sr_shm_t main_shm;
-    uint32_t main_ver;
+    int main_shm_create_lock;       /**< Process-shared file lock for creating main SHM. */
+    pthread_mutex_t main_shm_remap_lock;    /**< Session-shared lock for remapping main SHM. */
+    sr_shm_t main_shm;              /**< Main SHM structure. */
+    uint32_t main_ver;              /**< Main SHM version. */
 
     struct sr_mod_cache_s {
-        /* session-shared lock */
-        sr_rwlock_t lock;
-        struct lyd_node *data;
+        sr_rwlock_t lock;           /**< Session-shared lock for accessing the module cache. */
+        struct lyd_node *data;      /**< Data of all cached modules, */
 
         struct {
-            const struct lys_module *ly_mod;
-            /* 0 is not valid */
-            uint32_t ver;
-        } *mods;
-        uint32_t mod_count;
-    } mod_cache;
+            const struct lys_module *ly_mod;    /**< Libyang module in the cache. */
+            uint32_t ver;           /**< Version of the module data in the cache, 0 is not valid */
+        } *mods;                    /**< Array of cached modules. */
+        uint32_t mod_count;         /**< Cached modules count. */
+    } mod_cache;                    /**< Module running data cache. */
 };
 
+/**
+ * @brief Sysrepo session.
+ */
 struct sr_session_ctx_s {
-    sr_conn_ctx_t *conn;
-    sr_datastore_t ds;
-    sr_sub_event_t ev;
-    sr_sid_t sid;
-    uint8_t flags;
-    sr_error_info_t *err_info;
+    sr_conn_ctx_t *conn;            /**< Connection used for creating this session. */
+    sr_datastore_t ds;              /**< Datastore of the session. */
+    sr_sub_event_t ev;              /**< Event of a callback session. ::SR_EV_NONE for standard user sessions. */
+    sr_sid_t sid;                   /**< Session information. */
+    sr_error_info_t *err_info;      /**< Session error information. */
 
     struct {
-        struct lyd_node *edit;
-        struct lyd_node *diff;
-    } dt[2];
+        struct lyd_node *edit;      /**< Prepared edit data tree. */
+        struct lyd_node *diff;      /**< Diff data tree, used for module change iterator. */
+    } dt[2];                        /**< Session-exclusive prepared configuration changes. */
 };
 
+/**
+ * @brief Sysrepo subscription.
+ */
 struct sr_subscription_ctx_s {
-    sr_conn_ctx_t *conn;
-    ATOMIC_T thread_running;
-    pthread_t tid;
-    /* session-shared lock */
-    pthread_mutex_t subs_lock;
+    sr_conn_ctx_t *conn;            /**< Connection of the subscription. */
+    ATOMIC_T thread_running;        /**< Flag whether a thread handling this subscription is running. */
+    pthread_t tid;                  /**< Thread ID of the handler thread. */
+    pthread_mutex_t subs_lock;      /**< Session-shared lock for accessing specific subscriptions. */
 
     struct modsub_conf_s {
-        char *module_name;
-        sr_datastore_t ds;
+        char *module_name;          /**< Module of the subscriptions. */
+        sr_datastore_t ds;          /**< Datastore of the subscriptions. */
         struct modsub_confsub_s {
-            char *xpath;
-            uint32_t priority;
-            sr_subscr_options_t opts;
-            sr_module_change_cb cb;
-            void *private_data;
+            char *xpath;            /**< Subscription XPath. */
+            uint32_t priority;      /**< Subscription priority. */
+            sr_subscr_options_t opts;   /**< Subscription options. */
+            sr_module_change_cb cb; /**< Subscription callback. */
+            void *private_data;     /**< Subscription callback private data. */
 
-            uint32_t event_id;
-            sr_sub_event_t event;
-        } *subs;
-        uint32_t sub_count;
+            uint32_t event_id;      /**< Event ID of the last processed event. */
+            sr_sub_event_t event;   /**< Type of the last processed event. */
+        } *subs;                    /**< Configuration change subscriptions for each XPath. */
+        uint32_t sub_count;         /**< Configuration change module XPath subscription count. */
 
-        struct lyd_node *last_change_diff;
-        sr_shm_t sub_shm;
-    } *conf_subs;
-    uint32_t conf_sub_count;
+        struct lyd_node *last_change_diff;  /**< Last change event cached diff. */
+        sr_shm_t sub_shm;           /**< Subscription SHM. */
+    } *conf_subs;                   /**< Configuration change subscriptions for each module. */
+    uint32_t conf_sub_count;        /**< Configuration change module subscription count. */
 
     struct modsub_dp_s {
-        char *module_name;
+        char *module_name;          /**< Module of the subscriptions. */
         struct modsub_dpsub_s {
-            char *xpath;
-            sr_dp_get_items_cb cb;
-            void *private_data;
+            char *xpath;            /**< Subscription XPath. */
+            sr_dp_get_items_cb cb;  /**< Subscription callback. */
+            void *private_data;     /**< Subscription callback private data. */
 
-            uint32_t event_id;
-            sr_shm_t sub_shm;
-        } *subs;
-        uint32_t sub_count;
-    } *dp_subs;
-    uint32_t dp_sub_count;
+            uint32_t event_id;      /**< Event ID of the last processed event. */
+            sr_shm_t sub_shm;       /**< Subscription SHM. */
+        } *subs;                    /**< Data-provide subscriptions for each XPath. */
+        uint32_t sub_count;         /**< Data-provide module XPath subscription count. */
+    } *dp_subs;                     /**< Data-provide subscriptions for each module. */
+    uint32_t dp_sub_count;          /**< Data-provide module subscription count. */
 
     struct modsub_rpc_s {
-        char *xpath;
-        sr_rpc_cb cb;
-        sr_rpc_tree_cb tree_cb;
-        void *private_data;
+        char *xpath;                /**< Subscription XPath. */
+        sr_rpc_cb cb;               /**< Subscription value callback. */
+        sr_rpc_tree_cb tree_cb;     /**< Subscription tree callback. */
+        void *private_data;         /**< Subscription callback private data. */
 
-        uint32_t event_id;
-        sr_shm_t sub_shm;
-    } *rpc_subs;
-    uint32_t rpc_sub_count;
+        uint32_t event_id;          /**< Event ID of the last processed event. */
+        sr_shm_t sub_shm;           /**< Subscription SHM. */
+    } *rpc_subs;                    /**< RPC subscriptions for each XPath. */
+    uint32_t rpc_sub_count;         /**< RPC XPath subscription count. */
 
     struct modsub_notif_s {
-        char *module_name;
+        char *module_name;          /**< Module of the subscriptions. */
         struct modsub_notifsub_s {
-            char *xpath;
-            time_t start_time;
-            int replayed;
-            time_t stop_time;
-            sr_event_notif_cb cb;
-            sr_event_notif_tree_cb tree_cb;
-            void *private_data;
-        } *subs;
-        uint32_t sub_count;
+            char *xpath;            /**< Subscription XPath. */
+            time_t start_time;      /**< Subscription start time. */
+            int replayed;           /**< Flag whether the subscription replay is finished. */
+            time_t stop_time;       /**< Subscription stop time. */
+            sr_event_notif_cb cb;   /**< Subscription value callback. */
+            sr_event_notif_tree_cb tree_cb; /**< Subscription tree callback. */
+            void *private_data;     /**< Subscription callback private data. */
+        } *subs;                    /**< Notification subscriptions for each XPath. */
+        uint32_t sub_count;         /**< Notification module XPath subscription count. */
 
-        uint32_t event_id;
-        sr_shm_t sub_shm;
-    } *notif_subs;
-    uint32_t notif_sub_count;
+        uint32_t event_id;          /**< Event ID of the last processed event. */
+        sr_shm_t sub_shm;           /**< Subscription SHM. */
+    } *notif_subs;                  /**< Notification subscriptions for each module. */
+    uint32_t notif_sub_count;       /**< Notification module subscription count. */
 };
 
+/**
+ * @brief Change iterator.
+ */
 struct sr_change_iter_s {
-    struct ly_set *set;
-    uint32_t idx;
-    int reverse_changes;
+    struct ly_set *set;             /**< Set of all the selected diff nodes. */
+    uint32_t idx;                   /**< Index of the next change. */
+    int reverse_changes;            /**< Whether the changes should be reversed (for ::SR_EV_ABORT event). */
 };
 
 /*
- * subscription functions
+ * Subscription functions
+ */
+
+/**
+ * @brief Add a configuration subscription into subscription structure.
+ *
+ * @param[in] mod_name Subscription module name.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] ds Subscription datastore.
+ * @param[in] conf_cb Subscription callback.
+ * @param[in] private_data Subscription callback private data.
+ * @param[in] priority Subscription priority.
+ * @param[in] sub_opts Subscription options.
+ * @param[in] subs Subscription structure.
+ * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb conf_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs);
 
+/**
+ * @brief Delete a configuration subscription from subscription structure.
+ *
+ * @param[in] mod_name Subscription module name.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] ds Subscription datastore.
+ * @param[in] conf_cb Subscription callback.
+ * @param[in] private_data Subscription callback private data.
+ * @param[in] priority Subscription priority.
+ * @param[in] sub_opts Subscription options.
+ * @param[in] subs Subscription structure.
+ */
 void sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb conf_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs);
 
+/**
+ * @brief Add a data-provide subscription into subscription structure.
+ *
+ * @param[in] mod_name Subscription module name.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] dp_cb Subscription callback.
+ * @param[in] private_data Subscription callback private data.
+ * @param[in] subs Subscription structure.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_sub_dp_add(const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb, void *private_data,
         sr_subscription_ctx_t *subs);
 
+/**
+ * @brief Delete a data-provide subscription from subscription structure.
+ *
+ * @param[in] mod_name Subscription module name.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] subs Subscription structure.
+ */
 void sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *subs);
 
+/**
+ * @brief Add an RPC subscription into subscription structure.
+ *
+ * @param[in] mod_name Subscription module name.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] rpc_cb Subscription value callback.
+ * @param[in] rpc_tree_cb Subscription tree callback.
+ * @param[in] private_data Subscription callback private data.
+ * @param[in] subs Subscription structure.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_sub_rpc_add(const char *mod_name, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb,
         void *private_data, sr_subscription_ctx_t *subs);
 
+/**
+ * @brief Delete an RPC subscription from subscription structure.
+ *
+ * @param[in] xpath Subscription XPath.
+ * @param[in] subs Subscription structure.
+ */
 void sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs);
 
+/**
+ * @brief Add a notification subscription into subscription structure.
+ *
+ * @param[in] mod_name Subscription module name.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] start_time Subscription start time.
+ * @param[in] stop_time Subscription stop time.
+ * @param[in] notif_cb Subscription value callback.
+ * @param[in] notif_tree_cb Subscription tree callback.
+ * @param[in] private_data Subscription callback private data.
+ * @param[in] subs Subscription structure.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_sub_notif_add(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time,
-        sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs);
+        sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs);
 
-void sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb callback,
-        sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs, int has_subs_lock);
+/**
+ * @brief Delete a notification subscription from subscription structure.
+ *
+ * @param[in] mod_name Subscription module name.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] start_time Subscription start time.
+ * @param[in] stop_time Subscription stop time.
+ * @param[in] notif_cb Subscription value callback.
+ * @param[in] notif_tree_cb Subscription tree callback.
+ * @param[in] private_data Subscription callback private data.
+ * @param[in] subs Subscription structure.
+ * @param[in] has_subs_lock Whether the caller already holds subs lock.
+ */
+void sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb,
+        sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs, int has_subs_lock);
 
+/**
+ * @brief Delete all subscriptions from a subscription structure, from main SHM, and their SHM segments as well.
+ *
+ * @param[in] conn Connection of the subscriptions.
+ * @param[in] subs Subscription structure.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs);
 
+/**
+ * @brief Find notifications subscribers for a module.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_name Mdoule name.
+ * @param[out] notif_sub_count Number of subscribers.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, uint32_t *notif_sub_count);
 
+/**
+ * @brief Call notification callback for a notification.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] cb Value callback.
+ * @param[in] tree_cb Tree callback.
+ * @param[in] private_data Callback private data.
+ * @param[in] notif_type Notification type.
+ * @param[in] notif_op Notification node of the notification (relevant for nested notifications).
+ * @param[in] notif_ts Timestamp of when the notification was generated.
+ * @param[in] sid Sysrepo session ID.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb,
         void *private_data, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts,
         sr_sid_t sid);
 
 /*
- * utility functions
+ * Utility functions
+ */
+
+/**
+ * @brief Clear a temporary (callback) session.
+ *
+ * @param[in] tmp_sess Session to clear.
  */
 void sr_clear_sess(sr_session_ctx_t *tmp_sess);
 
+/**
+ * @brief Wrapper for libyang ly_ctx_new().
+ *
+ * @param[out] ly_ctx libyang context.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
 
+/**
+ * @brief Create all module files (YANG module, running file, starutp file) for a module and its imports.
+ * Internal and not-implemented modules are handled correctly.
+ *
+ * @param[in] mod libyang module.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_create_module_files_with_imps_r(const struct lys_module *mod);
 
+/**
+ * @brief Create all module files ready for an update (YANG module) and its imports.
+ *
+ * @param[in] mod libyang module.
+ * @param[in] first_upd_module Whether this is the first (not only import) update module and should be named specially.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_create_module_update_files_with_imps_r(const struct lys_module *mod, int first_upd_module);
 
+/**
+ * @brief Get the path to a subscription SHM.
+ *
+ * @param[in] mod_name Module name.
+ * @param[in] suffix1 First suffix.
+ * @param[in] suffix2 Second suffix, none if equals -1.
+ * @param[in] abs_path Whether to return absolute path or SHM path.
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, int abs_path, char **path);
 
+/**
+ * @brief Get the path to running files directory.
+ *
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_path_running_dir(char **path);
 
+/**
+ * @brief Get the path to startup files directory.
+ *
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_path_startup_dir(char **path);
 
+/**
+ * @brief Get the path to notification files directory.
+ *
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_path_notif_dir(char **path);
 
+/**
+ * @brief Get the path to YANG module files directory.
+ *
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_path_yang_dir(char **path);
 
+/**
+ * @brief Get the path to a module running file.
+ *
+ * @param[in] mod_name Module name.
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_path_running_file(const char *mod_name, char **path);
 
+/**
+ * @brief Get the path to a module startup file.
+ *
+ * @param[in] mod_name Module name.
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_path_startup_file(const char *mod_name, char **path);
 
+/**
+ * @brief Get the path to a module notification file.
+ *
+ * @param[in] mod_name Module name.
+ * @param[in] from_ts Timestamp of the first stored notification.
+ * @param[in] to_ts Timestamp of the last stored notification.
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_path_notif_file(const char *mod_name, time_t from_ts, time_t to_ts, char **path);
 
+/**
+ * @brief Get the path to a YANG module file.
+ *
+ * @param[in] mod_name Module name.
+ * @param[in] mod_rev Module revision.
+ * @param[in] update_prefix Whether this is an update module.
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, int update_prefix, char **path);
 
+/**
+ * @brief Get the UID of a user or vice versa.
+ *
+ * @param[in,out] uid UID.
+ * @param[in,out] user User name.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_get_pwd(uid_t *uid, char **user);
 
+/**
+ * @brief Change mode (permissions) and/or owner and group of a file.
+ *
+ * @param[in] path File path.
+ * @param[in] owner New owner if not NULL.
+ * @param[in] group New group if not NULL.
+ * @param[in] perm New permissions if not 0.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm);
 
+/**
+ * @brief Check whether the effective user has permissions for a module.
+ *
+ * @param[in] mod_name Module to check.
+ * @param[in] wr Check write access if set, otherwise read.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_perm_check(const char *mod_name, int wr);
 
+/**
+ * @brief Get mode (permissions) and/or owner and group of a module.
+ *
+ * @param[in] mod_name Module name.
+ * @param[in,out] owner Module owner if not NULL.
+ * @param[in,out] group Module group if not NULL.
+ * @param[in,out] perm Module permissions if not NULL;
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_perm_get(const char *mod_name, char **owner, char **group, mode_t *perm);
 
+/**
+ * @brief Get current time with an offset.
+ *
+ * @param[out] ts Current time offset by \p add_ms.
+ * @param[in] add_ms Number os milliseconds added.
+ */
 void sr_time_get(struct timespec *ts, uint32_t add_ms);
 
-/* if new_shm_size == 0 needs READ lock, otherwise needs WRITE lock! */
+/**
+ * @brief Remap and possibly resize a SHM. Needs WRITE lock for resizing,
+ * otherwise READ lock is fine.
+ *
+ * @param[in] shm SHM structure to remap.
+ * @param[in] new_shm_size Resize SHM to this size, if 0 read the size of the SHM file.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_shm_remap(sr_shm_t *shm, size_t new_shm_size);
 
+/**
+ * @brief Destroy a SHM structure.
+ *
+ * @param[in] shm SHM structure to destroy.
+ */
 void sr_shm_destroy(sr_shm_t *shm);
 
+/**
+ * @brief Copy memory into SHM.
+ *
+ * @param[in] shm_addr Mapped SHM address.
+ * @param[in] src Source memory.
+ * @param[in] size Size of source memory.
+ * @param[in,out] shm_end Current SHM end pointer, it is updated.
+ * @return Offset of the copied memory in SHM.
+ */
 off_t sr_shmcpy(char *shm_addr, const void *src, size_t size, char **shm_end);
 
+/**
+ * @brief Wrapper for pthread_mutex_init().
+ *
+ * @param[in,out] lock pthread mutex to initialize.
+ * @param[in] shared Whether the mutex will be shared between processes or not.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_mutex_init(pthread_mutex_t *lock, int shared);
 
+/**
+ * @brief Lock a mutex.
+ *
+ * @param[in] lock Mutex to lock.
+ * @param[in] timeout_ms Timeout in ms for locking.
+ * @param[in] finc Name of the calling function for logging.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func);
 
+/**
+ * @brief Unlock a mutex.
+ *
+ * @param[in] lock Mutex to unlock.
+ */
 void sr_munlock(pthread_mutex_t *lock);
 
+/**
+ * @brief Initialize a sysrepo RW lock.
+ *
+ * @param[in,out] rwlock RW lock to initialize.
+ * @param[in] shared Whether the RW lock will be shared between processes or not.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_rwlock_init(sr_rwlock_t *rwlock, int shared);
 
+/**
+ * @brief Destroy a sysrepo RW lock.
+ *
+ * @param[in] rwlock RW lock to destroy.
+ */
 void sr_rwlock_destroy(sr_rwlock_t *rwlock);
 
+/**
+ * @brief Lock a sysrepo RW lock.
+ *
+ * @param[in] rwlock RW lock to lock.
+ * @param[in] timeout_ms Timeout in ms for locking.
+ * @param[in] wr Whether to write-lock or read-lock.
+ * @param[in] func Name of the calling function for logging.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, int wr, const char *func);
 
+/**
+ * @brief Unlock a sysrepo RW lock.
+ *
+ * @param[in] rwlock RW lock to unlock.
+ * @param[in] wr Whether to write-unlock or read-unlock.
+ */
 void sr_rwunlock(sr_rwlock_t *rwlock, int wr);
 
+/**
+ * @brief Wrapper to realloc() that frees memory on failure.
+ *
+ * @param[in] ptr Pointer to the current memory.
+ * @param[in] size New size of the memory.
+ * @return Resized memory, NULL on error.
+ */
 void *sr_realloc(void *ptr, size_t size);
 
+/**
+ * @brief Copy a file.
+ *
+ * @param[in] to Destination path.
+ * @param[in] from Source path.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_cp(const char *to, const char *from);
 
+/**
+ * @brief Create all directories in the path.
+ *
+ * @param[in] path Full path, is temporarily modified.
+ * @param[in] mode Mode (permissions) of the directories.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_mkpath(char *path, mode_t mode);
 
+/**
+ * @brief Get first namespace (module name) from an XPath expression.
+ *
+ * @param[in] expr Expression to inspect.
+ * @return First module name, NULL on error.
+ */
 char *sr_get_first_ns(const char *expr);
 
+/**
+ * @brief Get datastore string name.
+ *
+ * @param[in] ds Datastore to transform.
+ * @return Datastore string name.
+ */
 const char *sr_ds2str(sr_datastore_t ds);
 
+/**
+ * @brief Sleep for specified milliseconds.
+ *
+ * @param[in] msec Number of ms to sleep for.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_msleep(uint32_t msec);
 
+/**
+ * @brief Get a file descriptor size.
+ *
+ * @param[in] fd File descriptor to inspect.
+ * @param[out] size Size of \p fd.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_file_get_size(int fd, size_t *size);
 
+/**
+ * @brief Get string value of a libyang leaf(-list).
+ *
+ * @param[in] leaf Node to inspect.
+ * @return String value of the node.
+ */
 const char *sr_ly_leaf_value_str(const struct lyd_node *leaf);
 
+/**
+ * @brief Get event string name.
+ *
+ * @param[in] ev Event to transform.
+ * @return Event string name.
+ */
 const char *sr_ev2str(sr_sub_event_t ev);
 
+/**
+ * @brief Transform internal event type into a public API event type.
+ *
+ * @param[in] ev Internal event.
+ * @return Public API event.
+ */
 sr_notif_event_t sr_ev2api(sr_sub_event_t ev);
 
+/**
+ * @brief Transform a libyang node into sysrepo value.
+ *
+ * @param[in] node libyang node to transform.
+ * @param[out] sr_val sysrepo value.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val);
 
-/* buf must be size at least 22 */
+/**
+ * @brief Transform a sysrepo value into libyang string value.
+ *
+ * @param[in] ctx libyang context.
+ * @param[in] sr_val sysrepo value to transform.
+ * @param[in] buf Function buffer, must be of size at least 22 bytes.
+ * @return String value.
+ */
 char *sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, char *buf);
 
+/**
+ * @brief Transform a sysrepo value into libyang node.
+ *
+ * @param[in] ctx libyang context.
+ * @param[in] xpath XPath of the sysrepo value.
+ * @param[in] val_str String value of the sysrepo value.
+ * @param[in] dflt Dflt flag if the sysrepo value.
+ * @param[in] output Whether the sysrepo value is from an output.
+ * @param[in,out] root Transformed sysrepo value, appended if set.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char *val_str, int dflt, int output,
         struct lyd_node **root);
 
+/**
+ * @brief Split this sibling with following siblings and its preceding siblings.
+ * Works only for top-level nodes!
+ *
+ * @param[in] sibling Specific sibling where to split the siblings.
+ */
 void sr_ly_split(struct lyd_node *sibling);
 
+/**
+ * @brief Link together split siblings. Works only for top-level nodes!
+ *
+ * @param[in] first First sibling of the preceding siblings.
+ * @param[in] sibling First sibling of the following siblings.
+ */
 void sr_ly_link(struct lyd_node *first, struct lyd_node *sibling);
 
+/**
+ * @brief Learn whether a node is user-ordered (leaf-)list.
+ *
+ * @param[in] node (Leaf-)list instance.
+ * @return 0 if not, non-zero if it is.
+ */
 int sr_ly_is_userord(const struct lyd_node *node);
 
+/**
+ * @brief Duplicate selected nodes from a data tree.
+ * Works well even for XPaths with intersections.
+ *
+ * @param[in] data Data tree to duplicate from.
+ * @param[in] xpaths Array of XPaths that will select the duplicated nodes.
+ * @param[in] xp_count XPath count.
+ * @param[out] new_data Duplicated selected nodes.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_ly_data_dup_xpath_select(const struct lyd_node *data, char **xpaths, uint16_t xp_count,
         struct lyd_node **new_data);
 
+/**
+ * @brief Remove all nodes selected by XPath. (currently unused function)
+ *
+ * @param[in,out] data Data to filter.
+ * @param[in] xpath XPath selecting the nodes that will be freed.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_ly_data_xpath_complement(struct lyd_node **data, const char *xpath);
 
+/**
+ * @brief Get a hash of a string value.
+ *
+ * @param[in] str String to hash.
+ * @return String hash.
+ */
 uint32_t sr_str_hash(const char *str);
 
+/**
+ * @brief Trim last node from an XPath.
+ *
+ * @param[in] xpath Full XPath.
+ * @param[out] trim_xpath XPath without the last node (and its predicates, if any).
+ * @param[out] last_node_xpath Relative XPath of the last node.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_xpath_trim_last_node(const char *xpath, char **trim_xpath, char **last_node_xpath);
 
+/**
+ * @brief Get the first node from an XPath.
+ *
+ * @param[in] xpath Full XPath.
+ * @return First XPath node path.
+ */
 char *sr_xpath_first_node(const char *xpath);
 
+/**
+ * @brief Learn length of an XPath withtout any predicates.
+ *
+ * @param[in] xpath Full XPath.
+ * @return XPath length.
+ */
 size_t sr_xpath_len_no_predicates(const char *xpath);
 
+/**
+ * @brief Find last (most nested) parent (node with possible children) in a data tree.
+ *
+ * @param[in,out] parent Any subtree node, will be moved to the last parent.
+ * @param[in] nodetype Whether to stop when a specific node type is found or not.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
 
 #endif

@@ -510,7 +510,7 @@ main(int argc, char** argv)
     }
 
     /* create session */
-    if ((r = sr_session_start(conn, ds, 0, &sess)) != SR_ERR_OK) {
+    if ((r = sr_session_start(conn, ds, &sess)) != SR_ERR_OK) {
         error_print(r, "Failed to start a session");
         goto cleanup;
     }

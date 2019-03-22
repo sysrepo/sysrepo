@@ -437,8 +437,8 @@ sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs)
 }
 
 sr_error_info_t *
-sr_sub_notif_add(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb callback,
-        sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs)
+sr_sub_notif_add(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb,
+        sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notif_s *notif_sub = NULL;
@@ -501,8 +501,8 @@ sr_sub_notif_add(const char *mod_name, const char *xpath, time_t start_time, tim
     notif_sub->subs[notif_sub->sub_count].start_time = start_time;
     notif_sub->subs[notif_sub->sub_count].replayed = 0;
     notif_sub->subs[notif_sub->sub_count].stop_time = stop_time;
-    notif_sub->subs[notif_sub->sub_count].cb = callback;
-    notif_sub->subs[notif_sub->sub_count].tree_cb = tree_callback;
+    notif_sub->subs[notif_sub->sub_count].cb = notif_cb;
+    notif_sub->subs[notif_sub->sub_count].tree_cb = notif_tree_cb;
     notif_sub->subs[notif_sub->sub_count].private_data = private_data;
 
     ++notif_sub->sub_count;
@@ -526,8 +526,8 @@ error_unlock:
 }
 
 void
-sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb callback,
-        sr_event_notif_tree_cb tree_callback, void *private_data, sr_subscription_ctx_t *subs, int has_subs_lock)
+sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb,
+        sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs, int has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
@@ -554,7 +554,7 @@ sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, tim
                 continue;
             }
             if ((start_time != notif_sub->subs[j].start_time) || (stop_time != notif_sub->subs[j].stop_time)
-                    || (callback != notif_sub->subs[j].cb) || (tree_callback != notif_sub->subs[j].tree_cb)
+                    || (notif_cb != notif_sub->subs[j].cb) || (notif_tree_cb != notif_sub->subs[j].tree_cb)
                     || (private_data != notif_sub->subs[j].private_data)) {
                 continue;
             }
@@ -856,6 +856,13 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     return NULL;
 }
 
+/**
+ * @brief Create (print) YANG module file.
+ *
+ * @param[in] mod Module to print.
+ * @param[in] upd_module Whether to modify name for an update module.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_store_module_file(const struct lys_module *mod, int upd_module)
 {
@@ -890,6 +897,12 @@ sr_store_module_file(const struct lys_module *mod, int upd_module)
     return NULL;
 }
 
+/**
+ * @brief Create startup and running data file for a module.
+ *
+ * @param[in] mod Module.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_create_data_files(const struct lys_module *mod)
 {
@@ -951,6 +964,12 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Check whether a module is internal libyang module.
+ *
+ * @param[in] mod Module to check.
+ * @return 0 if not, non-zero if it is.
+ */
 static int
 sr_ly_module_is_internal(const struct lys_module *mod)
 {
@@ -1267,6 +1286,13 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Get GID from group name or vice versa.
+ *
+ * @param[in,out] gid GID.
+ * @param[in,out] group Group name.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_get_grp(gid_t *gid, char **group)
 {
@@ -1631,6 +1657,13 @@ sr_munlock(pthread_mutex_t *lock)
     }
 }
 
+/**
+ * @brief Wrapper for pthread_cond_init().
+ *
+ * @param[out] cond Condition variable to initialize.
+ * @param[in] shared Whether the condition will be shared among processes.
+ * @return err_info, NULL on error.
+ */
 static sr_error_info_t *
 sr_cond_init(pthread_cond_t *cond, int shared)
 {

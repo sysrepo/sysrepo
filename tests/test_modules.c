@@ -362,7 +362,7 @@ test_change_feature(void **state)
     const char *en_feat = "feat1";
     int ret;
 
-    ret = sr_session_start(st->conn, SR_DS_STARTUP, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* install features with feat1 */

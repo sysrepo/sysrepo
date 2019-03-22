@@ -34,51 +34,145 @@
 #define MOD_INFO_WLOCK   0x10 /* write-locked module */
 #define MOD_INFO_CHANGED 0x20 /* module data were changed */
 
+/**
+ * @brief Mod info structure, used for keeping all relevant modules for a data operation.
+ */
 struct sr_mod_info_s {
-    sr_datastore_t ds;
-    struct lyd_node *diff;
-    int dflt_change;
-    struct lyd_node *data;
-    /* a conn cache lock (read/write) is held while this is true */
-    int data_cached;
-    sr_conn_ctx_t *conn;
+    sr_datastore_t ds;          /**< Datastore. */
+    struct lyd_node *diff;      /**< Diff with previous data. */
+    int dflt_change;            /**< Whether a value default flag was changed. */
+    struct lyd_node *data;      /**< Data tree. */
+    int data_cached;            /**< Whether the data are actually in cache (conn cache READ lock is held). */
+    sr_conn_ctx_t *conn;        /**< Associated connection. */
 
     struct sr_mod_info_mod_s {
-        sr_mod_t *shm_mod;
-        uint8_t state;
-        const struct lys_module *ly_mod;
-        uint32_t event_id;
+        sr_mod_t *shm_mod;      /**< Module SHM structure. */
+        uint8_t state;          /**< Module state (flags). */
+        const struct lys_module *ly_mod;    /**< Module libyang structure. */
 
-        sr_shm_t shm_sub_cache;
-    } *mods;
-    uint32_t mod_count;
+        uint32_t event_id;      /**< Event ID of the published event. */
+        sr_shm_t shm_sub_cache; /**< Opened subscription SHM that published the event. */
+    } *mods;                    /**< Relevant modules. */
+    uint32_t mod_count;         /**< Modules count. */
 };
 
+/**
+ * @brief Add a module into mod info.
+ *
+ * @param[in] shm_mod Module SHM structure.
+ * @param[in] ly_mod Module libyang structure.
+ * @param[in] mod_type Module type.
+ * @param[in] mod_req_deps Which dependencies are also to be added.
+ * @param[in] mod_info Modified mod info.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *ly_mod, int mod_type, int mod_req_deps,
         struct sr_mod_info_s *mod_info);
 
+/**
+ * @brief Check permissions of all the modules in a mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] wr Whether to check write or read permissions.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr);
 
+/**
+ * @brief Apply sysrepo edit on mod info data.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] edit Sysrepo edit to apply.
+ * @param[in] create_diff Whether to also create diff with the original data tree.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff);
 
+/**
+ * @brief Replace mod info data with new data.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in,out] src_data New data to set, are spent.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data);
 
+/**
+ * @brief Validate data for modules in mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] finish_diff Whether to update diff with possible changes caused by validation.
+ * @param[in] sid Sysrepo session ID.
+ * @param[out] cb_error_info Callback error info in case a data-provider of data required
+ * because of an instance-identifier failed.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *sid,
         sr_error_info_t **cb_error_info);
 
+/**
+ * @brief Validate operation using modules in mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] op Operation data tree (RPC/action/notification).
+ * @param[in] shm_deps Main SHM dependencies of the operation.
+ * @param[in] shm_dep_count Main SHM dependency count.
+ * @param[in] output Whether this is the output of an operation.
+ * @param[in] sid Sysrepo session ID.
+ * @param[out] cb_error_info Callback error info in case a data-provider of data required
+ * because of an instance-identifier failed.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_mod_data_dep_t *shm_deps,
         uint16_t shm_dep_count, int output, sr_sid_t *sid, sr_error_info_t **cb_error_info);
 
+/**
+ * @brief Load data for modules in mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] mod_type Only module types which data should be loaded.
+ * @param[in] cache Whether it makes sense to use cached data, if available.
+ * @param[in] sid Sysrepo session ID.
+ * @param[out] cb_error_info Callback error info in case a data-provider of required data failed.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache, sr_sid_t *sid,
         sr_error_info_t **cb_error_info);
 
+/**
+ * @brief Filter data from mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] xpath Selected data.
+ * @param[in] session Sysrepo session.
+ * @param[out] result Resulting set with duplicated data subtrees, there may be some descendants in several subtrees.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
         struct ly_set **result);
 
+/**
+ * @brief Generate a netconf-config-change notification based on changes in mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] sess Sysrepo session.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sess);
 
+/**
+ * @brief Store data (persistently) from mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_modinfo_data_store(struct sr_mod_info_s *mod_info);
 
+/**
+ * @brief Free mod info.
+ *
+ * @param[in] mod_info Mod info to free.
+ */
 void sr_modinfo_free(struct sr_mod_info_s *mod_info);
 
 #endif

@@ -225,8 +225,7 @@ sr_conn_ptr_del(void ***ptrs, uint32_t *ptr_count, void *del_ptr)
 }
 
 API int
-sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, const sr_sess_options_t opts,
-        sr_session_ctx_t **session)
+sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session_ctx_t **session)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
@@ -395,20 +394,23 @@ sr_session_get_nc_id(sr_session_ctx_t *session)
     return session->sid.nc;
 }
 
-API void
+API int
 sr_session_set_user(sr_session_ctx_t *session, const char *user)
 {
     sr_error_info_t *err_info = NULL;
+    uid_t uid;
 
-    if (!session) {
-        return;
-    }
+    SR_CHECK_ARG_APIRET(!session || !user, session, err_info);
 
     if (geteuid()) {
         /* not a root */
         sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Root access required.");
-        sr_api_ret(session, err_info);
-        return;
+        return sr_api_ret(session, err_info);
+    }
+
+    /* check that the user is valid */
+    if ((err_info = sr_get_pwd(&uid, (char **)&user))) {
+        return sr_api_ret(session, err_info);
     }
 
     /* replace the user */
@@ -416,9 +418,9 @@ sr_session_set_user(sr_session_ctx_t *session, const char *user)
     session->sid.user = strdup(user);
     if (!session->sid.user) {
         SR_ERRINFO_MEM(&err_info);
-        sr_api_ret(session, err_info);
-        return;
     }
+
+    return sr_api_ret(session, err_info);
 }
 
 API const char *
@@ -698,7 +700,7 @@ sr_edit_item(sr_session_ctx_t *session, const char *xpath, const char *value, co
     sr_shmmain_unlock(session->conn, 0, 0);
 
     /* add the operation into edit */
-    if ((err_info = sr_ly_edit_add(session, xpath, value, operation, def_operation, position, keys, val))) {
+    if ((err_info = sr_edit_add(session, xpath, value, operation, def_operation, position, keys, val))) {
         return err_info;
     }
 
@@ -2669,8 +2671,7 @@ sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name
 }
 
 API int
-sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values, const size_t values_cnt,
-        sr_ev_notif_flag_t opts)
+sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values, const size_t values_cnt)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *notif_tree = NULL;
@@ -2694,7 +2695,7 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t
     }
 
     /* API function */
-    if ((ret = sr_event_notif_send_tree(session, notif_tree, opts)) != SR_ERR_OK) {
+    if ((ret = sr_event_notif_send_tree(session, notif_tree)) != SR_ERR_OK) {
         lyd_free_withsiblings(notif_tree);
         return ret;
     }
@@ -2707,7 +2708,7 @@ cleanup:
 }
 
 API int
-sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, sr_ev_notif_flag_t opts)
+sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL, *tmp_err_info = NULL;
     struct sr_mod_info_s mod_info;

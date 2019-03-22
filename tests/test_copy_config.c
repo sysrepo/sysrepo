@@ -95,7 +95,7 @@ teardown_f(void **state)
     struct state *st = (struct state *)*state;
     sr_session_ctx_t *sess;
 
-    sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
+    sr_session_start(st->conn, SR_DS_RUNNING, &sess);
 
     sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
     sr_delete_item(sess, "/test:l1[k='a']", 0);
@@ -367,7 +367,7 @@ copy_empty_thread(void *arg)
     const char *str2;
     int ret;
 
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for subscription before copying */
@@ -441,7 +441,7 @@ subscribe_empty_thread(void *arg)
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_empty_cb, st, 0, 0, &subscr);
@@ -673,7 +673,7 @@ copy_simple_thread(void *arg)
     const char *str2;
     int ret;
 
-    ret = sr_session_start(st->conn, SR_DS_STARTUP, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for subscription before copying */
@@ -764,7 +764,7 @@ subscribe_simple_thread(void *arg)
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set the same running and startup data */
@@ -898,7 +898,7 @@ copy_userord_thread(void *arg)
     struct lyd_node *node;
     int ret;
 
-    ret = sr_session_start(st->conn, SR_DS_STARTUP, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for subscription before copying */
@@ -1031,7 +1031,7 @@ subscribe_userord_thread(void *arg)
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set the same running and startup data */
@@ -1304,7 +1304,7 @@ replace_thread(void *arg)
     const char *str2;
     int ret;
 
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for subscription before replacing */
@@ -1414,7 +1414,7 @@ subscribe_replace_thread(void *arg)
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, 0, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some running ietf-interfaces data */

@@ -165,7 +165,7 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
             mod_diff = NULL;
 
             /* apply relevant edit changes */
-            if ((err_info = sr_ly_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, create_diff ? &mod_diff : NULL))) {
+            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, create_diff ? &mod_diff : NULL))) {
                 lyd_free_withsiblings(mod_diff);
                 return err_info;
             }
@@ -187,6 +187,13 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
     return NULL;
 }
 
+/**
+ * @brief Unlink data of a specific module from a data tree.
+ *
+ * @param[in,out] data Data tree.
+ * @param[in] ly_mod libyang module fo interest.
+ * @return Unlinked data tree.
+ */
 static struct lyd_node *
 sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 {
@@ -220,6 +227,14 @@ sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
     return mod_data;
 }
 
+/**
+ * @brief Duplicate data of a specific module in a data tree.
+ *
+ * @param[in] data Data tree.
+ * @param[in] ly_mod libyang module of interest.
+ * @param[out] mod_data Duplicated module data.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_module_data_dup(const struct lyd_node *data, const struct lys_module *ly_mod, struct lyd_node **mod_data)
 {
@@ -286,7 +301,7 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
                 mod->state |= MOD_INFO_CHANGED;
 
                 /* create a single sysrepo diff */
-                err_info = sr_ly_diff_ly2sr(ly_diff, &mod_info->diff);
+                err_info = sr_diff_ly2sr(ly_diff, &mod_info->diff);
 
                 /* update data */
                 if (mod_info->data) {
@@ -316,6 +331,17 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
     return NULL;
 }
 
+/**
+ * @brief Append specific operational data retrieved from a client to a data tree.
+ *
+ * @param[in] ly_mod libyang module of the data.
+ * @param[in] xpath XPath of the provided data.
+ * @param[in] sid Sysrepo session ID.
+ * @param[in] parent Data parent required for the subscription, NULL if top-level.
+ * @param[in,out] data Data tree with appended operational data.
+ * @param[out] cb_error_info Callback error info returned by the client, if any.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, sr_sid_t sid, const struct lyd_node *parent,
         struct lyd_node **data, sr_error_info_t **cb_error_info)
@@ -387,6 +413,14 @@ sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, sr
     return NULL;
 }
 
+/**
+ * @brief Remove configuration data that will be provided by a client.
+ *
+ * @param[in] xpath XPath of the provided data to be removed.
+ * @param[in] parent Parent of the operational data.
+ * @param[in,out] data Whole data tree to be adjusted in case top-level nodes are removed.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_xpath_oper_data_remove(const char *xpath, struct lyd_node *parent, struct lyd_node **data)
 {
@@ -416,6 +450,16 @@ sr_xpath_oper_data_remove(const char *xpath, struct lyd_node *parent, struct lyd
     return NULL;
 }
 
+/**
+ * @brief Update (replace or append) operation data for a specific module.
+ *
+ * @param[in] mod Mod info module to process.
+ * @param[in] sid Sysrepo session ID.
+ * @param[in] main_shm_addr Main SHM mapping address.
+ * @param[in,out] data Operation data tree.
+ * @param[out] cb_error_info Callback error info returned by the client, if any.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, char *main_shm_addr, struct lyd_node **data,
         sr_error_info_t **cb_error_info)
@@ -500,6 +544,14 @@ error:
     return err_info;
 }
 
+/**
+ * @brief Append configuration data for a specific module.
+ *
+ * @param[in] mod Mod info module to process.
+ * @param[in] ds Datastore.
+ * @param[in,out] data Data tree to append to.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_module_config_data_append(struct sr_mod_info_mod_s *mod, sr_datastore_t ds, struct lyd_node **data)
 {
@@ -545,6 +597,15 @@ error:
     return err_info;
 }
 
+/**
+ * @brief Duplicate operational (enabled) data from configuration data tree.
+ *
+ * @param[in] data Configuration data.
+ * @param[in] main_shm_addr Main SHM mapping address.
+ * @param[in] mod Mod info module to process.
+ * @param[out] enabled_mod_data Enabled operational data of the module.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *main_shm_addr, struct sr_mod_info_mod_s *mod,
         struct lyd_node **enabled_mod_data)
@@ -594,6 +655,16 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *main_shm_addr
     return NULL;
 }
 
+/**
+ * @brief Update cached module data (if required).
+ *
+ * @param[in] mod_cache Module cache.
+ * @param[in] mod Mod info module to process.
+ * @param[in] ds Datastore.
+ * @param[in] upd_mod_data Optional current (updated) module data to store in cache.
+ * @param[in] read_locked Whether the cache is READ locked.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_modcache_module_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
         struct lyd_node **upd_mod_data, int read_locked)
@@ -680,6 +751,15 @@ sr_modcache_module_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_m
     return NULL;
 }
 
+/**
+ * @brief Load module data of a specific module.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] mod Mod info module to process.
+ * @param[in] sid Sysrepo session ID.
+ * @param[out] cb_error_info Callback error info returned by data-provide subscribers, if any.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod, sr_sid_t *sid,
         sr_error_info_t **cb_error_info)
@@ -754,6 +834,16 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     return NULL;
 }
 
+/**
+ * @brief Add modules and data dependencies of instance-identifiers to mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] shm_deps SHM dependencies of relevant instance-identifiers.
+ * @param[in] shm_dep_count SHM dependency count.
+ * @param[in] sid Sysrepo session ID.
+ * @param[out] cb_error_info Callback error info returned by data-rpovide subscribers, if any.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_modinfo_add_instid_deps_data(struct sr_mod_info_s *mod_info, sr_mod_data_dep_t *shm_deps, uint16_t shm_dep_count,
         const struct lyd_node *data, sr_sid_t *sid, sr_error_info_t **cb_error_info)
@@ -1084,7 +1174,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                 }
 
                 /* apply any performed changes to get the session-specific data */
-                if ((err_info = sr_ly_edit_mod_apply(session->dt[session->ds].edit, mod->ly_mod, &mod_info->data, NULL))) {
+                if ((err_info = sr_edit_mod_apply(session->dt[session->ds].edit, mod->ly_mod, &mod_info->data, NULL))) {
                     goto cleanup;
                 }
             }
@@ -1275,8 +1365,16 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Store persistent configuration data of a module.
+ *
+ * @param[in] mod_name Name of the module.
+ * @param[in] ds Datastore.
+ * @param[in] mod_data Module data to store.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
-sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *data)
+sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data)
 {
     sr_error_info_t *err_info = NULL;
     char *path;
@@ -1292,8 +1390,8 @@ sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_no
         return err_info;
     }
 
-    if (lyd_print_path(path, data, LYD_LYB, LYP_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
+    if (lyd_print_path(path, mod_data, LYD_LYB, LYP_WITHSIBLINGS)) {
+        sr_errinfo_new_ly(&err_info, lyd_node_module(mod_data)->ctx);
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to store data file \"%s\".", path);
         free(path);
         return err_info;
