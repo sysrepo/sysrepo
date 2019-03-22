@@ -1,5 +1,4 @@
 - sr_*_item flag SR_EDIT_NON_RECURSIVE not supported for sr_delete_item()
-- sr_commit() renamed to sr_apply_changes()
 - sr_node_t -> struct lyd_node *
 - sr_get_subtree(s) removed opts (no iterative retrieval)
 - sr_unsubscribe first parameter removed
@@ -9,8 +8,7 @@
 - deleting a leaf does not check the value/it can be empty! but otherwise only limited paths are accepted, no xpath
 - sr_move_item() different relative item input
 - error retrieval from session API slightly changed
-- threading - strict 1 connection in one process - main SHM file process-specific lock, otherwise main SHM remap (ftruncate) unsafe
-            - then n+m sessions for n threads - do not share one session between several threads
+- threading - do not share one session between several threads
 - session options removed, did not make sense anymore
 - NO_ABORT_FOR_REFUSED_CFG subscription option removed, default behaviour
 - SR_EV_NOTIF_T_REPLAY_STOP -> SR_EV_NOTIF_STOP
@@ -18,6 +16,7 @@
 - replaced 4 functions sr_(un)lock_(module|datastore) with 2 sr_(un)lock
 
 removed functions:
+- sr_commit() (renamed to sr_apply_changes())
 - sr_module_install_subscribe (use notifications)
 - sr_feature_enable_subscribe (use notifications)
 - sr_subtree_change_subscribe (use sr_module_change_subscribe() with xpath)
@@ -39,7 +38,7 @@ added functions:
 - sr_install_module
 - sr_remove_module
 - sr_update_module
-- sr_cancel_ipdate_module
+- sr_cancel_update_module
 - sr_set_replay_support
 - sr_set_module_access
 - sr_get_module_access
