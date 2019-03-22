@@ -694,23 +694,6 @@ int sr_apply_changes(sr_session_ctx_t *session);
 int sr_discard_changes(sr_session_ctx_t *session);
 
 /**
- * @brief Replaces a configuration datastore with the contents of
- * another configuration datastore. If the module is specified, limits
- * the operation only to the specified module. If it is not specified,
- * the operation is performed on all modules.
- *
- * Required WRITE access.
- *
- * @param[in] session Session to use.
- * @param[in] module_name Optional module name that limits the copy operation only to this module.
- * @param[in] src_datastore Source datastore.
- * @param[in] dst_datastore Destination datastore.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore,
-        sr_datastore_t dst_datastore);
-
-/**
  * @brief Replace a configuration datastore with the contents of
  * a data tree. If the module is specified, limits the operation only to the specified module. If
  * it is not specified, the operation is performed on all modules.
@@ -725,6 +708,23 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datast
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
+        sr_datastore_t dst_datastore);
+
+/**
+ * @brief Replaces a configuration datastore with the contents of
+ * another configuration datastore. If the module is specified, limits
+ * the operation only to the specified module. If it is not specified,
+ * the operation is performed on all modules.
+ *
+ * Required WRITE access.
+ *
+ * @param[in] session Session to use.
+ * @param[in] module_name Optional module name that limits the copy operation only to this module.
+ * @param[in] src_datastore Source datastore.
+ * @param[in] dst_datastore Destination datastore.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore,
         sr_datastore_t dst_datastore);
 
 /** @} editdata */

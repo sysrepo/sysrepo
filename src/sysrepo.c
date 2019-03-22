@@ -666,6 +666,64 @@ cleanup_shm_unlock:
     return sr_api_ret(session, err_info);
 }
 
+API void
+sr_free_val(sr_val_t *value)
+{
+    if (!value) {
+        return;
+    }
+
+    free(value->xpath);
+    switch (value->type) {
+    case SR_BINARY_T:
+    case SR_BITS_T:
+    case SR_ENUM_T:
+    case SR_IDENTITYREF_T:
+    case SR_INSTANCEID_T:
+    case SR_STRING_T:
+    case SR_ANYXML_T:
+    case SR_ANYDATA_T:
+        free(value->data.string_val);
+        break;
+    default:
+        /* nothing to free */
+        break;
+    }
+
+    free(value);
+}
+
+API void
+sr_free_values(sr_val_t *values, size_t count)
+{
+    size_t i;
+
+    if (!values || !count) {
+        return;
+    }
+
+    for (i = 0; i < count; ++i) {
+        free(values[i].xpath);
+        switch (values[i].type) {
+        case SR_BINARY_T:
+        case SR_BITS_T:
+        case SR_ENUM_T:
+        case SR_IDENTITYREF_T:
+        case SR_INSTANCEID_T:
+        case SR_STRING_T:
+        case SR_ANYXML_T:
+        case SR_ANYDATA_T:
+            free(values[i].data.string_val);
+            break;
+        default:
+            /* nothing to free */
+            break;
+        }
+    }
+
+    free(values);
+}
+
 API int
 sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value, const sr_edit_options_t opts)
 {
@@ -2122,6 +2180,17 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
     return sr_api_ret(session, NULL);
 }
 
+API void
+sr_free_change_iter(sr_change_iter_t *iter)
+{
+    if (!iter) {
+        return;
+    }
+
+    ly_set_free(iter->set);
+    free(iter);
+}
+
 static int
 _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, sr_rpc_tree_cb tree_callback,
         void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
@@ -3522,73 +3591,4 @@ sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data)
     err_info = sr_shmmain_ly_int_data_parse(conn, 0, sysrepo_data);
 
     return sr_api_ret(NULL, err_info);
-}
-
-API void
-sr_free_val(sr_val_t *value)
-{
-    if (!value) {
-        return;
-    }
-
-    free(value->xpath);
-    switch (value->type) {
-    case SR_BINARY_T:
-    case SR_BITS_T:
-    case SR_ENUM_T:
-    case SR_IDENTITYREF_T:
-    case SR_INSTANCEID_T:
-    case SR_STRING_T:
-    case SR_ANYXML_T:
-    case SR_ANYDATA_T:
-        free(value->data.string_val);
-        break;
-    default:
-        /* nothing to free */
-        break;
-    }
-
-    free(value);
-}
-
-API void
-sr_free_values(sr_val_t *values, size_t count)
-{
-    size_t i;
-
-    if (!values || !count) {
-        return;
-    }
-
-    for (i = 0; i < count; ++i) {
-        free(values[i].xpath);
-        switch (values[i].type) {
-        case SR_BINARY_T:
-        case SR_BITS_T:
-        case SR_ENUM_T:
-        case SR_IDENTITYREF_T:
-        case SR_INSTANCEID_T:
-        case SR_STRING_T:
-        case SR_ANYXML_T:
-        case SR_ANYDATA_T:
-            free(values[i].data.string_val);
-            break;
-        default:
-            /* nothing to free */
-            break;
-        }
-    }
-
-    free(values);
-}
-
-API void
-sr_free_change_iter(sr_change_iter_t *iter)
-{
-    if (!iter) {
-        return;
-    }
-
-    ly_set_free(iter->set);
-    free(iter);
 }
