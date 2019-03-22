@@ -21,35 +21,6 @@
 #ifndef _SYSREPO_H
 #define _SYSREPO_H
 
-/**
- * @defgroup cl Client Library
- * @{
- *
- * @brief Provides the public API towards applications using sysrepo to store
- * their configuration data, or towards management agents.
- *
- * Communicates with Sysrepo Engine (@ref cm), which is running either inside
- * of dedicated sysrepo daemon, or within this library if daemon is not alive.
- *
- * Access to the sysrepo datastore is connection- and session- oriented. Before
- * calling any data access/manipulation API, one needs to connect to the datastore
- * via ::sr_connect and open a session via ::sr_session_start. One connection
- * can serve multiple sessions.
- *
- * Each data access/manipulation request call is blocking - blocks the connection
- * until the response from Sysrepo Engine comes, or until an error occurs. It is
- * safe to call multiple requests on the same session (or different session that
- * belongs to the same connection) from multiple threads at the same time,
- * however it is not effective, since each call is blocked until previous one
- * finishes. If you need fast multi-threaded access to sysrepo, use a dedicated
- * connection for each thread.
- *
- * @see
- * See @ref main_page "Sysrepo Introduction" for details about sysrepo architecture.
- * @see
- * @ref xp_page "XPath Addressing" is used for node identification in data-related calls.
- */
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -65,104 +36,13 @@ extern "C" {
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
-// Common typedefs and API
+// Logging API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief Sysrepo connection context used to identify a connection to sysrepo datastore.
+ * @defgroup log Logging
+ * @{
  */
-typedef struct sr_conn_ctx_s sr_conn_ctx_t;
-
-/**
- * @brief Sysrepo session context used to identify a configuration session on a connection.
- */
-typedef struct sr_session_ctx_s sr_session_ctx_t;
-
-/**
- * @brief Possible types of a data element stored in the sysrepo datastore.
- */
-typedef enum sr_type_e {
-    /* special types that does not contain any data */
-    SR_UNKNOWN_T,              /**< Element unknown to sysrepo (unsupported element). */
-    SR_TREE_ITERATOR_T,        /**< Special type of tree node used to store all data needed for iterative tree loading. */
-
-    SR_LIST_T,                 /**< List instance. ([RFC 6020 sec 7.8](http://tools.ietf.org/html/rfc6020#section-7.8)) */
-    SR_CONTAINER_T,            /**< Non-presence container. ([RFC 6020 sec 7.5](http://tools.ietf.org/html/rfc6020#section-7.5)) */
-    SR_CONTAINER_PRESENCE_T,   /**< Presence container. ([RFC 6020 sec 7.5.1](http://tools.ietf.org/html/rfc6020#section-7.5.1)) */
-    SR_LEAF_EMPTY_T,           /**< A leaf that does not hold any value ([RFC 6020 sec 9.11](http://tools.ietf.org/html/rfc6020#section-9.11)) */
-    SR_NOTIFICATION_T,         /**< Notification instance ([RFC 7095 sec 7.16](https://tools.ietf.org/html/rfc7950#section-7.16)) */
-
-    /* types containing some data */
-    SR_BINARY_T,       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
-    SR_BITS_T,         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
-    SR_BOOL_T,         /**< A boolean value ([RFC 6020 sec 9.5](http://tools.ietf.org/html/rfc6020#section-9.5)) */
-    SR_DECIMAL64_T,    /**< 64-bit signed decimal number ([RFC 6020 sec 9.3](http://tools.ietf.org/html/rfc6020#section-9.3)) */
-    SR_ENUM_T,         /**< A string from enumerated strings list ([RFC 6020 sec 9.6](http://tools.ietf.org/html/rfc6020#section-9.6)) */
-    SR_IDENTITYREF_T,  /**< A reference to an abstract identity ([RFC 6020 sec 9.10](http://tools.ietf.org/html/rfc6020#section-9.10)) */
-    SR_INSTANCEID_T,   /**< References a data tree node ([RFC 6020 sec 9.13](http://tools.ietf.org/html/rfc6020#section-9.13)) */
-    SR_INT8_T,         /**< 8-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_INT16_T,        /**< 16-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_INT32_T,        /**< 32-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_INT64_T,        /**< 64-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_STRING_T,       /**< Human-readable string ([RFC 6020 sec 9.4](http://tools.ietf.org/html/rfc6020#section-9.4)) */
-    SR_UINT8_T,        /**< 8-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_UINT16_T,       /**< 16-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_UINT32_T,       /**< 32-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_UINT64_T,       /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_ANYXML_T,       /**< Unknown chunk of XML ([RFC 6020 sec 7.10](https://tools.ietf.org/html/rfc6020#section-7.10)) */
-    SR_ANYDATA_T,      /**< Unknown set of nodes, encoded in XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
-} sr_type_t;
-
-/**
- * @brief Data of an element (if applicable), properly set according to the type.
- */
-typedef union sr_data_u {
-    char *binary_val;       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
-    char *bits_val;         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
-    bool bool_val;          /**< A boolean value ([RFC 6020 sec 9.5](http://tools.ietf.org/html/rfc6020#section-9.5)) */
-    double decimal64_val;   /**< 64-bit signed decimal number ([RFC 6020 sec 9.3](http://tools.ietf.org/html/rfc6020#section-9.3)) */
-    char *enum_val;         /**< A string from enumerated strings list ([RFC 6020 sec 9.6](http://tools.ietf.org/html/rfc6020#section-9.6)) */
-    char *identityref_val;  /**< A reference to an abstract identity ([RFC 6020 sec 9.10](http://tools.ietf.org/html/rfc6020#section-9.10)) */
-    char *instanceid_val;   /**< References a data tree node ([RFC 6020 sec 9.13](http://tools.ietf.org/html/rfc6020#section-9.13)) */
-    int8_t int8_val;        /**< 8-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    int16_t int16_val;      /**< 16-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    int32_t int32_val;      /**< 32-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    int64_t int64_val;      /**< 64-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    char *string_val;       /**< Human-readable string ([RFC 6020 sec 9.4](http://tools.ietf.org/html/rfc6020#section-9.4)) */
-    uint8_t uint8_val;      /**< 8-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    uint16_t uint16_val;    /**< 16-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    uint32_t uint32_val;    /**< 32-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    uint64_t uint64_val;    /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    char *anyxml_val;       /**< Unknown chunk of XML ([RFC 6020 sec 7.10](https://tools.ietf.org/html/rfc6020#section-7.10)) */
-    char *anydata_val;      /**< Unknown set of nodes, encoded in XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
-} sr_data_t;
-
-/**
- * @brief Structure that contains value of an data element stored in the sysrepo datastore.
- */
-typedef struct sr_val_s {
-
-    /**
-     * XPath identifier of the data element, as defined in
-     * @ref xp_page "Path Addressing" documentation
-     */
-    char *xpath;
-
-    /** Type of an element. */
-    sr_type_t type;
-
-    /**
-     * Flag for node with default value (applicable only for leaves).
-     * It is set to TRUE only if the value was *implicitly* set by the datastore as per
-     * module schema. Explicitly set/modified data element (through the sysrepo API) always
-     * has this flag unset regardless of the entered value.
-     */
-    bool dflt;
-
-    /** Data of an element (if applicable), properly set according to the type. */
-    sr_data_t data;
-
-} sr_val_t;
 
 /**
  * @brief Sysrepo error codes.
@@ -267,17 +147,33 @@ void sr_log_set_cb(sr_log_cb log_callback);
 /**
  * @brief Get the common path prefix for all sysrepo files.
  *
- * @note If a specific path was changed, it does not use this
+ * @note If a specific path was changed during compilation, it does not use this
  * path prefix.
  *
  * @return Sysrepo repository path.
  */
 const char *sr_get_repo_path(void);
 
+/** @} logging */
 
 ////////////////////////////////////////////////////////////////////////////////
 // Connection / Session Management
 ////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup connsess Connection & Sessions
+ * @{
+ */
+
+/**
+ * @brief Sysrepo connection.
+ */
+typedef struct sr_conn_ctx_s sr_conn_ctx_t;
+
+/**
+ * @brief Sysrepo session on a connection.
+ */
+typedef struct sr_session_ctx_s sr_session_ctx_t;
 
 /**
  * @brief Flags used to override default connection handling by ::sr_connect call.
@@ -285,7 +181,7 @@ const char *sr_get_repo_path(void);
 typedef enum sr_conn_flag_e {
     SR_CONN_DEFAULT = 0,          /**< No special behaviour. */
     SR_CONN_CACHE_RUNNING = 1,    /**< Always cache running datastore data which makes mainly repeated retrieval of data
-                                       faster. Affects all sessions created on this connection. */
+                                       much faster. Affects all sessions created on this connection. */
 } sr_conn_flag_t;
 
 /**
@@ -297,7 +193,6 @@ typedef uint32_t sr_conn_options_t;
 /**
  * @brief Data stores that sysrepo supports. Their meaning should conform to RFC 8342.
  * To make changes permanent in an edited datastore ::sr_apply_changes must be issued.
- * @see @ref ds_page "Datastores & Sessions" information page.
  */
 typedef enum sr_datastore_e {
     SR_DS_STARTUP = 0,     /**< Contains configuration data that will be loaded when a device starts. */
@@ -329,8 +224,6 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
 
 /**
  * @brief Starts a new configuration session.
- *
- * @see @ref ds_page "Datastores & Sessions" for more information about datastores and sessions.
  *
  * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
  * @param[in] datastore Datastore on which all sysrepo functions within this
@@ -454,10 +347,100 @@ const char *sr_session_get_user(sr_session_ctx_t *session);
  */
 sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
 
+/** @} connsess */
 
 ////////////////////////////////////////////////////////////////////////////////
 // Data Retrieval API (get / get-config functionality)
 ////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup getdata Getting Data
+ * @{
+ */
+
+/**
+ * @brief Possible types of a data element stored in the sysrepo datastore.
+ */
+typedef enum sr_type_e {
+    /* special types that does not contain any data */
+    SR_UNKNOWN_T,              /**< Element unknown to sysrepo (unsupported element). */
+    SR_TREE_ITERATOR_T,        /**< Special type of tree node used to store all data needed for iterative tree loading. */
+
+    SR_LIST_T,                 /**< List instance. ([RFC 6020 sec 7.8](http://tools.ietf.org/html/rfc6020#section-7.8)) */
+    SR_CONTAINER_T,            /**< Non-presence container. ([RFC 6020 sec 7.5](http://tools.ietf.org/html/rfc6020#section-7.5)) */
+    SR_CONTAINER_PRESENCE_T,   /**< Presence container. ([RFC 6020 sec 7.5.1](http://tools.ietf.org/html/rfc6020#section-7.5.1)) */
+    SR_LEAF_EMPTY_T,           /**< A leaf that does not hold any value ([RFC 6020 sec 9.11](http://tools.ietf.org/html/rfc6020#section-9.11)) */
+    SR_NOTIFICATION_T,         /**< Notification instance ([RFC 7095 sec 7.16](https://tools.ietf.org/html/rfc7950#section-7.16)) */
+
+    /* types containing some data */
+    SR_BINARY_T,       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
+    SR_BITS_T,         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
+    SR_BOOL_T,         /**< A boolean value ([RFC 6020 sec 9.5](http://tools.ietf.org/html/rfc6020#section-9.5)) */
+    SR_DECIMAL64_T,    /**< 64-bit signed decimal number ([RFC 6020 sec 9.3](http://tools.ietf.org/html/rfc6020#section-9.3)) */
+    SR_ENUM_T,         /**< A string from enumerated strings list ([RFC 6020 sec 9.6](http://tools.ietf.org/html/rfc6020#section-9.6)) */
+    SR_IDENTITYREF_T,  /**< A reference to an abstract identity ([RFC 6020 sec 9.10](http://tools.ietf.org/html/rfc6020#section-9.10)) */
+    SR_INSTANCEID_T,   /**< References a data tree node ([RFC 6020 sec 9.13](http://tools.ietf.org/html/rfc6020#section-9.13)) */
+    SR_INT8_T,         /**< 8-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_INT16_T,        /**< 16-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_INT32_T,        /**< 32-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_INT64_T,        /**< 64-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_STRING_T,       /**< Human-readable string ([RFC 6020 sec 9.4](http://tools.ietf.org/html/rfc6020#section-9.4)) */
+    SR_UINT8_T,        /**< 8-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_UINT16_T,       /**< 16-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_UINT32_T,       /**< 32-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_UINT64_T,       /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_ANYXML_T,       /**< Unknown chunk of XML ([RFC 6020 sec 7.10](https://tools.ietf.org/html/rfc6020#section-7.10)) */
+    SR_ANYDATA_T,      /**< Unknown set of nodes, encoded in XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
+} sr_type_t;
+
+/**
+ * @brief Data of an element (if applicable), properly set according to the type.
+ */
+typedef union sr_data_u {
+    char *binary_val;       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
+    char *bits_val;         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
+    bool bool_val;          /**< A boolean value ([RFC 6020 sec 9.5](http://tools.ietf.org/html/rfc6020#section-9.5)) */
+    double decimal64_val;   /**< 64-bit signed decimal number ([RFC 6020 sec 9.3](http://tools.ietf.org/html/rfc6020#section-9.3)) */
+    char *enum_val;         /**< A string from enumerated strings list ([RFC 6020 sec 9.6](http://tools.ietf.org/html/rfc6020#section-9.6)) */
+    char *identityref_val;  /**< A reference to an abstract identity ([RFC 6020 sec 9.10](http://tools.ietf.org/html/rfc6020#section-9.10)) */
+    char *instanceid_val;   /**< References a data tree node ([RFC 6020 sec 9.13](http://tools.ietf.org/html/rfc6020#section-9.13)) */
+    int8_t int8_val;        /**< 8-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    int16_t int16_val;      /**< 16-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    int32_t int32_val;      /**< 32-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    int64_t int64_val;      /**< 64-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    char *string_val;       /**< Human-readable string ([RFC 6020 sec 9.4](http://tools.ietf.org/html/rfc6020#section-9.4)) */
+    uint8_t uint8_val;      /**< 8-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    uint16_t uint16_val;    /**< 16-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    uint32_t uint32_val;    /**< 32-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    uint64_t uint64_val;    /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    char *anyxml_val;       /**< Unknown chunk of XML ([RFC 6020 sec 7.10](https://tools.ietf.org/html/rfc6020#section-7.10)) */
+    char *anydata_val;      /**< Unknown set of nodes, encoded in XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
+} sr_data_t;
+
+/**
+ * @brief Structure that contains value of an data element stored in the sysrepo datastore.
+ */
+typedef struct sr_val_s {
+    /**
+     * XPath identifier of the data element
+     */
+    char *xpath;
+
+    /** Type of an element. */
+    sr_type_t type;
+
+    /**
+     * Flag for node with default value (applicable only for leaves).
+     * It is set to TRUE only if the value was *implicitly* set by the datastore as per
+     * module schema. Explicitly set/modified data element (through the sysrepo API) always
+     * has this flag unset regardless of the entered value.
+     */
+    bool dflt;
+
+    /** Data of an element (if applicable), properly set according to the type. */
+    sr_data_t data;
+
+} sr_val_t;
 
 /**
  * @brief Retrieves a single data element stored under provided XPath. If multiple
@@ -469,16 +452,12 @@ sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
  *
  * Required READ access.
  *
- * @see @ref xp_page "Path Addressing" documentation, or
- * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
- * for XPath syntax used for identification of yang nodes in sysrepo calls.
- *
  * @see Use ::sr_get_items for retrieving larger chunks
  * of data from the datastore. Since it retrieves the data from datastore in
  * larger chunks, it can work much more efficiently than multiple ::sr_get_item calls.
  *
  * @param[in] session Session to use.
- * @param[in] xpath @ref xp_page "Data Path" identifier of the data element to be retrieved.
+ * @param[in] xpath "Data Path" identifier of the data element to be retrieved.
  * @param[out] value Structure containing information about requested element
  * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_val).
  * @return Error code (::SR_ERR_OK on success).
@@ -493,11 +472,8 @@ int sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value);
  *
  * Required READ access.
  *
- * @see @ref xp_page "Path Addressing" documentation
- * for Path syntax used for identification of yang nodes in sysrepo calls.
- *
  * @param[in] session Session to use.
- * @param[in] xpath @ref xp_page "Data Path" identifier of the data element to be retrieved.
+ * @param[in] xpath "Data Path" identifier of the data element to be retrieved.
  * @param[out] values Array of structures containing information about requested data elements
  * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_values).
  * @param[out] value_cnt Number of returned elements in the values array.
@@ -516,11 +492,8 @@ int sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values
  *
  * Required READ access.
  *
- * @see @ref xp_page "Path Addressing" documentation
- * for XPath syntax used for identification of yang nodes in sysrepo calls.
- *
  * @param[in] session Session to use.
- * @param[in] xpath @ref xp_page "Data Path" identifier referencing the root node of the subtree to be retrieved.
+ * @param[in] xpath "Data Path" identifier referencing the root node of the subtree to be retrieved.
  * @param[out] subtree Nested subtree containing all data of the requested subtree
  * (allocated by the function, it is supposed to be freed by the caller).
  * @return Error code (::SR_ERR_OK on success).
@@ -542,22 +515,40 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node
  *
  * Required READ access.
  *
- * @see @ref xp_page "Path Addressing" documentation, or
- * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
- * for XPath syntax used for identification of yang nodes in sysrepo calls.
- *
  * @param[in] session Session to use.
- * @param[in] xpath @ref xp_page "Data Path" identifier referencing root nodes of subtrees to be retrieved.
+ * @param[in] xpath "Data Path" identifier referencing root nodes of subtrees to be retrieved.
  * @param[out] subtrees Set of nested structures storing all data of the requested subtrees
  * (allocated by the function, it is supposed to be freed by the caller).
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, struct ly_set **subtrees);
 
+/**
+ * @brief Frees ::sr_val_t structure and all memory allocated within it.
+ *
+ * @param[in] value Value to be freed.
+ */
+void sr_free_val(sr_val_t *value);
+
+/**
+ * @brief Frees array of ::sr_val_t structures (and all memory allocated
+ * within of each array element).
+ *
+ * @param[in] values Array of values to be freed.
+ * @param[in] count Number of elements stored in the array.
+ */
+void sr_free_values(sr_val_t *values, size_t count);
+
+/** @} getdata */
 
 ////////////////////////////////////////////////////////////////////////////////
 // Data Manipulation API (edit-config functionality)
 ////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup editdata Editing Data
+ * @{
+ */
 
 /**
  * @brief Flags used to override default behavior of data manipulation calls.
@@ -602,7 +593,7 @@ typedef enum sr_move_position_e {
  * If both are present, value argument is ignored and xpath predicate is used.
  *
  * @param[in] session Session to use.
- * @param[in] xpath @ref xp_page "Data Path" identifier of the data element to be set.
+ * @param[in] xpath "Data Path" identifier of the data element to be set.
  * @param[in] value Value to be set on specified xpath. xpath member of the
  * ::sr_val_t structure can be NULL. Value will be copied - can be allocated on stack.
  * @param[in] opts Options overriding default behavior of this call.
@@ -615,7 +606,7 @@ int sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *va
  * is provided as string.
  *
  * @param[in] session Session to use.
- * @param[in] xpath @ref xp_page "Data Path" identifier of the data element to be set.
+ * @param[in] xpath "Data Path" identifier of the data element to be set.
  * @param[in] value String representation of the value to be set.
  * @param[in] opts Same as for ::sr_set_item.
  * @return Error code (::SR_ERR_OK on success).
@@ -631,7 +622,7 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *xpath, const char *va
  * If the xpath to list does not include keys, all instances of the list are deleted.
  *
  * @param[in] session Session to use.
- * @param[in] xpath @ref xp_page "Data Path" identifier of the data element to be deleted.
+ * @param[in] xpath "Data Path" identifier of the data element to be deleted.
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success).
  **/
@@ -645,7 +636,7 @@ int sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_o
  * (without specifying keys of the list in question).
  *
  * @param[in] session Session to use
- * @param[in] xpath @ref xp_page "Data Path" identifier of the data element to be moved.
+ * @param[in] xpath "Data Path" identifier of the data element to be moved.
  * @param[in] position Requested move direction.
  * @param[in] list_keys Predicate identifying the relative list instance (example input "[key1='val1'][key2='val2']...").
  * @param[in] leaflist_value Value of the relative leaf-list instance (example input "val1").
@@ -736,10 +727,16 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datast
 int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
         sr_datastore_t dst_datastore);
 
+/** @} editdata */
 
 ////////////////////////////////////////////////////////////////////////////////
 // Locking API
 ////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup lock Locking Data
+ * @{
+ */
 
 /**
  * @brief Locks the data of the specified module or whole datastore.
@@ -763,10 +760,16 @@ int sr_lock(sr_session_ctx_t *session, const char *module_name);
  */
 int sr_unlock(sr_session_ctx_t *session, const char *module_name);
 
+/** @} lock */
 
 ////////////////////////////////////////////////////////////////////////////////
 // Change Notifications API
 ////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup datasubs Configuration Data Subscriptions
+ * @{
+ */
 
 /**
  * @brief Flags used to override default handling of subscriptions.
@@ -920,7 +923,7 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  * @see ::sr_get_change_next for iterating over the changeset using this iterator.
  *
  * @param[in] session Session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
- * @param[in] xpath @ref xp_page "Data Path" identifier of the subtree from which the changeset
+ * @param[in] xpath "Data Path" identifier of the subtree from which the changeset
  * should be obtained.
  * @param[out] iter Iterator context that can be used to retrieve individual changes using
  * ::sr_get_change_next calls. Allocated by the function, should be freed with ::sr_free_change_iter.
@@ -948,16 +951,29 @@ int sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_
 int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_oper_t *operation,
         sr_val_t **old_value, sr_val_t **new_value);
 
+/**
+ * @brief Frees ::sr_change_iter_t iterator and all memory allocated within it.
+ *
+ * @param[in] iter Iterator to be freed.
+ */
+void sr_free_change_iter(sr_change_iter_t *iter);
+
+/** @} datasubs */
 
 ////////////////////////////////////////////////////////////////////////////////
 // RPC (Remote Procedure Calls) and Action API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
+ * @defgroup rpcsubs RPC/Action Subscriptions
+ * @{
+ */
+
+/**
  * @brief Callback to be called for RPC or action specified by xpath.
  * Subscribe to it by ::sr_rpc_subscribe call.
  *
- * @param[in] xpath @ref xp_page "Data Path" identifying the RPC/action.
+ * @param[in] xpath "Data Path" identifying the RPC/action.
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
  * @param[out] output Array of output parameters. Should be allocated on heap,
@@ -974,7 +990,7 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *xpath, const sr_
  * This operates with libyang trees rather than with sysrepo values,
  * use it with ::sr_rpc_subscribe_tree and ::sr_rpc_send_tree.
  *
- * @param[in] xpath @ref xp_page "Data Path" identifying the RPC/action.
+ * @param[in] xpath "Data Path" identifying the RPC/action.
  * @param[in] input Data tree of input parameters.
  * @param[out] output Data tree of output parameters. Should be allocated on heap,
  * will be freed by sysrepo after sending of the RPC response.
@@ -990,7 +1006,7 @@ typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, const char *xpath, cons
  * Required WRITE access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath @ref xp_page "Schema Path" identifying the RPC/action.
+ * @param[in] xpath "Schema Path" identifying the RPC/action.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
@@ -1011,7 +1027,7 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  * Required WRITE access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath @ref xp_page "Schema Path" identifying the RPC/action.
+ * @param[in] xpath "Schema Path" identifying the RPC/action.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
@@ -1029,7 +1045,7 @@ int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_t
  * Required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath @ref xp_page "Data Path" identifying the RPC/action.
+ * @param[in] xpath "Data Path" identifying the RPC/action.
  * @param[in] input Array of input parameters (array of all nodes that hold some
  * data in RPC/action input subtree - same as ::sr_get_items would return).
  * @param[in] input_cnt Number of input parameters.
@@ -1055,10 +1071,16 @@ int sr_rpc_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *in
  */
 int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_node **output);
 
+/** @} rpcsubs */
 
 ////////////////////////////////////////////////////////////////////////////////
 // Event Notifications API
 ////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup notifsubs Notification Subscriptions
+ * @{
+ */
 
 /**
  * @brief Type of the notification passed to the ::sr_event_notif_cb and ::sr_event_notif_tree_cb callbacks.
@@ -1079,7 +1101,7 @@ typedef enum sr_ev_notif_type_e {
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
  * @param[in] notif_type Type of the notification.
- * @param[in] xpath @ref xp_page "Data Path" identifying the event notification.
+ * @param[in] xpath "Data Path" identifying the event notification.
  * @param[in] values Array of all nodes that hold some data in event notification subtree.
  * @param[in] values_cnt Number of items inside the values array.
  * @param[in] timestamp Time when the notification was generated
@@ -1097,7 +1119,7 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_t
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
  * @param[in] notif_type Type of the notification.
- * @param[in] xpath @ref xp_page "Data Path" identifying the event notification.
+ * @param[in] xpath "Data Path" identifying the event notification.
  * @param[in] notif Notification data tree.
  * @param[in] timestamp Time when the notification was generated
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_event_notif_subscribe_tree call.
@@ -1112,7 +1134,7 @@ typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, const sr_ev_no
  *
  * @param[in] session Session to use.
  * @param[in] module_name Name of the module whose notifications to subscribe to.
- * @param[in] xpath @ref xp_page Optional "Schema Path" identifying a single event notification.
+ * @param[in] xpath Optional "Schema Path" identifying a single event notification.
  * @param[in] start_time Optional start time of the subscription. Used for replaying stored notifications.
  * @param[in] stop_time Optional stop time ending the notification subscription.
  * @param[in] callback Callback to be called when the event notification is delivered.
@@ -1137,7 +1159,7 @@ int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name,
  *
  * @param[in] session Session to use.
  * @param[in] module_name Name of the module whose notifications to subscribe to.
- * @param[in] xpath @ref xp_page Optional "Schema Path" identifying a single event notification.
+ * @param[in] xpath Optional "Schema Path" identifying a single event notification.
  * @param[in] start_time Optional start time of the subscription. Used for replaying stored notifications.
  * @param[in] stop_time Optional stop time ending the notification subscription.
  * @param[in] callback Callback to be called when the event notification is delivered.
@@ -1158,7 +1180,7 @@ int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_
  * Required WRITE access. If the module does not support replay, required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath @ref xp_page "Data Path" identifying the event notification.
+ * @param[in] xpath "Data Path" identifying the event notification.
  * @param[in] values Array of all nodes that hold some data in event notification subtree
  * (same as ::sr_get_items would return).
  * @param[in] values_cnt Number of items inside the values array.
@@ -1179,10 +1201,16 @@ int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_v
  */
 int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
 
+/** @} notifsubs */
 
 ////////////////////////////////////////////////////////////////////////////////
 // Operational Data API
 ////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup opsubs Operational Data Subscriptions
+ * @{
+ */
 
 /**
  * @brief Callback to be called when operational data at the selected xpath are requested.
@@ -1196,7 +1224,7 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
  * @param[in] module_name Name of the affected module.
- * @param[in] xpath @ref xp_page "Data Path" identifying the requested nodes.
+ * @param[in] xpath "Data Path" identifying the requested nodes.
  * @param[in,out] parent Pointer to an existing parent of the requested nodes. Is NULL for top-level nodes.
  * Called is supposed to append the requested nodes to this data subtree.
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_dp_get_items_subscribe call.
@@ -1212,7 +1240,7 @@ typedef int (*sr_dp_get_items_cb)(sr_session_ctx_t *session, const char *module_
  *
  * @param[in] session Session to use.
  * @param[in] module_name Name of the affected module.
- * @param[in] xpath @ref xp_page "Data Path" identifying the subtree which the provider is able to provide.
+ * @param[in] xpath "Data Path" identifying the subtree which the provider is able to provide.
  * @param[in] callback Callback to be called when the operational data for the given xpath are requested.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
@@ -1223,10 +1251,16 @@ typedef int (*sr_dp_get_items_cb)(sr_session_ctx_t *session, const char *module_
 int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         sr_dp_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
+/** @} opsubs */
 
 ////////////////////////////////////////////////////////////////////////////////
 // Schema Manipulation API
 ////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup schema Schema Manipulation
+ * @{
+ */
 
 /**
  * @brief Get the libyang context used by a connection. Can be used in an application for working with data
@@ -1355,35 +1389,7 @@ int sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, cons
  */
 int sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data);
 
-
-////////////////////////////////////////////////////////////////////////////////
-// Cleanup Routines
-////////////////////////////////////////////////////////////////////////////////
-
-/**
- * @brief Frees ::sr_val_t structure and all memory allocated within it.
- *
- * @param[in] value Value to be freed.
- */
-void sr_free_val(sr_val_t *value);
-
-/**
- * @brief Frees array of ::sr_val_t structures (and all memory allocated
- * within of each array element).
- *
- * @param[in] values Array of values to be freed.
- * @param[in] count Number of elements stored in the array.
- */
-void sr_free_values(sr_val_t *values, size_t count);
-
-/**
- * @brief Frees ::sr_change_iter_t iterator and all memory allocated within it.
- *
- * @param[in] iter Iterator to be freed.
- */
-void sr_free_change_iter(sr_change_iter_t *iter);
-
-/**@} cl */
+/** @} schema */
 
 #ifdef __cplusplus
 }
