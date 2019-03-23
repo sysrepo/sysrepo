@@ -143,6 +143,11 @@ target_link_libraries(sysrepoctl sysrepo ${LIBYANG_LIBRARIES})
 add_executable(sysrepocfg ${SYSREPOCFG_SRC})
 target_link_libraries(sysrepocfg sysrepo ${LIBYANG_LIBRARIES})
 
+# installation
+install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(TARGETS sysrepoctl sysrepocfg DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 # doxygen documentation
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
