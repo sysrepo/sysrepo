@@ -317,17 +317,44 @@ sr_errinfo_merge(sr_error_info_t **err_info, sr_error_info_t *err_info2)
 void
 sr_log(sr_log_level_t ll, const char *format, ...)
 {
-    va_list ap;
-    char msg[2048];
+    va_list ap, ap2;
+    ssize_t msg_len = SR_MSG_LEN_START, req_len;
+    char *msg;
 
     va_start(ap, format);
-    if (vsnprintf(msg, 2048, format, ap) == -1) {
-        va_end(ap);
-        return;
+    va_copy(ap2, ap);
+
+    /* initial length */
+    msg = malloc(msg_len);
+    if (!msg) {
+        goto cleanup;
     }
-    va_end(ap);
+
+    /* learn how much bytes are needed */
+    req_len = vsnprintf(msg, msg_len, format, ap);
+    if (req_len == -1) {
+        goto cleanup;
+    } else if (req_len >= SR_MSG_LEN_START) {
+        /* the intial size was not enough */
+        msg_len = req_len + 1;
+        msg = sr_realloc(msg, msg_len);
+        if (!msg) {
+            goto cleanup;
+        }
+
+        /* now print the full message */
+        req_len = vsnprintf(msg, msg_len, format, ap2);
+        if (req_len == -1) {
+            goto cleanup;
+        }
+    }
 
     sr_log_msg(ll, msg, NULL);
+
+cleanup:
+    free(msg);
+    va_end(ap);
+    va_end(ap2);
 }
 
 API const char *
