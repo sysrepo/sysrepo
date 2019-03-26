@@ -101,7 +101,7 @@ sr_new_tree_ctx(sr_mem_ctx_t *sr_mem, const char *name, const char *module_name,
         }
     } else {
         if (sr_mem) {
-            sr_mem->obj_count += 1;
+            ATOMIC_INC(&sr_mem->obj_count);
         }
     }
 
@@ -143,7 +143,7 @@ sr_new_trees_ctx(sr_mem_ctx_t *sr_mem, size_t count, sr_node_t **trees_p)
         for (size_t i = 0; i < count; ++i) {
             trees[i]._sr_mem = sr_mem;
         }
-        sr_mem->obj_count += 1; /* 1 for the entire array */
+        ATOMIC_INC(&sr_mem->obj_count); /* 1 for the entire array */
     }
 
 cleanup:
@@ -210,7 +210,7 @@ sr_realloc_trees(size_t old_tree_cnt, size_t new_tree_cnt, sr_node_t **trees_p)
             trees[i]._sr_mem = sr_mem;
         }
         if (0 == old_tree_cnt) {
-            sr_mem->obj_count += 1; /* 1 for the entire array */
+            ATOMIC_INC(&sr_mem->obj_count); /* 1 for the entire array */
         }
     }
 

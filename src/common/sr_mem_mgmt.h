@@ -55,7 +55,7 @@ typedef struct sr_mem_ctx_s {
    size_t peak;             /**< Peak usage of the memory context. Resets only in ::sr_mem_free. */
    size_t piggy_back;       /**< Piggybacking.
                                  Used for threads to exchange information about the recent peak memory usage. */
-   unsigned obj_count;      /**< Object counter, i.e. how many values/trees/GPB messages use this context */
+   ATOMIC_UINT32_T obj_count; /**< Object counter, i.e. how many values/trees/GPB messages use this context */
 } sr_mem_ctx_t;
 
 /**

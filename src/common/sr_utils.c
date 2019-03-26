@@ -1800,7 +1800,7 @@ sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_
     trees = sr_calloc(sr_mem, tree_cnt, sizeof *trees);
     CHECK_NULL_NOMEM_GOTO(trees, rc, cleanup);
     if (sr_mem) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
 
     for (i = j = 0; i < nodes->number && 0 == rc; ++i) {

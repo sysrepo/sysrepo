@@ -592,7 +592,7 @@ sr_msg_free(Sr__Msg *msg)
     sr_mem_ctx_t *sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
 
     if (sr_mem) {
-        if (0 == --sr_mem->obj_count) {
+        if (ATOMIC_DEC(&sr_mem->obj_count) == 1) {
             sr_mem_free(sr_mem);
         }
     } else if (msg) {
