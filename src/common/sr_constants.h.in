@@ -48,8 +48,8 @@
 # define ATOMIC_DEC(x) atomic_fetch_sub(x, 1)
 #else
 # define ATOMIC_UINT32_T uint32_t
-# define ATOMIC_INC(x) __sync_add_and_fetch(x, 1)
-# define ATOMIC_DEC(x) __sync_sub_and_fetch(x, 1)
+# define ATOMIC_INC(x) __sync_fetch_and_add(x, 1)
+# define ATOMIC_DEC(x) __sync_fetch_and_sub(x, 1)
 #endif
 
 /** Use libavl (if defined) or libredblack (if not defined) for binary tree manipulations. */

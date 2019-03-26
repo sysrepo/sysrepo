@@ -70,7 +70,7 @@ sr_free_val(sr_val_t *value)
 {
     if (NULL != value) {
         if (NULL != value->_sr_mem) {
-            if (0 == --value->_sr_mem->obj_count) {
+            if (ATOMIC_DEC(&value->_sr_mem->obj_count) == 1) {
                 sr_mem_free(value->_sr_mem);
             }
         } else {
@@ -85,7 +85,7 @@ sr_free_values(sr_val_t *values, size_t count)
 {
     if (NULL != values) {
         if (values[0]._sr_mem) {
-            if (0 == --values[0]._sr_mem->obj_count) {
+            if (ATOMIC_DEC(&values[0]._sr_mem->obj_count) == 1) {
                 sr_mem_free(values[0]._sr_mem);
             }
         } else {
@@ -102,7 +102,7 @@ sr_free_schemas(sr_schema_t *schemas, size_t count)
 {
     if (NULL != schemas) {
         if (schemas[0]._sr_mem) {
-            if (0 == --schemas[0]._sr_mem->obj_count) {
+            if (ATOMIC_DEC(&schemas[0]._sr_mem->obj_count) == 1) {
                 sr_mem_free(schemas[0]._sr_mem);
             }
             return;
@@ -120,7 +120,7 @@ sr_free_tree(sr_node_t *tree)
 {
     if (NULL != tree) {
         if (NULL != tree->_sr_mem) {
-            if (0 == --tree->_sr_mem->obj_count) {
+            if (ATOMIC_DEC(&tree->_sr_mem->obj_count) == 1) {
                 sr_mem_free(tree->_sr_mem);
             }
         } else {
@@ -142,7 +142,7 @@ sr_free_trees(sr_node_t *trees, size_t count)
 {
     if (NULL != trees) {
         if (NULL != trees[0]._sr_mem) {
-            if (0 == --trees[0]._sr_mem->obj_count) {
+            if (ATOMIC_DEC(&trees[0]._sr_mem->obj_count) == 1) {
                 sr_mem_free(trees[0]._sr_mem);
             }
         } else {

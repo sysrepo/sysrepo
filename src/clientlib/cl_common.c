@@ -267,7 +267,7 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg, sr_mem_ctx_t *sr_mem_res
     /* associate message with context */
     if (NULL != sr_mem) {
         (*msg)->_sysrepo_mem_ctx = (uint64_t)sr_mem;
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
 
     return SR_ERR_OK;

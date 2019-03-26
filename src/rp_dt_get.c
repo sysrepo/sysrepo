@@ -150,7 +150,7 @@ rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t
     vals = sr_calloc(sr_mem, nodes->number, sizeof(*vals));
     CHECK_NULL_NOMEM_RETURN(vals);
     if (sr_mem) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
 
     for (size_t i = 0; i < nodes->number; i++) {
@@ -209,7 +209,7 @@ rp_dt_get_value(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *dat
 
     if (sr_mem) {
         val->_sr_mem = sr_mem;
-        sr_mem->obj_count += 1;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
 
     rc = rp_dt_get_value_from_node(node, val);
@@ -290,7 +290,7 @@ rp_dt_get_subtree(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_node *d
 
     if (sr_mem) {
         tree->_sr_mem = sr_mem;
-        sr_mem->obj_count += 1;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
 
     rc = sr_copy_node_to_tree(node, pruning_cb, (void *)pruning_ctx, tree);
@@ -340,7 +340,7 @@ rp_dt_get_subtree_chunk(dm_ctx_t *dm_ctx, rp_session_t *rp_session, struct lyd_n
 
     if (sr_mem) {
         tree->_sr_mem = sr_mem;
-        sr_mem->obj_count += 1;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
 
     rc = sr_copy_node_to_tree_chunk(node, slice_offset, slice_width, child_limit, depth_limit, pruning_cb,
