@@ -731,3 +731,57 @@ sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *mod_name, int add,
 
     return NULL;
 }
+
+sr_error_info_t *
+sr_shmmod_add_inv_dep(sr_conn_ctx_t *conn, const char *mod_name, off_t inv_dep_mod_name)
+{
+    sr_error_info_t *err_info = NULL;
+    off_t *shm_inv_deps, inv_deps_off, shm_mod_off;
+    sr_mod_t *shm_mod;
+    size_t new_shm_size;
+    uint32_t i;
+
+    /* find the module */
+    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, mod_name, 0);
+    SR_CHECK_INT_RET(!shm_mod, err_info);
+
+    /* check for duplicities */
+    shm_inv_deps = (off_t *)(conn->main_shm.addr + shm_mod->inv_data_deps);
+    for (i = 0; i < shm_mod->inv_data_dep_count; ++i) {
+        if (shm_inv_deps[i] == inv_dep_mod_name) {
+            break;
+        }
+    }
+    if (i < shm_mod->inv_data_dep_count) {
+        /* inverse dependency already exists */
+        return NULL;
+    }
+
+    /* remember module offset before remapping */
+    shm_mod_off = ((char *)shm_mod) - conn->main_shm.addr;
+
+    /* moving all existing inv data deps (if any) and adding a new one */
+    inv_deps_off = conn->main_shm.size;
+    new_shm_size = conn->main_shm.size + (shm_mod->inv_data_dep_count + 1) * sizeof(off_t);
+
+    /* remap main SHM */
+    if ((err_info = sr_shm_remap(&conn->main_shm, new_shm_size))) {
+        return err_info;
+    }
+    shm_mod = (sr_mod_t *)(conn->main_shm.addr + shm_mod_off);
+
+    /* add wasted memory */
+    ((sr_main_shm_t *)conn->main_shm.addr)->wasted_mem += shm_mod->inv_data_dep_count * sizeof(off_t);
+
+    /* move existing inverse data deps */
+    memcpy(conn->main_shm.addr + inv_deps_off, conn->main_shm.addr + shm_mod->inv_data_deps,
+           shm_mod->inv_data_dep_count * sizeof(off_t));
+    shm_mod->inv_data_deps = inv_deps_off;
+
+    /* fill new inverse data dep */
+    shm_inv_deps = (off_t *)(conn->main_shm.addr + shm_mod->inv_data_deps);
+    shm_inv_deps[i] = inv_dep_mod_name;
+
+    ++shm_mod->inv_data_dep_count;
+    return NULL;
+}

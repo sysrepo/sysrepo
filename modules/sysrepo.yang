@@ -122,6 +122,10 @@ module sysrepo {
                     uses deps-grp;
                 }
             }
+
+            leaf-list inverse-data-deps {
+                type module-ref;
+            }
         }
     }
 }

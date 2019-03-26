@@ -34,6 +34,7 @@ sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *ly_mod, int mod_t
 {
     sr_mod_t *dep_mod;
     sr_mod_data_dep_t *shm_deps;
+    off_t *shm_inv_deps;
     uint16_t i, cur_i;
     int prev_mod_type = 0;
     sr_error_info_t *err_info = NULL;
@@ -104,25 +105,24 @@ sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *ly_mod, int mod_t
         return NULL;
     }
 
-    if (prev_mod_type < MOD_INFO_REQ) {
-        /* add all inverse dependencies (modules dependening on this module) TODO create this list when creating SHM */
-        dep_mod = NULL;
-        while ((dep_mod = sr_shmmain_getnext(mod_info->conn->main_shm.addr, dep_mod))) {
-            shm_deps = (sr_mod_data_dep_t *)(mod_info->conn->main_shm.addr + dep_mod->data_deps);
-            for (i = 0; i < dep_mod->data_dep_count; ++i) {
-                if (shm_deps[i].module == shm_mod->name) {
-                    /* find ly module */
-                    ly_mod = ly_ctx_get_module(ly_mod->ctx, mod_info->conn->main_shm.addr + dep_mod->name, NULL, 1);
-                    SR_CHECK_INT_RET(!ly_mod, err_info);
+     if (prev_mod_type < MOD_INFO_REQ) {
+         /* add all inverse dependencies (modules dependening on this module) */
+         shm_inv_deps = (off_t *)(mod_info->conn->main_shm.addr + shm_mod->inv_data_deps);
+         for (i = 0; i < shm_mod->inv_data_dep_count; ++i) {
+            /* find ly module */
+            ly_mod = ly_ctx_get_module(ly_mod->ctx, mod_info->conn->main_shm.addr + shm_inv_deps[i], NULL, 1);
+            SR_CHECK_INT_RET(!ly_mod, err_info);
 
-                    /* add inverse dependency */
-                    if ((err_info = sr_modinfo_add_mod(dep_mod, ly_mod, MOD_INFO_INV_DEP, mod_req_deps, mod_info))) {
-                        return err_info;
-                    }
-                }
+            /* find SHM module */
+            dep_mod = sr_shmmain_find_module(mod_info->conn->main_shm.addr, NULL, shm_inv_deps[i]);
+            SR_CHECK_INT_RET(!dep_mod, err_info);
+
+            /* add inverse dependency */
+            if ((err_info = sr_modinfo_add_mod(dep_mod, ly_mod, MOD_INFO_INV_DEP, mod_req_deps, mod_info))) {
+                return err_info;
             }
-        }
-    }
+         }
+     }
 
     return NULL;
 }

@@ -184,6 +184,16 @@ sr_shmmain_print(char *main_shm_addr, size_t main_shm_size)
         sr_shmmain_print_data_deps(main_shm_addr, (sr_mod_data_dep_t *)(main_shm_addr + shm_mod->data_deps),
                 shm_mod->data_dep_count, "data deps", main_shm_addr + shm_mod->name, &items, &item_count);
 
+        if (shm_mod->inv_data_dep_count) {
+            /* add inverse data deps */
+            items = sr_realloc(items, (item_count + 1) * sizeof *items);
+            items[item_count].start = shm_mod->inv_data_deps;
+            items[item_count].size = shm_mod->inv_data_dep_count * sizeof(off_t);
+            asprintf(&(items[item_count].name), "inv data deps (%u, mod \"%s\")", shm_mod->inv_data_dep_count,
+                    main_shm_addr + shm_mod->name);
+            ++item_count;
+        }
+
         if (shm_mod->op_dep_count) {
             /* add op deps array */
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
@@ -382,6 +392,50 @@ sr_shmmain_defrag_copy_data_deps(char *main_shm_addr, off_t data_deps, uint16_t 
 }
 
 /**
+ * @brief Copy inverse data deps array from main SHM to memory to defragment it.
+ *
+ * @param[in] main_shm_addr Main SHM mapping address.
+ * @param[in] inv_data_deps SHM offset of inverse data deps.
+ * @param[in] inv_data_dep_count Inverse data dep count.
+ * @param[in] shm_buf SHM memory copy.
+ * @param[in,out] shm_buf_cur Current SHM memory position.
+ * @return Memory offset of the copy.
+ */
+static off_t
+sr_shmmain_defrag_copy_inv_data_deps(char *main_shm_addr, off_t inv_data_deps, uint16_t inv_data_dep_count, char *shm_buf,
+        char **shm_buf_cur)
+{
+    off_t *new_inv_data_deps, *old_inv_data_deps;
+    sr_mod_t *new_mod;
+    uint16_t i;
+    off_t ret;
+
+    if (!inv_data_deps && !inv_data_dep_count) {
+        /* no inverse data dependencies */
+        return 0;
+    }
+    assert(inv_data_deps && inv_data_dep_count);
+
+    old_inv_data_deps = (off_t *)(main_shm_addr + inv_data_deps);
+
+    /* current offset */
+    ret = *shm_buf_cur - shm_buf;
+
+    /* allocate array */
+    new_inv_data_deps = (off_t *)(shm_buf + sr_shmcpy(shm_buf, main_shm_addr + inv_data_deps,
+            inv_data_dep_count * sizeof *new_inv_data_deps, shm_buf_cur));
+
+    /* copy all items */
+    for (i = 0; i < inv_data_dep_count; ++i) {
+        /* assign module */
+        new_mod = sr_shmmain_find_module(shm_buf, main_shm_addr + old_inv_data_deps[i], 0);
+        new_inv_data_deps[i] = new_mod->name;
+    }
+
+    return ret;
+}
+
+/**
  * @brief Copy an array from main SHM to memory to defragment it.
  *
  * @param[in] main_shm_addr Main SHM mapping address.
@@ -480,6 +534,10 @@ sr_shmmain_defrag(char *main_shm_addr, size_t main_shm_size, size_t wasted_mem, 
         new_mod->data_deps = sr_shmmain_defrag_copy_data_deps(main_shm_addr, old_mod->data_deps, old_mod->data_dep_count,
                 shm_buf, &shm_buf_cur);
 
+        /* allocate and copy inverse data deps */
+        new_mod->inv_data_deps = sr_shmmain_defrag_copy_inv_data_deps(main_shm_addr, old_mod->inv_data_deps,
+                old_mod->inv_data_dep_count, shm_buf, &shm_buf_cur);
+
         /* allocate and copy op deps, first only with their xpath */
         new_mod->op_deps = sr_shmmain_defrag_copy_array_with_string(main_shm_addr, old_mod->op_deps, sizeof(sr_mod_op_dep_t),
                 old_mod->op_dep_count, shm_buf, &shm_buf_cur);
@@ -519,7 +577,6 @@ sr_shmmain_defrag(char *main_shm_addr, size_t main_shm_size, size_t wasted_mem, 
 
     *defrag_mem = shm_buf;
     return NULL;
-
 }
 
 sr_error_info_t *
@@ -660,7 +717,7 @@ sr_shmmain_createunlock(sr_conn_ctx_t *conn)
 static size_t
 sr_shmmain_ly_calculate_size(struct lyd_node *sr_mods)
 {
-    struct lyd_node *ly_mod, *ly_child, *ly_op_dep, *ly_dep, *ly_instid;
+    struct lyd_node *ly_mod, *sr_child, *sr_op_dep, *sr_dep, *sr_instid;
     size_t shm_size = 0;
 
     assert(sr_mods);
@@ -669,48 +726,51 @@ sr_shmmain_ly_calculate_size(struct lyd_node *sr_mods)
         /* a module */
         shm_size += sizeof(sr_mod_t);
 
-        LY_TREE_FOR(ly_mod->child, ly_child) {
-            if (!strcmp(ly_child->schema->name, "name")) {
+        LY_TREE_FOR(ly_mod->child, sr_child) {
+            if (!strcmp(sr_child->schema->name, "name")) {
                 /* a string */
-                shm_size += strlen(((struct lyd_node_leaf_list *)ly_child)->value_str) + 1;
-            } else if (!strcmp(ly_child->schema->name, "enabled-feature")) {
+                shm_size += strlen(((struct lyd_node_leaf_list *)sr_child)->value_str) + 1;
+            } else if (!strcmp(sr_child->schema->name, "enabled-feature")) {
                 /* another feature */
-                shm_size += sizeof(char *);
+                shm_size += sizeof(off_t);
                 /* a string */
-                shm_size += strlen(((struct lyd_node_leaf_list *)ly_child)->value_str) + 1;
-            } else if (!strcmp(ly_child->schema->name, "data-deps")) {
-                LY_TREE_FOR(ly_child->child, ly_dep) {
+                shm_size += strlen(((struct lyd_node_leaf_list *)sr_child)->value_str) + 1;
+            } else if (!strcmp(sr_child->schema->name, "data-deps")) {
+                LY_TREE_FOR(sr_child->child, sr_dep) {
                     /* another data dependency */
                     shm_size += sizeof(sr_mod_data_dep_t);
 
                     /* module name was already counted and type is an enum */
-                    if (!strcmp(ly_dep->schema->name, "inst-id")) {
-                        LY_TREE_FOR(ly_dep->child, ly_instid) {
-                            if (!strcmp(ly_instid->schema->name, "xpath")) {
+                    if (!strcmp(sr_dep->schema->name, "inst-id")) {
+                        LY_TREE_FOR(sr_dep->child, sr_instid) {
+                            if (!strcmp(sr_instid->schema->name, "xpath")) {
                                 /* a string */
-                                shm_size += strlen(((struct lyd_node_leaf_list *)ly_instid)->value_str) + 1;
+                                shm_size += strlen(((struct lyd_node_leaf_list *)sr_instid)->value_str) + 1;
                             }
                         }
                     }
                 }
-            } else if (!strcmp(ly_child->schema->name, "op-deps")) {
+            } else if (!strcmp(sr_child->schema->name, "inverse-data-deps")) {
+                /* another inverse dependency */
+                shm_size += sizeof(off_t);
+            } else if (!strcmp(sr_child->schema->name, "op-deps")) {
                 /* another op with dependencies */
                 shm_size += sizeof(sr_mod_op_dep_t);
 
-                LY_TREE_FOR(ly_child->child, ly_op_dep) {
-                    if (!strcmp(ly_op_dep->schema->name, "xpath")) {
+                LY_TREE_FOR(sr_child->child, sr_op_dep) {
+                    if (!strcmp(sr_op_dep->schema->name, "xpath")) {
                         /* operation xpath (a string) */
-                        shm_size += strlen(((struct lyd_node_leaf_list *)ly_op_dep)->value_str) + 1;
-                    } else if (!strcmp(ly_op_dep->schema->name, "in") || !strcmp(ly_op_dep->schema->name, "out")) {
-                        LY_TREE_FOR(ly_op_dep->child, ly_dep) {
+                        shm_size += strlen(((struct lyd_node_leaf_list *)sr_op_dep)->value_str) + 1;
+                    } else if (!strcmp(sr_op_dep->schema->name, "in") || !strcmp(sr_op_dep->schema->name, "out")) {
+                        LY_TREE_FOR(sr_op_dep->child, sr_dep) {
                             /* another data dependency */
                             shm_size += sizeof(sr_mod_data_dep_t);
 
-                            if (!strcmp(ly_dep->schema->name, "inst-id")) {
-                                LY_TREE_FOR(ly_dep->child, ly_instid) {
-                                    if (!strcmp(ly_instid->schema->name, "xpath")) {
+                            if (!strcmp(sr_dep->schema->name, "inst-id")) {
+                                LY_TREE_FOR(sr_dep->child, sr_instid) {
+                                    if (!strcmp(sr_instid->schema->name, "xpath")) {
                                         /* a string */
-                                        shm_size += strlen(((struct lyd_node_leaf_list *)ly_instid)->value_str) + 1;
+                                        shm_size += strlen(((struct lyd_node_leaf_list *)sr_instid)->value_str) + 1;
                                     }
                                 }
                             }
@@ -798,6 +858,126 @@ sr_remove_data_files(const char *mod_name)
 }
 
 /**
+ * @brief Delete a module (with inverse dependency refs) from internal sysrepo data.
+ *
+ * @param[in] sr_mod Module node to be deleted.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmmain_ly_del_module(struct lyd_node *sr_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *set = NULL, *set2;
+    const char *mod_name, *dep_mod_name;
+    char *xpath;
+    uint16_t i;
+
+    assert(sr_mod->parent);
+
+    /* remember module name */
+    assert(!strcmp(sr_mod->child->schema->name, "name"));
+    mod_name = sr_ly_leaf_value_str(sr_mod->child);
+
+    /* first remove inverse dependencies based on the module dependencies */
+    set = lyd_find_path(sr_mod, "data-deps/module");
+    if (!set) {
+        sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mod)->ctx);
+        goto cleanup;
+    }
+    for (i = 0; i < set->number; ++i) {
+        dep_mod_name = sr_ly_leaf_value_str(set->set.d[i]);
+        if (asprintf(&xpath, "module[name='%s']/inverse-data-deps[.='%s']", dep_mod_name, mod_name) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+
+        /* the inverse dependency must exist */
+        set2 = lyd_find_path(sr_mod->parent, xpath);
+        free(xpath);
+        if (!set2) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mod)->ctx);
+            goto cleanup;
+        } else if (!set2->number) {
+            /* the whole module could have been deleted */
+            ly_set_free(set2);
+            continue;
+        }
+        assert(set2->number == 1);
+
+        /* remove it */
+        lyd_free(set2->set.d[0]);
+        ly_set_free(set2);
+    }
+
+cleanup:
+    /* remove the module itself */
+    lyd_free(sr_mod);
+
+    ly_set_free(set);
+    return err_info;
+}
+
+/**
+ * @brief Add inverse dependencies of this module dependant modules into internal sysrepo data.
+ *
+ * @param[in] ly_mod Module with dependencies.
+ * @param[in] sr_mods Internal sysrepo data with \p ly_mod already added.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmmain_ly_add_inv_data_deps(const struct lys_module *ly_mod, struct lyd_node *sr_mods)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *set = NULL, *set2;
+    struct lyd_node *node;
+    char *xpath = NULL, *xpath2;
+    uint16_t i;
+
+    if (asprintf(&xpath, "module[name='%s']/data-deps/module", ly_mod->name) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+
+    /* select all the dependencies */
+    set = lyd_find_path(sr_mods, xpath);
+    if (!set) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        goto cleanup;
+    }
+
+    for (i = 0; i < set->number; ++i) {
+        if (asprintf(&xpath2, "module[name='%s']", sr_ly_leaf_value_str(set->set.d[i])) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+
+        /* find the dependent module */
+        set2 = lyd_find_path(sr_mods, xpath2);
+        free(xpath2);
+        if (!set2) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+        assert(set2->number == 1);
+
+        /* add inverse dependency */
+        node = lyd_new_leaf(set2->set.d[0], NULL, "inverse-data-deps", ly_mod->name);
+        ly_set_free(set2);
+        if (!node) {
+            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+            goto cleanup;
+        }
+    }
+
+    /* success */
+
+cleanup:
+    free(xpath);
+    ly_set_free(set);
+    return err_info;
+}
+
+/**
  * @brief Perform scheduled module removal.
  *
  * @param[in] sr_mods Internal data to modify.
@@ -810,8 +990,8 @@ sr_shmmain_ly_int_data_sched_remove_modules(struct lyd_node *sr_mods, int *chang
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *ly_ctx;
-    struct lyd_node *sr_mod, *node;
-    struct ly_set *set = NULL;
+    struct lyd_node *node;
+    struct ly_set *mod_set = NULL, *del_set = NULL;
     const char *mod_name, *revision;
     const struct lys_module *ly_mod;
     uint32_t i, idx;
@@ -821,27 +1001,24 @@ sr_shmmain_ly_int_data_sched_remove_modules(struct lyd_node *sr_mods, int *chang
 
     ly_ctx = lyd_node_module(sr_mods)->ctx;
 
-    /* find all removed modules and change internal module data tree */
-    set = lyd_find_path(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/module/removed");
-    if (!set) {
+    /* find all removed modules, kept modules, and change internal module data tree */
+    del_set = lyd_find_path(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/module[removed]");
+    mod_set = lyd_find_path(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/module[not(removed)]");
+    if (!del_set || !mod_set) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto cleanup;
-    }
-    for (i = 0; i < set->number; ++i) {
-        /* unlink removed modules */
-        lyd_unlink(set->set.d[i]->parent);
     }
 
     /* we need to check for some possible broken dependencies, so load all the models
      * and check there are no removed ones in the context */
-    if (set->number) {
-        LY_TREE_FOR(sr_mods->child, sr_mod) {
+    if (del_set->number) {
+        for (i = 0; i < mod_set->number; ++i) {
             /* learn about the module */
-            assert(!strcmp(sr_mod->child->schema->name, "name"));
-            mod_name = sr_ly_leaf_value_str(sr_mod->child);
+            assert(!strcmp(mod_set->set.d[i]->child->schema->name, "name"));
+            mod_name = sr_ly_leaf_value_str(mod_set->set.d[i]->child);
 
             revision = NULL;
-            LY_TREE_FOR(sr_mods->child->next, node) {
+            LY_TREE_FOR(mod_set->set.d[i]->child->next, node) {
                 if (!strcmp(node->schema->name, "revision")) {
                     revision = sr_ly_leaf_value_str(node);
                     break;
@@ -858,8 +1035,8 @@ sr_shmmain_ly_int_data_sched_remove_modules(struct lyd_node *sr_mods, int *chang
         /* compare the loaded implemented modules to the removed ones */
         idx = ly_ctx_internal_modules_count(ly_ctx);
         while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
-            for (i = 0; i < set->number; ++i) {
-                mod_name = sr_ly_leaf_value_str(set->set.d[i]->parent->child);
+            for (i = 0; i < del_set->number; ++i) {
+                mod_name = sr_ly_leaf_value_str(del_set->set.d[i]->child);
                 if (!strcmp(ly_mod->name, mod_name)) {
                     /* this module cannot be removed */
                     SR_LOG_WRN("Cannot remove module \"%s\" because some other installed module depends on it.", mod_name);
@@ -873,8 +1050,8 @@ sr_shmmain_ly_int_data_sched_remove_modules(struct lyd_node *sr_mods, int *chang
     }
 
     /* now all the modules can really be removed with their data files */
-    for (i = 0; i < set->number; ++i) {
-        mod_name = sr_ly_leaf_value_str(set->set.d[i]->parent->child);
+    for (i = 0; i < del_set->number; ++i) {
+        mod_name = sr_ly_leaf_value_str(del_set->set.d[i]->child);
         SR_LOG_INF("Module \"%s\" was removed.", mod_name);
 
         if ((err_info = sr_remove_data_files(mod_name))) {
@@ -882,17 +1059,21 @@ sr_shmmain_ly_int_data_sched_remove_modules(struct lyd_node *sr_mods, int *chang
         }
     }
 
+    for (i = 0; i < del_set->number; ++i) {
+        /* free removed module nodes */
+        if ((err_info = sr_shmmain_ly_del_module(del_set->set.d[i]))) {
+            break;
+        }
+    }
+
     /* success */
-    if (set->number) {
+    if (del_set->number) {
         *change = 1;
     }
 
 cleanup:
-    for (i = 0; i < set->number; ++i) {
-        /* parent was unlinked */
-        lyd_free_withsiblings(set->set.d[i]->parent);
-    }
-    ly_set_free(set);
+    ly_set_free(del_set);
+    ly_set_free(mod_set);
     if (!*apply_sched) {
         SR_LOG_WRNMSG("Failed to remove scheduled modules, leaving all changes scheduled.");
     }
@@ -1086,10 +1267,17 @@ sr_shmmain_ly_int_data_sched_update_modules(struct lyd_node *sr_mods, int *chang
 
         if (!fail) {
             /* remove the whole module list instance */
-            lyd_free(set->set.d[i]->parent);
+            if ((err_info = sr_shmmain_ly_del_module(set->set.d[i]->parent))) {
+                goto cleanup;
+            }
 
             /* add a new one */
             if ((err_info = sr_shmmain_ly_add_module(upd_ly_mod, sr_mods, &node, &shm_size))) {
+                goto cleanup;
+            }
+
+            /* also remember new inverse dependencies */
+            if ((err_info = sr_shmmain_ly_add_inv_data_deps(upd_ly_mod, sr_mods))) {
                 goto cleanup;
             }
 
@@ -1589,42 +1777,42 @@ error:
  * @brief Fill main SHM data dependency information based on internal sysrepo data.
  *
  * @param[in] main_shm_addr Main SHM mapping address.
- * @param[in] ly_dep_parent Dependencies in internal sysrepo data.
+ * @param[in] sr_dep_parent Dependencies in internal sysrepo data.
  * @param[in] shm_deps Main SHM data dependencies to fill.
  * @param[out] dep_i Number of dependencies filled.
  * @param[in,out] shm_cur Current main SHM position.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_shm_fill_data_deps(char *main_shm_addr, struct lyd_node *ly_dep_parent, sr_mod_data_dep_t *shm_deps,
+sr_shmmain_shm_fill_data_deps(char *main_shm_addr, struct lyd_node *sr_dep_parent, sr_mod_data_dep_t *shm_deps,
         uint32_t *dep_i, char **shm_cur)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *ref_shm_mod = NULL;
-    struct lyd_node *ly_dep, *ly_instid;
+    struct lyd_node *sr_dep, *sr_instid;
     const char *str;
     int dep_found;
 
     assert(!*dep_i);
 
-    LY_TREE_FOR(ly_dep_parent->child, ly_dep) {
+    LY_TREE_FOR(sr_dep_parent->child, sr_dep) {
         dep_found = 0;
 
-        if (!strcmp(ly_dep->schema->name, "module")) {
+        if (!strcmp(sr_dep->schema->name, "module")) {
             dep_found = 1;
 
             /* set dep type */
             shm_deps[*dep_i].type = SR_DEP_REF;
 
             /* copy module name offset */
-            str = sr_ly_leaf_value_str(ly_dep);
+            str = sr_ly_leaf_value_str(sr_dep);
             ref_shm_mod = sr_shmmain_find_module(main_shm_addr, str, 0);
             SR_CHECK_INT_RET(!ref_shm_mod, err_info);
             shm_deps[*dep_i].module = ref_shm_mod->name;
 
             /* no xpath */
             shm_deps[*dep_i].xpath = 0;
-        } else if (!strcmp(ly_dep->schema->name, "inst-id")) {
+        } else if (!strcmp(sr_dep->schema->name, "inst-id")) {
             dep_found = 1;
 
             /* set dep type */
@@ -1633,14 +1821,14 @@ sr_shmmain_shm_fill_data_deps(char *main_shm_addr, struct lyd_node *ly_dep_paren
             /* there may be no default value */
             shm_deps[*dep_i].module = 0;
 
-            LY_TREE_FOR(ly_dep->child, ly_instid) {
-                if (!strcmp(ly_instid->schema->name, "xpath")) {
+            LY_TREE_FOR(sr_dep->child, sr_instid) {
+                if (!strcmp(sr_instid->schema->name, "xpath")) {
                     /* copy xpath */
-                    str = sr_ly_leaf_value_str(ly_instid);
+                    str = sr_ly_leaf_value_str(sr_instid);
                     shm_deps[*dep_i].xpath = sr_shmcpy(main_shm_addr, str, strlen(str) + 1, shm_cur);
-                } else if (!strcmp(ly_instid->schema->name, "default-module")) {
+                } else if (!strcmp(sr_instid->schema->name, "default-module")) {
                     /* copy module name offset */
-                    str = sr_ly_leaf_value_str(ly_instid);
+                    str = sr_ly_leaf_value_str(sr_instid);
                     ref_shm_mod = sr_shmmain_find_module(main_shm_addr, str, 0);
                     SR_CHECK_INT_RET(!ref_shm_mod, err_info);
                     shm_deps[*dep_i].module = ref_shm_mod->name;
@@ -1661,28 +1849,28 @@ sr_shmmain_shm_fill_data_deps(char *main_shm_addr, struct lyd_node *ly_dep_paren
  * @brief Add modules into main SHM.
  *
  * @param[in] main_shm_addr Main SHM mapping address.
- * @param[in] ly_start_mod First module to add.
+ * @param[in] sr_start_mod First module to add.
  * @param[in] shm_last_mod Current last main SHM module.
  * @param[in,out] shm_end Current main SHM position, is updated.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, sr_mod_t *shm_last_mod, off_t *shm_end)
+sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *sr_start_mod, sr_mod_t *shm_last_mod, off_t *shm_end)
 {
-    struct lyd_node *ly_mod, *ly_child, *ly_dep, *ly_op, *ly_op_dep;
-    sr_mod_t *shm_mod;
+    struct lyd_node *sr_mod, *sr_child, *sr_dep, *sr_op, *sr_op_dep;
+    sr_mod_t *shm_mod, *ref_shm_mod;
     sr_mod_data_dep_t *shm_data_deps, *shm_op_data_deps;
     sr_mod_op_dep_t *shm_op_deps;
-    off_t *shm_features;
+    off_t *shm_features, *shm_inv_data_deps;
     char *shm_cur;
     const char *str;
-    uint32_t feat_i, data_dep_i, op_dep_i, op_data_dep_i;
+    uint32_t feat_i, data_dep_i, inv_data_dep_i, op_dep_i, op_data_dep_i;
     sr_error_info_t *err_info = NULL;
 
     /* 1st loop */
     shm_cur = main_shm_addr + *shm_end;
     shm_mod = shm_last_mod;
-    LY_TREE_FOR(ly_start_mod, ly_mod) {
+    LY_TREE_FOR(sr_start_mod, sr_mod) {
         /* next pointer of previous item */
         if (shm_mod) {
             shm_mod->next = shm_cur - main_shm_addr;
@@ -1707,27 +1895,30 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
             return err_info;
         }
 
-        LY_TREE_FOR(ly_mod->child, ly_child) {
-            if (!strcmp(ly_child->schema->name, "name")) {
+        LY_TREE_FOR(sr_mod->child, sr_child) {
+            if (!strcmp(sr_child->schema->name, "name")) {
                 /* copy module name */
-                str = sr_ly_leaf_value_str(ly_child);
+                str = sr_ly_leaf_value_str(sr_child);
                 shm_mod->name = sr_shmcpy(main_shm_addr, str, strlen(str) + 1, &shm_cur);
-            } else if (!strcmp(ly_child->schema->name, "revision")) {
+            } else if (!strcmp(sr_child->schema->name, "revision")) {
                 /* copy revision */
-                str = sr_ly_leaf_value_str(ly_child);
+                str = sr_ly_leaf_value_str(sr_child);
                 strcpy(shm_mod->rev, str);
-            } else if (!strcmp(ly_child->schema->name, "replay-support")) {
+            } else if (!strcmp(sr_child->schema->name, "replay-support")) {
                 /* set replay-support flag */
                 shm_mod->flags |= SR_MOD_REPLAY_SUPPORT;
-            } else if (!strcmp(ly_child->schema->name, "enabled-feature")) {
+            } else if (!strcmp(sr_child->schema->name, "enabled-feature")) {
                 /* just count features */
                 ++shm_mod->feat_count;
-            } else if (!strcmp(ly_child->schema->name, "data-deps")) {
+            } else if (!strcmp(sr_child->schema->name, "data-deps")) {
                 /* just count data dependencies */
-                LY_TREE_FOR(ly_child->child, ly_dep) {
+                LY_TREE_FOR(sr_child->child, sr_dep) {
                     ++shm_mod->data_dep_count;
                 }
-            } else if (!strcmp(ly_child->schema->name, "op-deps")) {
+            } else if (!strcmp(sr_child->schema->name, "inverse-data-deps")) {
+                /* just count inverse data dependencies */
+                ++shm_mod->inv_data_dep_count;
+            } else if (!strcmp(sr_child->schema->name, "op-deps")) {
                 /* just count op dependencies */
                 ++shm_mod->op_dep_count;
             }
@@ -1736,6 +1927,7 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
         /* allocate arrays */
         shm_mod->features = sr_shmcpy(main_shm_addr, NULL, shm_mod->feat_count * sizeof(off_t), &shm_cur);
         shm_mod->data_deps = sr_shmcpy(main_shm_addr, NULL, shm_mod->data_dep_count * sizeof(sr_mod_data_dep_t), &shm_cur);
+        shm_mod->inv_data_deps = sr_shmcpy(main_shm_addr, NULL, shm_mod->inv_data_dep_count * sizeof(off_t), &shm_cur);
         shm_mod->op_deps = sr_shmcpy(main_shm_addr, NULL, shm_mod->op_dep_count * sizeof(sr_mod_op_dep_t), &shm_cur);
     }
     /* last next pointer */
@@ -1743,36 +1935,47 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
 
     /* 2nd loop */
     shm_mod = sr_shmmain_getnext(main_shm_addr, shm_last_mod);
-    LY_TREE_FOR(ly_start_mod, ly_mod) {
+    LY_TREE_FOR(sr_start_mod, sr_mod) {
         shm_features = (off_t *)(main_shm_addr + shm_mod->features);
         feat_i = 0;
 
         shm_data_deps = (sr_mod_data_dep_t *)(main_shm_addr + shm_mod->data_deps);
         data_dep_i = 0;
 
+        shm_inv_data_deps = (off_t *)(main_shm_addr + shm_mod->inv_data_deps);
+        inv_data_dep_i = 0;
+
         shm_op_deps = (sr_mod_op_dep_t *)(main_shm_addr + shm_mod->op_deps);
         op_dep_i = 0;
 
-        LY_TREE_FOR(ly_mod->child, ly_child) {
-            if (!strcmp(ly_child->schema->name, "enabled-feature")) {
+        LY_TREE_FOR(sr_mod->child, sr_child) {
+            if (!strcmp(sr_child->schema->name, "enabled-feature")) {
                 /* copy feature name */
-                str = sr_ly_leaf_value_str(ly_child);
+                str = sr_ly_leaf_value_str(sr_child);
                 shm_features[feat_i] = sr_shmcpy(main_shm_addr, str, strlen(str) + 1, &shm_cur);
 
                 ++feat_i;
-            } else if (!strcmp(ly_child->schema->name, "data-deps")) {
+            } else if (!strcmp(sr_child->schema->name, "data-deps")) {
                 /* now fill the dependency array */
-                if ((err_info = sr_shmmain_shm_fill_data_deps(main_shm_addr, ly_child, shm_data_deps, &data_dep_i, &shm_cur))) {
+                if ((err_info = sr_shmmain_shm_fill_data_deps(main_shm_addr, sr_child, shm_data_deps, &data_dep_i, &shm_cur))) {
                     return err_info;
                 }
-            } else if (!strcmp(ly_child->schema->name, "op-deps")) {
-                LY_TREE_FOR(ly_child->child, ly_op) {
-                    if (!strcmp(ly_op->schema->name, "xpath")) {
+            } else if (!strcmp(sr_child->schema->name, "inverse-data-deps")) {
+                /* now fill module references */
+                str = sr_ly_leaf_value_str(sr_child);
+                ref_shm_mod = sr_shmmain_find_module(main_shm_addr, str, 0);
+                SR_CHECK_INT_RET(!ref_shm_mod, err_info);
+                shm_inv_data_deps[inv_data_dep_i] = ref_shm_mod->name;
+
+                ++inv_data_dep_i;
+            } else if (!strcmp(sr_child->schema->name, "op-deps")) {
+                LY_TREE_FOR(sr_child->child, sr_op) {
+                    if (!strcmp(sr_op->schema->name, "xpath")) {
                         /* copy xpath name */
-                        str = sr_ly_leaf_value_str(ly_op);
+                        str = sr_ly_leaf_value_str(sr_op);
                         shm_op_deps[op_dep_i].xpath = sr_shmcpy(main_shm_addr, str, strlen(str) + 1, &shm_cur);
-                    } else if (!strcmp(ly_op->schema->name, "in")) {
-                        LY_TREE_FOR(ly_op->child, ly_op_dep) {
+                    } else if (!strcmp(sr_op->schema->name, "in")) {
+                        LY_TREE_FOR(sr_op->child, sr_op_dep) {
                             /* count op input data deps first */
                             ++shm_op_deps[op_dep_i].in_dep_count;
                         }
@@ -1784,13 +1987,13 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
                         /* fill the array */
                         shm_op_data_deps = (sr_mod_data_dep_t *)(main_shm_addr + shm_op_deps[op_dep_i].in_deps);
                         op_data_dep_i = 0;
-                        if ((err_info = sr_shmmain_shm_fill_data_deps(main_shm_addr, ly_op, shm_op_data_deps,
+                        if ((err_info = sr_shmmain_shm_fill_data_deps(main_shm_addr, sr_op, shm_op_data_deps,
                                 &op_data_dep_i, &shm_cur))) {
                             return err_info;
                         }
                         SR_CHECK_INT_RET(op_data_dep_i != shm_op_deps[op_dep_i].in_dep_count, err_info);
-                    } else if (!strcmp(ly_op->schema->name, "out")) {
-                        LY_TREE_FOR(ly_op->child, ly_op_dep) {
+                    } else if (!strcmp(sr_op->schema->name, "out")) {
+                        LY_TREE_FOR(sr_op->child, sr_op_dep) {
                             /* count op output data deps first */
                             ++shm_op_deps[op_dep_i].out_dep_count;
                         }
@@ -1802,7 +2005,7 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
                         /* fill the array */
                         shm_op_data_deps = (sr_mod_data_dep_t *)(main_shm_addr + shm_op_deps[op_dep_i].out_deps);
                         op_data_dep_i = 0;
-                        if ((err_info = sr_shmmain_shm_fill_data_deps(main_shm_addr, ly_op, shm_op_data_deps,
+                        if ((err_info = sr_shmmain_shm_fill_data_deps(main_shm_addr, sr_op, shm_op_data_deps,
                                 &op_data_dep_i, &shm_cur))) {
                             return err_info;
                         }
@@ -1815,6 +2018,7 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
         }
         SR_CHECK_INT_RET(feat_i != shm_mod->feat_count, err_info);
         SR_CHECK_INT_RET(data_dep_i != shm_mod->data_dep_count, err_info);
+        SR_CHECK_INT_RET(inv_data_dep_i != shm_mod->inv_data_dep_count, err_info);
         SR_CHECK_INT_RET(op_dep_i != shm_mod->op_dep_count, err_info);
 
         /* next */
@@ -1826,19 +2030,70 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *ly_start_mod, s
 }
 
 /**
+ * @brief Add inverse dependencies for dependencies of modules into main SHM.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] sr_mod First added module in internal sysrepo data.
+ * @param[in] shm_mod_off First added module offset in SHM.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmmain_shm_add_modules_inv_deps(sr_conn_ctx_t *conn, struct lyd_node *sr_mod, off_t shm_mod_off)
+{
+    sr_error_info_t *err_info = NULL;
+    off_t name_off;
+    struct ly_set *set = NULL;
+    uint32_t i;
+
+    while (sr_mod) {
+        assert(shm_mod_off);
+        name_off = ((sr_mod_t *)(conn->main_shm.addr + shm_mod_off))->name;
+
+        assert(!strcmp(sr_mod->child->schema->name, "name"));
+        assert(!strcmp(sr_ly_leaf_value_str(sr_mod->child), conn->main_shm.addr + name_off));
+
+        /* find all dependencies */
+        ly_set_free(set);
+        set = lyd_find_path(sr_mod, "data-deps/module");
+        if (!set) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mod)->ctx);
+            goto cleanup;
+        }
+
+        for (i = 0; i < set->number; ++i) {
+            /* add inverse dependency to each module, if not there yet */
+            if ((err_info = sr_shmmod_add_inv_dep(conn, sr_ly_leaf_value_str(set->set.d[i]), name_off))) {
+                goto cleanup;
+            }
+        }
+
+        /* next iter */
+        shm_mod_off = ((sr_mod_t *)(conn->main_shm.addr + shm_mod_off))->next;
+        sr_mod = sr_mod->next;
+    }
+
+    /* success */
+
+cleanup:
+    ly_set_free(set);
+    return err_info;
+}
+
+/**
  * @brief Remap main SHM and add modules into it.
  *
  * @param[in] conn Connection to use.
  * @param[in] new_shm_size Expected new main SHM size.
- * @param[in] ly_start_mod First module to add.
+ * @param[in] sr_mod First module to add.
+ * @param[out] shm_mod_p Optionally return the first added module in SHM.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_shm_add(sr_conn_ctx_t *conn, size_t new_shm_size, struct lyd_node *ly_start_mod)
+sr_shmmain_shm_add(sr_conn_ctx_t *conn, size_t new_shm_size, struct lyd_node *sr_mod, sr_mod_t **shm_mod_p)
 {
-    off_t shm_end;
-    sr_mod_t *shm_mod = NULL;
     sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod = NULL;
+    off_t shm_end;
 
     assert(conn->main_shm.fd > -1);
     assert(new_shm_size);
@@ -1859,17 +2114,17 @@ sr_shmmain_shm_add(sr_conn_ctx_t *conn, size_t new_shm_size, struct lyd_node *ly
     }
 
     /* add all newly implemented modules into SHM */
-    if ((err_info = sr_shmmain_shm_add_modules(conn->main_shm.addr, ly_start_mod, shm_mod, &shm_end))) {
+    if ((err_info = sr_shmmain_shm_add_modules(conn->main_shm.addr, sr_mod, shm_mod, &shm_end))) {
         return err_info;
     }
+
+    /* check the resulting size is as expected */
     SR_CHECK_INT_RET((unsigned)shm_end != conn->main_shm.size, err_info);
 
-    /* synchronize SHM */
-    if (msync(conn->main_shm.addr, conn->main_shm.size, MS_SYNC | MS_INVALIDATE) == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "msync");
-        return err_info;
+    /* return the first added module */
+    if (shm_mod_p) {
+        (*shm_mod_p) = (sr_mod_t *)(conn->main_shm.addr + shm_mod->next);
     }
-
     return NULL;
 }
 
@@ -1915,7 +2170,7 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
     /* create SHM content */
     mod_shm_size = sr_shmmain_ly_calculate_size(sr_mods);
     assert(mod_shm_size);
-    if ((err_info = sr_shmmain_shm_add(conn, conn->main_shm.size + mod_shm_size, sr_mods->child))) {
+    if ((err_info = sr_shmmain_shm_add(conn, conn->main_shm.size + mod_shm_size, sr_mods->child, NULL))) {
         goto cleanup;
     }
 
@@ -2090,7 +2345,7 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int kept_remap)
 /**
  * @brief Add a dependency into internal sysrepo data.
  *
- * @param[in] ly_deps Internal sysrepo data dependencies to add to.
+ * @param[in] sr_deps Internal sysrepo data dependencies to add to.
  * @param[in] dep_type Dependency type.
  * @param[in] mod_name Name of the module with the dependency.
  * @param[in] node Node causing the dependency.
@@ -2098,12 +2353,12 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int kept_remap)
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *mod_name, const struct lys_node *node,
+sr_moddep_add(struct lyd_node *sr_deps, sr_mod_dep_type_t dep_type, const char *mod_name, const struct lys_node *node,
         size_t *shm_size)
 {
     const struct lys_node *data_child;
     char *data_path = NULL, *expr;
-    struct lyd_node *ly_instid;
+    struct lyd_node *sr_instid;
     struct ly_set *set;
     sr_error_info_t *err_info = NULL;
 
@@ -2136,7 +2391,7 @@ sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *
             assert(dep_type != SR_DEP_INSTID);
             data_child = NULL;
             while ((data_child = lys_getnext(data_child, node, NULL, LYS_GETNEXT_PARENTUSES | LYS_GETNEXT_NOSTATECHECK))) {
-                if ((err_info = sr_moddep_add(ly_deps, dep_type, mod_name, data_child, shm_size))) {
+                if ((err_info = sr_moddep_add(sr_deps, dep_type, mod_name, data_child, shm_size))) {
                     return err_info;
                 }
             }
@@ -2156,12 +2411,12 @@ sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *
     }
 
     /* check that there is not a duplicity */
-    set = lyd_find_path(ly_deps, expr);
+    set = lyd_find_path(sr_deps, expr);
     free(expr);
     if (!set || (set->number > 1)) {
         ly_set_free(set);
         if (!set) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(ly_deps)->ctx);
+            sr_errinfo_new_ly(&err_info, lyd_node_module(sr_deps)->ctx);
         } else {
             SR_ERRINFO_INT(&err_info);
         }
@@ -2176,22 +2431,22 @@ sr_moddep_add(struct lyd_node *ly_deps, sr_mod_dep_type_t dep_type, const char *
 
     /* create new dependency */
     if (dep_type == SR_DEP_REF) {
-        if (!lyd_new_leaf(ly_deps, NULL, "module", mod_name)) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(ly_deps)->ctx);
+        if (!lyd_new_leaf(sr_deps, NULL, "module", mod_name)) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(sr_deps)->ctx);
             goto error;
         }
     } else {
-        ly_instid = lyd_new(ly_deps, NULL, "inst-id");
-        if (!ly_instid) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(ly_deps)->ctx);
+        sr_instid = lyd_new(sr_deps, NULL, "inst-id");
+        if (!sr_instid) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(sr_deps)->ctx);
             goto error;
         }
-        if (!lyd_new_leaf(ly_instid, NULL, "xpath", data_path)) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(ly_deps)->ctx);
+        if (!lyd_new_leaf(sr_instid, NULL, "xpath", data_path)) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(sr_deps)->ctx);
             goto error;
         }
-        if (mod_name && !lyd_new_leaf(ly_instid, NULL, "default-module", mod_name)) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(ly_deps)->ctx);
+        if (mod_name && !lyd_new_leaf(sr_instid, NULL, "default-module", mod_name)) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(sr_deps)->ctx);
             goto error;
         }
     }
@@ -2316,12 +2571,12 @@ cleanup:
  *
  * @param[in] type Type to inspect.
  * @param[in] node Type node.
- * @param[in] ly_deps Internal sysrepo data dependencies to add to.
+ * @param[in] sr_deps Internal sysrepo data dependencies to add to.
  * @param[in,out] shm_size New main SHM size with these dependencies.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_moddep_type(const struct lys_type *type, struct lys_node *node, struct lyd_node *ly_deps, size_t *shm_size)
+sr_moddep_type(const struct lys_type *type, struct lys_node *node, struct lyd_node *sr_deps, size_t *shm_size)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_type *t;
@@ -2338,7 +2593,7 @@ sr_moddep_type(const struct lys_type *type, struct lys_node *node, struct lyd_no
             assert(dep_mod_count < 2);
         }
 
-        err_info = sr_moddep_add(ly_deps, SR_DEP_INSTID, (dep_mod_count ? dep_mods[0]->name : NULL), node, shm_size);
+        err_info = sr_moddep_add(sr_deps, SR_DEP_INSTID, (dep_mod_count ? dep_mods[0]->name : NULL), node, shm_size);
         free(dep_mods);
         if (err_info) {
             return err_info;
@@ -2353,7 +2608,7 @@ sr_moddep_type(const struct lys_type *type, struct lys_node *node, struct lyd_no
 
         if (dep_mod_count) {
             /* a foregin module is referenced */
-            err_info = sr_moddep_add(ly_deps, SR_DEP_REF, dep_mods[0]->name, NULL, shm_size);
+            err_info = sr_moddep_add(sr_deps, SR_DEP_REF, dep_mods[0]->name, NULL, shm_size);
             free(dep_mods);
             if (err_info) {
                 return err_info;
@@ -2363,7 +2618,7 @@ sr_moddep_type(const struct lys_type *type, struct lys_node *node, struct lyd_no
     case LY_TYPE_UNION:
         t = NULL;
         while ((t = lys_getnext_union_type(t, type))) {
-            if ((err_info = sr_moddep_type(t, node, ly_deps, shm_size))) {
+            if ((err_info = sr_moddep_type(t, node, sr_deps, shm_size))) {
                 return err_info;
             }
         }
@@ -2379,24 +2634,24 @@ sr_moddep_type(const struct lys_type *type, struct lys_node *node, struct lyd_no
 /**
  * @brief Add (collect) operation data dependencies into internal sysrepo data.
  *
- * @param[in] ly_module Module of the data.
+ * @param[in] sr_mod Module of the data.
  * @param[in] op_root Root node of the operation data to inspect.
  * @param[in,out] shm_size New main SHM size with these dependencies.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_ly_add_op_deps(struct lyd_node *ly_module, struct lys_node *op_root, size_t *shm_size)
+sr_shmmain_ly_add_op_deps(struct lyd_node *sr_mod, struct lys_node *op_root, size_t *shm_size)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *ly_op_deps, *ly_cur_deps;
+    struct lyd_node *sr_op_deps, *ly_cur_deps;
     struct lys_node *op_child;
     char *data_path;
     struct ly_ctx *ly_ctx = lys_node_module(op_root)->ctx;
 
     assert(op_root->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF));
 
-    ly_op_deps = lyd_new(ly_module, NULL, "op-deps");
-    if (!ly_op_deps) {
+    sr_op_deps = lyd_new(sr_mod, NULL, "op-deps");
+    if (!sr_op_deps) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
         return err_info;
     }
@@ -2405,7 +2660,7 @@ sr_shmmain_ly_add_op_deps(struct lyd_node *ly_module, struct lys_node *op_root, 
 
     data_path = lys_data_path(op_root);
     SR_CHECK_MEM_RET(!data_path, err_info);
-    if (!lyd_new_leaf(ly_op_deps, NULL, "xpath", data_path)) {
+    if (!lyd_new_leaf(sr_op_deps, NULL, "xpath", data_path)) {
         free(data_path);
         sr_errinfo_new_ly(&err_info, ly_ctx);
         return err_info;
@@ -2417,13 +2672,13 @@ sr_shmmain_ly_add_op_deps(struct lyd_node *ly_module, struct lys_node *op_root, 
     /* collect dependencies of nested data and put them into correct containers */
     switch (op_root->nodetype) {
     case LYS_NOTIF:
-        ly_cur_deps = lyd_new(ly_op_deps, NULL, "in");
+        ly_cur_deps = lyd_new(sr_op_deps, NULL, "in");
         if (!ly_cur_deps) {
             sr_errinfo_new_ly(&err_info, ly_ctx);
             return err_info;
         }
 
-        err_info = sr_shmmain_ly_add_data_deps_r(ly_module, op_root, ly_cur_deps, shm_size);
+        err_info = sr_shmmain_ly_add_data_deps_r(sr_mod, op_root, ly_cur_deps, shm_size);
         break;
     case LYS_RPC:
     case LYS_ACTION:
@@ -2431,16 +2686,16 @@ sr_shmmain_ly_add_op_deps(struct lyd_node *ly_module, struct lys_node *op_root, 
             SR_CHECK_INT_RET(!(op_child->nodetype & (LYS_INPUT | LYS_OUTPUT)), err_info);
 
             if (op_child->nodetype == LYS_INPUT) {
-                ly_cur_deps = lyd_new(ly_op_deps, NULL, "in");
+                ly_cur_deps = lyd_new(sr_op_deps, NULL, "in");
             } else {
-                ly_cur_deps = lyd_new(ly_op_deps, NULL, "out");
+                ly_cur_deps = lyd_new(sr_op_deps, NULL, "out");
             }
             if (!ly_cur_deps) {
                 sr_errinfo_new_ly(&err_info, ly_ctx);
                 return err_info;
             }
 
-            err_info = sr_shmmain_ly_add_data_deps_r(ly_module, op_child, ly_cur_deps, shm_size);
+            err_info = sr_shmmain_ly_add_data_deps_r(sr_mod, op_child, ly_cur_deps, shm_size);
         }
         break;
     default:
@@ -2454,14 +2709,14 @@ sr_shmmain_ly_add_op_deps(struct lyd_node *ly_module, struct lys_node *op_root, 
 /**
  * @brief Add (collect) data dependencies into internal sysrepo data.
  *
- * @param[in] ly_module Module of the data.
+ * @param[in] sr_mod Module of the data.
  * @param[in] data_root Root node of the data to inspect.
- * @param[in] ly_deps Internal sysrepo data dependencies to add to.
+ * @param[in] sr_deps Internal sysrepo data dependencies to add to.
  * @param[in,out] shm_size New main SHM size with these dependencies.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_ly_add_data_deps_r(struct lyd_node *ly_module, struct lys_node *data_root, struct lyd_node *ly_deps,
+sr_shmmain_ly_add_data_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root, struct lyd_node *sr_deps,
         size_t *shm_size)
 {
     sr_error_info_t *err_info = NULL;
@@ -2519,7 +2774,7 @@ sr_shmmain_ly_add_data_deps_r(struct lyd_node *ly_module, struct lys_node *data_
         case LYS_RPC:
         case LYS_ACTION:
             /* operation, put the dependencies separately */
-            if ((err_info = sr_shmmain_ly_add_op_deps(ly_module, elem, shm_size))) {
+            if ((err_info = sr_shmmain_ly_add_op_deps(sr_mod, elem, shm_size))) {
                 return err_info;
             }
             goto next_sibling;
@@ -2530,13 +2785,13 @@ sr_shmmain_ly_add_data_deps_r(struct lyd_node *ly_module, struct lys_node *data_
             musts = ((struct lys_node_inout *)elem)->must;
             break;
         case LYS_NOTIF:
-            if (!strcmp(ly_deps->schema->name, "in")) {
+            if (!strcmp(sr_deps->schema->name, "in")) {
                 /* recursive call in this case */
                 must_size = ((struct lys_node_notif *)elem)->must_size;
                 musts = ((struct lys_node_notif *)elem)->must;
             } else {
                 /* operation, put the dependencies separately */
-                if ((err_info = sr_shmmain_ly_add_op_deps(ly_module, elem, shm_size))) {
+                if ((err_info = sr_shmmain_ly_add_op_deps(sr_mod, elem, shm_size))) {
                     return err_info;
                 }
                 goto next_sibling;
@@ -2558,7 +2813,7 @@ sr_shmmain_ly_add_data_deps_r(struct lyd_node *ly_module, struct lys_node *data_
 
         /* collect the dependencies */
         if (type) {
-            if ((err_info = sr_moddep_type(type, elem, ly_deps, shm_size))) {
+            if ((err_info = sr_moddep_type(type, elem, sr_deps, shm_size))) {
                 return err_info;
             }
         }
@@ -2576,7 +2831,7 @@ sr_shmmain_ly_add_data_deps_r(struct lyd_node *ly_module, struct lys_node *data_
 
         /* add those collected from when and must */
         for (i = 0; i < dep_mod_count; ++i) {
-            if ((err_info = sr_moddep_add(ly_deps, SR_DEP_REF, dep_mods[i]->name, NULL, shm_size))) {
+            if ((err_info = sr_moddep_add(sr_deps, SR_DEP_REF, dep_mods[i]->name, NULL, shm_size))) {
                 free(dep_mods);
                 return err_info;
             }
@@ -2621,7 +2876,7 @@ next_sibling:
  * @param[in] ly_mod Module to add.
  * @param[in] sr_mods Internal sysrepo data.
  * @param[out] sr_mod_p Added internal sysrepo module.
- * @param[out] shm_size New main SHM size with this module.
+ * @param[in,out] shm_size New main SHM size with this module.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -2737,6 +2992,7 @@ sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *ly
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL, *sr_mod = NULL;
+    sr_mod_t *shm_mod;
     size_t shm_size = 0;
 
     /* parse current module information */
@@ -2750,13 +3006,29 @@ sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *ly
         goto cleanup;
     }
 
+    /* also remember inverse dependencies now that all the modules were added */
+    if ((err_info = sr_shmmain_ly_add_inv_data_deps(ly_mod, sr_mods))) {
+        goto cleanup;
+    }
+
     /* store the updated persistent data tree */
     if ((err_info = sr_shmmain_ly_int_data_print(&sr_mods))) {
         goto cleanup;
     }
 
-    /* just adds the new modules into SHM */
-    if ((err_info = sr_shmmain_shm_add(conn, conn->main_shm.size + shm_size, sr_mod))) {
+    /* adds the new modules into SHM, return the first added into SHM */
+    if ((err_info = sr_shmmain_shm_add(conn, conn->main_shm.size + shm_size, sr_mod, &shm_mod))) {
+        goto cleanup;
+    }
+
+    /* add also any new inverse dependencies to existing modules in SHM */
+    if ((err_info = sr_shmmain_shm_add_modules_inv_deps(conn, sr_mod, ((char *)shm_mod) - conn->main_shm.addr))) {
+        goto cleanup;
+    }
+
+    /* synchronize SHM */
+    if (msync(conn->main_shm.addr, conn->main_shm.size, MS_SYNC | MS_INVALIDATE) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "msync");
         goto cleanup;
     }
 

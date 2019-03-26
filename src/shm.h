@@ -118,6 +118,8 @@ struct sr_mod_s {
     uint16_t feat_count;        /**< Number of enabled features. */
     off_t data_deps;            /**< Array of data dependencies. */
     uint16_t data_dep_count;    /**< Number of data dependencies. */
+    off_t inv_data_deps;        /**< Array of inverse data dependencies (off_t *). */
+    uint16_t inv_data_dep_count;    /**< Number of inverse data dependencies. */
     off_t op_deps;              /**< Array of operation dependencies. */
     uint16_t op_dep_count;      /**< Number of operation dependencies. */
 
@@ -129,7 +131,7 @@ struct sr_mod_s {
     off_t dp_subs;              /**< Array of data-provide subscriptions. */
     uint16_t dp_sub_count;      /**< Number of data-provide subscriptions. */
 
-    off_t rpc_subs;             /**< Araay of RPC/action subscriptions. */
+    off_t rpc_subs;             /**< Array of RPC/action subscriptions. */
     uint16_t rpc_sub_count;     /**< Number of RPC/action subscriptions. */
 
     uint16_t notif_sub_count;   /**< Number of notification subscriptions. */
@@ -528,6 +530,7 @@ void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable);
 
 /**
  * @brief Add/remove main SHM module configuration subscriptions.
+ * May remap main SHM!
  *
  * @param[in] conn Connection to use.
  * @param[in] mod_name Module name.
@@ -544,6 +547,7 @@ sr_error_info_t *sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mo
 
 /**
  * @brief Add/remove main SHM module data-provide subscription.
+ * May remap main SHM!
  *
  * @param[in] conn Connection to use.
  * @param[in] mod_name Module name.
@@ -557,6 +561,7 @@ sr_error_info_t *sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_
 
 /**
  * @brief Add/remove main SHM module RPC/action subscription.
+ * May remap main SHM!
  *
  * @param[in] conn Connection to use.
  * @param[in] mod_name Module name.
@@ -576,6 +581,17 @@ sr_error_info_t *sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *mod_name, int add, int *last_removed);
+
+/**
+ * @brief Add an inverse dependency to a module, check for duplicities.
+ * May remap main SHM!
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_name Name of the module to add inverse dependency into.
+ * @param[in] inv_dep_mod_name Name offset of the module to be added as inverse dep into \p mod_name.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_add_inv_dep(sr_conn_ctx_t *conn, const char *mod_name, off_t inv_dep_mod_name);
 
 /*
  * Subscription SHM functions.

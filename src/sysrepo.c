@@ -3191,6 +3191,11 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     /* update version */
     conn->main_ver = ++((sr_main_shm_t *)conn->main_shm.addr)->ver;
 
+    /* defrag main SHM if needed */
+    if ((err_info = sr_check_main_shm_defrag(conn))) {
+        goto cleanup_unlock;
+    }
+
     /* SHM WRITE UNLOCK */
     sr_shmmain_unlock(conn, 1, 1);
 

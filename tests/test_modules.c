@@ -124,6 +124,7 @@ test_data_deps(void **state)
     "<module xmlns=\"urn:sysrepo\">"
         "<name>test</name>"
         "<removed/>"
+        "<inverse-data-deps>refs</inverse-data-deps>"
     "</module>"
     );
     cmp_int_data(st->conn, "ietf-interfaces",
