@@ -1574,6 +1574,9 @@ sr_check_main_shm_defrag(sr_conn_ctx_t *conn)
         return NULL;
     }
 
+    SR_LOG_DBGMSG("#SHM before defrag");
+    sr_shmmain_print(conn->main_shm.addr, conn->main_shm.size);
+
     /* defrag mem into a separate memory */
     if ((err_info = sr_shmmain_defrag(conn->main_shm.addr, conn->main_shm.size, main_shm->wasted_mem, &mem))) {
         return err_info;
@@ -1596,6 +1599,9 @@ sr_check_main_shm_defrag(sr_conn_ctx_t *conn)
         SR_ERRINFO_SYSERRNO(&err_info, "msync");
         goto cleanup;
     }
+
+    SR_LOG_DBGMSG("#SHM after defrag");
+    sr_shmmain_print(conn->main_shm.addr, conn->main_shm.size);
 
     /* success */
 

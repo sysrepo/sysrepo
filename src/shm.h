@@ -249,6 +249,15 @@ typedef struct sr_multi_sub_shm_s {
  */
 
 /**
+ * @brief Debug print the contents of main SHM.
+ *
+ * @param[in] main_shm_addr Main SHM starting address.
+ * @param[in] main_shm_size Main SHM size.
+ */
+void
+sr_shmmain_print(char *main_shm_addr, size_t main_shm_size);
+
+/**
  * @brief Defragment main SHM.
  *
  * @param[in] main_shm_addr Main SHM mapping address.

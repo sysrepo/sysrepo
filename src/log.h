@@ -48,6 +48,9 @@
 #define SR_CHECK_ARG_APIRET(cond, session, err_info) if (cond) { sr_errinfo_new(&(err_info), SR_ERR_INVAL_ARG, NULL, \
         "Invalid arguments for function \"%s\".", __func__); return sr_api_ret(session, err_info); }
 
+extern sr_log_level_t stderr_ll;  /**< stderr log level */
+extern sr_log_level_t syslog_ll;  /**< syslog log level */
+
 /**
  * @brief Set error info to a session and return corresponding error code, if any.
  *

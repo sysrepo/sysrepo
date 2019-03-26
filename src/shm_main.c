@@ -37,18 +37,32 @@
 #include "../modules/ietf_netconf_with_defaults_yang.h"
 #include "../modules/ietf_netconf_notifications_yang.h"
 
-static sr_error_info_t *sr_shmmain_ly_add_data_deps_r(struct lyd_node *ly_module, struct lys_node *data_root,
-        struct lyd_node *ly_deps, size_t *shm_size);
+static sr_error_info_t *sr_shmmain_ly_add_data_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root,
+        struct lyd_node *sr_deps, size_t *shm_size);
 
 static sr_error_info_t *sr_shmmain_ly_add_module(const struct lys_module *mod, struct lyd_node *sr_mods,
         struct lyd_node **sr_mod_p, size_t *shm_size);
 
+/**
+ * @brief Item holding information about a SHM object for debug printing.
+ */
 struct shm_item {
     off_t start;
     size_t size;
     char *name;
 };
 
+/**
+ * @brief Collect data dependencies for printing.
+ *
+ * @param[in] main_shm_addr Main SHM mapping address.
+ * @param[in] data_deps Data dependencies to be printed.
+ * @param[in] data_dep_count Data dependency count.
+ * @param[in] data_dep_name Name of these data dependencies to be printed.
+ * @param[in] mod_name Module with these dependencies.
+ * @param[in,out] items Array of print items.
+ * @param[in,out] item_count Count of print items.
+ */
 static void
 sr_shmmain_print_data_deps(char *main_shm_addr, sr_mod_data_dep_t *data_deps, uint16_t data_dep_count,
         const char *data_dep_name, const char *mod_name, struct shm_item **items, size_t *item_count)
@@ -77,6 +91,14 @@ sr_shmmain_print_data_deps(char *main_shm_addr, sr_mod_data_dep_t *data_deps, ui
     }
 }
 
+/**
+ * @brief Comparator for SHM print item qsort.
+ *
+ * @param[in] ptr1 First value pointer.
+ * @param[in] ptr2 Second value pointer.
+ * @return Less than, equal to, or greater than 0 if the first value is found
+ * to be less than, equal to, or greater to the second value.
+ */
 static int
 sr_shmmain_print_cmp(const void *ptr1, const void *ptr2)
 {
@@ -95,7 +117,6 @@ sr_shmmain_print_cmp(const void *ptr1, const void *ptr2)
     return 1;
 }
 
-/* unused, printer for main SHM debugging */
 void
 sr_shmmain_print(char *main_shm_addr, size_t main_shm_size)
 {
@@ -106,9 +127,13 @@ sr_shmmain_print(char *main_shm_addr, size_t main_shm_size)
     sr_mod_dp_sub_t *dp_subs;
     sr_mod_rpc_sub_t *rpc_subs;
     struct shm_item *items;
-    size_t item_count, printed;
-    uint16_t i;
-    char msg[4096];
+    size_t i, item_count, printed;
+    char msg[8096];
+
+    if ((stderr_ll < SR_LL_DBG) && (syslog_ll < SR_LL_DBG)) {
+        /* nothing to print */
+        return;
+    }
 
     /* add main struct */
     item_count = 0;
@@ -300,7 +325,7 @@ sr_shmmain_print(char *main_shm_addr, size_t main_shm_size)
 
     free(items);
 
-    SR_LOG_INF("#SHM:\n%s", msg);
+    SR_LOG_DBG("#SHM:\n%s", msg);
 }
 
 /**
