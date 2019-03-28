@@ -188,46 +188,6 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
 }
 
 /**
- * @brief Unlink data of a specific module from a data tree.
- *
- * @param[in,out] data Data tree.
- * @param[in] ly_mod libyang module fo interest.
- * @return Unlinked data tree.
- */
-static struct lyd_node *
-sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
-{
-    struct lyd_node *next, *node, *mod_data = NULL;
-
-    assert(data && ly_mod);
-
-    LY_TREE_FOR_SAFE(*data, next, node) {
-        if (lyd_node_module(node) == ly_mod) {
-            /* properly unlink this node */
-            if (node == *data) {
-                *data = next;
-            }
-            sr_ly_split(node);
-            if (next) {
-                sr_ly_split(next);
-                if (*data && (*data != next)) {
-                    sr_ly_link(*data, next);
-                }
-            }
-
-            /* connect it to other data from this module */
-            if (mod_data) {
-                sr_ly_link(mod_data, node);
-            } else {
-                mod_data = node;
-            }
-        }
-    }
-
-    return mod_data;
-}
-
-/**
  * @brief Duplicate data of a specific module in a data tree.
  *
  * @param[in] data Data tree.
@@ -545,59 +505,6 @@ error:
 }
 
 /**
- * @brief Append configuration data for a specific module.
- *
- * @param[in] mod Mod info module to process.
- * @param[in] ds Datastore.
- * @param[in,out] data Data tree to append to.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_module_config_data_append(struct sr_mod_info_mod_s *mod, sr_datastore_t ds, struct lyd_node **data)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_datastore_t file_ds;
-    struct lyd_node *mod_data = NULL;
-    char *path;
-
-    if (ds == SR_DS_OPERATIONAL) {
-        file_ds = SR_DS_RUNNING;
-    } else {
-        file_ds = ds;
-    }
-
-    /* prepare correct file path */
-    if (file_ds == SR_DS_RUNNING) {
-        err_info = sr_path_running_file(mod->ly_mod->name, &path);
-    } else {
-        err_info = sr_path_startup_file(mod->ly_mod->name, &path);
-    }
-    if (err_info) {
-        goto error;
-    }
-
-    /* load data from a persistent storage */
-    ly_errno = LYVE_SUCCESS;
-    mod_data = lyd_parse_path(mod->ly_mod->ctx, path, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS);
-    free(path);
-    if (ly_errno) {
-        sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-        goto error;
-    }
-
-    if (*data) {
-        sr_ly_link(*data, mod_data);
-    } else {
-        *data = mod_data;
-    }
-    return NULL;
-
-error:
-    lyd_free_withsiblings(mod_data);
-    return err_info;
-}
-
-/**
  * @brief Duplicate operational (enabled) data from configuration data tree.
  *
  * @param[in] data Configuration data.
@@ -731,7 +638,7 @@ sr_modcache_module_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_m
             *upd_mod_data = NULL;
         } else {
             /* we need to load current data from persistent storage */
-            if ((err_info = sr_module_config_data_append(mod, ds, &mod_cache->data))) {
+            if ((err_info = sr_module_config_data_append(mod->ly_mod, ds, &mod_cache->data))) {
                 return err_info;
             }
         }
@@ -800,7 +707,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             }
         } else {
             /* get current persistent data */
-            if ((err_info = sr_module_config_data_append(mod, mod_info->ds, &mod_info->data))) {
+            if ((err_info = sr_module_config_data_append(mod->ly_mod, mod_info->ds, &mod_info->data))) {
                 return err_info;
             }
 
@@ -1363,42 +1270,6 @@ cleanup:
         sr_errinfo_merge(&err_info, tmp_err_info);
     }
     return err_info;
-}
-
-/**
- * @brief Store persistent configuration data of a module.
- *
- * @param[in] mod_name Name of the module.
- * @param[in] ds Datastore.
- * @param[in] mod_data Module data to store.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data)
-{
-    sr_error_info_t *err_info = NULL;
-    char *path;
-
-    assert(ds != SR_DS_OPERATIONAL);
-
-    if (ds == SR_DS_RUNNING) {
-        err_info = sr_path_running_file(mod_name, &path);
-    } else {
-        err_info = sr_path_startup_file(mod_name, &path);
-    }
-    if (err_info) {
-        return err_info;
-    }
-
-    if (lyd_print_path(path, mod_data, LYD_LYB, LYP_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, lyd_node_module(mod_data)->ctx);
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to store data file \"%s\".", path);
-        free(path);
-        return err_info;
-    }
-    free(path);
-
-    return NULL;
 }
 
 sr_error_info_t *

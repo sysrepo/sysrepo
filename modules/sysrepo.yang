@@ -77,8 +77,7 @@ module sysrepo {
                     type empty;
                 }
 
-                leaf updated {
-                    // revision
+                leaf updated-yang {
                     type string;
                 }
             }

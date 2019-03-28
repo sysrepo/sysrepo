@@ -856,20 +856,13 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     return NULL;
 }
 
-/**
- * @brief Create (print) YANG module file.
- *
- * @param[in] mod Module to print.
- * @param[in] upd_module Whether to modify name for an update module.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_store_module_file(const struct lys_module *mod, int upd_module)
+sr_error_info_t *
+sr_store_module_file(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     char *path;
 
-    if ((err_info = sr_path_yang_file(mod->name, mod->rev_size ? mod->rev[0].date : NULL, upd_module, &path))) {
+    if ((err_info = sr_path_yang_file(ly_mod->name, ly_mod->rev_size ? ly_mod->rev[0].date : NULL, &path))) {
         return err_info;
     }
 
@@ -879,9 +872,9 @@ sr_store_module_file(const struct lys_module *mod, int upd_module)
         return NULL;
     }
 
-    if (lys_print_path(path, mod, LYS_YANG, NULL, 0, 0)) {
+    if (lys_print_path(path, ly_mod, LYS_YANG, NULL, 0, 0)) {
         free(path);
-        sr_errinfo_new_ly(&err_info, mod->ctx);
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         return err_info;
     }
 
@@ -891,8 +884,8 @@ sr_store_module_file(const struct lys_module *mod, int upd_module)
         return err_info;
     }
 
-    SR_LOG_INF("Module%s file \"%s%s%s\" installed.", upd_module ? " update" : "",
-            mod->name, mod->rev_size ? "@" : "", mod->rev_size ? mod->rev[0].date : "");
+    SR_LOG_INF("Module file \"%s%s%s\" installed.", ly_mod->name, ly_mod->rev_size ? "@" : "",
+            ly_mod->rev_size ? ly_mod->rev[0].date : "");
     free(path);
     return NULL;
 }
@@ -900,18 +893,18 @@ sr_store_module_file(const struct lys_module *mod, int upd_module)
 /**
  * @brief Create startup and running data file for a module.
  *
- * @param[in] mod Module.
+ * @param[in] ly_mod Module to create daa files for.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_create_data_files(const struct lys_module *mod)
+sr_create_data_files(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *root = NULL;
     char *path = NULL;
 
     /* get startup file path */
-    if ((err_info = sr_path_startup_file(mod->name, &path))) {
+    if ((err_info = sr_path_startup_file(ly_mod->name, &path))) {
         goto cleanup;
     }
 
@@ -921,15 +914,15 @@ sr_create_data_files(const struct lys_module *mod)
     }
 
     /* get default values */
-    if (lyd_validate_modules(&root, &mod, 1, LYD_OPT_CONFIG)) {
-        sr_errinfo_new_ly(&err_info, mod->ctx);
+    if (lyd_validate_modules(&root, &ly_mod, 1, LYD_OPT_CONFIG)) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         SR_ERRINFO_VALID(&err_info);
         return err_info;
     }
 
     /* print them into a file */
     if (lyd_print_path(path, root, LYD_LYB, LYP_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, mod->ctx);
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
         goto cleanup;
     }
@@ -943,11 +936,11 @@ sr_create_data_files(const struct lys_module *mod)
     /* repeat for running DS */
     free(path);
     path = NULL;
-    if ((err_info = sr_path_running_file(mod->name, &path))) {
+    if ((err_info = sr_path_running_file(ly_mod->name, &path))) {
         return err_info;
     }
     if (lyd_print_path(path, root, LYD_LYB, LYP_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, mod->ctx);
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
         goto cleanup;
     }
@@ -967,27 +960,27 @@ cleanup:
 /**
  * @brief Check whether a module is internal libyang module.
  *
- * @param[in] mod Module to check.
+ * @param[in] ly_mod Module to check.
  * @return 0 if not, non-zero if it is.
  */
 static int
-sr_ly_module_is_internal(const struct lys_module *mod)
+sr_ly_module_is_internal(const struct lys_module *ly_mod)
 {
-    if (!mod->rev_size) {
+    if (!ly_mod->rev_size) {
         return 0;
     }
 
-    if (!strcmp(mod->name, "ietf-yang-metadata") && !strcmp(mod->rev[0].date, "2016-08-05")) {
+    if (!strcmp(ly_mod->name, "ietf-yang-metadata") && !strcmp(ly_mod->rev[0].date, "2016-08-05")) {
         return 1;
-    } else if (!strcmp(mod->name, "yang") && !strcmp(mod->rev[0].date, "2017-02-20")) {
+    } else if (!strcmp(ly_mod->name, "yang") && !strcmp(ly_mod->rev[0].date, "2017-02-20")) {
         return 1;
-    } else if (!strcmp(mod->name, "ietf-inet-types") && !strcmp(mod->rev[0].date, "2013-07-15")) {
+    } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->rev[0].date, "2013-07-15")) {
         return 1;
-    } else if (!strcmp(mod->name, "ietf-yang-types") && !strcmp(mod->rev[0].date, "2013-07-15")) {
+    } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->rev[0].date, "2013-07-15")) {
         return 1;
-    } else if (!strcmp(mod->name, "ietf-datastores") && !strcmp(mod->rev[0].date, "2017-08-17")) {
+    } else if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->rev[0].date, "2017-08-17")) {
         return 1;
-    } else if (!strcmp(mod->name, "ietf-yang-library") && !strcmp(mod->rev[0].date, "2018-01-17")) {
+    } else if (!strcmp(ly_mod->name, "ietf-yang-library") && !strcmp(ly_mod->rev[0].date, "2018-01-17")) {
         return 1;
     }
 
@@ -995,21 +988,21 @@ sr_ly_module_is_internal(const struct lys_module *mod)
 }
 
 sr_error_info_t *
-sr_create_module_files_with_imps_r(const struct lys_module *mod)
+sr_create_module_files_with_imps_r(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     uint16_t i;
 
-    if (mod->implemented && (err_info = sr_create_data_files(mod))) {
+    if (ly_mod->implemented && (err_info = sr_create_data_files(ly_mod))) {
         return err_info;
     }
 
-    if (!sr_ly_module_is_internal(mod) && (err_info = sr_store_module_file(mod, 0))) {
+    if (!sr_ly_module_is_internal(ly_mod) && (err_info = sr_store_module_file(ly_mod))) {
         return err_info;
     }
 
-    for (i = 0; i < mod->imp_size; ++i) {
-        if ((err_info = sr_create_module_files_with_imps_r(mod->imp[i].module))) {
+    for (i = 0; i < ly_mod->imp_size; ++i) {
+        if ((err_info = sr_create_module_files_with_imps_r(ly_mod->imp[i].module))) {
             return err_info;
         }
     }
@@ -1018,24 +1011,24 @@ sr_create_module_files_with_imps_r(const struct lys_module *mod)
 }
 
 sr_error_info_t *
-sr_create_module_update_files_with_imps_r(const struct lys_module *mod, int first_upd_module)
+sr_create_module_update_imps_r(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
-    struct lys_module *imp_mod;
+    struct lys_module *ly_imp_mod;
     uint16_t i;
 
-    if ((err_info = sr_store_module_file(mod, first_upd_module))) {
-        return err_info;
-    }
-
-    for (i = 0; i < mod->imp_size; ++i) {
-        imp_mod = mod->imp[i].module;
-        if (sr_ly_module_is_internal(imp_mod)) {
+    for (i = 0; i < ly_mod->imp_size; ++i) {
+        ly_imp_mod = ly_mod->imp[i].module;
+        if (sr_ly_module_is_internal(ly_imp_mod)) {
             /* skip */
             continue;
         }
 
-        if ((err_info = sr_create_module_update_files_with_imps_r(imp_mod, 0))) {
+        if ((err_info = sr_store_module_file(ly_imp_mod))) {
+            return err_info;
+        }
+
+        if ((err_info = sr_create_module_update_imps_r(ly_imp_mod))) {
             return err_info;
         }
     }
@@ -1195,17 +1188,15 @@ sr_path_notif_file(const char *mod_name, time_t from_ts, time_t to_ts, char **pa
 }
 
 sr_error_info_t *
-sr_path_yang_file(const char *mod_name, const char *mod_rev, int update_prefix, char **path)
+sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path)
 {
     sr_error_info_t *err_info = NULL;
     int ret;
 
     if (SR_YANG_PATH[0]) {
-        ret = asprintf(path, "%s/%s%s%s%s.yang", SR_YANG_PATH, update_prefix ? "(update)" : "",
-                mod_name, mod_rev ? "@" : "", mod_rev ? mod_rev : "");
+        ret = asprintf(path, "%s/%s%s%s.yang", SR_YANG_PATH, mod_name, mod_rev ? "@" : "", mod_rev ? mod_rev : "");
     } else {
-        ret = asprintf(path, "%s/yang/%s%s%s%s.yang", sr_get_repo_path(), update_prefix ? "(update)" : "",
-                mod_name, mod_rev ? "@" : "", mod_rev ? mod_rev : "");
+        ret = asprintf(path, "%s/yang/%s%s%s.yang", sr_get_repo_path(), mod_name, mod_rev ? "@" : "", mod_rev ? mod_rev : "");
     }
 
     if (ret == -1) {
@@ -2612,4 +2603,110 @@ sr_ly_find_last_parent(struct lyd_node **parent, int nodetype)
     /* should be unreachable */
     SR_ERRINFO_INT(&err_info);
     return err_info;
+}
+
+struct lyd_node *
+sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
+{
+    struct lyd_node *next, *node, *mod_data = NULL;
+
+    assert(data && ly_mod);
+
+    LY_TREE_FOR_SAFE(*data, next, node) {
+        if (lyd_node_module(node) == ly_mod) {
+            /* properly unlink this node */
+            if (node == *data) {
+                *data = next;
+            }
+            sr_ly_split(node);
+            if (next) {
+                sr_ly_split(next);
+                if (*data && (*data != next)) {
+                    sr_ly_link(*data, next);
+                }
+            }
+
+            /* connect it to other data from this module */
+            if (mod_data) {
+                sr_ly_link(mod_data, node);
+            } else {
+                mod_data = node;
+            }
+        }
+    }
+
+    return mod_data;
+}
+
+sr_error_info_t *
+sr_module_config_data_append(const struct lys_module *ly_mod, sr_datastore_t ds, struct lyd_node **data)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_datastore_t file_ds;
+    struct lyd_node *mod_data = NULL;
+    char *path;
+
+    if (ds == SR_DS_OPERATIONAL) {
+        file_ds = SR_DS_RUNNING;
+    } else {
+        file_ds = ds;
+    }
+
+    /* prepare correct file path */
+    if (file_ds == SR_DS_RUNNING) {
+        err_info = sr_path_running_file(ly_mod->name, &path);
+    } else {
+        err_info = sr_path_startup_file(ly_mod->name, &path);
+    }
+    if (err_info) {
+        goto error;
+    }
+
+    /* load data from a persistent storage */
+    ly_errno = LYVE_SUCCESS;
+    mod_data = lyd_parse_path(ly_mod->ctx, path, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS);
+    free(path);
+    if (ly_errno) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        goto error;
+    }
+
+    if (*data) {
+        sr_ly_link(*data, mod_data);
+    } else {
+        *data = mod_data;
+    }
+    return NULL;
+
+error:
+    lyd_free_withsiblings(mod_data);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path;
+
+    assert(ds != SR_DS_OPERATIONAL);
+
+    if (ds == SR_DS_RUNNING) {
+        err_info = sr_path_running_file(mod_name, &path);
+    } else {
+        err_info = sr_path_startup_file(mod_name, &path);
+    }
+    if (err_info) {
+        return err_info;
+    }
+
+    if (lyd_print_path(path, mod_data, LYD_LYB, LYP_WITHSIBLINGS)) {
+        sr_errinfo_new_ly(&err_info, lyd_node_module(mod_data)->ctx);
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to store data file \"%s\".", path);
+        free(path);
+        return err_info;
+    }
+    free(path);
+
+    return NULL;
 }

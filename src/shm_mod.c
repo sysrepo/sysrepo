@@ -733,7 +733,7 @@ sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *mod_name, int add,
 }
 
 sr_error_info_t *
-sr_shmmod_add_inv_dep(sr_conn_ctx_t *conn, const char *mod_name, off_t inv_dep_mod_name)
+sr_shmmod_add_inv_dep(sr_conn_ctx_t *conn, const char *mod_name, off_t inv_dep_mod_name, off_t *shm_end)
 {
     sr_error_info_t *err_info = NULL;
     off_t *shm_inv_deps, inv_deps_off, shm_mod_off;
@@ -761,8 +761,8 @@ sr_shmmod_add_inv_dep(sr_conn_ctx_t *conn, const char *mod_name, off_t inv_dep_m
     shm_mod_off = ((char *)shm_mod) - conn->main_shm.addr;
 
     /* moving all existing inv data deps (if any) and adding a new one */
-    inv_deps_off = conn->main_shm.size;
-    new_shm_size = conn->main_shm.size + (shm_mod->inv_data_dep_count + 1) * sizeof(off_t);
+    inv_deps_off = *shm_end;
+    new_shm_size = inv_deps_off + (shm_mod->inv_data_dep_count + 1) * sizeof(off_t);
 
     /* remap main SHM */
     if ((err_info = sr_shm_remap(&conn->main_shm, new_shm_size))) {
@@ -783,5 +783,6 @@ sr_shmmod_add_inv_dep(sr_conn_ctx_t *conn, const char *mod_name, off_t inv_dep_m
     shm_inv_deps[i] = inv_dep_mod_name;
 
     ++shm_mod->inv_data_dep_count;
+    *shm_end += shm_mod->inv_data_dep_count * sizeof(off_t);
     return NULL;
 }

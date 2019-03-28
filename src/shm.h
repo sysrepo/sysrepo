@@ -414,21 +414,19 @@ sr_error_info_t *sr_shmmain_deferred_del_module(sr_conn_ctx_t *conn, const char 
  * @brief Schedule module update to persistent internal data.
  *
  * @param[in] conn Connection to use.
- * @param[in] mod_name Module name to update.
- * @param[in] rev Revision of the update module.
+ * @param[in] ly_upd_mod Update module.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_deferred_upd_module(sr_conn_ctx_t *conn, const char *mod_name, const char *rev);
+sr_error_info_t *sr_shmmain_deferred_upd_module(sr_conn_ctx_t *conn, const struct lys_module *ly_upd_mod);
 
 /**
  * @brief Unschedule module update from persistent internal data.
  *
  * @param[in] conn Connection to use.
  * @param[in] mod_name Module name to be updated.
- * @param[out] revision Revision the module was supposed to be updated to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_unsched_upd_module(sr_conn_ctx_t *conn, const char *mod_name, char **revision);
+sr_error_info_t *sr_shmmain_unsched_upd_module(sr_conn_ctx_t *conn, const char *mod_name);
 
 /**
  * @brief Schedule a feature change (enable/disable) into persistent internal data.
@@ -589,9 +587,10 @@ sr_error_info_t *sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *m
  * @param[in] conn Connection to use.
  * @param[in] mod_name Name of the module to add inverse dependency into.
  * @param[in] inv_dep_mod_name Name offset of the module to be added as inverse dep into \p mod_name.
+ * @param[in,out] shm_end Current main SHM end (will not be equal to size if main SHM was premapped), is updated.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_add_inv_dep(sr_conn_ctx_t *conn, const char *mod_name, off_t inv_dep_mod_name);
+sr_error_info_t *sr_shmmod_add_inv_dep(sr_conn_ctx_t *conn, const char *mod_name, off_t inv_dep_mod_name, off_t *shm_end);
 
 /*
  * Subscription SHM functions.

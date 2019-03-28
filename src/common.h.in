@@ -475,22 +475,29 @@ void sr_clear_sess(sr_session_ctx_t *tmp_sess);
 sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
 
 /**
+ * @brief Create (print) YANG module file.
+ *
+ * @param[in] ly_mod Module to print.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_store_module_file(const struct lys_module *ly_mod);
+
+/**
  * @brief Create all module files (YANG module, running file, starutp file) for a module and its imports.
  * Internal and not-implemented modules are handled correctly.
  *
- * @param[in] mod libyang module.
+ * @param[in] ly_mod Module to create files for.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_create_module_files_with_imps_r(const struct lys_module *mod);
+sr_error_info_t *sr_create_module_files_with_imps_r(const struct lys_module *ly_mod);
 
 /**
- * @brief Create all module files ready for an update (YANG module) and its imports.
+ * @brief Create all update module import files.
  *
- * @param[in] mod libyang module.
- * @param[in] first_upd_module Whether this is the first (not only import) update module and should be named specially.
+ * @param[in] ly_mod libyang module.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_create_module_update_files_with_imps_r(const struct lys_module *mod, int first_upd_module);
+sr_error_info_t *sr_create_module_update_imps_r(const struct lys_module *ly_mod);
 
 /**
  * @brief Get the path to a subscription SHM.
@@ -570,11 +577,10 @@ sr_error_info_t *sr_path_notif_file(const char *mod_name, time_t from_ts, time_t
  *
  * @param[in] mod_name Module name.
  * @param[in] mod_rev Module revision.
- * @param[in] update_prefix Whether this is an update module.
  * @param[out] path Created path.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, int update_prefix, char **path);
+sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path);
 
 /**
  * @brief Get the UID of a user or vice versa.
@@ -918,5 +924,34 @@ size_t sr_xpath_len_no_predicates(const char *xpath);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
+
+/**
+ * @brief Unlink data of a specific module from a data tree.
+ *
+ * @param[in,out] data Data tree.
+ * @param[in] ly_mod libyang module of interest.
+ * @return Unlinked data tree.
+ */
+struct lyd_node *sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod);
+
+/**
+ * @brief Append configuration data for a specific module.
+ *
+ * @param[in] ly_mod Module to process.
+ * @param[in] ds Datastore.
+ * @param[in,out] data Data tree to append to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_module_config_data_append(const struct lys_module *ly_mod, sr_datastore_t ds, struct lyd_node **data);
+
+/**
+ * @brief Set persistent configuration data for a specific module.
+ *
+ * @param[in] mod_name Module name.
+ * @param[in] ds Target datastore
+ * @param[in] mod_data Module configuration data.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data);
 
 #endif

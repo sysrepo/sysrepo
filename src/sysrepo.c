@@ -3313,12 +3313,12 @@ sr_update_module(sr_conn_ctx_t *conn, const char *module_path, const char *searc
     }
 
     /* schedule module update */
-    if ((err_info = sr_shmmain_deferred_upd_module(conn, upd_ly_mod->name, upd_ly_mod->rev[0].date))) {
+    if ((err_info = sr_shmmain_deferred_upd_module(conn, upd_ly_mod))) {
         goto cleanup_unlock;
     }
 
     /* store update module and any imports */
-    if ((err_info = sr_create_module_update_files_with_imps_r(upd_ly_mod, 1))) {
+    if ((err_info = sr_create_module_update_imps_r(upd_ly_mod))) {
         goto cleanup_unlock;
     }
 
@@ -3338,7 +3338,7 @@ sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
-    char *rev = NULL, *path = NULL;
+    char *path = NULL;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
 
@@ -3360,16 +3360,7 @@ sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name)
     }
 
     /* unschedule module update */
-    if ((err_info = sr_shmmain_unsched_upd_module(conn, module_name, &rev))) {
-        goto cleanup_unlock;
-    }
-
-    /* remove update module file */
-    if ((err_info = sr_path_yang_file(module_name, rev, 1, &path))) {
-        goto cleanup_unlock;
-    }
-    if (unlink(path) == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "unlink");
+    if ((err_info = sr_shmmain_unsched_upd_module(conn, module_name))) {
         goto cleanup_unlock;
     }
 
@@ -3379,7 +3370,6 @@ cleanup_unlock:
     /* SHM WRITE UNLOCK */
     sr_shmmain_unlock(conn, 1, 0);
 
-    free(rev);
     free(path);
     return sr_api_ret(NULL, err_info);
 }

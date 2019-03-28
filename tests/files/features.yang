@@ -2,6 +2,10 @@ module features {
     namespace "urn:features";
     prefix feat;
 
+    import test {
+        prefix t;
+    }
+
     feature feat1;
 
     leaf l1 {
@@ -10,7 +14,9 @@ module features {
 
     leaf l2 {
         if-feature feat1;
-        type string;
+        type leafref {
+            path "/t:test-leaf";
+        }
     }
 
     leaf l3 {

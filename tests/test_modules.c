@@ -366,7 +366,7 @@ test_change_feature(void **state)
     ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* install features with feat1 */
+    /* install features with feat1 (will also install test) */
     ret = sr_install_module(st->conn, TESTS_DIR "/files/features.yang", TESTS_DIR "/files", &en_feat, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -374,13 +374,22 @@ test_change_feature(void **state)
     "<module xmlns=\"urn:sysrepo\">"
         "<name>features</name>"
         "<enabled-feature>feat1</enabled-feature>"
+        "<data-deps><module>test</module></data-deps>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "test",
+    "<module xmlns=\"urn:sysrepo\">"
+        "<name>test</name>"
+        "<inverse-data-deps>features</inverse-data-deps>"
     "</module>"
     );
 
     /* set all data */
+    ret = sr_set_item_str(sess, "/test:test-leaf", "2", 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/features:l1", "val1", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/features:l2", "val2", 0);
+    ret = sr_set_item_str(sess, "/features:l2", "2", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/features:l3", "val3", 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -397,8 +406,10 @@ test_change_feature(void **state)
     ret = unlink("/dev/shm/sr_main");
     assert_int_equal(ret, 0);
 
-    /* recreate connection */
+    /* recreate connection and session */
     ret = sr_connect("test1", 0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check that the feature was not disabled */
@@ -410,17 +421,44 @@ test_change_feature(void **state)
             "<name>feat1</name>"
             "<change>disable</change>"
         "</changed-feature>"
+        "<data-deps><module>test</module></data-deps>"
     "</module>"
     );
 
-    /* unschedule disabling */
-    ret = sr_enable_module_feature(st->conn, "features", "feat1");
+    /* remove the conditional data */
+    ret = sr_delete_item(sess, "/features:l2", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_enable_module_feature(st->conn, "features", "feat1");
-    assert_int_equal(ret, SR_ERR_EXISTS);
+    ret = sr_apply_changes(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* close connection (also frees session), remove main shared memory so that changes are applied */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = unlink("/dev/shm/sr_main");
+    assert_int_equal(ret, 0);
+
+    /* recreate connection, session not needed anymore */
+    ret = sr_connect("test1", 0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check that the feature was disabled and dependency removed */
+    cmp_int_data(st->conn, "features",
+    "<module xmlns=\"urn:sysrepo\">"
+        "<name>features</name>"
+    "</module>"
+    );
+
+    /* check that the inverse dependency was removed */
+    cmp_int_data(st->conn, "test",
+    "<module xmlns=\"urn:sysrepo\">"
+        "<name>test</name>"
+    "</module>"
+    );
 
     /* cleanup */
     ret = sr_remove_module(st->conn, "features");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "test");
     assert_int_equal(ret, SR_ERR_OK);
 }
 
