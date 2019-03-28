@@ -49,6 +49,14 @@ sr_get_repo_path(void)
     return SR_REPO_PATH;
 }
 
+/**
+ * @brief Allocate a new connection structure.
+ *
+ * @param[in] app_name Application name.
+ * @param[in] opts Connection options.
+ * @param[out] conn_p Allocated connection.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_conn_new(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 {
@@ -175,6 +183,14 @@ sr_disconnect(sr_conn_ctx_t *conn)
     free(conn);
 }
 
+/**
+ * @brief Add a generic pointer to an array.
+ *
+ * @param[in,out] ptrs Pointer array to enlarge.
+ * @param[in,out] ptr_count Pointer array count.
+ * @param[in] add_ptr Pointer to add.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_conn_ptr_add(void ***ptrs, uint32_t *ptr_count, void *add_ptr)
 {
@@ -194,6 +210,13 @@ sr_conn_ptr_add(void ***ptrs, uint32_t *ptr_count, void *add_ptr)
     return NULL;
 }
 
+/**
+ * @brief Delete a generic pointer from an array.
+ *
+ * @param[in,out] ptrs Pointer array to delete from.
+ * @param[in,out] ptr_count Pointer array count.
+ * @param[in] del_ptr Pointer to delete.
+ */
 static void
 sr_conn_ptr_del(void ***ptrs, uint32_t *ptr_count, void *del_ptr)
 {
@@ -204,12 +227,12 @@ sr_conn_ptr_del(void ***ptrs, uint32_t *ptr_count, void *del_ptr)
     for (i = 0; i < *ptr_count; ++i) {
         if ((*ptrs)[i] == del_ptr) {
             if (i < *ptr_count - 1) {
-                /* this session was not the last, move the last in its place */
+                /* this item was not the last, move the last in its place */
                 (*ptrs)[i] = (*ptrs)[*ptr_count - 1];
             }
             --(*ptr_count);
             if (!*ptr_count) {
-                /* there are no more sessions */
+                /* there are no more items */
                 free(*ptrs);
                 *ptrs = NULL;
             }
@@ -741,6 +764,19 @@ sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value,
     return sr_set_item_str(session, xpath, str_val, opts);
 }
 
+/**
+ * @brief Add an edit (add/delete/move) operation into session.
+ *
+ * @param[in] session Session to use.
+ * @param[in] xpath XPath of the change.
+ * @param[in] value Value of the change.
+ * @param[in] operation Operation.
+ * @param[in] def_operation Default operation.
+ * @param[in] position Optional position for move.
+ * @param[in] keys Optional list keys predicate of relative item for move.
+ * @param[in] val Optional value of relative item for move.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_edit_item(sr_session_ctx_t *session, const char *xpath, const char *value, const char *operation,
         const char *def_operation, const sr_move_position_t *position, const char *keys, const char *val)
@@ -1118,6 +1154,15 @@ sr_discard_changes(sr_session_ctx_t *session)
     return sr_api_ret(session, NULL);
 }
 
+/**
+ * @brief Replace configuration of all or some modules.
+ *
+ * @param[in] session Session to use.
+ * @param[in] ly_mod Optional specific module.
+ * @param[in] src_data Source data for the replace, they are spent.
+ * @param[in] dst_datastore Destination datastore.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, struct lyd_node **src_data,
         sr_datastore_t dst_datastore)
@@ -1321,6 +1366,14 @@ cleanup_shm_unlock:
     return sr_api_ret(session, err_info);
 }
 
+/**
+ * @brief (Un)lock datastore locks.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] lock Whether to lock or unlock.
+ * @param[in] sid Sysrepo session ID.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
 {
@@ -1373,6 +1426,14 @@ error:
     return err_info;
 }
 
+/**
+ * @brief (Un)lock a specific or all modules datastore locks.
+ *
+ * @param[in] session Session to use.
+ * @param[in] module_name Optional specific module.
+ * @param[in] lock Whether to lock or unlock.
+ * @return err_code (SR_ERR_OK on success).
+ */
 static int
 _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock)
 {
@@ -1444,6 +1505,16 @@ sr_unlock(sr_session_ctx_t *session, const char *module_name)
     return _sr_un_lock(session, module_name, 0);
 }
 
+/**
+ * @brief Perform enabled event on a subscription.
+ *
+ * @param[in] session Session to use.
+ * @param[in] ly_mod Specific module.
+ * @param[in] xpath Optional subscription xpath.
+ * @param[in] callback Callback to call.
+ * @param[in] private_data Arbitrary callback data.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struct lys_module *ly_mod, const char *xpath,
         sr_module_change_cb callback, void *private_data)
@@ -1535,6 +1606,13 @@ cleanup_mods_unlock:
     return err_info;
 }
 
+/**
+ * @brief Allocate and start listening on a new subscription.
+ *
+ * @param[in] conn Connection to use.
+ * @param[out] subs_p Allocated subscription.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_subs_new(sr_conn_ctx_t *conn, sr_subscription_ctx_t **subs_p)
 {
@@ -1561,6 +1639,12 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscription_ctx_t **subs_p)
     return NULL;
 }
 
+/**
+ * @brief Defragment main SHM if needed.
+ *
+ * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_check_main_shm_defrag(sr_conn_ctx_t *conn)
 {
@@ -1839,6 +1923,15 @@ error:
     return sr_api_ret(session, err_info);
 }
 
+/**
+ * @brief Transform libyang node into sysrepo value.
+ *
+ * @param[in] node libyang node.
+ * @param[in] llist_value_str Optional value to override.
+ * @param[in] keys_predicate Optional keys predicate to override.
+ * @param[out] sr_val_p Transformed sysrepo value.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_lyd_node2sr_val(const struct lyd_node *node, const char *llist_value_str, const char *keys_predicate, sr_val_t **sr_val_p)
 {
@@ -2197,6 +2290,18 @@ sr_free_change_iter(sr_change_iter_t *iter)
     free(iter);
 }
 
+/**
+ * @brief Subscribe to an RPC/action.
+ *
+ * @param[in] session Session to use.
+ * @param[in] xpath XPath to subscribe to.
+ * @param[in] callback Callback.
+ * @param[in] tree_callback Tree callback.
+ * @param[in] private_data Arbitrary callback data.
+ * @param[in] opts Subscription options.
+ * @param[out] subscription Subscription structure.
+ * @return err_code (SR_ERR_OK on success).
+ */
 static int
 _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, sr_rpc_tree_cb tree_callback,
         void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
@@ -2375,6 +2480,14 @@ cleanup:
     return sr_api_ret(session, err_info);
 }
 
+/**
+ * @brief Find an RPC/action subscriber.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] rpc RPC/action received.
+ * @param[out] xpath RPC/action xpath.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_rpc_find_subscriber(sr_conn_ctx_t *conn, const struct lys_node *rpc, char **xpath)
 {
@@ -2550,6 +2663,21 @@ cleanup_shm_unlock:
     return sr_api_ret(session, err_info);
 }
 
+/**
+ * @brief Subscribe to a notification.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] ly_mod Notification module.
+ * @param[in] xpath XPath to subscribe to.
+ * @param[in] start_time Optional subscription start time.
+ * @param[in] stop_time Optional subscription stop time.
+ * @param[in] callback Callback.
+ * @param[in] tree_callback Tree callback.
+ * @param[in] private_data Arbitrary callback data.
+ * @param[in] opts Subscription options.
+ * @param[out] subscription Subscription structure.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, const char *xpath, time_t start_time,
         time_t stop_time, sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback, void *private_data,
@@ -3054,6 +3182,14 @@ sr_get_context(sr_conn_ctx_t *conn)
     return conn->ly_ctx;
 }
 
+/**
+ * @brief Learn YANG module name and format.
+ *
+ * @param[in] module_path Path to the module file.
+ * @param[out] module_name Name of the module.
+ * @param[out] format Module format.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_get_module_name_format(const char *module_path, char **module_name, LYS_INFORMAT *format)
 {
@@ -3090,6 +3226,15 @@ sr_get_module_name_format(const char *module_path, char **module_name, LYS_INFOR
     return NULL;
 }
 
+/**
+ * @brief Parse a YANG module.
+ *
+ * @param[in] ly_ctx Context to use.
+ * @param[in] module_path Path to the module file.
+ * @param[in] format Module format.
+ * @param[in] search_dir Optional search directory.
+ * @return err_info, NULL on success.
+ */
 static const struct lys_module *
 sr_parse_module(struct ly_ctx *ly_ctx, const char *module_path, LYS_INFORMAT format, const char *search_dir)
 {
@@ -3513,6 +3658,15 @@ cleanup_unlock:
     return sr_api_ret(NULL, err_info);
 }
 
+/**
+ * @brief En/disable module feature.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Module to change.
+ * @param[in] feature_name Feature to change.
+ * @param[in] enable Whether to enable or disable the feature.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int enable)
 {
