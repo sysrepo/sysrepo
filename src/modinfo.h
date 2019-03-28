@@ -51,7 +51,6 @@ struct sr_mod_info_s {
         const struct lys_module *ly_mod;    /**< Module libyang structure. */
 
         uint32_t event_id;      /**< Event ID of the published event. */
-        sr_shm_t shm_sub_cache; /**< Opened subscription SHM that published the event. */
     } *mods;                    /**< Relevant modules. */
     uint32_t mod_count;         /**< Modules count. */
 };

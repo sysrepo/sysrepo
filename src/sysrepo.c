@@ -171,7 +171,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
         close(conn->main_shm_create_lock);
     }
     pthread_mutex_destroy(&conn->main_shm_remap_lock);
-    sr_shm_destroy(&conn->main_shm);
+    sr_shm_clear(&conn->main_shm);
     free(conn);
 }
 

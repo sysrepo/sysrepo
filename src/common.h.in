@@ -142,6 +142,9 @@ typedef struct sr_mod_s sr_mod_t;
 
 typedef struct sr_mod_data_dep_s sr_mod_data_dep_t;
 
+/** static initializer of the shared memory structure */
+#define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
+
 /**
  * @brief Generic shared memory information structure.
  */
@@ -250,7 +253,6 @@ struct sr_subscription_ctx_s {
         } *subs;                    /**< Configuration change subscriptions for each XPath. */
         uint32_t sub_count;         /**< Configuration change module XPath subscription count. */
 
-        struct lyd_node *last_change_diff;  /**< Last change event cached diff. */
         sr_shm_t sub_shm;           /**< Subscription SHM. */
     } *conf_subs;                   /**< Configuration change subscriptions for each module. */
     uint32_t conf_sub_count;        /**< Configuration change module subscription count. */
@@ -641,11 +643,11 @@ void sr_time_get(struct timespec *ts, uint32_t add_ms);
 sr_error_info_t *sr_shm_remap(sr_shm_t *shm, size_t new_shm_size);
 
 /**
- * @brief Destroy a SHM structure.
+ * @brief Clear a SHM structure.
  *
- * @param[in] shm SHM structure to destroy.
+ * @param[in] shm SHM structure to clear.
  */
-void sr_shm_destroy(sr_shm_t *shm);
+void sr_shm_clear(sr_shm_t *shm);
 
 /**
  * @brief Copy memory into SHM.

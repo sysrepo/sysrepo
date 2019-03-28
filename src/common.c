@@ -118,7 +118,7 @@ error_unlock:
         free(mem[i]);
     }
     if (conf_sub) {
-        sr_shm_destroy(&conf_sub->sub_shm);
+        sr_shm_clear(&conf_sub->sub_shm);
     }
     if (mem[1]) {
         --subs->conf_sub_count;
@@ -168,8 +168,7 @@ sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
                 /* no other subscriptions for this module, replace it with the last */
                 free(conf_sub->module_name);
                 free(conf_sub->subs);
-                lyd_free_withsiblings(conf_sub->last_change_diff);
-                sr_shm_destroy(&conf_sub->sub_shm);
+                sr_shm_clear(&conf_sub->sub_shm);
                 if (i < subs->conf_sub_count - 1) {
                     memcpy(conf_sub, &subs->conf_subs[subs->conf_sub_count - 1], sizeof *conf_sub);
                 }
@@ -304,7 +303,7 @@ sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *su
 
             /* found our subscription, replace it with the last */
             free(dp_sub->subs[j].xpath);
-            sr_shm_destroy(&dp_sub->subs[j].sub_shm);
+            sr_shm_clear(&dp_sub->subs[j].sub_shm);
             if (j < dp_sub->sub_count - 1) {
                 memcpy(&dp_sub->subs[j], &dp_sub->subs[dp_sub->sub_count - 1], sizeof *dp_sub->subs);
             }
@@ -411,7 +410,7 @@ sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs)
 
         /* found our subscription, replace it with the last */
         free(rpc_sub->xpath);
-        sr_shm_destroy(&rpc_sub->sub_shm);
+        sr_shm_clear(&rpc_sub->sub_shm);
         if (i < subs->rpc_sub_count - 1) {
             memcpy(&rpc_sub, &subs->rpc_subs[subs->rpc_sub_count - 1], sizeof *rpc_sub);
         }
@@ -520,7 +519,7 @@ error_unlock:
     }
     if (mem[1]) {
         --subs->notif_sub_count;
-        sr_shm_destroy(&notif_sub->sub_shm);
+        sr_shm_clear(&notif_sub->sub_shm);
     }
     return err_info;
 }
@@ -569,7 +568,7 @@ sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, tim
             if (!notif_sub->sub_count) {
                 /* no other subscriptions for this module, replace it with the last */
                 free(notif_sub->module_name);
-                sr_shm_destroy(&notif_sub->sub_shm);
+                sr_shm_clear(&notif_sub->sub_shm);
                 free(notif_sub->subs);
                 if (i < subs->notif_sub_count - 1) {
                     memcpy(notif_sub, &subs->notif_subs[subs->notif_sub_count - 1], sizeof *notif_sub);
@@ -640,10 +639,9 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
         /* free dynamic memory */
         free(conf_subs->module_name);
         free(conf_subs->subs);
-        lyd_free_withsiblings(conf_subs->last_change_diff);
 
         /* remove specific SHM segment */
-        sr_shm_destroy(&conf_subs->sub_shm);
+        sr_shm_clear(&conf_subs->sub_shm);
     }
     free(subs->conf_subs);
 
@@ -669,7 +667,7 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
             free(dp_sub->subs[j].xpath);
 
             /* remove specific SHM segment */
-            sr_shm_destroy(&dp_sub->subs[j].sub_shm);
+            sr_shm_clear(&dp_sub->subs[j].sub_shm);
         }
 
         /* free dynamic memory */
@@ -703,7 +701,7 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
         free(subs->rpc_subs[i].xpath);
 
         /* remove specific SHM segment */
-        sr_shm_destroy(&subs->rpc_subs[i].sub_shm);
+        sr_shm_clear(&subs->rpc_subs[i].sub_shm);
     }
     free(subs->rpc_subs);
 
@@ -736,7 +734,7 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
         free(notif_sub->subs);
 
         /* remove specific SHM segment */
-        sr_shm_destroy(&notif_sub->sub_shm);
+        sr_shm_clear(&notif_sub->sub_shm);
     }
     free(subs->notif_subs);
 
@@ -1551,14 +1549,17 @@ sr_shm_remap(sr_shm_t *shm, size_t new_shm_size)
 }
 
 void
-sr_shm_destroy(sr_shm_t *shm)
+sr_shm_clear(sr_shm_t *shm)
 {
     if (shm->addr) {
         munmap(shm->addr, shm->size);
+        shm->addr = NULL;
     }
     if (shm->fd > -1) {
         close(shm->fd);
+        shm->fd = -1;
     }
+    shm->size = 0;
 }
 
 off_t

@@ -68,7 +68,6 @@ sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *ly_mod, int mod_t
         mod_info->mods[cur_i].shm_mod = shm_mod;
         mod_info->mods[cur_i].state = mod_type;
         mod_info->mods[cur_i].ly_mod = ly_mod;
-        mod_info->mods[cur_i].shm_sub_cache.fd = -1;
     }
 
     if (!(mod_req_deps & MOD_INFO_DEP) || (mod_info->mods[cur_i].state < MOD_INFO_INV_DEP)) {
@@ -1327,8 +1326,6 @@ cleanup:
 void
 sr_modinfo_free(struct sr_mod_info_s *mod_info)
 {
-    uint32_t i;
-
     lyd_free_withsiblings(mod_info->diff);
     if (mod_info->data_cached) {
         mod_info->data_cached = 0;
@@ -1337,15 +1334,6 @@ sr_modinfo_free(struct sr_mod_info_s *mod_info)
         sr_rwunlock(&mod_info->conn->mod_cache.lock, 0);
     } else {
         lyd_free_withsiblings(mod_info->data);
-    }
-
-    for (i = 0; i < mod_info->mod_count; ++i) {
-        if (mod_info->mods[i].shm_sub_cache.addr) {
-            munmap(mod_info->mods[i].shm_sub_cache.addr, mod_info->mods[i].shm_sub_cache.size);
-        }
-        if (mod_info->mods[i].shm_sub_cache.fd > -1) {
-            close(mod_info->mods[i].shm_sub_cache.fd);
-        }
     }
 
     free(mod_info->mods);
