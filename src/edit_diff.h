@@ -113,4 +113,13 @@ sr_error_info_t *sr_edit_add(sr_session_ctx_t *session, const char *xpath, const
  */
 sr_error_info_t *sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, sr_change_oper_t *op);
 
+/**
+ * @brief Reverse diff changes from change event for abort event.
+ *
+ * @param[in] diff Original diff.
+ * @param[out] reverse_diff Reversed diff.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_diff_reverse(const struct lyd_node *diff, struct lyd_node **reverse_diff);
+
 #endif

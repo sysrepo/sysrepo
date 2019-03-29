@@ -307,7 +307,6 @@ struct sr_subscription_ctx_s {
 struct sr_change_iter_s {
     struct ly_set *set;             /**< Set of all the selected diff nodes. */
     uint32_t idx;                   /**< Index of the next change. */
-    int reverse_changes;            /**< Whether the changes should be reversed (for ::SR_EV_ABORT event). */
 };
 
 /*

@@ -1910,11 +1910,6 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
     (*iter)->set = lyd_find_path(session->dt[session->ds].diff, xpath);
     SR_CHECK_MEM_GOTO(!(*iter)->set, err_info, error);
     (*iter)->idx = 0;
-    if (session->ev == SR_SUB_EV_ABORT) {
-        (*iter)->reverse_changes = 1;
-    } else {
-        (*iter)->reverse_changes = 0;
-    }
 
     return sr_api_ret(session, NULL);
 
@@ -2148,7 +2143,7 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
     sr_error_info_t *err_info = NULL;
     struct lyd_attr *attr, *attr2;
     struct lyd_node *node;
-    const char *attr_name, *attr_mod_name;
+    const char *attr_name;
     sr_change_oper_t op;
 
     SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !iter || !operation || !old_value || !new_value,
@@ -2162,15 +2157,6 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
     if (!node) {
         /* no more changes */
         return SR_ERR_NOT_FOUND;
-    }
-
-    if (iter->reverse_changes) {
-        /* we are in an abort */
-        if (op == SR_OP_CREATED) {
-            op = SR_OP_DELETED;
-        } else if (op == SR_OP_DELETED) {
-            op = SR_OP_CREATED;
-        }
     }
 
     /* create values */
@@ -2202,54 +2188,28 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
              attr2 && (strcmp(attr2->annotation->module->name, SR_YANG_MOD) || strcmp(attr2->name, "orig-dflt"));
              attr2 = attr2->next);
 
-        if (iter->reverse_changes) {
-            if ((err_info = sr_lyd_node2sr_val(node, NULL, NULL, old_value))) {
-                return sr_api_ret(session, err_info);
-            }
-            if ((err_info = sr_lyd_node2sr_val(node, attr->value_str, NULL, new_value))) {
-                return sr_api_ret(session, err_info);
-            }
-            if (attr2) {
-                (*new_value)->dflt = 1;
-            } else {
-                (*new_value)->dflt = 0;
-            }
+        if ((err_info = sr_lyd_node2sr_val(node, attr->value_str, NULL, old_value))) {
+            return sr_api_ret(session, err_info);
+        }
+        if (attr2) {
+            (*old_value)->dflt = 1;
         } else {
-            if ((err_info = sr_lyd_node2sr_val(node, attr->value_str, NULL, old_value))) {
-                return sr_api_ret(session, err_info);
-            }
-            if (attr2) {
-                (*old_value)->dflt = 1;
-            } else {
-                (*old_value)->dflt = 0;
-            }
-            if ((err_info = sr_lyd_node2sr_val(node, NULL, NULL, new_value))) {
-                return sr_api_ret(session, err_info);
-            }
+            (*old_value)->dflt = 0;
+        }
+        if ((err_info = sr_lyd_node2sr_val(node, NULL, NULL, new_value))) {
+            return sr_api_ret(session, err_info);
         }
         break;
     case SR_OP_MOVED:
         if (node->schema->nodetype == LYS_LEAFLIST) {
-            if (iter->reverse_changes) {
-                attr_mod_name = SR_YANG_MOD;
-                attr_name = "orig-value";
-            } else {
-                attr_mod_name = "yang";
-                attr_name = "value";
-            }
+            attr_name = "value";
         } else {
             assert(node->schema->nodetype == LYS_LIST);
-            if (iter->reverse_changes) {
-                attr_mod_name = SR_YANG_MOD;
-                attr_name = "orig-key";
-            } else {
-                attr_mod_name = "yang";
-                attr_name = "key";
-            }
+            attr_name = "key";
         }
         /* attribute contains the value of the node before in the order */
         for (attr = node->attr;
-             attr && (strcmp(attr->annotation->module->name, attr_mod_name) || strcmp(attr->name, attr_name));
+             attr && (strcmp(attr->annotation->module->name, "yang") || strcmp(attr->name, attr_name));
              attr = attr->next);
         if (!attr) {
             SR_ERRINFO_INT(&err_info);

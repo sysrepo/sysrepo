@@ -836,6 +836,7 @@ sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 {
     sr_error_info_t *err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
+    struct lyd_node *abort_diff;
     struct sr_mod_info_mod_s *mod;
     uint32_t i, cur_priority, subscriber_count, diff_lyb_len;
     sr_sub_event_t event;
@@ -898,10 +899,17 @@ sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 
         /* prepare the diff to write into subscription SHM */
         if (!diff_lyb) {
-            if (lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYP_WITHSIBLINGS)) {
-                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-                return err_info;
+            /* first reverse change diff for abort */
+            if ((err_info = sr_diff_reverse(mod_info->diff, &abort_diff))) {
+                goto cleanup;
             }
+
+            if (lyd_print_mem(&diff_lyb, abort_diff, LYD_LYB, LYP_WITHSIBLINGS)) {
+                lyd_free_withsiblings(abort_diff);
+                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+                goto cleanup;
+            }
+            lyd_free_withsiblings(abort_diff);
             diff_lyb_len = lyd_lyb_data_length(diff_lyb);
         }
 

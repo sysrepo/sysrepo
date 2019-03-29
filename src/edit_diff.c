@@ -2720,3 +2720,161 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
     *node = NULL;
     return NULL;
 }
+
+sr_error_info_t *
+sr_diff_reverse(const struct lyd_node *diff, struct lyd_node **reverse_diff)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_ctx *ly_ctx;
+    const struct lys_module *ly_sr_mod, *ly_yang_mod;
+    struct lyd_node *root, *next, *elem;
+    struct lyd_attr *attr_op, *attr1, *attr2;
+    char *val_str = NULL;
+    const char *attr1_name, *attr2_name;
+    int dflt;
+
+    assert(diff);
+    ly_ctx = lyd_node_module(diff)->ctx;
+
+    /* duplicate diff */
+    *reverse_diff = lyd_dup_withsiblings(diff, LYD_DUP_OPT_RECURSIVE);
+    if (!*reverse_diff) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        return err_info;
+    }
+
+    /* find modules needed for later */
+    ly_sr_mod = ly_ctx_get_module(ly_ctx, SR_YANG_MOD, NULL, 1);
+    ly_yang_mod = ly_ctx_get_module(ly_ctx, "yang", NULL, 1);
+    assert(ly_sr_mod && ly_yang_mod);
+
+    LY_TREE_FOR(*reverse_diff, root) {
+        LY_TREE_DFS_BEGIN(root, next, elem) {
+            /* find operation attribute, if any */
+            LY_TREE_FOR(elem->attr, attr_op) {
+                if (!strcmp(attr_op->name, "operation")) {
+                    if (strcmp(attr_op->annotation->module->name, "ietf-netconf")) {
+                        /* we only care about basic NETCONF operations */
+                        attr_op = NULL;
+                    }
+                    break;
+                }
+            }
+
+            if (attr_op) {
+                if (!strcmp(attr_op->value_str, "create")) {
+                    /* reverse create to delete */
+                    lyd_free_attr(ly_ctx, elem, attr_op, 0);
+                    if ((err_info = sr_edit_set_oper(elem, "delete"))) {
+                        goto error;
+                    }
+                } else if (!strcmp(attr_op->value_str, "delete")) {
+                    /* reverse delete to create */
+                    lyd_free_attr(ly_ctx, elem, attr_op, 0);
+                    if ((err_info = sr_edit_set_oper(elem, "create"))) {
+                        goto error;
+                    }
+                } else if (!strcmp(attr_op->value_str, "replace")) {
+                    switch (elem->schema->nodetype) {
+                    case LYS_LEAF:
+                        /* switch leaf value for attr "orig-value", leaf dflt for "orig-dflt" and vice versa */
+                        val_str = strdup(sr_ly_leaf_value_str(elem));
+                        SR_CHECK_MEM_GOTO(!val_str, err_info, error);
+                        dflt = elem->dflt;
+
+                        attr1 = NULL;
+                        attr2 = NULL;
+                        LY_TREE_FOR(elem->attr, attr_op) {
+                            if (!strcmp(attr_op->name, "orig-value")) {
+                                assert(attr_op->annotation->module == ly_sr_mod);
+                                attr1 = attr_op;
+                            } else if (!strcmp(attr_op->name, "orig-dflt")) {
+                                assert(attr_op->annotation->module == ly_sr_mod);
+                                attr2 = attr_op;
+                            }
+                        }
+                        assert(attr1);
+
+                        /* update leaf */
+                        lyd_change_leaf((struct lyd_node_leaf_list *)elem, attr1->value_str);
+                        if (attr2) {
+                            elem->dflt = 1;
+                        }
+
+                        /* update attributes */
+                        lyd_free_attr(ly_ctx, elem, attr1, 0);
+                        lyd_free_attr(ly_ctx, elem, attr2, 0);
+                        if (!lyd_insert_attr(elem, ly_sr_mod, "orig-value", val_str)) {
+                            sr_errinfo_new_ly(&err_info, ly_ctx);
+                            goto error;
+                        }
+                        if (dflt && !lyd_insert_attr(elem, ly_sr_mod, "orig-dflt", "")) {
+                            sr_errinfo_new_ly(&err_info, ly_ctx);
+                            goto error;
+                        }
+
+                        free(val_str);
+                        val_str = NULL;
+                        break;
+                    case LYS_LEAFLIST:
+                        /* switch "orig-value" for "value" and vice versa */
+                        attr1_name = "orig-value";
+                        attr2_name = "value";
+
+                        /* fallthrough */
+                    case LYS_LIST:
+                        if (elem->schema->nodetype == LYS_LIST) {
+                            /* switch "orig-key" for "key" and vice versa */
+                            attr1_name = "orig-key";
+                            attr2_name = "key";
+                        }
+
+                        attr1 = NULL;
+                        attr2 = NULL;
+                        LY_TREE_FOR(elem->attr, attr_op) {
+                            if (!strcmp(attr_op->name, attr1_name)) {
+                                assert(attr_op->annotation->module == ly_sr_mod);
+                                attr1 = attr_op;
+                            } else if (!strcmp(attr_op->name, attr2_name)) {
+                                assert(attr_op->annotation->module == ly_yang_mod);
+                                attr2 = attr_op;
+                            }
+                        }
+                        assert(attr1 && attr2);
+
+                        val_str = strdup(attr1->value_str);
+                        SR_CHECK_MEM_GOTO(!val_str, err_info, error);
+                        lyd_free_attr(ly_ctx, elem, attr1, 0);
+                        if (!lyd_insert_attr(elem, ly_sr_mod, attr1_name, attr2->value_str)) {
+                            sr_errinfo_new_ly(&err_info, ly_ctx);
+                            goto error;
+                        }
+                        lyd_free_attr(ly_ctx, elem, attr2, 0);
+                        if (!lyd_insert_attr(elem, ly_yang_mod, attr2_name, val_str)) {
+                            sr_errinfo_new_ly(&err_info, ly_ctx);
+                            goto error;
+                        }
+
+                        free(val_str);
+                        val_str = NULL;
+                        break;
+                    default:
+                        SR_ERRINFO_INT(&err_info);
+                        goto error;
+                    }
+                }
+            }
+
+            LY_TREE_DFS_END(root, next, elem);
+        }
+    }
+
+    /* success */
+    return NULL;
+
+error:
+    free(val_str);
+    lyd_free_withsiblings(*reverse_diff);
+    *reverse_diff = NULL;
+    return err_info;
+}
