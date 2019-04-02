@@ -952,6 +952,30 @@ int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_cha
         sr_val_t **old_value, sr_val_t **new_value);
 
 /**
+ * @brief Returns the next change from the changeset of provided iterator created
+ * by ::sr_get_changes_iter call as a tree. If there is no item left, ::SR_ERR_NOT_FOUND is returned.
+ *
+ * @note Meaning of output parameters varies based on the operation:
+ * ::SR_OP_CREATED - \p node is the created node.
+ * ::SR_OP_MODIFIED - \p node is the modified node, \p prev_value is set to the previous value of the leaf,
+ * \p prev_dflt is set if the previous leaf value was the default.
+ * ::SR_OP_DELETED - \p node is the deleted node.
+ * ::SR_OP_MOVED - \p node is the moved (leaf-)list instance, for user-ordered lists either \p prev_value (leaf-list) or
+ * \p prev_list (list) is set to the preceding instance unless the node is the first, when they are set to "".
+ *
+ * @param[in] session Session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
+ * @param[in,out] iter Iterator acquired with ::sr_get_changes_iter call.
+ * @param[out] operation Type of the operation made on the returned item.
+ * @param[out] node Affected data node always with all parents, depends on the operation.
+ * @param[out] prev_value Previous value, depends on the operation.
+ * @param[out] prev_list Previous list keys predicate ("[key1='val1'][key2='val2']..."), depends on the operation.
+ * @param[out] prev_dflt Previous value default flag, depends on the operation.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_oper_t *operation,
+        const struct lyd_node **node, const char **prev_value, const char **prev_list, bool *prev_dflt);
+
+/**
  * @brief Frees ::sr_change_iter_t iterator and all memory allocated within it.
  *
  * @param[in] iter Iterator to be freed.

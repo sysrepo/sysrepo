@@ -118,10 +118,11 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
     sr_change_iter_t *iter;
-    sr_val_t *old_val, *new_val;
     struct lyd_node *subtree;
+    const struct lyd_node *node;
     char *str1;
-    const char *str2;
+    const char *str2, *prev_val, *prev_list;
+    bool prev_dflt;
     int ret;
 
     assert_int_equal(sr_session_get_nc_id(session), 52);
@@ -142,51 +143,42 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
         assert_int_equal(ret, SR_ERR_OK);
 
         /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth52']");
-
-        sr_free_val(new_val);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "interface");
 
         /* 2nd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth52']/name");
-
-        sr_free_val(new_val);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "name");
+        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "eth52");
 
         /* 3rd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth52']/enabled");
-
-        sr_free_val(new_val);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "enabled");
+        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "true");
 
         /* 4th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth52']/type");
-
-        sr_free_val(new_val);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "type");
+        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "iana-if-type:ethernetCsmacd");
 
         /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);
@@ -229,51 +221,42 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
         assert_int_equal(ret, SR_ERR_OK);
 
         /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_null(new_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth52']");
-
-        sr_free_val(old_val);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "interface");
 
         /* 2nd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_null(new_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth52']/name");
-
-        sr_free_val(old_val);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "name");
+        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "eth52");
 
         /* 3rd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_null(new_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth52']/type");
-
-        sr_free_val(old_val);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "type");
+        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "iana-if-type:ethernetCsmacd");
 
         /* 4th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_null(new_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth52']/enabled");
-
-        sr_free_val(old_val);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "enabled");
+        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "true");
 
         /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);

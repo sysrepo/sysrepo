@@ -2239,6 +2239,84 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
     return sr_api_ret(session, NULL);
 }
 
+API int
+sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_oper_t *operation,
+        const struct lyd_node **node, const char **prev_value, const char **prev_list, bool *prev_dflt)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_attr *attr, *attr2;
+    const char *attr_name;
+
+    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !iter || !operation || !node || !prev_value
+            || !prev_list || !prev_dflt, session, err_info);
+
+    *prev_value = NULL;
+    *prev_list = NULL;
+    *prev_dflt = 0;
+
+    /* get next change */
+    if ((err_info = sr_diff_set_getnext(iter->set, &iter->idx, (struct lyd_node **)node, operation))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    if (!*node) {
+        /* no more changes */
+        return SR_ERR_NOT_FOUND;
+    }
+
+    /* create values */
+    switch (*operation) {
+    case SR_OP_CREATED:
+    case SR_OP_DELETED:
+        /* nothing to do */
+        break;
+    case SR_OP_MODIFIED:
+        /* "orig-value" attribute contains the previous value */
+        for (attr = (*node)->attr;
+             attr && (strcmp(attr->annotation->module->name, SR_YANG_MOD) || strcmp(attr->name, "orig-value"));
+             attr = attr->next);
+        if (!attr) {
+            SR_ERRINFO_INT(&err_info);
+            return sr_api_ret(session, err_info);
+        }
+        *prev_value = attr->value_str;
+
+        /* "orig-dflt" is present only if the previous value was default */
+        for (attr2 = (*node)->attr;
+             attr2 && (strcmp(attr2->annotation->module->name, SR_YANG_MOD) || strcmp(attr2->name, "orig-dflt"));
+             attr2 = attr2->next);
+        if (attr2) {
+            *prev_dflt = 1;
+        }
+        break;
+    case SR_OP_MOVED:
+        if ((*node)->schema->nodetype == LYS_LEAFLIST) {
+            attr_name = "value";
+        } else {
+            assert((*node)->schema->nodetype == LYS_LIST);
+            attr_name = "key";
+        }
+
+        /* attribute contains the value (predicates) of the preceding instance in the order */
+        for (attr = (*node)->attr;
+             attr && (strcmp(attr->annotation->module->name, "yang") || strcmp(attr->name, attr_name));
+             attr = attr->next);
+        if (!attr) {
+            SR_ERRINFO_INT(&err_info);
+            return sr_api_ret(session, err_info);
+        }
+        if ((*node)->schema->nodetype == LYS_LEAFLIST) {
+            *prev_value = attr->value_str;
+        } else {
+            assert((*node)->schema->nodetype == LYS_LIST);
+            *prev_list = attr->value_str;
+        }
+        break;
+    }
+
+    return sr_api_ret(session, NULL);
+}
+
 API void
 sr_free_change_iter(sr_change_iter_t *iter)
 {
