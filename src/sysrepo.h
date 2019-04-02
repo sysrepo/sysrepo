@@ -278,11 +278,11 @@ int sr_get_error(sr_session_ctx_t *session, const sr_error_info_t **error_info);
  *
  * @param[in] session Session provided in a callback.
  * @param[in] message Human-readable error message.
- * @param[in] xpath XPath to the node where the error has occurred. NULL value
+ * @param[in] path Path of the node where the error has occurred. NULL value
  * is also accepted.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_set_error(sr_session_ctx_t *session, const char *message, const char *xpath);
+int sr_set_error(sr_session_ctx_t *session, const char *message, const char *path);
 
 /**
  * @brief Returns the assigned session ID of the sysrepo session.
@@ -451,12 +451,12 @@ typedef struct sr_val_s {
  * larger chunks, it can work much more efficiently than multiple ::sr_get_item calls.
  *
  * @param[in] session Session to use.
- * @param[in] xpath "Data Path" identifier of the data element to be retrieved.
+ * @param[in] path Path of the data element to be retrieved.
  * @param[out] value Structure containing information about requested element
  * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_val).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value);
+int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
 
 /**
  * @brief Retrieves an array of data elements matching provided XPath
@@ -467,7 +467,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value);
  * Required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath "Data Path" identifier of the data element to be retrieved.
+ * @param[in] xpath XPath of the data elements to be retrieved.
  * @param[out] values Array of structures containing information about requested data elements
  * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_values).
  * @param[out] value_cnt Number of returned elements in the values array.
@@ -487,12 +487,12 @@ int sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values
  * Required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath "Data Path" identifier referencing the root node of the subtree to be retrieved.
+ * @param[in] path Path selecting the root node of the subtree to be retrieved.
  * @param[out] subtree Nested subtree containing all data of the requested subtree
  * (allocated by the function, it is supposed to be freed by the caller).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node **subtree);
+int sr_get_subtree(sr_session_ctx_t *session, const char *path, struct lyd_node **subtree);
 
 /**
  * @brief Retrieves an array of subtrees whose root nodes match the provided XPath.
@@ -510,7 +510,7 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node
  * Required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath "Data Path" identifier referencing root nodes of subtrees to be retrieved.
+ * @param[in] xpath XPath selecting root nodes of subtrees to be retrieved.
  * @param[out] subtrees Set of nested structures storing all data of the requested subtrees
  * (allocated by the function, it is supposed to be freed by the caller).
  * @return Error code (::SR_ERR_OK on success).
@@ -577,7 +577,7 @@ typedef enum sr_move_position_e {
  *
  * With default options it recursively creates all missing nodes (containers and
  * lists including their key leaves) in the xpath to the specified node (can be
- * turned off with SR_EDIT_NON_RECURSIVE option). If SR_EDIT_STRICT flag is set,
+ * turned off with ::SR_EDIT_NON_RECURSIVE option). If ::SR_EDIT_STRICT flag is set,
  * the node must not exist (otherwise an error is returned).
  *
  * To create a list use xpath with key values included and pass NULL as value argument.
@@ -587,40 +587,40 @@ typedef enum sr_move_position_e {
  * If both are present, value argument is ignored and xpath predicate is used.
  *
  * @param[in] session Session to use.
- * @param[in] xpath "Data Path" identifier of the data element to be set.
+ * @param[in] path Path identifier of the data element to be set.
  * @param[in] value Value to be set on specified xpath. xpath member of the
  * ::sr_val_t structure can be NULL. Value will be copied - can be allocated on stack.
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value, const sr_edit_options_t opts);
+int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts);
 
 /**
  * @brief Functions is similar to ::sr_set_item with the difference that the value to be set
  * is provided as string.
  *
  * @param[in] session Session to use.
- * @param[in] xpath "Data Path" identifier of the data element to be set.
+ * @param[in] path Path identifier of the data element to be set.
  * @param[in] value String representation of the value to be set.
  * @param[in] opts Same as for ::sr_set_item.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_set_item_str(sr_session_ctx_t *session, const char *xpath, const char *value, const sr_edit_options_t opts);
+int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts);
 
 /**
  * @brief Deletes the nodes matching the specified xpath. The accepted values are the same as for
  * ::sr_set_item_str.
  *
- * If SR_EDIT_STRICT flag is set the specified node must must exist in the datastore.
+ * If ::SR_EDIT_STRICT flag is set the specified node must must exist in the datastore.
  * If the xpath includes the list keys, the specified list instance is deleted.
  * If the xpath to list does not include keys, all instances of the list are deleted.
  *
  * @param[in] session Session to use.
- * @param[in] xpath "Data Path" identifier of the data element to be deleted.
+ * @param[in] path Path identifier of the data element to be deleted.
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success).
  **/
-int sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts);
+int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts);
 
 /**
  * @brief Move the instance of an user-ordered list or leaf-list to the specified position.
@@ -630,14 +630,14 @@ int sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_o
  * (without specifying keys of the list in question).
  *
  * @param[in] session Session to use
- * @param[in] xpath "Data Path" identifier of the data element to be moved.
+ * @param[in] path Path identifier of the data element to be moved.
  * @param[in] position Requested move direction.
  * @param[in] list_keys Predicate identifying the relative list instance (example input "[key1='val1'][key2='val2']...").
  * @param[in] leaflist_value Value of the relative leaf-list instance (example input "val1").
  * to determine relative position, used only if position argument is SR_MOVE_BEFORE or SR_MOVE_AFTER.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_position_t position, const char *list_keys,
+int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
         const char *leaflist_value);
 
 /**
@@ -883,7 +883,7 @@ typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module
  *
  * @param[in] session Session to use.
  * @param[in] module_name Name of the module of interest for change notifications.
- * @param[in] xpath Optionally further filter the changes that will be handled by this subscription.
+ * @param[in] xpath Optional XPath further filtering the changes that will be handled by this subscription.
  * @param[in] callback Callback to be called when the change in the datastore occurs.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
@@ -917,8 +917,7 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  * @see ::sr_get_change_next for iterating over the changeset using this iterator.
  *
  * @param[in] session Session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
- * @param[in] xpath "Data Path" identifier of the subtree from which the changeset
- * should be obtained.
+ * @param[in] xpath XPath selecting the requested changes.
  * @param[out] iter Iterator context that can be used to retrieve individual changes using
  * ::sr_get_change_next calls. Allocated by the function, should be freed with ::sr_free_change_iter.
  * @return Error code (::SR_ERR_OK on success).
@@ -991,7 +990,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @brief Callback to be called for RPC or action specified by xpath.
  * Subscribe to it by ::sr_rpc_subscribe call.
  *
- * @param[in] xpath "Data Path" identifying the RPC/action.
+ * @param[in] path Path identifying the RPC/action.
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
  * @param[out] output Array of output parameters. Should be allocated on heap,
@@ -1000,7 +999,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe call.
  * @return Error code (::SR_ERR_OK on success).
  */
-typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
+typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_data);
 
 /**
@@ -1008,7 +1007,7 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *xpath, const sr_
  * This operates with libyang trees rather than with sysrepo values,
  * use it with ::sr_rpc_subscribe_tree and ::sr_rpc_send_tree.
  *
- * @param[in] xpath "Data Path" identifying the RPC/action.
+ * @param[in] path Path identifying the RPC/action.
  * @param[in] input Data tree of input parameters.
  * @param[out] output Data tree of output parameters. Should be allocated on heap,
  * will be freed by sysrepo after sending of the RPC response.
@@ -1024,7 +1023,7 @@ typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, const char *xpath, cons
  * Required WRITE access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath "Schema Path" identifying the RPC/action.
+ * @param[in] path Path identifying the RPC/action.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
@@ -1033,7 +1032,7 @@ typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, const char *xpath, cons
  * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, void *private_data,
+int sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callback, void *private_data,
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
@@ -1045,7 +1044,7 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  * Required WRITE access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath "Schema Path" identifying the RPC/action.
+ * @param[in] path Path identifying the RPC/action.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
@@ -1054,7 +1053,7 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_cb callback,
+int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *path, sr_rpc_tree_cb callback,
         void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
@@ -1063,7 +1062,7 @@ int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_t
  * Required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath "Data Path" identifying the RPC/action.
+ * @param[in] path Path identifying the RPC/action.
  * @param[in] input Array of input parameters (array of all nodes that hold some
  * data in RPC/action input subtree - same as ::sr_get_items would return).
  * @param[in] input_cnt Number of input parameters.
@@ -1073,7 +1072,7 @@ int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_t
  * @param[out] output_cnt Number of output parameters.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_rpc_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
+int sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt);
 
 /**
@@ -1119,7 +1118,7 @@ typedef enum sr_ev_notif_type_e {
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
  * @param[in] notif_type Type of the notification.
- * @param[in] xpath "Data Path" identifying the event notification.
+ * @param[in] path Path identifying the event notification.
  * @param[in] values Array of all nodes that hold some data in event notification subtree.
  * @param[in] values_cnt Number of items inside the values array.
  * @param[in] timestamp Time when the notification was generated
@@ -1137,7 +1136,6 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_t
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
  * @param[in] notif_type Type of the notification.
- * @param[in] xpath "Data Path" identifying the event notification.
  * @param[in] notif Notification data tree.
  * @param[in] timestamp Time when the notification was generated
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_event_notif_subscribe_tree call.
@@ -1152,7 +1150,7 @@ typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, const sr_ev_no
  *
  * @param[in] session Session to use.
  * @param[in] module_name Name of the module whose notifications to subscribe to.
- * @param[in] xpath Optional "Schema Path" identifying a single event notification.
+ * @param[in] xpath Optional XPath further filtering received notifications.
  * @param[in] start_time Optional start time of the subscription. Used for replaying stored notifications.
  * @param[in] stop_time Optional stop time ending the notification subscription.
  * @param[in] callback Callback to be called when the event notification is delivered.
@@ -1177,7 +1175,7 @@ int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name,
  *
  * @param[in] session Session to use.
  * @param[in] module_name Name of the module whose notifications to subscribe to.
- * @param[in] xpath Optional "Schema Path" identifying a single event notification.
+ * @param[in] xpath Optional XPath further filtering received notifications.
  * @param[in] start_time Optional start time of the subscription. Used for replaying stored notifications.
  * @param[in] stop_time Optional stop time ending the notification subscription.
  * @param[in] callback Callback to be called when the event notification is delivered.
@@ -1198,13 +1196,13 @@ int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_
  * Required WRITE access. If the module does not support replay, required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath "Data Path" identifying the event notification.
+ * @param[in] path Path identifying the event notification.
  * @param[in] values Array of all nodes that hold some data in event notification subtree
  * (same as ::sr_get_items would return).
  * @param[in] values_cnt Number of items inside the values array.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values, const size_t values_cnt);
+int sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt);
 
 /**
  * @brief Sends an event notification specified by xpath.
@@ -1242,7 +1240,7 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
  * @param[in] module_name Name of the affected module.
- * @param[in] xpath "Data Path" identifying the requested nodes.
+ * @param[in] xpath XPath selecting the requested nodes.
  * @param[in,out] parent Pointer to an existing parent of the requested nodes. Is NULL for top-level nodes.
  * Called is supposed to append the requested nodes to this data subtree.
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_dp_get_items_subscribe call.
@@ -1258,7 +1256,8 @@ typedef int (*sr_dp_get_items_cb)(sr_session_ctx_t *session, const char *module_
  *
  * @param[in] session Session to use.
  * @param[in] module_name Name of the affected module.
- * @param[in] xpath "Data Path" identifying the subtree which the provider is able to provide.
+ * @param[in] path Path identifying the subtree which the provider is able to provide. Predicates can be
+ * used to provide only specific instances of nodes.
  * @param[in] callback Callback to be called when the operational data for the given xpath are requested.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
@@ -1266,7 +1265,7 @@ typedef int (*sr_dp_get_items_cb)(sr_session_ctx_t *session, const char *module_
  * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path,
         sr_dp_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /** @} opsubs */

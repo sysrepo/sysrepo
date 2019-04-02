@@ -368,14 +368,14 @@ sr_get_error(sr_session_ctx_t *session, const sr_error_info_t **error_info)
 }
 
 API int
-sr_set_error(sr_session_ctx_t *session, const char *message, const char *xpath)
+sr_set_error(sr_session_ctx_t *session, const char *message, const char *path)
 {
     sr_error_info_t *err_info = NULL;
 
     SR_CHECK_ARG_APIRET(!session || ((session->ev != SR_SUB_EV_CHANGE) && (session->ev != SR_SUB_EV_UPDATE)
             && (session->ev != SR_SUB_EV_DP) && (session->ev != SR_SUB_EV_RPC)) || !message, session, err_info);
 
-    sr_errinfo_new(&err_info, SR_ERR_OK, xpath, message);
+    sr_errinfo_new(&err_info, SR_ERR_OK, path, message);
 
     /* set the error and return its return code (SR_ERR_OK) */
     return sr_api_ret(session, err_info);
@@ -471,18 +471,18 @@ sr_session_get_connection(sr_session_ctx_t *session)
 }
 
 API int
-sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value)
+sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
 {
     struct lyd_node *subtree = NULL;
     sr_error_info_t *err_info = NULL;
     int ret;
 
-    SR_CHECK_ARG_APIRET(!session || !xpath || !value, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || !value, session, err_info);
 
     *value = NULL;
 
     /* API function */
-    if ((ret = sr_get_subtree(session, xpath, &subtree)) != SR_ERR_OK) {
+    if ((ret = sr_get_subtree(session, path, &subtree)) != SR_ERR_OK) {
         return ret;
     }
 
@@ -550,14 +550,14 @@ cleanup:
 }
 
 API int
-sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node **subtree)
+sr_get_subtree(sr_session_ctx_t *session, const char *path, struct lyd_node **subtree)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     uint32_t i;
     struct sr_mod_info_s mod_info;
     struct ly_set *set = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !xpath || !subtree, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || !subtree, session, err_info);
 
     memset(&mod_info, 0, sizeof mod_info);
 
@@ -567,7 +567,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node **s
     }
 
     /* collect all required modules */
-    if ((err_info = sr_shmmod_collect_xpath(session->conn, xpath, session->ds, &mod_info))) {
+    if ((err_info = sr_shmmod_collect_xpath(session->conn, path, session->ds, &mod_info))) {
         goto cleanup_shm_unlock;
     }
 
@@ -587,7 +587,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node **s
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, xpath, session, &set))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set))) {
         goto cleanup_mods_unlock;
     }
 
@@ -595,7 +595,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *xpath, struct lyd_node **s
         for (i = 0; i < set->number; ++i) {
             lyd_free(set->set.d[i]);
         }
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "More subtrees match \"%s\".", xpath);
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "More subtrees match \"%s\".", path);
         goto cleanup_mods_unlock;
     }
 
@@ -742,20 +742,20 @@ sr_free_values(sr_val_t *values, size_t count)
 }
 
 API int
-sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value, const sr_edit_options_t opts)
+sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
     char str[22], *str_val;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !value || (!xpath && !value->xpath), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !value || (!path && !value->xpath), session, err_info);
 
     str_val = sr_val_sr2ly_str(session->conn->ly_ctx, value, str);
-    if (!xpath) {
-        xpath = value->xpath;
+    if (!path) {
+        path = value->xpath;
     }
 
     /* API function */
-    return sr_set_item_str(session, xpath, str_val, opts);
+    return sr_set_item_str(session, path, str_val, opts);
 }
 
 /**
@@ -772,12 +772,12 @@ sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value,
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_item(sr_session_ctx_t *session, const char *xpath, const char *value, const char *operation,
+sr_edit_item(sr_session_ctx_t *session, const char *path, const char *value, const char *operation,
         const char *def_operation, const sr_move_position_t *position, const char *keys, const char *val)
 {
     sr_error_info_t *err_info = NULL;
 
-    assert(session && xpath && operation);
+    assert(session && path && operation);
 
     /* SHM READ LOCK */
     if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0)) != SR_ERR_OK) {
@@ -788,7 +788,7 @@ sr_edit_item(sr_session_ctx_t *session, const char *xpath, const char *value, co
     sr_shmmain_unlock(session->conn, 0, 0);
 
     /* add the operation into edit */
-    if ((err_info = sr_edit_add(session, xpath, value, operation, def_operation, position, keys, val))) {
+    if ((err_info = sr_edit_add(session, path, value, operation, def_operation, position, keys, val))) {
         return err_info;
     }
 
@@ -796,40 +796,40 @@ sr_edit_item(sr_session_ctx_t *session, const char *xpath, const char *value, co
 }
 
 API int
-sr_set_item_str(sr_session_ctx_t *session, const char *xpath, const char *value, const sr_edit_options_t opts)
+sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !xpath, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !path, session, err_info);
 
-    err_info = sr_edit_item(session, xpath, value, opts & SR_EDIT_STRICT ? "create" : "merge",
+    err_info = sr_edit_item(session, path, value, opts & SR_EDIT_STRICT ? "create" : "merge",
             opts & SR_EDIT_NON_RECURSIVE ? "none" : "merge", NULL, NULL, NULL);
 
     return sr_api_ret(session, err_info);
 }
 
 API int
-sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts)
+sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !xpath, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !path, session, err_info);
 
-    err_info = sr_edit_item(session, xpath, NULL, opts & SR_EDIT_STRICT ? "delete" : "remove",
+    err_info = sr_edit_item(session, path, NULL, opts & SR_EDIT_STRICT ? "delete" : "remove",
             opts & SR_EDIT_STRICT ? "none" : "ether", NULL, NULL, NULL);
 
     return sr_api_ret(session, err_info);
 }
 
 API int
-sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_position_t position, const char *list_keys,
+sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
         const char *leaflist_value)
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !xpath, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !path, session, err_info);
 
-    err_info = sr_edit_item(session, xpath, NULL, "merge", "none", &position, list_keys, leaflist_value);
+    err_info = sr_edit_item(session, path, NULL, "merge", "none", &position, list_keys, leaflist_value);
 
     return sr_api_ret(session, err_info);
 }
@@ -2432,21 +2432,21 @@ error_unsubscribe:
 }
 
 API int
-sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, void *private_data,
+sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callback, void *private_data,
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
-    return _sr_rpc_subscribe(session, xpath, callback, NULL, private_data, opts, subscription);
+    return _sr_rpc_subscribe(session, path, callback, NULL, private_data, opts, subscription);
 }
 
 API int
-sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_cb callback, void *private_data,
+sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *path, sr_rpc_tree_cb callback, void *private_data,
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
-    return _sr_rpc_subscribe(session, xpath, NULL, callback, private_data, opts, subscription);
+    return _sr_rpc_subscribe(session, path, NULL, callback, private_data, opts, subscription);
 }
 
 API int
-sr_rpc_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
+sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt)
 {
     sr_error_info_t *err_info = NULL;
@@ -2461,7 +2461,7 @@ sr_rpc_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input,
     *output_cnt = 0;
 
     /* create the container */
-    if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, xpath, NULL, 0, 0, &input_tree))) {
+    if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, path, NULL, 0, 0, &input_tree))) {
         goto cleanup;
     }
 
@@ -2906,7 +2906,7 @@ sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name
 }
 
 API int
-sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values, const size_t values_cnt)
+sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *notif_tree = NULL;
@@ -2914,10 +2914,10 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t
     size_t i;
     int ret;
 
-    SR_CHECK_ARG_APIRET(!session || !xpath, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
 
     /* create the container */
-    if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, xpath, NULL, 0, 0, &notif_tree))) {
+    if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, path, NULL, 0, 0, &notif_tree))) {
         goto cleanup;
     }
 
@@ -3066,7 +3066,7 @@ cleanup_shm_unlock:
 }
 
 API int
-sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path,
         sr_dp_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL;
@@ -3077,7 +3077,7 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
     sr_mod_dp_sub_type_t sub_type;
     uint16_t i;
 
-    SR_CHECK_ARG_APIRET(!session || !module_name || !xpath || !callback || !subscription, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !module_name || !path || !callback || !subscription, session, err_info);
 
     conn = session->conn;
 
@@ -3099,14 +3099,14 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
         return sr_api_ret(session, err_info);
     }
 
-    schema_path = ly_path_data2schema(conn->ly_ctx, xpath);
+    schema_path = ly_path_data2schema(conn->ly_ctx, path);
     set = lys_find_path(mod, NULL, schema_path);
     if (!set) {
         sr_errinfo_new_ly(&err_info, conn->ly_ctx);
         sr_shmmain_unlock(conn, 1, 1);
         return sr_api_ret(session, err_info);
     } else if (!set->number) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "XPath \"%s\" does not point to any nodes.", xpath);
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "XPath \"%s\" does not point to any nodes.", path);
         sr_shmmain_unlock(conn, 1, 1);
         return sr_api_ret(session, err_info);
     }
@@ -3142,7 +3142,7 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
     }
 
     /* add DP subscription into main SHM */
-    if ((err_info = sr_shmmod_dp_subscription(conn, module_name, xpath, sub_type, 1))) {
+    if ((err_info = sr_shmmod_dp_subscription(conn, module_name, path, sub_type, 1))) {
         sr_shmmain_unlock(conn, 1, 1);
         return sr_api_ret(session, err_info);
     }
@@ -3150,14 +3150,14 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
         if ((err_info = sr_subs_new(conn, subscription))) {
-            sr_shmmod_dp_subscription(conn, module_name, xpath, SR_DP_SUB_NONE, 0);
+            sr_shmmod_dp_subscription(conn, module_name, path, SR_DP_SUB_NONE, 0);
             sr_shmmain_unlock(conn, 1, 1);
             return sr_api_ret(session, err_info);
         }
     }
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_dp_add(module_name, xpath, callback, private_data, *subscription))) {
+    if ((err_info = sr_sub_dp_add(module_name, path, callback, private_data, *subscription))) {
         sr_shmmain_unlock(conn, 1, 1);
         goto error_unsubscribe;
     }
@@ -3196,11 +3196,11 @@ error_unsubscribe:
     free(schema_path);
     ly_set_free(set);
     if (opts & SR_SUBSCR_CTX_REUSE) {
-        sr_sub_dp_del(module_name, xpath, *subscription);
+        sr_sub_dp_del(module_name, path, *subscription);
     } else {
         sr_unsubscribe(*subscription);
     }
-    sr_shmmod_dp_subscription(conn, module_name, xpath, SR_DP_SUB_NONE, 0);
+    sr_shmmod_dp_subscription(conn, module_name, path, SR_DP_SUB_NONE, 0);
     return sr_api_ret(session, err_info);
 }
 
