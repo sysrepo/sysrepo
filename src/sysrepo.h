@@ -1239,13 +1239,13 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
  * @param[in] module_name Name of the affected module.
- * @param[in] xpath XPath selecting the requested nodes.
+ * @param[in] path Path identifying the subtree that is supposed to be provided, same as the one used for the subscription.
  * @param[in,out] parent Pointer to an existing parent of the requested nodes. Is NULL for top-level nodes.
  * Called is supposed to append the requested nodes to this data subtree.
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_dp_get_items_subscribe call.
  * @return Error code (::SR_ERR_OK on success).
  */
-typedef int (*sr_dp_get_items_cb)(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+typedef int (*sr_dp_get_items_cb)(sr_session_ctx_t *session, const char *module_name, const char *path,
         struct lyd_node **parent, void *private_data);
 
 /**
