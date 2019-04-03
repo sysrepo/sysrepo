@@ -324,14 +324,14 @@ bool rp_dt_find_subscription_covering_subtree(rp_session_t *rp_session, struct l
 bool rp_dt_find_exact_match_subscription_for_node(rp_session_t *rp_session, struct lys_node *node, size_t *found_index);
 
 /**
- * @brief Function create xpath for the found instances of the schema node
+ * @brief Function create xpath for the found instances of the evaluated xpath
  * @param [in] session
- * @param [in] sch_node
+ * @param [in] xpath
  * @param [out] xps - created xpaths
  * @param [out] xp_count
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_create_instance_xps(rp_session_t *session, struct lys_node *sch_node, char ***xps, size_t *xp_count);
+int rp_dt_create_instance_xps(rp_session_t *session, const char *xpath, char ***xps, size_t *xp_count);
 
 #endif /* RP_DT_GET_H */
 

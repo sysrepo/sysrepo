@@ -906,15 +906,15 @@ rp_dt_has_parent_list(struct lys_node *node, struct lys_node **found_list, size_
 }
 
 int
-rp_dt_create_instance_xps(rp_session_t *session, struct lys_node *sch_node, char ***xps, size_t *xp_count)
+rp_dt_create_instance_xps(rp_session_t *session, const char *xpath, char ***xps, size_t *xp_count)
 {
-    CHECK_NULL_ARG4(session, sch_node, xps, xp_count);
+    CHECK_NULL_ARG4(session, xpath, xps, xp_count);
     int rc = SR_ERR_OK;
     struct ly_set *list_instances = NULL;
     char **xpaths = NULL;
 
-    rc = dm_get_nodes_by_schema(session->dm_session, session->module_name, sch_node, &list_instances);
-    CHECK_RC_MSG_RETURN(rc, "Dm_get_nodes_by_schema failed");
+    rc = dm_get_nodes_by_xpath(session->dm_session, session->module_name, xpath, &list_instances);
+    CHECK_RC_MSG_RETURN(rc, "Dm_get_nodes_by_xpath failed");
 
     xpaths = calloc(list_instances->number, sizeof(*xpaths));
     CHECK_NULL_NOMEM_GOTO(xpaths, rc, cleanup);
@@ -967,9 +967,6 @@ rp_dt_send_request_to_dp_subscription(rp_ctx_t *rp_ctx, rp_session_t *rp_session
     if (rp_dt_has_parent_list(sch_node, &parent_list, &list_depth)) {
         SR_LOG_DBG("State data is nested in configuration list %s", xp);
 
-        rc = rp_dt_create_instance_xps(rp_session, parent_list, &xpaths, &xp_cnt);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create instance xpaths for list instances");
-
         /* find the suffix in xpath after the list */
         char *ptr = xp + strlen(xp);
         while (ptr != xp && list_depth > 0) {
@@ -983,6 +980,9 @@ rp_dt_send_request_to_dp_subscription(rp_ctx_t *rp_ctx, rp_session_t *rp_session
             }
             ptr--;
         }
+
+        rc = rp_dt_create_instance_xps(rp_session, xp, &xpaths, &xp_cnt);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create instance xpaths for list instances");
 
         SR_LOG_DBG("Found %zu instances of %s , will request %s", xp_cnt, xp, ptr);
 

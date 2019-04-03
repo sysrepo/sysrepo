@@ -2477,7 +2477,7 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
 
     /* prepare xpaths where nested data will be requested */
     if (LYS_LIST == sch_node->nodetype) {
-        rc = rp_dt_create_instance_xps(session, sch_node, &xpaths, &xp_count);
+        rc = rp_dt_create_instance_xps(session, xpath, &xpaths, &xp_count);
         CHECK_RC_MSG_RETURN(rc, "Failed to create xpaths for instances of sch node");
     } else {
         xpaths = calloc(1, sizeof(*xpaths));

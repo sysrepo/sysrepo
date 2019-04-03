@@ -7357,9 +7357,9 @@ dm_lock_schema_info_write(dm_schema_info_t *schema_info)
 }
 
 int
-dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const struct lys_node *node, struct ly_set **res)
+dm_get_nodes_by_xpath(dm_session_t *session, const char *module_name, const char *xpath, struct ly_set **res)
 {
-    CHECK_NULL_ARG4(session, module_name, node, res);
+    CHECK_NULL_ARG4(session, module_name, xpath, res);
     int rc = SR_ERR_OK;
     dm_data_info_t *di = NULL;
 
@@ -7369,9 +7369,9 @@ dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const str
     if (di->node == NULL) {
         *res = ly_set_new();
     } else {
-        *res = lyd_find_instance(di->node, node);
+        *res = lyd_find_path(di->node, xpath);
         if (NULL == *res) {
-            SR_LOG_ERR("Failed to find nodes %s in module %s", node->name, module_name);
+            SR_LOG_ERR("Failed to find nodes %s in module %s", xpath, module_name);
             rc = SR_ERR_INTERNAL;
         }
     }
