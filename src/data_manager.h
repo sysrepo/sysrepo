@@ -1169,12 +1169,12 @@ int dm_lock_schema_info_write(dm_schema_info_t *schema_info);
  *
  * @param [in] session
  * @param [in] module_name - module name identifying data file
- * @param [in] node - selection node
+ * @param [in] xpath - selection xpath
  * @param [out] res - matched node
  *
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const struct lys_node *node, struct ly_set **res);
+int dm_get_nodes_by_xpath(dm_session_t *session, const char *module_name, const char *xpath, struct ly_set **res);
 
 /**
  * @brief Returns and instance of NACM context
