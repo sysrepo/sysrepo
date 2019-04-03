@@ -473,32 +473,73 @@ sr_session_get_connection(sr_session_ctx_t *session)
 API int
 sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
 {
-    struct lyd_node *subtree = NULL;
-    sr_error_info_t *err_info = NULL;
-    int ret;
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    struct ly_set *set = NULL;
+    struct sr_mod_info_s mod_info;
 
     SR_CHECK_ARG_APIRET(!session || !path || !value, session, err_info);
 
     *value = NULL;
+    memset(&mod_info, 0, sizeof mod_info);
 
-    /* API function */
-    if ((ret = sr_get_subtree(session, path, &subtree)) != SR_ERR_OK) {
-        return ret;
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* collect all required modules */
+    if ((err_info = sr_shmmod_collect_xpath(session->conn, path, session->ds, &mod_info))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* check read perm */
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 0))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* MODULES READ LOCK */
+    if ((err_info = sr_shmmod_modinfo_rdlock(&mod_info, 0, session->sid))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* load modules data */
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, &cb_err_info)) || cb_err_info) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* filter the required data */
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set))) {
+        goto cleanup_mods_unlock;
+    }
+
+    if (set->number > 1) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "More subtrees match \"%s\".", path);
+        goto cleanup_mods_unlock;
     }
 
     *value = malloc(sizeof **value);
-    SR_CHECK_MEM_GOTO(!*value, err_info, cleanup);
+    SR_CHECK_MEM_GOTO(!*value, err_info, cleanup_mods_unlock);
 
-    if ((err_info = sr_val_ly2sr(subtree, *value))) {
-        goto cleanup;
+    if ((err_info = sr_val_ly2sr(set->set.d[0], *value))) {
+        goto cleanup_mods_unlock;
     }
 
     /* success */
 
-cleanup:
-    lyd_free(subtree);
-    if (err_info) {
-        free(*value);
+cleanup_mods_unlock:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info, 0);
+
+cleanup_shm_unlock:
+    /* SHM READ UNLOCK */
+    sr_shmmain_unlock(session->conn, 0, 0);
+
+    ly_set_free(set);
+    sr_modinfo_free(&mod_info);
+    if (cb_err_info) {
+        /* return callback error if some was generated */
+        sr_errinfo_merge(&err_info, cb_err_info);
+        err_info->err_code = SR_ERR_CALLBACK_FAILED;
     }
     return sr_api_ret(session, err_info);
 }
@@ -506,41 +547,76 @@ cleanup:
 API int
 sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, size_t *value_cnt)
 {
-    struct ly_set *subtrees = NULL;
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    struct ly_set *set = NULL;
+    struct sr_mod_info_s mod_info;
     uint32_t i;
-    int ret;
 
     SR_CHECK_ARG_APIRET(!session || !xpath || !values || !value_cnt, session, err_info);
 
     *values = NULL;
     *value_cnt = 0;
+    memset(&mod_info, 0, sizeof mod_info);
 
-    /* API function */
-    if ((ret = sr_get_subtrees(session, xpath, &subtrees)) != SR_ERR_OK) {
-        return ret;
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
+        return sr_api_ret(session, err_info);
     }
 
-    if (subtrees->number) {
-        *values = malloc(subtrees->number * sizeof **values);
-        SR_CHECK_MEM_GOTO(!*values, err_info, cleanup);
+    /* collect all required modules */
+    if ((err_info = sr_shmmod_collect_xpath(session->conn, xpath, session->ds, &mod_info))) {
+        goto cleanup_shm_unlock;
     }
 
-    for (i = 0; i < subtrees->number; ++i) {
-        if ((err_info = sr_val_ly2sr(subtrees->set.d[i], (*values) + i))) {
-            goto cleanup;
+    /* check read perm */
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 0))) {
+        goto cleanup_shm_unlock;
+    }
+
+    /* MODULES READ LOCK */
+    if ((err_info = sr_shmmod_modinfo_rdlock(&mod_info, 0, session->sid))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* load modules data */
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, &cb_err_info)) || cb_err_info) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* filter the required data */
+    if ((err_info = sr_modinfo_get_filter(&mod_info, xpath, session, &set))) {
+        goto cleanup_mods_unlock;
+    }
+
+    if (set->number) {
+        *values = calloc(set->number, sizeof **values);
+        SR_CHECK_MEM_GOTO(!*values, err_info, cleanup_mods_unlock);
+    }
+
+    for (i = 0; i < set->number; ++i) {
+        if ((err_info = sr_val_ly2sr(set->set.d[i], (*values) + i))) {
+            goto cleanup_mods_unlock;
         }
         ++(*value_cnt);
     }
 
     /* success */
 
-cleanup:
-    for (i = 0; i < subtrees->number; ++i) {
-        lyd_free(subtrees->set.d[i]);
-    }
-    ly_set_free(subtrees);
+cleanup_mods_unlock:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info, 0);
 
+cleanup_shm_unlock:
+    /* SHM READ UNLOCK */
+    sr_shmmain_unlock(session->conn, 0, 0);
+
+    ly_set_free(set);
+    sr_modinfo_free(&mod_info);
+    if (cb_err_info) {
+        /* return callback error if some was generated */
+        sr_errinfo_merge(&err_info, cb_err_info);
+        err_info->err_code = SR_ERR_CALLBACK_FAILED;
+    }
     if (err_info) {
         sr_free_values(*values, *value_cnt);
         *values = NULL;
@@ -553,7 +629,6 @@ API int
 sr_get_subtree(sr_session_ctx_t *session, const char *path, struct lyd_node **subtree)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
-    uint32_t i;
     struct sr_mod_info_s mod_info;
     struct ly_set *set = NULL;
 
@@ -592,18 +667,20 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, struct lyd_node **su
     }
 
     if (set->number > 1) {
-        for (i = 0; i < set->number; ++i) {
-            lyd_free(set->set.d[i]);
-        }
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "More subtrees match \"%s\".", path);
         goto cleanup_mods_unlock;
     }
 
     if (set->number == 1) {
-        *subtree = set->set.d[0];
+        *subtree = lyd_dup(set->set.d[0], LYD_DUP_OPT_RECURSIVE);
+        if (!*subtree) {
+            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+            goto cleanup_mods_unlock;
+        }
     } else {
         *subtree = NULL;
     }
+
     /* success */
 
 cleanup_mods_unlock:
@@ -628,6 +705,7 @@ API int
 sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, struct ly_set **subtrees)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    uint32_t i, j;
     struct sr_mod_info_s mod_info;
 
     SR_CHECK_ARG_APIRET(!session || !xpath || !subtrees, session, err_info);
@@ -662,6 +740,18 @@ sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, struct ly_set **su
     /* filter the required data */
     if ((err_info = sr_modinfo_get_filter(&mod_info, xpath, session, subtrees))) {
         goto cleanup_mods_unlock;
+    }
+
+    /* duplicate all returned subtrees (they should not have any intersection, if they do, we are wasting some memory) */
+    for (i = 0; i < (*subtrees)->number; ++i) {
+        (*subtrees)->set.d[i] = lyd_dup((*subtrees)->set.d[i], LYD_DUP_OPT_RECURSIVE);
+        if (!(*subtrees)->set.d[i]) {
+            for (j = 0; j < i; ++j) {
+                lyd_free((*subtrees)->set.d[j]);
+            }
+            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+            goto cleanup_mods_unlock;
+        }
     }
 
     /* success */

@@ -138,7 +138,7 @@ sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mo
  * @param[in] mod_info Mod info to use.
  * @param[in] xpath Selected data.
  * @param[in] session Sysrepo session.
- * @param[out] result Resulting set with duplicated data subtrees, there may be some descendants in several subtrees.
+ * @param[out] result Resulting set of matching nodes.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,

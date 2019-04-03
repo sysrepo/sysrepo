@@ -1053,9 +1053,8 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache
 sr_error_info_t *
 sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session, struct ly_set **result)
 {
-    struct lyd_node *root = NULL;
     struct sr_mod_info_mod_s *mod;
-    uint32_t i, j;
+    uint32_t i;
     sr_error_info_t *err_info = NULL;
 
     *result = NULL;
@@ -1092,22 +1091,9 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
         goto cleanup;
     }
 
-    /* duplicate all returned subtrees (they should not have any intersection, if they do, we are wasting some memory) */
-    for (i = 0; i < (*result)->number; ++i) {
-        (*result)->set.d[i] = lyd_dup((*result)->set.d[i], LYD_DUP_OPT_RECURSIVE);
-        if (!(*result)->set.d[i]) {
-            for (j = 0; j < i; ++j) {
-                lyd_free((*result)->set.d[j]);
-            }
-            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
-            goto cleanup;
-        }
-    }
-
     /* success */
 
 cleanup:
-    lyd_free_withsiblings(root);
     if (err_info) {
         ly_set_free(*result);
         *result = NULL;

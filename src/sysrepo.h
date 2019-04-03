@@ -462,7 +462,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
  * @brief Retrieves an array of data elements matching provided XPath
  *
  * All data elements are transferred within one message from the datastore,
- * which is much more efficient that calling multiple ::sr_get_item calls.
+ * which is more efficient that calling multiple ::sr_get_item calls.
  *
  * Required READ access.
  *
@@ -503,9 +503,8 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *path, struct lyd_node 
  * node overlaps, the cost of the operation may easily outshine the benefits. As an example,
  * a common XPath expression "//." is normally used to select all nodes in a data tree, but for this
  * operation it would result in an excessive duplication of transfered data elements.
- * Since you get all the descendants of each matched node implicitly, you probably should not need
- * to use XPath wildcards deeper than on the top-level.
- * (i.e. "/." is preferred alternative to "//." for get-subtrees operation).
+ * Since you get all the descendants of each matched node implicitly, you should probably never need
+ * to use "//" in the XPath (i.e. "/\asterisk" is the XPath for all the nodes).
  *
  * Required READ access.
  *
