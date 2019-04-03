@@ -1,0 +1,21 @@
+module examples {
+    namespace "urn:examples";
+    prefix e;
+
+    container cont {
+        leaf l {
+            type string;
+        }
+    }
+
+    container stats {
+        config false;
+        leaf counter {
+            type uint64;
+        }
+
+        leaf counter2 {
+            type uint64;
+        }
+    }
+}

@@ -164,6 +164,9 @@ if(DOXYGEN_FOUND)
     configure_file(Doxyfile.in Doxyfile)
 endif()
 
+# examples
+add_subdirectory(examples)
+
 # tests
 if(ENABLE_TESTS)
     find_package(CMocka 1.0.0)
