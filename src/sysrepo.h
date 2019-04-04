@@ -1124,7 +1124,7 @@ typedef enum sr_ev_notif_type_e {
  * @param[in] private_data Private context opaque to sysrepo,
  * as passed to ::sr_event_notif_subscribe call.
  */
-typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *xpath,
+typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *path,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data);
 
 /**
