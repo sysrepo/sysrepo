@@ -749,7 +749,7 @@ srctl_same_file(const char *file1, const char *file2)
 static int
 srctl_schema_install(const struct lys_module *module, const char *yang_src, const char *yin_src)
 {
-    char yang_dst[PATH_MAX - 17] = { 0, }, yin_dst[PATH_MAX - 17] = { 0, }, cmd[PATH_MAX] = { 0, };
+    char yang_dst[PATH_MAX - 21] = { 0, }, yin_dst[PATH_MAX - 21] = { 0, }, cmd[PATH_MAX] = { 0, };
     const char *yang_path = NULL, *yin_path = NULL;
     int ret = 0, rc = SR_ERR_OK;
 
@@ -763,7 +763,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
                 printf("Schema of the module %s is already installed, skipping...\n", module->name);
             } else {
                 printf("Installing the YANG file to '%s'...\n", yang_dst);
-                snprintf(cmd, PATH_MAX, "install -m 644 %s %s", yang_src, yang_dst);
+                snprintf(cmd, PATH_MAX, "install -m 644 \"%s\" \"%s\"", yang_src, yang_dst);
                 ret = system(cmd);
                 if (0 != ret) {
                     fprintf(stderr, "Error: Unable to install the YANG file to '%s'.\n", yang_dst);
@@ -784,7 +784,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
                 printf("Schema of the module %s is already installed, skipping...\n", module->name);
             } else {
                 printf("Installing the YIN file to '%s'...\n", yin_dst);
-                snprintf(cmd, PATH_MAX, "install -m 644 %s %s", yin_src, yin_dst);
+                snprintf(cmd, PATH_MAX, "install -m 644 \"%s\" \"%s\"", yin_src, yin_dst);
                 ret = system(cmd);
                 if (0 != ret) {
                     fprintf(stderr, "Error: Unable to install the YIN file to '%s'.\n", yin_dst);
