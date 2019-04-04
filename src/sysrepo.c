@@ -2540,7 +2540,7 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
         sr_val_t **output, size_t *output_cnt)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *input_tree = NULL, *output_tree, *next, *elem;
+    struct lyd_node *input_tree = NULL, *output_tree = NULL, *next, *elem;
     char *val_str, buf[22];
     size_t i;
     int ret;
