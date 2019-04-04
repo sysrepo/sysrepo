@@ -1,0 +1,54 @@
+/**
+@anchor main
+@mainpage Introduction
+
+@section about About
+
+Sysrepo is a YANG-based datastore for Unix/Linux systems. Applications that have their configuration
+modelled using YANG can use Sysrepo for its management.
+
+There are 2 main approaches for applications to make use of Sysrepo. The direct approach involves
+calling Sysrepo functions from the application itself whenever configuration data are needed or
+executing specific callbacks to react to configuration changes. It is also possible to implement
+a stand-alone daemon that will translate Sysrepo calls to actions specific for the application.
+This indirect approach is usually simpler to employ for existing applications because then they
+do not need to be changed themselves to utilize Sysrepo datastore.
+
+@todo direct/indirect architecture diagram
+
+@subsection rfcs Adopted RFCs
+
+- [RFC 7950](https://tools.ietf.org/html/rfc7950) YANG 1.1\n
+  Core YANG specification.
+- [RFC 8342](https://tools.ietf.org/html/rfc8342) NMDA\n
+  Datastore definitions. Sysrepo supports __only__ _startup_, _running_, and _operational_ datastores.
+  _Candidate_ is not supported directly but the features it provides are available (more in @ref edit_data).
+
+@subsection principles General Principles
+
+- Sysrepo is __only a library__ so there is no stand-alone process
+- all data are always __separated by YANG schemas__ which has many consequences such as allowing concurrent work
+  with different schemas
+- __fixed YANG schema set__ that can only be added to during Sysrepo operation (more in @ref schema)
+- __shared memory__ is used for almost all IPC
+- __libyang__ is a critical part and is often used directly in API so one should be familiar
+  with it before working with Sysrepo
+
+@section features Main Features
+
+Main Sysrepo features are manipulation with YANG data and subscribing to various events. However, before
+any operation can be performed, a @ref conn_sess need to be created and all the supported YANG @ref schema
+need to be installed. Sysrepo can also keep records of its behaviour if @ref log is configured.
+
+@ref edit_data is simple but requires basic knowledge of XPath for addressing individual data nodes. @ref get_data
+also uses XPath but for this purpose almost any valid expression should be evaluated properly. If an exlusive
+access to certain data is required, @ref lock is available.
+
+The most common and useful kind of subscriptions are @ref conf_subs, which allow applications to perform actions
+based on specific configuration data changes using callbacks. This way Sysrepo acts as a smarter configuration file.
+In addition, @ref rpc_subs and @ref notif_subs are supported so that a specifc RPC can be executed and other
+Sysrepo clients can be notified about various generated events, respectively. It is also possible to expose some state data
+using @ref oper_subs that are only for reading. These subscriptions, however, allow much more in order for NMDA
+_operational_ datastore to be fully supported with all of its properties.
+
+*/

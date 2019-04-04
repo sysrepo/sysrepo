@@ -470,6 +470,627 @@ sr_session_get_connection(sr_session_ctx_t *session)
     return session->conn;
 }
 
+/**
+ * @brief Learn YANG module name and format.
+ *
+ * @param[in] module_path Path to the module file.
+ * @param[out] module_name Name of the module.
+ * @param[out] format Module format.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_get_module_name_format(const char *module_path, char **module_name, LYS_INFORMAT *format)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *ptr;
+    int index;
+
+    /* learn the format */
+    if ((strlen(module_path) > 4) && !strcmp(module_path + strlen(module_path) - 4, ".yin")) {
+        *format = LYS_YIN;
+        ptr = module_path + strlen(module_path) - 4;
+    } else if ((strlen(module_path) > 5) && !strcmp(module_path + strlen(module_path) - 5, ".yang")) {
+        *format = LYS_YANG;
+        ptr = module_path + strlen(module_path) - 5;
+    } else {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Unknown format of module \"%s\".", module_path);
+        return err_info;
+    }
+
+    /* parse module name */
+    for (index = 0; (ptr != module_path) && (ptr[0] != '/'); ++index, --ptr);
+    if (ptr[0] == '/') {
+        ++ptr;
+        --index;
+    }
+    *module_name = strndup(ptr, index);
+    SR_CHECK_MEM_RET(!*module_name, err_info);
+    ptr = strchr(*module_name, '@');
+    if (ptr) {
+        /* truncate revision */
+        ((char *)ptr)[0] = '\0';
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Parse a YANG module.
+ *
+ * @param[in] ly_ctx Context to use.
+ * @param[in] module_path Path to the module file.
+ * @param[in] format Module format.
+ * @param[in] search_dir Optional search directory.
+ * @return err_info, NULL on success.
+ */
+static const struct lys_module *
+sr_parse_module(struct ly_ctx *ly_ctx, const char *module_path, LYS_INFORMAT format, const char *search_dir)
+{
+    const struct lys_module *ly_mod;
+    const char * const *search_dirs;
+    int index;
+
+    /* add searchdir if not already there */
+    if (search_dir) {
+        search_dirs = ly_ctx_get_searchdirs(ly_ctx);
+        for (index = 0; search_dirs[index]; ++index) {
+            if (!strcmp(search_dirs[index], search_dir)) {
+                break;
+            }
+        }
+        if (!search_dirs[index]) {
+            ly_ctx_set_searchdir(ly_ctx, search_dir);
+            /* it could have been moved on realloc */
+            search_dirs = ly_ctx_get_searchdirs(ly_ctx);
+        }
+    }
+
+    /* parse the module */
+    ly_mod = lys_parse_path(ly_ctx, module_path, format);
+
+    /* remove search dir */
+    if (search_dir && search_dirs[index]) {
+        ly_ctx_unset_searchdirs(ly_ctx, index);
+    }
+
+    return ly_mod;
+}
+
+/**
+ * @brief Defragment main SHM if needed.
+ *
+ * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_check_main_shm_defrag(sr_conn_ctx_t *conn)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_main_shm_t *main_shm;
+    char *mem;
+
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+    if (main_shm->wasted_mem <= SR_MAIN_SHM_WASTED_MAX_MEM) {
+        /* not enough wasted memory, leave it as it is */
+        return NULL;
+    }
+
+    SR_LOG_DBGMSG("#SHM before defrag");
+    sr_shmmain_print(conn->main_shm.addr, conn->main_shm.size);
+
+    /* defrag mem into a separate memory */
+    if ((err_info = sr_shmmain_defrag(conn->main_shm.addr, conn->main_shm.size, main_shm->wasted_mem, &mem))) {
+        return err_info;
+    }
+
+    /* remap main SHM */
+    if ((err_info = sr_shm_remap(&conn->main_shm, conn->main_shm.size - main_shm->wasted_mem))) {
+        goto cleanup;
+    }
+
+    /* copy the defragmented memory into SHM */
+    memcpy(conn->main_shm.addr, mem, conn->main_shm.size);
+
+    /* reset wasted counter */
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+    main_shm->wasted_mem = 0;
+
+    /* msync */
+    if (msync(conn->main_shm.addr, conn->main_shm.size, MS_SYNC | MS_INVALIDATE) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "msync");
+        goto cleanup;
+    }
+
+    SR_LOG_DBGMSG("#SHM after defrag");
+    sr_shmmain_print(conn->main_shm.addr, conn->main_shm.size);
+
+    /* success */
+
+cleanup:
+    free(mem);
+    return err_info;
+}
+
+API int
+sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir,
+        const char **features, int feat_count)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    LYS_INFORMAT format;
+    char *mod_name = NULL;
+    int index;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_path, NULL, err_info);
+
+    /* learn module name and format */
+    if ((err_info = sr_get_module_name_format(module_path, &mod_name, &format))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
+        free(mod_name);
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* check whether the module is not already in the context */
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
+    if (ly_mod) {
+        /* it is currently in the context, try to parse it again to check revisions */
+        ly_mod = lys_parse_path(conn->ly_ctx, module_path, format);
+        if (!ly_mod) {
+            sr_errinfo_new_ly_first(&err_info, conn->ly_ctx);
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" is already in sysrepo.", mod_name);
+            goto cleanup_unlock;
+        }
+
+        /* same modules, so if it is scheduled for deletion, we can unschedule it */
+        err_info = sr_shmmain_unsched_del_module_with_imps(conn, ly_mod);
+        if (err_info && (err_info->err_code == SR_ERR_NOT_FOUND)) {
+            sr_errinfo_free(&err_info);
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" is already in sysrepo.", ly_mod->name);
+            goto cleanup_unlock;
+        }
+        goto cleanup_unlock;
+    }
+    free(mod_name);
+    mod_name = NULL;
+
+    /* parse the module */
+    if (!(ly_mod = sr_parse_module(conn->ly_ctx, module_path, format, search_dir))) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        goto cleanup_unlock;
+    }
+
+    /* enable all features */
+    for (index = 0; index < feat_count; ++index) {
+        if (lys_features_enable(ly_mod, features[index])) {
+            ly_ctx_remove_module(ly_mod, NULL);
+            goto cleanup_unlock;
+        }
+    }
+
+    /* add into main SHM */
+    if ((err_info = sr_shmmain_add_module_with_imps(conn, ly_mod))) {
+        goto cleanup_unlock;
+    }
+
+    /* update version */
+    conn->main_ver = ++((sr_main_shm_t *)conn->main_shm.addr)->ver;
+
+    /* defrag main SHM if needed */
+    if ((err_info = sr_check_main_shm_defrag(conn))) {
+        goto cleanup_unlock;
+    }
+
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 1);
+
+    /* store the model file and create data files for module and all of its imports */
+    if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    return sr_api_ret(NULL, NULL);
+
+cleanup_unlock:
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 1);
+
+    free(mod_name);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* try to find this module */
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto error_unlock;
+    }
+
+    /* check write permission */
+    if ((err_info = sr_perm_check(module_name, 1))) {
+        goto error_unlock;
+    }
+
+    /* schedule module removal from sysrepo */
+    if ((err_info = sr_shmmain_deferred_del_module(conn, module_name))) {
+        goto error_unlock;
+    }
+
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 0);
+
+    return sr_api_ret(NULL, NULL);
+
+error_unlock:
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 0);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_update_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_ctx *tmp_ly_ctx = NULL;
+    const struct lys_module *ly_mod, *upd_ly_mod;
+    LYS_INFORMAT format;
+    char *mod_name = NULL;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_path, NULL, err_info);
+
+    /* learn about the module */
+    if ((err_info = sr_get_module_name_format(module_path, &mod_name, &format))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
+        free(mod_name);
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* try to find this module */
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
+    if (!ly_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", mod_name);
+        goto cleanup_unlock;
+    }
+
+    /* check write permission */
+    if ((err_info = sr_perm_check(mod_name, 1))) {
+        goto cleanup_unlock;
+    }
+
+    /* create new temporary context */
+    if ((err_info = sr_ly_ctx_new(&tmp_ly_ctx))) {
+        goto cleanup_unlock;
+    }
+
+    /* try to parse the update module */
+    if (!(upd_ly_mod = sr_parse_module(tmp_ly_ctx, module_path, format, search_dir))) {
+        sr_errinfo_new_ly(&err_info, tmp_ly_ctx);
+        goto cleanup_unlock;
+    }
+
+    /* it must have a revision */
+    if (!upd_ly_mod->rev_size) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Update module \"%s\" does not have a revision.", mod_name);
+        goto cleanup_unlock;
+    }
+
+    /* it must be a different module from the installed one */
+    if (ly_mod->rev_size && !strcmp(upd_ly_mod->rev[0].date, ly_mod->rev[0].date)) {
+        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s@%s\" already installed.", mod_name, ly_mod->rev[0].date);
+        goto cleanup_unlock;
+    }
+
+    /* schedule module update */
+    if ((err_info = sr_shmmain_deferred_upd_module(conn, upd_ly_mod))) {
+        goto cleanup_unlock;
+    }
+
+    /* store update module and any imports */
+    if ((err_info = sr_create_module_update_imps_r(upd_ly_mod))) {
+        goto cleanup_unlock;
+    }
+
+    /* success */
+
+cleanup_unlock:
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 0);
+
+    ly_ctx_destroy(tmp_ly_ctx, NULL);
+    free(mod_name);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    char *path = NULL;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* try to find this module */
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup_unlock;
+    }
+
+    /* check write permission */
+    if ((err_info = sr_perm_check(module_name, 1))) {
+        goto cleanup_unlock;
+    }
+
+    /* unschedule module update */
+    if ((err_info = sr_shmmain_unsched_upd_module(conn, module_name))) {
+        goto cleanup_unlock;
+    }
+
+    /* success */
+
+cleanup_unlock:
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 0);
+
+    free(path);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int replay_support)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* try to find this module */
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup_unlock;
+    }
+
+    /* update replay-support flag both in LY data tree and in main SHM */
+    if ((err_info = sr_shmmain_update_replay_support(conn, module_name, replay_support))) {
+        goto cleanup_unlock;
+    }
+
+    /* success */
+
+cleanup_unlock:
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 0);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+    time_t from_ts, to_ts;
+    char *path;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name || (!owner && !group && ((int)perm == -1)), NULL, err_info);
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* try to find this module in main SHM */
+    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, module_name, 0);
+    if (!shm_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup_unlock;
+    }
+
+    /* get running file path */
+    if ((err_info = sr_path_running_file(module_name, &path))) {
+        goto cleanup_unlock;
+    }
+
+    /* update running file permissions and owner */
+    err_info = sr_chmodown(path, owner, group, perm);
+    free(path);
+    if (err_info) {
+        goto cleanup_unlock;
+    }
+
+    /* get startup file path */
+    if ((err_info = sr_path_startup_file(module_name, &path))) {
+        goto cleanup_unlock;
+    }
+
+    /* update startup file permissions and owner */
+    err_info = sr_chmodown(path, owner, group, perm);
+    free(path);
+    if (err_info) {
+        goto cleanup_unlock;
+    }
+
+    if (shm_mod->flags & SR_MOD_REPLAY_SUPPORT) {
+        if ((err_info = sr_replay_find_file(module_name, 1, 1, &from_ts, &to_ts))) {
+            goto cleanup_unlock;
+        }
+        while (from_ts && to_ts) {
+            /* get next notification file path */
+            if ((err_info = sr_path_notif_file(module_name, from_ts, to_ts, &path))) {
+                goto cleanup_unlock;
+            }
+
+            /* update notification file permissions and owner */
+            err_info = sr_chmodown(path, owner, group, perm);
+            free(path);
+            if (err_info) {
+                goto cleanup_unlock;
+            }
+        }
+    }
+
+    /* success */
+
+cleanup_unlock:
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 0);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner, char **group, mode_t *perm)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name || (!owner && !group && !perm), NULL, err_info);
+
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 0, 0))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* try to find this module */
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup_unlock;
+    }
+
+    /* learn owner and permissions */
+    if ((err_info = sr_perm_get(module_name, owner, group, perm))) {
+        goto cleanup_unlock;
+    }
+
+    /* success */
+
+cleanup_unlock:
+    /* SHM READ UNLOCK */
+    sr_shmmain_unlock(conn, 0, 0);
+    return sr_api_ret(NULL, err_info);
+}
+
+/**
+ * @brief En/disable module feature.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Module to change.
+ * @param[in] feature_name Feature to change.
+ * @param[in] enable Whether to enable or disable the feature.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int enable)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    int ret;
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
+        return err_info;
+    }
+
+    /* try to find this module */
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup;
+    }
+
+    /* check write perm */
+    if ((err_info = sr_perm_check(module_name, 1))) {
+        goto cleanup;
+    }
+
+    /* check feature in the current context */
+    ret = lys_features_state(ly_mod, feature_name);
+    if (ret == -1) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Feature \"%s\" was not found in module \"%s\".",
+                feature_name, module_name);
+        goto cleanup;
+    }
+
+    /* mark the change (if any) in LY data tree */
+    if ((err_info = sr_shmmain_deferred_change_feature(conn, ly_mod->name, feature_name, enable, ret))) {
+        goto cleanup;
+    }
+
+    /* success */
+
+cleanup:
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 0);
+    return err_info;
+}
+
+API int
+sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name)
+{
+    sr_error_info_t *err_info;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name || !feature_name, NULL, err_info);
+
+    err_info = sr_change_module_feature(conn, module_name, feature_name, 1);
+
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name)
+{
+    sr_error_info_t *err_info;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name || !feature_name, NULL, err_info);
+
+    err_info = sr_change_module_feature(conn, module_name, feature_name, 0);
+
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data)
+{
+    sr_error_info_t *err_info;
+
+    SR_CHECK_ARG_APIRET(!conn || !sysrepo_data, NULL, err_info);
+
+    err_info = sr_shmmain_ly_int_data_parse(conn, 0, sysrepo_data);
+
+    return sr_api_ret(NULL, err_info);
+}
+
 API int
 sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
 {
@@ -1721,61 +2342,6 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscription_ctx_t **subs_p)
     }
 
     return NULL;
-}
-
-/**
- * @brief Defragment main SHM if needed.
- *
- * @param[in] conn Connection to use.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_check_main_shm_defrag(sr_conn_ctx_t *conn)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_main_shm_t *main_shm;
-    char *mem;
-
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-    if (main_shm->wasted_mem <= SR_MAIN_SHM_WASTED_MAX_MEM) {
-        /* not enough wasted memory, leave it as it is */
-        return NULL;
-    }
-
-    SR_LOG_DBGMSG("#SHM before defrag");
-    sr_shmmain_print(conn->main_shm.addr, conn->main_shm.size);
-
-    /* defrag mem into a separate memory */
-    if ((err_info = sr_shmmain_defrag(conn->main_shm.addr, conn->main_shm.size, main_shm->wasted_mem, &mem))) {
-        return err_info;
-    }
-
-    /* remap main SHM */
-    if ((err_info = sr_shm_remap(&conn->main_shm, conn->main_shm.size - main_shm->wasted_mem))) {
-        goto cleanup;
-    }
-
-    /* copy the defragmented memory into SHM */
-    memcpy(conn->main_shm.addr, mem, conn->main_shm.size);
-
-    /* reset wasted counter */
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-    main_shm->wasted_mem = 0;
-
-    /* msync */
-    if (msync(conn->main_shm.addr, conn->main_shm.size, MS_SYNC | MS_INVALIDATE) == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "msync");
-        goto cleanup;
-    }
-
-    SR_LOG_DBGMSG("#SHM after defrag");
-    sr_shmmain_print(conn->main_shm.addr, conn->main_shm.size);
-
-    /* success */
-
-cleanup:
-    free(mem);
-    return err_info;
 }
 
 API int
@@ -3302,570 +3868,4 @@ sr_get_context(sr_conn_ctx_t *conn)
     }
 
     return conn->ly_ctx;
-}
-
-/**
- * @brief Learn YANG module name and format.
- *
- * @param[in] module_path Path to the module file.
- * @param[out] module_name Name of the module.
- * @param[out] format Module format.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_get_module_name_format(const char *module_path, char **module_name, LYS_INFORMAT *format)
-{
-    sr_error_info_t *err_info = NULL;
-    const char *ptr;
-    int index;
-
-    /* learn the format */
-    if ((strlen(module_path) > 4) && !strcmp(module_path + strlen(module_path) - 4, ".yin")) {
-        *format = LYS_YIN;
-        ptr = module_path + strlen(module_path) - 4;
-    } else if ((strlen(module_path) > 5) && !strcmp(module_path + strlen(module_path) - 5, ".yang")) {
-        *format = LYS_YANG;
-        ptr = module_path + strlen(module_path) - 5;
-    } else {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Unknown format of module \"%s\".", module_path);
-        return err_info;
-    }
-
-    /* parse module name */
-    for (index = 0; (ptr != module_path) && (ptr[0] != '/'); ++index, --ptr);
-    if (ptr[0] == '/') {
-        ++ptr;
-        --index;
-    }
-    *module_name = strndup(ptr, index);
-    SR_CHECK_MEM_RET(!*module_name, err_info);
-    ptr = strchr(*module_name, '@');
-    if (ptr) {
-        /* truncate revision */
-        ((char *)ptr)[0] = '\0';
-    }
-
-    return NULL;
-}
-
-/**
- * @brief Parse a YANG module.
- *
- * @param[in] ly_ctx Context to use.
- * @param[in] module_path Path to the module file.
- * @param[in] format Module format.
- * @param[in] search_dir Optional search directory.
- * @return err_info, NULL on success.
- */
-static const struct lys_module *
-sr_parse_module(struct ly_ctx *ly_ctx, const char *module_path, LYS_INFORMAT format, const char *search_dir)
-{
-    const struct lys_module *ly_mod;
-    const char * const *search_dirs;
-    int index;
-
-    /* add searchdir if not already there */
-    if (search_dir) {
-        search_dirs = ly_ctx_get_searchdirs(ly_ctx);
-        for (index = 0; search_dirs[index]; ++index) {
-            if (!strcmp(search_dirs[index], search_dir)) {
-                break;
-            }
-        }
-        if (!search_dirs[index]) {
-            ly_ctx_set_searchdir(ly_ctx, search_dir);
-            /* it could have been moved on realloc */
-            search_dirs = ly_ctx_get_searchdirs(ly_ctx);
-        }
-    }
-
-    /* parse the module */
-    ly_mod = lys_parse_path(ly_ctx, module_path, format);
-
-    /* remove search dir */
-    if (search_dir && search_dirs[index]) {
-        ly_ctx_unset_searchdirs(ly_ctx, index);
-    }
-
-    return ly_mod;
-}
-
-API int
-sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir,
-        const char **features, int feat_count)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
-    LYS_INFORMAT format;
-    char *mod_name = NULL;
-    int index;
-
-    SR_CHECK_ARG_APIRET(!conn || !module_path, NULL, err_info);
-
-    /* learn module name and format */
-    if ((err_info = sr_get_module_name_format(module_path, &mod_name, &format))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
-        free(mod_name);
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* check whether the module is not already in the context */
-    ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
-    if (ly_mod) {
-        /* it is currently in the context, try to parse it again to check revisions */
-        ly_mod = lys_parse_path(conn->ly_ctx, module_path, format);
-        if (!ly_mod) {
-            sr_errinfo_new_ly_first(&err_info, conn->ly_ctx);
-            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" is already in sysrepo.", mod_name);
-            goto cleanup_unlock;
-        }
-
-        /* same modules, so if it is scheduled for deletion, we can unschedule it */
-        err_info = sr_shmmain_unsched_del_module_with_imps(conn, ly_mod);
-        if (err_info && (err_info->err_code == SR_ERR_NOT_FOUND)) {
-            sr_errinfo_free(&err_info);
-            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" is already in sysrepo.", ly_mod->name);
-            goto cleanup_unlock;
-        }
-        goto cleanup_unlock;
-    }
-    free(mod_name);
-    mod_name = NULL;
-
-    /* parse the module */
-    if (!(ly_mod = sr_parse_module(conn->ly_ctx, module_path, format, search_dir))) {
-        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        goto cleanup_unlock;
-    }
-
-    /* enable all features */
-    for (index = 0; index < feat_count; ++index) {
-        if (lys_features_enable(ly_mod, features[index])) {
-            ly_ctx_remove_module(ly_mod, NULL);
-            goto cleanup_unlock;
-        }
-    }
-
-    /* add into main SHM */
-    if ((err_info = sr_shmmain_add_module_with_imps(conn, ly_mod))) {
-        goto cleanup_unlock;
-    }
-
-    /* update version */
-    conn->main_ver = ++((sr_main_shm_t *)conn->main_shm.addr)->ver;
-
-    /* defrag main SHM if needed */
-    if ((err_info = sr_check_main_shm_defrag(conn))) {
-        goto cleanup_unlock;
-    }
-
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 1);
-
-    /* store the model file and create data files for module and all of its imports */
-    if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    return sr_api_ret(NULL, NULL);
-
-cleanup_unlock:
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 1);
-
-    free(mod_name);
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
-
-    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
-
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* try to find this module */
-    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        goto error_unlock;
-    }
-
-    /* check write permission */
-    if ((err_info = sr_perm_check(module_name, 1))) {
-        goto error_unlock;
-    }
-
-    /* schedule module removal from sysrepo */
-    if ((err_info = sr_shmmain_deferred_del_module(conn, module_name))) {
-        goto error_unlock;
-    }
-
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 0);
-
-    return sr_api_ret(NULL, NULL);
-
-error_unlock:
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 0);
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_update_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir)
-{
-    sr_error_info_t *err_info = NULL;
-    struct ly_ctx *tmp_ly_ctx = NULL;
-    const struct lys_module *ly_mod, *upd_ly_mod;
-    LYS_INFORMAT format;
-    char *mod_name = NULL;
-
-    SR_CHECK_ARG_APIRET(!conn || !module_path, NULL, err_info);
-
-    /* learn about the module */
-    if ((err_info = sr_get_module_name_format(module_path, &mod_name, &format))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
-        free(mod_name);
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* try to find this module */
-    ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
-    if (!ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", mod_name);
-        goto cleanup_unlock;
-    }
-
-    /* check write permission */
-    if ((err_info = sr_perm_check(mod_name, 1))) {
-        goto cleanup_unlock;
-    }
-
-    /* create new temporary context */
-    if ((err_info = sr_ly_ctx_new(&tmp_ly_ctx))) {
-        goto cleanup_unlock;
-    }
-
-    /* try to parse the update module */
-    if (!(upd_ly_mod = sr_parse_module(tmp_ly_ctx, module_path, format, search_dir))) {
-        sr_errinfo_new_ly(&err_info, tmp_ly_ctx);
-        goto cleanup_unlock;
-    }
-
-    /* it must have a revision */
-    if (!upd_ly_mod->rev_size) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Update module \"%s\" does not have a revision.", mod_name);
-        goto cleanup_unlock;
-    }
-
-    /* it must be a different module from the installed one */
-    if (ly_mod->rev_size && !strcmp(upd_ly_mod->rev[0].date, ly_mod->rev[0].date)) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s@%s\" already installed.", mod_name, ly_mod->rev[0].date);
-        goto cleanup_unlock;
-    }
-
-    /* schedule module update */
-    if ((err_info = sr_shmmain_deferred_upd_module(conn, upd_ly_mod))) {
-        goto cleanup_unlock;
-    }
-
-    /* store update module and any imports */
-    if ((err_info = sr_create_module_update_imps_r(upd_ly_mod))) {
-        goto cleanup_unlock;
-    }
-
-    /* success */
-
-cleanup_unlock:
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 0);
-
-    ly_ctx_destroy(tmp_ly_ctx, NULL);
-    free(mod_name);
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
-    char *path = NULL;
-
-    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
-
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* try to find this module */
-    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        goto cleanup_unlock;
-    }
-
-    /* check write permission */
-    if ((err_info = sr_perm_check(module_name, 1))) {
-        goto cleanup_unlock;
-    }
-
-    /* unschedule module update */
-    if ((err_info = sr_shmmain_unsched_upd_module(conn, module_name))) {
-        goto cleanup_unlock;
-    }
-
-    /* success */
-
-cleanup_unlock:
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 0);
-
-    free(path);
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int replay_support)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
-
-    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
-
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* try to find this module */
-    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        goto cleanup_unlock;
-    }
-
-    /* update replay-support flag both in LY data tree and in main SHM */
-    if ((err_info = sr_shmmain_update_replay_support(conn, module_name, replay_support))) {
-        goto cleanup_unlock;
-    }
-
-    /* success */
-
-cleanup_unlock:
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 0);
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_mod_t *shm_mod;
-    time_t from_ts, to_ts;
-    char *path;
-
-    SR_CHECK_ARG_APIRET(!conn || !module_name || (!owner && !group && ((int)perm == -1)), NULL, err_info);
-
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* try to find this module in main SHM */
-    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, module_name, 0);
-    if (!shm_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        goto cleanup_unlock;
-    }
-
-    /* get running file path */
-    if ((err_info = sr_path_running_file(module_name, &path))) {
-        goto cleanup_unlock;
-    }
-
-    /* update running file permissions and owner */
-    err_info = sr_chmodown(path, owner, group, perm);
-    free(path);
-    if (err_info) {
-        goto cleanup_unlock;
-    }
-
-    /* get startup file path */
-    if ((err_info = sr_path_startup_file(module_name, &path))) {
-        goto cleanup_unlock;
-    }
-
-    /* update startup file permissions and owner */
-    err_info = sr_chmodown(path, owner, group, perm);
-    free(path);
-    if (err_info) {
-        goto cleanup_unlock;
-    }
-
-    if (shm_mod->flags & SR_MOD_REPLAY_SUPPORT) {
-        if ((err_info = sr_replay_find_file(module_name, 1, 1, &from_ts, &to_ts))) {
-            goto cleanup_unlock;
-        }
-        while (from_ts && to_ts) {
-            /* get next notification file path */
-            if ((err_info = sr_path_notif_file(module_name, from_ts, to_ts, &path))) {
-                goto cleanup_unlock;
-            }
-
-            /* update notification file permissions and owner */
-            err_info = sr_chmodown(path, owner, group, perm);
-            free(path);
-            if (err_info) {
-                goto cleanup_unlock;
-            }
-        }
-    }
-
-    /* success */
-
-cleanup_unlock:
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 0);
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner, char **group, mode_t *perm)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
-
-    SR_CHECK_ARG_APIRET(!conn || !module_name || (!owner && !group && !perm), NULL, err_info);
-
-    /* SHM READ LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 0, 0))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* try to find this module */
-    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        goto cleanup_unlock;
-    }
-
-    /* learn owner and permissions */
-    if ((err_info = sr_perm_get(module_name, owner, group, perm))) {
-        goto cleanup_unlock;
-    }
-
-    /* success */
-
-cleanup_unlock:
-    /* SHM READ UNLOCK */
-    sr_shmmain_unlock(conn, 0, 0);
-    return sr_api_ret(NULL, err_info);
-}
-
-/**
- * @brief En/disable module feature.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_name Module to change.
- * @param[in] feature_name Feature to change.
- * @param[in] enable Whether to enable or disable the feature.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int enable)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
-    int ret;
-
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
-        return err_info;
-    }
-
-    /* try to find this module */
-    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        goto cleanup;
-    }
-
-    /* check write perm */
-    if ((err_info = sr_perm_check(module_name, 1))) {
-        goto cleanup;
-    }
-
-    /* check feature in the current context */
-    ret = lys_features_state(ly_mod, feature_name);
-    if (ret == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Feature \"%s\" was not found in module \"%s\".",
-                feature_name, module_name);
-        goto cleanup;
-    }
-
-    /* mark the change (if any) in LY data tree */
-    if ((err_info = sr_shmmain_deferred_change_feature(conn, ly_mod->name, feature_name, enable, ret))) {
-        goto cleanup;
-    }
-
-    /* success */
-
-cleanup:
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 0);
-    return err_info;
-}
-
-API int
-sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name)
-{
-    sr_error_info_t *err_info;
-
-    SR_CHECK_ARG_APIRET(!conn || !module_name || !feature_name, NULL, err_info);
-
-    err_info = sr_change_module_feature(conn, module_name, feature_name, 1);
-
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name)
-{
-    sr_error_info_t *err_info;
-
-    SR_CHECK_ARG_APIRET(!conn || !module_name || !feature_name, NULL, err_info);
-
-    err_info = sr_change_module_feature(conn, module_name, feature_name, 0);
-
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data)
-{
-    sr_error_info_t *err_info;
-
-    SR_CHECK_ARG_APIRET(!conn || !sysrepo_data, NULL, err_info);
-
-    err_info = sr_shmmain_ly_int_data_parse(conn, 0, sysrepo_data);
-
-    return sr_api_ret(NULL, err_info);
 }

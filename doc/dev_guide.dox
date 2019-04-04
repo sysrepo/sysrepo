@@ -1,0 +1,19 @@
+/**
+@page dev_guide Developer Guide
+
+Following pages document implementation details of YANG concepts supported by Sysrepo from the developer perspective.
+Before implementing a Sysrepo client, one should familiarize themselves with all of these sections to know what
+options there are in general and how they work.
+
+- @subpage log
+- @subpage conn_sess
+- @subpage schema
+- @subpage get_data
+- @subpage edit_data
+- @subpage lock
+- @subpage conf_subs
+- @subpage rpc_subs
+- @subpage notif_subs
+- @subpage oper_subs
+
+*/

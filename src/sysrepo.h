@@ -34,7 +34,7 @@ extern "C" {
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @defgroup log Logging
+ * @defgroup log_api Logging API
  * @{
  */
 
@@ -155,7 +155,7 @@ const char *sr_get_repo_path(void);
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @defgroup connsess Connection & Sessions
+ * @defgroup conn_sess_api Connection and Session API
  * @{
  */
 
@@ -344,11 +344,149 @@ sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
 /** @} connsess */
 
 ////////////////////////////////////////////////////////////////////////////////
+// Schema Manipulation API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup schema_api Schema API
+ * @{
+ */
+
+/**
+ * @brief Get the libyang context used by a connection. Can be used in an application for working with data
+ * and schemas. Do NOT change this context!
+ *
+ * @param[in] conn Connection to use.
+ * @return Const libyang context.
+ */
+const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Install a new module into sysrepo.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_path Path to a new module. Can have either YANG or YIN extension/format.
+ * @param[in] search_dir Optional search dir for import modules.
+ * @param[in] features Array of enabled features.
+ * @param[in] feat_count Number of enabled features.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir, const char **features,
+        int feat_count);
+
+/**
+ * @brief Remove an installed module from sysrepo. Deferred until new main SHM creation!
+ *
+ * Required WRITE access.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Name of the mdoule to remove.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
+
+/**
+ * @brief Update an installed module with a new revision. Deferred until new main SHM creation!
+ *
+ * Required WRITE access.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_path Path to the updated module. Can have either YANG or YIN extension/format.
+ * @param[in] search_dir Optional search dir for import modules.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_update_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir);
+
+/**
+ * @brief Cancel scheduled update of a module.
+ *
+ * Required WRITE access.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Name of the module whose update to cancel.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name);
+
+/**
+ * @brief Change module replay support.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Name of the module to change.
+ * @param[in] replay_support 0 to disabled, non-zero to enable.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int replay_support);
+
+/**
+ * @brief Change module filesystem permissions.
+ *
+ * Required WRITE access.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Name of the module to change.
+ * @param[in] owner If set, new owner of the module.
+ * @param[in] group If set, new group of the module.
+ * @param[in] perm If set, new permissions of the module.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm);
+
+/**
+ * @brief Learn about module filesystem permissions.
+ *
+ * Required READ access.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Name of the module to inspect.
+ * @param[in,out] owner If set, read the owner of the module.
+ * @param[in,out] group If set, read the group of the module.
+ * @param[in,out] perm If set, read the permissions of the module.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner, char **group, mode_t *perm);
+
+/**
+ * @brief Enable a module feature. Deferred until new main SHM creation!
+ *
+ * Required WRITE access.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Name of the module to change.
+ * @param[in] feature_name Name of the feature to enable.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
+
+/**
+ * @brief Disable a module feature. Deferred until new main SHM creation!
+ *
+ * Required WRITE access.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Name of the module to change.
+ * @param[in] feature_name Name of the feature to disable.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
+
+/**
+ * @brief Get internal sysrepo data tree, which holds information about installed modules.
+ *
+ * @param[in] conn Connection to use.
+ * @param[out] sysrepo_data Sysrepo internal data tree.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data);
+
+/** @} schema */
+
+////////////////////////////////////////////////////////////////////////////////
 // Data Retrieval API (get / get-config functionality)
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @defgroup getdata Getting Data
+ * @defgroup get_data_api Getting Data API
  * @{
  */
 
@@ -539,7 +677,7 @@ void sr_free_values(sr_val_t *values, size_t count);
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @defgroup editdata Editing Data
+ * @defgroup edit_data_api Editing Data API
  * @{
  */
 
@@ -727,7 +865,7 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datast
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @defgroup lock Locking Data
+ * @defgroup lock_api Locking API
  * @{
  */
 
@@ -760,7 +898,7 @@ int sr_unlock(sr_session_ctx_t *session, const char *module_name);
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @defgroup datasubs Configuration Data Subscriptions
+ * @defgroup conf_subs_api Configuration Data Subscription API
  * @{
  */
 
@@ -981,7 +1119,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @defgroup rpcsubs RPC/Action Subscriptions
+ * @defgroup rpc_subs_api RPC/Action Subscription API
  * @{
  */
 
@@ -1094,7 +1232,7 @@ int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct l
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @defgroup notifsubs Notification Subscriptions
+ * @defgroup notif_subs_api Notification Subscription API
  * @{
  */
 
@@ -1223,7 +1361,7 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @defgroup opsubs Operational Data Subscriptions
+ * @defgroup oper_subs_api Operational Data Subscription API
  * @{
  */
 
@@ -1268,144 +1406,6 @@ int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name
         sr_dp_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /** @} opsubs */
-
-////////////////////////////////////////////////////////////////////////////////
-// Schema Manipulation API
-////////////////////////////////////////////////////////////////////////////////
-
-/**
- * @defgroup schema Schema Manipulation
- * @{
- */
-
-/**
- * @brief Get the libyang context used by a connection. Can be used in an application for working with data
- * and schemas. Do NOT change this context!
- *
- * @param[in] conn Connection to use.
- * @return Const libyang context.
- */
-const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
-
-/**
- * @brief Install a new module into sysrepo.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_path Path to a new module. Can have either YANG or YIN extension/format.
- * @param[in] search_dir Optional search dir for import modules.
- * @param[in] features Array of enabled features.
- * @param[in] feat_count Number of enabled features.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir, const char **features,
-        int feat_count);
-
-/**
- * @brief Remove an installed module from sysrepo. Deferred until new main SHM creation!
- *
- * Required WRITE access.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_name Name of the mdoule to remove.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
-
-/**
- * @brief Update an installed module with a new revision. Deferred until new main SHM creation!
- *
- * Required WRITE access.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_path Path to the updated module. Can have either YANG or YIN extension/format.
- * @param[in] search_dir Optional search dir for import modules.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_update_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir);
-
-/**
- * @brief Cancel scheduled update of a module.
- *
- * Required WRITE access.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module whose update to cancel.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name);
-
-/**
- * @brief Change module replay support.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module to change.
- * @param[in] replay_support 0 to disabled, non-zero to enable.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int replay_support);
-
-/**
- * @brief Change module filesystem permissions.
- *
- * Required WRITE access.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module to change.
- * @param[in] owner If set, new owner of the module.
- * @param[in] group If set, new group of the module.
- * @param[in] perm If set, new permissions of the module.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm);
-
-/**
- * @brief Learn about module filesystem permissions.
- *
- * Required READ access.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module to inspect.
- * @param[in,out] owner If set, read the owner of the module.
- * @param[in,out] group If set, read the group of the module.
- * @param[in,out] perm If set, read the permissions of the module.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner, char **group, mode_t *perm);
-
-/**
- * @brief Enable a module feature. Deferred until new main SHM creation!
- *
- * Required WRITE access.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module to change.
- * @param[in] feature_name Name of the feature to enable.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
-
-/**
- * @brief Disable a module feature. Deferred until new main SHM creation!
- *
- * Required WRITE access.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module to change.
- * @param[in] feature_name Name of the feature to disable.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
-
-/**
- * @brief Get internal sysrepo data tree, which holds information about installed modules.
- *
- * @param[in] conn Connection to use.
- * @param[out] sysrepo_data Sysrepo internal data tree.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data);
-
-/** @} schema */
 
 #ifdef __cplusplus
 }
