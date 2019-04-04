@@ -18,4 +18,26 @@ module examples {
             type uint64;
         }
     }
+
+    rpc oper {
+        input {
+            leaf arg {
+                type string;
+            }
+        }
+
+        output {
+            leaf ret {
+                type int64;
+            }
+        }
+    }
+
+    notification notif {
+        leaf val {
+            type decimal64 {
+                fraction-digits 2;
+            }
+        }
+    }
 }
