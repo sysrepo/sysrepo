@@ -180,7 +180,6 @@ typedef struct sr_rwlock_s {
  * @brief Sysrepo connection.
  */
 struct sr_conn_ctx_s {
-    char *app_name;                 /**< Application name, used only for logging. */
     struct ly_ctx *ly_ctx;          /**< Libyang context, also available to user. */
     sr_conn_options_t opts;         /**< Connection options. */
 
@@ -317,7 +316,7 @@ struct sr_change_iter_s {
  * @param[in] private_data Subscription callback private data.
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscription options.
- * @param[in] subs Subscription structure.
+ * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb conf_cb,
@@ -333,7 +332,7 @@ sr_error_info_t *sr_sub_conf_add(const char *mod_name, const char *xpath, sr_dat
  * @param[in] private_data Subscription callback private data.
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscription options.
- * @param[in] subs Subscription structure.
+ * @param[in,out] subs Subscription structure.
  */
 void sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb conf_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs);
@@ -345,7 +344,7 @@ void sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds,
  * @param[in] xpath Subscription XPath.
  * @param[in] dp_cb Subscription callback.
  * @param[in] private_data Subscription callback private data.
- * @param[in] subs Subscription structure.
+ * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_sub_dp_add(const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb, void *private_data,
@@ -356,7 +355,7 @@ sr_error_info_t *sr_sub_dp_add(const char *mod_name, const char *xpath, sr_dp_ge
  *
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
- * @param[in] subs Subscription structure.
+ * @param[in,out] subs Subscription structure.
  */
 void sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *subs);
 
@@ -368,7 +367,7 @@ void sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_
  * @param[in] rpc_cb Subscription value callback.
  * @param[in] rpc_tree_cb Subscription tree callback.
  * @param[in] private_data Subscription callback private data.
- * @param[in] subs Subscription structure.
+ * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_sub_rpc_add(const char *mod_name, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb,
@@ -378,7 +377,7 @@ sr_error_info_t *sr_sub_rpc_add(const char *mod_name, const char *xpath, sr_rpc_
  * @brief Delete an RPC subscription from subscription structure.
  *
  * @param[in] xpath Subscription XPath.
- * @param[in] subs Subscription structure.
+ * @param[in,out] subs Subscription structure.
  */
 void sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs);
 
@@ -392,7 +391,7 @@ void sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs);
  * @param[in] notif_cb Subscription value callback.
  * @param[in] notif_tree_cb Subscription tree callback.
  * @param[in] private_data Subscription callback private data.
- * @param[in] subs Subscription structure.
+ * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_sub_notif_add(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time,
@@ -408,7 +407,7 @@ sr_error_info_t *sr_sub_notif_add(const char *mod_name, const char *xpath, time_
  * @param[in] notif_cb Subscription value callback.
  * @param[in] notif_tree_cb Subscription tree callback.
  * @param[in] private_data Subscription callback private data.
- * @param[in] subs Subscription structure.
+ * @param[in,out] subs Subscription structure.
  * @param[in] has_subs_lock Whether the caller already holds subs lock.
  */
 void sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb,
@@ -418,7 +417,7 @@ void sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time
  * @brief Delete all subscriptions from a subscription structure, from main SHM, and their SHM segments as well.
  *
  * @param[in] conn Connection of the subscriptions.
- * @param[in] subs Subscription structure.
+ * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs);

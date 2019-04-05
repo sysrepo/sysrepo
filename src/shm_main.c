@@ -1784,6 +1784,8 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *sr_start_mod, s
     const char *str;
     uint32_t feat_i, data_dep_i, inv_data_dep_i, op_dep_i, op_data_dep_i;
 
+    assert(sr_start_mod);
+
     /* 1st loop */
     shm_cur = main_shm_addr + *shm_end;
     shm_mod = shm_last_mod;

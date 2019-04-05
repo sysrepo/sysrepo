@@ -41,7 +41,7 @@ setup_f(void **state)
     }
     *state = st;
 
-    if (sr_connect("test1", 0, &st->conn) != SR_ERR_OK) {
+    if (sr_connect(0, &st->conn) != SR_ERR_OK) {
         return 1;
     }
 

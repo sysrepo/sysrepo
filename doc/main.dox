@@ -12,12 +12,16 @@ calling Sysrepo functions from the application itself whenever configuration dat
 executing specific callbacks to react to configuration changes. It is also possible to implement
 a stand-alone daemon that will translate Sysrepo calls to actions specific for the application.
 This indirect approach is usually simpler to employ for existing applications because then they
-do not need to be changed themselves to utilize Sysrepo datastore.
+do not need to be changed themselves to utilize Sysrepo datastore at the cost of having an additional
+intermediary process.
 
 @todo direct/indirect architecture diagram
 
 @subsection rfcs Adopted RFCs
 
+- [RFC 6241](https://tools.ietf.org/html/rfc6241) NETCONF 1.1 (partly)\n
+  Sysrepo does not strictly conform to this RFC but was developed to also have a remote NETCONF interface
+  so it is followed to the relevant extent (more in @ref netconf_np2).
 - [RFC 7950](https://tools.ietf.org/html/rfc7950) YANG 1.1\n
   Core YANG specification.
 - [RFC 8342](https://tools.ietf.org/html/rfc8342) NMDA\n
@@ -31,6 +35,9 @@ do not need to be changed themselves to utilize Sysrepo datastore.
   with different schemas
 - __fixed YANG schema set__ that can only be added to during Sysrepo operation (more in @ref schema)
 - __shared memory__ is used for almost all IPC
+- there can be many Sysrepo clients (__processes__) each with __several threads__ so correct synchronization is crucial
+  (more in @ref threads)
+- __access control__ relies strictly on the file system (more in @ref access_control)
 - __libyang__ is a critical part and is often used directly in API so one should be familiar
   with it before working with Sysrepo
 
@@ -50,5 +57,11 @@ In addition, @ref rpc_subs and @ref notif_subs are supported so that a specifc R
 Sysrepo clients can be notified about various generated events, respectively. It is also possible to expose some state data
 using @ref oper_subs that are only for reading. These subscriptions, however, allow much more in order for NMDA
 _operational_ datastore to be fully supported with all of its properties.
+
+@section threads Threading Model
+
+@todo connections/sessions, subscription threads
+
+@section access_control Access Control
 
 */

@@ -30,29 +30,15 @@
 
 #include <libyang/libyang.h>
 
-API const char *
-sr_get_repo_path(void)
-{
-    char *value;
-
-    value = getenv(SR_REPO_PATH_ENV);
-    if (value) {
-        return value;
-    }
-
-    return SR_REPO_PATH;
-}
-
 /**
  * @brief Allocate a new connection structure.
  *
- * @param[in] app_name Application name.
  * @param[in] opts Connection options.
  * @param[out] conn_p Allocated connection.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_conn_new(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
+sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 {
     sr_conn_ctx_t *conn;
     sr_error_info_t *err_info = NULL;
@@ -60,11 +46,6 @@ sr_conn_new(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **
     conn = calloc(1, sizeof *conn);
     SR_CHECK_MEM_RET(!conn, err_info);
 
-    conn->app_name = strdup(app_name);
-    if (!conn->app_name) {
-        SR_ERRINFO_MEM(&err_info);
-        goto error;
-    }
     conn->opts = opts;
 
     if ((err_info = sr_mutex_init(&conn->ptr_lock, 0))) {
@@ -88,19 +69,18 @@ sr_conn_new(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **
     return NULL;
 
 error:
-    free(conn->app_name);
     free(conn);
     return err_info;
 }
 
 API int
-sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
+sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 {
     sr_conn_ctx_t *conn;
     sr_error_info_t *err_info = NULL;
     int nonexistent;
 
-    SR_CHECK_ARG_APIRET(!app_name || !conn_p, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!conn_p, NULL, err_info);
 
     /* check that all required directories exist */
     if ((err_info = sr_shmmain_check_dirs())) {
@@ -108,7 +88,7 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
     }
 
     /* create basic connection structure */
-    if ((err_info = sr_conn_new(app_name, opts, &conn))) {
+    if ((err_info = sr_conn_new(opts, &conn))) {
         goto error;
     }
 
@@ -166,7 +146,6 @@ sr_disconnect(sr_conn_ctx_t *conn)
         free(conn->mod_cache.mods);
     }
 
-    free(conn->app_name);
     ly_ctx_destroy(conn->ly_ctx, NULL);
     pthread_mutex_destroy(&conn->ptr_lock);
     if (conn->main_shm_create_lock > -1) {
@@ -175,6 +154,16 @@ sr_disconnect(sr_conn_ctx_t *conn)
     pthread_mutex_destroy(&conn->main_shm_remap_lock);
     sr_shm_clear(&conn->main_shm);
     free(conn);
+}
+
+API const struct ly_ctx *
+sr_get_context(sr_conn_ctx_t *conn)
+{
+    if (!conn) {
+        return NULL;
+    }
+
+    return conn->ly_ctx;
 }
 
 /**
@@ -470,35 +459,48 @@ sr_session_get_connection(sr_session_ctx_t *session)
     return session->conn;
 }
 
+API const char *
+sr_get_repo_path(void)
+{
+    char *value;
+
+    value = getenv(SR_REPO_PATH_ENV);
+    if (value) {
+        return value;
+    }
+
+    return SR_REPO_PATH;
+}
+
 /**
  * @brief Learn YANG module name and format.
  *
- * @param[in] module_path Path to the module file.
+ * @param[in] schema_path Path to the module file.
  * @param[out] module_name Name of the module.
  * @param[out] format Module format.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_get_module_name_format(const char *module_path, char **module_name, LYS_INFORMAT *format)
+sr_get_module_name_format(const char *schema_path, char **module_name, LYS_INFORMAT *format)
 {
     sr_error_info_t *err_info = NULL;
     const char *ptr;
     int index;
 
     /* learn the format */
-    if ((strlen(module_path) > 4) && !strcmp(module_path + strlen(module_path) - 4, ".yin")) {
+    if ((strlen(schema_path) > 4) && !strcmp(schema_path + strlen(schema_path) - 4, ".yin")) {
         *format = LYS_YIN;
-        ptr = module_path + strlen(module_path) - 4;
-    } else if ((strlen(module_path) > 5) && !strcmp(module_path + strlen(module_path) - 5, ".yang")) {
+        ptr = schema_path + strlen(schema_path) - 4;
+    } else if ((strlen(schema_path) > 5) && !strcmp(schema_path + strlen(schema_path) - 5, ".yang")) {
         *format = LYS_YANG;
-        ptr = module_path + strlen(module_path) - 5;
+        ptr = schema_path + strlen(schema_path) - 5;
     } else {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Unknown format of module \"%s\".", module_path);
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Unknown format of module \"%s\".", schema_path);
         return err_info;
     }
 
     /* parse module name */
-    for (index = 0; (ptr != module_path) && (ptr[0] != '/'); ++index, --ptr);
+    for (index = 0; (ptr != schema_path) && (ptr[0] != '/'); ++index, --ptr);
     if (ptr[0] == '/') {
         ++ptr;
         --index;
@@ -518,13 +520,13 @@ sr_get_module_name_format(const char *module_path, char **module_name, LYS_INFOR
  * @brief Parse a YANG module.
  *
  * @param[in] ly_ctx Context to use.
- * @param[in] module_path Path to the module file.
+ * @param[in] schema_path Path to the module file.
  * @param[in] format Module format.
  * @param[in] search_dir Optional search directory.
  * @return err_info, NULL on success.
  */
 static const struct lys_module *
-sr_parse_module(struct ly_ctx *ly_ctx, const char *module_path, LYS_INFORMAT format, const char *search_dir)
+sr_parse_module(struct ly_ctx *ly_ctx, const char *schema_path, LYS_INFORMAT format, const char *search_dir)
 {
     const struct lys_module *ly_mod;
     const char * const *search_dirs;
@@ -546,7 +548,7 @@ sr_parse_module(struct ly_ctx *ly_ctx, const char *module_path, LYS_INFORMAT for
     }
 
     /* parse the module */
-    ly_mod = lys_parse_path(ly_ctx, module_path, format);
+    ly_mod = lys_parse_path(ly_ctx, schema_path, format);
 
     /* remove search dir */
     if (search_dir && search_dirs[index]) {
@@ -612,7 +614,7 @@ cleanup:
 }
 
 API int
-sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir,
+sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dir,
         const char **features, int feat_count)
 {
     sr_error_info_t *err_info = NULL;
@@ -621,10 +623,10 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     char *mod_name = NULL;
     int index;
 
-    SR_CHECK_ARG_APIRET(!conn || !module_path, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!conn || !schema_path, NULL, err_info);
 
     /* learn module name and format */
-    if ((err_info = sr_get_module_name_format(module_path, &mod_name, &format))) {
+    if ((err_info = sr_get_module_name_format(schema_path, &mod_name, &format))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -638,7 +640,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
     if (ly_mod) {
         /* it is currently in the context, try to parse it again to check revisions */
-        ly_mod = lys_parse_path(conn->ly_ctx, module_path, format);
+        ly_mod = lys_parse_path(conn->ly_ctx, schema_path, format);
         if (!ly_mod) {
             sr_errinfo_new_ly_first(&err_info, conn->ly_ctx);
             sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" is already in sysrepo.", mod_name);
@@ -658,7 +660,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *sear
     mod_name = NULL;
 
     /* parse the module */
-    if (!(ly_mod = sr_parse_module(conn->ly_ctx, module_path, format, search_dir))) {
+    if (!(ly_mod = sr_parse_module(conn->ly_ctx, schema_path, format, search_dir))) {
         sr_errinfo_new_ly(&err_info, conn->ly_ctx);
         goto cleanup_unlock;
     }
@@ -744,7 +746,7 @@ error_unlock:
 }
 
 API int
-sr_update_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir)
+sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dir)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *tmp_ly_ctx = NULL;
@@ -752,10 +754,10 @@ sr_update_module(sr_conn_ctx_t *conn, const char *module_path, const char *searc
     LYS_INFORMAT format;
     char *mod_name = NULL;
 
-    SR_CHECK_ARG_APIRET(!conn || !module_path, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!conn || !schema_path, NULL, err_info);
 
     /* learn about the module */
-    if ((err_info = sr_get_module_name_format(module_path, &mod_name, &format))) {
+    if ((err_info = sr_get_module_name_format(schema_path, &mod_name, &format))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -783,7 +785,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *module_path, const char *searc
     }
 
     /* try to parse the update module */
-    if (!(upd_ly_mod = sr_parse_module(tmp_ly_ctx, module_path, format, search_dir))) {
+    if (!(upd_ly_mod = sr_parse_module(tmp_ly_ctx, schema_path, format, search_dir))) {
         sr_errinfo_new_ly(&err_info, tmp_ly_ctx);
         goto cleanup_unlock;
     }
@@ -3858,14 +3860,4 @@ error_unsubscribe:
     }
     sr_shmmod_dp_subscription(conn, module_name, path, SR_DP_SUB_NONE, 0);
     return sr_api_ret(session, err_info);
-}
-
-API const struct ly_ctx *
-sr_get_context(sr_conn_ctx_t *conn)
-{
-    if (!conn) {
-        return NULL;
-    }
-
-    return conn->ly_ctx;
 }

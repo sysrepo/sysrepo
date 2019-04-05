@@ -40,7 +40,7 @@ setup(void **state)
     st = calloc(1, sizeof *st);
     *state = st;
 
-    if (sr_connect("test1", 0, &(st->conn)) != SR_ERR_OK) {
+    if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
         return 1;
     }
 

@@ -37,7 +37,7 @@ setup_f(void **state)
     st = calloc(1, sizeof *st);
     *state = st;
 
-    if (sr_connect("test1", 0, &st->conn) != SR_ERR_OK) {
+    if (sr_connect(0, &st->conn) != SR_ERR_OK) {
         return 1;
     }
 
@@ -267,7 +267,7 @@ test_remove_dep_module(void **state)
     assert_int_equal(ret, 0);
 
     /* recreate connection, changes fail to be applied and should remain scheduled */
-    ret = sr_connect("test1", 0, &st->conn);
+    ret = sr_connect(0, &st->conn);
     assert_int_equal(ret, SR_ERR_OK);
 
     cmp_int_data(st->conn, "ops-ref",
@@ -320,7 +320,7 @@ test_update_module(void **state)
     assert_int_equal(ret, 0);
 
     /* recreate connection */
-    ret = sr_connect("test1", 0, &st->conn);
+    ret = sr_connect(0, &st->conn);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check that the module was updated */
@@ -345,7 +345,7 @@ test_update_module(void **state)
     assert_int_equal(ret, 0);
 
     /* recreate connection */
-    ret = sr_connect("test1", 0, &st->conn);
+    ret = sr_connect(0, &st->conn);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -401,7 +401,7 @@ test_change_feature(void **state)
     assert_int_equal(ret, 0);
 
     /* recreate connection and session */
-    ret = sr_connect("test1", 0, &st->conn);
+    ret = sr_connect(0, &st->conn);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -432,7 +432,7 @@ test_change_feature(void **state)
     assert_int_equal(ret, 0);
 
     /* recreate connection, session not needed anymore */
-    ret = sr_connect("test1", 0, &st->conn);
+    ret = sr_connect(0, &st->conn);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check that the feature was disabled and dependency removed */

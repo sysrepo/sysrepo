@@ -525,7 +525,7 @@ main(int argc, char** argv)
     }
 
     /* create connection */
-    if ((r = sr_connect("sysrepoctl", 0, &conn)) != SR_ERR_OK) {
+    if ((r = sr_connect(0, &conn)) != SR_ERR_OK) {
         error_print(r, "Failed to connect");
         goto cleanup;
     }

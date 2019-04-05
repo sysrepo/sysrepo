@@ -371,7 +371,7 @@ sr_log_stderr(sr_log_level_t log_level)
 }
 
 API void
-sr_log_syslog(sr_log_level_t log_level)
+sr_log_syslog(const char *app_name, sr_log_level_t log_level)
 {
     /* initializes libyang logging for our purpose */
     ly_log_options(LY_LOSTORE);
@@ -379,7 +379,7 @@ sr_log_syslog(sr_log_level_t log_level)
     syslog_ll = log_level;
 
     if ((log_level > SR_LL_NONE) && !syslog_open) {
-        openlog("sysrepo", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_DAEMON);
+        openlog(app_name ? app_name : "sysrepo", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_DAEMON);
 
         syslog_open = 1;
     } else if ((log_level == SR_LL_NONE) && syslog_open) {

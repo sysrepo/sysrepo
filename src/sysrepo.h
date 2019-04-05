@@ -63,18 +63,6 @@ typedef enum sr_error_e {
 } sr_error_t;
 
 /**
- * @brief Detailed sysrepo error information.
- */
-typedef struct sr_error_info_s {
-    sr_error_t err_code; /**< Error code. */
-    struct {
-        char *message;   /**< Error message. */
-        char *xpath;     /**< XPath to the node where the error has been discovered. */
-    } *err;
-    size_t err_count;    /**< Error message count. */
-} sr_error_info_t;
-
-/**
  * @brief Returns the error message corresponding to the error code.
  *
  * @param[in] err_code Error code.
@@ -116,11 +104,13 @@ void sr_log_stderr(sr_log_level_t log_level);
  * back to SR_LL_NONE disables the logging into syslog.
  *
  * @note Please note that enabling logging into syslog will overwrite your syslog
- * connection settings (calls openlog), if you are connected to syslog already.
+ * connection settings (calls openlog), if you are connected to syslog already and
+ * also libyang logging settings.
  *
+ * @param[in] app_name Name of the application. If not set, "sysrepo" will be used.
  * @param[in] log_level Requested log level (verbosity).
  */
-void sr_log_syslog(sr_log_level_t log_level);
+void sr_log_syslog(const char *app_name, sr_log_level_t log_level);
 
 /**
  * @brief Sets callback that will be called when a log entry would be populated.
@@ -137,16 +127,6 @@ typedef void (*sr_log_cb)(sr_log_level_t level, const char *message);
  * @param[in] log_callback Callback to be called when a log entry would populated.
  */
 void sr_log_set_cb(sr_log_cb log_callback);
-
-/**
- * @brief Get the common path prefix for all sysrepo files.
- *
- * @note If a specific path was changed during compilation, it does not use this
- * path prefix.
- *
- * @return Sysrepo repository path.
- */
-const char *sr_get_repo_path(void);
 
 /** @} logging */
 
@@ -185,8 +165,8 @@ typedef enum sr_conn_flag_e {
 typedef uint32_t sr_conn_options_t;
 
 /**
- * @brief Data stores that sysrepo supports. Their meaning should conform to RFC 8342.
- * To make changes permanent in an edited datastore ::sr_apply_changes must be issued.
+ * @brief Datastores that sysrepo supports. To make changes permanent in
+ * a datastore ::sr_apply_changes must be issued.
  */
 typedef enum sr_datastore_e {
     SR_DS_STARTUP = 0,     /**< Contains configuration data that will be loaded when a device starts. */
@@ -195,16 +175,26 @@ typedef enum sr_datastore_e {
 } sr_datastore_t;
 
 /**
+ * @brief Detailed sysrepo session error information.
+ */
+typedef struct sr_error_info_s {
+    sr_error_t err_code; /**< Error code. */
+    struct {
+        char *message;   /**< Error message. */
+        char *xpath;     /**< XPath to the node where the error has been discovered. */
+    } *err;              /**< Array of all generated errors. */
+    size_t err_count;    /**< Error message count. */
+} sr_error_info_t;
+
+/**
  * @brief Connects to the sysrepo datastore.
  *
- * @param[in] app_name Name of the application connecting to the datastore
- * (can be a static string). Used only for logging purposes.
  * @param[in] opts Options overriding default connection handling by this call.
  * @param[out] conn_ctx Connection context that can be used for subsequent API calls
  * (automatically allocated, it is supposed to be released by the caller using ::sr_disconnect).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx);
+int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx);
 
 /**
  * @brief Disconnects from the sysrepo datastore.
@@ -217,14 +207,23 @@ int sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t
 void sr_disconnect(sr_conn_ctx_t *conn_ctx);
 
 /**
- * @brief Starts a new configuration session.
+ * @brief Get the libyang context used by a connection. Can be used in an application for working with data
+ * and schemas. Do NOT change this context!
+ *
+ * @param[in] conn Connection to use.
+ * @return Const libyang context.
+ */
+const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Starts a new session.
  *
  * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
  * @param[in] datastore Datastore on which all sysrepo functions within this
  * session will operate. Later on, datastore can be later changed using
  * ::sr_session_switch_ds call. Functionality of some sysrepo calls does not depend on
  * datastore. If your session will contain just calls like these, you can pass
- * any valid value (e.g. SR_RUNNING).
+ * any valid value (e.g. ::SR_DS_RUNNING).
  * @param[out] session Session context that can be used for subsequent API
  * calls (automatically allocated, can be released by calling ::sr_session_stop).
  * @return Error code (::SR_ERR_OK on success).
@@ -353,25 +352,26 @@ sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
  */
 
 /**
- * @brief Get the libyang context used by a connection. Can be used in an application for working with data
- * and schemas. Do NOT change this context!
+ * @brief Get the common path prefix for all sysrepo files.
  *
- * @param[in] conn Connection to use.
- * @return Const libyang context.
+ * @note If a specific path was changed during compilation, it does not use this
+ * path prefix.
+ *
+ * @return Sysrepo repository path.
  */
-const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
+const char *sr_get_repo_path(void);
 
 /**
- * @brief Install a new module into sysrepo.
+ * @brief Install a new schema (module) into sysrepo.
  *
  * @param[in] conn Connection to use.
- * @param[in] module_path Path to a new module. Can have either YANG or YIN extension/format.
- * @param[in] search_dir Optional search dir for import modules.
+ * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
+ * @param[in] search_dir Optional search dir for import schemas.
  * @param[in] features Array of enabled features.
  * @param[in] feat_count Number of enabled features.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir, const char **features,
+int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dir, const char **features,
         int feat_count);
 
 /**
@@ -380,22 +380,22 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *module_path, const char *
  * Required WRITE access.
  *
  * @param[in] conn Connection to use.
- * @param[in] module_name Name of the mdoule to remove.
+ * @param[in] module_name Name of the module to remove.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
 
 /**
- * @brief Update an installed module with a new revision. Deferred until new main SHM creation!
+ * @brief Update an installed schema (module) to a new revision. Deferred until new main SHM creation!
  *
  * Required WRITE access.
  *
  * @param[in] conn Connection to use.
- * @param[in] module_path Path to the updated module. Can have either YANG or YIN extension/format.
- * @param[in] search_dir Optional search dir for import modules.
+ * @param[in] schema_path Path to the updated schema. Can have either YANG or YIN extension/format.
+ * @param[in] search_dir Optional search dir for import schemas.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_update_module(sr_conn_ctx_t *conn, const char *module_path, const char *search_dir);
+int sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dir);
 
 /**
  * @brief Cancel scheduled update of a module.

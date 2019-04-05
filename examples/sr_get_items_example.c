@@ -144,7 +144,7 @@ main(int argc, char **argv)
     sr_log_stderr(SR_LL_WRN);
 
     /* connect to sysrepo */
-    rc = sr_connect("example_application", 0, &connection);
+    rc = sr_connect(0, &connection);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
