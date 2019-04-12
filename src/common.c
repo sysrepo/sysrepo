@@ -2672,7 +2672,7 @@ sr_module_config_data_append(const struct lys_module *ly_mod, sr_datastore_t ds,
     }
 
     /* load data from a persistent storage */
-    ly_errno = LYVE_SUCCESS;
+    ly_errno = 0;
     mod_data = lyd_parse_path(ly_mod->ctx, path, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS);
     free(path);
     if (ly_errno) {

@@ -360,7 +360,7 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_
             }
         }
 
-        /* set the flag for unlocking */
+        /* set the flag for unlocking (it is always READ locked now) */
         mod->state |= MOD_INFO_RLOCK;
     }
 

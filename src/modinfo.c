@@ -230,7 +230,7 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
     sr_error_info_t *err_info = NULL;
     struct lyd_difflist *ly_diff;
     struct sr_mod_info_mod_s *mod;
-    struct lyd_node *src_mod_data, *dst_mod_data;
+    struct lyd_node *src_mod_data, *dst_mod_data, *diff;
     uint32_t i;
 
     assert(!mod_info->diff && !mod_info->data_cached);
@@ -254,7 +254,12 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
                 mod->state |= MOD_INFO_CHANGED;
 
                 /* create a single sysrepo diff */
-                err_info = sr_diff_ly2sr(ly_diff, &mod_info->diff);
+                err_info = sr_diff_ly2sr(ly_diff, &diff);
+                if (mod_info->diff) {
+                    sr_ly_link(mod_info->diff, diff);
+                } else {
+                    mod_info->diff = diff;
+                }
 
                 /* update data */
                 if (mod_info->data) {
@@ -849,7 +854,7 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *s
     struct lyd_node *iter;
     struct sr_mod_info_mod_s *mod;
     struct lyd_difflist *diff = NULL;
-    const struct lys_module **valid_mods;
+    const struct lys_module **valid_mods = NULL;
     uint32_t i, j, valid_mod_count = 0;
     int flags;
 

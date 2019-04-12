@@ -1797,13 +1797,14 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *sr_start_mod, s
             ((sr_main_shm_t *)main_shm_addr)->first_mod = shm_cur - main_shm_addr;
         }
 
-        /* allocate the module structure, */
+        /* allocate and zero the module structure, */
         shm_mod = (sr_mod_t *)shm_cur;
+        memset(shm_mod, 0, sizeof *shm_mod);
         shm_cur += sizeof *shm_mod;
-        shm_mod->flags = 0;
+
         shm_mod->ver = 1;
 
-        /* init shared rwlock */
+        /* init shared rwlocks */
         if ((err_info = sr_rwlock_init(&shm_mod->data_lock_info[SR_DS_STARTUP].lock, 1))) {
             return err_info;
         }

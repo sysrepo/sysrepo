@@ -555,7 +555,7 @@ sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struc
             sr_errinfo_new_ly(&err_info, lyd_node_module(*first_node)->ctx);
             return err_info;
         }
-        return SR_ERR_OK;
+        return NULL;
     } else if (insert == INSERT_FIRST) {
         if (lyd_insert_before(*first_node, new_node)) {
             sr_errinfo_new_ly(&err_info, lyd_node_module(*first_node)->ctx);
@@ -1702,6 +1702,7 @@ sr_diff_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
                 ret = lyd_insert(parent_node, match);
             } else {
                 *first_node = match;
+                ret = 0;
             }
         }
         if (ret) {
@@ -1801,7 +1802,7 @@ next_iter_r:
     case LYS_LEAFLIST:
     case LYS_ANYDATA:
     case LYS_ANYXML:
-        return SR_ERR_OK;
+        return NULL;
     case LYS_CONTAINER:
     case LYS_LIST:
         if (!diff_node->child) {

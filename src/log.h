@@ -26,9 +26,9 @@
 #define SR_ERRINFO_SYSERRNO(err_info, func) sr_errinfo_new(err_info, SR_ERR_SYS, NULL, "%s() failed (%s).", func, strerror(errno))
 #define SR_ERRINFO_VALID(err_info) sr_errinfo_new(err_info, SR_ERR_VALIDATION_FAILED, NULL, "Validation failed.")
 
-#define SR_LOG_WRN(format, ...) sr_log(SR_LL_WRN, format, ##__VA_ARGS__)
-#define SR_LOG_INF(format, ...) sr_log(SR_LL_INF, format, ##__VA_ARGS__)
-#define SR_LOG_DBG(format, ...) sr_log(SR_LL_DBG, format, ##__VA_ARGS__)
+#define SR_LOG_WRN(format, ...) sr_log(SR_LL_WRN, format, __VA_ARGS__)
+#define SR_LOG_INF(format, ...) sr_log(SR_LL_INF, format, __VA_ARGS__)
+#define SR_LOG_DBG(format, ...) sr_log(SR_LL_DBG, format, __VA_ARGS__)
 
 #define SR_LOG_WRNMSG(format) sr_log(SR_LL_WRN, format)
 #define SR_LOG_INFMSG(format) sr_log(SR_LL_INF, format)

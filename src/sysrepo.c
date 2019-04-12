@@ -76,7 +76,7 @@ error:
 API int
 sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 {
-    sr_conn_ctx_t *conn;
+    sr_conn_ctx_t *conn = NULL;
     sr_error_info_t *err_info = NULL;
     int nonexistent;
 
@@ -84,7 +84,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 
     /* check that all required directories exist */
     if ((err_info = sr_shmmain_check_dirs())) {
-        goto error_unlock;
+        goto error;
     }
 
     /* create basic connection structure */
@@ -348,9 +348,9 @@ sr_session_switch_ds(sr_session_ctx_t *session, sr_datastore_t ds)
 API sr_datastore_t
 sr_session_get_ds(sr_session_ctx_t *session)
 {
-    sr_error_info_t *err_info = NULL;
-
-    SR_CHECK_ARG_APIRET(!session, session, err_info);
+    if (!session) {
+        return 0;
+    }
 
     return session->ds;
 }
@@ -2240,7 +2240,7 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = session->conn;
-    struct lyd_node *enabled_data, *node;
+    struct lyd_node *enabled_data = NULL, *node;
     struct sr_mod_info_s mod_info;
     sr_session_ctx_t tmp_sess;
     sr_error_t err_code;
