@@ -710,8 +710,9 @@ sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, int wr, const ch
  *
  * @param[in] rwlock RW lock to unlock.
  * @param[in] wr Whether to write-unlock or read-unlock.
+ * @param[in] func Name of the calling function for logging.
  */
-void sr_rwunlock(sr_rwlock_t *rwlock, int wr);
+void sr_rwunlock(sr_rwlock_t *rwlock, int wr, const char *func);
 
 /**
  * @brief Wrapper to realloc() that frees memory on failure.

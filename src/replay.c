@@ -418,7 +418,7 @@ sr_replay_store(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_
 
 cleanup_unlock:
     /* REPLAY WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->replay_lock, 1);
+    sr_rwunlock(&shm_mod->replay_lock, 1, __func__);
 cleanup:
     if (fd > -1) {
         close(fd);

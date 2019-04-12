@@ -352,7 +352,7 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_
             shm_lock->sid = sid;
 
             /* MOD WRITE UNLOCK */
-            sr_rwunlock(&shm_lock->lock, 1);
+            sr_rwunlock(&shm_lock->lock, 1, __func__);
 
             /* MOD READ LOCK */
             if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, 0, sid))) {
@@ -381,8 +381,11 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 
         /* upgrade only required modules */
         if ((mod->state & MOD_INFO_REQ) && (mod->state & MOD_INFO_RLOCK)) {
+            assert(shm_lock->write_locked);
+            assert(!memcmp(&shm_lock->sid, &sid, sizeof sid));
+
             /* MOD READ UNLOCK */
-            sr_rwunlock(&shm_lock->lock, 0);
+            sr_rwunlock(&shm_lock->lock, 0, __func__);
 
             /* remove flag for correct error recovery */
             mod->state &= ~MOD_INFO_RLOCK;

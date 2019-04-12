@@ -1754,7 +1754,7 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, int wr, const char *func)
 }
 
 void
-sr_rwunlock(sr_rwlock_t *rwlock, int wr)
+sr_rwunlock(sr_rwlock_t *rwlock, int wr, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
@@ -1766,7 +1766,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, int wr)
         /* MUTEX LOCK */
         ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
         if (ret) {
-            SR_ERRINFO_LOCK(&err_info, __func__, ret);
+            SR_ERRINFO_LOCK(&err_info, func, ret);
             sr_errinfo_free(&err_info);
         }
 

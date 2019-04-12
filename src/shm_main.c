@@ -2242,9 +2242,9 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int keep_remap)
     return NULL;
 
 error_remap_shm_unlock:
-    sr_rwunlock(&main_shm->lock, wr);
+    sr_rwunlock(&main_shm->lock, wr, __func__);
 error_remap_unlock:
-    sr_munlock(&conn->main_shm_remap_lock);
+    sr_rwunlock(&conn->main_shm_remap_lock, remap, __func__);
     return err_info;
 }
 
@@ -2257,7 +2257,7 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int kept_remap)
     assert(main_shm);
 
     /* MAIN SHM UNLOCK */
-    sr_rwunlock(&main_shm->lock, wr);
+    sr_rwunlock(&main_shm->lock, wr, __func__);
 
     if (kept_remap) {
         /* REMAP UNLOCK */
