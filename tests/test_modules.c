@@ -431,8 +431,10 @@ test_change_feature(void **state)
     ret = unlink("/dev/shm/sr_main");
     assert_int_equal(ret, 0);
 
-    /* recreate connection, session not needed anymore */
+    /* recreate connection and session */
     ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check that the feature was disabled and dependency removed */
@@ -450,6 +452,19 @@ test_change_feature(void **state)
     );
 
     /* cleanup */
+    ret = sr_delete_item(sess, "/test:test-leaf", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(sess, "/features:l1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(sess, "/features:l3", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_copy_config(sess, NULL, SR_DS_STARTUP, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_stop(sess);
+
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_remove_module(st->conn, "features");
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_remove_module(st->conn, "test");
