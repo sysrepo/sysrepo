@@ -423,17 +423,19 @@ sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable)
 
         if (mod->state & MOD_INFO_WLOCK) {
             /* MOD WRITE UNLOCK */
-            sr_rwunlock(&shm_lock->lock, 1);
+            sr_rwunlock(&shm_lock->lock, 1, __func__);
+            SR_LOG_INF("## \"%s\" wr unlock", mod->ly_mod->name);
         } else if (mod->state & MOD_INFO_RLOCK) {
             /* MOD READ UNLOCK */
-            sr_rwunlock(&shm_lock->lock, 0);
+            sr_rwunlock(&shm_lock->lock, 0, __func__);
+            SR_LOG_INF("## \"%s\" rd unlock", mod->ly_mod->name);
         }
     }
 }
 
 sr_error_info_t *
 sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_datastore_t ds,
-        uint32_t priority, int sub_opts, int add, int *last_removed)
+        uint32_t priority, int sub_opts, uint32_t evpipe_num, int add, int *last_removed)
 {
     sr_mod_t *shm_mod;
     off_t shm_mod_off, xpath_off, conf_subs_off;
@@ -482,6 +484,7 @@ sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const cha
         }
         shm_sub->priority = priority;
         shm_sub->opts = sub_opts;
+        shm_sub->evpipe_num = evpipe_num;
     } else {
         if (last_removed) {
             *last_removed = 0;
@@ -492,7 +495,7 @@ sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const cha
         for (i = 0; i < shm_mod->conf_sub[ds].sub_count; ++i) {
             if ((!xpath && !shm_sub[i].xpath)
                     || (xpath && shm_sub[i].xpath && !strcmp(conn->main_shm.addr + shm_sub[i].xpath, xpath))) {
-                if ((shm_sub[i].priority == priority) && (shm_sub[i].opts == sub_opts)) {
+                if ((shm_sub[i].priority == priority) && (shm_sub[i].opts == sub_opts) && (shm_sub[i].evpipe_num == evpipe_num)) {
                     break;
                 }
             }
@@ -520,14 +523,14 @@ sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const cha
 
 sr_error_info_t *
 sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_mod_dp_sub_type_t sub_type,
-        int add)
+        uint32_t evpipe_num, int add)
 {
+    sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     off_t shm_mod_off, xpath_off, dp_subs_off;
     sr_mod_dp_sub_t *shm_sub;
     size_t new_shm_size, new_len, cur_len;
     uint16_t i;
-    sr_error_info_t *err_info = NULL;
 
     assert(mod_name && xpath && (!add || sub_type));
 
@@ -589,6 +592,7 @@ sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char 
             shm_sub->xpath = 0;
         }
         shm_sub->sub_type = sub_type;
+        shm_sub->evpipe_num = evpipe_num;
 
         ++shm_mod->dp_sub_count;
     } else {
@@ -620,14 +624,14 @@ sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char 
 }
 
 sr_error_info_t *
-sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, int add)
+sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, uint32_t evpipe_num, int add)
 {
+    sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     off_t shm_mod_off, xpath_off, rpc_subs_off;
     sr_mod_rpc_sub_t *shm_sub;
     size_t new_shm_size;
     uint16_t i;
-    sr_error_info_t *err_info = NULL;
 
     assert(mod_name && xpath);
 
@@ -671,6 +675,7 @@ sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char
         shm_sub += i;
         strcpy(conn->main_shm.addr + xpath_off, xpath);
         shm_sub->xpath = xpath_off;
+        shm_sub->evpipe_num = evpipe_num;
 
         ++shm_mod->rpc_sub_count;
     } else {
@@ -700,29 +705,74 @@ sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char
 }
 
 sr_error_info_t *
-sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *mod_name, int add, int *last_removed)
+sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *mod_name, uint32_t evpipe_num, int add, int *last_removed)
 {
-    sr_mod_t *shm_mod;
     sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+    off_t shm_mod_off, notif_subs_off;
+    sr_mod_notif_sub_t *shm_sub;
+    size_t new_shm_size;
+    uint16_t i;
 
     assert(mod_name);
 
     shm_mod = sr_shmmain_find_module(conn->main_shm.addr, mod_name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
+    /* remember the relative offset to use after main SHM remap */
+    shm_mod_off = ((char *)shm_mod) - conn->main_shm.addr;
 
     if (add) {
-        /* simply add a subscriber */
+        /* moving all existing subscriptions (if any) and adding a new one */
+        notif_subs_off = conn->main_shm.size;
+        new_shm_size = notif_subs_off + (shm_mod->notif_sub_count + 1) * sizeof *shm_sub;
+
+        /* remap main SHM */
+        if ((err_info = sr_shm_remap(&conn->main_shm, new_shm_size))) {
+            return err_info;
+        }
+        shm_mod = (sr_mod_t *)(conn->main_shm.addr + shm_mod_off);
+
+        /* add wasted memory */
+        ((sr_main_shm_t *)conn->main_shm.addr)->wasted_mem += shm_mod->notif_sub_count * sizeof *shm_sub;
+
+        /* move subscriptions */
+        memcpy(conn->main_shm.addr + notif_subs_off, conn->main_shm.addr + shm_mod->notif_subs,
+                shm_mod->notif_sub_count * sizeof *shm_sub);
+        shm_mod->notif_subs = notif_subs_off;
+
+        /* fill new subscription */
+        shm_sub = (sr_mod_notif_sub_t *)(conn->main_shm.addr + shm_mod->notif_subs);
+        shm_sub += shm_mod->notif_sub_count;
+        shm_sub->evpipe_num = evpipe_num;
+
         ++shm_mod->notif_sub_count;
     } else {
         if (last_removed) {
             *last_removed = 0;
         }
 
-        /* simply remove a subscriber */
-        SR_CHECK_INT_RET(!shm_mod->notif_sub_count, err_info);
+        /* find the subscription */
+        shm_sub = (sr_mod_notif_sub_t *)(conn->main_shm.addr + shm_mod->notif_subs);
+        for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+            if (shm_sub[i].evpipe_num == evpipe_num) {
+                break;
+            }
+        }
+        SR_CHECK_INT_RET(i == shm_mod->notif_sub_count, err_info);
+
+        /* add wasted memory */
+        ((sr_main_shm_t *)conn->main_shm.addr)->wasted_mem += sizeof *shm_sub;
+
         --shm_mod->notif_sub_count;
-        if (!shm_mod->notif_sub_count && last_removed) {
-            *last_removed = 1;
+        if (!shm_mod->notif_sub_count) {
+            /* the only subscription removed */
+            shm_mod->notif_subs = 0;
+            if (last_removed) {
+                *last_removed = 1;
+            }
+        } else if (i < shm_mod->notif_sub_count) {
+            /* replace the deleted subscription with the last one */
+            memcpy(&shm_sub[i], &shm_sub[shm_mod->notif_sub_count], sizeof *shm_sub);
         }
     }
 

@@ -909,6 +909,8 @@ typedef enum sr_subscr_flag_e {
     /**
      * @brief Default behavior of the subscription. In case of ::sr_module_change_subscribe call it means that:
      *
+     * - for every new subscription (flag ::SR_SUBSCR_CTX_REUSE not used) a thread is created that listens for
+     *   new events (can be changed with ::SR_SUBSCR_NO_THREAD flag),
      * - the subscriber is the "owner" of the subscribed data tree and it will appear in the operational
      *   datastore while this subscription is alive (if not already, can be changed using ::SR_SUBSCR_PASSIVE flag),
      * - the callback will be called twice, once with ::SR_EV_CHANGE event and once with ::SR_EV_DONE / ::SR_EV_ABORT
@@ -924,29 +926,36 @@ typedef enum sr_subscr_flag_e {
     SR_SUBSCR_CTX_REUSE = 1,
 
     /**
+     * @brief There will be no thread created for handling this subscription meaning no event will be processed!
+     * Use this flag when the application has its own event loop and it will listen for and process events manually
+     * (see ::sr_get_event_pipe and ::sr_process_events).
+     */
+    SR_SUBSCR_NO_THREAD = 2,
+
+    /**
      * @brief The subscriber is not the "owner" of the subscribed data tree, just a passive watcher for changes.
      * When this option is passed in to ::sr_module_change_subscribe, the subscription will have no effect on
      * the presence of the subtree in the operational datastore.
      */
-    SR_SUBSCR_PASSIVE = 2,
+    SR_SUBSCR_PASSIVE = 4,
 
     /**
      * @brief The subscriber does not support verification of the changes and wants to be notified only after
      * the changes has been applied in the datastore, without the possibility to deny them
      * (it will receive only ::SR_EV_DONE events).
      */
-    SR_SUBSCR_DONE_ONLY = 4,
+    SR_SUBSCR_DONE_ONLY = 8,
 
     /**
      * @brief The subscriber wants to be notified about the current configuration at the moment of subscribing.
      */
-    SR_SUBSCR_ENABLED = 8,
+    SR_SUBSCR_ENABLED = 16,
 
     /**
      * @brief The subscriber will be called before any other subscribers for the particular module
      * and is allowed to modify the new module data.
      */
-    SR_SUBSCR_UPDATE = 16,
+    SR_SUBSCR_UPDATE = 32,
 
 } sr_subscr_flag_t;
 
@@ -1034,6 +1043,31 @@ typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module
 int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         sr_module_change_cb callback, void *private_data, uint32_t priority, sr_subscr_options_t opts,
         sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Get the event pipe of a subscription. Do not call unless ::SR_SUBSCR_NO_THREAD flag was used
+ * when subscribing! Event pipe can be used in `select()`, `poll()`, or similar functions to listen for new events.
+ * It will then be ready for reading.
+ *
+ * @param[in] subscription Subscription without a listening thread.
+ * @param[out] event_pipe Event pipe of the subscription, do not close! It will be closed
+ * when the subscription is unsubscribed.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_get_event_pipe(sr_subscription_ctx_t *subscription, int *event_pipe);
+
+/**
+ * @brief Process any pending new events on a subscription. Should not be called unless ::SR_SUBSCR_NO_THREAD flag
+ * was used when subscribing! Usually called after this subscription's event pipe is ready for reading but can
+ * also be called periodically.
+ *
+ * @param[in] subscription Subscription without a listening thread with some new events.
+ * @param[in] session Optional session for storing errors.
+ * @param[out] stop_time_in Optional seconds until the nearest notification subscription stop time is elapsed.
+ * If there are no subscriptions with stop time in future, it is set to 0.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, time_t *stop_time_in);
 
 /**
  * @brief Unsubscribes from a subscription acquired by any of sr_*_subscribe

@@ -169,26 +169,38 @@ sr_get_context(sr_conn_ctx_t *conn)
 /**
  * @brief Add a generic pointer to an array.
  *
+ * @param[in] ptr_lock Pointers lock.
  * @param[in,out] ptrs Pointer array to enlarge.
  * @param[in,out] ptr_count Pointer array count.
  * @param[in] add_ptr Pointer to add.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_conn_ptr_add(void ***ptrs, uint32_t *ptr_count, void *add_ptr)
+sr_conn_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *add_ptr)
 {
     sr_error_info_t *err_info = NULL;
     void *mem;
 
+    /* PTR LOCK */
+    if ((err_info = sr_mlock(ptr_lock, -1, __func__))) {
+        return err_info;
+    }
+
     /* add the session into conn */
     mem = realloc(*ptrs, (*ptr_count + 1) * sizeof(void *));
     if (!mem) {
+        /* PTR UNLOCK */
+        sr_munlock(ptr_lock);
+
         SR_ERRINFO_MEM(&err_info);
         return err_info;
     }
     *ptrs = mem;
     (*ptrs)[*ptr_count] = add_ptr;
     ++(*ptr_count);
+
+    /* PTR UNLOCK */
+    sr_munlock(ptr_lock);
 
     return NULL;
 }
@@ -204,7 +216,7 @@ static void
 sr_conn_ptr_del(void ***ptrs, uint32_t *ptr_count, void *del_ptr)
 {
     uint32_t i;
-    int found;
+    int found = 0;
     sr_error_info_t *err_info = NULL;
 
     for (i = 0; i < *ptr_count; ++i) {
@@ -2317,13 +2329,16 @@ cleanup_mods_unlock:
  * @brief Allocate and start listening on a new subscription.
  *
  * @param[in] conn Connection to use.
+ * @param[in] opts Subscription options.
  * @param[out] subs_p Allocated subscription.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_subs_new(sr_conn_ctx_t *conn, sr_subscription_ctx_t **subs_p)
+sr_subs_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t **subs_p)
 {
     sr_error_info_t *err_info = NULL;
+    sr_main_shm_t *main_shm;
+    char *path = NULL;
     int ret;
 
     /* allocate new subscription */
@@ -2331,19 +2346,57 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscription_ctx_t **subs_p)
     SR_CHECK_MEM_RET(!*subs_p, err_info);
     sr_mutex_init(&(*subs_p)->subs_lock, 0);
     (*subs_p)->conn = conn;
+    (*subs_p)->evpipe = -1;
 
-    /* set thread_running to non-zero so that thread does not immediately quit */
-    ATOMIC_STORE_RELAXED((*subs_p)->thread_running, 1);
-
-    /* start the listen thread */
-    ret = pthread_create(&(*subs_p)->tid, NULL, sr_shmsub_listen_thread, *subs_p);
-    if (ret) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Creating a new thread failed (%s).", strerror(ret));
-        ATOMIC_STORE_RELAXED((*subs_p)->thread_running, 0);
-        return err_info;
+    /* get new event pipe number and increment it */
+    main_shm = (sr_main_shm_t *)(*subs_p)->conn->main_shm.addr;
+    (*subs_p)->evpipe_num = ATOMIC_INC_RELAXED(main_shm->new_evpipe_num);
+    if ((*subs_p)->evpipe_num == (uint32_t)(ATOMIC_T_MAX - 1)) {
+        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
+        ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
     }
 
+    /* get event pipe name */
+    if ((err_info = sr_path_evpipe((*subs_p)->evpipe_num, &path))) {
+        goto error;
+    }
+
+    /* create the event pipe */
+    if (mkfifo(path, SR_EVPIPE_PERM) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "mkfifo");
+        goto error;
+    }
+
+    /* open it for reading AND writing (just so that there always is a "writer", otherwise it is always ready
+     * for reading by select() but returns just EOF on read) */
+    (*subs_p)->evpipe = open(path, O_RDWR | O_NONBLOCK);
+    if ((*subs_p)->evpipe == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "open");
+        goto error;
+    }
+
+    if (!(opts & SR_SUBSCR_NO_THREAD)) {
+        /* set thread_running to non-zero so that thread does not immediately quit */
+        ATOMIC_STORE_RELAXED((*subs_p)->thread_running, 1);
+
+        /* start the listen thread */
+        ret = pthread_create(&(*subs_p)->tid, NULL, sr_shmsub_listen_thread, *subs_p);
+        if (ret) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Creating a new thread failed (%s).", strerror(ret));
+            goto error;
+        }
+    }
+
+    free(path);
     return NULL;
+
+error:
+    free(path);
+    if ((*subs_p)->evpipe > -1) {
+        close((*subs_p)->evpipe);
+    }
+    free(*subs_p);
+    return err_info;
 }
 
 API int
@@ -2379,101 +2432,245 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        sr_shmmain_unlock(conn, 1, 1);
-        return sr_api_ret(session, err_info);
+        goto error_unlock;
     }
 
     /* check write/read perm */
     if ((err_info = sr_perm_check(module_name, (opts & SR_SUBSCR_PASSIVE) ? 0 : 1))) {
-        sr_shmmain_unlock(conn, 1, 1);
-        return sr_api_ret(session, err_info);
-    }
-
-    /* add module subscription into main SHM */
-    if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 1, NULL))) {
-        sr_shmmain_unlock(conn, 1, 1);
-        return sr_api_ret(session, err_info);
-    }
-    if (ds != SR_DS_OPERATIONAL) {
-        if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 1, NULL))) {
-            sr_shmmain_unlock(conn, 1, 1);
-            sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0, NULL);
-            return sr_api_ret(session, err_info);
-        }
+        goto error_unlock;
     }
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
-        if ((err_info = sr_subs_new(conn, subscription))) {
-            sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0, NULL);
-            if (ds != SR_DS_OPERATIONAL) {
-                sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 0, NULL);
-            }
-            sr_shmmain_unlock(conn, 1, 1);
-            return sr_api_ret(session, err_info);
+        if ((err_info = sr_subs_new(conn, opts, subscription))) {
+            goto error_unlock;
+        }
+    }
+
+    /* add module subscription into main SHM */
+    if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts,
+            (*subscription)->evpipe_num, 1, NULL))) {
+        goto error_unlock_unsub;
+    }
+    if (ds != SR_DS_OPERATIONAL) {
+        if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts,
+                (*subscription)->evpipe_num, 1, NULL))) {
+            sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts,
+                    (*subscription)->evpipe_num, 0, NULL);
+            goto error_unlock_unsub;
         }
     }
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_conf_add(module_name, xpath, session->ds, callback, private_data, priority, sub_opts,
             *subscription))) {
-        sr_shmmain_unlock(conn, 1, 1);
-        goto error_unsubscribe;
+        goto error_unlock_unsub_unmod;
     }
     if (ds != SR_DS_OPERATIONAL) {
         if ((err_info = sr_sub_conf_add(module_name, xpath, ds, callback, private_data, priority, sub_opts,
                 *subscription))) {
-            sr_shmmain_unlock(conn, 1, 1);
-            goto error_unsubscribe;
+            goto error_unlock_unsub_unmod;
         }
     }
 
     /* call the callback with the current running configuration so that it is properly applied */
     if (((session->ds == SR_DS_RUNNING) || (ds == SR_DS_RUNNING)) && (opts & SR_SUBSCR_ENABLED)) {
         if ((err_info = sr_module_change_subscribe_running_enable(session, ly_mod, xpath, callback, private_data))) {
-            sr_shmmain_unlock(conn, 1, 1);
-            goto error_unsubscribe;
+            goto error_unlock_unsub_unmod;
         }
     }
 
     /* defrag main SHM if needed */
     if ((err_info = sr_check_main_shm_defrag(conn))) {
-        sr_shmmain_unlock(conn, 1, 1);
-        goto error_unsubscribe;
+        goto error_unlock_unsub_unmod;
+    }
+
+    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
+        /* add the subscription into conn */
+        if ((err_info = sr_conn_ptr_add(&conn->ptr_lock, (void ***)&conn->subscriptions, &conn->subscription_count,
+                *subscription))) {
+            goto error_unlock_unsub_unmod;
+        }
     }
 
     /* SHM WRITE UNLOCK */
     sr_shmmain_unlock(conn, 1, 1);
 
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        /* PTR LOCK */
-        if ((err_info = sr_mlock(&conn->ptr_lock, -1, __func__))) {
-            goto error_unsubscribe;
-        }
-
-        /* add the subscription into conn */
-        err_info = sr_conn_ptr_add((void ***)&conn->subscriptions, &conn->subscription_count, *subscription);
-
-        /* PTR UNLOCK */
-        sr_munlock(&conn->ptr_lock);
-
-        if (err_info) {
-            goto error_unsubscribe;
-        }
-    }
-
     return sr_api_ret(session, NULL);
 
-error_unsubscribe:
+error_unlock_unsub_unmod:
+    sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, (*subscription)->evpipe_num, 0, NULL);
+    if (ds != SR_DS_OPERATIONAL) {
+        sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, (*subscription)->evpipe_num, 0, NULL);
+    }
+
+error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_sub_conf_del(module_name, xpath, session->ds, callback, private_data, priority, sub_opts, *subscription);
     } else {
         sr_unsubscribe(*subscription);
     }
-    sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, 0, NULL);
-    if (ds != SR_DS_OPERATIONAL) {
-        sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, 0, NULL);
+
+error_unlock:
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 1);
+
+    return sr_api_ret(session, err_info);
+}
+
+API int
+sr_get_event_pipe(sr_subscription_ctx_t *subscription, int *event_pipe)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!subscription || !event_pipe, NULL, err_info);
+
+    *event_pipe = subscription->evpipe;
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Process special notification events on a subscription involving
+ * changing main SHM.
+ *
+ * @param[in] subscription Subscription to process.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_process_events_notif_replay_stop(sr_subscription_ctx_t *subscription)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    int mod_finished;
+
+    /* MAIN SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(subscription->conn, 1, 1))) {
+        return err_info;
     }
+
+    /* SUBS LOCK */
+    if ((err_info = sr_mlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, __func__))) {
+        sr_shmmain_unlock(subscription->conn, 1, 0);
+        return err_info;
+    }
+
+    i = 0;
+    while (i < subscription->notif_sub_count) {
+        /* perform any replays requested */
+        if ((err_info = sr_shmsub_notif_listen_module_replay(&subscription->notif_subs[i], subscription))) {
+            goto cleanup_unlock;
+        }
+
+        /* check whether a subscription did not finish */
+        if ((err_info = sr_shmsub_notif_listen_module_stop_time(&subscription->notif_subs[i], subscription,
+                &mod_finished))) {
+            goto cleanup_unlock;
+        }
+        if (mod_finished) {
+            /* all subscriptions of this module have finished, try the next */
+            continue;
+        }
+
+        /* next iteration */
+        ++i;
+    }
+
+    /* success */
+
+cleanup_unlock:
+    /* SUBS UNLOCK */
+    sr_munlock(&subscription->subs_lock);
+
+    /* MAIN SHM WRITE UNLOCK */
+    sr_shmmain_unlock(subscription->conn, 1, 1);
+    return err_info;
+}
+
+API int
+sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, time_t *stop_time_in)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+    char buf[1];
+    uint32_t i;
+
+    /* session does not have to be set */
+    SR_CHECK_ARG_APIRET(!subscription, session, err_info);
+
+    if (stop_time_in) {
+        *stop_time_in = 0;
+    }
+
+process_events:
+    /* SUBS LOCK */
+    if ((err_info = sr_mlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* read all bytes from the pipe, there can be several events by now */
+    do {
+        ret = read(subscription->evpipe, buf, 1);
+    } while (ret == 1);
+    if ((ret == -1) && (errno != EAGAIN)) {
+        SR_ERRINFO_SYSERRNO(&err_info, "read");
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to read from an event pipe.");
+        goto cleanup_unlock;
+    }
+
+    /* first check whether there are any pending replays or finished subscriptions ... */
+    for (i = 0; i < subscription->notif_sub_count; ++i) {
+        if (sr_shmsub_notif_listen_module_has_replay_or_stop(&subscription->notif_subs[i])) {
+            break;
+        }
+    }
+    if (i < subscription->notif_sub_count) {
+        /* ... there are, prepare for handling them (keep lock order) */
+
+        /* SUBS UNLOCK */
+        sr_munlock(&subscription->subs_lock);
+
+        if ((err_info = sr_process_events_notif_replay_stop(subscription))) {
+            return sr_api_ret(session, err_info);
+        }
+
+        /* start from the beginning again, anything could have changed */
+        goto process_events;
+    }
+
+    /* configuration subscriptions */
+    for (i = 0; i < subscription->conf_sub_count; ++i) {
+        if ((err_info = sr_shmsub_conf_listen_process_module_events(&subscription->conf_subs[i], subscription->conn))) {
+            goto cleanup_unlock;
+        }
+    }
+
+    /* data provider subscriptions */
+    for (i = 0; i < subscription->dp_sub_count; ++i) {
+        if ((err_info = sr_shmsub_dp_listen_process_module_events(&subscription->dp_subs[i], subscription->conn))) {
+            goto cleanup_unlock;
+        }
+    }
+
+    /* RPC/action subscriptions */
+    for (i = 0; i < subscription->rpc_sub_count; ++i) {
+        if ((err_info = sr_shmsub_rpc_listen_process_events(&subscription->rpc_subs[i], subscription->conn))) {
+            goto cleanup_unlock;
+        }
+    }
+
+    /* notification subscriptions */
+    for (i = 0; i < subscription->notif_sub_count; ++i) {
+        if ((err_info = sr_shmsub_notif_listen_process_module_events(&subscription->notif_subs[i], subscription->conn))) {
+            goto cleanup_unlock;
+        }
+
+        /* find nearest stop time */
+        sr_shmsub_notif_listen_module_get_stop_time_in(&subscription->notif_subs[i], stop_time_in);
+    }
+
+cleanup_unlock:
+    /* SUBS UNLOCK */
+    sr_munlock(&subscription->subs_lock);
     return sr_api_ret(session, err_info);
 }
 
@@ -2481,6 +2678,7 @@ API int
 sr_unsubscribe(sr_subscription_ctx_t *subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
+    char *path;
     int ret;
 
     if (!subscription) {
@@ -2502,10 +2700,15 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
         /* signal the thread to quit */
         ATOMIC_STORE_RELAXED(subscription->thread_running, 0);
 
-        /* join the thread */
-        ret = pthread_join(subscription->tid, NULL);
-        if (ret) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Joining the subscriber thread failed (%s).", strerror(ret));
+        /* generate a new event for the thread to wake up */
+        err_info = sr_shmsub_notify_evpipe(subscription->evpipe_num);
+
+        if (!err_info) {
+            /* join the thread */
+            ret = pthread_join(subscription->tid, NULL);
+            if (ret) {
+                sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Joining the subscriber thread failed (%s).", strerror(ret));
+            }
         }
     }
 
@@ -2531,6 +2734,18 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     /* SHM WRITE UNLOCK */
     sr_shmmain_unlock(subscription->conn, 1, 1);
 
+    /* unlink event pipe */
+    if ((tmp_err = sr_path_evpipe(subscription->evpipe_num, &path))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    } else {
+        ret = unlink(path);
+        free(path);
+        if (ret == -1) {
+            SR_ERRINFO_SYSERRNO(&err_info, "unlink");
+        }
+    }
+
+    close(subscription->evpipe);
     pthread_mutex_destroy(&subscription->subs_lock);
     free(subscription);
     return sr_api_ret(NULL, err_info);
@@ -3014,78 +3229,68 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     op = ly_ctx_get_node(conn->ly_ctx, NULL, xpath, 0);
     if (!op) {
         sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        sr_shmmain_unlock(conn, 1, 1);
-        return sr_api_ret(session, err_info);
+        goto error_unlock;
     }
     if (!(op->nodetype & (LYS_RPC | LYS_ACTION))) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "XPath \"%s\" does not identify an RPC nor an action.", xpath);
-        sr_shmmain_unlock(conn, 1, 1);
-        return sr_api_ret(session, err_info);
+        goto error_unlock;
     }
     module_name = lys_node_module(op)->name;
 
     /* check write perm */
     if ((err_info = sr_perm_check(module_name, 1))) {
-        sr_shmmain_unlock(conn, 1, 1);
-        return sr_api_ret(session, err_info);
-    }
-
-    /* add RPC/action subscription into main SHM */
-    if ((err_info = sr_shmmod_rpc_subscription(conn, module_name, xpath, 1))) {
-        sr_shmmain_unlock(conn, 1, 1);
-        return sr_api_ret(session, err_info);
+        goto error_unlock;
     }
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
-        if ((err_info = sr_subs_new(conn, subscription))) {
-            sr_shmmod_rpc_subscription(conn, module_name, xpath, 0);
-            sr_shmmain_unlock(conn, 1, 1);
-            return sr_api_ret(session, err_info);
+        if ((err_info = sr_subs_new(conn, opts, subscription))) {
+            goto error_unlock;
         }
+    }
+
+    /* add RPC/action subscription into main SHM */
+    if ((err_info = sr_shmmod_rpc_subscription(conn, module_name, xpath, (*subscription)->evpipe_num, 1))) {
+        goto error_unlock_unsub;
     }
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_rpc_add(module_name, xpath, callback, tree_callback, private_data, *subscription))) {
-        sr_shmmain_unlock(conn, 1, 1);
-        goto error_unsubscribe;
+        goto error_unlock_unsub_unmod;
     }
 
     /* defrag main SHM if needed */
     if ((err_info = sr_check_main_shm_defrag(conn))) {
-        sr_shmmain_unlock(conn, 1, 1);
-        goto error_unsubscribe;
+        goto error_unlock_unsub_unmod;
+    }
+
+    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
+        /* add the subscription into conn */
+        if ((err_info = sr_conn_ptr_add(&conn->ptr_lock, (void ***)&conn->subscriptions, &conn->subscription_count,
+                *subscription))) {
+            goto error_unlock_unsub_unmod;
+        }
     }
 
     /* SHM WRITE UNLOCK */
     sr_shmmain_unlock(conn, 1, 1);
 
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        /* PTR LOCK */
-        if ((err_info = sr_mlock(&conn->ptr_lock, -1, __func__))) {
-            goto error_unsubscribe;
-        }
-
-        /* add the subscription into conn */
-        err_info = sr_conn_ptr_add((void ***)&conn->subscriptions, &conn->subscription_count, *subscription);
-
-        /* PTR UNLOCK */
-        sr_munlock(&conn->ptr_lock);
-
-        if (err_info) {
-            goto error_unsubscribe;
-        }
-    }
-
     return sr_api_ret(session, NULL);
 
-error_unsubscribe:
+error_unlock_unsub_unmod:
+    sr_shmmod_rpc_subscription(conn, module_name, xpath, (*subscription)->evpipe_num, 0);
+
+error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_sub_rpc_del(xpath, *subscription);
     } else {
         sr_unsubscribe(*subscription);
     }
-    sr_shmmod_rpc_subscription(conn, module_name, xpath, 0);
+
+error_unlock:
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 1);
+
     return sr_api_ret(session, err_info);
 }
 
@@ -3176,10 +3381,11 @@ cleanup:
  * @param[in] conn Connection to use.
  * @param[in] rpc RPC/action received.
  * @param[out] xpath RPC/action xpath.
+ * @param[out] evpipe_num Event pipe number.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_rpc_find_subscriber(sr_conn_ctx_t *conn, const struct lys_node *rpc, char **xpath)
+sr_rpc_find_subscriber(sr_conn_ctx_t *conn, const struct lys_node *rpc, char **xpath, uint32_t *evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
@@ -3204,6 +3410,7 @@ sr_rpc_find_subscriber(sr_conn_ctx_t *conn, const struct lys_node *rpc, char **x
 
     if (i < shm_mod->rpc_sub_count) {
         *xpath = rpc_xpath;
+        *evpipe_num = shm_subs[i].evpipe_num;
     } else {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "There is no subscriber to \"%s\" %s.", rpc_xpath,
                 (rpc->nodetype == LYS_RPC) ? "RPC" : "action");
@@ -3220,6 +3427,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     struct lyd_node *input_op;
     sr_mod_data_dep_t *shm_deps;
     uint16_t shm_dep_count;
+    uint32_t evpipe_num;
     char *xpath = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
@@ -3262,7 +3470,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* check that there is a subscriber */
-    if ((err_info = sr_rpc_find_subscriber(session->conn, input_op->schema, &xpath))) {
+    if ((err_info = sr_rpc_find_subscriber(session->conn, input_op->schema, &xpath, &evpipe_num))) {
         goto cleanup_shm_unlock;
     }
 
@@ -3291,7 +3499,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* publish RPC in an event for a subscriber and wait for a reply */
-    if ((err_info = sr_shmsub_rpc_notify(xpath, input, session->sid, output, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_shmsub_rpc_notify(xpath, input, session->sid, evpipe_num, output, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -3373,11 +3581,10 @@ _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
         time_t stop_time, sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback, void *private_data,
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err_info;
+    sr_error_info_t *err_info = NULL;
     struct ly_set *set;
     const struct lys_node *ctx_node;
     uint32_t i;
-    int shm_locked = 0;
 
     assert((callback && !tree_callback) || (!callback && tree_callback));
 
@@ -3412,74 +3619,66 @@ _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
     ly_set_free(set);
 
     /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
         return err_info;
-    }
-    shm_locked = 1;
-
-    if (!start_time) {
-        /* add notification subscription into main SHM if replay was not requested */
-        if ((err_info = sr_shmmod_notif_subscription(conn, ly_mod->name, 1, NULL))) {
-            sr_shmmain_unlock(conn, 1, 0);
-            return err_info;
-        }
     }
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
-        if ((err_info = sr_subs_new(conn, subscription))) {
-            sr_shmmod_notif_subscription(conn, ly_mod->name, 0, NULL);
-            sr_shmmain_unlock(conn, 1, 0);
-            return err_info;
+        if ((err_info = sr_subs_new(conn, opts, subscription))) {
+            goto error_unlock;
+        }
+    }
+
+    if (!start_time) {
+        /* add notification subscription into main SHM now if replay was not requested */
+        if ((err_info = sr_shmmod_notif_subscription(conn, ly_mod->name, (*subscription)->evpipe_num, 1, NULL))) {
+            goto error_unlock_unsub;
         }
     }
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_notif_add(ly_mod->name, xpath, start_time, stop_time, callback, tree_callback, private_data,
             *subscription))) {
-        goto error_unsubscribe;
+        goto error_unlock_unsub_unmod;
+    }
+
+    if (start_time) {
+        /* notify subscription there are already some events (replay needs to be performed) */
+        if ((err_info = sr_shmsub_notify_evpipe((*subscription)->evpipe_num))) {
+            goto error_unlock_unsub;
+        }
+    }
+
+    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
+        /* add the subscription into conn */
+        if ((err_info = sr_conn_ptr_add(&conn->ptr_lock, (void ***)&conn->subscriptions, &conn->subscription_count,
+                *subscription))) {
+            goto error_unlock_unsub_unmod;
+        }
     }
 
     /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 0);
-    shm_locked = 0;
-
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        /* PTR LOCK */
-        if ((err_info = sr_mlock(&conn->ptr_lock, -1, __func__))) {
-            goto error_unsubscribe;
-        }
-
-        /* add the subscription into conn */
-        err_info = sr_conn_ptr_add((void ***)&conn->subscriptions, &conn->subscription_count, *subscription);
-
-        /* PTR UNLOCK */
-        sr_munlock(&conn->ptr_lock);
-
-        if (err_info) {
-            goto error_unsubscribe;
-        }
-    }
+    sr_shmmain_unlock(conn, 1, 1);
 
     return NULL;
 
-error_unsubscribe:
-    if (!shm_locked) {
-        /* SHM WRITE LOCK */
-        tmp_err_info = sr_shmmain_lock_remap(conn, 1, 0);
-        sr_errinfo_free(&tmp_err_info);
+error_unlock_unsub_unmod:
+    if (!start_time) {
+        sr_shmmod_notif_subscription(conn, ly_mod->name, (*subscription)->evpipe_num, 0, NULL);
     }
 
-    sr_shmmod_notif_subscription(conn, ly_mod->name, 0, NULL);
-
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 0);
-
+error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_sub_notif_del(ly_mod->name, xpath, start_time, stop_time, callback, tree_callback, private_data, *subscription, 0);
     } else {
         sr_unsubscribe(*subscription);
     }
+
+error_unlock:
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 1);
+
     return err_info;
 }
 
@@ -3610,6 +3809,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     sr_mod_t *shm_mod;
     time_t notif_ts;
     uint16_t shm_dep_count;
+    sr_mod_notif_sub_t *notif_subs;
     uint32_t notif_sub_count;
     char *xpath = NULL;
 
@@ -3686,13 +3886,13 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     err_info = sr_replay_store(session->conn, notif, notif_ts);
 
     /* check that there is a subscriber */
-    if ((tmp_err_info = sr_notif_find_subscriber(session->conn, lyd_node_module(notif)->name, &notif_sub_count))) {
+    if ((tmp_err_info = sr_notif_find_subscriber(session->conn, lyd_node_module(notif)->name, &notif_subs, &notif_sub_count))) {
         goto cleanup_shm_unlock;
     }
 
     if (notif_sub_count) {
         /* publish notif in an event, do not wait for subscribers */
-        if ((tmp_err_info = sr_shmsub_notif_notify(notif, notif_ts, session->sid, notif_sub_count))) {
+        if ((tmp_err_info = sr_shmsub_notif_notify(notif, notif_ts, session->sid, (uint32_t *)notif_subs, notif_sub_count))) {
             goto cleanup_shm_unlock;
         }
     } else {
@@ -3747,26 +3947,22 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
     mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
     if (!mod) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        sr_shmmain_unlock(conn, 1, 1);
-        return sr_api_ret(session, err_info);
+        goto error_unlock;
     }
 
     /* check write perm */
     if ((err_info = sr_perm_check(module_name, 1))) {
-        sr_shmmain_unlock(conn, 1, 1);
-        return sr_api_ret(session, err_info);
+        goto error_unlock;
     }
 
     schema_path = ly_path_data2schema(conn->ly_ctx, path);
     set = lys_find_path(mod, NULL, schema_path);
     if (!set) {
         sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        sr_shmmain_unlock(conn, 1, 1);
-        return sr_api_ret(session, err_info);
+        goto error_unlock;
     } else if (!set->number) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "XPath \"%s\" does not point to any nodes.", path);
-        sr_shmmain_unlock(conn, 1, 1);
-        return sr_api_ret(session, err_info);
+        goto error_unlock;
     }
 
     /* find out what kinds of nodes are provided */
@@ -3789,8 +3985,7 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
             break;
         default:
             SR_ERRINFO_INT(&err_info);
-            sr_shmmain_unlock(conn, 1, 1);
-            return sr_api_ret(session, err_info);
+            goto error_unlock;
         }
 
         if (sub_type == SR_DP_SUB_MIXED) {
@@ -3799,65 +3994,58 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, co
         }
     }
 
-    /* add DP subscription into main SHM */
-    if ((err_info = sr_shmmod_dp_subscription(conn, module_name, path, sub_type, 1))) {
-        sr_shmmain_unlock(conn, 1, 1);
-        return sr_api_ret(session, err_info);
-    }
-
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
-        if ((err_info = sr_subs_new(conn, subscription))) {
-            sr_shmmod_dp_subscription(conn, module_name, path, SR_DP_SUB_NONE, 0);
-            sr_shmmain_unlock(conn, 1, 1);
-            return sr_api_ret(session, err_info);
+        if ((err_info = sr_subs_new(conn, opts, subscription))) {
+            goto error_unlock;
         }
+    }
+
+    /* add DP subscription into main SHM */
+    if ((err_info = sr_shmmod_dp_subscription(conn, module_name, path, sub_type, (*subscription)->evpipe_num, 1))) {
+        goto error_unlock_unsub;
     }
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_dp_add(module_name, path, callback, private_data, *subscription))) {
-        sr_shmmain_unlock(conn, 1, 1);
-        goto error_unsubscribe;
+        goto error_unlock_unsub_unmod;
     }
 
     /* defrag main SHM if needed */
     if ((err_info = sr_check_main_shm_defrag(conn))) {
-        sr_shmmain_unlock(conn, 1, 1);
-        goto error_unsubscribe;
+        goto error_unlock_unsub_unmod;
+    }
+
+    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
+        /* add the subscription into conn */
+        if ((err_info = sr_conn_ptr_add(&conn->ptr_lock, (void ***)&conn->subscriptions, &conn->subscription_count,
+                *subscription))) {
+            goto error_unlock_unsub_unmod;
+        }
     }
 
     /* SHM WRITE UNLOCK */
     sr_shmmain_unlock(conn, 1, 1);
 
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        /* PTR LOCK */
-        if ((err_info = sr_mlock(&conn->ptr_lock, -1, __func__))) {
-            goto error_unsubscribe;
-        }
-
-        /* add the subscription into conn */
-        err_info = sr_conn_ptr_add((void ***)&conn->subscriptions, &conn->subscription_count, *subscription);
-
-        /* PTR UNLOCK */
-        sr_munlock(&conn->ptr_lock);
-
-        if (err_info) {
-            goto error_unsubscribe;
-        }
-    }
-
     free(schema_path);
     ly_set_free(set);
     return sr_api_ret(session, NULL);
 
-error_unsubscribe:
-    free(schema_path);
-    ly_set_free(set);
+error_unlock_unsub_unmod:
+    sr_shmmod_dp_subscription(conn, module_name, path, SR_DP_SUB_NONE, (*subscription)->evpipe_num, 0);
+
+error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_sub_dp_del(module_name, path, *subscription);
     } else {
         sr_unsubscribe(*subscription);
     }
-    sr_shmmod_dp_subscription(conn, module_name, path, SR_DP_SUB_NONE, 0);
+
+error_unlock:
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 1);
+
+    free(schema_path);
+    ly_set_free(set);
     return sr_api_ret(session, err_info);
 }

@@ -2086,6 +2086,7 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
     }
     main_shm->ver = 0;
     ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
+    ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
     main_shm->first_mod = 0;
 
     /* create libyang context */

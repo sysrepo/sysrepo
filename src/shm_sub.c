@@ -14,6 +14,7 @@
  */
 #include "common.h"
 
+#include <sys/select.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <fcntl.h>
@@ -369,6 +370,7 @@ sr_shmsub_conf_notify_has_subscription(char *main_shm_addr, struct sr_mod_info_m
  * @param[in] main_shm_addr Main SHM mapping address.
  * @param[in] mod Mod info module to use.
  * @param[in] ds Datastore.
+ * @param[in] ev Configuration event.
  * @param[in] last_priority Last priorty of a subscriber.
  * @param[out] next_priorty_p Next priorty of a subsciber(s).
  * @param[out] sub_count_p Number of subscribers with this priority.
@@ -400,12 +402,83 @@ sr_shmsub_conf_notify_next_subscription(char *main_shm_addr, struct sr_mod_info_
                     ++(*sub_count_p);
                 }
             } else {
-                /* first lower priority subscription than the lastly processed */
+                /* first lower priority subscription than the last processed */
                 *next_priority_p = shm_msub[i].priority;
                 *sub_count_p = 1;
             }
         }
     }
+}
+
+sr_error_info_t *
+sr_shmsub_notify_evpipe(uint32_t evpipe_num)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path = NULL, buf[1] = {0};
+    int fd = -1, ret;
+
+    /* get path to the pipe */
+    if ((err_info = sr_path_evpipe(evpipe_num, &path))) {
+        goto cleanup;
+    }
+
+    /* open pipe for writing */
+    if ((fd = open(path, O_WRONLY | O_NONBLOCK)) == -1) {
+        goto cleanup;
+    }
+
+    /* write one arbitrary byte */
+    do {
+        ret = write(fd, buf, 1);
+    } while (!ret);
+    if (ret == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "write");
+        goto cleanup;
+    }
+
+    /* success */
+
+cleanup:
+    if (fd > -1) {
+        close(fd);
+    }
+    free(path);
+    return err_info;
+}
+
+/**
+ * @brief Write into configuration subscribers event pipe to notify them there is a new event.
+ *
+ * @param[in] main_shm_addr Main SHM mapping address.
+ * @param[in] mod Mod info module to use.
+ * @param[in] ds Datastore.
+ * @param[in] ev Configuration event.
+ * @param[in] priority Priority of the subscribers with new event.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmsub_conf_notify_evpipe(char *main_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
+        sr_sub_event_t ev, uint32_t priority)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    sr_mod_conf_sub_t *shm_msub;
+
+    shm_msub = (sr_mod_conf_sub_t *)(main_shm_addr + mod->shm_mod->conf_sub[ds].subs);
+    for (i = 0; i < mod->shm_mod->conf_sub[ds].sub_count; ++i) {
+        if (!sr_shmsub_is_valid(ev, shm_msub[i].opts)) {
+            continue;
+        }
+
+        /* valid subscription */
+        if (shm_msub[i].priority == priority) {
+            if ((err_info = sr_shmsub_notify_evpipe(shm_msub[i].evpipe_num))) {
+                return err_info;
+            }
+        }
+    }
+
+    return NULL;
 }
 
 sr_error_info_t *
@@ -476,7 +549,11 @@ sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, struc
             sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->event_id, cur_priority, SR_SUB_EV_UPDATE, &sid,
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
 
-            /* wait until all the subscribers have processed the event */
+            /* notify using event pipe and wait until all the subscribers have processed the event */
+            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->main_shm.addr, mod, mod_info->ds,
+                    SR_SUB_EV_UPDATE, cur_priority))) {
+                goto cleanup;
+            }
 
             /* SUB WRITE UNLOCK */
             err_info = sr_shmsub_notify_finish_wrunlock((sr_sub_shm_t *)multi_sub_shm, sizeof *multi_sub_shm, cb_err_info);
@@ -713,7 +790,11 @@ sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, sr_er
             sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->event_id, cur_priority, SR_SUB_EV_CHANGE, &sid,
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
 
-            /* wait until all the subscribers have processed the event */
+            /* notify using event pipe and wait until all the subscribers have processed the event */
+            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->main_shm.addr, mod, mod_info->ds,
+                    SR_SUB_EV_CHANGE, cur_priority))) {
+                goto cleanup;
+            }
 
             /* SUB WRITE UNLOCK */
             err_info = sr_shmsub_notify_finish_wrunlock((sr_sub_shm_t *)multi_sub_shm, sizeof *multi_sub_shm, cb_err_info);
@@ -804,9 +885,15 @@ sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             }
             multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
-            /* write "done" event with the same LYB data trees, do not wait for subscribers */
+            /* write "done" event with the same LYB data trees */
             sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->event_id, cur_priority, SR_SUB_EV_DONE, &sid,
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
+
+            /* notify using event pipe and do not wait for subscribers */
+            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->main_shm.addr, mod, mod_info->ds,
+                    SR_SUB_EV_DONE, cur_priority))) {
+                goto cleanup;
+            }
 
             /* SUB WRITE UNLOCK */
             sr_rwunlock(&multi_sub_shm->lock, 1, __func__);
@@ -932,9 +1019,15 @@ sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid)
                 subscriber_count -= multi_sub_shm->subscriber_count;
             }
 
-            /* write "abort" event with the same LYB data trees, do not wait for subscribers */
+            /* write "abort" event with the same LYB data trees */
             sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->event_id, cur_priority, SR_SUB_EV_ABORT, &sid,
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
+
+            /* notify using event pipe and do not wait for subscribers */
+            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->main_shm.addr, mod, mod_info->ds,
+                    SR_SUB_EV_ABORT, cur_priority))) {
+                goto cleanup;
+            }
 
             /* SUB WRITE UNLOCK */
             sr_rwunlock(&multi_sub_shm->lock, 1, __func__);
@@ -964,7 +1057,7 @@ cleanup:
 
 sr_error_info_t *
 sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent, sr_sid_t sid,
-        struct lyd_node **data, sr_error_info_t **cb_err_info)
+        uint32_t evpipe_num, struct lyd_node **data, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     char *parent_lyb = NULL;
@@ -1000,6 +1093,11 @@ sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const st
     event_id = sub_shm->event_id + 1;
     if ((err_info = sr_shmsub_notify_write_event(sub_shm, event_id, SR_SUB_EV_DP, &sid, parent_lyb, parent_lyb_len))) {
         goto cleanup_wrunlock;
+    }
+
+    /* notify using event pipe and wait until the subscriber has processed the event */
+    if ((err_info = sr_shmsub_notify_evpipe(evpipe_num))) {
+        goto cleanup;
     }
 
     /* SUB WRITE UNLOCK */
@@ -1059,8 +1157,8 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, sr_sid_t sid, struct lyd_node **output,
-        sr_error_info_t **cb_err_info)
+sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, sr_sid_t sid, uint32_t evpipe_num,
+        struct lyd_node **output, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_module *ly_mod;
@@ -1100,6 +1198,11 @@ sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, sr_sid_t s
     /* write the RPC input */
     event_id = sub_shm->event_id + 1;
     if ((err_info = sr_shmsub_notify_write_event(sub_shm, event_id, SR_SUB_EV_RPC, &sid, input_lyb, input_lyb_len))) {
+        goto cleanup_wrunlock;
+    }
+
+    /* notify using event pipe and wait until the subscriber has processed the event */
+    if ((err_info = sr_shmsub_notify_evpipe(evpipe_num))) {
         goto cleanup_wrunlock;
     }
 
@@ -1161,12 +1264,13 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t sid, uint32_t notif_sub_count)
+sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t sid, uint32_t *notif_sub_evpipe_nums,
+        uint32_t notif_sub_count)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_module *ly_mod;
     char *notif_lyb = NULL;
-    uint32_t notif_lyb_len, event_id;
+    uint32_t notif_lyb_len, event_id, i;
     sr_multi_sub_shm_t *multi_sub_shm;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
 
@@ -1203,6 +1307,13 @@ sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t s
     if ((err_info = sr_shmsub_multi_notify_write_event(multi_sub_shm, event_id, 0, SR_SUB_EV_NOTIF, &sid, notif_sub_count,
             notif_ts, notif_lyb, notif_lyb_len))) {
         goto cleanup_wrunlock;
+    }
+
+    /* notify all subscribers using event pipe and do not wait for them */
+    for (i = 0; i < notif_sub_count; ++i) {
+        if ((err_info = sr_shmsub_notify_evpipe(notif_sub_evpipe_nums[i]))) {
+            goto cleanup_wrunlock;
+        }
     }
 
     /* success */
@@ -1413,16 +1524,8 @@ sr_shmsub_prepare_error(sr_error_t err_code, sr_session_ctx_t *tmp_sess, char **
     return NULL;
 }
 
-/**
- * @brief Process all module configuration events, if any.
- *
- * @param[in] conf_subs Module configuration subscriptions.
- * @param[in] conn Connection to use.
- * @param[out] new_event Whether a new event was processed.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_shmsub_conf_listen_process_module_events(struct modsub_conf_s *conf_subs, sr_conn_ctx_t *conn, int *new_event)
+sr_error_info_t *
+sr_shmsub_conf_listen_process_module_events(struct modsub_conf_s *conf_subs, sr_conn_ctx_t *conn)
 {
     uint32_t i, data_len = 0, valid_subscr_count;
     char *data = NULL;
@@ -1452,8 +1555,6 @@ sr_shmsub_conf_listen_process_module_events(struct modsub_conf_s *conf_subs, sr_
         goto cleanup_rdunlock;
     }
 
-    /* there is an event */
-    *new_event = 1;
     conf_sub = &conf_subs->subs[i];
 
     /* remap SHM */
@@ -1628,16 +1729,8 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t d
             sub_shm->event_id);
 }
 
-/**
- * @brief Process all module data-provide events, if any.
- *
- * @param[in] dp_subs Module data-provide subscriptions.
- * @param[in] conn Connection to use.
- * @param[out] new_event Whether a new event was processed.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_ctx_t *conn, int *new_event)
+sr_error_info_t *
+sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, data_len = 0;
@@ -1669,8 +1762,7 @@ sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_c
             continue;
         }
 
-        /* there is an event, read SID */
-        *new_event = 1;
+        /* read SID */
         tmp_sess.sid = sub_shm->sid;
 
         /* remap SHM */
@@ -1874,16 +1966,8 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Process all RPC/action events, if any.
- *
- * @param[in] rpc_sub RPC/action subscription.
- * @param[in] conn Connection to use.
- * @param[out] new_event Whether a new event was processed.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_shmsub_rpc_listen_process_events(struct modsub_rpc_s *rpc_sub, sr_conn_ctx_t *conn, int *new_event)
+sr_error_info_t *
+sr_shmsub_rpc_listen_process_events(struct modsub_rpc_s *rpc_sub, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t data_len = 0;
@@ -1910,8 +1994,7 @@ sr_shmsub_rpc_listen_process_events(struct modsub_rpc_s *rpc_sub, sr_conn_ctx_t 
         goto cleanup_rdunlock;
     }
 
-    /* there is an event, read SID */
-    *new_event = 1;
+    /* read SID */
     tmp_sess.sid = sub_shm->sid;
 
     /* remap SHM */
@@ -1999,16 +2082,8 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Process all module notification events.
- *
- * @param[in] notif_subs Module notification subscriptions.
- * @param[in] conn Connection to use.
- * @param[out] new_event Whether a new event was processed.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, sr_conn_ctx_t *conn, int *new_event)
+sr_error_info_t *
+sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -2029,9 +2104,6 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     if ((multi_sub_shm->event != SR_SUB_EV_NOTIF) || (multi_sub_shm->event_id == notif_subs->event_id)) {
         goto cleanup_rdunlock;
     }
-
-    /* there is an event */
-    *new_event = 1;
 
     /* remap SHM */
     if ((err_info = sr_shm_remap(&notif_subs->sub_shm, 0))) {
@@ -2195,25 +2267,14 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
                 return err_info;
             }
 
-            /* SHM WRITE LOCK */
-            if ((err_info = sr_shmmain_lock_remap(subs->conn, 1, 0))) {
-                return err_info;
-            }
-
             /* now we can add notification subscription into main SHM because it will process realtime notifications */
-            err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, 1, NULL);
-
-            /* SHM WRITE UNLOCK */
-            sr_shmmain_unlock(subs->conn, 1, 0);
-
-            if (err_info) {
+            if ((err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, subs->evpipe_num, 1, NULL))) {
                 return err_info;
             }
 
             /* all notifications were replayed and it is now a standard subscription */
             notif_sub->replayed = 1;
         }
-
     }
 
     return NULL;
@@ -2222,86 +2283,48 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
 void *
 sr_shmsub_listen_thread(void *arg)
 {
-    int new_event, module_finished;
-    uint32_t i;
     sr_error_info_t *err_info = NULL;
     sr_subscription_ctx_t *subs = (sr_subscription_ctx_t *)arg;
+    fd_set rfds;
+    struct timeval tv;
+    time_t stop_time_in = 0;
+    int ret;
+
+    /* start event loop */
+    goto wait_for_event;
 
     while (ATOMIC_LOAD_RELAXED(subs->thread_running)) {
-        new_event = 0;
-
-        /* SUBS LOCK */
-        if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, __func__))) {
+        /* process the new event (or subscription stop time has elapsed) */
+        if (sr_process_events(subs, NULL, &stop_time_in) != SR_ERR_OK) {
             goto error;
         }
 
-        /* configuration subscriptions */
-        for (i = 0; i < subs->conf_sub_count; ++i) {
-            if ((err_info = sr_shmsub_conf_listen_process_module_events(&subs->conf_subs[i], subs->conn, &new_event))) {
-                goto error_unlock;
-            }
-        }
+wait_for_event:
+        /* wait an arbitrary long time or until a stop time is elapsed */
+        tv.tv_sec = stop_time_in ? stop_time_in : 10;
+        tv.tv_usec = 0;
 
-        /* data provider subscriptions */
-        for (i = 0; i < subs->dp_sub_count; ++i) {
-            if ((err_info = sr_shmsub_dp_listen_process_module_events(&subs->dp_subs[i], subs->conn, &new_event))) {
-                goto error_unlock;
-            }
-        }
+        FD_ZERO(&rfds);
+        FD_SET(subs->evpipe, &rfds);
 
-        /* RPC/action subscriptions */
-        for (i = 0; i < subs->rpc_sub_count; ++i) {
-            if ((err_info = sr_shmsub_rpc_listen_process_events(&subs->rpc_subs[i], subs->conn, &new_event))) {
-                goto error_unlock;
-            }
-        }
-
-        /* notification subscriptions */
-        i = 0;
-        while (i < subs->notif_sub_count) {
-            /* perform any replays requested */
-            if ((err_info = sr_shmsub_notif_listen_module_replay(&subs->notif_subs[i], subs))) {
-                goto error_unlock;
-            }
-
-            /* check whether a subscription did not finish */
-            if ((err_info = sr_shmsub_notif_listen_module_check_stop_time(&subs->notif_subs[i], subs, &module_finished))) {
-                goto error_unlock;
-            }
-            if (module_finished) {
-                /* all subscriptions of this module have finished, try the next */
-                continue;
-            }
-
-            if ((err_info = sr_shmsub_notif_listen_process_module_events(&subs->notif_subs[i], subs->conn, &new_event))) {
-                goto error_unlock;
-            }
-
-            /* next iteration */
-            ++i;
-        }
-
-        /* SUBS UNLOCK */
-        sr_munlock(&subs->subs_lock);
-
-        /* sleep if no event occured */
-        if (!new_event) {
-            sr_msleep(SR_SUB_NOEVENT_SLEEP);
+        /* use select() to wait for a new event */
+        ret = select(subs->evpipe + 1, &rfds, NULL, NULL, &tv);
+        if (ret == -1) {
+            /* error */
+            SR_ERRINFO_SYSERRNO(&err_info, "select");
+            sr_errinfo_free(&err_info);
+            goto error;
+        } else if (!ret && !stop_time_in) {
+            /* timeout, retry */
+            goto wait_for_event;
         }
     }
 
     return NULL;
 
-error_unlock:
-    /* SUBS UNLOCK */
-    sr_munlock(&subs->subs_lock);
-
 error:
     /* free our own resources */
     ATOMIC_STORE_RELAXED(subs->thread_running, 0);
     pthread_detach(pthread_self());
-
-    /* no one to collect the error */
-    sr_errinfo_free(&err_info);
     return NULL;
 }

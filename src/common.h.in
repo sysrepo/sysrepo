@@ -92,9 +92,6 @@
 /** maximum time read lock can be held on rwlocks; used when unlocking (ms) */
 #define SR_RWLOCK_READ_TIMEOUT 100
 
-/** time a subscriber thread sleeps if no event occurs (ms) */
-#define SR_SUB_NOEVENT_SLEEP 50
-
 /** timeout for processing all events on all subscriptions of one subscriber thread; used when modifying subscriptions (s) */
 #define SR_SUB_EVENT_LOOP_TIMEOUT 30
 
@@ -115,6 +112,9 @@
 
 /** permissions of all subscription SHMs */
 #define SR_SUB_SHM_PERM 00666
+
+/** permissions of all event pipes */
+#define SR_EVPIPE_PERM 00666
 
 /** permissions of directories for sysrepo files */
 #define SR_DIR_PERM 00777
@@ -165,6 +165,11 @@ typedef struct sr_rwlock_s {
     uint16_t readers;
     pthread_cond_t cond;
 } sr_rwlock_t;
+
+struct modsub_conf_s;
+struct modsub_dp_s;
+struct modsub_rpc_s;
+struct modsub_notif_s;
 
 #include "replay.h"
 #include "modinfo.h"
@@ -227,6 +232,8 @@ struct sr_session_ctx_s {
  */
 struct sr_subscription_ctx_s {
     sr_conn_ctx_t *conn;            /**< Connection of the subscription. */
+    uint32_t evpipe_num;            /**< Event pipe number of this subscription structure. */
+    int evpipe;                     /**< Event pipe opened for reading. */
     ATOMIC_T thread_running;        /**< Flag whether a thread handling this subscription is running. */
     pthread_t tid;                  /**< Thread ID of the handler thread. */
     pthread_mutex_t subs_lock;      /**< Session-shared lock for accessing specific subscriptions. */
@@ -427,10 +434,12 @@ sr_error_info_t *sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *sub
  *
  * @param[in] conn Connection to use.
  * @param[in] mod_name Mdoule name.
+ * @param[out] notif_subs Notification subscriptions.
  * @param[out] notif_sub_count Number of subscribers.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, uint32_t *notif_sub_count);
+sr_error_info_t *sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif_sub_t **notif_subs,
+        uint32_t *notif_sub_count);
 
 /**
  * @brief Call notification callback for a notification.
@@ -504,6 +513,15 @@ sr_error_info_t *sr_create_module_update_imps_r(const struct lys_module *ly_mod)
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, int abs_path, char **path);
+
+/**
+ * @brief Get the path to an event pipe.
+ *
+ * @param[in] evpipe_num Event pipe number.
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_path_evpipe(uint32_t evpipe_num, char **path);
 
 /**
  * @brief Get the path to running files directory.

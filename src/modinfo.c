@@ -285,19 +285,20 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
 }
 
 /**
- * @brief Append specific operational data retrieved from a client to a data tree.
+ * @brief Append specific operational data retrieved from a subscriber to a data tree.
  *
  * @param[in] ly_mod libyang module of the data.
  * @param[in] xpath XPath of the provided data.
  * @param[in] sid Sysrepo session ID.
+ * @param[in] evpipe_num Subscriber event pipe number.
  * @param[in] parent Data parent required for the subscription, NULL if top-level.
  * @param[in,out] data Data tree with appended operational data.
  * @param[out] cb_error_info Callback error info returned by the client, if any.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, sr_sid_t sid, const struct lyd_node *parent,
-        struct lyd_node **data, sr_error_info_t **cb_error_info)
+sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, sr_sid_t sid, uint32_t evpipe_num,
+        const struct lyd_node *parent, struct lyd_node **data, sr_error_info_t **cb_error_info)
 {
     uint32_t i;
     sr_error_info_t *err_info = NULL;
@@ -340,7 +341,7 @@ sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, sr
     }
 
     /* get data from client */
-    err_info = sr_shmsub_dp_notify(ly_mod, xpath, parent_dup, sid, &dp_data, cb_error_info);
+    err_info = sr_shmsub_dp_notify(ly_mod, xpath, parent_dup, sid, evpipe_num, &dp_data, cb_error_info);
     lyd_free_withsiblings(parent_dup);
     if (err_info) {
         return err_info;
@@ -463,7 +464,8 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, char *ma
                 }
 
                 /* replace them with the ones retrieved from a client */
-                if ((err_info = sr_xpath_oper_data_append(mod->ly_mod, xpath, sid, set->set.d[j], data, cb_error_info))) {
+                if ((err_info = sr_xpath_oper_data_append(mod->ly_mod, xpath, sid, shm_msub->evpipe_num, set->set.d[j],
+                        data, cb_error_info))) {
                     goto error;
                 }
             }
@@ -482,7 +484,8 @@ next_iter:
                 }
             }
 
-            if ((err_info = sr_xpath_oper_data_append(mod->ly_mod, xpath, sid, NULL, data, cb_error_info))) {
+            if ((err_info = sr_xpath_oper_data_append(mod->ly_mod, xpath, sid, shm_msub->evpipe_num, NULL, data,
+                    cb_error_info))) {
                 return err_info;
             }
         }
@@ -1109,6 +1112,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     struct ly_set *set;
     sr_mod_t *shm_mod;
     time_t notif_ts;
+    sr_mod_notif_sub_t *notif_subs;
     uint32_t idx = 0, notif_sub_count;
     char *xpath, nc_str[11];
     const char *op_enum;
@@ -1120,7 +1124,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     notif_ts = time(NULL);
 
     /* get subscriber count */
-    if ((err_info = sr_notif_find_subscriber(session->conn, "ietf-netconf-notifications", &notif_sub_count))) {
+    if ((err_info = sr_notif_find_subscriber(session->conn, "ietf-netconf-notifications", &notif_subs, &notif_sub_count))) {
         return err_info;
     }
 
@@ -1231,7 +1235,8 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     tmp_err_info = sr_replay_store(session->conn, notif, notif_ts);
 
     /* send the notification (non-validated, if everything works correctly it must be valid) */
-    if (notif_sub_count && (err_info = sr_shmsub_notif_notify(notif, notif_ts, session->sid, notif_sub_count))) {
+    if (notif_sub_count && (err_info = sr_shmsub_notif_notify(notif, notif_ts, session->sid, (uint32_t *)notif_subs,
+            notif_sub_count))) {
         goto cleanup;
     }
 

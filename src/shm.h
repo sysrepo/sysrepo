@@ -59,9 +59,10 @@ typedef struct sr_mod_op_dep_s {
  * @brief Main SHM module configuration subscriptions.
  */
 typedef struct sr_mod_conf_sub_s {
-    off_t xpath;
-    uint32_t priority;
-    int opts;
+    off_t xpath;                /**< XPath of the subscription. */
+    uint32_t priority;          /**< Subscription priority. */
+    int opts;                   /**< Subscription options. */
+    uint32_t evpipe_num;        /**< Event pipe number. */
 } sr_mod_conf_sub_t;
 
 /**
@@ -80,6 +81,7 @@ typedef enum sr_mod_dp_sub_type_e {
 typedef struct sr_mod_dp_sub_s {
     off_t xpath;                /**< XPath of the subscription. */
     sr_mod_dp_sub_type_t sub_type;  /**< Type of the subscription. */
+    uint32_t evpipe_num;        /** Event pipe number. */
 } sr_mod_dp_sub_t;
 
 /**
@@ -87,7 +89,15 @@ typedef struct sr_mod_dp_sub_s {
  */
 typedef struct sr_mod_rpc_sub_s {
     off_t xpath;                /**< XPath of the RPC/action subscribed to. */
+    uint32_t evpipe_num;        /**< Event pipe number. */
 } sr_mod_rpc_sub_t;
+
+/**
+ * @brief Main SHM notification subscription.
+ */
+typedef struct sr_mod_notif_sub_s {
+    uint32_t evpipe_num;        /**< Event pipe number. */
+} sr_mod_notif_sub_t;
 
 #define SR_MOD_REPLAY_SUPPORT 0x01  /**< Flag for module with replay support. */
 
@@ -128,6 +138,7 @@ struct sr_mod_s {
     off_t rpc_subs;             /**< Array of RPC/action subscriptions. */
     uint16_t rpc_sub_count;     /**< Number of RPC/action subscriptions. */
 
+    off_t notif_subs;           /**< Array of notification subscriptions. */
     uint16_t notif_sub_count;   /**< Number of notification subscriptions. */
 
     off_t next;                 /**< Next module structure. */
@@ -140,6 +151,7 @@ typedef struct sr_main_shm_s {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing main SHM. */
     uint32_t ver;               /**< Main SHM version (installed module set version). */
     ATOMIC_T new_sr_sid;        /**< SID for new session. */
+    ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
     size_t wasted_mem;          /**< Number of bytes wasted in main SHM. */
     off_t first_mod;            /**< First module structure. */
 } sr_main_shm_t;
@@ -530,12 +542,13 @@ void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable);
  * @param[in] ds Datastore.
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscription options.
+ * @param[in] evpipe_num Subscription event pipe number.
  * @param[in] add Whether to add or remove the subscription.
  * @param[out] last_removed Whether this is the last module configuration subscription that was removed.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
-        sr_datastore_t ds, uint32_t priority, int sub_opts, int add, int *last_removed);
+        sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num, int add, int *last_removed);
 
 /**
  * @brief Add/remove main SHM module data-provide subscription.
@@ -545,11 +558,12 @@ sr_error_info_t *sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mo
  * @param[in] mod_name Module name.
  * @param[in] xpath Subscription XPath.
  * @param[in] sub_type Data-provide subscription type.
+ * @param[in] evpipe_num Subscription event pipe number.
  * @param[in] add Whether to add or remove the subscription.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
-        sr_mod_dp_sub_type_t sub_type, int add);
+        sr_mod_dp_sub_type_t sub_type, uint32_t evpipe_num,int add);
 
 /**
  * @brief Add/remove main SHM module RPC/action subscription.
@@ -558,21 +572,26 @@ sr_error_info_t *sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_
  * @param[in] conn Connection to use.
  * @param[in] mod_name Module name.
  * @param[in] xpath Subscription XPath.
+ * @param[in] evpipe_num Subscription event pipe number.
  * @param[in] add Whether to add or remove the subscription.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, int add);
+sr_error_info_t *sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
+        uint32_t evpipe_num, int add);
 
 /**
  * @brief Add/remove main SHM module notification subscriptions.
+ * May remap main SHM!
  *
  * @param[in] conn Connection to use.
  * @param[in] mod_name Module name.
+ * @param[in] evpipe_num Subscription event pipe number.
  * @param[in] add Whether to add or remove the subscription.
  * @param[out] last_removed Whether this is the last module notification subscription that was removed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *mod_name, int add, int *last_removed);
+sr_error_info_t *sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *mod_name, uint32_t evpipe_num, int add,
+        int *last_removed);
 
 /**
  * @brief Add an inverse dependency to a module, check for duplicities.
@@ -602,6 +621,14 @@ sr_error_info_t *sr_shmmod_add_inv_dep(sr_conn_ctx_t *conn, const char *mod_name
  */
 sr_error_info_t *sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_shm_t *shm,
         size_t shm_struct_size);
+
+/**
+ * @brief Write into a subscriber event pipe to notify it there is a new event.
+ *
+ * @param[in] evpipe_num Subscriber event pipe number.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_notify_evpipe(uint32_t evpipe_num);
 
 /**
  * @brief Notify about (generate) a configuration update event.
@@ -659,12 +686,13 @@ sr_error_info_t *sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_in
  * @param[in] xpath Subscription XPath.
  * @param[in] parent Existing parent to append the data to.
  * @param[in] sid Originator sysrepo session ID.
+ * @param[in] evpipe_num Subscriber event pipe number.
  * @param[out] data Data provided by the subscriber.
  * @param[out] cb_err_info Callback error information generated by the subscriber, if any.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent,
-        sr_sid_t sid, struct lyd_node **data, sr_error_info_t **cb_err_info);
+        sr_sid_t sid, uint32_t evpipe_num, struct lyd_node **data, sr_error_info_t **cb_err_info);
 
 /**
  * @brief Notify about (generate) an RPC/action event.
@@ -672,11 +700,12 @@ sr_error_info_t *sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char
  * @param[in] xpath XPath of the operation.
  * @param[in] input Operation input tree.
  * @param[in] sid Originator sysrepo session ID.
+ * @param[in] evpipe_num Subscriber event pipe number.
  * @param[out] output Operation output returned by the subscriber.
  * @param[out] cb_err_info Callback error information generated by the subscriber, if any.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, sr_sid_t sid,
+sr_error_info_t *sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, sr_sid_t sid, uint32_t evpipe_num,
         struct lyd_node **output, sr_error_info_t **cb_err_info);
 
 /**
@@ -685,11 +714,85 @@ sr_error_info_t *sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *
  * @param[in] notif Notification data tree.
  * @param[in] notif_ts Notification timestamp.
  * @param[in] sid Originator sysrepo session ID.
+ * @param[in] notif_sub_evpipe_nums Array of subscribers event pipe numbers.
  * @param[in] notif_sub_count Number of subscribers.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t sid,
-        uint32_t notif_sub_count);
+        uint32_t *notif_sub_evpipe_nums, uint32_t notif_sub_count);
+
+/**
+ * @brief Process all module configuration events, if any.
+ *
+ * @param[in] conf_subs Module configuration subscriptions.
+ * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_conf_listen_process_module_events(struct modsub_conf_s *conf_subs, sr_conn_ctx_t *conn);
+
+/**
+ * @brief Process all module data-provide events, if any.
+ *
+ * @param[in] dp_subs Module data-provide subscriptions.
+ * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_ctx_t *conn);
+
+/**
+ * @brief Process all RPC/action events, if any.
+ *
+ * @param[in] rpc_sub RPC/action subscription.
+ * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_rpc_listen_process_events(struct modsub_rpc_s *rpc_sub, sr_conn_ctx_t *conn);
+
+/**
+ * @brief Process all module notification events, if any.
+ *
+ * @param[in] notif_subs Module notification subscriptions.
+ * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, sr_conn_ctx_t *conn);
+
+/**
+ * @brief Check whether there is a pending replay or stop time elapsed for a module notification subscription.
+ *
+ * @param[in] notif_subs Module notification subscriptions.
+ * @return 0 if no such events occured, non-zero if they did.
+ */
+int sr_shmsub_notif_listen_module_has_replay_or_stop(struct modsub_notif_s *notif_subs);
+
+/**
+ * @brief Get nearest stop time of a subscription, if any.
+ *
+ * @param[in] notif_subs Module notification subscriptions.
+ * @param[in,out] stop_time_in Nearest stop time of a subscription, if none, left unmodified.
+ */
+void sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs, time_t *stop_time_in);
+
+/**
+ * @brief Check notification subscriptions stop time and finish the subscription if it has elapsed.
+ *
+ * @param[in] notif_subs Module notification subscriptions.
+ * @param[in] subs Subscriptions structure.
+ * @param[out] module_finished Whether the last module notification subscription was finished.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs,
+        sr_subscription_ctx_t *subs, int *module_finished);
+
+/**
+ * @brief Check notification subscription replay state and perform it if requested.
+ * May remap main SHM!
+ *
+ * @param[in] notif_subs Module notification subscriptions.
+ * @param[in] subs Subscriptions structure.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Listener handler thread of all subscriptions.
