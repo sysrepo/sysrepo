@@ -118,8 +118,8 @@ main(int argc, char **argv)
     sr_session_ctx_t *session = NULL;
     int rc = SR_ERR_OK;
     const char *xpath;
-    sr_val_t *vals;
-    size_t i, val_count;
+    sr_val_t *vals = NULL;
+    size_t i, val_count = 0;
     sr_datastore_t ds = SR_DS_RUNNING;
 
     if ((argc < 2) || (argc > 3)) {
