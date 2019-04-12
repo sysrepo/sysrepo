@@ -424,11 +424,9 @@ sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable)
         if (mod->state & MOD_INFO_WLOCK) {
             /* MOD WRITE UNLOCK */
             sr_rwunlock(&shm_lock->lock, 1, __func__);
-            SR_LOG_INF("## \"%s\" wr unlock", mod->ly_mod->name);
         } else if (mod->state & MOD_INFO_RLOCK) {
             /* MOD READ UNLOCK */
             sr_rwunlock(&shm_lock->lock, 0, __func__);
-            SR_LOG_INF("## \"%s\" rd unlock", mod->ly_mod->name);
         }
     }
 }
