@@ -2191,19 +2191,19 @@ sr_shmmain_find_module(char *main_shm_addr, const char *name, off_t name_off)
 }
 
 sr_error_info_t *
-sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int keep_remap)
+sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap)
 {
     sr_error_info_t *err_info = NULL;
     size_t main_shm_size;
     sr_main_shm_t *main_shm;
 
-    /* REMAP LOCK */
-    if ((err_info = sr_mlock(&conn->main_shm_remap_lock, -1, __func__))) {
+    /* REMAP READ/WRITE LOCK */
+    if ((err_info = sr_rwlock(&conn->main_shm_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, remap, __func__))) {
         return err_info;
     }
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
-    /* MAIN SHM WRITE/READ LOCK */
+    /* MAIN SHM READ/WRITE LOCK */
     if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, wr, __func__))) {
         goto error_remap_unlock;
     }
@@ -2236,11 +2236,6 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int keep_remap)
         }
     }
 
-    if (!keep_remap) {
-        /* REMAP UNLOCK */
-        sr_munlock(&conn->main_shm_remap_lock);
-    }
-
     return NULL;
 
 error_remap_shm_unlock:
@@ -2251,7 +2246,7 @@ error_remap_unlock:
 }
 
 void
-sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int kept_remap)
+sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap)
 {
     sr_main_shm_t *main_shm;
 
@@ -2261,10 +2256,8 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int kept_remap)
     /* MAIN SHM UNLOCK */
     sr_rwunlock(&main_shm->lock, wr, __func__);
 
-    if (kept_remap) {
-        /* REMAP UNLOCK */
-        sr_munlock(&conn->main_shm_remap_lock);
-    }
+    /* REMAP UNLOCK */
+    sr_rwunlock(&conn->main_shm_remap_lock, remap, __func__);
 }
 
 /**

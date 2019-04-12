@@ -195,7 +195,7 @@ struct sr_conn_ctx_s {
     uint32_t subscription_count;    /**< Subscription count. */
 
     int main_shm_create_lock;       /**< Process-shared file lock for creating main SHM. */
-    pthread_mutex_t main_shm_remap_lock;    /**< Session-shared lock for remapping main SHM. */
+    sr_rwlock_t main_shm_remap_lock;    /**< Session-shared lock for remapping main SHM. */
     sr_shm_t main_shm;              /**< Main SHM structure. */
     uint32_t main_ver;              /**< Main SHM version. */
 

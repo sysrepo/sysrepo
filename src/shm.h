@@ -360,27 +360,27 @@ sr_mod_t *sr_shmmain_getnext(char *main_shm_addr, sr_mod_t *last);
 sr_mod_t *sr_shmmain_find_module(char *main_shm_addr, const char *name, off_t name_off);
 
 /**
- * @brief Lock main SHM and remap it if needed (it was changed).
+ * @brief Lock main SHM and its mapping and remap it if needed (it was changed).
  *
  * @param[in] conn Connection to use.
  * @param[in] wr Whether to WRITE or READ lock main SHM.
- * @param[in] keep_remap Whether to keep remap lock for cases when main SHM can be modified (resized) and
- * will be, again, remapped.
+ * @param[in] remap Whether to WRITE (main SHM may be remapped) or READ (just protect from remapping) remap lock.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int keep_remap);
+sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap);
 
 /**
  * @brief Unlock main SHM.
  *
  * @param[in] conn Connection to use.
  * @param[in] wr Whether to WRITE or READ unlock main SHM.
- * @param[in] kept_remap Whether remap lock was kept so it needs unlocking as well.
+ * @param[in] remap Whether to WRITE or READ remap unlock.
  */
-void sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int kept_remap);
+void sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap);
 
 /**
  * @brief Add a module with any imports into main SHM and persistent internal data.
+ * May remap main SHM!
  *
  * @param[in] conn Connection to use.
  * @param[in] ly_mod Module to add.

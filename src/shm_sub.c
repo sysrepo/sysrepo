@@ -2177,81 +2177,117 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Check notification subscriptions stop time and finish the subscription if it was reached.
- *
- * @param[in] notif_subs Module notification subscriptions.
- * @param[in] subs Subscriptions structure.
- * @param[out] module_finished Whether the last module notification subscription was finished.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_shmsub_notif_listen_module_check_stop_time(struct modsub_notif_s *notif_subs, sr_subscription_ctx_t *subs,
-        int *module_finished)
+int
+sr_shmsub_notif_listen_module_has_replay_or_stop(struct modsub_notif_s *notif_subs)
+{
+    time_t cur_time;
+    struct modsub_notifsub_s *notif_sub;
+    uint32_t i;
+
+    cur_time = time(NULL);
+
+    for (i = 0; i < notif_subs->sub_count; ++i) {
+        notif_sub = &notif_subs->subs[i];
+        if (notif_sub->start_time && !notif_sub->replayed) {
+            /* pending replay */
+            return 1;
+        } else if (notif_sub->stop_time && (notif_sub->stop_time < cur_time)) {
+            /* stop time elapsed */
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+void
+sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs, time_t *stop_time_in)
+{
+    time_t cur_time, next_stop_time;
+    struct modsub_notifsub_s *notif_sub;
+    uint32_t i;
+
+    if (!stop_time_in) {
+        return;
+    }
+
+    next_stop_time = 0;
+
+    for (i = 0; i < notif_subs->sub_count; ++i) {
+        notif_sub = &notif_subs->subs[i];
+        if (notif_sub->stop_time) {
+            /* remember nearest stop_time */
+            if (!next_stop_time || (notif_sub->stop_time < next_stop_time)) {
+                next_stop_time = notif_sub->stop_time;
+            }
+        }
+    }
+
+    if (!next_stop_time) {
+        return;
+    }
+
+    cur_time = time(NULL);
+    if ((next_stop_time - cur_time) < 0) {
+        /* stop time has already elapsed while we were processing some other events, handle this as soon as possible */
+        *stop_time_in = 1;
+    } else if (!*stop_time_in || ((next_stop_time - cur_time) + 1 < *stop_time_in)) {
+        /* no previous stop time or this one is nearer */
+        *stop_time_in = (next_stop_time - cur_time) + 1;
+    }
+}
+
+sr_error_info_t *
+sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_subscription_ctx_t *subs, int *mod_finished)
 {
     sr_error_info_t *err_info = NULL;
-    time_t cur_ts;
+    time_t cur_time;
     struct modsub_notifsub_s *notif_sub;
     uint32_t i;
     sr_sid_t sid = {0};
 
-    *module_finished = 0;
-    cur_ts = time(NULL);
+    *mod_finished = 0;
+    cur_time = time(NULL);
 
     i = 0;
     while (i < notif_subs->sub_count) {
         notif_sub = &notif_subs->subs[i];
-        if (notif_sub->stop_time && (notif_sub->stop_time < cur_ts)) {
+        if (notif_sub->stop_time && (notif_sub->stop_time < cur_time)) {
             /* subscription is finished */
             if ((err_info = sr_notif_call_callback(subs->conn, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-                    SR_EV_NOTIF_STOP, NULL, notif_sub->stop_time, sid))) {
-                return err_info;
-            }
-
-            /* SHM WRITE LOCK */
-            if ((err_info = sr_shmmain_lock_remap(subs->conn, 1, 0))) {
+                    SR_EV_NOTIF_STOP, NULL, cur_time, sid))) {
                 return err_info;
             }
 
             /* remove the subscription from main SHM */
-            err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, 0, NULL);
-
-            /* SHM WRITE UNLOCK */
-            sr_shmmain_unlock(subs->conn, 1, 0);
-
-            if (err_info) {
+            if ((err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, subs->evpipe_num, 0, NULL))) {
                 return err_info;
             }
 
             if (notif_subs->sub_count == 1) {
                 /* removing last subscription to this module */
-                *module_finished = 1;
+                *mod_finished = 1;
             }
 
             /* remove the subscription from the sub structure */
             sr_sub_notif_del(notif_subs->module_name, notif_sub->xpath, notif_sub->start_time, notif_sub->stop_time,
                     notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data, subs, 1);
 
-            if (*module_finished) {
-                /* do not check other modules */
+            if (*mod_finished) {
+                /* there are no more subscriptions for this module */
                 break;
             }
-        } else {
-            ++i;
+
+            continue;
         }
+
+        ++i;
     }
 
     return NULL;
 }
 
-/**
- * @brief Check notification subscription replay state and perform it if requested.
- *
- * @param[in] notif_subs Module notification subscriptions.
- * @param[in] subs Subscriptions structure.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;

@@ -57,7 +57,7 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto error;
     }
 
-    if ((err_info = sr_mutex_init(&conn->main_shm_remap_lock, 0))) {
+    if ((err_info = sr_rwlock_init(&conn->main_shm_remap_lock, 0))) {
         pthread_mutex_destroy(&conn->ptr_lock);
         close(conn->main_shm_create_lock);
         goto error;
@@ -151,7 +151,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
     if (conn->main_shm_create_lock > -1) {
         close(conn->main_shm_create_lock);
     }
-    pthread_mutex_destroy(&conn->main_shm_remap_lock);
+    sr_rwlock_destroy(&conn->main_shm_remap_lock);
     sr_shm_clear(&conn->main_shm);
     free(conn);
 }
@@ -257,9 +257,9 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session
         return sr_api_ret(NULL, err_info);
     }
 
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 0))) {
-        return sr_api_ret(NULL, err_info);
+    /* REMAP READ LOCK */
+    if ((err_info = sr_rwlock(&conn->main_shm_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, 0, __func__))) {
+        goto error;
     }
 
     /* use new SR session ID and increment it */
@@ -270,30 +270,18 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session
         ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
     }
 
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 0);
+    /* REMAP READ UNLOCK */
+    sr_rwunlock(&conn->main_shm_remap_lock, 0, __func__);
 
     /* remember current real process owner */
     uid = getuid();
     if ((err_info = sr_get_pwd(&uid, &(*session)->sid.user))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* PTR LOCK */
-    if ((err_info = sr_mlock(&conn->ptr_lock, -1, __func__))) {
-        return sr_api_ret(NULL, err_info);
+        goto error;
     }
 
     /* add the session into conn */
-    err_info = sr_conn_ptr_add((void ***)&conn->sessions, &conn->session_count, *session);
-
-    /* PTR UNLOCK */
-    sr_munlock(&conn->ptr_lock);
-
-    if (err_info) {
-        free(*session);
-        *session = NULL;
-        return sr_api_ret(NULL, err_info);
+    if ((err_info = sr_conn_ptr_add(&conn->ptr_lock, (void ***)&conn->sessions, &conn->session_count, *session))) {
+        goto error;
     }
 
     (*session)->conn = conn;
@@ -302,6 +290,12 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session
     SR_LOG_INF("Session %u (user \"%s\") created.", (*session)->sid.sr, (*session)->sid.user);
 
     return sr_api_ret(NULL, NULL);
+
+error:
+    free((*session)->sid.user);
+    free(*session);
+    *session = NULL;
+    return sr_api_ret(NULL, err_info);
 }
 
 API int
