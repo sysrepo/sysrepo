@@ -30,7 +30,7 @@
 
 struct state {
     sr_conn_ctx_t *conn;
-    volatile int cb_called;
+    volatile int cb_called, cb_called2;
     pthread_barrier_t barrier;
 };
 
@@ -91,6 +91,7 @@ setup_f(void **state)
     struct state *st = (struct state *)*state;
 
     st->cb_called = 0;
+    st->cb_called2 = 0;
     pthread_barrier_init(&st->barrier, NULL, 2);
     return 0;
 }
@@ -1608,238 +1609,244 @@ module_change_done_when_cb(sr_session_ctx_t *session, const char *module_name, c
 
     assert_null(xpath);
 
-    switch (st->cb_called) {
-    case 0:
-    case 2:
-        assert_string_equal(module_name, "when1");
-        if (st->cb_called == 0) {
-            assert_int_equal(event, SR_EV_CHANGE);
-        } else {
-            assert_int_equal(event, SR_EV_DONE);
+    if (!strcmp(module_name, "when1")) {
+        switch (st->cb_called) {
+        case 0:
+        case 1:
+            if (st->cb_called == 0) {
+                assert_int_equal(event, SR_EV_CHANGE);
+            } else {
+                assert_int_equal(event, SR_EV_DONE);
+            }
+
+            /* get changes iter */
+            ret = sr_get_changes_iter(session, "/when1:*//.", &iter);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            /* 1st change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_CREATED);
+            assert_null(old_val);
+            assert_non_null(new_val);
+            assert_string_equal(new_val->xpath, "/when1:l1");
+
+            sr_free_val(new_val);
+
+            /* no more changes */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+            sr_free_change_iter(iter);
+            break;
+        case 2:
+        case 3:
+            if (st->cb_called == 2) {
+                assert_int_equal(event, SR_EV_CHANGE);
+            } else {
+                assert_int_equal(event, SR_EV_DONE);
+            }
+
+            /* get changes iter */
+            ret = sr_get_changes_iter(session, "/when1:*//.", &iter);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            /* 1st change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_DELETED);
+            assert_non_null(old_val);
+            assert_null(new_val);
+            assert_string_equal(old_val->xpath, "/when1:l1");
+
+            sr_free_val(old_val);
+
+            /* 2nd change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_CREATED);
+            assert_null(old_val);
+            assert_non_null(new_val);
+            assert_string_equal(new_val->xpath, "/when1:l2");
+
+            sr_free_val(new_val);
+
+            /* no more changes */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+            sr_free_change_iter(iter);
+            break;
+        case 4:
+        case 5:
+            if (st->cb_called == 4) {
+                assert_int_equal(event, SR_EV_CHANGE);
+            } else {
+                assert_int_equal(event, SR_EV_DONE);
+            }
+
+            /* get changes iter */
+            ret = sr_get_changes_iter(session, "/when1:*//.", &iter);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            /* 1st change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_DELETED);
+            assert_non_null(old_val);
+            assert_null(new_val);
+            assert_string_equal(old_val->xpath, "/when1:l2");
+
+            sr_free_val(old_val);
+
+            /* no more changes */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+            sr_free_change_iter(iter);
+            break;
+        default:
+            fail();
         }
 
-        /* get changes iter */
-        ret = sr_get_changes_iter(session, "/when1:*//.", &iter);
-        assert_int_equal(ret, SR_ERR_OK);
+        ++st->cb_called;
+    } else if (!strcmp(module_name, "when2")) {
+        switch (st->cb_called2) {
+        case 0:
+        case 1:
+            if (st->cb_called2 == 0) {
+                assert_int_equal(event, SR_EV_CHANGE);
+            } else {
+                assert_int_equal(event, SR_EV_DONE);
+            }
 
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
+            /* get changes iter */
+            ret = sr_get_changes_iter(session, "/when2:*//.", &iter);
+            assert_int_equal(ret, SR_ERR_OK);
 
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/when1:l1");
+            /* 1st change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
 
-        sr_free_val(new_val);
+            assert_int_equal(op, SR_OP_CREATED);
+            assert_null(old_val);
+            assert_non_null(new_val);
+            assert_string_equal(new_val->xpath, "/when2:cont");
 
-        /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+            sr_free_val(new_val);
 
-        sr_free_change_iter(iter);
-        break;
-    case 1:
-    case 3:
-        assert_string_equal(module_name, "when2");
-        if (st->cb_called == 1) {
-            assert_int_equal(event, SR_EV_CHANGE);
-        } else {
-            assert_int_equal(event, SR_EV_DONE);
+            /* 2nd change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_CREATED);
+            assert_null(old_val);
+            assert_non_null(new_val);
+            assert_string_equal(new_val->xpath, "/when2:cont/l");
+
+            sr_free_val(new_val);
+
+            /* no more changes */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+            sr_free_change_iter(iter);
+            break;
+        case 2:
+        case 3:
+            if (st->cb_called2 == 2) {
+                assert_int_equal(event, SR_EV_CHANGE);
+            } else {
+                assert_int_equal(event, SR_EV_DONE);
+            }
+
+            /* get changes iter */
+            ret = sr_get_changes_iter(session, "/when2:*//.", &iter);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            /* 1st change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_CREATED);
+            assert_null(old_val);
+            assert_non_null(new_val);
+            assert_int_equal(new_val->dflt, 1);
+            assert_string_equal(new_val->xpath, "/when2:ll");
+
+            sr_free_val(new_val);
+
+            /* 2nd change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_DELETED);
+            assert_non_null(old_val);
+            assert_null(new_val);
+            assert_string_equal(old_val->xpath, "/when2:cont");
+
+            sr_free_val(old_val);
+
+            /* 3rd change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_DELETED);
+            assert_non_null(old_val);
+            assert_null(new_val);
+            assert_string_equal(old_val->xpath, "/when2:cont/l");
+
+            sr_free_val(old_val);
+
+            /* no more changes */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+            sr_free_change_iter(iter);
+            break;
+        case 4:
+        case 5:
+            if (st->cb_called2 == 4) {
+                assert_int_equal(event, SR_EV_CHANGE);
+            } else {
+                assert_int_equal(event, SR_EV_DONE);
+            }
+
+            /* get changes iter */
+            ret = sr_get_changes_iter(session, "/when2:*//.", &iter);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            /* 1st change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_DELETED);
+            assert_non_null(old_val);
+            assert_null(new_val);
+            assert_int_equal(old_val->dflt, 1);
+            assert_string_equal(old_val->xpath, "/when2:ll");
+
+            sr_free_val(old_val);
+
+            /* no more changes */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+            sr_free_change_iter(iter);
+            break;
+        default:
+            fail();
         }
 
-        /* get changes iter */
-        ret = sr_get_changes_iter(session, "/when2:*//.", &iter);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/when2:cont");
-
-        sr_free_val(new_val);
-
-        /* 2nd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/when2:cont/l");
-
-        sr_free_val(new_val);
-
-        /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_NOT_FOUND);
-
-        sr_free_change_iter(iter);
-        break;
-    case 4:
-    case 6:
-        assert_string_equal(module_name, "when1");
-        if (st->cb_called == 4) {
-            assert_int_equal(event, SR_EV_CHANGE);
-        } else {
-            assert_int_equal(event, SR_EV_DONE);
-        }
-
-        /* get changes iter */
-        ret = sr_get_changes_iter(session, "/when1:*//.", &iter);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_null(new_val);
-        assert_string_equal(old_val->xpath, "/when1:l1");
-
-        sr_free_val(old_val);
-
-        /* 2nd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/when1:l2");
-
-        sr_free_val(new_val);
-
-        /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_NOT_FOUND);
-
-        sr_free_change_iter(iter);
-        break;
-    case 5:
-    case 7:
-        assert_string_equal(module_name, "when2");
-        if (st->cb_called == 5) {
-            assert_int_equal(event, SR_EV_CHANGE);
-        } else {
-            assert_int_equal(event, SR_EV_DONE);
-        }
-
-        /* get changes iter */
-        ret = sr_get_changes_iter(session, "/when2:*//.", &iter);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_int_equal(new_val->dflt, 1);
-        assert_string_equal(new_val->xpath, "/when2:ll");
-
-        sr_free_val(new_val);
-
-        /* 2nd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_null(new_val);
-        assert_string_equal(old_val->xpath, "/when2:cont");
-
-        sr_free_val(old_val);
-
-        /* 3rd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_null(new_val);
-        assert_string_equal(old_val->xpath, "/when2:cont/l");
-
-        sr_free_val(old_val);
-
-        /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_NOT_FOUND);
-
-        sr_free_change_iter(iter);
-        break;
-    case 8:
-    case 10:
-        assert_string_equal(module_name, "when1");
-        if (st->cb_called == 8) {
-            assert_int_equal(event, SR_EV_CHANGE);
-        } else {
-            assert_int_equal(event, SR_EV_DONE);
-        }
-
-        /* get changes iter */
-        ret = sr_get_changes_iter(session, "/when1:*//.", &iter);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_null(new_val);
-        assert_string_equal(old_val->xpath, "/when1:l2");
-
-        sr_free_val(old_val);
-
-        /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_NOT_FOUND);
-
-        sr_free_change_iter(iter);
-        break;
-    case 9:
-    case 11:
-        assert_string_equal(module_name, "when2");
-        if (st->cb_called == 9) {
-            assert_int_equal(event, SR_EV_CHANGE);
-        } else {
-            assert_int_equal(event, SR_EV_DONE);
-        }
-
-        /* get changes iter */
-        ret = sr_get_changes_iter(session, "/when2:*//.", &iter);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_null(new_val);
-        assert_int_equal(old_val->dflt, 1);
-        assert_string_equal(old_val->xpath, "/when2:ll");
-
-        sr_free_val(old_val);
-
-        /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_NOT_FOUND);
-
-        sr_free_change_iter(iter);
-        break;
-    default:
+        ++st->cb_called2;
+    } else {
         fail();
     }
 
-    ++st->cb_called;
     return SR_ERR_OK;
 }
 
@@ -1973,11 +1980,12 @@ subscribe_change_done_when_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 12) && (count < 1500)) {
+    while (((st->cb_called < 6) || (st->cb_called2 < 6)) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 12);
+    assert_int_equal(st->cb_called, 6);
+    assert_int_equal(st->cb_called2, 6);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
