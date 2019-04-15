@@ -198,15 +198,11 @@ sr_shmsub_notify_finish_wrunlock(sr_sub_shm_t *sub_shm, size_t shm_struct_size, 
  * @param[in] sid Originator sysrepo session ID.
  * @param[in] data Optional data written after the structure.
  * @param[in] data_len Length of additional data.
- * @return err_info, NULL on success.
  */
-static sr_error_info_t *
+static void
 sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, uint32_t event_id, sr_sub_event_t event, struct sr_sid_s *sid,
         const char *data, uint32_t data_len)
 {
-    size_t changed_shm_size;
-    sr_error_info_t *err_info = NULL;
-
     sub_shm->event_id = event_id;
     sub_shm->event = event;
     if (sid) {
@@ -215,25 +211,14 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, uint32_t event_id, sr_sub_ev
         memset(&sub_shm->sid, 0, sizeof sub_shm->sid);
     }
 
-    changed_shm_size = sizeof *sub_shm;
-
     if (data && data_len) {
         /* write any event data */
         memcpy(((char *)sub_shm) + sizeof *sub_shm, data, data_len);
-
-        changed_shm_size += data_len;
-    }
-
-    if (msync(sub_shm, changed_shm_size, MS_INVALIDATE)) {
-        SR_ERRINFO_SYSERRNO(&err_info, "msync");
-        return err_info;
     }
 
     if (event) {
         SR_LOG_INF("Published event \"%s\" with ID %u.", sr_ev2str(event), event_id);
     }
-
-    return NULL;
 }
 
 /**
@@ -248,15 +233,13 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, uint32_t event_id, sr_sub_ev
  * @param[in] notif_ts Notification timestamp for notifications.
  * @param[in] data Optional data written after the structure.
  * @param[in] data_len Length of additional data.
- * @return err_info, NULL on success.
  */
-static sr_error_info_t *
+static void
 sr_shmsub_multi_notify_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t event_id, uint32_t priority,
         sr_sub_event_t event, struct sr_sid_s *sid, uint32_t subscriber_count, time_t notif_ts, const char *data,
         uint32_t data_len)
 {
     size_t changed_shm_size;
-    sr_error_info_t *err_info = NULL;
 
     multi_sub_shm->event_id = event_id;
     multi_sub_shm->event = event;
@@ -280,17 +263,10 @@ sr_shmsub_multi_notify_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t e
         changed_shm_size += data_len;
     }
 
-    if (msync(multi_sub_shm, changed_shm_size, MS_INVALIDATE)) {
-        SR_ERRINFO_SYSERRNO(&err_info, "msync");
-        return err_info;
-    }
-
     if (event) {
         SR_LOG_INF("Published event \"%s\" with ID %u priority %u for %u subscribers.", sr_ev2str(event), event_id,
                 priority, subscriber_count);
     }
-
-    return NULL;
 }
 
 /**
@@ -1091,9 +1067,7 @@ sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const st
 
     /* write the request for state data */
     event_id = sub_shm->event_id + 1;
-    if ((err_info = sr_shmsub_notify_write_event(sub_shm, event_id, SR_SUB_EV_DP, &sid, parent_lyb, parent_lyb_len))) {
-        goto cleanup_wrunlock;
-    }
+    sr_shmsub_notify_write_event(sub_shm, event_id, SR_SUB_EV_DP, &sid, parent_lyb, parent_lyb_len);
 
     /* notify using event pipe and wait until the subscriber has processed the event */
     if ((err_info = sr_shmsub_notify_evpipe(evpipe_num))) {
@@ -1197,9 +1171,7 @@ sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, sr_sid_t s
 
     /* write the RPC input */
     event_id = sub_shm->event_id + 1;
-    if ((err_info = sr_shmsub_notify_write_event(sub_shm, event_id, SR_SUB_EV_RPC, &sid, input_lyb, input_lyb_len))) {
-        goto cleanup_wrunlock;
-    }
+    sr_shmsub_notify_write_event(sub_shm, event_id, SR_SUB_EV_RPC, &sid, input_lyb, input_lyb_len);
 
     /* notify using event pipe and wait until the subscriber has processed the event */
     if ((err_info = sr_shmsub_notify_evpipe(evpipe_num))) {
@@ -1304,10 +1276,8 @@ sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t s
 
     /* write the notification, we do not wait for any reply */
     event_id = multi_sub_shm->event_id + 1;
-    if ((err_info = sr_shmsub_multi_notify_write_event(multi_sub_shm, event_id, 0, SR_SUB_EV_NOTIF, &sid, notif_sub_count,
-            notif_ts, notif_lyb, notif_lyb_len))) {
-        goto cleanup_wrunlock;
-    }
+    sr_shmsub_multi_notify_write_event(multi_sub_shm, event_id, 0, SR_SUB_EV_NOTIF, &sid, notif_sub_count,
+            notif_ts, notif_lyb, notif_lyb_len);
 
     /* notify all subscribers using event pipe and do not wait for them */
     for (i = 0; i < notif_sub_count; ++i) {
@@ -1423,7 +1393,6 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
         uint32_t data_len, sr_error_t err_code)
 {
     sr_error_info_t *err_info = NULL;
-    size_t changed_shm_size;
     sr_sub_event_t event;
 
     event = multi_sub_shm->event;
@@ -1454,16 +1423,10 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
             break;
         }
     }
-    changed_shm_size = sizeof *multi_sub_shm;
 
     if (data && data_len) {
         /* write whatever data we have */
         memcpy(((char *)multi_sub_shm) + sizeof *multi_sub_shm, data, data_len);
-        changed_shm_size += data_len;
-    }
-
-    if (msync(multi_sub_shm, changed_shm_size, MS_INVALIDATE)) {
-        SR_LOG_WRN("msync() failed (%s).", strerror(errno));
     }
 
     SR_LOG_INF("Finished processing \"%s\" event%s with ID %u (remaining %u subscribers).", sr_ev2str(event),
@@ -1693,7 +1656,6 @@ static void
 sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t data_len, sr_error_t err_code)
 {
     sr_error_info_t *err_info = NULL;
-    size_t changed_shm_size;
     sr_sub_event_t event;
 
     event = sub_shm->event;
@@ -1713,16 +1675,10 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t d
         sr_errinfo_free(&err_info);
         break;
     }
-    changed_shm_size = sizeof *sub_shm;;
 
     if (data && data_len) {
         /* write whatever data we have */
         memcpy(((char *)sub_shm) + sizeof *sub_shm, data, data_len);
-        changed_shm_size += data_len;
-    }
-
-    if (msync(sub_shm, changed_shm_size, MS_INVALIDATE)) {
-        SR_LOG_WRN("msync() failed (%s).", strerror(errno));
     }
 
     SR_LOG_INF("Finished processing \"%s\" event%s with ID %u.", sr_ev2str(event), err_code ? " (callback fail)" : "",

@@ -603,12 +603,6 @@ sr_check_main_shm_defrag(sr_conn_ctx_t *conn)
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
     main_shm->wasted_mem = 0;
 
-    /* msync */
-    if (msync(conn->main_shm.addr, conn->main_shm.size, MS_SYNC | MS_INVALIDATE) == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "msync");
-        goto cleanup;
-    }
-
     SR_LOG_DBGMSG("#SHM after defrag");
     sr_shmmain_print(conn->main_shm.addr, conn->main_shm.size);
 

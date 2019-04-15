@@ -2052,12 +2052,6 @@ sr_shmmain_shm_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
     wasted_mem = ((sr_main_shm_t *)conn->main_shm.addr)->wasted_mem;
     SR_CHECK_INT_RET(conn->main_shm.size != exp_shm_size + wasted_mem, err_info);
 
-    /* msync */
-    if (msync(conn->main_shm.addr, conn->main_shm.size, MS_SYNC)) {
-        SR_ERRINFO_SYSERRNO(&err_info, "msync");
-        return err_info;
-    }
-
     return NULL;
 }
 
