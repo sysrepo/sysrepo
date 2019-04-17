@@ -705,22 +705,22 @@ sr_shmmain_createunlock(sr_conn_ctx_t *conn)
 /**
  * @brief Calculate SHM size based on internal persistent data.
  *
- * @param[in] sr_mods Internal persistent data.
+ * @param[in] sr_mods Sysrepo internal persistent module data.
  * @return SHM size of all the modules.
  */
 static size_t
 sr_shmmain_get_shm_modules_size(struct lyd_node *sr_mods)
 {
-    struct lyd_node *ly_mod, *sr_child, *sr_op_dep, *sr_dep, *sr_instid;
+    struct lyd_node *sr_mod, *sr_child, *sr_op_dep, *sr_dep, *sr_instid;
     size_t shm_size = 0;
 
     assert(sr_mods);
 
-    LY_TREE_FOR(sr_mods->child, ly_mod) {
-        /* a module */
+    LY_TREE_FOR(sr_mods->child, sr_mod) {
+        /* a new module */
         shm_size += sizeof(sr_mod_t);
 
-        LY_TREE_FOR(ly_mod->child, sr_child) {
+        LY_TREE_FOR(sr_mod->child, sr_child) {
             if (!strcmp(sr_child->schema->name, "name")) {
                 /* a string */
                 shm_size += strlen(((struct lyd_node_leaf_list *)sr_child)->value_str) + 1;
@@ -1802,8 +1802,6 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *sr_start_mod, s
         memset(shm_mod, 0, sizeof *shm_mod);
         shm_cur += sizeof *shm_mod;
 
-        shm_mod->ver = 1;
-
         /* init shared rwlocks */
         if ((err_info = sr_rwlock_init(&shm_mod->data_lock_info[SR_DS_STARTUP].lock, 1))) {
             return err_info;
@@ -1814,6 +1812,8 @@ sr_shmmain_shm_add_modules(char *main_shm_addr, struct lyd_node *sr_start_mod, s
         if ((err_info = sr_rwlock_init(&shm_mod->replay_lock, 1))) {
             return err_info;
         }
+
+        shm_mod->ver = 1;
 
         LY_TREE_FOR(sr_mod->child, sr_child) {
             if (!strcmp(sr_child->schema->name, "name")) {

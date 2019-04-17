@@ -106,11 +106,6 @@ typedef struct sr_mod_notif_sub_s {
  * (typedef sr_mod_t)
  */
 struct sr_mod_s {
-    off_t name;                 /**< Module name. */
-    char rev[11];               /**< Module revision. */
-    uint8_t flags;              /**< Module flags. */
-
-    uint32_t ver;               /**< Module data version (non-zero). */
     struct sr_mod_lock_s {
         sr_rwlock_t lock;       /**< Process-shared lock for accessing module data. */
         uint8_t write_locked;   /**< Whether module data are WRITE locked (lock may not be WRITE locked to allow data reading). */
@@ -118,6 +113,12 @@ struct sr_mod_s {
         sr_sid_t sid;           /**< Session ID of the locking session. */
     } data_lock_info[2];        /**< Module data lock information for each datastore. */
     sr_rwlock_t replay_lock;    /**< Process-shared lock for accessing stored notifications for replay. */
+    uint32_t ver;               /**< Module data version (non-zero). */
+
+    off_t name;                 /**< Module name. */
+    char rev[11];               /**< Module revision. */
+    uint8_t flags;              /**< Module flags. */
+
     off_t features;             /**< Array of enabled features (off_t *). */
     uint16_t feat_count;        /**< Number of enabled features. */
     off_t data_deps;            /**< Array of data dependencies. */

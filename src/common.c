@@ -1595,6 +1595,12 @@ sr_mutex_init(pthread_mutex_t *lock, int shared)
     pthread_mutexattr_t attr;
     int ret;
 
+    /* check address alignment */
+    if ((uintptr_t)lock % sizeof lock->__align) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Mutex address not aligned.");
+        return err_info;
+    }
+
     if (shared) {
         /* init attr */
         if ((ret = pthread_mutexattr_init(&attr))) {
@@ -1670,6 +1676,12 @@ sr_cond_init(pthread_cond_t *cond, int shared)
     sr_error_info_t *err_info = NULL;
     pthread_condattr_t attr;
     int ret;
+
+    /* check address alignment */
+    if ((uintptr_t)cond % sizeof cond->__align) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Condition variable address not aligned.");
+        return err_info;
+    }
 
     if (shared) {
         /* init attr */

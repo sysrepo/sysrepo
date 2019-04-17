@@ -143,27 +143,27 @@ typedef struct sr_mod_data_dep_s sr_mod_data_dep_t;
  * @brief Generic shared memory information structure.
  */
 typedef struct sr_shm_s {
-    int fd;
-    size_t size;
-    char *addr;
+    int fd;                         /**< Shared memory file desriptor. */
+    size_t size;                    /**< Shared memory mapping current size. */
+    char *addr;                     /**< Shared memory mapping address. */
 } sr_shm_t;
 
 /**
  * @brief Session information structure.
  */
 typedef struct sr_sid_s {
-    uint32_t sr;
-    uint32_t nc;
-    char *user;
+    uint32_t sr;                    /**< Sysrepo session ID. */
+    uint32_t nc;                    /**< NETCONF session ID. */
+    char *user;                     /**< Sysrepo user. */
 } sr_sid_t;
 
 /**
  * @brief Sysrepo read-write lock.
  */
 typedef struct sr_rwlock_s {
-    pthread_mutex_t mutex;
-    uint16_t readers;
-    pthread_cond_t cond;
+    pthread_mutex_t mutex;          /**< Lock mutex. */
+    pthread_cond_t cond;            /**< Lock condition variable. */
+    uint16_t readers;               /**< Current read-locked users. */
 } sr_rwlock_t;
 
 struct modsub_conf_s;
