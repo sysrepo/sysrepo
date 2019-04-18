@@ -2844,6 +2844,7 @@ dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *i
     sr_list_t *data_for_validation = NULL;
     dm_tmp_ly_ctx_t *tmp_ctx = NULL;
     dm_data_info_t *dep_di = NULL;
+    const struct lys_module *mod;
     struct lyd_node *data_tree = NULL;
     bool validation_failed = false;
     bool *should_be_freed = NULL;
@@ -2869,7 +2870,7 @@ dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *i
             rc = dm_load_dependant_data(dm_ctx, session, info);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", info->schema->module_name);
 
-            if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_WHENAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
+            if (0 != lyd_validate_modules(&info->node, &info->schema->module, 1, LYD_OPT_STRICT | LYD_OPT_WHENAUTODEL | LYD_OPT_CONFIG)) {
                 SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
                 validation_failed = true;
             } else {
@@ -2906,6 +2907,13 @@ dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *i
             rc = dm_get_tmp_ly_ctx(dm_ctx, info->required_modules, &tmp_ctx);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to acquire tmp ctx");
 
+            /* get module from tmp_ctx */
+            mod = ly_ctx_get_module(tmp_ctx->ctx, info->schema->module->name, NULL, 1);
+            if (!mod) {
+                SR_LOG_ERR("Failed to find module '%s' in temtporary context", info->schema->module->name);
+                goto cleanup;
+            }
+
             /* migrate data to working context */
             for (size_t i = 0; i < data_for_validation->count; i++) {
                 dm_data_info_t *d = (dm_data_info_t *) data_for_validation->data[i];
@@ -2923,7 +2931,7 @@ dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *i
             }
 
             /* start validation */
-            if (0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_WHENAUTODEL | LYD_OPT_CONFIG, tmp_ctx->ctx)) {
+            if (0 != lyd_validate_modules(&data_tree, &mod, 1, LYD_OPT_STRICT | LYD_OPT_WHENAUTODEL | LYD_OPT_CONFIG)) {
                 SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
                 validation_failed = true;
             } else {
@@ -2939,7 +2947,7 @@ dm_validate_data_info(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *i
             info->node = sr_dup_datatree_to_ctx(data_tree, info->schema->ly_ctx);
         }
     } else {
-        if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_WHENAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
+        if (0 != lyd_validate_modules(&info->node, &info->schema->module, 1, LYD_OPT_STRICT | LYD_OPT_WHENAUTODEL | LYD_OPT_CONFIG)) {
             SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
             validation_failed = true;
         } else {
@@ -3475,6 +3483,8 @@ dm_validate_module_inv_data_deps(dm_ctx_t *dm_ctx, dm_session_t *session, sr_err
     sr_llist_node_t *ll_node = NULL;
     md_dep_t *dep = NULL;
     bool validation_failed = false;
+    bool is_enabled = false;
+    sr_datastore_t ds = session->datastore;
 
     md_ctx_lock(dm_ctx->md_ctx, false);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, NULL, &module);
@@ -3488,8 +3498,18 @@ dm_validate_module_inv_data_deps(dm_ctx_t *dm_ctx, dm_session_t *session, sr_err
         if (dep->type != MD_DEP_DATA || !dep->dest->has_data) {
             continue;
         }
+
+        rc = dm_has_enabled_subtree(dm_ctx, dep->dest->name, NULL, &is_enabled);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to check whether module is enabled for %s", dep->dest->name);
+        if (!is_enabled && (ds == SR_DS_RUNNING)) {
+            /* use startup data in this case */
+            session->datastore = SR_DS_STARTUP;
+        }
+
         rc = dm_get_data_info_internal(dm_ctx, session, dep->dest->name, true, &must_free_info, &info);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load data info for %s", dep->dest->name);
+
+        session->datastore = ds;
 
         /* The dependent data has changed, so leaf refs might not be valid anymore */
         dm_invalidate_leaf_refs(info->node);
