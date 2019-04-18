@@ -71,7 +71,7 @@ sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *ly_mod, int mod_t
 
     if (prev_mod_type < MOD_INFO_INV_DEP) {
         /* add all its dependencies, recursively */
-        shm_deps = (sr_mod_data_dep_t *)(mod_info->conn->main_shm.addr + shm_mod->data_deps);
+        shm_deps = (sr_mod_data_dep_t *)(mod_info->conn->main_ext_shm.addr + shm_mod->data_deps);
         for (i = 0; i < shm_mod->data_dep_count; ++i) {
             if (shm_deps[i].type == SR_DEP_INSTID) {
                 /* we will handle those once we have the final data tree */
@@ -79,11 +79,11 @@ sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *ly_mod, int mod_t
             }
 
             /* find the dependency */
-            dep_mod = sr_shmmain_find_module(mod_info->conn->main_shm.addr, NULL, shm_deps[i].module);
+            dep_mod = sr_shmmain_find_module(&mod_info->conn->main_shm, NULL, NULL, shm_deps[i].module);
             SR_CHECK_INT_RET(!dep_mod, err_info);
 
             /* find ly module */
-            ly_mod = ly_ctx_get_module(ly_mod->ctx, mod_info->conn->main_shm.addr + dep_mod->name, NULL, 1);
+            ly_mod = ly_ctx_get_module(ly_mod->ctx, mod_info->conn->main_ext_shm.addr + dep_mod->name, NULL, 1);
             SR_CHECK_INT_RET(!ly_mod, err_info);
 
             /* add dependency */
@@ -100,14 +100,14 @@ sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *ly_mod, int mod_t
 
      if (prev_mod_type < MOD_INFO_REQ) {
          /* add all inverse dependencies (modules dependening on this module) */
-         shm_inv_deps = (off_t *)(mod_info->conn->main_shm.addr + shm_mod->inv_data_deps);
+         shm_inv_deps = (off_t *)(mod_info->conn->main_ext_shm.addr + shm_mod->inv_data_deps);
          for (i = 0; i < shm_mod->inv_data_dep_count; ++i) {
             /* find ly module */
-            ly_mod = ly_ctx_get_module(ly_mod->ctx, mod_info->conn->main_shm.addr + shm_inv_deps[i], NULL, 1);
+            ly_mod = ly_ctx_get_module(ly_mod->ctx, mod_info->conn->main_ext_shm.addr + shm_inv_deps[i], NULL, 1);
             SR_CHECK_INT_RET(!ly_mod, err_info);
 
             /* find SHM module */
-            dep_mod = sr_shmmain_find_module(mod_info->conn->main_shm.addr, NULL, shm_inv_deps[i]);
+            dep_mod = sr_shmmain_find_module(&mod_info->conn->main_shm, NULL, NULL, shm_inv_deps[i]);
             SR_CHECK_INT_RET(!dep_mod, err_info);
 
             /* add inverse dependency */
@@ -420,7 +420,7 @@ sr_xpath_oper_data_remove(const char *xpath, struct lyd_node *parent, struct lyd
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, char *main_shm_addr, struct lyd_node **data,
+sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, char *main_ext_shm_addr, struct lyd_node **data,
         sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -432,8 +432,8 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, char *ma
 
     /* XPaths are ordered based on depth */
     for (i = 0; i < mod->shm_mod->dp_sub_count; ++i) {
-        shm_msub = &((sr_mod_dp_sub_t *)(main_shm_addr + mod->shm_mod->dp_subs))[i];
-        xpath = main_shm_addr + shm_msub->xpath;
+        shm_msub = &((sr_mod_dp_sub_t *)(main_ext_shm_addr + mod->shm_mod->dp_subs))[i];
+        xpath = main_ext_shm_addr + shm_msub->xpath;
 
         /* trim the last node to get the parent */
         if ((err_info = sr_xpath_trim_last_node(xpath, &parent_xpath, &last_node_xpath))) {
@@ -515,7 +515,7 @@ error:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *main_shm_addr, struct sr_mod_info_mod_s *mod,
+sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *main_ext_shm_addr, struct sr_mod_info_mod_s *mod,
         struct lyd_node **enabled_mod_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -530,7 +530,7 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *main_shm_addr
     }
 
     /* first try to find a subscription for the whole module */
-    shm_confsubs = (sr_mod_conf_sub_t *)(main_shm_addr + mod->shm_mod->conf_sub[SR_DS_RUNNING].subs);
+    shm_confsubs = (sr_mod_conf_sub_t *)(main_ext_shm_addr + mod->shm_mod->conf_sub[SR_DS_RUNNING].subs);
     for (i = 0; i < mod->shm_mod->conf_sub[SR_DS_RUNNING].sub_count; ++i) {
         if (!shm_confsubs[i].xpath && !(shm_confsubs[i].opts & SR_SUBSCR_PASSIVE)) {
             /* the whole module is enabled */
@@ -548,7 +548,7 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *main_shm_addr
             xpaths = sr_realloc(xpaths, (xp_i + 1) * sizeof *xpaths);
             SR_CHECK_MEM_RET(!xpaths, err_info);
 
-            xpaths[xp_i] = main_shm_addr + shm_confsubs[i].xpath;
+            xpaths[xp_i] = main_ext_shm_addr + shm_confsubs[i].xpath;
             ++xp_i;
         }
     }
@@ -692,7 +692,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             /* we are caching, copy module data from the cache and link it */
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* copy only enabled module data */
-                if ((err_info = sr_module_oper_data_dup_enabled(mod_cache->data, mod_info->conn->main_shm.addr, mod, &mod_data))) {
+                if ((err_info = sr_module_oper_data_dup_enabled(mod_cache->data, mod_info->conn->main_ext_shm.addr, mod,
+                            &mod_data))) {
                     return err_info;
                 }
             } else {
@@ -714,7 +715,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* keep only enabled module data */
-                if ((err_info = sr_module_oper_data_dup_enabled(mod_info->data, mod_info->conn->main_shm.addr, mod, &mod_data))) {
+                if ((err_info = sr_module_oper_data_dup_enabled(mod_info->data, mod_info->conn->main_ext_shm.addr, mod,
+                            &mod_data))) {
                     return err_info;
                 }
                 lyd_free_withsiblings(sr_module_data_unlink(&mod_info->data, mod->ly_mod));
@@ -728,7 +730,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
         if (mod_info->ds == SR_DS_OPERATIONAL) {
             /* append any operational data provided by clients */
-            if ((err_info = sr_module_oper_data_update(mod, *sid, mod_info->conn->main_shm.addr, &mod_info->data, cb_error_info))) {
+            if ((err_info = sr_module_oper_data_update(mod, *sid, mod_info->conn->main_ext_shm.addr, &mod_info->data,
+                        cb_error_info))) {
                 return err_info;
             }
         }
@@ -777,7 +780,7 @@ sr_modinfo_add_instid_deps_data(struct sr_mod_info_s *mod_info, sr_mod_data_dep_
     for (i = 0; i < shm_dep_count; ++i) {
         if (shm_deps[i].type == SR_DEP_INSTID) {
             if (data) {
-                set = lyd_find_path(data, conn->main_shm.addr + shm_deps[i].xpath);
+                set = lyd_find_path(data, conn->main_ext_shm.addr + shm_deps[i].xpath);
             } else {
                 /* no data, just fake empty set */
                 set = ly_set_new();
@@ -794,7 +797,7 @@ sr_modinfo_add_instid_deps_data(struct sr_mod_info_s *mod_info, sr_mod_data_dep_
                     val_str = sr_ly_leaf_value_str(set->set.d[j]);
 
                     mod_name = sr_get_first_ns(val_str);
-                    dep_mod = sr_shmmain_find_module(conn->main_shm.addr, mod_name, 0);
+                    dep_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, mod_name, 0);
                     free(mod_name);
                     SR_CHECK_INT_GOTO(!dep_mod, err_info, cleanup);
 
@@ -806,7 +809,7 @@ sr_modinfo_add_instid_deps_data(struct sr_mod_info_s *mod_info, sr_mod_data_dep_
                 }
             } else if (shm_deps[i].module) {
                 /* assume a default value will be used even though it may not be */
-                dep_mod = sr_shmmain_find_module(conn->main_shm.addr, NULL, shm_deps[i].module);
+                dep_mod = sr_shmmain_find_module(&conn->main_shm, NULL, NULL, shm_deps[i].module);
                 SR_CHECK_INT_GOTO(!dep_mod, err_info, cleanup);
 
                 if (ly_set_add(dep_set, (void *)dep_mod, 0) == -1) {
@@ -823,7 +826,7 @@ sr_modinfo_add_instid_deps_data(struct sr_mod_info_s *mod_info, sr_mod_data_dep_
     for (i = 0; i < dep_set->number; ++i) {
         dep_mod = (sr_mod_t *)dep_set->set.g[i];
 
-        ly_mod = ly_ctx_get_module(mod_info->conn->ly_ctx, conn->main_shm.addr + dep_mod->name, NULL, 1);
+        ly_mod = ly_ctx_get_module(mod_info->conn->ly_ctx, conn->main_ext_shm.addr + dep_mod->name, NULL, 1);
         SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
 
         /* remember how many modules there were and add this one */
@@ -871,7 +874,7 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *s
             if (mod->state & MOD_INFO_CHANGED) {
                 /* check all instids and add their target modules as deps, other inst-ids do not need to be revalidated */
                 if ((err_info = sr_modinfo_add_instid_deps_data(mod_info,
-                        (sr_mod_data_dep_t *)(mod_info->conn->main_shm.addr + mod->shm_mod->data_deps),
+                        (sr_mod_data_dep_t *)(mod_info->conn->main_ext_shm.addr + mod->shm_mod->data_deps),
                         mod->shm_mod->data_dep_count, mod_info->data, sid, cb_error_info))) {
                     goto cleanup;
                 }
@@ -1134,7 +1137,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* get this module and check replay support */
-    shm_mod = sr_shmmain_find_module(mod_info->conn->main_shm.addr, "ietf-netconf-notifications", 0);
+    shm_mod = sr_shmmain_find_module(&mod_info->conn->main_shm, mod_info->conn->main_ext_shm.addr, "ietf-netconf-notifications", 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
     if (!(shm_mod->flags & SR_MOD_REPLAY_SUPPORT) && !notif_sub_count) {
         /* nothing to do */

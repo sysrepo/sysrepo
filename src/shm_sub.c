@@ -316,14 +316,14 @@ sr_shmsub_is_valid(sr_sub_event_t ev, sr_subscr_options_t sub_opts)
  * @return 0 if not, non-zero if there is.
  */
 static int
-sr_shmsub_conf_notify_has_subscription(char *main_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
+sr_shmsub_conf_notify_has_subscription(char *main_ext_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
         sr_sub_event_t ev, uint32_t *max_priority_p)
 {
     int has_sub = 0;
     uint32_t i;
     sr_mod_conf_sub_t *shm_msub;
 
-    shm_msub = (sr_mod_conf_sub_t *)(main_shm_addr + mod->shm_mod->conf_sub[ds].subs);
+    shm_msub = (sr_mod_conf_sub_t *)(main_ext_shm_addr + mod->shm_mod->conf_sub[ds].subs);
     *max_priority_p = 0;
     for (i = 0; i < mod->shm_mod->conf_sub[ds].sub_count; ++i) {
         if (!sr_shmsub_is_valid(ev, shm_msub[i].opts)) {
@@ -352,13 +352,13 @@ sr_shmsub_conf_notify_has_subscription(char *main_shm_addr, struct sr_mod_info_m
  * @param[out] sub_count_p Number of subscribers with this priority.
  */
 static void
-sr_shmsub_conf_notify_next_subscription(char *main_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
+sr_shmsub_conf_notify_next_subscription(char *main_ext_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
         sr_sub_event_t ev, uint32_t last_priority, uint32_t *next_priority_p, uint32_t *sub_count_p)
 {
     uint32_t i;
     sr_mod_conf_sub_t *shm_msub;
 
-    shm_msub = (sr_mod_conf_sub_t *)(main_shm_addr + mod->shm_mod->conf_sub[ds].subs);
+    shm_msub = (sr_mod_conf_sub_t *)(main_ext_shm_addr + mod->shm_mod->conf_sub[ds].subs);
     *sub_count_p = 0;
     for (i = 0; i < mod->shm_mod->conf_sub[ds].sub_count; ++i) {
         if (!sr_shmsub_is_valid(ev, shm_msub[i].opts)) {
@@ -433,14 +433,14 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_conf_notify_evpipe(char *main_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
+sr_shmsub_conf_notify_evpipe(char *main_ext_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
         sr_sub_event_t ev, uint32_t priority)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
     sr_mod_conf_sub_t *shm_msub;
 
-    shm_msub = (sr_mod_conf_sub_t *)(main_shm_addr + mod->shm_mod->conf_sub[ds].subs);
+    shm_msub = (sr_mod_conf_sub_t *)(main_ext_shm_addr + mod->shm_mod->conf_sub[ds].subs);
     for (i = 0; i < mod->shm_mod->conf_sub[ds].sub_count; ++i) {
         if (!sr_shmsub_is_valid(ev, shm_msub[i].opts)) {
             continue;
@@ -482,7 +482,7 @@ sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, struc
         }
 
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
-        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
+        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
                 &cur_priority)) {
             continue;
         }
@@ -502,7 +502,7 @@ sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, struc
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
+        sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
                 cur_priority + 1, &cur_priority, &subscriber_count);
 
         do {
@@ -526,7 +526,7 @@ sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, struc
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
 
             /* notify using event pipe and wait until all the subscribers have processed the event */
-            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->main_shm.addr, mod, mod_info->ds,
+            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds,
                     SR_SUB_EV_UPDATE, cur_priority))) {
                 goto cleanup;
             }
@@ -581,7 +581,7 @@ sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, struc
             }
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
+            sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
                     cur_priority, &cur_priority, &subscriber_count);
         } while (subscriber_count);
 
@@ -623,7 +623,7 @@ sr_shmsub_conf_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev)
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
-        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, ev, &cur_priority)) {
+        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, ev, &cur_priority)) {
             /* it is still possible that the subscription unsubscribed already */
 
             /* SUB WRITE LOCK */
@@ -648,7 +648,7 @@ sr_shmsub_conf_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev)
         }
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, ev,
+        sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, ev,
                 cur_priority + 1, &cur_priority, &subscriber_count);
 
         do {
@@ -683,7 +683,7 @@ clear_event:
             sr_rwunlock(&multi_sub_shm->lock, 1, __func__);
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, ev,
+            sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, ev,
                     cur_priority, &cur_priority, &subscriber_count);
         } while (subscriber_count);
 
@@ -718,7 +718,7 @@ sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, sr_er
         }
 
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
-        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
+        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
                     &cur_priority)) {
             SR_LOG_INF("There are no subscribers for changes of the module \"%s\" in %s DS.",
                     mod->ly_mod->name, sr_ds2str(mod_info->ds));
@@ -744,7 +744,7 @@ sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, sr_er
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
+        sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
                 cur_priority + 1, &cur_priority, &subscriber_count);
 
         do {
@@ -767,7 +767,7 @@ sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, sr_er
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
 
             /* notify using event pipe and wait until all the subscribers have processed the event */
-            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->main_shm.addr, mod, mod_info->ds,
+            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds,
                     SR_SUB_EV_CHANGE, cur_priority))) {
                 goto cleanup;
             }
@@ -789,7 +789,7 @@ sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, sr_er
             }
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
+            sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
                     cur_priority, &cur_priority, &subscriber_count);
         } while (subscriber_count);
 
@@ -821,7 +821,7 @@ sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             continue;
         }
 
-        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
+        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
                 &cur_priority)) {
             /* no subscriptions interested in this event */
             continue;
@@ -846,7 +846,7 @@ sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
+        sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
                 cur_priority + 1, &cur_priority, &subscriber_count);
 
         do {
@@ -866,7 +866,7 @@ sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
 
             /* notify using event pipe and do not wait for subscribers */
-            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->main_shm.addr, mod, mod_info->ds,
+            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds,
                     SR_SUB_EV_DONE, cur_priority))) {
                 goto cleanup;
             }
@@ -875,7 +875,7 @@ sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             sr_rwunlock(&multi_sub_shm->lock, 1, __func__);
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
+            sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
                     cur_priority, &cur_priority, &subscriber_count);
         } while (subscriber_count);
 
@@ -913,7 +913,7 @@ sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid)
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
-        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
+        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
                 &cur_priority)) {
             /* no subscriptions interested in this event, but we still want to clear the event */
 
@@ -971,7 +971,7 @@ sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid)
         }
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
+        sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
                 cur_priority + 1, &cur_priority, &subscriber_count);
 
         do {
@@ -1000,7 +1000,7 @@ sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid)
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
 
             /* notify using event pipe and do not wait for subscribers */
-            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->main_shm.addr, mod, mod_info->ds,
+            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds,
                     SR_SUB_EV_ABORT, cur_priority))) {
                 goto cleanup;
             }
@@ -1014,7 +1014,7 @@ sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             }
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
+            sr_shmsub_conf_notify_next_subscription(mod_info->conn->main_ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
                     cur_priority, &cur_priority, &subscriber_count);
         } while (subscriber_count);
 

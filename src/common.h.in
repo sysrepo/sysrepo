@@ -59,6 +59,10 @@
 # define ATOMIC_INC_RELAXED(var) __sync_fetch_and_add(&(var), 1)
 #endif
 
+/** macro for traversing main SHM modules */
+#define SR_SHM_MOD_FOR(main_shm_addr, main_shm_size, shm_mod) \
+    for (shm_mod = (sr_mod_t *)(main_shm_addr + sizeof(sr_main_shm_t)); (char *)shm_mod != main_shm_addr + main_shm_size; ++shm_mod)
+
 /** name of sysrepo YANG module */
 #define SR_YANG_MOD "sysrepo"
 
@@ -86,8 +90,8 @@
 /** notification file will never exceed this size (kB) */
 #define SR_EV_NOTIF_FILE_MAX_SIZE 1024
 
-/** maximum main SHM wasted memory (B) */
-#define SR_MAIN_SHM_WASTED_MAX_MEM 4096
+/** maximum main ext SHM wasted memory (B) */
+#define SR_SHM_WASTED_MAX_MEM 4096
 
 /** maximum time read lock can be held on rwlocks; used when unlocking (ms) */
 #define SR_RWLOCK_READ_TIMEOUT 100
@@ -197,7 +201,8 @@ struct sr_conn_ctx_s {
     int main_shm_create_lock;       /**< Process-shared file lock for creating main SHM. */
     sr_rwlock_t main_shm_remap_lock;    /**< Session-shared lock for remapping main SHM. */
     sr_shm_t main_shm;              /**< Main SHM structure. */
-    uint32_t main_ver;              /**< Main SHM version. */
+    sr_shm_t main_ext_shm;          /**< Main external SHM structure (all stored offsets point here). */
+    uint32_t main_ver;              /**< Last accessed main SHM version. */
 
     struct sr_mod_cache_s {
         sr_rwlock_t lock;           /**< Session-shared lock for accessing the module cache. */

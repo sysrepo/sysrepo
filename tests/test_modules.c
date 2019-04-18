@@ -265,6 +265,8 @@ test_remove_dep_module(void **state)
     st->conn = NULL;
     ret = unlink("/dev/shm/sr_main");
     assert_int_equal(ret, 0);
+    ret = unlink("/dev/shm/sr_ext_main");
+    assert_int_equal(ret, 0);
 
     /* recreate connection, changes fail to be applied and should remain scheduled */
     ret = sr_connect(0, &st->conn);
@@ -318,6 +320,8 @@ test_update_module(void **state)
     st->conn = NULL;
     ret = unlink("/dev/shm/sr_main");
     assert_int_equal(ret, 0);
+    ret = unlink("/dev/shm/sr_ext_main");
+    assert_int_equal(ret, 0);
 
     /* recreate connection */
     ret = sr_connect(0, &st->conn);
@@ -342,6 +346,8 @@ test_update_module(void **state)
     sr_disconnect(st->conn);
     st->conn = NULL;
     ret = unlink("/dev/shm/sr_main");
+    assert_int_equal(ret, 0);
+    ret = unlink("/dev/shm/sr_ext_main");
     assert_int_equal(ret, 0);
 
     /* recreate connection */
@@ -399,6 +405,8 @@ test_change_feature(void **state)
     st->conn = NULL;
     ret = unlink("/dev/shm/sr_main");
     assert_int_equal(ret, 0);
+    ret = unlink("/dev/shm/sr_ext_main");
+    assert_int_equal(ret, 0);
 
     /* recreate connection and session */
     ret = sr_connect(0, &st->conn);
@@ -429,6 +437,8 @@ test_change_feature(void **state)
     sr_disconnect(st->conn);
     st->conn = NULL;
     ret = unlink("/dev/shm/sr_main");
+    assert_int_equal(ret, 0);
+    ret = unlink("/dev/shm/sr_ext_main");
     assert_int_equal(ret, 0);
 
     /* recreate connection and session */

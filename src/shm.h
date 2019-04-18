@@ -24,10 +24,11 @@
 #include "common.h"
 
 #define SR_MAIN_SHM "/sr_main"              /**< Main SHM name. */
+#define SR_MAIN_EXT_SHM "/sr_ext_main"      /**< Main external SHM name. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
- * @brief Main SHM module dependency type.
+ * @brief Main ext SHM module dependency type.
  */
 typedef enum sr_mod_dep_type_e {
     SR_DEP_REF,         /**< Module reference (leafref, when, must). */
@@ -35,7 +36,7 @@ typedef enum sr_mod_dep_type_e {
 } sr_mod_dep_type_t;
 
 /**
- * @brief Main SHM module data dependency.
+ * @brief Main ext SHM module data dependency.
  * (typedef sr_mod_data_dep_t)
  */
 struct sr_mod_data_dep_s {
@@ -45,7 +46,7 @@ struct sr_mod_data_dep_s {
 };
 
 /**
- * @brief Main SHM module operation dependency.
+ * @brief Main ext SHM module operation dependency.
  */
 typedef struct sr_mod_op_dep_s {
     off_t xpath;                /**< XPath of the node with the dependency. */
@@ -56,7 +57,7 @@ typedef struct sr_mod_op_dep_s {
 } sr_mod_op_dep_t;
 
 /**
- * @brief Main SHM module configuration subscriptions.
+ * @brief Main ext SHM module configuration subscriptions.
  */
 typedef struct sr_mod_conf_sub_s {
     off_t xpath;                /**< XPath of the subscription. */
@@ -66,7 +67,7 @@ typedef struct sr_mod_conf_sub_s {
 } sr_mod_conf_sub_t;
 
 /**
- * @brief Main SHM module data-provide subscription type.
+ * @brief Main ext SHM module data-provide subscription type.
  */
 typedef enum sr_mod_dp_sub_type_e {
     SR_DP_SUB_NONE = 0,         /**< Invalid type. */
@@ -76,7 +77,7 @@ typedef enum sr_mod_dp_sub_type_e {
 } sr_mod_dp_sub_type_t;
 
 /**
- * @brief Main SHM module data-provide subscription.
+ * @brief Main ext SHM module data-provide subscription.
  */
 typedef struct sr_mod_dp_sub_s {
     off_t xpath;                /**< XPath of the subscription. */
@@ -85,7 +86,7 @@ typedef struct sr_mod_dp_sub_s {
 } sr_mod_dp_sub_t;
 
 /**
- * @brief Main SHM RPC/action subscription.
+ * @brief Main ext SHM RPC/action subscription.
  */
 typedef struct sr_mod_rpc_sub_s {
     off_t xpath;                /**< XPath of the RPC/action subscribed to. */
@@ -93,7 +94,7 @@ typedef struct sr_mod_rpc_sub_s {
 } sr_mod_rpc_sub_t;
 
 /**
- * @brief Main SHM notification subscription.
+ * @brief Main ext SHM notification subscription.
  */
 typedef struct sr_mod_notif_sub_s {
     uint32_t evpipe_num;        /**< Event pipe number. */
@@ -141,20 +142,16 @@ struct sr_mod_s {
 
     off_t notif_subs;           /**< Array of notification subscriptions. */
     uint16_t notif_sub_count;   /**< Number of notification subscriptions. */
-
-    off_t next;                 /**< Next module structure. */
 };
 
 /**
  * @brief Main SHM.
  */
 typedef struct sr_main_shm_s {
-    sr_rwlock_t lock;           /**< Process-shared lock for accessing main SHM. */
+    sr_rwlock_t lock;           /**< Process-shared lock for accessing main (ext) SHM. */
     uint32_t ver;               /**< Main SHM version (installed module set version). */
     ATOMIC_T new_sr_sid;        /**< SID for new session. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
-    size_t wasted_mem;          /**< Number of bytes wasted in main SHM. */
-    off_t first_mod;            /**< First module structure. */
 } sr_main_shm_t;
 
 /**
@@ -258,24 +255,23 @@ typedef struct sr_multi_sub_shm_s {
  */
 
 /**
- * @brief Debug print the contents of main SHM.
+ * @brief Debug print the contents of main ext SHM.
  *
- * @param[in] main_shm_addr Main SHM starting address.
- * @param[in] main_shm_size Main SHM size.
+ * @param[in] main_shm Main SHM.
+ * @param[in] main_ext_shm_addr Main ext SHM mapping address.
+ * @param[in] main_ext_shm_size Main ext SHM mapping size.
  */
-void
-sr_shmmain_print(char *main_shm_addr, size_t main_shm_size);
+void sr_shmmain_ext_print(sr_shm_t *main_shm, char *main_ext_shm_addr, size_t main_ext_shm_size);
 
 /**
- * @brief Defragment main SHM.
+ * @brief Defragment main ext SHM.
  *
- * @param[in] main_shm_addr Main SHM mapping address.
- * @param[in] main_shm_size Main SHM size.
- * @param[in] wasted_mem Currently wasted memory.
- * @param[out] defrag_mem Defragmented main SHM memory copy.
+ * @param[in] main_shm Main SHM.
+ * @param[in] main_ext_shm Main ext SHM.
+ * @param[out] defrag_ext_buf Defragmented main ext SHM memory copy.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_defrag(char *main_shm_addr, size_t main_shm_size, size_t wasted_mem, char **defrag_mem);
+sr_error_info_t *sr_shmmain_ext_defrag(sr_shm_t *main_shm, sr_shm_t *main_ext_shm, char **defrag_ext_buf);
 
 /**
  * @brief Check all used directories and create them if any are missing.
@@ -340,25 +336,17 @@ sr_error_info_t *sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent);
  */
 
 /**
- * @brief Main SHM module iterator.
- *
- * @param[in] main_shm_addr Main SHM mapping address.
- * @param[in] last Last returned module, NULL on first call.
- * @return Next main SHM module.
- */
-sr_mod_t *sr_shmmain_getnext(char *main_shm_addr, sr_mod_t *last);
-
-/**
  * @brief Find a specific main SHM module.
  *
  * Either of name or name_off must be set.
  *
- * @param[in] main_shm_addr Main SHM mapping address.
+ * @param[in] main_shm Main SHM.
+ * @param[in] main_ext_shm_addr Main ext SHM address.
  * @param[in] name String name of the module.
- * @param[in] name_off Main SHM offset of the name of the module (faster lookup, no need for strcmp()).
+ * @param[in] name_off Main ext SHM offset of the name (faster lookup, \p main_ext_shm_addr is not needed).
  * @return Main SHM module, NULL if not found.
  */
-sr_mod_t *sr_shmmain_find_module(char *main_shm_addr, const char *name, off_t name_off);
+sr_mod_t *sr_shmmain_find_module(sr_shm_t *main_shm, char *main_ext_shm_addr, const char *name, off_t name_off);
 
 /**
  * @brief Lock main SHM and its mapping and remap it if needed (it was changed).

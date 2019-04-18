@@ -64,6 +64,7 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     }
 
     conn->main_shm.fd = -1;
+    conn->main_ext_shm.fd = -1;
 
     *conn_p = conn;
     return NULL;
@@ -153,6 +154,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
     }
     sr_rwlock_destroy(&conn->main_shm_remap_lock);
     sr_shm_clear(&conn->main_shm);
+    sr_shm_clear(&conn->main_ext_shm);
     free(conn);
 }
 
@@ -574,42 +576,38 @@ static sr_error_info_t *
 sr_check_main_shm_defrag(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
-    sr_main_shm_t *main_shm;
-    char *mem;
+    char *buf;
 
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-    if (main_shm->wasted_mem <= SR_MAIN_SHM_WASTED_MAX_MEM) {
+    if (*((size_t *)conn->main_ext_shm.addr) <= SR_SHM_WASTED_MAX_MEM) {
         /* not enough wasted memory, leave it as it is */
         return NULL;
     }
 
     SR_LOG_DBGMSG("#SHM before defrag");
-    sr_shmmain_print(conn->main_shm.addr, conn->main_shm.size);
+    sr_shmmain_ext_print(&conn->main_shm, conn->main_ext_shm.addr, conn->main_ext_shm.size);
 
     /* defrag mem into a separate memory */
-    if ((err_info = sr_shmmain_defrag(conn->main_shm.addr, conn->main_shm.size, main_shm->wasted_mem, &mem))) {
+    if ((err_info = sr_shmmain_ext_defrag(&conn->main_shm, &conn->main_ext_shm, &buf))) {
         return err_info;
     }
 
-    /* remap main SHM */
-    if ((err_info = sr_shm_remap(&conn->main_shm, conn->main_shm.size - main_shm->wasted_mem))) {
+    /* remap main ext SHM */
+    if ((err_info = sr_shm_remap(&conn->main_ext_shm, conn->main_ext_shm.size - *((size_t *)conn->main_ext_shm.addr)))) {
         goto cleanup;
     }
 
-    /* copy the defragmented memory into SHM */
-    memcpy(conn->main_shm.addr, mem, conn->main_shm.size);
+    SR_LOG_INF("Main ext SHM was defragmented and %u B were saved.", *((size_t *)conn->main_ext_shm.addr));
 
-    /* reset wasted counter */
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-    main_shm->wasted_mem = 0;
+    /* copy the defragmented memory into ext SHM (has wasted set to 0) */
+    memcpy(conn->main_ext_shm.addr, buf, conn->main_ext_shm.size);
 
     SR_LOG_DBGMSG("#SHM after defrag");
-    sr_shmmain_print(conn->main_shm.addr, conn->main_shm.size);
+    sr_shmmain_ext_print(&conn->main_shm, conn->main_ext_shm.addr, conn->main_ext_shm.size);
 
     /* success */
 
 cleanup:
-    free(mem);
+    free(buf);
     return err_info;
 }
 
@@ -913,7 +911,7 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
     }
 
     /* try to find this module in main SHM */
-    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, module_name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, module_name, 0);
     if (!shm_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup_unlock;
@@ -3381,7 +3379,7 @@ sr_rpc_find_subscriber(sr_conn_ctx_t *conn, const struct lys_node *rpc, char **x
     char *rpc_xpath;
     uint16_t i;
 
-    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, lys_node_module(rpc)->name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, lys_node_module(rpc)->name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* get the path that could be subscribed to */
@@ -3389,9 +3387,9 @@ sr_rpc_find_subscriber(sr_conn_ctx_t *conn, const struct lys_node *rpc, char **x
     SR_CHECK_MEM_RET(!rpc_xpath, err_info);
 
     /* try to find a subscription */
-    shm_subs = (sr_mod_rpc_sub_t *)(conn->main_shm.addr + shm_mod->rpc_subs);
+    shm_subs = (sr_mod_rpc_sub_t *)(conn->main_ext_shm.addr + shm_mod->rpc_subs);
     for (i = 0; i < shm_mod->rpc_sub_count; ++i) {
-        if (!strcmp(rpc_xpath, conn->main_shm.addr + shm_subs[i].xpath)) {
+        if (!strcmp(rpc_xpath, conn->main_ext_shm.addr + shm_subs[i].xpath)) {
             break;
         }
     }
@@ -3835,7 +3833,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     }
 
     /* check write/read perm */
-    shm_mod = sr_shmmain_find_module(session->conn->main_shm.addr, lyd_node_module(notif)->name, 0);
+    shm_mod = sr_shmmain_find_module(&session->conn->main_shm, session->conn->main_ext_shm.addr, lyd_node_module(notif)->name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_shm_unlock);
     if ((err_info = sr_perm_check(lyd_node_module(notif)->name, (shm_mod->flags & SR_MOD_REPLAY_SUPPORT) ? 1 : 0))) {
         goto cleanup_shm_unlock;

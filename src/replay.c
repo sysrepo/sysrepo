@@ -345,7 +345,7 @@ sr_replay_store(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_
     SR_CHECK_INT_GOTO(notif_op->schema->nodetype != LYS_NOTIF, err_info, cleanup);
 
     /* find SHM mod for replay lock and check if replay is even supported */
-    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, ly_mod->name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, ly_mod->name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     if (!(shm_mod->flags & SR_MOD_REPLAY_SUPPORT)) {
@@ -521,7 +521,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
     sr_sid_t sid = {0};
 
     /* find SHM mod for replay lock and check if replay is even supported */
-    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, mod_name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, mod_name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     if (!(shm_mod->flags & SR_MOD_REPLAY_SUPPORT)) {

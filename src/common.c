@@ -742,10 +742,10 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
 
-    shm_mod = sr_shmmain_find_module(conn->main_shm.addr, mod_name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, mod_name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    *notif_subs = (sr_mod_notif_sub_t *)(conn->main_shm.addr + shm_mod->notif_subs);
+    *notif_subs = (sr_mod_notif_sub_t *)(conn->main_ext_shm.addr + shm_mod->notif_subs);
     *notif_sub_count = shm_mod->notif_sub_count;
     return NULL;
 }
@@ -1520,15 +1520,14 @@ sr_error_info_t *
 sr_shm_remap(sr_shm_t *shm, size_t new_shm_size)
 {
     sr_error_info_t *err_info = NULL;
+    size_t shm_file_size;
 
     /* read the new shm size if not set */
-    if (!new_shm_size) {
-        if ((err_info = sr_file_get_size(shm->fd, &new_shm_size))) {
-            return err_info;
-        }
+    if (!new_shm_size && (err_info = sr_file_get_size(shm->fd, &shm_file_size))) {
+        return err_info;
     }
 
-    if (new_shm_size == shm->size) {
+    if ((!new_shm_size && (shm_file_size == shm->size)) || (new_shm_size && (new_shm_size == shm->size))) {
         /* mapping is fine, the size has not changed */
         return NULL;
     }
@@ -1536,14 +1535,15 @@ sr_shm_remap(sr_shm_t *shm, size_t new_shm_size)
     if (shm->addr) {
         munmap(shm->addr, shm->size);
     }
-    shm->size = new_shm_size;
 
-    /* truncate */
-    if (ftruncate(shm->fd, shm->size) == -1) {
+    /* truncate if needed */
+    if (new_shm_size && (ftruncate(shm->fd, new_shm_size) == -1)) {
         shm->addr = NULL;
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to truncate shared memory (%s).", strerror(errno));
         return err_info;
     }
+
+    shm->size = new_shm_size ? new_shm_size : shm_file_size;
 
     /* map */
     shm->addr = mmap(NULL, shm->size, PROT_READ | PROT_WRITE, MAP_SHARED, shm->fd, 0);
