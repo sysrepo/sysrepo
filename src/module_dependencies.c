@@ -1482,7 +1482,7 @@ static int
 md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *root, sr_list_t *being_parsed)
 {
     int rc = SR_ERR_OK;
-    struct lys_node *node = NULL, *child = NULL, *parent = NULL;
+    struct lys_node *node = NULL, *child = NULL, *parent = NULL, *iter = NULL;
     const struct lys_module *main_module_schema = NULL;
     md_module_t *dest_module = NULL;
     bool process_children = true;
@@ -1697,7 +1697,8 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                 /* skip */
             } else if (LYS_CONFIG_R & node->flags) {
                 /*< this node has operational data (and all descendands as well) */
-                if (NULL == node->parent) {
+                for (iter = node->parent; iter && (iter->nodetype == LYS_USES); iter = iter->parent);
+                if (NULL == iter) {
                     rc = SR_ERR_NOT_FOUND;
                     if (augment) {
                         rc = md_check_op_data_subtree(dest_module, node);
