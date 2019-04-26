@@ -491,6 +491,128 @@ test_action(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST 4 */
+static int
+rpc_action_pred_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, struct lyd_node *output,
+        void *private_data)
+{
+    char *str1;
+    const char *str2;
+    int ret;
+
+    (void)session;
+    (void)output;
+    (void)private_data;
+
+    if (!strcmp(xpath, "/ops:cont/list1[k='one' or k='two']/cont2/act1")) {
+        /* check input data */
+        ret = lyd_print_mem(&str1, input, LYD_XML, LYP_WITHSIBLINGS);
+        assert_int_equal(ret, 0);
+        str2 = "<act1 xmlns=\"urn:ops\"><l6>val2</l6><l7>val2</l7></act1>";
+        assert_string_equal(str1, str2);
+        free(str1);
+    } else if (!strcmp(xpath, "/ops:cont/list1[k='three' or k='four']/cont2/act1")) {
+        /* check input data */
+        ret = lyd_print_mem(&str1, input, LYD_XML, LYP_WITHSIBLINGS);
+        assert_int_equal(ret, 0);
+        str2 = "<act1 xmlns=\"urn:ops\"><l6>val3</l6><l7>val3</l7></act1>";
+        assert_string_equal(str1, str2);
+        free(str1);
+    } else {
+        fail();
+    }
+
+    return SR_ERR_OK;
+}
+
+static void
+test_action_pred(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    struct lyd_node *node, *input_op, *output_op;
+    int ret;
+
+    /* subscribe with some predicates */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one' or k='two']/cont2/act1", rpc_action_pred_cb, NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='three' or k='four']/cont2/act1", rpc_action_pred_cb, NULL,
+            SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some data needed for validation and executing the actions */
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='one']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='two']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='three']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to the data so they are actually present in operational */
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /*
+     * create first action
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='zero']/cont2/act1", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l6", "val", 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(input_op, NULL, "l7", "val", 0, 0);
+    assert_non_null(node);
+
+    /* send action, fails */
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    for (; input_op->parent; input_op = input_op->parent);
+    lyd_free_withsiblings(input_op);
+    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
+
+    /*
+     * create second action
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='one']/cont2/act1", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l6", "val2", 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(input_op, NULL, "l7", "val2", 0, 0);
+    assert_non_null(node);
+
+    /* send action, should be fine */
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    for (; input_op->parent; input_op = input_op->parent);
+    lyd_free_withsiblings(input_op);
+    for (; output_op->parent; output_op = output_op->parent);
+    lyd_free_withsiblings(output_op);
+
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /*
+     * create third action
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='three']/cont2/act1", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l6", "val3", 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(input_op, NULL, "l7", "val3", 0, 0);
+    assert_non_null(node);
+
+    /* send action, should be fine */
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    for (; input_op->parent; input_op = input_op->parent);
+    lyd_free_withsiblings(input_op);
+    for (; output_op->parent; output_op = output_op->parent);
+    lyd_free_withsiblings(output_op);
+
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(subscr);
+}
+
 /* MAIN */
 int
 main(void)
@@ -499,6 +621,7 @@ main(void)
         cmocka_unit_test(test_fail),
         cmocka_unit_test_teardown(test_rpc, clear_ops),
         cmocka_unit_test_teardown(test_action, clear_ops),
+        cmocka_unit_test_teardown(test_action_pred, clear_ops),
     };
 
     sr_log_stderr(SR_LL_INF);

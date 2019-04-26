@@ -171,7 +171,7 @@ typedef struct sr_rwlock_s {
 } sr_rwlock_t;
 
 struct modsub_conf_s;
-struct modsub_dp_s;
+struct modsub_oper_s;
 struct modsub_rpc_s;
 struct modsub_notif_s;
 
@@ -262,19 +262,19 @@ struct sr_subscription_ctx_s {
     } *conf_subs;                   /**< Configuration change subscriptions for each module. */
     uint32_t conf_sub_count;        /**< Configuration change module subscription count. */
 
-    struct modsub_dp_s {
+    struct modsub_oper_s {
         char *module_name;          /**< Module of the subscriptions. */
-        struct modsub_dpsub_s {
+        struct modsub_opersub_s {
             char *xpath;            /**< Subscription XPath. */
-            sr_dp_get_items_cb cb;  /**< Subscription callback. */
+            sr_oper_get_items_cb cb;    /**< Subscription callback. */
             void *private_data;     /**< Subscription callback private data. */
 
             uint32_t event_id;      /**< Event ID of the last processed event. */
             sr_shm_t sub_shm;       /**< Subscription SHM. */
-        } *subs;                    /**< Data-provide subscriptions for each XPath. */
-        uint32_t sub_count;         /**< Data-provide module XPath subscription count. */
-    } *dp_subs;                     /**< Data-provide subscriptions for each module. */
-    uint32_t dp_sub_count;          /**< Data-provide module subscription count. */
+        } *subs;                    /**< Operational subscriptions for each XPath. */
+        uint32_t sub_count;         /**< Operational module XPath subscription count. */
+    } *oper_subs;                   /**< Operational subscriptions for each module. */
+    uint32_t oper_sub_count;        /**< Operational module subscription count. */
 
     struct modsub_rpc_s {
         char *xpath;                /**< Subscription XPath. */
@@ -350,26 +350,26 @@ void sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds,
         void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs);
 
 /**
- * @brief Add a data-provide subscription into subscription structure.
+ * @brief Add an operational subscription into subscription structure.
  *
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
- * @param[in] dp_cb Subscription callback.
+ * @param[in] oper_cb Subscription callback.
  * @param[in] private_data Subscription callback private data.
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_sub_dp_add(const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb, void *private_data,
+sr_error_info_t *sr_sub_oper_add(const char *mod_name, const char *xpath, sr_oper_get_items_cb oper_cb, void *private_data,
         sr_subscription_ctx_t *subs);
 
 /**
- * @brief Delete a data-provide subscription from subscription structure.
+ * @brief Delete an operational subscription from subscription structure.
  *
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
  * @param[in,out] subs Subscription structure.
  */
-void sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *subs);
+void sr_sub_oper_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Add an RPC subscription into subscription structure.
@@ -438,7 +438,7 @@ sr_error_info_t *sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *sub
  * @brief Find notifications subscribers for a module.
  *
  * @param[in] conn Connection to use.
- * @param[in] mod_name Mdoule name.
+ * @param[in] mod_name Module name.
  * @param[out] notif_subs Notification subscriptions.
  * @param[out] notif_sub_count Number of subscribers.
  * @return err_info, NULL on success.
@@ -771,6 +771,15 @@ sr_error_info_t *sr_mkpath(char *path, mode_t mode);
  * @return First module name, NULL on error.
  */
 char *sr_get_first_ns(const char *expr);
+
+/**
+ * @brief Get XPath expression without any predicates.
+ *
+ * @param[in] expr Expression to transform.
+ * @param[out] expr2 Expression without predicates.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_get_trim_predicates(const char *expr, char **expr2);
 
 /**
  * @brief Get datastore string name.

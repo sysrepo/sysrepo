@@ -307,7 +307,7 @@ sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, sr
 {
     uint32_t i;
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *dp_data = NULL, *parent_dup = NULL, *key, *key_dup;
+    struct lyd_node *oper_data = NULL, *parent_dup = NULL, *key, *key_dup;
 
     if (parent) {
         /* duplicate parent so that it is a stand-alone subtree */
@@ -346,18 +346,18 @@ sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, sr
     }
 
     /* get data from client */
-    err_info = sr_shmsub_dp_notify(ly_mod, xpath, parent_dup, sid, evpipe_num, &dp_data, cb_error_info);
+    err_info = sr_shmsub_oper_notify(ly_mod, xpath, parent_dup, sid, evpipe_num, &oper_data, cb_error_info);
     lyd_free_withsiblings(parent_dup);
     if (err_info) {
         return err_info;
     }
 
     /* merge into full data tree */
-    if (dp_data) {
+    if (oper_data) {
         if (!*data) {
-            *data = dp_data;
-        } else if (lyd_merge(*data, dp_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
-            lyd_free_withsiblings(dp_data);
+            *data = oper_data;
+        } else if (lyd_merge(*data, oper_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+            lyd_free_withsiblings(oper_data);
             sr_errinfo_new_ly(&err_info, ly_mod->ctx);
             return err_info;
         }
@@ -424,15 +424,15 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, char *ma
         sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_dp_sub_t *shm_msub;
+    sr_mod_oper_sub_t *shm_msub;
     const char *xpath;
     char *parent_xpath, *last_node_xpath;
     uint16_t i, j;
     struct ly_set *set;
 
     /* XPaths are ordered based on depth */
-    for (i = 0; i < mod->shm_mod->dp_sub_count; ++i) {
-        shm_msub = &((sr_mod_dp_sub_t *)(main_ext_shm_addr + mod->shm_mod->dp_subs))[i];
+    for (i = 0; i < mod->shm_mod->oper_sub_count; ++i) {
+        shm_msub = &((sr_mod_oper_sub_t *)(main_ext_shm_addr + mod->shm_mod->oper_subs))[i];
         xpath = main_ext_shm_addr + shm_msub->xpath;
 
         /* trim the last node to get the parent */
@@ -461,7 +461,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, char *ma
 
             /* nested data */
             for (j = 0; j < set->number; ++j) {
-                if ((shm_msub->sub_type == SR_DP_SUB_CONFIG) || (shm_msub->sub_type == SR_DP_SUB_MIXED)) {
+                if ((shm_msub->sub_type == SR_OPER_SUB_CONFIG) || (shm_msub->sub_type == SR_OPER_SUB_MIXED)) {
                     /* remove any currently present nodes */
                     if ((err_info = sr_xpath_oper_data_remove(last_node_xpath, set->set.d[j], data))) {
                         goto error;
@@ -470,7 +470,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, char *ma
 
                 /* replace them with the ones retrieved from a client */
                 if ((err_info = sr_xpath_oper_data_append(mod->ly_mod, xpath, sid, shm_msub->evpipe_num, set->set.d[j],
-                        data, cb_error_info))) {
+                            data, cb_error_info))) {
                     goto error;
                 }
             }
@@ -482,7 +482,7 @@ next_iter:
             ly_set_free(set);
         } else {
             /* top-level data */
-            if ((shm_msub->sub_type == SR_DP_SUB_CONFIG) || (shm_msub->sub_type == SR_DP_SUB_MIXED)) {
+            if ((shm_msub->sub_type == SR_OPER_SUB_CONFIG) || (shm_msub->sub_type == SR_OPER_SUB_MIXED)) {
                 /* remove any currently present nodes */
                 if ((err_info = sr_xpath_oper_data_remove(xpath, *data, data))) {
                     return err_info;
@@ -490,7 +490,7 @@ next_iter:
             }
 
             if ((err_info = sr_xpath_oper_data_append(mod->ly_mod, xpath, sid, shm_msub->evpipe_num, NULL, data,
-                    cb_error_info))) {
+                        cb_error_info))) {
                 return err_info;
             }
         }

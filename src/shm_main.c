@@ -118,7 +118,7 @@ sr_shmmain_ext_print(sr_shm_t *main_shm, char *main_ext_shm_addr, size_t main_ex
     off_t *features, cur_off;
     sr_mod_op_dep_t *op_deps;
     sr_mod_conf_sub_t *conf_subs;
-    sr_mod_dp_sub_t *dp_subs;
+    sr_mod_oper_sub_t *oper_subs;
     sr_mod_rpc_sub_t *rpc_subs;
     struct shm_item *items;
     size_t i, item_count, printed;
@@ -256,23 +256,23 @@ sr_shmmain_ext_print(sr_shm_t *main_shm, char *main_ext_shm_addr, size_t main_ex
             }
         }
 
-        if (shm_mod->dp_sub_count) {
+        if (shm_mod->oper_sub_count) {
             /* add DP subscriptions */
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
-            items[item_count].start = shm_mod->dp_subs;
-            items[item_count].size = shm_mod->dp_sub_count * sizeof *dp_subs;
-            asprintf(&(items[item_count].name), "dp subs (%u, mod \"%s\")", shm_mod->dp_sub_count,
+            items[item_count].start = shm_mod->oper_subs;
+            items[item_count].size = shm_mod->oper_sub_count * sizeof *oper_subs;
+            asprintf(&(items[item_count].name), "oper subs (%u, mod \"%s\")", shm_mod->oper_sub_count,
                     main_ext_shm_addr + shm_mod->name);
             ++item_count;
 
             /* add xpaths */
-            dp_subs = (sr_mod_dp_sub_t *)(main_ext_shm_addr + shm_mod->dp_subs);
-            for (i = 0; i < shm_mod->dp_sub_count; ++i) {
+            oper_subs = (sr_mod_oper_sub_t *)(main_ext_shm_addr + shm_mod->oper_subs);
+            for (i = 0; i < shm_mod->oper_sub_count; ++i) {
                 items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                items[item_count].start = dp_subs[i].xpath;
-                items[item_count].size = strlen(main_ext_shm_addr + dp_subs[i].xpath) + 1;
-                asprintf(&(items[item_count].name), "dp sub xpath (\"%s\", mod \"%s\")",
-                        main_ext_shm_addr + dp_subs[i].xpath, main_ext_shm_addr + shm_mod->name);
+                items[item_count].start = oper_subs[i].xpath;
+                items[item_count].size = strlen(main_ext_shm_addr + oper_subs[i].xpath) + 1;
+                asprintf(&(items[item_count].name), "oper sub xpath (\"%s\", mod \"%s\")",
+                        main_ext_shm_addr + oper_subs[i].xpath, main_ext_shm_addr + shm_mod->name);
                 ++item_count;
             }
         }
@@ -526,9 +526,9 @@ sr_shmmain_ext_defrag(sr_shm_t *main_shm, sr_shm_t *main_ext_shm, char **defrag_
                     sizeof(sr_mod_conf_sub_t), shm_mod->conf_sub[i].sub_count, ext_buf, &ext_buf_cur);
         }
 
-        /* copy data-provide subscriptions */
-        shm_mod->dp_subs = sr_shmmain_defrag_copy_array_with_string(main_ext_shm->addr, shm_mod->dp_subs,
-                sizeof(sr_mod_dp_sub_t), shm_mod->dp_sub_count, ext_buf, &ext_buf_cur);
+        /* copy operational subscriptions */
+        shm_mod->oper_subs = sr_shmmain_defrag_copy_array_with_string(main_ext_shm->addr, shm_mod->oper_subs,
+                sizeof(sr_mod_oper_sub_t), shm_mod->oper_sub_count, ext_buf, &ext_buf_cur);
 
         /* copy rpc subscriptions */
         shm_mod->rpc_subs = sr_shmmain_defrag_copy_array_with_string(main_ext_shm->addr, shm_mod->rpc_subs,

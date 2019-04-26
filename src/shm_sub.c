@@ -1032,7 +1032,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent, sr_sid_t sid,
+sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent, sr_sid_t sid,
         uint32_t evpipe_num, struct lyd_node **data, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -1067,7 +1067,7 @@ sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const st
 
     /* write the request for state data */
     event_id = sub_shm->event_id + 1;
-    sr_shmsub_notify_write_event(sub_shm, event_id, SR_SUB_EV_DP, &sid, parent_lyb, parent_lyb_len);
+    sr_shmsub_notify_write_event(sub_shm, event_id, SR_SUB_EV_OPER, &sid, parent_lyb, parent_lyb_len);
 
     /* notify using event pipe and wait until the subscriber has processed the event */
     if ((err_info = sr_shmsub_notify_evpipe(evpipe_num))) {
@@ -1661,7 +1661,7 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t d
     event = sub_shm->event;
 
     switch (event) {
-    case SR_SUB_EV_DP:
+    case SR_SUB_EV_OPER:
     case SR_SUB_EV_RPC:
         /* notifier waits for these events */
         if (err_code) {
@@ -1686,13 +1686,13 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t d
 }
 
 sr_error_info_t *
-sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_ctx_t *conn)
+sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, data_len = 0;
     char *data = NULL;
     sr_error_t err_code = SR_ERR_OK;
-    struct modsub_dpsub_s *dp_sub;
+    struct modsub_opersub_s *oper_sub;
     struct lyd_node *parent = NULL;
     sr_sub_shm_t *sub_shm;
     sr_session_ctx_t tmp_sess;
@@ -1702,9 +1702,9 @@ sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_c
     tmp_sess.ds = SR_DS_OPERATIONAL;
     tmp_sess.ev = SR_SUB_EV_CHANGE;
 
-    for (i = 0; (err_code == SR_ERR_OK) && (i < dp_subs->sub_count); ++i) {
-        dp_sub = &dp_subs->subs[i];
-        sub_shm = (sr_sub_shm_t *)dp_sub->sub_shm.addr;
+    for (i = 0; (err_code == SR_ERR_OK) && (i < oper_subs->sub_count); ++i) {
+        oper_sub = &oper_subs->subs[i];
+        sub_shm = (sr_sub_shm_t *)oper_sub->sub_shm.addr;
 
         /* SUB READ LOCK */
         if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, 0, __func__))) {
@@ -1712,7 +1712,7 @@ sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_c
         }
 
         /* no new event */
-        if ((sub_shm->event != SR_SUB_EV_DP) || (sub_shm->event_id == dp_sub->event_id)) {
+        if ((sub_shm->event != SR_SUB_EV_OPER) || (sub_shm->event_id == oper_sub->event_id)) {
             /* SUB READ UNLOCK */
             sr_rwunlock(&sub_shm->lock, 0, __func__);
             continue;
@@ -1722,14 +1722,14 @@ sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_c
         tmp_sess.sid = sub_shm->sid;
 
         /* remap SHM */
-        if ((err_info = sr_shm_remap(&dp_sub->sub_shm, 0))) {
+        if ((err_info = sr_shm_remap(&oper_sub->sub_shm, 0))) {
             goto error_rdunlock;
         }
-        sub_shm = (sr_sub_shm_t *)dp_sub->sub_shm.addr;
+        sub_shm = (sr_sub_shm_t *)oper_sub->sub_shm.addr;
 
         /* parse data parent */
         ly_errno = 0;
-        parent = lyd_parse_mem(conn->ly_ctx, dp_sub->sub_shm.addr + sizeof(sr_sub_shm_t), LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
+        parent = lyd_parse_mem(conn->ly_ctx, oper_sub->sub_shm.addr + sizeof(sr_sub_shm_t), LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
         SR_CHECK_INT_GOTO(ly_errno, err_info, error_rdunlock);
         /* go to the actual parent, not the root */
         if ((err_info = sr_ly_find_last_parent(&parent, 0))) {
@@ -1737,16 +1737,16 @@ sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_c
         }
 
         /* remember event ID so that we do not process it again */
-        dp_sub->event_id = sub_shm->event_id;
+        oper_sub->event_id = sub_shm->event_id;
 
         /* SUB READ UNLOCK */
         sr_rwunlock(&sub_shm->lock, 0, __func__);
 
         /* process event */
-        SR_LOG_INF("Processing \"data-provide\" \"%s\" event with ID %u.", dp_subs->module_name, dp_sub->event_id);
+        SR_LOG_INF("Processing \"operational\" \"%s\" event with ID %u.", oper_subs->module_name, oper_sub->event_id);
 
         /* call callback */
-        err_code = dp_sub->cb(&tmp_sess, dp_subs->module_name, dp_sub->xpath, &parent, dp_sub->private_data);
+        err_code = oper_sub->cb(&tmp_sess, oper_subs->module_name, oper_sub->xpath, &parent, oper_sub->private_data);
 
         /* go again to the top-level root for printing */
         if (parent) {
@@ -1776,10 +1776,10 @@ sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_c
         }
 
         /* remap SHM having the lock */
-        if ((err_info = sr_shm_remap(&dp_sub->sub_shm, sizeof *sub_shm + data_len))) {
+        if ((err_info = sr_shm_remap(&oper_sub->sub_shm, sizeof *sub_shm + data_len))) {
             goto error_wrunlock;
         }
-        sub_shm = (sr_sub_shm_t *)dp_sub->sub_shm.addr;
+        sub_shm = (sr_sub_shm_t *)oper_sub->sub_shm.addr;
 
         /* finish event */
         sr_shmsub_listen_write_event(sub_shm, data, data_len, err_code);
@@ -2289,6 +2289,11 @@ sr_shmsub_listen_thread(void *arg)
         /* process the new event (or subscription stop time has elapsed) */
         if (sr_process_events(subs, NULL, &stop_time_in) != SR_ERR_OK) {
             goto error;
+        }
+
+        /* flag could have changed while we were processing events */
+        if (!ATOMIC_LOAD_RELAXED(subs->thread_running)) {
+            break;
         }
 
 wait_for_event:

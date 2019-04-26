@@ -190,11 +190,11 @@ sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
 }
 
 sr_error_info_t *
-sr_sub_dp_add(const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb, void *private_data,
+sr_sub_oper_add(const char *mod_name, const char *xpath, sr_oper_get_items_cb oper_cb, void *private_data,
         sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
-    struct modsub_dp_s *dp_sub = NULL;
+    struct modsub_oper_s *oper_sub = NULL;
     uint32_t i;
     void *mem[4] = {NULL};
 
@@ -206,52 +206,52 @@ sr_sub_dp_add(const char *mod_name, const char *xpath, sr_dp_get_items_cb dp_cb,
     }
 
     /* try to find this module subscription SHM mapping, it may already exist */
-    for (i = 0; i < subs->dp_sub_count; ++i) {
-        if (!strcmp(mod_name, subs->dp_subs[i].module_name)) {
+    for (i = 0; i < subs->oper_sub_count; ++i) {
+        if (!strcmp(mod_name, subs->oper_subs[i].module_name)) {
             break;
         }
     }
 
-    if (i == subs->dp_sub_count) {
-        mem[0] = realloc(subs->dp_subs, (subs->dp_sub_count + 1) * sizeof *subs->dp_subs);
+    if (i == subs->oper_sub_count) {
+        mem[0] = realloc(subs->oper_subs, (subs->oper_sub_count + 1) * sizeof *subs->oper_subs);
         SR_CHECK_MEM_GOTO(!mem[0], err_info, error_unlock);
-        subs->dp_subs = mem[0];
+        subs->oper_subs = mem[0];
 
-        dp_sub = &subs->dp_subs[i];
-        memset(dp_sub, 0, sizeof *dp_sub);
+        oper_sub = &subs->oper_subs[i];
+        memset(oper_sub, 0, sizeof *oper_sub);
 
         /* set attributes */
         mem[1] = strdup(mod_name);
         SR_CHECK_MEM_GOTO(!mem[1], err_info, error_unlock);
-        dp_sub->module_name = mem[1];
+        oper_sub->module_name = mem[1];
 
         /* make the subscription visible only after everything succeeds */
-        ++subs->dp_sub_count;
+        ++subs->oper_sub_count;
     } else {
-        dp_sub = &subs->dp_subs[i];
+        oper_sub = &subs->oper_subs[i];
     }
 
     /* add another XPath and create SHM into module-specific subscriptions */
-    mem[2] = realloc(dp_sub->subs, (dp_sub->sub_count + 1) * sizeof *dp_sub->subs);
+    mem[2] = realloc(oper_sub->subs, (oper_sub->sub_count + 1) * sizeof *oper_sub->subs);
     SR_CHECK_MEM_GOTO(!mem[2], err_info, error_unlock);
-    dp_sub->subs = mem[2];
-    memset(dp_sub->subs + dp_sub->sub_count, 0, sizeof *dp_sub->subs);
-    dp_sub->subs[dp_sub->sub_count].sub_shm.fd = -1;
+    oper_sub->subs = mem[2];
+    memset(oper_sub->subs + oper_sub->sub_count, 0, sizeof *oper_sub->subs);
+    oper_sub->subs[oper_sub->sub_count].sub_shm.fd = -1;
 
     /* set attributes */
     mem[3] = strdup(xpath);
     SR_CHECK_MEM_GOTO(!mem[3], err_info, error_unlock);
-    dp_sub->subs[dp_sub->sub_count].xpath = mem[3];
-    dp_sub->subs[dp_sub->sub_count].cb = dp_cb;
-    dp_sub->subs[dp_sub->sub_count].private_data = private_data;
+    oper_sub->subs[oper_sub->sub_count].xpath = mem[3];
+    oper_sub->subs[oper_sub->sub_count].cb = oper_cb;
+    oper_sub->subs[oper_sub->sub_count].private_data = private_data;
 
     /* create specific SHM and map it */
-    if ((err_info = sr_shmsub_open_map(mod_name, "state", sr_str_hash(xpath), &dp_sub->subs[dp_sub->sub_count].sub_shm,
+    if ((err_info = sr_shmsub_open_map(mod_name, "state", sr_str_hash(xpath), &oper_sub->subs[oper_sub->sub_count].sub_shm,
             sizeof(sr_sub_shm_t)))) {
         goto error_unlock;
     }
 
-    ++dp_sub->sub_count;
+    ++oper_sub->sub_count;
 
     /* SUBS UNLOCK */
     sr_munlock(&subs->subs_lock);
@@ -265,17 +265,17 @@ error_unlock:
         free(mem[i]);
     }
     if (mem[1]) {
-        --subs->dp_sub_count;
+        --subs->oper_sub_count;
     }
     return err_info;
 }
 
 void
-sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *subs)
+sr_sub_oper_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
-    struct modsub_dp_s *dp_sub;
+    struct modsub_oper_s *oper_sub;
 
     /* SUBS LOCK */
     if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
@@ -283,39 +283,39 @@ sr_sub_dp_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *su
         return;
     }
 
-    for (i = 0; i < subs->dp_sub_count; ++i) {
-        dp_sub = &subs->dp_subs[i];
+    for (i = 0; i < subs->oper_sub_count; ++i) {
+        oper_sub = &subs->oper_subs[i];
 
-        if (strcmp(mod_name, dp_sub->module_name)) {
+        if (strcmp(mod_name, oper_sub->module_name)) {
             continue;
         }
 
-        for (j = 0; j < dp_sub->sub_count; ++j) {
-            if (strcmp(dp_sub->subs[j].xpath, xpath)) {
+        for (j = 0; j < oper_sub->sub_count; ++j) {
+            if (strcmp(oper_sub->subs[j].xpath, xpath)) {
                 continue;
             }
 
             /* found our subscription, replace it with the last */
-            free(dp_sub->subs[j].xpath);
-            sr_shm_clear(&dp_sub->subs[j].sub_shm);
-            if (j < dp_sub->sub_count - 1) {
-                memcpy(&dp_sub->subs[j], &dp_sub->subs[dp_sub->sub_count - 1], sizeof *dp_sub->subs);
+            free(oper_sub->subs[j].xpath);
+            sr_shm_clear(&oper_sub->subs[j].sub_shm);
+            if (j < oper_sub->sub_count - 1) {
+                memcpy(&oper_sub->subs[j], &oper_sub->subs[oper_sub->sub_count - 1], sizeof *oper_sub->subs);
             }
-            --dp_sub->sub_count;
+            --oper_sub->sub_count;
 
-            if (!dp_sub->sub_count) {
+            if (!oper_sub->sub_count) {
                 /* no other subscriptions for this module, replace it with the last */
-                free(dp_sub->module_name);
-                free(dp_sub->subs);
-                if (i < subs->dp_sub_count - 1) {
-                    memcpy(dp_sub, &subs->dp_subs[subs->dp_sub_count - 1], sizeof *dp_sub);
+                free(oper_sub->module_name);
+                free(oper_sub->subs);
+                if (i < subs->oper_sub_count - 1) {
+                    memcpy(oper_sub, &subs->oper_subs[subs->oper_sub_count - 1], sizeof *oper_sub);
                 }
-                --subs->dp_sub_count;
+                --subs->oper_sub_count;
 
-                if (!subs->dp_sub_count) {
+                if (!subs->oper_sub_count) {
                     /* no other data-provide subscriptions */
-                    free(subs->dp_subs);
-                    subs->dp_subs = NULL;
+                    free(subs->oper_subs);
+                    subs->oper_subs = NULL;
                 }
             }
 
@@ -602,7 +602,7 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
     uint32_t i, j;
     int last_removed;
     struct modsub_conf_s *conf_subs;
-    struct modsub_dp_s *dp_sub;
+    struct modsub_oper_s *oper_sub;
     struct modsub_notif_s *notif_sub;
 
     /* configuration subscriptions */
@@ -640,17 +640,17 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
     free(subs->conf_subs);
 
     /* data provider subscriptions */
-    for (i = 0; i < subs->dp_sub_count; ++i) {
-        dp_sub = &subs->dp_subs[i];
-        for (j = 0; j < dp_sub->sub_count; ++j) {
+    for (i = 0; i < subs->oper_sub_count; ++i) {
+        oper_sub = &subs->oper_subs[i];
+        for (j = 0; j < oper_sub->sub_count; ++j) {
             /* remove the subscriptions from the main SHM */
-            if ((err_info = sr_shmmod_dp_subscription(conn, dp_sub->module_name, dp_sub->subs[j].xpath, SR_DP_SUB_NONE,
-                    subs->evpipe_num, 0))) {
+            if ((err_info = sr_shmmod_oper_subscription(conn, oper_sub->module_name, oper_sub->subs[j].xpath,
+                        SR_OPER_SUB_NONE, subs->evpipe_num, 0))) {
                 return err_info;
             }
 
             /* delete the SHM file itself so that there is no leftover event */
-            if ((err_info = sr_path_sub_shm(dp_sub->module_name, "state", sr_str_hash(dp_sub->subs[j].xpath), 1, &path))) {
+            if ((err_info = sr_path_sub_shm(oper_sub->module_name, "state", sr_str_hash(oper_sub->subs[j].xpath), 1, &path))) {
                 return err_info;
             }
             if (unlink(path) == -1) {
@@ -659,17 +659,17 @@ sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs)
             free(path);
 
             /* free xpath */
-            free(dp_sub->subs[j].xpath);
+            free(oper_sub->subs[j].xpath);
 
             /* remove specific SHM segment */
-            sr_shm_clear(&dp_sub->subs[j].sub_shm);
+            sr_shm_clear(&oper_sub->subs[j].sub_shm);
         }
 
         /* free dynamic memory */
-        free(dp_sub->module_name);
-        free(dp_sub->subs);
+        free(oper_sub->module_name);
+        free(oper_sub->subs);
     }
-    free(subs->dp_subs);
+    free(subs->oper_subs);
 
     /* RPC/action subscriptions */
     for (i = 0; i < subs->rpc_sub_count; ++i) {
@@ -1935,6 +1935,57 @@ sr_get_first_ns(const char *expr)
     return strndup(expr, i);
 }
 
+sr_error_info_t *
+sr_get_trim_predicates(const char *expr, char **expr2)
+{
+    sr_error_info_t *err_info = NULL;
+    char quot = 0, pred = 0, *str;
+    const char *start, *ptr;
+
+    str = malloc(strlen(expr) + 1);
+    SR_CHECK_MEM_RET(!str, err_info);
+    str[0] = '\0';
+
+    start = expr;
+    for (ptr = expr; ptr[0]; ++ptr) {
+        if (quot) {
+            if (ptr[0] == quot) {
+                quot = 0;
+            }
+        } else if ((ptr[0] == '\'') || (ptr[0] == '\"')) {
+            quot = ptr[0];
+        } else if (ptr[0] == '[') {
+            ++pred;
+            if (pred == 1) {
+                /* copy expr chunk */
+                strncat(str, start, ptr - start);
+            }
+        } else if (ptr[0] == ']') {
+            --pred;
+            if (pred < 0) {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Unexpected character '%c'(%.5s) in expression.", ptr[0], ptr);
+                free(str);
+                return err_info;
+            } else if (pred == 0) {
+                /* skip predicate */
+                start = ptr + 1;
+            }
+        }
+    }
+
+    /* copy last expr chunk */
+    strncat(str, start, ptr - start);
+
+    if (quot || pred) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Unterminated %s in expression.", quot ? "literal" : "predicate");
+        free(str);
+        return err_info;
+    }
+
+    *expr2 = str;
+    return NULL;
+}
+
 const char *
 sr_ds2str(sr_datastore_t ds)
 {
@@ -2009,8 +2060,8 @@ sr_ev2str(sr_sub_event_t ev)
         return "done";
     case SR_SUB_EV_ABORT:
         return "abort";
-    case SR_SUB_EV_DP:
-        return "data-provide";
+    case SR_SUB_EV_OPER:
+        return "operational";
     case SR_SUB_EV_RPC:
         return "rpc";
     case SR_SUB_EV_NOTIF:

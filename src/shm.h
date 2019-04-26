@@ -67,23 +67,23 @@ typedef struct sr_mod_conf_sub_s {
 } sr_mod_conf_sub_t;
 
 /**
- * @brief Main ext SHM module data-provide subscription type.
+ * @brief Main ext SHM module operational subscription type.
  */
-typedef enum sr_mod_dp_sub_type_e {
-    SR_DP_SUB_NONE = 0,         /**< Invalid type. */
-    SR_DP_SUB_STATE,            /**< Data-provide of state data. */
-    SR_DP_SUB_CONFIG,           /**< Data-provide of configuration data. */
-    SR_DP_SUB_MIXED,            /**< Data provide of both state and configuration data. */
-} sr_mod_dp_sub_type_t;
+typedef enum sr_mod_oper_sub_type_e {
+    SR_OPER_SUB_NONE = 0,         /**< Invalid type. */
+    SR_OPER_SUB_STATE,            /**< Providing state data. */
+    SR_OPER_SUB_CONFIG,           /**< Providing configuration data. */
+    SR_OPER_SUB_MIXED,            /**< Providing both state and configuration data. */
+} sr_mod_oper_sub_type_t;
 
 /**
- * @brief Main ext SHM module data-provide subscription.
+ * @brief Main ext SHM module operational subscription.
  */
-typedef struct sr_mod_dp_sub_s {
+typedef struct sr_mod_oper_sub_s {
     off_t xpath;                /**< XPath of the subscription. */
-    sr_mod_dp_sub_type_t sub_type;  /**< Type of the subscription. */
+    sr_mod_oper_sub_type_t sub_type;  /**< Type of the subscription. */
     uint32_t evpipe_num;        /** Event pipe number. */
-} sr_mod_dp_sub_t;
+} sr_mod_oper_sub_t;
 
 /**
  * @brief Main ext SHM RPC/action subscription.
@@ -134,8 +134,8 @@ struct sr_mod_s {
         uint16_t sub_count;     /**< Number of configuration subscriptions. */
     } conf_sub[2];              /**< Configuration subscriptions for each datastore. */
 
-    off_t dp_subs;              /**< Array of data-provide subscriptions. */
-    uint16_t dp_sub_count;      /**< Number of data-provide subscriptions. */
+    off_t oper_subs;            /**< Array of operational subscriptions. */
+    uint16_t oper_sub_count;    /**< Number of operational subscriptions. */
 
     off_t rpc_subs;             /**< Array of RPC/action subscriptions. */
     uint16_t rpc_sub_count;     /**< Number of RPC/action subscriptions. */
@@ -166,14 +166,14 @@ typedef enum sr_sub_event_e {
     SR_SUB_EV_CHANGE,           /**< New change event ready. */
     SR_SUB_EV_DONE,             /**< New done event ready. */
     SR_SUB_EV_ABORT,            /**< New abort event ready. */
-    SR_SUB_EV_DP,               /**< New data-provide event ready. */
+    SR_SUB_EV_OPER,             /**< New operational event ready. */
     SR_SUB_EV_RPC,              /**< New RPC/action event ready. */
     SR_SUB_EV_NOTIF,            /**< New notification event ready. */
 } sr_sub_event_t;
 
 /** Whether an event is one to be processed by the listeners (subscribers). */
 #define SR_IS_LISTEN_EVENT(ev) ((ev == SR_SUB_EV_UPDATE) || (ev == SR_SUB_EV_CHANGE) || (ev == SR_SUB_EV_DONE) \
-        || (ev == SR_SUB_EV_ABORT) || (ev == SR_SUB_EV_DP) || (ev == SR_SUB_EV_RPC) || (ev == SR_SUB_EV_NOTIF))
+        || (ev == SR_SUB_EV_ABORT) || (ev == SR_SUB_EV_OPER) || (ev == SR_SUB_EV_RPC) || (ev == SR_SUB_EV_NOTIF))
 
 /** Whether an event is one to be processed by the originators. */
 #define SR_IS_NOTIFY_EVENT(ev) ((ev == SR_SUB_EV_SUCCESS) || (ev == SR_SUB_EV_ERROR))
@@ -481,7 +481,7 @@ sr_error_info_t *sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys
  * @brief Collect required modules into mod info based on an operation data.
  *
  * @param[in] conn Connection to use.
- * @param[in] xpath XPath identifying the operation.
+ * @param[in] op_path Path identifying the operation.
  * @param[in] op Operation data tree.
  * @param[in] output Whether this is the operation output or input.
  * @param[out] shm_deps Main SHM operation dependencies.
@@ -489,7 +489,7 @@ sr_error_info_t *sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys
  * @param[in,out] mod_info Modified mod info.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *xpath, const struct lyd_node *op, int output,
+sr_error_info_t *sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_node *op, int output,
         sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count, struct sr_mod_info_s *mod_info);
 
 /**
@@ -540,7 +540,7 @@ sr_error_info_t *sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mo
         sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num, int add, int *last_removed);
 
 /**
- * @brief Add/remove main SHM module data-provide subscription.
+ * @brief Add/remove main SHM module operational subscription.
  * May remap main SHM!
  *
  * @param[in] conn Connection to use.
@@ -551,8 +551,8 @@ sr_error_info_t *sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mo
  * @param[in] add Whether to add or remove the subscription.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
-        sr_mod_dp_sub_type_t sub_type, uint32_t evpipe_num,int add);
+sr_error_info_t *sr_shmmod_oper_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
+        sr_mod_oper_sub_type_t sub_type, uint32_t evpipe_num,int add);
 
 /**
  * @brief Add/remove main SHM module RPC/action subscription.
@@ -669,7 +669,7 @@ sr_error_info_t *sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_inf
 sr_error_info_t *sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid);
 
 /**
- * @brief Notify about (generate) a data-provide event.
+ * @brief Notify about (generate) an operational event.
  *
  * @param[in] ly_mod Module to use.
  * @param[in] xpath Subscription XPath.
@@ -680,7 +680,7 @@ sr_error_info_t *sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_in
  * @param[out] cb_err_info Callback error information generated by the subscriber, if any.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_dp_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent,
+sr_error_info_t *sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent,
         sr_sid_t sid, uint32_t evpipe_num, struct lyd_node **data, sr_error_info_t **cb_err_info);
 
 /**
@@ -720,13 +720,13 @@ sr_error_info_t *sr_shmsub_notif_notify(const struct lyd_node *notif, time_t not
 sr_error_info_t *sr_shmsub_conf_listen_process_module_events(struct modsub_conf_s *conf_subs, sr_conn_ctx_t *conn);
 
 /**
- * @brief Process all module data-provide events, if any.
+ * @brief Process all module operational events, if any.
  *
- * @param[in] dp_subs Module data-provide subscriptions.
+ * @param[in] oper_subs Module operational subscriptions.
  * @param[in] conn Connection to use.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_dp_listen_process_module_events(struct modsub_dp_s *dp_subs, sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_conn_ctx_t *conn);
 
 /**
  * @brief Process all RPC/action events, if any.

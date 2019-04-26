@@ -652,7 +652,7 @@ test_replay_interval(void **state)
 
     /* subscribe to the second replay interval */
     ret = sr_event_notif_subscribe_tree(st->sess, "ops", NULL, start_ts - 20, start_ts + 4, notif_replay_interval_cb, st,
-            0, &subscr);
+            SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the replay, complete, and stop notifications */
@@ -663,7 +663,7 @@ test_replay_interval(void **state)
 
     /* subscribe to the third replay interval */
     ret = sr_event_notif_subscribe_tree(st->sess, "ops", NULL, start_ts + 9, start_ts + 40, notif_replay_interval_cb, st,
-            0, &subscr);
+            SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the replay, complete, and stop notifications */

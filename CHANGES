@@ -17,6 +17,7 @@
 
 removed functions:
 - sr_commit() (renamed to sr_apply_changes())
+- sr_dp_get_items_subscribe() (renamed to sr_oper_get_items_subscribe())
 - sr_module_install_subscribe (use notifications)
 - sr_feature_enable_subscribe (use notifications)
 - sr_subtree_change_subscribe (use sr_module_change_subscribe() with xpath)

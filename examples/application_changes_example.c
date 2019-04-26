@@ -100,7 +100,6 @@ print_val(const sr_val_t *value)
 
     switch (value->type) {
     case SR_UNKNOWN_T:
-    case SR_TREE_ITERATOR_T:
     case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
     case SR_LIST_T:

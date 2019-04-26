@@ -262,7 +262,7 @@ sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
 }
 
 sr_error_info_t *
-sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *xpath, const struct lyd_node *op, int output,
+sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_node *op, int output,
         sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count, struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -288,7 +288,7 @@ sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *xpath, const struct lyd_no
     /* find this operation dependencies */
     shm_op_deps = (sr_mod_op_dep_t *)(conn->main_ext_shm.addr + shm_mod->op_deps);
     for (i = 0; i < shm_mod->op_dep_count; ++i) {
-        if (!strcmp(xpath, conn->main_ext_shm.addr + shm_op_deps[i].xpath)) {
+        if (!strcmp(op_path, conn->main_ext_shm.addr + shm_op_deps[i].xpath)) {
             break;
         }
     }
@@ -516,13 +516,13 @@ sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const cha
 }
 
 sr_error_info_t *
-sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_mod_dp_sub_type_t sub_type,
+sr_shmmod_oper_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_mod_oper_sub_type_t sub_type,
         uint32_t evpipe_num, int add)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    off_t xpath_off, dp_subs_off;
-    sr_mod_dp_sub_t *shm_sub;
+    off_t xpath_off, oper_subs_off;
+    sr_mod_oper_sub_t *shm_sub;
     size_t new_ext_size, new_len, cur_len;
     uint16_t i;
 
@@ -534,8 +534,8 @@ sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char 
     if (add) {
         /* check that this exact subscription does not exist yet while finding its position */
         new_len = sr_xpath_len_no_predicates(xpath);
-        shm_sub = (sr_mod_dp_sub_t *)(conn->main_ext_shm.addr + shm_mod->dp_subs);
-        for (i = 0; i < shm_mod->dp_sub_count; ++i) {
+        shm_sub = (sr_mod_oper_sub_t *)(conn->main_ext_shm.addr + shm_mod->oper_subs);
+        for (i = 0; i < shm_mod->oper_sub_count; ++i) {
             cur_len = sr_xpath_len_no_predicates(conn->main_ext_shm.addr + shm_sub[i].xpath);
             if (cur_len > new_len) {
                 /* we can insert it at i-th position */
@@ -550,8 +550,8 @@ sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char 
         }
 
         /* get new offsets and SHM size */
-        dp_subs_off = conn->main_ext_shm.size;
-        xpath_off = dp_subs_off + (shm_mod->dp_sub_count + 1) * sizeof *shm_sub;
+        oper_subs_off = conn->main_ext_shm.size;
+        xpath_off = oper_subs_off + (shm_mod->oper_sub_count + 1) * sizeof *shm_sub;
         new_ext_size = xpath_off + (xpath ? strlen(xpath) + 1 : 0);
 
         /* remap main ext SHM */
@@ -560,21 +560,21 @@ sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char 
         }
 
         /* add wasted memory */
-        *((size_t *)conn->main_ext_shm.addr) += shm_mod->dp_sub_count * sizeof *shm_sub;
+        *((size_t *)conn->main_ext_shm.addr) += shm_mod->oper_sub_count * sizeof *shm_sub;
 
         /* move preceding and succeeding subscriptions leaving place for the new one */
         if (i) {
-            memcpy(conn->main_ext_shm.addr + dp_subs_off, conn->main_ext_shm.addr + shm_mod->dp_subs,
+            memcpy(conn->main_ext_shm.addr + oper_subs_off, conn->main_ext_shm.addr + shm_mod->oper_subs,
                     i * sizeof *shm_sub);
         }
-        if (i < shm_mod->dp_sub_count) {
-            memcpy(conn->main_ext_shm.addr + dp_subs_off + (i + 1) * sizeof *shm_sub,
-                    conn->main_ext_shm.addr + shm_mod->dp_subs + i * sizeof *shm_sub, (shm_mod->dp_sub_count - i) * sizeof *shm_sub);
+        if (i < shm_mod->oper_sub_count) {
+            memcpy(conn->main_ext_shm.addr + oper_subs_off + (i + 1) * sizeof *shm_sub,
+                    conn->main_ext_shm.addr + shm_mod->oper_subs + i * sizeof *shm_sub, (shm_mod->oper_sub_count - i) * sizeof *shm_sub);
         }
-        shm_mod->dp_subs = dp_subs_off;
+        shm_mod->oper_subs = oper_subs_off;
 
         /* fill new subscription */
-        shm_sub = (sr_mod_dp_sub_t *)(conn->main_ext_shm.addr + shm_mod->dp_subs);
+        shm_sub = (sr_mod_oper_sub_t *)(conn->main_ext_shm.addr + shm_mod->oper_subs);
         shm_sub += i;
         if (xpath) {
             strcpy(conn->main_ext_shm.addr + xpath_off, xpath);
@@ -585,28 +585,28 @@ sr_shmmod_dp_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char 
         shm_sub->sub_type = sub_type;
         shm_sub->evpipe_num = evpipe_num;
 
-        ++shm_mod->dp_sub_count;
+        ++shm_mod->oper_sub_count;
     } else {
         /* find the subscription */
-        shm_sub = (sr_mod_dp_sub_t *)(conn->main_ext_shm.addr + shm_mod->dp_subs);
-        for (i = 0; i < shm_mod->dp_sub_count; ++i) {
+        shm_sub = (sr_mod_oper_sub_t *)(conn->main_ext_shm.addr + shm_mod->oper_subs);
+        for (i = 0; i < shm_mod->oper_sub_count; ++i) {
             if (shm_sub[i].xpath && !strcmp(conn->main_ext_shm.addr + shm_sub[i].xpath, xpath)) {
                 break;
             }
         }
-        SR_CHECK_INT_RET(i == shm_mod->dp_sub_count, err_info);
+        SR_CHECK_INT_RET(i == shm_mod->oper_sub_count, err_info);
 
         /* add wasted memory */
         *((size_t *)conn->main_ext_shm.addr) += sizeof *shm_sub + strlen(xpath) + 1;
 
-        --shm_mod->dp_sub_count;
-        if (!shm_mod->dp_sub_count) {
+        --shm_mod->oper_sub_count;
+        if (!shm_mod->oper_sub_count) {
             /* the only subscription removed */
-            shm_mod->dp_subs = 0;
+            shm_mod->oper_subs = 0;
         } else {
             /* move all following subscriptions */
-            if (i < shm_mod->dp_sub_count) {
-                memmove(&shm_sub[i], &shm_sub[i + 1], (shm_mod->dp_sub_count - i) * sizeof *shm_sub);
+            if (i < shm_mod->oper_sub_count) {
+                memmove(&shm_sub[i], &shm_sub[i + 1], (shm_mod->oper_sub_count - i) * sizeof *shm_sub);
             }
         }
     }

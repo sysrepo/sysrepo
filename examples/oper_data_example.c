@@ -86,7 +86,7 @@ main(int argc, char **argv)
     }
 
     /* subscribe for providing the operational data */
-    rc = sr_dp_get_items_subscribe(session, mod_name, path, dp_get_items_cb, NULL, 0, &subscription);
+    rc = sr_oper_get_items_subscribe(session, mod_name, path, dp_get_items_cb, NULL, 0, &subscription);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }

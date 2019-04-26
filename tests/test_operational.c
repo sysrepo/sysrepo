@@ -360,7 +360,7 @@ test_simple(void **state)
     ly_set_free(subtrees);
 
     /* subscribe as state data provider */
-    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", simple_dp_cb,
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", simple_dp_cb,
             NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -445,7 +445,7 @@ test_fail(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as state data provider*/
-    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", fail_dp_cb,
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", fail_dp_cb,
             NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -507,7 +507,7 @@ test_config(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as config data provider and listen */
-    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", config_dp_cb,
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", config_dp_cb,
             NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -597,10 +597,10 @@ test_list(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as 2 list instances data provider and listen */
-    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth2']",
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth2']",
             list_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth3']",
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth3']",
             list_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -724,13 +724,13 @@ test_nested(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as state data provider and listen, it should be called only 2x */
-    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth4']/phys-address",
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth4']/phys-address",
             nested_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state",
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state",
             nested_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth2']/phys-address",
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth2']/phys-address",
             nested_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -853,7 +853,7 @@ test_mixed(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as config data provider and listen */
-    ret = sr_dp_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_dp_cb,
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_dp_cb,
             NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 

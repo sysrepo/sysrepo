@@ -472,6 +472,7 @@ int sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, cons
 
 /**
  * @brief Get internal sysrepo data tree, which holds information about installed modules.
+ * These data are from *sysrepo* module found in `modules/sysrepo.yang`.
  *
  * @param[in] conn Connection to use.
  * @param[out] sysrepo_data Sysrepo internal data tree.
@@ -496,32 +497,31 @@ int sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data);
 typedef enum sr_type_e {
     /* special types that does not contain any data */
     SR_UNKNOWN_T,              /**< Element unknown to sysrepo (unsupported element). */
-    SR_TREE_ITERATOR_T,        /**< Special type of tree node used to store all data needed for iterative tree loading. */
 
-    SR_LIST_T,                 /**< List instance. ([RFC 6020 sec 7.8](http://tools.ietf.org/html/rfc6020#section-7.8)) */
-    SR_CONTAINER_T,            /**< Non-presence container. ([RFC 6020 sec 7.5](http://tools.ietf.org/html/rfc6020#section-7.5)) */
-    SR_CONTAINER_PRESENCE_T,   /**< Presence container. ([RFC 6020 sec 7.5.1](http://tools.ietf.org/html/rfc6020#section-7.5.1)) */
-    SR_LEAF_EMPTY_T,           /**< A leaf that does not hold any value ([RFC 6020 sec 9.11](http://tools.ietf.org/html/rfc6020#section-9.11)) */
+    SR_LIST_T,                 /**< List instance. ([RFC 7950 sec 7.8](http://tools.ietf.org/html/rfc7950#section-7.8)) */
+    SR_CONTAINER_T,            /**< Non-presence container. ([RFC 7950 sec 7.5](http://tools.ietf.org/html/rfc7950#section-7.5)) */
+    SR_CONTAINER_PRESENCE_T,   /**< Presence container. ([RFC 7950 sec 7.5.1](http://tools.ietf.org/html/rfc7950#section-7.5.1)) */
+    SR_LEAF_EMPTY_T,           /**< A leaf that does not hold any value ([RFC 7950 sec 9.11](http://tools.ietf.org/html/rfc7950#section-9.11)) */
     SR_NOTIFICATION_T,         /**< Notification instance ([RFC 7095 sec 7.16](https://tools.ietf.org/html/rfc7950#section-7.16)) */
 
     /* types containing some data */
-    SR_BINARY_T,       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
-    SR_BITS_T,         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
-    SR_BOOL_T,         /**< A boolean value ([RFC 6020 sec 9.5](http://tools.ietf.org/html/rfc6020#section-9.5)) */
-    SR_DECIMAL64_T,    /**< 64-bit signed decimal number ([RFC 6020 sec 9.3](http://tools.ietf.org/html/rfc6020#section-9.3)) */
-    SR_ENUM_T,         /**< A string from enumerated strings list ([RFC 6020 sec 9.6](http://tools.ietf.org/html/rfc6020#section-9.6)) */
-    SR_IDENTITYREF_T,  /**< A reference to an abstract identity ([RFC 6020 sec 9.10](http://tools.ietf.org/html/rfc6020#section-9.10)) */
-    SR_INSTANCEID_T,   /**< References a data tree node ([RFC 6020 sec 9.13](http://tools.ietf.org/html/rfc6020#section-9.13)) */
-    SR_INT8_T,         /**< 8-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_INT16_T,        /**< 16-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_INT32_T,        /**< 32-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_INT64_T,        /**< 64-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_STRING_T,       /**< Human-readable string ([RFC 6020 sec 9.4](http://tools.ietf.org/html/rfc6020#section-9.4)) */
-    SR_UINT8_T,        /**< 8-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_UINT16_T,       /**< 16-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_UINT32_T,       /**< 32-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_UINT64_T,       /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    SR_ANYXML_T,       /**< Unknown chunk of XML ([RFC 6020 sec 7.10](https://tools.ietf.org/html/rfc6020#section-7.10)) */
+    SR_BINARY_T,       /**< Base64-encoded binary data ([RFC 7950 sec 9.8](http://tools.ietf.org/html/rfc7950#section-9.8)) */
+    SR_BITS_T,         /**< A set of bits or flags ([RFC 7950 sec 9.7](http://tools.ietf.org/html/rfc7950#section-9.7)) */
+    SR_BOOL_T,         /**< A boolean value ([RFC 7950 sec 9.5](http://tools.ietf.org/html/rfc7950#section-9.5)) */
+    SR_DECIMAL64_T,    /**< 64-bit signed decimal number ([RFC 7950 sec 9.3](http://tools.ietf.org/html/rfc7950#section-9.3)) */
+    SR_ENUM_T,         /**< A string from enumerated strings list ([RFC 7950 sec 9.6](http://tools.ietf.org/html/rfc7950#section-9.6)) */
+    SR_IDENTITYREF_T,  /**< A reference to an abstract identity ([RFC 7950 sec 9.10](http://tools.ietf.org/html/rfc7950#section-9.10)) */
+    SR_INSTANCEID_T,   /**< References a data tree node ([RFC 7950 sec 9.13](http://tools.ietf.org/html/rfc7950#section-9.13)) */
+    SR_INT8_T,         /**< 8-bit signed integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    SR_INT16_T,        /**< 16-bit signed integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    SR_INT32_T,        /**< 32-bit signed integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    SR_INT64_T,        /**< 64-bit signed integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    SR_STRING_T,       /**< Human-readable string ([RFC 7950 sec 9.4](http://tools.ietf.org/html/rfc7950#section-9.4)) */
+    SR_UINT8_T,        /**< 8-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    SR_UINT16_T,       /**< 16-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    SR_UINT32_T,       /**< 32-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    SR_UINT64_T,       /**< 64-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    SR_ANYXML_T,       /**< Unknown chunk of XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
     SR_ANYDATA_T,      /**< Unknown set of nodes, encoded in XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
 } sr_type_t;
 
@@ -529,23 +529,23 @@ typedef enum sr_type_e {
  * @brief Data of an element (if applicable), properly set according to the type.
  */
 typedef union sr_data_u {
-    char *binary_val;       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
-    char *bits_val;         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
-    bool bool_val;          /**< A boolean value ([RFC 6020 sec 9.5](http://tools.ietf.org/html/rfc6020#section-9.5)) */
-    double decimal64_val;   /**< 64-bit signed decimal number ([RFC 6020 sec 9.3](http://tools.ietf.org/html/rfc6020#section-9.3)) */
-    char *enum_val;         /**< A string from enumerated strings list ([RFC 6020 sec 9.6](http://tools.ietf.org/html/rfc6020#section-9.6)) */
-    char *identityref_val;  /**< A reference to an abstract identity ([RFC 6020 sec 9.10](http://tools.ietf.org/html/rfc6020#section-9.10)) */
-    char *instanceid_val;   /**< References a data tree node ([RFC 6020 sec 9.13](http://tools.ietf.org/html/rfc6020#section-9.13)) */
-    int8_t int8_val;        /**< 8-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    int16_t int16_val;      /**< 16-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    int32_t int32_val;      /**< 32-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    int64_t int64_val;      /**< 64-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    char *string_val;       /**< Human-readable string ([RFC 6020 sec 9.4](http://tools.ietf.org/html/rfc6020#section-9.4)) */
-    uint8_t uint8_val;      /**< 8-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    uint16_t uint16_val;    /**< 16-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    uint32_t uint32_val;    /**< 32-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    uint64_t uint64_val;    /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    char *anyxml_val;       /**< Unknown chunk of XML ([RFC 6020 sec 7.10](https://tools.ietf.org/html/rfc6020#section-7.10)) */
+    char *binary_val;       /**< Base64-encoded binary data ([RFC 7950 sec 9.8](http://tools.ietf.org/html/rfc7950#section-9.8)) */
+    char *bits_val;         /**< A set of bits or flags ([RFC 7950 sec 9.7](http://tools.ietf.org/html/rfc7950#section-9.7)) */
+    bool bool_val;          /**< A boolean value ([RFC 7950 sec 9.5](http://tools.ietf.org/html/rfc7950#section-9.5)) */
+    double decimal64_val;   /**< 64-bit signed decimal number ([RFC 7950 sec 9.3](http://tools.ietf.org/html/rfc7950#section-9.3)) */
+    char *enum_val;         /**< A string from enumerated strings list ([RFC 7950 sec 9.6](http://tools.ietf.org/html/rfc7950#section-9.6)) */
+    char *identityref_val;  /**< A reference to an abstract identity ([RFC 7950 sec 9.10](http://tools.ietf.org/html/rfc7950#section-9.10)) */
+    char *instanceid_val;   /**< References a data tree node ([RFC 7950 sec 9.13](http://tools.ietf.org/html/rfc7950#section-9.13)) */
+    int8_t int8_val;        /**< 8-bit signed integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    int16_t int16_val;      /**< 16-bit signed integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    int32_t int32_val;      /**< 32-bit signed integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    int64_t int64_val;      /**< 64-bit signed integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    char *string_val;       /**< Human-readable string ([RFC 7950 sec 9.4](http://tools.ietf.org/html/rfc7950#section-9.4)) */
+    uint8_t uint8_val;      /**< 8-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    uint16_t uint16_val;    /**< 16-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    uint32_t uint32_val;    /**< 32-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    uint64_t uint64_val;    /**< 64-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
+    char *anyxml_val;       /**< Unknown chunk of XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
     char *anydata_val;      /**< Unknown set of nodes, encoded in XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
 } sr_data_t;
 
@@ -575,10 +575,10 @@ typedef struct sr_val_s {
 } sr_val_t;
 
 /**
- * @brief Retrieves a single data element stored under provided XPath. If multiple
- * nodes matches the xpath ::SR_ERR_INVAL_ARG is returned.
+ * @brief Retrieves a single data element selected by the provided path. If multiple
+ * nodes match, ::SR_ERR_INVAL_ARG is returned.
  *
- * If the xpath identifies an empty leaf, a list or a container, the value
+ * If the path identifies an empty leaf, a list or a container, the value
  * has no data filled in and its type is set properly
  * (::SR_LEAF_EMPTY_T / ::SR_LIST_T / ::SR_CONTAINER_T / ::SR_CONTAINER_PRESENCE_T).
  *
@@ -597,7 +597,7 @@ typedef struct sr_val_s {
 int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
 
 /**
- * @brief Retrieves an array of data elements matching provided XPath
+ * @brief Retrieves an array of data elements selected by the provided XPath
  *
  * All data elements are transferred within one message from the datastore,
  * which is more efficient that calling multiple ::sr_get_item calls.
@@ -614,8 +614,8 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
 int sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, size_t *value_cnt);
 
 /**
- * @brief Retrieves a single subtree whose root node is stored under the provided XPath.
- * If multiple nodes matches the xpath ::SR_ERR_INVAL_ARG is returned.
+ * @brief Retrieves a single subtree whose root node is selected by the provided path.
+ * If multiple nodes match, ::SR_ERR_INVAL_ARG is returned.
  *
  * The functions returns values and all associated information stored under the root node and
  * all its descendants. While the same data can be obtained using ::sr_get_items in combination
@@ -894,11 +894,11 @@ int sr_unlock(sr_session_ctx_t *session, const char *module_name);
 /** @} lock */
 
 ////////////////////////////////////////////////////////////////////////////////
-// Change Notifications API
+// Subscription API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @defgroup conf_subs_api Configuration Data Subscription API
+ * @defgroup subs_api Subscription API
  * @{
  */
 
@@ -960,89 +960,16 @@ typedef enum sr_subscr_flag_e {
 } sr_subscr_flag_t;
 
 /**
- * @brief Type of the notification event that has occurred (passed to application callbacks).
- *
- * @note Each change is normally announced twice: first as ::SR_EV_CHANGE event and then as ::SR_EV_DONE or ::SR_EV_ABORT
- * event. If the subscriber does not support verification, it can subscribe only to ::SR_EV_DONE event by providing
- * ::SR_SUBSCR_DONE_ONLY subscription flag.
- */
-typedef enum sr_notif_event_e {
-    SR_EV_UPDATE,  /**< Occurs before any other events and the subscriber can update the apply-changes diff. */
-    SR_EV_CHANGE,  /**< Occurs just before the changes are committed to the datastore,
-                        the subscriber is supposed to verify that the changes are valid and can be applied
-                        and prepare all resources required for the changes. The subscriber can still deny the changes
-                        in this phase by returning an error from the callback. */
-    SR_EV_DONE,    /**< Occurs just after the changes have been successfully committed to the datastore,
-                        the subscriber can apply the changes now, but it cannot deny the changes in this
-                        phase anymore (any returned errors are just logged and ignored). */
-    SR_EV_ABORT,   /**< Occurs in case that the commit transaction has failed (possibly because one of the verifiers
-                        has denied the change / returned an error). The subscriber is supposed to return the managed
-                        application to the state before the commit. Any returned errors are just logged and ignored. */
-} sr_notif_event_t;
-
-/**
- * @brief Type of the operation made on an item, used by changeset retrieval in ::sr_get_change_next.
- */
-typedef enum sr_change_oper_e {
-    SR_OP_CREATED,   /**< The item has been created by the change. */
-    SR_OP_MODIFIED,  /**< The value of the item has been modified by the change. */
-    SR_OP_DELETED,   /**< The item has been deleted by the change. */
-    SR_OP_MOVED,     /**< The item has been moved in the subtree by the change (applicable for leaf-lists and user-ordered lists). */
-} sr_change_oper_t;
-
-/**
  * @brief Sysrepo subscription context returned from sr_*_subscribe calls,
  * it is supposed to be released by the caller using ::sr_unsubscribe call.
  */
 typedef struct sr_subscription_ctx_s sr_subscription_ctx_t;
 
 /**
- * @brief Iterator used for retrieval of a changeset using ::sr_get_changes_iter call.
- */
-typedef struct sr_change_iter_s sr_change_iter_t;
-
-/**
  * @brief Options overriding default behavior of subscriptions,
  * it is supposed to be a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
  */
 typedef uint32_t sr_subscr_options_t;
-
-/**
- * @brief Callback to be called by the event of changing any running datastore
- * content within the specified module. Subscribe to it by ::sr_module_change_subscribe call.
- *
- * @param[in] session Automatically-created session that can be used for obtaining changed data
- * (by ::sr_get_changes_iter call) and learn about initiator session IDs. Do not stop this session.
- * @param[in] module_name Name of the module where the change has occurred.
- * @param[in] xpath XPath used when subscribing, NULL if the whole module was subscribed to.
- * @param[in] event Type of the notification event that has occurred.
- * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_module_change_subscribe call.
- * @return Error code (::SR_ERR_OK on success).
- */
-typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name, const char *xpath,
-        sr_notif_event_t event, void *private_data);
-
-/**
- * @brief Subscribes for changes made in the specified module.
- *
- * Required WRITE access. If ::SR_SUBSCR_PASSIVE is set, required READ access.
- *
- * @param[in] session Session to use.
- * @param[in] module_name Name of the module of interest for change notifications.
- * @param[in] xpath Optional XPath further filtering the changes that will be handled by this subscription.
- * @param[in] callback Callback to be called when the change in the datastore occurs.
- * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
- * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
- * priority will be called sooner, callbacks with the priority of 0 will be called at the end).
- * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
- * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in in case that ::SR_SUBSCR_CTX_REUSE option is specified.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
-        sr_module_change_cb callback, void *private_data, uint32_t priority, sr_subscr_options_t opts,
-        sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Get the event pipe of a subscription. Do not call unless ::SR_SUBSCR_NO_THREAD flag was used
@@ -1080,6 +1007,90 @@ int sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *ses
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_unsubscribe(sr_subscription_ctx_t *subscription);
+
+/** @} subs */
+
+////////////////////////////////////////////////////////////////////////////////
+// Configuration Subscriptions API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup conf_subs_api Configuration Data Subscription API
+ * @{
+ */
+
+/**
+ * @brief Type of the notification event that has occurred (passed to application callbacks).
+ *
+ * @note Each change is normally announced twice: first as ::SR_EV_CHANGE event and then as ::SR_EV_DONE or ::SR_EV_ABORT
+ * event. If the subscriber does not support verification, it can subscribe only to ::SR_EV_DONE event by providing
+ * ::SR_SUBSCR_DONE_ONLY subscription flag.
+ */
+typedef enum sr_notif_event_e {
+    SR_EV_UPDATE,  /**< Occurs before any other events and the subscriber can update the apply-changes diff. */
+    SR_EV_CHANGE,  /**< Occurs just before the changes are committed to the datastore,
+                        the subscriber is supposed to verify that the changes are valid and can be applied
+                        and prepare all resources required for the changes. The subscriber can still deny the changes
+                        in this phase by returning an error from the callback. */
+    SR_EV_DONE,    /**< Occurs just after the changes have been successfully committed to the datastore,
+                        the subscriber can apply the changes now, but it cannot deny the changes in this
+                        phase anymore (any returned errors are just logged and ignored). */
+    SR_EV_ABORT,   /**< Occurs in case that the commit transaction has failed (possibly because one of the verifiers
+                        has denied the change / returned an error). The subscriber is supposed to return the managed
+                        application to the state before the commit. Any returned errors are just logged and ignored. */
+} sr_notif_event_t;
+
+/**
+ * @brief Type of the operation made on an item, used by changeset retrieval in ::sr_get_change_next.
+ */
+typedef enum sr_change_oper_e {
+    SR_OP_CREATED,   /**< The item has been created by the change. */
+    SR_OP_MODIFIED,  /**< The value of the item has been modified by the change. */
+    SR_OP_DELETED,   /**< The item has been deleted by the change. */
+    SR_OP_MOVED,     /**< The item has been moved in the subtree by the change (applicable for leaf-lists and user-ordered lists). */
+} sr_change_oper_t;
+
+/**
+ * @brief Iterator used for retrieval of a changeset using ::sr_get_changes_iter call.
+ */
+typedef struct sr_change_iter_s sr_change_iter_t;
+
+/**
+ * @brief Callback to be called by the event of changing any running datastore
+ * content within the specified module. Subscribe to it by ::sr_module_change_subscribe call.
+ *
+ * @param[in] session Automatically-created session that can be used for obtaining changed data
+ * (by ::sr_get_changes_iter call) and learn about initiator session IDs. Do not stop this session.
+ * @param[in] module_name Name of the module where the change has occurred.
+ * @param[in] xpath XPath used when subscribing, NULL if the whole module was subscribed to.
+ * @param[in] event Type of the notification event that has occurred.
+ * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_module_change_subscribe call.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+        sr_notif_event_t event, void *private_data);
+
+/**
+ * @brief Subscribes for changes made in the specified module.
+ *
+ * Required WRITE access. If ::SR_SUBSCR_PASSIVE is set, required READ access.
+ *
+ * @param[in] session Session to use.
+ * @param[in] module_name Name of the module of interest for change notifications.
+ * @param[in] xpath Optional XPath further filtering the changes that will be handled by this subscription.
+ * @param[in] callback Callback to be called when the change in the datastore occurs.
+ * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
+ * priority will be called sooner, callbacks with the priority of 0 will be called at the end).
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in in case that ::SR_SUBSCR_CTX_REUSE option is specified.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+        sr_module_change_cb callback, void *private_data, uint32_t priority, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Creates an iterator for retrieving of the changeset (list of newly
@@ -1189,12 +1200,13 @@ typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, const char *xpath, cons
         struct lyd_node *output, void *private_data);
 
 /**
- * @brief Subscribes for delivery of RPC or action specified by xpath.
+ * @brief Subscribes for delivery of RPC or action specified by path.
  *
  * Required WRITE access.
  *
  * @param[in] session Session to use.
- * @param[in] path Path identifying the RPC/action.
+ * @param[in] path Path identifying the RPC/action. For actions it is possible to use predicates
+ * to subscribe to specific parent list instances only.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
@@ -1207,7 +1219,7 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb call
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
- * @brief Subscribes for delivery of RPC or action specified by xpath. Unlike ::sr_rpc_subscribe, this
+ * @brief Subscribes for delivery of RPC or action specified by path. Unlike ::sr_rpc_subscribe, this
  * function expects callback of type ::sr_rpc_tree_cb, therefore use this version if you prefer
  * to manipulate with RPC/action input and output data organized in a tree rather than as a flat
  * enumeration of all values.
@@ -1215,7 +1227,8 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb call
  * Required WRITE access.
  *
  * @param[in] session Session to use.
- * @param[in] path Path identifying the RPC/action.
+ * @param[in] path Path identifying the RPC/action. For actions it is possible to use predicates
+ * to subscribe to specific parent list instances only.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
@@ -1262,7 +1275,7 @@ int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct l
 /** @} rpcsubs */
 
 ////////////////////////////////////////////////////////////////////////////////
-// Event Notifications API
+// Notifications API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -1283,7 +1296,7 @@ typedef enum sr_ev_notif_type_e {
 } sr_ev_notif_type_t;
 
 /**
- * @brief Callback to be called for event notification specified by xpath.
+ * @brief Callback to be called for notifications.
  * Subscribe to it by ::sr_event_notif_subscribe call.
  *
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
@@ -1300,7 +1313,7 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_t
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data);
 
 /**
- * @brief Callback to be called for event notification specified by xpath.
+ * @brief Callback to be called for notifications.
  * This callback variant operates with libyang trees rather than with sysrepo values,
  * use it with ::sr_event_notif_subscribe_tree and ::sr_event_notif_send_tree.
  *
@@ -1315,7 +1328,7 @@ typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, const sr_ev_no
         const struct lyd_node *notif, time_t timestamp, void *private_data);
 
 /**
- * @brief Subscribes for delivery of an event notification specified by xpath.
+ * @brief Subscribes for delivery of notifications from a module optionally filtered by xpath.
  *
  * Required WRITE access.
  *
@@ -1337,7 +1350,7 @@ int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name,
         sr_subscription_ctx_t **subscription);
 
 /**
- * @brief Subscribes for delivery of event notification specified by xpath.
+ * @brief Subscribes for delivery of notifications from a module optionally filtered by xpath.
  * Unlike ::sr_event_notif_subscribe, this function expects callback of type ::sr_event_notif_tree_cb,
  * therefore use this version if you prefer to manipulate with event notification data organized
  * in trees rather than as a flat enumeration of all values.
@@ -1362,12 +1375,12 @@ int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
- * @brief Sends an event notification specified by xpath.
+ * @brief Sends a notification.
  *
  * Required WRITE access. If the module does not support replay, required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] path Path identifying the event notification.
+ * @param[in] path Path identifying the notification.
  * @param[in] values Array of all nodes that hold some data in event notification subtree
  * (same as ::sr_get_items would return).
  * @param[in] values_cnt Number of items inside the values array.
@@ -1376,7 +1389,7 @@ int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_
 int sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt);
 
 /**
- * @brief Sends an event notification specified by xpath.
+ * @brief Sends a notification.
  * The notification data are represented as libyang data trees reflecting the scheme
  * of the event notification.
  *
@@ -1401,12 +1414,12 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
 
 /**
  * @brief Callback to be called when operational data at the selected xpath are requested.
- * Subscribe to it by ::sr_dp_get_items_subscribe call.
+ * Subscribe to it by ::sr_oper_get_items_subscribe call.
  *
  * Callback handler can provide any data matching the xpath but in case there are other nested subscriptions,
  * they will be called after this one.
  *
- * The xpath argument passed to callback can only be the xpath that was used for the subscription.
+ * The \p path argument passed to callback can only be the path that was used for the subscription.
  *
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
@@ -1414,10 +1427,10 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
  * @param[in] path Path identifying the subtree that is supposed to be provided, same as the one used for the subscription.
  * @param[in,out] parent Pointer to an existing parent of the requested nodes. Is NULL for top-level nodes.
  * Called is supposed to append the requested nodes to this data subtree.
- * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_dp_get_items_subscribe call.
+ * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_oper_get_items_subscribe call.
  * @return Error code (::SR_ERR_OK on success).
  */
-typedef int (*sr_dp_get_items_cb)(sr_session_ctx_t *session, const char *module_name, const char *path,
+typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, const char *module_name, const char *path,
         struct lyd_node **parent, void *private_data);
 
 /**
@@ -1436,10 +1449,10 @@ typedef int (*sr_dp_get_items_cb)(sr_session_ctx_t *session, const char *module_
  * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path,
-        sr_dp_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+int sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path,
+        sr_oper_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
-/** @} opsubs */
+/** @} oper_subs */
 
 #ifdef __cplusplus
 }
