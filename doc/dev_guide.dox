@@ -11,9 +11,6 @@ options there are in general and how they work.
 - @subpage get_data
 - @subpage edit_data
 - @subpage lock
-- @subpage conf_subs
-- @subpage rpc_subs
-- @subpage notif_subs
-- @subpage oper_subs
+- @subpage subs
 
 */

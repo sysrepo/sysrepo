@@ -1,0 +1,70 @@
+/**
+@page subs Subscriptions
+
+Every `*_subscribe()` call will return a subscription structure. It is possible to subscribe using
+an existing subscription and then multiple events will be handled by a single subscription. By default,
+there is a dedicated thread for handling all the events in a subscription structure so no further action is required.
+
+If this is not desired, it is possible to handle events on a subscription without a separate thread. When subscribing,
+a flag needs to be used so that the thread is not created. Be careful, if you use it, the subscription exists and
+events can occur but they are not being handled so they can time out, for example, unless processed manually. That
+can be achieved by a function that processes all pending events on a subscription. It can either be called periodically
+or only when there are actual events. This can be learnt by the subscription event pipe being ready for reading.
+
+@ref subs_api
+
+## Configuration Subscriptions @anchor conf_subs
+
+These are the most common kinds of subscriptions. A callback can be set to be called when specific configuration
+changes occur so that it can appropriately react and adjust the system or whatever it manages accordingly. There can
+be many subscribers for the same data.
+
+On some changes, the callback is called with an event. By default, there are always 2 events following one after
+the other. On _change_, the new datastore content is prepared but not written yet and so the changes can be refused
+for any reason. If they are not, the changes are committed and hence visible for any subsequent operations. Right
+after that _done_ event is generated and callbacks called. It is no longer possible to revert the changes. In case
+at least one of the callbacks has failed during _change_ event, the whole commit is aborted. Callbacks that already
+processed the _change_ event successfully will be called with _abort_ event so they can revert them and keep Sysrepo
+and the system consistent.
+
+There is one special event _update_ that is generated only for subscriptions that request it. This event occurs before
+any of the other ones mentioned before because it allows to further modify the data changes that are being handled.
+Callback with this event can fail and cause the changes to be immediately refused.
+
+For each of these events, the configuration changes are retrieved using an iterator, which can be created several times
+and optionally with only selected changes.
+
+@ref conf_subs_api
+
+## RPC/Action Subscriptions @anchor rpc_subs
+
+All the functions can be used for both RPCs and actions. There can only be one subscription for each RPC/action and
+without it, the RPC/action cannot even be sent. Callbacks work a one would expect, they are provided with the input
+and can fail or succeed with optionally generating some output that is sent back to the original sender.
+
+@ref rpc_subs_api
+
+## Notification Subscriptions @anchor notif_subs
+
+Notifications are supported by specific subscriptions that allow them to be sent and received. Sent notification are
+also stored for possible future replay if the particular module was configued that way (mentioned in @ref schema).
+
+When subscribing to notifications, there are several options that can be specified and which follow the definitions
+from NETCONF Notifications @ref rfcs "RFC". Normally, all notifications are _real-time_. If replay is requested,
+these are _replay_ notifications. If a replay finished and the subscription changes into a standard one,
+_replay complete_ notification is delivered. Lastly, once the subscription should be terminated because its stop
+time was reached, _stop_ is received before removing the subscription.
+
+@ref notif_subs_api
+
+## Operational Subscriptions @anchor oper_subs
+
+Operational subscriptions allow providing data that are requested by clients. Commonly, these can be used
+to read the current state of a device, for example, and then return them as _state_ data nodes. However,
+they can also be used to provide _configuration_ data nodes. In that case they should return only the
+configuration that is actually in-use by the managed device. Much more details and explanations can be found
+in the NMDA @ref rfcs "RFC".
+
+@ref oper_subs_api
+
+*/

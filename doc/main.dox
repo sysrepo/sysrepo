@@ -2,7 +2,7 @@
 @anchor main
 @mainpage Introduction
 
-@section about About
+# About @anchor about
 
 Sysrepo is a YANG-based datastore for Unix/Linux systems. Applications that have their configuration
 modelled using YANG can use Sysrepo for its management.
@@ -17,51 +17,106 @@ intermediary process.
 
 @todo direct/indirect architecture diagram
 
-@subsection rfcs Adopted RFCs
+## Adopted RFCs @anchor rfcs
 
-- [RFC 6241](https://tools.ietf.org/html/rfc6241) NETCONF 1.1 (partly)\n
+- [RFC 6241](https://tools.ietf.org/html/rfc6241) NETCONF 1.1\n
   Sysrepo does not strictly conform to this RFC but was developed to also have a remote NETCONF interface
-  so it is followed to the relevant extent (more in @ref netconf_np2).
+  so it is followed to the relevant extent.
 - [RFC 7950](https://tools.ietf.org/html/rfc7950) YANG 1.1\n
   Core YANG specification.
 - [RFC 8342](https://tools.ietf.org/html/rfc8342) NMDA\n
-  Datastore definitions. Sysrepo supports __only__ _startup_, _running_, and _operational_ datastores.
-  _Candidate_ is not supported directly but the features it provides are available (more in @ref edit_data).
+  Datastore definitions.
+- [RFC 5277](https://tools.ietf.org/html/rfc5277) NETCONF Event Notifications\n
+  Definitions for notifications and their subscriptions.
 
-@subsection principles General Principles
+## General Principles @anchor principles
 
 - Sysrepo is __only a library__ so there is no stand-alone process
 - all data are always __separated by YANG schemas__ which has many consequences such as allowing concurrent work
   with different schemas
 - __fixed YANG schema set__ that can only be added to during Sysrepo operation (more in @ref schema)
 - __shared memory__ is used for almost all IPC
-- there can be many Sysrepo clients (__processes__) each with __several threads__ so correct synchronization is crucial
-  (more in @ref threads)
-- __access control__ relies strictly on the file system (more in @ref access_control)
-- __libyang__ is a critical part and is often used directly in API so one should be familiar
-  with it before working with Sysrepo
+- almost __no CPU time wasted__ in the library (no active waiting or periodic checks)
+- fully customizable __event handling__ from periodic checks or using `poll(2)`/`select(2)` to automatic thread
+  handlers creation (more in @ref threads "Threading Model")
+- __access control__ relies strictly on the file system (more in @ref access_control "Access Control")
+- [libyang](https://github.com/CESNET/libyang) is a critical part and is often used directly in API so one should
+  be familiar with it before working with Sysrepo
+- most API calls working with data __have 2 variants__, one using _libyang_ structures, another accepting
+  Sysrepo ::sr_val_t structures (more in the next section)
 
-@section features Main Features
+# Main Features @anchor features
 
 Main Sysrepo features are manipulation with YANG data and subscribing to various events. However, before
 any operation can be performed, a @ref conn_sess need to be created and all the supported YANG @ref schema
 need to be installed. Sysrepo can also keep records of its behaviour if @ref log is configured.
 
+Almost all API functions that work with data have 2 variants, each accepting the data in another format. An array of
+::sr_val_t values can be used. This format is a legacy one and __should not be used__ in new applications. The alternative
+is using native _libyang_ tree structures (API functions suffixed with `_tree()`) that Sysrepo always works with internally.
+It has the advantage of being more efficient (no internal conversion is needed) and having an extended _libyang_ API
+available for creating/modifying/printing.
+
 @ref edit_data is simple but requires basic knowledge of XPath for addressing individual data nodes. @ref get_data
-also uses XPath but for this purpose almost any valid expression should be evaluated properly. If an exlusive
+also uses XPath but for this purpose almost any valid expression can be used. If an exlusive
 access to certain data is required, @ref lock is available.
 
-The most common and useful kind of subscriptions are @ref conf_subs, which allow applications to perform actions
-based on specific configuration data changes using callbacks. This way Sysrepo acts as a smarter configuration file.
-In addition, @ref rpc_subs and @ref notif_subs are supported so that a specifc RPC can be executed and other
-Sysrepo clients can be notified about various generated events, respectively. It is also possible to expose some state data
-using @ref oper_subs that are only for reading. These subscriptions, however, allow much more in order for NMDA
-_operational_ datastore to be fully supported with all of its properties.
+The most common and useful kind of @ref subs are @ref conf_subs "Configuration Subscriptions", which allow applications
+to perform actions based on specific configuration data changes using callbacks. This way Sysrepo acts as a smarter
+configuration file. In addition, @ref rpc_subs "RPC/Action" and @ref notif_subs "Notification Subscriptions" are
+supported so that a specifc RPC can be executed and other Sysrepo clients can be notified about various generated
+events, respectively. It is also possible to expose some state data using @ref oper_subs "Operational Subscriptions"
+that are only for reading. These subscriptions, however, allow much more in order for NMDA _operational_ datastore to
+be fully supported with all of its properties.
 
-@section threads Threading Model
+# Datastores @anchor datastores
 
-@todo connections/sessions, subscription threads
+Datastores mostly follow the architecture defined by Network Management Datastore Architecture (NMDA @ref rfcs "RFC").
+Specifically, _startup_, _running_, and _operational_ datastores are implemented in full compliance to the definitions.
+_Candidate_ datastore is not directly supported but rather simulated (@ref edit_data). Following is a brief description
+and purpose of each datastore.
 
-@section access_control Access Control
+_Startup_ datastore is the only persistent datastore. It includes the configuration of devices at time of their boot.
+This configuration is copied into _running_ when the first Sysrepo connection (shared memory) is created after
+system boot.
+
+_Running_ datastore holds the current system configuration. This datastore is edited when a configuration change
+occured and a device should reconfigure itself. It does not persist across reboots. If desired, it can be copied
+into _startup_ to rectify this.
+
+_Operational_ datastore maintains the currently used configuration. It is read-only and generally corresponds to
+_running_ but does not have to. Additionally, it includes state data nodes and may have some configuration data
+omitted/modified. It all depends on the subscriptions, only subscribed _running_ data (Sysrepo synonym for in-use) can
+appear in _operational_ datastore.
+
+# Threading Model @anchor threads
+
+Firstly, regarding @ref conn_sess, a session is not synchronized at all so it __must not be shared__ among multiple
+threads. Each thread should always create its own session to ensure correct behavior. Other than that there should be
+no restrictions and all Sysrepo API functions should be correctly synchronized for many processes each with several
+threads.
+
+As for @ref subs, it is up to the application to divide its events-of-interest
+(all `*_subscribe()` calls) into subscriptions. All events on a subscription are handled together. The usual reason for
+splitting application events into several subscriptions is to allow for their concurrent handling (such as reacting
+to configuration changes while notifications are being received).
+
+Every subscription can then be handled in various ways. It can be fully managed by Sysrepo and it will by default create
+a separate thread that will wait for events on the subscription and process them. But, if your application has a custom
+event loop, for example, it can retrieve a file descriptor of a subscription that can be used in `poll(2)` or
+`select(2)` and use it to check for new events. Then, a handler function should be called that will process all pending
+events on the subscription. Alternatively, this handler can also be called periodically without any checking for
+new events.
+
+# Access Control @anchor access_control
+
+Sysrepo access control relies on file system permissions. Specifically, _read_ and _write_ permissions for specific
+modules are checked when an operation requiring them is being performed. This is always mentioned in the function
+documentation.
+
+Permissions are checked for the session user that is inherited from the process owner that created the session.
+Changing it is possible if the process owner is `root` but should be done only if Sysrepo session is created
+by an application that delegates requests from other sources than the application itself
+(NETCONF, for example, more in @ref conn_sess).
 
 */
