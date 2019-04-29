@@ -1,0 +1,11 @@
+/**
+@page bins Binaries
+
+There are a few binaries that are strictly optional since they only use the Sysrepo API. However, they can be
+useful for some common tasks and by including them every user does not have to write them from scratch.
+
+- @subpage sysrepo_plugind
+- @subpage sysrepoctl
+- @subpage sysrepocfg
+
+*/

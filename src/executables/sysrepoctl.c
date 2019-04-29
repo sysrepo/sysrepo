@@ -54,26 +54,33 @@ help_print(void)
         "sysrepoctl - sysrepo control tool\n"
         "\n"
         "Usage:\n"
-        "  sysrepoctl [operation-option] [other-options]\n"
+        "  sysrepoctl <operation-option> [other-options]\n"
         "\n"
         "Available operation-options:\n"
-        "  -h, --help            Prints usage help.\n"
-        "  -v, --verbosity       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
+        "  -h, --help           Prints usage help.\n"
+        "  -v, --verbosity <level>\n"
+        "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
         "\n"
-        "  -l, --list            List YANG modules in sysrepo.\n"
-        "  -i, --install         Install the specified schema into sysrepo.\n"
-        "  -u, --uninstall       Uninstall the specified module from sysrepo.\n"
-        "  -c, --change          Change access rights, features, or replay support of the specified module.\n"
+        "  -l, --list           List YANG modules in sysrepo.\n"
+        "  -i, --install <path> Install the specified schema into sysrepo. Can be in either YANG or YIN format.\n"
+        "  -u, --uninstall <module>\n"
+        "                       Uninstall the specified module from sysrepo.\n"
+        "  -c, --change <module>\n"
+        "                       Change access rights, features, or replay support of the specified module.\n"
         "\n"
         "Available other-options:\n"
-        "  -s, --search-dir      Directory to search for include/import modules. Directory with already-installed\n"
-        "                        modules is always searched (install op).\n"
-        "  -e, --enable-feature  Enabled specific feature. Can be specified multiple times (install, change op).\n"
-        "  -d, --disable-feature Disable specific feature. Can be specified multiple times (change op).\n"
-        "  -r, --replay          Enable replay - store notifications for this module (change op).\n"
-        "  -o, --owner           Set filesystem owner of a module (change op).\n"
-        "  -g, --group           Set filesystem group of a module (change op).\n"
-        "  -p, --permissions     Set filesystem permissions of a module (chmod format) (change op).\n"
+        "  -s, --search-dir <dir-path>\n"
+        "                       Directory to search for include/import modules. Directory with already-installed\n"
+        "                       modules is always searched (install op).\n"
+        "  -e, --enable-feature <feature-name>\n"
+        "                       Enabled specific feature. Can be specified multiple times (install, change op).\n"
+        "  -d, --disable-feature <feature-name>\n"
+        "                       Disable specific feature. Can be specified multiple times (change op).\n"
+        "  -r, --replay <state> Change replay support (storing notifications) for this module to on/off or 1/0 (change op).\n"
+        "  -o, --owner <user>   Set filesystem owner of a module (change op).\n"
+        "  -g, --group <group>  Set filesystem group of a module (change op).\n"
+        "  -p, --permissions <permissions>\n"
+        "                       Set filesystem permissions of a module (chmod format) (change op).\n"
         "\n"
     );
 }
@@ -389,7 +396,7 @@ main(int argc, char** argv)
     char **features = NULL, **dis_features = NULL, *ptr;
     mode_t perms = -1;
     sr_log_level_t log_level = 0;
-    int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = 0;
+    int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
         {"verbosity",       required_argument, NULL, 'v'},
@@ -400,7 +407,7 @@ main(int argc, char** argv)
         {"search-dir",      required_argument, NULL, 's'},
         {"enable-feature",  required_argument, NULL, 'e'},
         {"disable-feature", required_argument, NULL, 'd'},
-        {"replay",          no_argument,       NULL, 'r'},
+        {"replay",          required_argument, NULL, 'r'},
         {"owner",           required_argument, NULL, 'o'},
         {"group",           required_argument, NULL, 'g'},
         {"permissions",     required_argument, NULL, 'p'},
@@ -413,7 +420,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hv:li:u:c:s:e:d:ro:g:p:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hv:li:u:c:s:e:d:r:o:g:p:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             help_print();
@@ -485,7 +492,14 @@ main(int argc, char** argv)
             dis_features[dis_feat_count++] = optarg;
             break;
         case 'r':
-            replay = 1;
+            if (!strcmp(optarg, "on") || !strcmp(optarg, "1")) {
+                replay = 1;
+            } else if (!strcmp(optarg, "off") || !strcmp(optarg, "0")) {
+                replay = 0;
+            } else {
+                error_print(0, "Invalid replay support \"%s\"", optarg);
+                goto cleanup;
+            }
             break;
         case 'o':
             if (owner) {
@@ -584,9 +598,9 @@ main(int argc, char** argv)
         }
 
         /* enable replay */
-        if (replay) {
+        if (replay != -1) {
             if ((r = sr_set_module_replay_support(conn, module_name, replay))) {
-                error_print(r, "Failed to enable replay");
+                error_print(r, "Failed to change replay support");
                 goto cleanup;
             }
         }

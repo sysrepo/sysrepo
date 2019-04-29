@@ -7,15 +7,16 @@
 Sysrepo is a YANG-based datastore for Unix/Linux systems. Applications that have their configuration
 modelled using YANG can use Sysrepo for its management.
 
-There are 2 main approaches for applications to make use of Sysrepo. The direct approach involves
+There are 2 main approaches for applications to make use of Sysrepo. The __direct approach__ involves
 calling Sysrepo functions from the application itself whenever configuration data are needed or
 executing specific callbacks to react to configuration changes. It is also possible to implement
 a stand-alone daemon that will translate Sysrepo calls to actions specific for the application.
-This indirect approach is usually simpler to employ for existing applications because then they
+This __indirect approach__ is usually simpler to employ for existing applications because then they
 do not need to be changed themselves to utilize Sysrepo datastore at the cost of having an additional
-intermediary process.
+intermediary process (daemon). If there are several such daemons, they can be written as @ref sysrepo_plugind
+plugins and then all managed by one process.
 
-@todo direct/indirect architecture diagram
+![Sysrepo application approaches](sr_apps.png)
 
 ## Adopted RFCs @anchor rfcs
 
@@ -49,7 +50,8 @@ intermediary process.
 
 Main Sysrepo features are manipulation with YANG data and subscribing to various events. However, before
 any operation can be performed, a @ref conn_sess need to be created and all the supported YANG @ref schema
-need to be installed. Sysrepo can also keep records of its behaviour if @ref log is configured.
+need to be installed. Sysrepo can also keep records of its behaviour if @ref log is configured. Finally, despite being
+only a library, there are a few auxiliary @ref bins that use the API in some common ways.
 
 Almost all API functions that work with data have 2 variants, each accepting the data in another format. An array of
 ::sr_val_t values can be used. This format is a legacy one and __should not be used__ in new applications. The alternative
@@ -85,9 +87,9 @@ occured and a device should reconfigure itself. It does not persist across reboo
 into _startup_ to rectify this.
 
 _Operational_ datastore maintains the currently used configuration. It is read-only and generally corresponds to
-_running_ but does not have to. Additionally, it includes state data nodes and may have some configuration data
-omitted/modified. It all depends on the subscriptions, only subscribed _running_ data (Sysrepo synonym for in-use) can
-appear in _operational_ datastore.
+_running_ with some possible differences. If there are any defined, it also includes state data nodes and may have
+some configuration data omitted/modified. It all depends on the subscriptions, only subscribed _running_ data
+(Sysrepo synonym for in-use) can appear in _operational_ datastore.
 
 # Threading Model @anchor threads
 

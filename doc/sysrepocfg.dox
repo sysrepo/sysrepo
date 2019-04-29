@@ -1,0 +1,54 @@
+/**
+@page sysrepocfg sysrepocfg
+
+This binary allows to work with __configuration__ in some basic ways such as _importing_ or _exporting_ it. Manually
+_editing_ the configuration is also possible.
+
+All operations are executed on a `--datastore` (default `running`, `startup`, or `operational`) or only a particular
+`--module` and handle data in a supported `--format` (default `xml`, `json`, or `lyb`).
+
+## -i, \-\-import[=\<file-path\>]
+
+To import configuration, most often a file is supplied. Its format will be automatically detected based on
+the extension. If not applicable (or the data are read from STDIN), it can be manually determined.
+
+~~~
+sysrepocfg --import=~/Documents/data/running.xml
+~~~
+
+One can also import startup configuration of a module.
+
+~~~
+sysrepocfg --import=~/Documents/data/ietf-interfaces_startup.json --datastore startup --module ietf-interfaces
+~~~
+
+## -o, \-\-export[=\<file-path\>]
+
+Exported configuration can be printed into a file or simply to STDOUT.
+
+~~~
+sysrepocfg --export --datastore operational
+~~~
+
+Additionally, only a specific part of the configuration can be retrieved. Either the whole module data
+
+~~~
+sysrepocfg --export=ietf-interfaces_running.lyb --format lyb --module ietf-interfaces
+~~~
+
+or an XPath selection.
+
+~~~
+sysrepocfg --export --xpath /ietf-interfaces:interfaces/interface[name='eth0']
+~~~
+
+## -e, \-\-edit[=\<editor\>]
+
+Manual data editing can be performed in an arbitary text editor. Also, when changing `running` data, it is possible
+to `--lock` the datastore and make the modifications `--permanent` by copying them to `startup` datastore as well.
+
+~~~
+sysrepocfg --edit=vim --lock --permanent
+~~~
+
+*/
