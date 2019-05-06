@@ -86,11 +86,11 @@ typedef enum {
  * standard error output.
  *
  * By default, logging to stderr is disabled. Setting log level to any value
- * other than SR_LL_NONE enables the logging to stderr. Setting log level
- * back to SR_LL_NONE disables the logging to stderr.
+ * other than ::SR_LL_NONE enables the logging to stderr. Setting log level
+ * back to ::SR_LL_NONE disables the logging to stderr.
  *
  * @note Please note that this will overwrite your libyang logging settings.
- * Only libyang errors are printed, if enabled.
+ * Alos, only libyang errors are printed, if enabled.
  *
  * @param[in] log_level Requested log level (verbosity).
  */
@@ -100,8 +100,11 @@ void sr_log_stderr(sr_log_level_t log_level);
  * @brief Enables / disables / changes log level (verbosity) of logging to system log.
  *
  * By default, logging into syslog is disabled. Setting log level to any value
- * other than SR_LL_NONE enables the logging into syslog. Setting log level
- * back to SR_LL_NONE disables the logging into syslog.
+ * other than ::SR_LL_NONE enables the logging into syslog. Setting log level
+ * back to ::SR_LL_NONE disables the logging into syslog.
+ *
+ * Library messages are logged with LOG_USER facility and plugin (syrepo-plugind) messages are
+ * logged with LOG_DAEMON facility.
  *
  * @note Please note that enabling logging into syslog will overwrite your syslog
  * connection settings (calls openlog), if you are connected to syslog already and
@@ -1453,6 +1456,120 @@ int sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_na
         sr_oper_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /** @} oper_subs */
+
+////////////////////////////////////////////////////////////////////////////////
+// Plugin API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup plugin_api Plugin API
+ * @{
+ */
+
+/**
+ * @brief Sysrepo plugin initialization callback name that must exists in every plugin.
+ */
+#define SRP_INIT_CB     "sr_plugin_init_cb"
+
+/**
+ * @brief Sysrepo plugin cleanup callback name that must exist in every plugin.
+ */
+#define SRP_CLEANUP_CB  "sr_plugin_cleanup_cb"
+
+/**
+ * @brief Sysrepo plugin initialization callback.
+ *
+ * @param[in] session Sysrepo session that can be used for any API calls needed
+ * for plugin initialization (mainly for reading of startup configuration
+ * and subscribing for notifications).
+ * @param[out] private_data Private context (opaque to sysrepo) that will be
+ * passed to ::srp_cleanup_cb_t when plugin cleanup is requested.
+ *
+ * @return Error code (::SR_ERR_OK on success).
+ */
+typedef int (*srp_init_cb_t)(sr_session_ctx_t *session, void **private_data);
+
+/**
+ * @brief Sysrepo plugin cleanup callback.
+ *
+ * @param[in] session Sysrepo session that can be used for any API calls
+ * needed for plugin cleanup (mainly for unsubscribing of subscriptions
+ * initialized in ::srp_init_cb_t).
+ * @param[in] private_data Private context as passed in ::srp_init_cb_t.
+ */
+typedef void (*srp_cleanup_cb_t)(sr_session_ctx_t *session, void *private_data);
+
+/**
+ * @brief Log a plugin error message with format arguments.
+ *
+ * @param[in] format Message format.
+ * @param[in] ... Format arguments.
+ */
+#define SRP_LOG_ERR(format, ...) srp_log(SR_LL_ERR, format, __VA_ARGS__)
+
+/**
+ * @brief Log a plugin warning message with format arguments.
+ *
+ * @param[in] format Message format.
+ * @param[in] ... Format arguments.
+ */
+#define SRP_LOG_WRN(format, ...) srp_log(SR_LL_WRN, format, __VA_ARGS__)
+
+/**
+ * @brief Log a plugin info message with format arguments.
+ *
+ * @param[in] format Message format.
+ * @param[in] ... Format arguments.
+ */
+#define SRP_LOG_INF(format, ...) srp_log(SR_LL_INF, format, __VA_ARGS__)
+
+/**
+ * @brief Log a plugin debug message with format arguments.
+ *
+ * @param[in] format Message format.
+ * @param[in] ... Format arguments.
+ */
+#define SRP_LOG_DBG(format, ...) srp_log(SR_LL_DBG, format, __VA_ARGS__)
+
+/**
+ * @brief Log a simple plugin error message.
+ *
+ * @param[in] msg Message to log.
+ */
+#define SRP_LOG_ERRMSG(msg) srp_log(SR_LL_ERR, msg)
+
+/**
+ * @brief Log a simple plugin warning message.
+ *
+ * @param[in] msg Message to log.
+ */
+#define SRP_LOG_WRNMSG(msg) srp_log(SR_LL_WRN, msg)
+
+/**
+ * @brief Log a simple plugin info message.
+ *
+ * @param[in] msg Message to log.
+ */
+#define SRP_LOG_INFMSG(msg) srp_log(SR_LL_INF, msg)
+
+/**
+ * @brief Log a simple plugin debug message.
+ *
+ * @param[in] msg Message to log.
+ */
+#define SRP_LOG_DBGMSG(msg) srp_log(SR_LL_DBG, msg)
+
+/**@} plugin */
+
+/**
+ * @internal
+ * @brief Log a plugin message with variable arguments.
+ *
+ * @param[in] ll Log level (severity).
+ * @param[in] format Message format.
+ * @param[in] ... Format arguments.
+ */
+void srp_log(sr_log_level_t ll, const char *format, ...);
 
 #ifdef __cplusplus
 }

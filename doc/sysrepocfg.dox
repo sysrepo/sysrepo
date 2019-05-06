@@ -51,4 +51,12 @@ to `--lock` the datastore and make the modifications `--permanent` by copying th
 sysrepocfg --edit=vim --lock --permanent
 ~~~
 
+## -r, \-\-rpc=[=\<editor\>]
+
+It is also possible to send an RPC or action using an editor. Any output is printed to STDOUT.
+
+~~~
+sysrepocfg --rpc=vim
+~~~
+
 */

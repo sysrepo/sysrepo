@@ -41,11 +41,11 @@ help_print(void)
         "\n"
         "Available operation-options:\n"
         "  -h, --help                   Prints usage help.\n"
-        "  -v, --verbosity              Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
-        "\n"
         "  -i, --import[=<file-path>]   Import the configuration from a file or STDIN.\n"
         "  -o, --export[=<file-path>]   Export configuration to a file or STDOUT.\n"
         "  -e, --edit[=<editor>]        Edit configuration data using <editor> or read from $VISUAL or $EDITOR env variables.\n"
+        "  -r, --rpc[=<editor>]         Send a RPC/action using <editor> or read from $VISUAL or $EDITOR env variables.\n"
+        "                               Output is printed to STDOUT.\n"
         "\n"
         "Available other-options:\n"
         "  -d, --datastore <datastore>  Datastore to be operated on, \"running\" by default (\"running\", \"startup\",\n"
@@ -54,11 +54,12 @@ help_print(void)
         "                               (edit, import, export op).\n"
         "  -x, --xpath <xpath>          XPath to select (export op).\n"
         "  -f, --format <format>        Data format to be used, by default based on file extension or \"xml\" if not applicable\n"
-        "                               (\"xml\", \"json\", or \"lyb\") (edit, import, export op).\n"
+        "                               (\"xml\", \"json\", or \"lyb\") (edit, import, export, rpc op).\n"
         "  -l, --lock                   Lock the specified datastore for the whole operation (edit op).\n"
         "  -p, --permanent              Make all changes in the \"running\" datastore permanent by performing a copy-config\n"
         "                               from \"running\" to \"startup\" (edit op).\n"
-        "  -n, --not-strict             Silently ignore any unknown data (edit, import op).\n"
+        "  -n, --not-strict             Silently ignore any unknown data (edit, import, rpc op).\n"
+        "  -v, --verbosity <level>      Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
         "\n"
     );
 }
@@ -155,11 +156,9 @@ read_file(FILE *file, char **mem)
 }
 
 static int
-op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name, LYD_FORMAT format, int not_strict)
+load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format, int flags, struct lyd_node **data)
 {
     struct ly_ctx *ly_ctx;
-    struct lyd_node *data;
-    int r, flags;
     char *ptr;
 
     ly_ctx = (struct ly_ctx *)sr_get_context(sr_session_get_connection(sess));
@@ -185,20 +184,33 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* parse import data */
-    flags = LYD_OPT_CONFIG | (not_strict ? 0 : LYD_OPT_STRICT);
     if (file_path) {
-        data = lyd_parse_path(ly_ctx, file_path, format, flags);
+        *data = lyd_parse_path(ly_ctx, file_path, format, flags, NULL);
     } else {
         /* we need to load the data into memory first */
         if (read_file(stdin, &ptr)) {
             return EXIT_FAILURE;
         }
-        data = lyd_parse_mem(ly_ctx, ptr, format, flags);
+        *data = lyd_parse_mem(ly_ctx, ptr, format, flags);
         free(ptr);
     }
     if (ly_errno) {
         error_ly_print(ly_ctx);
         error_print(0, "Data parsing failed");
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}
+
+static int
+op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name, LYD_FORMAT format, int not_strict)
+{
+    struct lyd_node *data;
+    int r, flags;
+
+    flags = LYD_OPT_CONFIG | (not_strict ? 0 : LYD_OPT_STRICT);
+    if (load_data(sess, file_path, format, flags, &data)) {
         return EXIT_FAILURE;
     }
 
@@ -345,6 +357,80 @@ cleanup_unlock:
     return rc;
 }
 
+static int
+op_rpc(sr_session_ctx_t *sess, const char *editor, LYD_FORMAT format, int not_strict)
+{
+    char tmp_file[22];
+    int suffix, fd, r, flags;
+    struct lyd_node *input, *output, *node;
+
+    if (format == LYD_LYB) {
+        error_print(0, "LYB binary format cannot be opened in a text editor");
+        return EXIT_FAILURE;
+    } else if (format == LYD_UNKNOWN) {
+        format = LYD_XML;
+    }
+
+    /* learn what editor to use */
+    if (!editor) {
+        editor = getenv("VISUAL");
+    }
+    if (!editor) {
+        editor = getenv("EDITOR");
+    }
+    if (!editor) {
+        error_print(0, "Editor not specified nor read from the environment");
+        return EXIT_FAILURE;
+    }
+
+    /* create temporary file */
+    if (format == LYD_JSON) {
+        sprintf(tmp_file, "/tmp/srtmpXXXXXX.json");
+        suffix = 5;
+    } else {
+        sprintf(tmp_file, "/tmp/srtmpXXXXXX.xml");
+        suffix = 4;
+    }
+    fd = mkstemps(tmp_file, suffix);
+    if (fd == -1) {
+        error_print(0, "Failed to open temporary file (%s)", strerror(errno));
+        return EXIT_FAILURE;
+    }
+    close(fd);
+
+    /* load rpc/action into a file */
+    if (edit_input(editor, tmp_file)) {
+        return EXIT_FAILURE;
+    }
+
+    /* load the file */
+    flags = LYD_OPT_RPC | (not_strict ? 0 : LYD_OPT_STRICT);
+    if (load_data(sess, tmp_file, format, flags, &input)) {
+        return EXIT_FAILURE;
+    }
+
+    /* send rpc/action */
+    r = sr_rpc_send_tree(sess, input, &output);
+    lyd_free_withsiblings(input);
+    if (r) {
+        error_print(r, "Sending RPC/action failed");
+        return EXIT_FAILURE;
+    }
+
+    /* print output if any */
+    LY_TREE_FOR(output->child, node) {
+        if (!node->dflt) {
+            break;
+        }
+    }
+    if (node) {
+        lyd_print_file(stdout, output, format, LYP_FORMAT);
+    }
+    lyd_free_withsiblings(output);
+
+    return EXIT_SUCCESS;
+}
+
 int
 main(int argc, char** argv)
 {
@@ -357,10 +443,10 @@ main(int argc, char** argv)
     int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, permanent = 0, not_strict = 0;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
-        {"verbosity",       required_argument, NULL, 'v'},
         {"import",          optional_argument, NULL, 'i'},
         {"export",          optional_argument, NULL, 'o'},
         {"edit",            optional_argument, NULL, 'e'},
+        {"rpc",             optional_argument, NULL, 'r'},
         {"datastore",       required_argument, NULL, 'd'},
         {"module",          required_argument, NULL, 'm'},
         {"xpath",           required_argument, NULL, 'x'},
@@ -368,6 +454,7 @@ main(int argc, char** argv)
         {"lock",            no_argument,       NULL, 'l'},
         {"permanent",       no_argument,       NULL, 'p'},
         {"not-strict",      no_argument,       NULL, 'n'},
+        {"verbosity",       required_argument, NULL, 'v'},
     };
 
     if (argc == 1) {
@@ -377,31 +464,12 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hv:i::o::e::d:m:x:f:lpn", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hi::o::e::r::d:m:x:f:lpnv:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             help_print();
             rc = EXIT_SUCCESS;
             goto cleanup;
-        case 'v':
-            if (!strcmp(optarg, "none")) {
-                log_level = SR_LL_NONE;
-            } else if (!strcmp(optarg, "error")) {
-                log_level = SR_LL_ERR;
-            } else if (!strcmp(optarg, "warning")) {
-                log_level = SR_LL_WRN;
-            } else if (!strcmp(optarg, "info")) {
-                log_level = SR_LL_INF;
-            } else if (!strcmp(optarg, "debug")) {
-                log_level = SR_LL_DBG;
-            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '4')) {
-                log_level = atoi(optarg);
-            } else {
-                error_print(0, "Invalid verbosity \"%s\"", optarg);
-                goto cleanup;
-            }
-            sr_log_stderr(log_level);
-            break;
         case 'i':
             if (operation) {
                 error_print(0, "Operation already specified");
@@ -431,6 +499,16 @@ main(int argc, char** argv)
                 editor = optarg;
             }
             operation = 'e';
+            break;
+        case 'r':
+            if (operation) {
+                error_print(0, "Operation already specified");
+                goto cleanup;
+            }
+            if (optarg) {
+                editor = optarg;
+            }
+            operation = 'r';
             break;
         case 'd':
             if (!strcmp(optarg, "running")) {
@@ -485,6 +563,25 @@ main(int argc, char** argv)
         case 'n':
             not_strict = 1;
             break;
+        case 'v':
+            if (!strcmp(optarg, "none")) {
+                log_level = SR_LL_NONE;
+            } else if (!strcmp(optarg, "error")) {
+                log_level = SR_LL_ERR;
+            } else if (!strcmp(optarg, "warning")) {
+                log_level = SR_LL_WRN;
+            } else if (!strcmp(optarg, "info")) {
+                log_level = SR_LL_INF;
+            } else if (!strcmp(optarg, "debug")) {
+                log_level = SR_LL_DBG;
+            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '4')) {
+                log_level = atoi(optarg);
+            } else {
+                error_print(0, "Invalid verbosity \"%s\"", optarg);
+                goto cleanup;
+            }
+            sr_log_stderr(log_level);
+            break;
         default:
             error_print(0, "Invalid option or missing argument: -%c", optopt);
             goto cleanup;
@@ -519,6 +616,9 @@ main(int argc, char** argv)
         break;
     case 'e':
         rc = op_edit(sess, editor, module_name, format, lock, permanent, not_strict);
+        break;
+    case 'r':
+        rc = op_rpc(sess, editor, format, not_strict);
         break;
     case 0:
         error_print(0, "No operation specified");

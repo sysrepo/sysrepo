@@ -1911,7 +1911,7 @@ sr_shmsub_rpc_listen_call_callback(struct modsub_rpc_s *rpc_sub, sr_session_ctx_
 cleanup:
     sr_free_values(input_vals, input_val_count);
     sr_free_values(output_vals, output_val_count);
-    if (*err_code) {
+    if (*err_code && *output_op) {
         /* free the whole output in case of an error */
         while ((*output_op)->parent) {
             *output_op = (*output_op)->parent;

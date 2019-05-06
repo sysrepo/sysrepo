@@ -1,0 +1,24 @@
+/**
+ * @file srpd_common.h
+ * @author Michal Vasko <mvasko@cesnet.cz>
+ * @brief common sysrepo-plugind routines header
+ *
+ * @copyright
+ * Copyright (c) 2019 CESNET, z.s.p.o.
+ *
+ * This source code is licensed under BSD 3-Clause License (the "License").
+ * You may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/BSD-3-Clause
+ */
+#ifndef _SRPD_COMMON_H
+#define _SRPD_COMMON_H
+
+/** sysrepo-plugind working directory. */
+#define SRPD_WORK_DIR "/"
+
+/** sysrepo-plugind plugins directory */
+#define SRPD_PLUGINS_PATH "@PLUGINS_PATH@"
+
+#endif

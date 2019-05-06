@@ -12,5 +12,6 @@ foreach(app_name IN LISTS examples)
     target_link_libraries(${app_name} sysrepo yang)
 endforeach(app_name)
 
-# generate config
-#configure_file("${PROJECT_SOURCE_DIR}/tests/config.h.in" "${PROJECT_BINARY_DIR}/tests/config.h" ESCAPE_QUOTES @ONLY)
+# oven plugin
+add_library(oven SHARED plugin/oven.c)
+target_link_libraries(oven sysrepo)

@@ -78,6 +78,11 @@ if(YANG_MODULE_PATH)
 else()
     message(STATUS "YANG module path:   ${REPO_PATH}/yang")
 endif()
+if(NOT PLUGINS_PATH)
+    set(PLUGINS_PATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/" CACHE PATH
+        "Sysrepo plugin daemon plugins path.")
+endif()
+message(STATUS "SRPD plugins path:  ${PLUGINS_PATH}")
 
 # required functions
 set(CMAKE_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS} -D_GNU_SOURCE")
@@ -88,8 +93,9 @@ if(NOT SR_HAVE_EACCESS)
 endif()
 check_include_file("stdatomic.h" SR_HAVE_STDATOMIC)
 
-# generate common file
+# generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)
+configure_file("${PROJECT_SOURCE_DIR}/src/executables/srpd_common.h.in" "${PROJECT_BINARY_DIR}/srpd_common.h" ESCAPE_QUOTES @ONLY)
 include_directories(${PROJECT_BINARY_DIR})
 include_directories("${PROJECT_SOURCE_DIR}/src")
 
@@ -113,6 +119,9 @@ set (SYSREPOCTL_SRC
 
 set (SYSREPOCFG_SRC
     src/executables/sysrepocfg.c)
+
+set (SYSREPOPLUGIND_SRC
+    src/executables/sysrepo-plugind.c)
 
 # libsysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
@@ -143,10 +152,14 @@ target_link_libraries(sysrepoctl sysrepo ${LIBYANG_LIBRARIES})
 add_executable(sysrepocfg ${SYSREPOCFG_SRC})
 target_link_libraries(sysrepocfg sysrepo ${LIBYANG_LIBRARIES})
 
+# sysrepo-plugind daemon
+add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC})
+target_link_libraries(sysrepo-plugind sysrepo dl)
+
 # installation
 install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(TARGETS sysrepoctl sysrepocfg DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # doxygen documentation
 find_package(Doxygen)

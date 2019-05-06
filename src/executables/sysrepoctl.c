@@ -58,8 +58,6 @@ help_print(void)
         "\n"
         "Available operation-options:\n"
         "  -h, --help           Prints usage help.\n"
-        "  -v, --verbosity <level>\n"
-        "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
         "\n"
         "  -l, --list           List YANG modules in sysrepo.\n"
         "  -i, --install <path> Install the specified schema into sysrepo. Can be in either YANG or YIN format.\n"
@@ -81,6 +79,8 @@ help_print(void)
         "  -g, --group <group>  Set filesystem group of a module (change op).\n"
         "  -p, --permissions <permissions>\n"
         "                       Set filesystem permissions of a module (chmod format) (change op).\n"
+        "  -v, --verbosity <level>\n"
+        "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
         "\n"
     );
 }
@@ -399,7 +399,6 @@ main(int argc, char** argv)
     int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
-        {"verbosity",       required_argument, NULL, 'v'},
         {"list",            no_argument,       NULL, 'l'},
         {"install",         required_argument, NULL, 'i'},
         {"uninstall",       required_argument, NULL, 'u'},
@@ -411,6 +410,7 @@ main(int argc, char** argv)
         {"owner",           required_argument, NULL, 'o'},
         {"group",           required_argument, NULL, 'g'},
         {"permissions",     required_argument, NULL, 'p'},
+        {"verbosity",       required_argument, NULL, 'v'},
     };
 
     if (argc == 1) {
@@ -420,31 +420,12 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hv:li:u:c:s:e:d:r:o:g:p:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hli:u:c:s:e:d:r:o:g:p:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             help_print();
             rc = EXIT_SUCCESS;
             goto cleanup;
-        case 'v':
-            if (!strcmp(optarg, "none")) {
-                log_level = SR_LL_NONE;
-            } else if (!strcmp(optarg, "error")) {
-                log_level = SR_LL_ERR;
-            } else if (!strcmp(optarg, "warning")) {
-                log_level = SR_LL_WRN;
-            } else if (!strcmp(optarg, "info")) {
-                log_level = SR_LL_INF;
-            } else if (!strcmp(optarg, "debug")) {
-                log_level = SR_LL_DBG;
-            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '4')) {
-                log_level = atoi(optarg);
-            } else {
-                error_print(0, "Invalid verbosity \"%s\"", optarg);
-                goto cleanup;
-            }
-            sr_log_stderr(log_level);
-            break;
         case 'l':
             if (operation) {
                 error_print(0, "Operation already specified");
@@ -525,6 +506,25 @@ main(int argc, char** argv)
                 error_print(0, "Invalid permissions \"%s\"", optarg);
                 goto cleanup;
             }
+            break;
+        case 'v':
+            if (!strcmp(optarg, "none")) {
+                log_level = SR_LL_NONE;
+            } else if (!strcmp(optarg, "error")) {
+                log_level = SR_LL_ERR;
+            } else if (!strcmp(optarg, "warning")) {
+                log_level = SR_LL_WRN;
+            } else if (!strcmp(optarg, "info")) {
+                log_level = SR_LL_INF;
+            } else if (!strcmp(optarg, "debug")) {
+                log_level = SR_LL_DBG;
+            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '4')) {
+                log_level = atoi(optarg);
+            } else {
+                error_print(0, "Invalid verbosity \"%s\"", optarg);
+                goto cleanup;
+            }
+            sr_log_stderr(log_level);
             break;
         default:
             error_print(0, "Invalid option or missing argument: -%c", optopt);

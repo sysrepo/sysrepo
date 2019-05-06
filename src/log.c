@@ -44,7 +44,6 @@ static const char *const sr_errlist[] = {
         "Validation failed",                    /* SR_ERR_VALIDATION_FAILED */
         "Operation failed",                     /* SR_ERR_OPERATION_FAILED */
         "Operation not authorized",             /* SR_ERR_UNAUTHORIZED */
-        "Invalid username",                     /* SR_ERR_INVAL_USER */
         "Requested resource already locked",    /* SR_ERR_LOCKED */
         "Timeout expired",                      /* SR_ERR_TIME_OUT */
         "User callback failed",                 /* SR_ERR_CALLBACK_FAILED */
@@ -94,26 +93,26 @@ sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info)
 }
 
 void
-sr_log_msg(sr_log_level_t ll, const char *msg, const char *path)
+sr_log_msg(int plugin, sr_log_level_t ll, const char *msg, const char *path)
 {
-    int facility;
+    int priority;
     const char *severity;
 
     switch (ll) {
     case SR_LL_ERR:
-        facility = LOG_ERR;
+        priority = LOG_ERR;
         severity = "ERR";
         break;
     case SR_LL_WRN:
-        facility = LOG_WARNING;
+        priority = LOG_WARNING;
         severity = "WRN";
         break;
     case SR_LL_INF:
-        facility = LOG_INFO;
+        priority = LOG_INFO;
         severity = "INF";
         break;
     case SR_LL_DBG:
-        facility = LOG_DEBUG;
+        priority = LOG_DEBUG;
         severity = "DBG";
         break;
     case SR_LL_NONE:
@@ -124,15 +123,15 @@ sr_log_msg(sr_log_level_t ll, const char *msg, const char *path)
     /* stderr logging */
     if (ll <= stderr_ll) {
         if (path) {
-            fprintf(stderr, "[%s]: %s (path: %s)\n", severity, msg, path);
+            fprintf(stderr, "[%s]:%s %s (path: %s)\n", severity, plugin ? " plugin:" : "", msg, path);
         } else {
-            fprintf(stderr, "[%s]: %s\n", severity, msg);
+            fprintf(stderr, "[%s]:%s %s\n", severity, plugin ? " plugin:" : "", msg);
         }
     }
 
     /* syslog logging */
     if (ll < syslog_ll) {
-        syslog(facility, "[%s] %s\n", severity, msg);
+        syslog(priority | (plugin ? LOG_DAEMON : 0), "[%s] %s\n", severity, msg);
     }
 
     /* logging callback */
@@ -197,7 +196,7 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
     /* print it */
 print:
     idx = (*err_info)->err_count - 1;
-    sr_log_msg(SR_LL_ERR, (*err_info)->err[idx].message, (*err_info)->err[idx].xpath);
+    sr_log_msg(0, SR_LL_ERR, (*err_info)->err[idx].message, (*err_info)->err[idx].xpath);
 }
 
 void
@@ -212,7 +211,7 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, struct ly_ctx *ly_ctx)
     do {
         if (e->level == LY_LLWRN) {
             /* just print it */
-            sr_log_msg(SR_LL_WRN, e->msg, e->path);
+            sr_log_msg(0, SR_LL_WRN, e->msg, e->path);
         } else {
             assert(e->level == LY_LLERR);
             /* store it and print it */
@@ -236,7 +235,7 @@ sr_errinfo_new_ly_first(sr_error_info_t **err_info, struct ly_ctx *ly_ctx)
 
     if (e->level == LY_LLWRN) {
         /* just print it */
-        sr_log_msg(SR_LL_WRN, e->msg, e->path);
+        sr_log_msg(0, SR_LL_WRN, e->msg, e->path);
     } else {
         assert(e->level == LY_LLERR);
         /* store it and print it */
@@ -257,7 +256,7 @@ sr_log_wrn_ly(struct ly_ctx *ly_ctx)
 
     do {
         /* print everything as warnings */
-        sr_log_msg(SR_LL_WRN, e->msg, e->path);
+        sr_log_msg(0, SR_LL_WRN, e->msg, e->path);
 
         e = e->next;
     } while (e);
@@ -343,7 +342,50 @@ sr_log(sr_log_level_t ll, const char *format, ...)
         }
     }
 
-    sr_log_msg(ll, msg, NULL);
+    sr_log_msg(0, ll, msg, NULL);
+
+cleanup:
+    free(msg);
+    va_end(ap);
+    va_end(ap2);
+}
+
+API void
+srp_log(sr_log_level_t ll, const char *format, ...)
+{
+    va_list ap, ap2;
+    ssize_t msg_len = SR_MSG_LEN_START, req_len;
+    char *msg;
+
+    va_start(ap, format);
+    va_copy(ap2, ap);
+
+    /* initial length */
+    msg = malloc(msg_len);
+    if (!msg) {
+        goto cleanup;
+    }
+
+    /* learn how much bytes are needed */
+    req_len = vsnprintf(msg, msg_len, format, ap);
+    if (req_len == -1) {
+        goto cleanup;
+    } else if (req_len >= SR_MSG_LEN_START) {
+        /* the intial size was not enough */
+        msg_len = req_len + 1;
+        msg = sr_realloc(msg, msg_len);
+        if (!msg) {
+            goto cleanup;
+        }
+
+        /* now print the full message */
+        req_len = vsnprintf(msg, msg_len, format, ap2);
+        if (req_len == -1) {
+            goto cleanup;
+        }
+    }
+
+    sr_log_msg(1, ll, msg, NULL);
 
 cleanup:
     free(msg);
@@ -379,7 +421,7 @@ sr_log_syslog(const char *app_name, sr_log_level_t log_level)
     syslog_ll = log_level;
 
     if ((log_level > SR_LL_NONE) && !syslog_open) {
-        openlog(app_name ? app_name : "sysrepo", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_DAEMON);
+        openlog(app_name ? app_name : "sysrepo", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_USER);
 
         syslog_open = 1;
     } else if ((log_level == SR_LL_NONE) && syslog_open) {

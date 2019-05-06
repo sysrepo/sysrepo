@@ -2455,7 +2455,7 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
  */
 static sr_error_info_t *
 sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struct lys_module *ly_mod, const char *xpath,
-        sr_module_change_cb callback, void *private_data)
+        sr_module_change_cb callback, void *private_data, int opts)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = session->conn;
@@ -2512,19 +2512,21 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
         tmp_sess.ds = mod_info.ds;
         tmp_sess.dt[tmp_sess.ds].diff = mod_info.diff;
 
-        tmp_sess.ev = SR_SUB_EV_CHANGE;
-        SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(tmp_sess.ev));
+        if (!(opts & SR_SUBSCR_DONE_ONLY)) {
+            tmp_sess.ev = SR_SUB_EV_CHANGE;
+            SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(tmp_sess.ev));
 
-        /* present all changes in a regular "change" event */
-        err_code = callback(&tmp_sess, ly_mod->name, xpath, sr_ev2api(tmp_sess.ev), private_data);
-        if (err_code != SR_ERR_OK) {
-            /* callback failed but it is the only one so no "abort" event is necessary */
-            sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, NULL, "Subscribing to \"%s\" changes failed.", ly_mod->name);
-            if (tmp_sess.err_info && (tmp_sess.err_info->err_code == SR_ERR_OK)) {
-                /* remember callback error info */
-                sr_errinfo_merge(&err_info, tmp_sess.err_info);
+            /* present all changes in a regular "change" event */
+            err_code = callback(&tmp_sess, ly_mod->name, xpath, sr_ev2api(tmp_sess.ev), private_data);
+            if (err_code != SR_ERR_OK) {
+                /* callback failed but it is the only one so no "abort" event is necessary */
+                sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, NULL, "Subscribing to \"%s\" changes failed.", ly_mod->name);
+                if (tmp_sess.err_info && (tmp_sess.err_info->err_code == SR_ERR_OK)) {
+                    /* remember callback error info */
+                    sr_errinfo_merge(&err_info, tmp_sess.err_info);
+                }
+                goto cleanup_mods_unlock;
             }
-            goto cleanup_mods_unlock;
         }
 
         /* finish with a "done" event just because this event should imitate a regular configuration change */
@@ -2642,8 +2644,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
                 xpath ? xpath : module_name);
     }
 
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 0, 0))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -2651,64 +2653,73 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        goto error_unlock;
+        goto error_rdunlock;
     }
 
     /* check write/read perm */
     if ((err_info = sr_perm_check(module_name, (opts & SR_SUBSCR_PASSIVE) ? 0 : 1))) {
-        goto error_unlock;
+        goto error_rdunlock;
+    }
+
+    /* call the callback with the current running configuration so that it is properly applied */
+    if (((session->ds == SR_DS_RUNNING) || (ds == SR_DS_RUNNING)) && (opts & SR_SUBSCR_ENABLED)) {
+        /* do not hold write lock here, would block callback from calling API functions */
+        if ((err_info = sr_module_change_subscribe_running_enable(session, ly_mod, xpath, callback, private_data, opts))) {
+            goto error_rdunlock;
+        }
+    }
+
+    /* SHM READ UNLOCK */
+    sr_shmmain_unlock(conn, 0, 0);
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
+        return sr_api_ret(session, err_info);
     }
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
         if ((err_info = sr_subs_new(conn, opts, subscription))) {
-            goto error_unlock;
+            goto error_wrunlock;
         }
     }
 
     /* add module subscription into main SHM */
     if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts,
             (*subscription)->evpipe_num, 1, NULL))) {
-        goto error_unlock_unsub;
+        goto error_wrunlock_unsub;
     }
     if (ds != SR_DS_OPERATIONAL) {
         if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts,
                 (*subscription)->evpipe_num, 1, NULL))) {
             sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts,
                     (*subscription)->evpipe_num, 0, NULL);
-            goto error_unlock_unsub;
+            goto error_wrunlock_unsub;
         }
     }
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_conf_add(module_name, xpath, session->ds, callback, private_data, priority, sub_opts,
             *subscription))) {
-        goto error_unlock_unsub_unmod;
+        goto error_wrunlock_unsub_unmod;
     }
     if (ds != SR_DS_OPERATIONAL) {
         if ((err_info = sr_sub_conf_add(module_name, xpath, ds, callback, private_data, priority, sub_opts,
                 *subscription))) {
-            goto error_unlock_unsub_unmod;
-        }
-    }
-
-    /* call the callback with the current running configuration so that it is properly applied */
-    if (((session->ds == SR_DS_RUNNING) || (ds == SR_DS_RUNNING)) && (opts & SR_SUBSCR_ENABLED)) {
-        if ((err_info = sr_module_change_subscribe_running_enable(session, ly_mod, xpath, callback, private_data))) {
-            goto error_unlock_unsub_unmod;
+            goto error_wrunlock_unsub_unmod;
         }
     }
 
     /* defrag main SHM if needed */
     if ((err_info = sr_check_main_shm_defrag(conn))) {
-        goto error_unlock_unsub_unmod;
+        goto error_wrunlock_unsub_unmod;
     }
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* add the subscription into conn */
         if ((err_info = sr_conn_ptr_add(&conn->ptr_lock, (void ***)&conn->subscriptions, &conn->subscription_count,
                 *subscription))) {
-            goto error_unlock_unsub_unmod;
+            goto error_wrunlock_unsub_unmod;
         }
     }
 
@@ -2717,22 +2728,28 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
     return sr_api_ret(session, NULL);
 
-error_unlock_unsub_unmod:
+error_wrunlock_unsub_unmod:
     sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, (*subscription)->evpipe_num, 0, NULL);
     if (ds != SR_DS_OPERATIONAL) {
         sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, (*subscription)->evpipe_num, 0, NULL);
     }
 
-error_unlock_unsub:
+error_wrunlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_sub_conf_del(module_name, xpath, session->ds, callback, private_data, priority, sub_opts, *subscription);
     } else {
         sr_unsubscribe(*subscription);
     }
 
-error_unlock:
+error_wrunlock:
     /* SHM WRITE UNLOCK */
     sr_shmmain_unlock(conn, 1, 1);
+
+    return sr_api_ret(session, err_info);
+
+error_rdunlock:
+    /* SHM READ UNLOCK */
+    sr_shmmain_unlock(conn, 0, 0);
 
     return sr_api_ret(session, err_info);
 }
