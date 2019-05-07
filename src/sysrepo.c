@@ -671,6 +671,12 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
         }
     }
 
+    /* store the model file and create data files for module and all of its imports */
+    if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
+        ly_ctx_remove_module(ly_mod, NULL);
+        goto cleanup_unlock;
+    }
+
     /* add into main SHM */
     if ((err_info = sr_shmmain_add_module_with_imps(conn, ly_mod))) {
         goto cleanup_unlock;
@@ -686,11 +692,6 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
 
     /* SHM WRITE UNLOCK */
     sr_shmmain_unlock(conn, 1, 1);
-
-    /* store the model file and create data files for module and all of its imports */
-    if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
-        return sr_api_ret(NULL, err_info);
-    }
 
     return sr_api_ret(NULL, NULL);
 
