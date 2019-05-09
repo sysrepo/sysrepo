@@ -894,6 +894,25 @@ int sr_lock(sr_session_ctx_t *session, const char *module_name);
  */
 int sr_unlock(sr_session_ctx_t *session, const char *module_name);
 
+/**
+ * @brief Check whether the data of the specified module or whole datastore are locked.
+ *
+ * Note that if whole datastore is checked, \p is_locked will be set only if all
+ * the modules are locked by the same Sysrepo session. If a module is not locked
+ * or locked by another Sysrepo session, \p is_locked will be false.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] datastore Datastore of the lock.
+ * @param[in] module_name Optional name of the module to check.
+ * @param[out] is_locked True is the module or whole datastore is locked.
+ * @param[out] id Optional Sysrepo SID of the session if the module/datastore is locked.
+ * @param[out] nc_id Optional NETCONF SID of the session if the module/datatsore is locked.
+ * @param[out] timestamp Optional timestamp of the lock.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_name, int *is_locked, uint32_t *id,
+        uint32_t *nc_id, time_t *timestamp);
+
 /** @} lock */
 
 ////////////////////////////////////////////////////////////////////////////////

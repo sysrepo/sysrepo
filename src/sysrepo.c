@@ -2110,8 +2110,13 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
             goto error;
         }
 
-        /* change DS lock state */
+        /* change DS lock state and remember the time */
         shm_lock->ds_locked = lock;
+        if (lock) {
+            shm_lock->ds_ts = time(NULL);
+        } else {
+            shm_lock->ds_ts = 0;
+        }
     }
 
     return NULL;
@@ -2209,6 +2214,100 @@ API int
 sr_unlock(sr_session_ctx_t *session, const char *module_name)
 {
     return _sr_un_lock(session, module_name, 0);
+}
+
+API int
+sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_name, int *is_locked, uint32_t *id,
+        uint32_t *nc_id, time_t *timestamp)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_s mod_info;
+    const struct lys_module *ly_mod = NULL;
+    struct sr_mod_lock_s *shm_lock;
+    uint32_t i;
+    sr_sid_t sid;
+
+    SR_CHECK_ARG_APIRET(!conn || (datastore == SR_DS_OPERATIONAL) || !is_locked, NULL, err_info);
+
+    if (id) {
+        *id = 0;
+    }
+    if (nc_id) {
+        *nc_id = 0;
+    }
+    if (timestamp) {
+        *timestamp = 0;
+    }
+    memset(&mod_info, 0, sizeof mod_info);
+    memset(&sid, 0, sizeof sid);
+
+    /* SHM READ LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 0, 0))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (module_name) {
+        /* try to find this module */
+        ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+        if (!ly_mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+            goto cleanup_unlock;
+        }
+    }
+
+    /* collect all required modules */
+    if ((err_info = sr_shmmod_collect_modules(conn, ly_mod, datastore, 0, &mod_info))) {
+        goto cleanup_unlock;
+    }
+
+    /* check read perm */
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 0))) {
+        goto cleanup_unlock;
+    }
+
+    /* check DS-lock of the module(s) */
+    for (i = 0; i < mod_info.mod_count; ++i) {
+        shm_lock = &mod_info.mods[i].shm_mod->data_lock_info[mod_info.ds];
+
+        if (!shm_lock->ds_locked) {
+            /* there is at least one module that is not DS-locked */
+            break;
+        }
+
+        if (!sid.sr) {
+            /* remember the first DS lock owner */
+            sid = shm_lock->sid;
+        } else if (sid.sr != shm_lock->sid.sr) {
+            /* more DS module lock owners, not a full DS lock */
+            break;
+        }
+    }
+
+    if (i < mod_info.mod_count) {
+        /* not full DS lock */
+        *is_locked = 0;
+    } else {
+        /* the module or all modules is DS locked by a single SR session */
+        *is_locked = 1;
+        if (id) {
+            *id = sid.sr;
+        }
+        if (nc_id) {
+            *nc_id = sid.nc;
+        }
+        if (timestamp) {
+            *timestamp = shm_lock->ds_ts;
+        }
+    }
+
+    /* success */
+
+cleanup_unlock:
+    /* SHM READ UNLOCK */
+    sr_shmmain_unlock(conn, 0, 0);
+
+    sr_modinfo_free(&mod_info);
+    return sr_api_ret(NULL, err_info);
 }
 
 API int

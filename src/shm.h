@@ -111,7 +111,8 @@ struct sr_mod_s {
         sr_rwlock_t lock;       /**< Process-shared lock for accessing module data. */
         uint8_t write_locked;   /**< Whether module data are WRITE locked (lock may not be WRITE locked to allow data reading). */
         uint8_t ds_locked;      /**< Whether module data are datastore locked (NETCONF locks). */
-        sr_sid_t sid;           /**< Session ID of the locking session. */
+        sr_sid_t sid;           /**< Session ID of the locking session (user is always NULL). */
+        time_t ds_ts;           /**< Timestamp of the datastore lock. */
     } data_lock_info[2];        /**< Module data lock information for each datastore. */
     sr_rwlock_t replay_lock;    /**< Process-shared lock for accessing stored notifications for replay. */
     uint32_t ver;               /**< Module data version (non-zero). */
