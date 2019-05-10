@@ -636,7 +636,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
 
     /* check whether the module is not already in the context */
     ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
-    if (ly_mod) {
+    if (ly_mod && ly_mod->implemented) {
         /* it is currently in the context, try to parse it again to check revisions */
         ly_mod = lys_parse_path(conn->ly_ctx, schema_path, format);
         if (!ly_mod) {
@@ -718,7 +718,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
 
     /* try to find this module */
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!ly_mod) {
+    if (!ly_mod || !ly_mod->implemented) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
         goto error_unlock;
     }
@@ -768,7 +768,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
 
     /* try to find this module */
     ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
-    if (!ly_mod) {
+    if (!ly_mod || !ly_mod->implemented) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", mod_name);
         goto cleanup_unlock;
     }
@@ -838,7 +838,7 @@ sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name)
 
     /* try to find this module */
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!ly_mod) {
+    if (!ly_mod || !ly_mod->implemented) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup_unlock;
     }
@@ -878,7 +878,7 @@ sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int r
 
     /* try to find this module */
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!ly_mod) {
+    if (!ly_mod || !ly_mod->implemented) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup_unlock;
     }
@@ -984,7 +984,7 @@ sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner,
 
     /* try to find this module */
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!ly_mod) {
+    if (!ly_mod || !ly_mod->implemented) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup_unlock;
     }
@@ -1025,7 +1025,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
 
     /* try to find this module */
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!ly_mod) {
+    if (!ly_mod || !ly_mod->implemented) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
     }

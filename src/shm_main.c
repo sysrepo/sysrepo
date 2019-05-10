@@ -1600,19 +1600,19 @@ sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
                     sr_errinfo_new_ly(&err_info, conn->ly_ctx);
                     return err_info;
                 }
-
-                /* enable features */
-                features = (off_t *)(conn->main_ext_shm.addr + shm_mod->features);
-                for (i = 0; i < shm_mod->feat_count; ++i) {
-                    ret = lys_features_enable(mod, conn->main_ext_shm.addr + features[i]);
-                    if (ret) {
-                        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                        return err_info;
-                    }
-                }
             } else if (!mod->implemented) {
                 /* make the module implemented */
                 if (lys_set_implemented(mod)) {
+                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                    return err_info;
+                }
+            }
+
+            /* enable features */
+            features = (off_t *)(conn->main_ext_shm.addr + shm_mod->features);
+            for (i = 0; i < shm_mod->feat_count; ++i) {
+                ret = lys_features_enable(mod, conn->main_ext_shm.addr + features[i]);
+                if (ret) {
                     sr_errinfo_new_ly(&err_info, conn->ly_ctx);
                     return err_info;
                 }
