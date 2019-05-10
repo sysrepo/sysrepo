@@ -32,19 +32,18 @@
 #define SRCTL_LIST_PERMS "Permissions"
 #define SRCTL_LIST_SUBMODS "Submodules"
 #define SRCTL_LIST_FEATURES "Features"
-#define SRCTL_LIST_UPDFEATURES "Updated Features"
 
 struct list_item {
     char *name;
     char *revision;
     int implemented;
     int replay;
-    int removed;
+    int changed;
+    int feat_changes;
     char *owner;
     mode_t perms;
     char *submodules;
     char *features;
-    char *updated_features;
 };
 
 static void
@@ -146,7 +145,6 @@ srctl_list_collect_import(const struct lys_module *ly_mod, struct list_item **li
     cur_item->owner = strdup("");
     cur_item->submodules = strdup("");
     cur_item->features = strdup("");
-    cur_item->updated_features = strdup("");
 
     /* fill name and revision */
     cur_item->name = strdup(ly_mod->name);
@@ -165,7 +163,7 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
     struct list_item *cur_item;
     const struct lys_module *ly_mod;
     struct lyd_node *module, *child;
-    char *changed_features, *feat, *ptr, *next_feat, *owner, *group;
+    char *owner, *group;
     const char *str;
     int ret = SR_ERR_OK;
     uint32_t i;
@@ -182,8 +180,6 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
         cur_item->submodules = strdup("");
         cur_item->features = strdup("");
 
-        changed_features = NULL;
-
         /* collect information from sysrepo data */
         LY_TREE_FOR(module->child, child) {
             if (!strcmp(child->schema->name, "name")) {
@@ -195,7 +191,9 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
             } else if (!strcmp(child->schema->name, "replay-support")) {
                 cur_item->replay = 1;
             } else if (!strcmp(child->schema->name, "removed")) {
-                cur_item->removed = 1;
+                cur_item->changed = 1;
+            } else if (!strcmp(child->schema->name, "updated-yang")) {
+                cur_item->changed = 2;
             } else if (!strcmp(child->schema->name, "enabled-feature")) {
                 str = ((struct lyd_node_leaf_list *)child)->value_str;
                 cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + 1 + strlen(str) + 1);
@@ -204,41 +202,8 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
                 }
                 strcat(cur_item->features, str);
             } else if (!strcmp(child->schema->name, "changed-feature")) {
-                str = ((struct lyd_node_leaf_list *)child->child)->value_str;
-                if (!changed_features) {
-                    changed_features = strdup(str);
-                } else {
-                    changed_features = realloc(changed_features, strlen(changed_features) + 1 + strlen(str) + 1);
-                    strcat(changed_features, " ");
-                    strcat(changed_features, str);
-                }
+                cur_item->feat_changes = 1;
             }
-        }
-
-        /* get updated feature set */
-        if (cur_item->features) {
-            cur_item->updated_features = strdup(cur_item->features);
-        } else {
-            cur_item->updated_features = strdup("");
-        }
-        if (changed_features) {
-            for (feat = strtok(changed_features, " "); feat; feat = strtok(NULL, " ")) {
-                if ((ptr = strstr(cur_item->updated_features, feat))) {
-                    /* disabling feature */
-                    next_feat = ptr + strlen(feat);
-                    if (next_feat[0] == ' ') {
-                        ++next_feat;
-                    }
-                    memmove(ptr, next_feat, strlen(next_feat) + 1);
-                } else {
-                    /* enabling feature */
-                    cur_item->updated_features = realloc(cur_item->updated_features,
-                            strlen(cur_item->updated_features) + 1 + strlen(feat) + 1);
-                    strcat(cur_item->updated_features, " ");
-                    strcat(cur_item->updated_features, feat);
-                }
-            }
-            free(changed_features);
         }
 
         /* get owner and permissions */
@@ -297,7 +262,7 @@ srctl_list(sr_conn_ctx_t *conn)
     struct lyd_node *data = NULL;
     struct list_item *list = NULL;
     size_t i, line_len, list_count = 0;
-    int max_name_len, max_owner_len, max_submod_len, max_feat_len, max_updfeat_len;
+    int max_name_len, max_owner_len, max_submod_len, max_feat_len;
     int rev_len, flag_len, perm_len;
 
     /* get context */
@@ -324,7 +289,6 @@ srctl_list(sr_conn_ctx_t *conn)
     perm_len = strlen(SRCTL_LIST_PERMS);
     max_submod_len = strlen(SRCTL_LIST_SUBMODS);
     max_feat_len = strlen(SRCTL_LIST_FEATURES);
-    max_updfeat_len = strlen(SRCTL_LIST_UPDFEATURES);
     for (i = 0; i < list_count; ++i) {
         if ((int)strlen(list[i].name) > max_name_len) {
             max_name_len = strlen(list[i].name);
@@ -338,22 +302,19 @@ srctl_list(sr_conn_ctx_t *conn)
         if ((int)strlen(list[i].features) > max_feat_len) {
             max_feat_len = strlen(list[i].features);
         }
-        if ((int)strlen(list[i].updated_features) > max_updfeat_len) {
-            max_updfeat_len = strlen(list[i].updated_features);
-        }
     }
 
     /* print repository info */
     printf("Sysrepo repository: %s\n\n", sr_get_repo_path());
 
     /* print header */
-    printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, "Module Name", rev_len, "Revision",
+    printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, "Module Name", rev_len, "Revision",
             flag_len, "Flags", max_owner_len, "Owner", perm_len, "Permissions", max_submod_len, "Submodules",
-            max_feat_len, "Features", max_updfeat_len, "Updated Features");
+            max_feat_len, "Features");
 
     /* print ruler */
     line_len = max_name_len + 3 + rev_len + 3 + flag_len + 3 + max_owner_len + 3 + perm_len + 3 + max_submod_len + 3
-            + max_feat_len + 3 + max_updfeat_len;
+            + max_feat_len;
     for (i = 0; i < line_len; ++i) {
         printf("-");
     }
@@ -361,19 +322,20 @@ srctl_list(sr_conn_ctx_t *conn)
 
     /* print modules */
     for (i = 0; i < list_count; ++i) {
-        sprintf(flags_str, "%s%s%s", list[i].implemented ? "I" : "i", list[i].replay ? "R" : " ", list[i].removed ? "X" : "");
+        sprintf(flags_str, "%s%s%s%s", list[i].implemented ? "I" : "i", list[i].replay ? "R" : " ",
+                (list[i].changed == 1) ? "X" : (list[i].changed == 2 ? "U" : " "), list[i].feat_changes ? "F" : "");
         if (list[i].implemented) {
             sprintf(perm_str, "%03o", list[i].perms);
         } else {
             perm_str[0] = '\0';
         }
-        printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, list[i].name, rev_len, list[i].revision,
+        printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, list[i].name, rev_len, list[i].revision,
             flag_len, flags_str, max_owner_len, list[i].owner, perm_len, perm_str, max_submod_len, list[i].submodules,
-            max_feat_len, list[i].features, max_updfeat_len, list[i].updated_features);
+            max_feat_len, list[i].features);
     }
 
     /* print flag legend */
-    printf("\nFlags meaning: I - Installed/i - Imported; R - Replay support; X - Removed module\n\n");
+    printf("\nFlags meaning: I - Installed/i - Imported; R - Replay support; X - Removed/U - Updated; F - Feature changes\n\n");
 
 cleanup:
     lyd_free_withsiblings(data);
@@ -383,7 +345,6 @@ cleanup:
         free(list[i].owner);
         free(list[i].submodules);
         free(list[i].features);
-        free(list[i].updated_features);
     }
     free(list);
     return ret;
