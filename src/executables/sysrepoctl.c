@@ -65,11 +65,12 @@ help_print(void)
         "                       Uninstall the specified module from sysrepo.\n"
         "  -c, --change <module>\n"
         "                       Change access rights, features, or replay support of the specified module.\n"
+        "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
         "\n"
         "Available other-options:\n"
         "  -s, --search-dir <dir-path>\n"
         "                       Directory to search for include/import modules. Directory with already-installed\n"
-        "                       modules is always searched (install op).\n"
+        "                       modules is always searched (install, update op).\n"
         "  -e, --enable-feature <feature-name>\n"
         "                       Enabled specific feature. Can be specified multiple times (install, change op).\n"
         "  -d, --disable-feature <feature-name>\n"
@@ -403,6 +404,7 @@ main(int argc, char** argv)
         {"install",         required_argument, NULL, 'i'},
         {"uninstall",       required_argument, NULL, 'u'},
         {"change",          required_argument, NULL, 'c'},
+        {"update",          required_argument, NULL, 'U'},
         {"search-dir",      required_argument, NULL, 's'},
         {"enable-feature",  required_argument, NULL, 'e'},
         {"disable-feature", required_argument, NULL, 'd'},
@@ -420,7 +422,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hli:u:c:s:e:d:r:o:g:p:v:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hli:u:c:U:s:e:d:r:o:g:p:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             help_print();
@@ -456,6 +458,14 @@ main(int argc, char** argv)
             }
             operation = 'c';
             module_name = optarg;
+            break;
+        case 'U':
+            if (operation) {
+                error_print(0, "Operation already specified");
+                goto cleanup;
+            }
+            operation = 'U';
+            file_path = optarg;
             break;
         case 's':
             if (search_dir) {
@@ -604,6 +614,15 @@ main(int argc, char** argv)
                 goto cleanup;
             }
         }
+        rc = EXIT_SUCCESS;
+        break;
+    case 'U':
+        /* update */
+        if ((r = sr_update_module(conn, file_path, search_dir)) != SR_ERR_OK) {
+            error_print(r, "Failed to update module \"%s\"", file_path);
+            goto cleanup;
+        }
+        rc = EXIT_SUCCESS;
         break;
     case 0:
         error_print(0, "No operation specified");

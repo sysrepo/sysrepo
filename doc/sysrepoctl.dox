@@ -1,9 +1,9 @@
 /**
 @page sysrepoctl sysrepoctl
 
-It is a utility that enables changing __schemas__ (modules). Specifically, it can _list_, _install_, or _uninstall_ them.
-Also, features, replay support, and permissions of a module can be _changed_. It is important to keep in mind what
-operations are performed immediatelly and what are postponed (details in @ref schema "Schemas").
+It is a utility that enables changing __schemas__ (modules). Specifically, it can _list_, _install_, _uninstall_,
+or _update_ them. Also, features, replay support, and permissions of a module can be _changed_. It is important
+to keep in mind what operations are performed immediatelly and what are postponed (details in @ref schema "Schemas").
 
 ## -l, \-\-list
 
@@ -50,6 +50,14 @@ Finally, file system permissions can be adjusted.
 
 ~~~
 sysrepoctl --change ietf-interfaces --owner netconf --group netconf --permissions 660
+~~~
+
+## -U, \-\-update \<path\>
+
+Existing installed YANG modules can be updated to newer revision.
+
+~~~
+sysrepoctl --update ~/Documents/modules/ietf-netconf@2013-09-29.yang
 ~~~
 
 */
