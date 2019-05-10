@@ -96,7 +96,7 @@ static void
 test_leafref(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct ly_set *subtrees;
+    struct lyd_node *data;
     int ret;
 
     /* create valid data */
@@ -123,21 +123,16 @@ test_leafref(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check final datastore contents */
-    ret = sr_get_subtrees(st->sess, "/test:* | /refs:*", &subtrees);
+    ret = sr_get_data(st->sess, "/test:* | /refs:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_int_equal(subtrees->number, 3);
+    assert_string_equal(data->schema->name, "cont");
+    assert_string_equal(data->next->schema->name, "test-leaf");
+    assert_string_equal(((struct lyd_node_leaf_list *)data->next)->value_str, "10");
+    assert_string_equal(data->next->next->schema->name, "lref");
+    assert_string_equal(((struct lyd_node_leaf_list *)data->next->next)->value_str, "10");
 
-    assert_string_equal(subtrees->set.d[0]->schema->name, "cont");
-    assert_string_equal(subtrees->set.d[1]->schema->name, "test-leaf");
-    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[1])->value_str, "10");
-    assert_string_equal(subtrees->set.d[2]->schema->name, "lref");
-    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[2])->value_str, "10");
-
-    lyd_free_withsiblings(subtrees->set.d[0]);
-    lyd_free_withsiblings(subtrees->set.d[1]);
-    lyd_free_withsiblings(subtrees->set.d[2]);
-    ly_set_free(subtrees);
+    lyd_free_withsiblings(data);
 }
 
 static void

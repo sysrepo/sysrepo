@@ -227,11 +227,10 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
 static int
 op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name, const char *xpath, LYD_FORMAT format)
 {
-    struct ly_set *set;
+    struct lyd_node *data;
     FILE *file = NULL;
     char *str;
     int r;
-    uint32_t i;
 
     if (format == LYD_UNKNOWN) {
         format = LYD_XML;
@@ -248,12 +247,12 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     /* get subtrees */
     if (module_name) {
         asprintf(&str, "/%s:*", module_name);
-        r = sr_get_subtrees(sess, str, &set);
+        r = sr_get_data(sess, str, &data);
         free(str);
     } else if (xpath) {
-        r = sr_get_subtrees(sess, xpath, &set);
+        r = sr_get_data(sess, xpath, &data);
     } else {
-        r = sr_get_subtrees(sess, "/*", &set);
+        r = sr_get_data(sess, "/*", &data);
     }
     if (r != SR_ERR_OK) {
         error_print(r, "Getting data failed");
@@ -264,11 +263,8 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* print exported data */
-    for (i = 0; i < set->number; ++i) {
-        lyd_print_file(file ? file : stdout, set->set.d[i], format, LYP_FORMAT);
-        lyd_free_withsiblings(set->set.d[i]);
-    }
-    ly_set_free(set);
+    lyd_print_file(file ? file : stdout, data, format, LYP_FORMAT);
+    lyd_free_withsiblings(data);
 
     /* cleanup */
     if (file) {

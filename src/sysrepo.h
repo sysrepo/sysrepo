@@ -636,26 +636,25 @@ int sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values
 int sr_get_subtree(sr_session_ctx_t *session, const char *path, struct lyd_node **subtree);
 
 /**
- * @brief Retrieves an array of subtrees whose root nodes match the provided XPath.
+ * @brief Retrieves tree whose root nodes match the provided XPath.
  *
- * Subtrees that match the provided XPath are not merged even if they overlap. This significantly
- * simplifies the implementation and decreases the cost of this operation. The downside is that
- * the user must choose the XPath carefully. If the subtree selection process results in too many
- * node overlaps, the cost of the operation may easily outshine the benefits. As an example,
- * a common XPath expression "//." is normally used to select all nodes in a data tree, but for this
- * operation it would result in an excessive duplication of transfered data elements.
- * Since you get all the descendants of each matched node implicitly, you should probably never need
- * to use "//" in the XPath (i.e. "/\asterisk" is the XPath for all the nodes).
+ * Top-level trees are always returned so if an inner node is selected, all of its descendants
+ * and its direct parents (lists also with keys) are returned.
+ *
+ * If the subtree selection process results in too many node overlaps, the cost of the operation
+ * may be unnecessarily big. As an example, a common XPath expression "//." is normally used
+ * to select all nodes in a data tree, but for this operation it would result in an excessive duplication
+ * of data nodes. Since all the descendants of each matched node are returned implicitly, "//" in the XPath
+ * should never be used (i.e. "/\asterisk" is the correct XPath for all the nodes).
  *
  * Required READ access.
  *
  * @param[in] session Session to use.
  * @param[in] xpath XPath selecting root nodes of subtrees to be retrieved.
- * @param[out] subtrees Set of nested structures storing all data of the requested subtrees
- * (allocated by the function, it is supposed to be freed by the caller).
+ * @param[out] data Connected top-level trees with all the selected data (allocated by the function, freed by the caller).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, struct ly_set **subtrees);
+int sr_get_data(sr_session_ctx_t *session, const char *xpath, struct lyd_node **data);
 
 /**
  * @brief Frees ::sr_val_t structure and all memory allocated within it.

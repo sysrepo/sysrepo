@@ -888,8 +888,7 @@ copy_userord_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    struct ly_set *subtrees;
-    struct lyd_node *node;
+    struct lyd_node *data, *node;
     int ret;
 
     ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
@@ -911,11 +910,10 @@ copy_userord_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtrees(sess, "/test:*", &subtrees);
+    ret = sr_get_data(sess, "/test:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(subtrees->number, 5);
 
-    node = subtrees->set.d[0];
+    node = data;
     assert_string_equal(node->schema->name, "cont");
     node = node->child;
     assert_string_equal(node->schema->name, "l2");
@@ -930,29 +928,24 @@ copy_userord_thread(void *arg)
     assert_string_equal(node->schema->name, "ll2");
     assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "1");
     assert_null(node->next);
-    lyd_free_withsiblings(node->parent);
 
-    node = subtrees->set.d[1];
+    node = data->next;
     assert_string_equal(node->schema->name, "ll1");
     assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "1");
-    lyd_free_withsiblings(node);
 
-    node = subtrees->set.d[2];
+    node = data->next->next;
     assert_string_equal(node->schema->name, "l1");
     assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "b");
-    lyd_free_withsiblings(node);
 
-    node = subtrees->set.d[3];
+    node = data->next->next->next;
     assert_string_equal(node->schema->name, "l1");
     assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "a");
-    lyd_free_withsiblings(node);
 
-    node = subtrees->set.d[4];
+    node = data->next->next->next->next;
     assert_string_equal(node->schema->name, "ll1");
     assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "2");
-    lyd_free_withsiblings(node);
 
-    ly_set_free(subtrees);
+    lyd_free_withsiblings(data);
 
     /* perform some startup changes (no actual changes) */
     ret = sr_move_item(sess, "/test:ll1[.='1']", SR_MOVE_BEFORE, NULL, "2");
@@ -967,11 +960,10 @@ copy_userord_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree (should be the same) */
-    ret = sr_get_subtrees(sess, "/test:*", &subtrees);
+    ret = sr_get_data(sess, "/test:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(subtrees->number, 5);
 
-    node = subtrees->set.d[0];
+    node = data;
     assert_string_equal(node->schema->name, "cont");
     node = node->child;
     assert_string_equal(node->schema->name, "l2");
@@ -986,29 +978,24 @@ copy_userord_thread(void *arg)
     assert_string_equal(node->schema->name, "ll2");
     assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "1");
     assert_null(node->next);
-    lyd_free_withsiblings(node->parent);
 
-    node = subtrees->set.d[1];
+    node = data->next;
     assert_string_equal(node->schema->name, "ll1");
     assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "1");
-    lyd_free_withsiblings(node);
 
-    node = subtrees->set.d[2];
+    node = data->next->next;
     assert_string_equal(node->schema->name, "l1");
     assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "b");
-    lyd_free_withsiblings(node);
 
-    node = subtrees->set.d[3];
+    node = data->next->next->next;
     assert_string_equal(node->schema->name, "l1");
     assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "a");
-    lyd_free_withsiblings(node);
 
-    node = subtrees->set.d[4];
+    node = data->next->next->next->next;
     assert_string_equal(node->schema->name, "ll1");
     assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "2");
-    lyd_free_withsiblings(node);
 
-    ly_set_free(subtrees);
+    lyd_free_withsiblings(data);
 
     /* signal that we have finished copying */
     pthread_barrier_wait(&st->barrier);
@@ -1293,7 +1280,6 @@ replace_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     struct lyd_node *config, *node;
-    struct ly_set *subtrees;
     char *str1;
     const char *str2;
     int ret;
@@ -1321,13 +1307,12 @@ replace_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtrees(sess, "/ietf-interfaces:interfaces", &subtrees);
+    ret = sr_get_data(sess, "/ietf-interfaces:interfaces", &node);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(subtrees->number, 1);
 
-    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, node, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
-    lyd_free_withsiblings(subtrees->set.d[0]);
+    lyd_free_withsiblings(node);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -1345,7 +1330,6 @@ replace_thread(void *arg)
 
     assert_string_equal(str1, str2);
     free(str1);
-    ly_set_free(subtrees);
 
     /* prepare some test config */
     config = lyd_new_path(NULL, sr_get_context(st->conn), "/test:l1[k='c']", NULL, 0, 0);
@@ -1367,31 +1351,26 @@ replace_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtrees(sess, "/test:*", &subtrees);
+    ret = sr_get_data(sess, "/test:*", &node);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(subtrees->number, 4);
 
-    assert_string_equal(subtrees->set.d[0]->schema->name, "l1");
-    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[0]->child)->value_str, "c");
-    lyd_free_withsiblings(subtrees->set.d[0]);
+    assert_string_equal(node->schema->name, "l1");
+    assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "c");
 
-    assert_string_equal(subtrees->set.d[1]->schema->name, "l1");
-    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[1]->child)->value_str, "a");
-    lyd_free_withsiblings(subtrees->set.d[1]);
+    assert_string_equal(node->next->schema->name, "l1");
+    assert_string_equal(((struct lyd_node_leaf_list *)node->next->child)->value_str, "a");
 
-    assert_string_equal(subtrees->set.d[2]->schema->name, "l1");
-    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[2]->child)->value_str, "b");
-    lyd_free_withsiblings(subtrees->set.d[2]);
+    assert_string_equal(node->next->next->schema->name, "l1");
+    assert_string_equal(((struct lyd_node_leaf_list *)node->next->next->child)->value_str, "b");
 
-    ret = lyd_print_mem(&str1, subtrees->set.d[3], LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, node->next->next->next, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
-    lyd_free_withsiblings(subtrees->set.d[3]);
+    lyd_free_withsiblings(node);
 
     str2 = "<cont xmlns=\"urn:test\"><ll2>2</ll2><ll2>1</ll2><ll2>3</ll2></cont>";
 
     assert_string_equal(str1, str2);
     free(str1);
-    ly_set_free(subtrees);
 
     /* signal that we have finished */
     pthread_barrier_wait(&st->barrier);

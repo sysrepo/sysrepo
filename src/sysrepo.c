@@ -1324,14 +1324,17 @@ cleanup_shm_unlock:
 }
 
 API int
-sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, struct ly_set **subtrees)
+sr_get_data(sr_session_ctx_t *session, const char *xpath, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
-    uint32_t i, j;
+    uint32_t i;
     struct sr_mod_info_s mod_info;
+    struct ly_set *subtrees = NULL;
+    struct lyd_node *node;
 
-    SR_CHECK_ARG_APIRET(!session || !xpath || !subtrees, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !xpath || !data, session, err_info);
 
+    *data = NULL;
     memset(&mod_info, 0, sizeof mod_info);
 
     /* SHM READ LOCK */
@@ -1360,19 +1363,35 @@ sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, struct ly_set **su
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, xpath, session, subtrees))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, xpath, session, &subtrees))) {
         goto cleanup_mods_unlock;
     }
 
-    /* duplicate all returned subtrees (they should not have any intersection, if they do, we are wasting some memory) */
-    for (i = 0; i < (*subtrees)->number; ++i) {
-        (*subtrees)->set.d[i] = lyd_dup((*subtrees)->set.d[i], LYD_DUP_OPT_RECURSIVE);
-        if (!(*subtrees)->set.d[i]) {
-            for (j = 0; j < i; ++j) {
-                lyd_free((*subtrees)->set.d[j]);
-            }
+    /* duplicate all returned subtrees with their parents and merge into one data tree */
+    for (i = 0; i < subtrees->number; ++i) {
+        node = lyd_dup(subtrees->set.d[i], LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_WITH_WHEN);
+        if (!node) {
             sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+            lyd_free_withsiblings(*data);
+            *data = NULL;
             goto cleanup_mods_unlock;
+        }
+
+        if (!*data) {
+            /* find parent */
+            while (node->parent) {
+                node = node->parent;
+            }
+            *data = node;
+        } else {
+            /* merge */
+            if (lyd_merge(*data, node, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+                lyd_free_withsiblings(node);
+                lyd_free_withsiblings(*data);
+                *data = NULL;
+                goto cleanup_mods_unlock;
+            }
         }
     }
 
@@ -1386,6 +1405,7 @@ cleanup_shm_unlock:
     /* SHM READ UNLOCK */
     sr_shmmain_unlock(session->conn, 0, 0);
 
+    ly_set_free(subtrees);
     sr_modinfo_free(&mod_info);
     if (cb_err_info) {
         /* return callback error if some was generated */

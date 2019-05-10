@@ -313,7 +313,7 @@ test_simple(void **state)
 {
     struct state *st = (struct state *)*state;
     const struct ly_ctx *ly_ctx;
-    struct ly_set *subtrees;
+    struct lyd_node *data;
     sr_subscription_ctx_t *subscr;
     char *str1;
     const char *str2;
@@ -337,14 +337,13 @@ test_simple(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_int_equal(subtrees->number, 1);
-    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
-    lyd_free_withsiblings(subtrees->set.d[0]);
+    lyd_free_withsiblings(data);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -356,8 +355,6 @@ test_simple(void **state)
 
     assert_string_equal(str1, str2);
     free(str1);
-
-    ly_set_free(subtrees);
 
     /* subscribe as state data provider */
     ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", simple_dp_cb,
@@ -365,15 +362,13 @@ test_simple(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational again */
-    ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(subtrees->number, 2);
 
-    /* print first subtree */
-    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
-    lyd_free_withsiblings(subtrees->set.d[0]);
+    lyd_free_withsiblings(data);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -381,18 +376,7 @@ test_simple(void **state)
             "<name>eth1</name>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
         "</interface>"
-    "</interfaces>";
-
-    assert_string_equal(str1, str2);
-    free(str1);
-
-    /* print second subtree */
-    ret = lyd_print_mem(&str1, subtrees->set.d[1], LYD_XML, LYP_WITHSIBLINGS);
-    assert_int_equal(ret, 0);
-
-    lyd_free_withsiblings(subtrees->set.d[1]);
-
-    str2 =
+    "</interfaces>"
     "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
             "<name>eth5</name>"
@@ -406,8 +390,6 @@ test_simple(void **state)
 
     assert_string_equal(str1, str2);
     free(str1);
-
-    ly_set_free(subtrees);
 
     sr_unsubscribe(subscr);
 }
@@ -433,7 +415,7 @@ static void
 test_fail(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct ly_set *subtrees;
+    struct lyd_node *data;
     sr_subscription_ctx_t *subscr;
     int ret;
 
@@ -453,7 +435,7 @@ test_fail(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     sr_unsubscribe(subscr);
@@ -486,7 +468,7 @@ static void
 test_config(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct ly_set *subtrees;
+    struct lyd_node *data;
     sr_subscription_ctx_t *subscr;
     char *str1;
     const char *str2;
@@ -515,14 +497,13 @@ test_config(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
-    assert_int_equal(subtrees->number, 2);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    assert_int_equal(data->next->dflt, 1);
 
-    /* print first subtree */
-    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
-    lyd_free_withsiblings(subtrees->set.d[0]);
+    lyd_free_withsiblings(data);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -534,14 +515,6 @@ test_config(void **state)
 
     assert_string_equal(str1, str2);
     free(str1);
-
-    /* check second subtree */
-    assert_string_equal(subtrees->set.d[1]->schema->name, "interfaces-state");
-    assert_int_equal(subtrees->set.d[1]->dflt, 1);
-
-    lyd_free_withsiblings(subtrees->set.d[1]);
-
-    ly_set_free(subtrees);
 
     sr_unsubscribe(subscr);
 }
@@ -579,7 +552,7 @@ static void
 test_list(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct ly_set *subtrees;
+    struct lyd_node *data;
     sr_subscription_ctx_t *subscr;
     char *str1;
     const char *str2;
@@ -608,14 +581,13 @@ test_list(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
-    assert_int_equal(subtrees->number, 2);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    assert_int_equal(data->next->dflt, 1);
 
-    /* print first subtree */
-    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
-    lyd_free_withsiblings(subtrees->set.d[0]);
+    lyd_free_withsiblings(data);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -635,14 +607,6 @@ test_list(void **state)
 
     assert_string_equal(str1, str2);
     free(str1);
-
-    /* check second subtree */
-    assert_string_equal(subtrees->set.d[1]->schema->name, "interfaces-state");
-    assert_int_equal(subtrees->set.d[1]->dflt, 1);
-
-    lyd_free_withsiblings(subtrees->set.d[1]);
-
-    ly_set_free(subtrees);
 
     sr_unsubscribe(subscr);
 }
@@ -706,7 +670,7 @@ static void
 test_nested(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct ly_set *subtrees;
+    struct lyd_node *data;
     sr_subscription_ctx_t *subscr;
     char *str1;
     const char *str2;
@@ -738,14 +702,13 @@ test_nested(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
-    assert_int_equal(subtrees->number, 2);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    assert_int_equal(ret, SR_ERR_OK);
 
-    /* print first subtree */
-    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
-    lyd_free_withsiblings(subtrees->set.d[0]);
+    lyd_free_withsiblings(data);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -753,18 +716,7 @@ test_nested(void **state)
             "<name>eth1</name>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
         "</interface>"
-    "</interfaces>";
-
-    assert_string_equal(str1, str2);
-    free(str1);
-
-    /* print second subtree */
-    ret = lyd_print_mem(&str1, subtrees->set.d[1], LYD_XML, LYP_WITHSIBLINGS);
-    assert_int_equal(ret, 0);
-
-    lyd_free_withsiblings(subtrees->set.d[1]);
-
-    str2 =
+    "</interfaces>"
     "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
             "<name>eth2</name>"
@@ -787,8 +739,6 @@ test_nested(void **state)
 
     assert_string_equal(str1, str2);
     free(str1);
-
-    ly_set_free(subtrees);
 
     sr_unsubscribe(subscr);
 }
@@ -835,7 +785,7 @@ static void
 test_mixed(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct ly_set *subtrees;
+    struct lyd_node *data;
     sr_subscription_ctx_t *subscr;
     char *str1;
     const char *str2;
@@ -861,14 +811,13 @@ test_mixed(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_subtrees(st->sess, "/ietf-interfaces:*", &subtrees);
-    assert_int_equal(subtrees->number, 2);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    assert_int_equal(ret, SR_ERR_OK);
 
-    /* print first subtree */
-    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
-    lyd_free_withsiblings(subtrees->set.d[0]);
+    lyd_free_withsiblings(data);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -876,18 +825,7 @@ test_mixed(void **state)
             "<name>eth10</name>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
         "</interface>"
-    "</interfaces>";
-
-    assert_string_equal(str1, str2);
-    free(str1);
-
-    /* print second subtree */
-    ret = lyd_print_mem(&str1, subtrees->set.d[1], LYD_XML, LYP_WITHSIBLINGS);
-    assert_int_equal(ret, 0);
-
-    lyd_free_withsiblings(subtrees->set.d[1]);
-
-    str2 =
+    "</interfaces>"
     "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
             "<name>eth11</name>"
@@ -901,8 +839,6 @@ test_mixed(void **state)
 
     assert_string_equal(str1, str2);
     free(str1);
-
-    ly_set_free(subtrees);
 
     sr_unsubscribe(subscr);
 }

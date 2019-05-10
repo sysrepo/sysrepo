@@ -1393,7 +1393,7 @@ apply_change_done_dflt_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    struct ly_set *subtrees;
+    struct lyd_node *data;
     char *str1;
     const char *str2;
     int ret;
@@ -1416,15 +1416,14 @@ apply_change_done_dflt_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtrees(sess, "/defaults:*", &subtrees);
+    ret = sr_get_data(sess, "/defaults:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_int_equal(subtrees->number, 2);
-
-    /* check first node */
-    assert_string_equal(subtrees->set.d[0]->schema->name, "l1");
-    ret = lyd_print_mem(&str1, subtrees->set.d[0], LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
+    assert_string_equal(data->schema->name, "l1");
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
 
     str2 =
     "<l1 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
@@ -1434,18 +1433,13 @@ apply_change_done_dflt_thread(void *arg)
                 "<dflt1 ncwd:default=\"true\">10</dflt1>"
             "</cont2>"
         "</cont1>"
-    "</l1>";
+    "</l1>"
+    "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+        "I exist!"
+    "</dflt2>";
 
     assert_string_equal(str1, str2);
     free(str1);
-
-    /* check second node */
-    assert_string_equal(subtrees->set.d[1]->schema->name, "dflt2");
-    assert_int_equal(subtrees->set.d[1]->dflt, 1);
-
-    lyd_free_withsiblings(subtrees->set.d[0]);
-    lyd_free_withsiblings(subtrees->set.d[1]);
-    ly_set_free(subtrees);
 
     pthread_barrier_wait(&st->barrier);
 
@@ -1461,19 +1455,15 @@ apply_change_done_dflt_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtrees(sess, "/defaults:*", &subtrees);
+    ret = sr_get_data(sess, "/defaults:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_int_equal(subtrees->number, 2);
-
     /* check only first node */
-    assert_string_equal(subtrees->set.d[0]->schema->name, "l1");
-    assert_int_equal(subtrees->set.d[0]->child->next->child->child->dflt, 0);
-    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[0]->child->next->child->child)->value_str, "5");
+    assert_string_equal(data->schema->name, "l1");
+    assert_int_equal(data->child->next->child->child->dflt, 0);
+    assert_string_equal(((struct lyd_node_leaf_list *)data->child->next->child->child)->value_str, "5");
 
-    lyd_free_withsiblings(subtrees->set.d[0]);
-    lyd_free_withsiblings(subtrees->set.d[1]);
-    ly_set_free(subtrees);
+    lyd_free_withsiblings(data);
 
     pthread_barrier_wait(&st->barrier);
 
@@ -1489,19 +1479,15 @@ apply_change_done_dflt_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtrees(sess, "/defaults:*", &subtrees);
+    ret = sr_get_data(sess, "/defaults:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_int_equal(subtrees->number, 2);
-
     /* check only first node */
-    assert_string_equal(subtrees->set.d[0]->schema->name, "l1");
-    assert_int_equal(subtrees->set.d[0]->child->next->child->child->dflt, 0);
-    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[0]->child->next->child->child)->value_str, "10");
+    assert_string_equal(data->schema->name, "l1");
+    assert_int_equal(data->child->next->child->child->dflt, 0);
+    assert_string_equal(((struct lyd_node_leaf_list *)data->child->next->child->child)->value_str, "10");
 
-    lyd_free_withsiblings(subtrees->set.d[0]);
-    lyd_free_withsiblings(subtrees->set.d[1]);
-    ly_set_free(subtrees);
+    lyd_free_withsiblings(data);
 
     pthread_barrier_wait(&st->barrier);
 
@@ -1517,19 +1503,15 @@ apply_change_done_dflt_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtrees(sess, "/defaults:*", &subtrees);
+    ret = sr_get_data(sess, "/defaults:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_int_equal(subtrees->number, 2);
-
     /* check only first node */
-    assert_string_equal(subtrees->set.d[0]->schema->name, "l1");
-    assert_int_equal(subtrees->set.d[0]->child->next->child->child->dflt, 1);
-    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[0]->child->next->child->child)->value_str, "10");
+    assert_string_equal(data->schema->name, "l1");
+    assert_int_equal(data->child->next->child->child->dflt, 1);
+    assert_string_equal(((struct lyd_node_leaf_list *)data->child->next->child->child)->value_str, "10");
 
-    lyd_free_withsiblings(subtrees->set.d[0]);
-    lyd_free_withsiblings(subtrees->set.d[1]);
-    ly_set_free(subtrees);
+    lyd_free_withsiblings(data);
 
     /*
      * perform 5th change
@@ -1543,11 +1525,10 @@ apply_change_done_dflt_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtrees(sess, "/defaults:*", &subtrees);
+    ret = sr_get_data(sess, "/defaults:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_int_equal(subtrees->number, 0);
-    ly_set_free(subtrees);
+    assert_null(data);
 
     pthread_barrier_wait(&st->barrier);
 
@@ -1855,7 +1836,7 @@ apply_change_done_when_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    struct ly_set *subtrees;
+    struct lyd_node *data;
     int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -1878,11 +1859,10 @@ apply_change_done_when_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtrees(sess, "/when2:*", &subtrees);
+    ret = sr_get_data(sess, "/when2:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_int_equal(subtrees->number, 0);
-    ly_set_free(subtrees);
+    assert_null(data);
 
     /*
      * perform 2nd change
@@ -1898,17 +1878,14 @@ apply_change_done_when_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtrees(sess, "/when1:* | /when2:*", &subtrees);
+    ret = sr_get_data(sess, "/when1:* | /when2:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(subtrees->number, 2);
 
-    assert_string_equal(subtrees->set.d[0]->schema->name, "l1");
-    assert_string_equal(subtrees->set.d[1]->schema->name, "cont");
-    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[1]->child)->value_str, "bye");
+    assert_string_equal(data->schema->name, "l1");
+    assert_string_equal(data->next->schema->name, "cont");
+    assert_string_equal(((struct lyd_node_leaf_list *)data->next->child)->value_str, "bye");
 
-    lyd_free_withsiblings(subtrees->set.d[0]);
-    lyd_free_withsiblings(subtrees->set.d[1]);
-    ly_set_free(subtrees);
+    lyd_free_withsiblings(data);
 
     /*
      * perform 3rd change
@@ -1924,18 +1901,15 @@ apply_change_done_when_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtrees(sess, "/when1:* | /when2:*", &subtrees);
+    ret = sr_get_data(sess, "/when1:* | /when2:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(subtrees->number, 2);
 
-    assert_string_equal(subtrees->set.d[0]->schema->name, "l2");
-    assert_string_equal(subtrees->set.d[1]->schema->name, "ll");
-    assert_int_equal(subtrees->set.d[1]->dflt, 1);
-    assert_string_equal(((struct lyd_node_leaf_list *)subtrees->set.d[1])->value_str, "zzZZzz");
+    assert_string_equal(data->schema->name, "l2");
+    assert_string_equal(data->next->schema->name, "ll");
+    assert_int_equal(data->next->dflt, 1);
+    assert_string_equal(((struct lyd_node_leaf_list *)data->next)->value_str, "zzZZzz");
 
-    lyd_free_withsiblings(subtrees->set.d[0]);
-    lyd_free_withsiblings(subtrees->set.d[1]);
-    ly_set_free(subtrees);
+    lyd_free_withsiblings(data);
 
     /*
      * perform 4th change
@@ -1948,10 +1922,9 @@ apply_change_done_when_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtrees(sess, "/when1:* | /when2:*", &subtrees);
+    ret = sr_get_data(sess, "/when1:* | /when2:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(subtrees->number, 0);
-    ly_set_free(subtrees);
+    assert_null(data);
 
     /* signal that we have finished applying changes */
     pthread_barrier_wait(&st->barrier);

@@ -276,7 +276,7 @@ static void
 test_move1(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct ly_set *subtrees;
+    struct lyd_node *data, *node;
     char *str, *str2;
     uint32_t i;
     int ret;
@@ -309,13 +309,12 @@ test_move1(void **state)
     ret = sr_apply_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_subtrees(st->sess, "/test:*", &subtrees);
+    ret = sr_get_data(st->sess, "/test:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(subtrees->number, 7);
 
     /* should be in reversed order (relative only to the same schema node instances) */
-    for (i = 0; i < 7; ++i) {
-        lyd_print_mem(&str, subtrees->set.d[i], LYD_XML, 0);
+    for (node = data, i = 0; i < 7; ++i, node = node->next) {
+        lyd_print_mem(&str, node, LYD_XML, 0);
 
         switch (i) {
         case 0:
@@ -330,7 +329,6 @@ test_move1(void **state)
             break;
         case 2:
             assert_null(str);
-            lyd_free(subtrees->set.d[i]);
             continue;
         case 3:
             asprintf(&str2,
@@ -359,10 +357,8 @@ test_move1(void **state)
         assert_string_equal(str, str2);
         free(str2);
         free(str);
-
-        lyd_free(subtrees->set.d[i]);
     }
-    ly_set_free(subtrees);
+    lyd_free_withsiblings(data);
 
     /* create nested testing data */
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key1']/v", "1", 0);
@@ -392,12 +388,11 @@ test_move1(void **state)
     ret = sr_apply_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_subtrees(st->sess, "/test:cont", &subtrees);
+    ret = sr_get_data(st->sess, "/test:cont", &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(subtrees->number, 1);
 
     /* should be in reversed order (relative only to the same schema node instances) */
-    lyd_print_mem(&str, subtrees->set.d[0], LYD_XML, 0);
+    lyd_print_mem(&str, data, LYD_XML, 0);
 
     str2 =
     "<cont xmlns=\"urn:test\">"
@@ -411,8 +406,7 @@ test_move1(void **state)
     assert_string_equal(str, str2);
 
     free(str);
-    lyd_free(subtrees->set.d[0]);
-    ly_set_free(subtrees);
+    lyd_free_withsiblings(data);
 }
 
 int
