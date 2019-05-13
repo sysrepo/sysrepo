@@ -1371,12 +1371,14 @@ sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
 
     assert(path);
 
-    if (perm > 00666) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Only read and write permissions can be set.");
-        return err_info;
-    } else if (perm & 00111) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Setting execute permissions has no effect.");
-        return err_info;
+    if ((int)perm != -1) {
+        if (perm > 00666) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Only read and write permissions can be set.");
+            return err_info;
+        } else if (perm & 00111) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Setting execute permissions has no effect.");
+            return err_info;
+        }
     }
 
     /* we are going to change the owner */
