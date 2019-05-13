@@ -843,6 +843,63 @@ test_mixed(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST 8 */
+static void
+test_state(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    sr_subscription_ctx_t *subscr;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to all configuration data just to enable them */
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", enabled_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe as config data provider and listen */
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_dp_cb,
+            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from state */
+    ret = sr_session_switch_ds(st->sess, SR_DS_STATE);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth11</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<oper-status>down</oper-status>"
+            "<statistics>"
+                "<discontinuity-time>2000-01-01T00:00:00Z</discontinuity-time>"
+            "</statistics>"
+        "</interface>"
+    "</interfaces-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    sr_unsubscribe(subscr);
+}
+
 int
 main(void)
 {
@@ -854,6 +911,7 @@ main(void)
         cmocka_unit_test_teardown(test_list, clear_interfaces),
         cmocka_unit_test_teardown(test_nested, clear_interfaces),
         cmocka_unit_test_teardown(test_mixed, clear_interfaces),
+        cmocka_unit_test_teardown(test_state, clear_interfaces),
     };
 
     sr_log_stderr(SR_LL_INF);

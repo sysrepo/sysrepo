@@ -174,7 +174,8 @@ typedef uint32_t sr_conn_options_t;
 typedef enum sr_datastore_e {
     SR_DS_STARTUP = 0,     /**< Contains configuration data that will be loaded when a device starts. */
     SR_DS_RUNNING = 1,     /**< Contains current configuration data. */
-    SR_DS_OPERATIONAL = 2, /**< Contains currently used configuration and state data. */
+    SR_DS_OPERATIONAL = 2, /**< Contains currently used configuration (may differ from configuration data) and state data. */
+    SR_DS_STATE = 3,       /**< Contains only current state data. */
 } sr_datastore_t;
 
 /**

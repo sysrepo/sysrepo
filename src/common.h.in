@@ -59,6 +59,9 @@
 # define ATOMIC_INC_RELAXED(var) __sync_fetch_and_add(&(var), 1)
 #endif
 
+/** macro for checking datastore type */
+#define IS_WRITABLE_DS(ds) ((ds == SR_DS_STARTUP) || (ds == SR_DS_RUNNING))
+
 /** macro for traversing main SHM modules */
 #define SR_SHM_MOD_FOR(main_shm_addr, main_shm_size, shm_mod) \
     for (shm_mod = (sr_mod_t *)(main_shm_addr + sizeof(sr_main_shm_t)); (char *)shm_mod != main_shm_addr + main_shm_size; ++shm_mod)

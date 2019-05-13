@@ -1998,6 +1998,8 @@ sr_ds2str(sr_datastore_t ds)
         return "startup";
     case SR_DS_OPERATIONAL:
         return "operational";
+    case SR_DS_STATE:
+        return "state";
     }
 
     return NULL;
@@ -2720,6 +2722,8 @@ sr_module_config_data_append(const struct lys_module *ly_mod, sr_datastore_t ds,
     struct lyd_node *mod_data = NULL;
     char *path;
 
+    assert(ds != SR_DS_STATE);
+
     if (ds == SR_DS_OPERATIONAL) {
         file_ds = SR_DS_RUNNING;
     } else {
@@ -2763,7 +2767,7 @@ sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_no
     sr_error_info_t *err_info = NULL;
     char *path;
 
-    assert(ds != SR_DS_OPERATIONAL);
+    assert(IS_WRITABLE_DS(ds));
 
     if (ds == SR_DS_RUNNING) {
         err_info = sr_path_running_file(mod_name, &path);

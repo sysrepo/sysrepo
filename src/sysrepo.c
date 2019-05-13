@@ -1479,7 +1479,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     sr_error_info_t *err_info = NULL;
     char str[22], *str_val;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !value || (!path && !value->xpath), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || !value || (!path && !value->xpath), session, err_info);
 
     str_val = sr_val_sr2ly_str(session->conn->ly_ctx, value, str);
     if (!path) {
@@ -1532,7 +1532,7 @@ sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, 
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !path, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || !path, session, err_info);
 
     err_info = sr_edit_item(session, path, value, opts & SR_EDIT_STRICT ? "create" : "merge",
             opts & SR_EDIT_NON_RECURSIVE ? "none" : "merge", NULL, NULL, NULL);
@@ -1545,7 +1545,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !path, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || !path, session, err_info);
 
     err_info = sr_edit_item(session, path, NULL, opts & SR_EDIT_STRICT ? "delete" : "remove",
             opts & SR_EDIT_STRICT ? "none" : "ether", NULL, NULL, NULL);
@@ -1559,7 +1559,7 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !path, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || !path, session, err_info);
 
     err_info = sr_edit_item(session, path, NULL, "merge", "none", &position, list_keys, leaflist_value);
 
@@ -1573,7 +1573,7 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     const char *attr_full_name;
     struct lyd_node *valid_edit = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !edit || !default_operation, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || !edit || !default_operation, session, err_info);
     SR_CHECK_ARG_APIRET(strcmp(default_operation, "merge") && strcmp(default_operation, "replace")
             && strcmp(default_operation, "none"), session, err_info);
 
@@ -1630,7 +1630,7 @@ sr_validate(sr_session_ctx_t *session)
 
     SR_CHECK_ARG_APIRET(!session, session, err_info);
 
-    if ((session->ds != SR_DS_OPERATIONAL) && !session->dt[session->ds].edit) {
+    if (IS_WRITABLE_DS(session->ds) && !session->dt[session->ds].edit) {
         return sr_api_ret(session, NULL);
     }
 
@@ -1642,7 +1642,7 @@ sr_validate(sr_session_ctx_t *session)
     }
 
     /* collect all required modules */
-    if (session->ds == SR_DS_OPERATIONAL) {
+    if (!IS_WRITABLE_DS(session->ds)) {
         /* all modules */
         err_info = sr_shmmod_collect_modules(session->conn, NULL, session->ds, 0, &mod_info);
     } else {
@@ -1664,7 +1664,7 @@ sr_validate(sr_session_ctx_t *session)
     }
 
     /* apply any changes */
-    if (session->ds != SR_DS_OPERATIONAL) {
+    if (IS_WRITABLE_DS(session->ds)) {
         if ((err_info = sr_modinfo_edit_apply(&mod_info, session->dt[session->ds].edit, 0))) {
             goto cleanup_mods_unlock;
         }
@@ -1701,7 +1701,7 @@ sr_apply_changes(sr_session_ctx_t *session)
     struct lyd_node *update_edit;
     struct sr_mod_info_s mod_info;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds), session, err_info);
 
     if (!session->dt[session->ds].edit) {
         return sr_api_ret(session, NULL);
@@ -1869,7 +1869,7 @@ sr_discard_changes(sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds), session, err_info);
 
     if (!session->dt[session->ds].edit) {
         return sr_api_ret(session, NULL);
@@ -1993,7 +1993,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (dst_datastore == SR_DS_OPERATIONAL), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(dst_datastore), session, err_info);
 
     /* find first sibling */
     for (; src_config && src_config->prev->next; src_config = src_config->prev);
@@ -2034,7 +2034,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     struct sr_mod_info_s src_mod_info;
     const struct lys_module *ly_mod = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (src_datastore == SR_DS_OPERATIONAL) || (dst_datastore == SR_DS_OPERATIONAL), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(src_datastore) || !IS_WRITABLE_DS(dst_datastore), session, err_info);
 
     if (src_datastore == dst_datastore) {
         /* nothing to do */
@@ -2172,7 +2172,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock)
     struct sr_mod_info_s mod_info;
     const struct lys_module *ly_mod = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds), session, err_info);
 
     memset(&mod_info, 0, sizeof mod_info);
 
@@ -2247,7 +2247,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
     uint32_t i;
     sr_sid_t sid;
 
-    SR_CHECK_ARG_APIRET(!conn || (datastore == SR_DS_OPERATIONAL) || !is_locked, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!conn || !IS_WRITABLE_DS(datastore) || !is_locked, NULL, err_info);
 
     if (id) {
         *id = 0;
@@ -2751,7 +2751,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     sr_datastore_t ds = SR_DS_OPERATIONAL;
     sr_subscr_options_t sub_opts;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !module_name || !callback ||
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || !module_name || !callback ||
             ((opts & SR_SUBSCR_PASSIVE) && (opts & SR_SUBSCR_ENABLED)) || !subscription, session, err_info);
 
     conn = session->conn;
@@ -2879,12 +2879,8 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !xpath || !iter, session, err_info);
-
-    if (session->ev == SR_SUB_EV_NONE) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Trying to get changes from an invalid session.");
-        return sr_api_ret(session, err_info);
-    }
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || (session->ev == SR_SUB_EV_NONE) || !xpath || !iter,
+            session, err_info);
 
     if (!session->dt[session->ds].diff) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Session without changes.");
@@ -3136,7 +3132,7 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
     const char *attr_name;
     sr_change_oper_t op;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !iter || !operation || !old_value || !new_value,
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || !iter || !operation || !old_value || !new_value,
             session, err_info);
 
     /* get next change */
@@ -3237,7 +3233,7 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
     struct lyd_attr *attr, *attr2;
     const char *attr_name;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds == SR_DS_OPERATIONAL) || !iter || !operation || !node || !prev_value
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || !iter || !operation || !node || !prev_value
             || !prev_list || !prev_dflt, session, err_info);
 
     *prev_value = NULL;

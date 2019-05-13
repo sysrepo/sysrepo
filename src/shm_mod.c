@@ -190,7 +190,7 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t d
     for (i = 0; i < set->number; ++i) {
         /* skip uninteresting nodes */
         if ((set->set.s[i]->nodetype & (LYS_RPC | LYS_NOTIF))
-                || ((set->set.s[i]->flags & LYS_CONFIG_R) && (ds != SR_DS_OPERATIONAL))) {
+                || ((set->set.s[i]->flags & LYS_CONFIG_R) && IS_WRITABLE_DS(ds))) {
             continue;
         }
 
