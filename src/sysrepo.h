@@ -174,8 +174,9 @@ typedef uint32_t sr_conn_options_t;
 typedef enum sr_datastore_e {
     SR_DS_STARTUP = 0,     /**< Contains configuration data that will be loaded when a device starts. */
     SR_DS_RUNNING = 1,     /**< Contains current configuration data. */
-    SR_DS_OPERATIONAL = 2, /**< Contains currently used configuration (may differ from configuration data) and state data. */
-    SR_DS_STATE = 3,       /**< Contains only current state data. */
+    SR_DS_CANDIDATE = 2,   /**< Contains prepared configuration data that do not affect actual configuration. */
+    SR_DS_OPERATIONAL = 3, /**< Contains currently used configuration (may differ from configuration data) and state data. */
+    SR_DS_STATE = 4,       /**< Contains only current state data. */
 } sr_datastore_t;
 
 /**
@@ -792,8 +793,8 @@ int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_posi
 int sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char *default_operation);
 
 /**
- * @brief Perform the validation of changes made in current session, but do not
- * commit nor discard them.
+ * @brief Perform the validation of changes made in the current session, but do not
+ * apply nor discard them.
  *
  * Provides only YANG validation, apply-changes subscribers won't be notified in this case.
  *
@@ -805,10 +806,10 @@ int sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const 
 int sr_validate(sr_session_ctx_t *session);
 
 /**
- * @brief Apply changes made in current session.
+ * @brief Apply changes made in the current session.
  *
- * @note Note that in case that you are changing the running datastore, you also
- * need to copy the config to startup to make changes permanent after restart.
+ * @note Note that in case that you are changing the _running_ datastore, you also
+ * need to copy the config to _startup_ to make the changes persistent.
  *
  * @see Use ::sr_get_error to retrieve error information if the operation returned an error.
  *
@@ -820,7 +821,7 @@ int sr_validate(sr_session_ctx_t *session);
 int sr_apply_changes(sr_session_ctx_t *session);
 
 /**
- * @brief Discard non-committed changes made in current session.
+ * @brief Discard non-applied changes made in the current session.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @return Error code (::SR_ERR_OK on success).
@@ -850,6 +851,9 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
  * the operation only to the specified module. If it is not specified,
  * the operation is performed on all modules.
  *
+ * @note Note that copying from _candidate_ to _running_ or vice versa causes
+ * the _candidate_ datastore to revert to original behavior or mirroring _running_ datastore (@ref datastores).
+ *
  * Required WRITE access.
  *
  * @param[in] session Session to use.
@@ -874,6 +878,10 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datast
 
 /**
  * @brief Locks the data of the specified module or whole datastore.
+ *
+ * @note Note that locking _candidate_ datastore after it has already
+ * been modified is not allowed. Session needs to acquire this lock
+ * before it or any other session performs any changes.
  *
  * Required READ access.
  *
@@ -1049,7 +1057,9 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  * ::SR_SUBSCR_DONE_ONLY subscription flag.
  */
 typedef enum sr_notif_event_e {
-    SR_EV_UPDATE,  /**< Occurs before any other events and the subscriber can update the apply-changes diff. */
+    SR_EV_UPDATE,  /**< Occurs before any other events and the subscriber can update the apply-changes diff.
+                        It is performed by calling `sr_*_item()` or ::sr_edit_batch() on the callback session
+                        __without__ calling ::sr_apply_changes() or any other function. */
     SR_EV_CHANGE,  /**< Occurs just before the changes are committed to the datastore,
                         the subscriber is supposed to verify that the changes are valid and can be applied
                         and prepare all resources required for the changes. The subscriber can still deny the changes

@@ -822,7 +822,7 @@ sr_clear_sess(sr_session_ctx_t *tmp_sess)
     uint16_t i;
 
     sr_errinfo_free(&tmp_sess->err_info);
-    for (i = 0; i < 2; ++i) {
+    for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {
         lyd_free_withsiblings(tmp_sess->dt[i].edit);
         tmp_sess->dt[i].edit = NULL;
         lyd_free_withsiblings(tmp_sess->dt[i].diff);
@@ -915,8 +915,7 @@ sr_create_data_files(const struct lys_module *ly_mod)
     }
 
     /* print them into a file */
-    if (lyd_print_path(path, root, LYD_LYB, LYP_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+    if ((err_info = sr_module_config_data_set(ly_mod->name, SR_DS_STARTUP, root))) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
         goto cleanup;
     }
@@ -930,11 +929,10 @@ sr_create_data_files(const struct lys_module *ly_mod)
     /* repeat for running DS */
     free(path);
     path = NULL;
-    if ((err_info = sr_path_running_file(ly_mod->name, &path))) {
+    if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, 1, &path))) {
         return err_info;
     }
-    if (lyd_print_path(path, root, LYD_LYB, LYP_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+    if ((err_info = sr_module_config_data_set(ly_mod->name, SR_DS_RUNNING, root))) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
         goto cleanup;
     }
@@ -1037,12 +1035,28 @@ sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, int 
     int ret;
 
     if (suffix2 > -1) {
-        ret = asprintf(path, "%s/sr_%s.%s.%08x", abs_path ? SR_SHM_DIR : "", mod_name, suffix1, (uint32_t)suffix2);
+        ret = asprintf(path, "%s/srsub_%s.%s.%08x", abs_path ? SR_SHM_DIR : "", mod_name, suffix1, (uint32_t)suffix2);
     } else {
-        ret = asprintf(path, "%s/sr_%s.%s", abs_path ? SR_SHM_DIR : "", mod_name, suffix1);
+        ret = asprintf(path, "%s/srsub_%s.%s", abs_path ? SR_SHM_DIR : "", mod_name, suffix1);
     }
 
     if (ret == -1) {
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_ds_shm(const char *mod_name, sr_datastore_t ds, int abs_path, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+
+    assert((ds == SR_DS_RUNNING) || (ds == SR_DS_CANDIDATE));
+
+    ret = asprintf(path, "%s/sr_%s.%s", abs_path ? SR_SHM_DIR : "", mod_name, sr_ds2str(ds));
+    if (ret == -1) {
+        *path = NULL;
         SR_ERRINFO_MEM(&err_info);
     }
     return err_info;
@@ -1057,25 +1071,6 @@ sr_path_evpipe(uint32_t evpipe_num, char **path)
         SR_ERRINFO_MEM(&err_info);
     }
 
-    return err_info;
-}
-
-sr_error_info_t *
-sr_path_running_dir(char **path)
-{
-    sr_error_info_t *err_info = NULL;
-
-    if (SR_RUNNING_PATH[0]) {
-        *path = strdup(SR_RUNNING_PATH);
-    } else {
-        if (asprintf(path, "%s/data", sr_get_repo_path()) == -1) {
-            *path = NULL;
-        }
-    }
-
-    if (!*path) {
-        SR_ERRINFO_MEM(&err_info);
-    }
     return err_info;
 }
 
@@ -1131,25 +1126,6 @@ sr_path_yang_dir(char **path)
     }
 
     if (!*path) {
-        SR_ERRINFO_MEM(&err_info);
-    }
-    return err_info;
-}
-
-sr_error_info_t *
-sr_path_running_file(const char *mod_name, char **path)
-{
-    sr_error_info_t *err_info = NULL;
-    int ret;
-
-    if (SR_RUNNING_PATH[0]) {
-        ret = asprintf(path, "%s/%s.running", SR_RUNNING_PATH, mod_name);
-    } else {
-        ret = asprintf(path, "%s/data/%s.running", sr_get_repo_path(), mod_name);
-    }
-
-    if (ret == -1) {
-        *path = NULL;
         SR_ERRINFO_MEM(&err_info);
     }
     return err_info;
@@ -1422,7 +1398,7 @@ sr_perm_check(const char *mod_name, int wr)
     sr_error_info_t *err_info = NULL;
     char *path;
 
-    /* use startup file, it does not matter */
+    /* use startup file */
     if ((err_info = sr_path_startup_file(mod_name, &path))) {
         return err_info;
     }
@@ -1833,22 +1809,24 @@ sr_realloc(void *ptr, size_t size)
 }
 
 sr_error_info_t *
-sr_cp(const char *to, const char *from)
+sr_cp_file2shm(const char *to, const char *from)
 {
     sr_error_info_t *err_info = NULL;
     int fd_to = -1, fd_from = -1;
     char * out_ptr, buf[4096];
     ssize_t nread, nwritten;
 
+    /* open "from" file */
     fd_from = open(from, O_RDONLY);
     if (fd_from < 0) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" failed (%s).", from, strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" file failed (%s).", from, strerror(errno));
         goto cleanup;
     }
 
-    fd_to = open(to, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    /* open "to" SHM */
+    fd_to = shm_open(to, O_WRONLY | O_CREAT, 0666);
     if (fd_to < 0) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating \"%s\" failed (%s).", to, strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" SHM failed (%s).", to, strerror(errno));
         goto cleanup;
     }
 
@@ -1996,6 +1974,8 @@ sr_ds2str(sr_datastore_t ds)
         return "running";
     case SR_DS_STARTUP:
         return "startup";
+    case SR_DS_CANDIDATE:
+        return "candidate";
     case SR_DS_OPERATIONAL:
         return "operational";
     case SR_DS_STATE:
@@ -2718,32 +2698,53 @@ sr_error_info_t *
 sr_module_config_data_append(const struct lys_module *ly_mod, sr_datastore_t ds, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
-    sr_datastore_t file_ds;
     struct lyd_node *mod_data = NULL;
-    char *path;
+    char *path = NULL;
+    int fd = -1;
 
-    assert(ds != SR_DS_STATE);
-
-    if (ds == SR_DS_OPERATIONAL) {
-        file_ds = SR_DS_RUNNING;
-    } else {
-        file_ds = ds;
-    }
-
+retry_open:
     /* prepare correct file path */
-    if (file_ds == SR_DS_RUNNING) {
-        err_info = sr_path_running_file(ly_mod->name, &path);
-    } else {
+    switch (ds) {
+    case SR_DS_STARTUP:
         err_info = sr_path_startup_file(ly_mod->name, &path);
+        break;
+    case SR_DS_CANDIDATE:
+        err_info = sr_path_ds_shm(ly_mod->name, SR_DS_CANDIDATE, 0, &path);
+        break;
+    case SR_DS_OPERATIONAL:
+    case SR_DS_RUNNING:
+        err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, 0, &path);
+        break;
+    case SR_DS_STATE:
+        /* forbidden */
+        SR_ERRINFO_INT(&err_info);
+        break;
     }
     if (err_info) {
         goto error;
     }
 
-    /* load data from a persistent storage */
+    /* open fd */
+    if (ds == SR_DS_STARTUP) {
+        fd = open(path, O_RDONLY);
+    } else {
+        fd = shm_open(path, O_RDONLY, 0666);
+    }
+    if (fd == -1) {
+        if ((ds == SR_DS_CANDIDATE) && (errno == ENOENT)) {
+            /* no candidate exists, just use running */
+            ds = SR_DS_RUNNING;
+            free(path);
+            path = NULL;
+            goto retry_open;
+        }
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
+        goto error;
+    }
+
+    /* load the data */
     ly_errno = 0;
-    mod_data = lyd_parse_path(ly_mod->ctx, path, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS);
-    free(path);
+    mod_data = lyd_parse_fd(ly_mod->ctx, fd, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS);
     if (ly_errno) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         goto error;
@@ -2754,9 +2755,15 @@ sr_module_config_data_append(const struct lys_module *ly_mod, sr_datastore_t ds,
     } else {
         *data = mod_data;
     }
+    close(fd);
+    free(path);
     return NULL;
 
 error:
+    if (fd < 0) {
+        close(fd);
+    }
+    free(path);
     lyd_free_withsiblings(mod_data);
     return err_info;
 }
@@ -2765,26 +2772,50 @@ sr_error_info_t *
 sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data)
 {
     sr_error_info_t *err_info = NULL;
-    char *path;
+    char *path = NULL;
+    int fd = -1;
 
-    assert(IS_WRITABLE_DS(ds));
-
-    if (ds == SR_DS_RUNNING) {
-        err_info = sr_path_running_file(mod_name, &path);
-    } else {
+    /* learn path */
+    switch (ds) {
+    case SR_DS_STARTUP:
         err_info = sr_path_startup_file(mod_name, &path);
+        break;
+    case SR_DS_RUNNING:
+    case SR_DS_CANDIDATE:
+        err_info = sr_path_ds_shm(mod_name, ds, 0, &path);
+        break;
+    case SR_DS_OPERATIONAL:
+    case SR_DS_STATE:
+        /* forbidden */
+        SR_ERRINFO_INT(&err_info);
+        break;
     }
     if (err_info) {
-        return err_info;
+        goto cleanup;
     }
 
-    if (lyd_print_path(path, mod_data, LYD_LYB, LYP_WITHSIBLINGS)) {
+    /* open */
+    if (ds == SR_DS_STARTUP) {
+        fd = open(path, O_WRONLY | O_CREAT | O_TRUNC);
+    } else {
+        fd = shm_open(path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    }
+    if (fd == -1) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
+        goto cleanup;
+    }
+
+    /* print data */
+    if (lyd_print_fd(fd, mod_data, LYD_LYB, LYP_WITHSIBLINGS)) {
         sr_errinfo_new_ly(&err_info, lyd_node_module(mod_data)->ctx);
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to store data file \"%s\".", path);
-        free(path);
-        return err_info;
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to store data into \"%s\".", path);
+        goto cleanup;
+    }
+
+cleanup:
+    if (fd > -1) {
+        close(fd);
     }
     free(path);
-
-    return NULL;
+    return err_info;
 }

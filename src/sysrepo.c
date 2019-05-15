@@ -322,7 +322,7 @@ sr_session_stop(sr_session_ctx_t *session)
     sr_munlock(&session->conn->ptr_lock);
 
     free(session->sid.user);
-    for (i = 0; i < 2; ++i) {
+    for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {
         lyd_free_withsiblings(session->dt[i].edit);
     }
     sr_errinfo_free(&session->err_info);
@@ -918,8 +918,8 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
         goto cleanup_unlock;
     }
 
-    /* get running file path */
-    if ((err_info = sr_path_running_file(module_name, &path))) {
+    /* get running SHM file path */
+    if ((err_info = sr_path_ds_shm(module_name, SR_DS_RUNNING, 1, &path))) {
         goto cleanup_unlock;
     }
 
@@ -2031,7 +2031,7 @@ API int
 sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, sr_datastore_t dst_datastore)
 {
     sr_error_info_t *err_info = NULL;
-    struct sr_mod_info_s src_mod_info;
+    struct sr_mod_info_s mod_info;
     const struct lys_module *ly_mod = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(src_datastore) || !IS_WRITABLE_DS(dst_datastore), session, err_info);
@@ -2041,7 +2041,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         return sr_api_ret(session, NULL);
     }
 
-    memset(&src_mod_info, 0, sizeof src_mod_info);
+    memset(&mod_info, 0, sizeof mod_info);
 
     /* SHM READ LOCK */
     if ((err_info = sr_shmmain_lock_remap(session->conn, 0, 0))) {
@@ -2057,29 +2057,45 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         }
     }
 
-    /* collect all required modules (dependencies are not needed for a single module) */
-    if ((err_info = sr_shmmod_collect_modules(session->conn, ly_mod, src_datastore, 0, &src_mod_info))) {
+    /* collect all required modules (dependencies are not needed for a single module, otherwise all of them are there) */
+    if ((err_info = sr_shmmod_collect_modules(session->conn, ly_mod, src_datastore, 0, &mod_info))) {
         goto cleanup_shm_unlock;
     }
 
     /* MODULES READ LOCK */
-    if ((err_info = sr_shmmod_modinfo_rdlock(&src_mod_info, 0, session->sid))) {
+    if ((err_info = sr_shmmod_modinfo_rdlock(&mod_info, 0, session->sid))) {
+        goto cleanup_shm_unlock;
+    }
+
+    if ((src_datastore == SR_DS_RUNNING) && (dst_datastore == SR_DS_CANDIDATE)) {
+        /* special case, just reset candidate */
+        err_info = sr_modinfo_candidate_reset(&mod_info);
+
+        /* MODULES UNLOCK */
+        sr_shmmod_modinfo_unlock(&mod_info, 0);
         goto cleanup_shm_unlock;
     }
 
     /* get their data */
-    err_info = sr_modinfo_data_load(&src_mod_info, MOD_INFO_REQ, 0, NULL, NULL);
+    err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 0, NULL, NULL);
 
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&src_mod_info, 0);
+    sr_shmmod_modinfo_unlock(&mod_info, 0);
 
     if (err_info) {
         goto cleanup_shm_unlock;
     }
 
     /* replace the configuration */
-    if ((err_info = _sr_replace_config(session, ly_mod, &src_mod_info.data, dst_datastore))) {
+    if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, dst_datastore))) {
         goto cleanup_shm_unlock;
+    }
+
+    if ((src_datastore == SR_DS_CANDIDATE) && (dst_datastore == SR_DS_RUNNING)) {
+        /* reset candidate after it was applied in running */
+        if ((err_info = sr_modinfo_candidate_reset(&mod_info))) {
+            goto cleanup_shm_unlock;
+        }
     }
 
     /* success */
@@ -2088,7 +2104,7 @@ cleanup_shm_unlock:
     /* SHM READ UNLOCK */
     sr_shmmain_unlock(session->conn, 0, 0);
 
-    sr_modinfo_free(&src_mod_info);
+    sr_modinfo_free(&mod_info);
     return sr_api_ret(session, err_info);
 }
 
@@ -2105,8 +2121,12 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
+    char *path;
+    int r;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
+
+    assert(IS_WRITABLE_DS(mod_info->ds));
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -2117,7 +2137,7 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
         /* we assume these modules are write-locked by this session */
         assert(shm_lock->write_locked && (shm_lock->sid.sr == sid.sr));
 
-        /* we successfully WRITE-locked this module, check that DS lock state is as expected */
+        /* it was successfully WRITE-locked, check that DS lock state is as expected */
         if (shm_lock->ds_locked && lock) {
             assert(shm_lock->sid.sr == sid.sr);
             sr_errinfo_new(&err_info, SR_ERR_LOCKED, NULL, "Module \"%s\" is already locked by this session %u (NC SID %u).",
@@ -2128,6 +2148,21 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
             sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, NULL, "Module \"%s\" was not locked by this session %u (NC SID %u).",
                     mod->ly_mod->name, sid.sr, sid.nc);
             goto error;
+        } else if (lock && (mod_info->ds == SR_DS_CANDIDATE)) {
+            /* candidate DS file cannot exist */
+            if ((err_info = sr_path_ds_shm(mod->ly_mod->name, SR_DS_CANDIDATE, 1, &path))) {
+                goto error;
+            }
+            r = access(path, F_OK);
+            free(path);
+            if ((r == -1) && (errno != ENOENT)) {
+                SR_ERRINFO_SYSERRNO(&err_info, "access");
+                goto error;
+            } else if (!r) {
+                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Module \"%s\" candidate datastore data have "
+                        "already been modified.", mod->ly_mod->name);
+                goto error;
+            }
         }
 
         /* change DS lock state and remember the time */
@@ -2748,7 +2783,6 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
-    sr_datastore_t ds = SR_DS_OPERATIONAL;
     sr_subscr_options_t sub_opts;
 
     SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || !module_name || !callback ||
@@ -2757,12 +2791,6 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     conn = session->conn;
     /* only these options are relevant outside this function and will be stored */
     sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE);
-    if (opts & SR_SUBSCR_UPDATE) {
-        /* we must subscribe to both <running> and <startup> */
-        ds = (session->ds == SR_DS_RUNNING) ? SR_DS_STARTUP : SR_DS_RUNNING;
-        SR_LOG_INF("Subscription to \"%s\" changing data will be triggered for both running and startup DS.",
-                xpath ? xpath : module_name);
-    }
 
     /* SHM READ LOCK */
     if ((err_info = sr_shmmain_lock_remap(conn, 0, 0))) {
@@ -2782,7 +2810,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* call the callback with the current running configuration so that it is properly applied */
-    if (((session->ds == SR_DS_RUNNING) || (ds == SR_DS_RUNNING)) && (opts & SR_SUBSCR_ENABLED)) {
+    if ((session->ds == SR_DS_RUNNING) && (opts & SR_SUBSCR_ENABLED)) {
         /* do not hold write lock here, would block callback from calling API functions */
         if ((err_info = sr_module_change_subscribe_running_enable(session, ly_mod, xpath, callback, private_data, opts))) {
             goto error_rdunlock;
@@ -2809,25 +2837,11 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
             (*subscription)->evpipe_num, 1, NULL))) {
         goto error_wrunlock_unsub;
     }
-    if (ds != SR_DS_OPERATIONAL) {
-        if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts,
-                (*subscription)->evpipe_num, 1, NULL))) {
-            sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts,
-                    (*subscription)->evpipe_num, 0, NULL);
-            goto error_wrunlock_unsub;
-        }
-    }
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_conf_add(module_name, xpath, session->ds, callback, private_data, priority, sub_opts,
             *subscription))) {
         goto error_wrunlock_unsub_unmod;
-    }
-    if (ds != SR_DS_OPERATIONAL) {
-        if ((err_info = sr_sub_conf_add(module_name, xpath, ds, callback, private_data, priority, sub_opts,
-                *subscription))) {
-            goto error_wrunlock_unsub_unmod;
-        }
     }
 
     /* defrag main SHM if needed */
@@ -2850,9 +2864,6 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
 error_wrunlock_unsub_unmod:
     sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, (*subscription)->evpipe_num, 0, NULL);
-    if (ds != SR_DS_OPERATIONAL) {
-        sr_shmmod_conf_subscription(conn, module_name, xpath, ds, priority, sub_opts, (*subscription)->evpipe_num, 0, NULL);
-    }
 
 error_wrunlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {

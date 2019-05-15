@@ -113,7 +113,7 @@ struct sr_mod_s {
         uint8_t ds_locked;      /**< Whether module data are datastore locked (NETCONF locks). */
         sr_sid_t sid;           /**< Session ID of the locking session (user is always NULL). */
         time_t ds_ts;           /**< Timestamp of the datastore lock. */
-    } data_lock_info[2];        /**< Module data lock information for each datastore. */
+    } data_lock_info[SR_WRITABLE_DS_COUNT]; /**< Module data lock information for each datastore. */
     sr_rwlock_t replay_lock;    /**< Process-shared lock for accessing stored notifications for replay. */
     uint32_t ver;               /**< Module data version (non-zero). */
 
@@ -133,7 +133,7 @@ struct sr_mod_s {
     struct {
         off_t subs;             /**< Array of configuration subscriptions. */
         uint16_t sub_count;     /**< Number of configuration subscriptions. */
-    } conf_sub[2];              /**< Configuration subscriptions for each datastore. */
+    } conf_sub[SR_WRITABLE_DS_COUNT];   /**< Configuration subscriptions for each datastore. */
 
     off_t oper_subs;            /**< Array of operational subscriptions. */
     uint16_t oper_sub_count;    /**< Number of operational subscriptions. */

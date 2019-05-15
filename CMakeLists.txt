@@ -51,13 +51,6 @@ endif()
 set(REPO_PATH "${REPO_PATH}" CACHE PATH "Repository path, contains configuration schema and data files.")
 message(STATUS "Sysrepo repository: ${REPO_PATH}")
 
-set(RUNNING_DATA_PATH "${RUNNING_DATA_PATH}" CACHE PATH "Running data path, contains running datastore module files.")
-if(RUNNING_DATA_PATH)
-    message(STATUS "Running data path:  ${RUNNING_DATA_PATH}")
-else()
-    message(STATUS "Running data path:  ${REPO_PATH}/data")
-endif()
-
 set(STARTUP_DATA_PATH "${STARTUP_DATA_PATH}" CACHE PATH "Startup data path, contains startup datastore module files.")
 if(STARTUP_DATA_PATH)
     message(STATUS "Startup data path:  ${STARTUP_DATA_PATH}")
@@ -195,5 +188,6 @@ endif(ENABLE_TESTS)
 # phony target for clearing all sysrepo data
 add_custom_target(sr_clean
     COMMAND rm -rf /dev/shm/sr_*
+    COMMAND rm -rf /dev/shm/srsub_*
     COMMAND rm -rf ${REPO_PATH}
 )

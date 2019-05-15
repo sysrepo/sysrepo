@@ -74,9 +74,9 @@ be fully supported with all of its properties.
 # Datastores @anchor datastores
 
 Datastores mostly follow the architecture defined by Network Management Datastore Architecture (NMDA @ref rfcs "RFC").
-Specifically, _startup_, _running_, and _operational_ datastores are implemented in full compliance to the definitions.
-_Candidate_ datastore is not directly supported but rather simulated (@ref edit_data). Following is a brief description
-and purpose of each datastore.
+Specifically, _startup_, _running_, _candidate_, and _operational_ datastores are implemented in full compliance
+to the definitions. There is one additional datastore _state_ mostly for convencience because it does not have any
+special functionality. Following is a brief description and purpose of each datastore.
 
 _Startup_ datastore is the only persistent datastore. It includes the configuration of devices at time of their boot.
 This configuration is copied into _running_ when the first Sysrepo connection (shared memory) is created after
@@ -86,10 +86,20 @@ _Running_ datastore holds the current system configuration. This datastore is ed
 occured and a device should reconfigure itself. It does not persist across reboots. If desired, it can be copied
 into _startup_ to rectify this.
 
+_Candidate_ datastore is meant to be a place to prepare configuration data without impacting the actual device. Be
+careful, because the actual use of this datastore is not restricted so it does not behave strictly according to
+@ref rfcs "NETCONF" definition and follows general datastore rules instead (more in @ref edit_data). The specific
+features implemented are following. This datastore __mirrors__ _running_ datastore until it is modified. After that
+it can be reset to this behavior again only by calling ::sr_copy_config(). Also, ::sr_lock() will fail if a session
+tries to lock this datastore after some changes on it are performed.
+
 _Operational_ datastore maintains the currently used configuration. It is read-only and generally corresponds to
 _running_ with some possible differences. If there are any defined, it also includes state data nodes and may have
 some configuration data omitted/modified. It all depends on the subscriptions, only subscribed _running_ data
 (Sysrepo synonym for in-use) can appear in _operational_ datastore.
+
+_State_ datastore is only the state data from _operational_ datastore. That means it is not affected by _running_
+subscriptions. It is supported mainly to allow virtual pre-NMDA datastores.
 
 # Threading Model @anchor threads
 

@@ -1,11 +1,10 @@
 /**
 @page edit_data Editing Data
 
-It is possible to edit only the writable @ref datastores "Datastores", _startup_ and _running_. Any changes are first
-only for the particular session and are not validated, persistent, nor visible for other sessions. These prepared changes
-can be validated only with the current datastore content, discarded, or applied, which will also call any relevant
-callbacks (@ref conf_subs "Configuration Subscriptions") and make them persistent. This way the functionality of
-the _candidate_ datastore is simulated.
+It is possible to edit only the writable @ref datastores "Datastores", _startup_, _running_, and _candidate_. Any
+changes are first only for the particular session and are not validated, persistent, nor visible for other sessions.
+These prepared changes can be validated with the current datastore content, discarded, or applied, which will also call
+any relevant callbacks (@ref conf_subs "Configuration Subscriptions") and make them visible for all sessions.
 
 The uncommitted changes are stored in the form of a NETCONF (@ref rfcs "RFC") _edit-config_ content. It can also be
 directly provided instead of performing the changes one-by-one.

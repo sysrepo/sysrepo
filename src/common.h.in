@@ -60,7 +60,10 @@
 #endif
 
 /** macro for checking datastore type */
-#define IS_WRITABLE_DS(ds) ((ds == SR_DS_STARTUP) || (ds == SR_DS_RUNNING))
+#define IS_WRITABLE_DS(ds) ((ds == SR_DS_STARTUP) || (ds == SR_DS_RUNNING) || (ds == SR_DS_CANDIDATE))
+
+/** macro for wriatble datastore count */
+#define SR_WRITABLE_DS_COUNT 3
 
 /** macro for traversing main SHM modules */
 #define SR_SHM_MOD_FOR(main_shm_addr, main_shm_size, shm_mod) \
@@ -74,9 +77,6 @@
 
 /** environment variable overriding the compiled-in value */
 #define SR_REPO_PATH_ENV "SYSREPO_REPOSITORY_PATH"
-
-/** if not set, defaults to "SR_REPO_PATH/data" */
-#define SR_RUNNING_PATH "@RUNNING_DATA_PATH@"
 
 /** if not set, defaults to "SR_REPO_PATH/data" */
 #define SR_STARTUP_PATH "@STARTUP_DATA_PATH@"
@@ -232,7 +232,7 @@ struct sr_session_ctx_s {
     struct {
         struct lyd_node *edit;      /**< Prepared edit data tree. */
         struct lyd_node *diff;      /**< Diff data tree, used for module change iterator. */
-    } dt[2];                        /**< Session-exclusive prepared configuration changes. */
+    } dt[SR_WRITABLE_DS_COUNT];     /**< Session-exclusive prepared configuration changes. */
 };
 
 /**
@@ -516,11 +516,22 @@ sr_error_info_t *sr_create_module_update_imps_r(const struct lys_module *ly_mod)
  * @param[in] mod_name Module name.
  * @param[in] suffix1 First suffix.
  * @param[in] suffix2 Second suffix, none if equals -1.
- * @param[in] abs_path Whether to return absolute path or SHM path.
+ * @param[in] abs_path Whether to return absolute path or SHM path (name).
  * @param[out] path Created path.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, int abs_path, char **path);
+
+/**
+ * @brief Get the path to a volatile datastore SHM.
+ *
+ * @param[in] mod_name Module name.
+ * @param[in] ds Target datastore.
+ * @param[in] abs_path Whether to return absolute path or SHM path (name).
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_path_ds_shm(const char *mod_name, sr_datastore_t ds, int abs_path, char **path);
 
 /**
  * @brief Get the path to an event pipe.
@@ -530,14 +541,6 @@ sr_error_info_t *sr_path_sub_shm(const char *mod_name, const char *suffix1, int6
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_path_evpipe(uint32_t evpipe_num, char **path);
-
-/**
- * @brief Get the path to running files directory.
- *
- * @param[out] path Created path.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_path_running_dir(char **path);
 
 /**
  * @brief Get the path to startup files directory.
@@ -562,15 +565,6 @@ sr_error_info_t *sr_path_notif_dir(char **path);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_path_yang_dir(char **path);
-
-/**
- * @brief Get the path to a module running file.
- *
- * @param[in] mod_name Module name.
- * @param[out] path Created path.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_path_running_file(const char *mod_name, char **path);
 
 /**
  * @brief Get the path to a module startup file.
@@ -750,13 +744,13 @@ void sr_rwunlock(sr_rwlock_t *rwlock, int wr, const char *func);
 void *sr_realloc(void *ptr, size_t size);
 
 /**
- * @brief Copy a file.
+ * @brief Copy a file to a SHM.
  *
- * @param[in] to Destination path.
- * @param[in] from Source path.
+ * @param[in] to Destination SHM path (name).
+ * @param[in] from Source file path.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_cp(const char *to, const char *from);
+sr_error_info_t *sr_cp_file2shm(const char *to, const char *from);
 
 /**
  * @brief Create all directories in the path.

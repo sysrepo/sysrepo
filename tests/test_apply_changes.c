@@ -637,7 +637,7 @@ subscribe_update_thread(void *arg)
     sr_subscription_ctx_t *subscr;
     int count, ret;
 
-    ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* it should subscribe to "running" as well */

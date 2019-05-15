@@ -329,12 +329,26 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_
     sr_error_info_t *err_info = NULL;
     int mod_wr;
     uint32_t i;
+    sr_datastore_t ds;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
 
+    switch (mod_info->ds) {
+    case SR_DS_STARTUP:
+    case SR_DS_RUNNING:
+    case SR_DS_CANDIDATE:
+        ds = mod_info->ds;
+        break;
+    case SR_DS_OPERATIONAL:
+    case SR_DS_STATE:
+        /* will use running DS */
+        ds = SR_DS_RUNNING;
+        break;
+    }
+
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
+        shm_lock = &mod->shm_mod->data_lock_info[ds];
 
         /* WRITE-lock data-required modules, READ-lock dependency modules */
         mod_wr = upgradable && (mod->state & MOD_INFO_REQ) ? 1 : 0;
@@ -371,12 +385,26 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
+    sr_datastore_t ds;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
 
+    switch (mod_info->ds) {
+    case SR_DS_STARTUP:
+    case SR_DS_RUNNING:
+    case SR_DS_CANDIDATE:
+        ds = mod_info->ds;
+        break;
+    case SR_DS_OPERATIONAL:
+    case SR_DS_STATE:
+        /* will use running DS */
+        ds = SR_DS_RUNNING;
+        break;
+    }
+
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
+        shm_lock = &mod->shm_mod->data_lock_info[ds];
 
         /* upgrade only required modules */
         if ((mod->state & MOD_INFO_REQ) && (mod->state & MOD_INFO_RLOCK)) {
@@ -404,12 +432,26 @@ void
 sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable)
 {
     uint32_t i;
+    sr_datastore_t ds;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
 
+    switch (mod_info->ds) {
+    case SR_DS_STARTUP:
+    case SR_DS_RUNNING:
+    case SR_DS_CANDIDATE:
+        ds = mod_info->ds;
+        break;
+    case SR_DS_OPERATIONAL:
+    case SR_DS_STATE:
+        /* will use running DS */
+        ds = SR_DS_RUNNING;
+        break;
+    }
+
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
+        shm_lock = &mod->shm_mod->data_lock_info[ds];
 
         if ((mod->state & MOD_INFO_REQ) && (mod->state & (MOD_INFO_RLOCK | MOD_INFO_WLOCK)) && upgradable) {
             /* this module's lock was upgraded (WRITE-locked), correctly clean everything */

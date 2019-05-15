@@ -521,7 +521,7 @@ sr_shmmain_ext_defrag(sr_shm_t *main_shm, sr_shm_t *main_ext_shm, char **defrag_
         }
 
         /* copy configuration subscriptions */
-        for (i = 0; i < 2; ++i) {
+        for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {
             shm_mod->conf_sub[i].subs = sr_shmmain_defrag_copy_array_with_string(main_ext_shm->addr, shm_mod->conf_sub[i].subs,
                     sizeof(sr_mod_conf_sub_t), shm_mod->conf_sub[i].sub_count, ext_buf, &ext_buf_cur);
         }
@@ -552,21 +552,6 @@ sr_shmmain_check_dirs(void)
     char *dir_path;
     sr_error_info_t *err_info = NULL;
     int ret;
-
-    /* running data dir */
-    if ((err_info = sr_path_running_dir(&dir_path))) {
-        return err_info;
-    }
-    if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
-        free(dir_path);
-        SR_ERRINFO_SYSERRNO(&err_info, "access");
-        return err_info;
-    }
-    if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
-        free(dir_path);
-        return err_info;
-    }
-    free(dir_path);
 
     /* startup data dir */
     if ((err_info = sr_path_startup_dir(&dir_path))) {
@@ -789,7 +774,7 @@ sr_shmmain_ly_int_data_print(struct lyd_node **sr_mods)
 }
 
 /**
- * @brief Unlink startup and running file of a module.
+ * @brief Unlink startup, running, and candidate files of a module.
  *
  * @param[in] mod_name Module name.
  * @return err_info, NULL on success.
@@ -809,11 +794,20 @@ sr_remove_data_files(const char *mod_name)
     }
     free(path);
 
-    if ((err_info = sr_path_running_file(mod_name, &path))) {
+    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 0, &path))) {
         return err_info;
     }
 
-    if (unlink(path) == -1) {
+    if (shm_unlink(path) == -1) {
+        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+    }
+    free(path);
+
+    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_CANDIDATE, 0, &path))) {
+        return err_info;
+    }
+
+    if ((shm_unlink(path) == -1) && (errno != ENOENT)) {
         SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
     }
     free(path);
@@ -1637,14 +1631,14 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
     char *startup_path, *running_path;
 
     SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
-        if ((err_info = sr_path_running_file(conn->main_ext_shm.addr + shm_mod->name, &running_path))) {
+        if ((err_info = sr_path_ds_shm(conn->main_ext_shm.addr + shm_mod->name, SR_DS_RUNNING, 0, &running_path))) {
             goto error;
         }
         if ((err_info = sr_path_startup_file(conn->main_ext_shm.addr + shm_mod->name, &startup_path))) {
             free(running_path);
             goto error;
         }
-        err_info = sr_cp(running_path, startup_path);
+        err_info = sr_cp_file2shm(running_path, startup_path);
         free(startup_path);
         free(running_path);
         if (err_info) {
@@ -1753,7 +1747,7 @@ sr_shmmain_shm_add_modules(sr_shm_t *main_shm, char *main_ext_shm_addr, struct l
     off_t *shm_features, *shm_inv_data_deps;
     char *ext_cur;
     const char *str;
-    uint32_t feat_i, data_dep_i, inv_data_dep_i, op_dep_i, op_data_dep_i;
+    uint32_t i, feat_i, data_dep_i, inv_data_dep_i, op_dep_i, op_data_dep_i;
 
     assert(sr_start_mod && shm_mod);
     ext_cur = main_ext_shm_addr + *ext_end;
@@ -1763,11 +1757,10 @@ sr_shmmain_shm_add_modules(sr_shm_t *main_shm, char *main_ext_shm_addr, struct l
     LY_TREE_FOR(sr_start_mod, sr_mod) {
         /* set module structure */
         memset(shm_mod, 0, sizeof *shm_mod);
-        if ((err_info = sr_rwlock_init(&shm_mod->data_lock_info[SR_DS_STARTUP].lock, 1))) {
-            return err_info;
-        }
-        if ((err_info = sr_rwlock_init(&shm_mod->data_lock_info[SR_DS_RUNNING].lock, 1))) {
-            return err_info;
+        for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {
+            if ((err_info = sr_rwlock_init(&shm_mod->data_lock_info[i].lock, 1))) {
+                return err_info;
+            }
         }
         if ((err_info = sr_rwlock_init(&shm_mod->replay_lock, 1))) {
             return err_info;

@@ -1398,6 +1398,32 @@ cleanup:
 
 }
 
+sr_error_info_t *
+sr_modinfo_candidate_reset(struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_mod_s *mod;
+    char *path;
+    uint32_t i;
+
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        if (mod->state & MOD_INFO_REQ) {
+            /* just remove the candidate SHM files */
+            if ((err_info = sr_path_ds_shm(mod->ly_mod->name, SR_DS_CANDIDATE, 0, &path))) {
+                return err_info;
+            }
+
+            if ((shm_unlink(path) == -1) && (errno != ENOENT)) {
+                SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+            }
+            free(path);
+        }
+    }
+
+    return NULL;
+}
+
 void
 sr_modinfo_free(struct sr_mod_info_s *mod_info)
 {
