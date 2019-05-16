@@ -139,7 +139,7 @@ test_one_session(void **state)
 
 /* TEST 2 */
 static void
-test_two_sessions(void **state)
+test_session_stop_unlock(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_session_ctx_t *sess1, *sess2;
@@ -164,11 +164,17 @@ test_two_sessions(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_withsiblings(subtree);
 
-    /* unlock all modules */
-    ret = sr_unlock(sess1, NULL);
+    /* stop session with locks */
+    sr_session_stop(sess1);
+
+    /* now lock all modules again */
+    ret = sr_lock(sess2, NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_session_stop(sess1);
+    /* unlock all modules normally */
+    ret = sr_unlock(sess2, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
     sr_session_stop(sess2);
 }
 
@@ -178,7 +184,7 @@ main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_one_session),
-        cmocka_unit_test(test_two_sessions),
+        cmocka_unit_test(test_session_stop_unlock),
     };
 
     sr_log_stderr(SR_LL_INF);

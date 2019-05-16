@@ -303,8 +303,8 @@ error:
 API int
 sr_session_stop(sr_session_ctx_t *session)
 {
-    uint32_t i;
     sr_error_info_t *err_info = NULL;
+    uint32_t i;
 
     if (!session) {
         return sr_api_ret(NULL, NULL);
@@ -320,6 +320,19 @@ sr_session_stop(sr_session_ctx_t *session)
 
     /* PTR UNLOCK */
     sr_munlock(&session->conn->ptr_lock);
+
+    /* SHM WRITE LOCK */
+    err_info = sr_shmmain_lock_remap(session->conn, 1, 0);
+    if (err_info) {
+        sr_errinfo_free(&err_info);
+        SR_LOG_WRN("Session %u (NC SID %u) locks will not be released, if any.", session->sid.sr, session->sid.nc);
+    } else {
+        /* release any held locks */
+        sr_shmmod_release_locks(session->conn, session->sid);
+
+        /* SHM WRITE UNLOCK */
+        sr_shmmain_unlock(session->conn, 1, 0);
+    }
 
     free(session->sid.user);
     for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {

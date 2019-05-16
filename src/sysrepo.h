@@ -238,6 +238,8 @@ int sr_session_start(sr_conn_ctx_t *conn_ctx, const sr_datastore_t datastore, sr
 /**
  * @brief Stops current session and releases resources and subscriptions tied to the session.
  *
+ * @note Also releases any locks held by this session.
+ *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @return Error code (::SR_ERR_OK on success).
  */
@@ -248,7 +250,7 @@ int sr_session_stop(sr_session_ctx_t *session);
  * calls will be issued on the chosen datastore.
  *
  * @param[in] session Session to modify.
- * @param[in] ds New datastore that will be operated on from now on.
+ * @param[in] ds New datastore that will be operated on.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_session_switch_ds(sr_session_ctx_t *session, sr_datastore_t ds);
@@ -256,7 +258,7 @@ int sr_session_switch_ds(sr_session_ctx_t *session, sr_datastore_t ds);
 /**
  * @brief Learn the datastore a session operates on.
  *
- * @param[in] session Session to inspect.
+ * @param[in] session Session to use.
  * @return Datastore of the session.
  */
 sr_datastore_t sr_session_get_ds(sr_session_ctx_t *session);
@@ -265,7 +267,7 @@ sr_datastore_t sr_session_get_ds(sr_session_ctx_t *session);
  * @brief Retrieves information about the error that has occurred
  * during the last operation executed within provided session.
  *
- * @param[in] session Session to inspect.
+ * @param[in] session Session to use.
  * @param[out] error_info Detailed error information. Be aware that
  * returned pointer may change by the next API call executed within the provided
  * session. Do not free or modify returned values.
@@ -291,7 +293,7 @@ int sr_set_error(sr_session_ctx_t *session, const char *message, const char *pat
 /**
  * @brief Returns the assigned session ID of the sysrepo session.
  *
- * @param [in] session Session to inspect.
+ * @param [in] session Session to use.
  * @return sysrepo SID or 0 in case of error.
  */
 uint32_t sr_session_get_id(sr_session_ctx_t *session);
@@ -311,7 +313,7 @@ void sr_session_set_nc_id(sr_session_ctx_t *session, uint32_t nc_sid);
  * the value set by ::sr_session_set_nc_id or of the initiating session when used
  * in an application callback.
  *
- * @param[in] session Session to inspect.
+ * @param[in] session Session to use.
  * @return Session NETCONF SID.
  */
 uint32_t sr_session_get_nc_id(sr_session_ctx_t *session);
@@ -332,7 +334,7 @@ int sr_session_set_user(sr_session_ctx_t *session, const char *user);
  *
  * Required ROOT access.
  *
- * @param[in] session Session to inspect.
+ * @param[in] session Session to use.
  * @return Session user.
  */
 const char *sr_session_get_user(sr_session_ctx_t *session);
@@ -340,7 +342,7 @@ const char *sr_session_get_user(sr_session_ctx_t *session);
 /**
  * @brief Get the connection the session was created on.
  *
- * @param[in] session Session to inspect.
+ * @param[in] session Session to use.
  * @return Sysrepo connection.
  */
 sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
@@ -443,7 +445,7 @@ int sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const cha
  * Required READ access.
  *
  * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module to inspect.
+ * @param[in] module_name Name of the module to use.
  * @param[in,out] owner If set, read the owner of the module.
  * @param[in,out] group If set, read the group of the module.
  * @param[in,out] perm If set, read the permissions of the module.
@@ -882,6 +884,8 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datast
  * @note Note that locking _candidate_ datastore after it has already
  * been modified is not allowed. Session needs to acquire this lock
  * before it or any other session performs any changes.
+ *
+ * @note This lock will be automatically released when the session is stopped.
  *
  * Required READ access.
  *

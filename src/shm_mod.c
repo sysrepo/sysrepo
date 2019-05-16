@@ -472,6 +472,41 @@ sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable)
     }
 }
 
+void
+sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+    struct sr_mod_lock_s *shm_lock;
+    uint32_t i;
+
+    SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
+        for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {
+            shm_lock = &shm_mod->data_lock_info[i];
+            if (shm_lock->sid.sr == sid.sr) {
+                if (shm_lock->write_locked) {
+                    /* this should never happen, write lock is held during some API calls */
+                    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Session %u (NC SID %u) was working with module \"%s\"!",
+                            sid.sr, sid.nc, conn->main_ext_shm.addr + shm_mod->name);
+                    sr_errinfo_free(&err_info);
+                    shm_lock->write_locked = 0;
+                }
+                if (!shm_lock->ds_locked) {
+                    /* why our SID matched then? */
+                    SR_ERRINFO_INT(&err_info);
+                    sr_errinfo_free(&err_info);
+                    continue;
+                }
+
+                /* unlock */
+                shm_lock->ds_locked = 0;
+                memset(&shm_lock->sid, 0, sizeof shm_lock->sid);
+                shm_lock->ds_ts = 0;
+            }
+        }
+    }
+}
+
 sr_error_info_t *
 sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, sr_datastore_t ds,
         uint32_t priority, int sub_opts, uint32_t evpipe_num, int add, int *last_removed)

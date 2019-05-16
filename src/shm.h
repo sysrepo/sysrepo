@@ -523,6 +523,14 @@ sr_error_info_t *sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info
 void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable);
 
 /**
+ * @brief Release any locks matching the provided SID.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] sid Sysrepo session ID.
+ */
+void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
+
+/**
  * @brief Add/remove main SHM module configuration subscriptions.
  * May remap main SHM!
  *
