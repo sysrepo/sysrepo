@@ -34,6 +34,8 @@
 static sr_error_info_t *sr_shmmain_ly_add_data_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root,
         struct lyd_node *sr_deps);
 
+static sr_error_info_t *sr_shmmain_ly_rebuild_data_deps(struct lyd_node *sr_mod, const struct lys_module *ly_mod);
+
 static sr_error_info_t *sr_shmmain_ly_add_module(const struct lys_module *mod, struct lyd_node *sr_mods,
         struct lyd_node **sr_mod_p);
 
@@ -816,13 +818,13 @@ sr_remove_data_files(const char *mod_name)
 }
 
 /**
- * @brief Delete a module (with inverse dependency refs) from internal sysrepo data.
+ * @brief Delete theinverse dependency refs of a module from internal sysrepo data.
  *
- * @param[in] sr_mod Module node to be deleted.
+ * @param[in] sr_mod Module node whose inverse dependencies are to be deleted.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_ly_del_module(struct lyd_node *sr_mod)
+sr_shmmain_ly_del_inv_data_deps(struct lyd_node *sr_mod)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL, *set2;
@@ -868,9 +870,6 @@ sr_shmmain_ly_del_module(struct lyd_node *sr_mod)
     }
 
 cleanup:
-    /* remove the module itself */
-    lyd_free(sr_mod);
-
     ly_set_free(set);
     return err_info;
 }
@@ -1019,9 +1018,10 @@ sr_shmmain_sched_remove_modules(struct lyd_node *sr_mods, int *change, int *appl
 
     for (i = 0; i < del_set->number; ++i) {
         /* free removed module nodes */
-        if ((err_info = sr_shmmain_ly_del_module(del_set->set.d[i]))) {
+        if ((err_info = sr_shmmain_ly_del_inv_data_deps(del_set->set.d[i]))) {
             break;
         }
+        lyd_free(del_set->set.d[i]);
     }
 
     /* success */
@@ -1052,8 +1052,7 @@ sr_shmmain_sched_update_modules(struct lyd_node *sr_mods, struct ly_ctx *old_ctx
     const struct lys_module *old_ly_mod, *new_ly_mod;
     struct lyd_node *node;
     struct ly_set *set = NULL, *feat_set = NULL;
-    const char *mod_name, *upd_mod_yang;
-    char *old_revision = NULL;
+    const char *mod_name, *old_revision, *upd_mod_yang;
     uint32_t i, j;
 
     assert(sr_mods);
@@ -1076,8 +1075,7 @@ sr_shmmain_sched_update_modules(struct lyd_node *sr_mods, struct ly_ctx *old_ctx
             }
 
             if (!strcmp(node->schema->name, "revision")) {
-                old_revision = strdup(sr_ly_leaf_value_str(node));
-                SR_CHECK_MEM_GOTO(!old_revision, err_info, cleanup);
+                old_revision = sr_ly_leaf_value_str(node);
                 break;
             }
         }
@@ -1117,23 +1115,29 @@ sr_shmmain_sched_update_modules(struct lyd_node *sr_mods, struct ly_ctx *old_ctx
         ly_set_free(feat_set);
         feat_set = NULL;
 
-        /* remove the whole module list instance from internal sysrepo data */
-        if ((err_info = sr_shmmain_ly_del_module(set->set.d[i]->parent))) {
+        /* update stored revision */
+        node = lyd_new_path(set->set.d[i]->parent, NULL, "revision", new_ly_mod->rev[0].date, 0, LYD_PATH_OPT_UPDATE);
+        if (!node) {
+            /* there must occur a change */
             goto cleanup;
         }
 
-        /* add a new one */
-        if ((err_info = sr_shmmain_ly_add_module(new_ly_mod, sr_mods, NULL))) {
+        /* rebuild (inverse) data dependencies */
+        if ((err_info = sr_shmmain_ly_del_inv_data_deps(set->set.d[i]->parent))) {
             goto cleanup;
         }
-
-        /* also remember new inverse dependencies */
+        if ((err_info = sr_shmmain_ly_rebuild_data_deps(set->set.d[i]->parent, new_ly_mod))) {
+            goto cleanup;
+        }
         if ((err_info = sr_shmmain_ly_add_inv_data_deps(new_ly_mod, sr_mods))) {
             goto cleanup;
         }
 
+        /* remove the update YANG */
+        lyd_free(set->set.d[i]);
+
         SR_LOG_INF("Module \"%s\" was updated from revision %s to %s.", mod_name,
-                old_revision ? old_revision : "<none>", new_ly_mod->rev[0].date);
+                old_ly_mod->rev_size ? old_ly_mod->rev[0].date : "<none>", new_ly_mod->rev[0].date);
         *change = 1;
     }
 
@@ -1142,7 +1146,6 @@ sr_shmmain_sched_update_modules(struct lyd_node *sr_mods, struct ly_ctx *old_ctx
 cleanup:
     ly_set_free(set);
     ly_set_free(feat_set);
-    free(old_revision);
     return err_info;
 }
 
@@ -1164,6 +1167,7 @@ sr_shmmain_sched_change_features(struct lyd_node *sr_mods, struct ly_ctx *old_ct
     const struct lys_module *old_ly_mod, *new_ly_mod;
     struct ly_set *set = NULL, *feat_set = NULL;
     const char *mod_name, *revision, *feat_name;
+    char *xpath;
     uint32_t i;
     int enable;
 
@@ -1240,20 +1244,43 @@ sr_shmmain_sched_change_features(struct lyd_node *sr_mods, struct ly_ctx *old_ct
                 sr_errinfo_new_ly(&err_info, new_ctx);
                 goto cleanup;
             }
+
+            /* update internal sysrepo data tree */
+            if (enable) {
+                node = lyd_new_path(sr_mod, NULL, "enabled-feature", (void *)feat_name, 0, 0);
+                if (!node) {
+                    sr_errinfo_new_ly(&err_info, ly_ctx);
+                    goto cleanup;
+                }
+            } else {
+                if (asprintf(&xpath, "enabled-feature[.='%s']", feat_name) == -1) {
+                    SR_ERRINFO_MEM(&err_info);
+                    goto cleanup;
+                }
+                feat_set = lyd_find_path(sr_mod, xpath);
+                free(xpath);
+                if (!feat_set || (feat_set->number != 1)) {
+                    sr_errinfo_new_ly(&err_info, ly_ctx);
+                    goto cleanup;
+                }
+                lyd_free(feat_set->set.d[0]);
+                ly_set_free(feat_set);
+                feat_set = NULL;
+            }
+
             SR_LOG_INF("Module \"%s\" feature \"%s\" was %s.", mod_name, feat_name, enable ? "enabled" : "disabled");
+
+            /* remove the scheduled feature change */
+            lyd_free(set->set.d[i]);
         }
 
-        /* remove the whole module list instance fomr internal sysrepo data */
-        if ((err_info = sr_shmmain_ly_del_module(sr_mod))) {
+        /* rebuild (inverse) data dependencies */
+        if ((err_info = sr_shmmain_ly_del_inv_data_deps(sr_mod))) {
             goto cleanup;
         }
-
-        /* add a new one */
-        if ((err_info = sr_shmmain_ly_add_module(new_ly_mod, sr_mods, NULL))) {
+        if ((err_info = sr_shmmain_ly_rebuild_data_deps(sr_mod, new_ly_mod))) {
             goto cleanup;
         }
-
-        /* also remember new inverse dependencies */
         if ((err_info = sr_shmmain_ly_add_inv_data_deps(new_ly_mod, sr_mods))) {
             goto cleanup;
         }
@@ -1514,6 +1541,15 @@ parse_int_sr_data:
             /* change features */
             if ((err_info = sr_shmmain_sched_change_features(sr_mods, old_ctx, new_ctx, &change))) {
                 goto cleanup;
+            }
+
+            if (change) {
+                /* create a new context because the current revision of a module may have been loaded into this one */
+                ly_ctx_destroy(new_ctx, NULL);
+                new_ctx = NULL;
+                if ((err_info = sr_ly_ctx_new(&new_ctx))) {
+                    goto cleanup;
+                }
             }
 
             /* update modules */
@@ -2559,9 +2595,10 @@ sr_shmmain_ly_add_op_deps(struct lyd_node *sr_mod, struct lys_node *op_root)
 }
 
 /**
- * @brief Add (collect) data dependencies into internal sysrepo data.
+ * @brief Add (collect) (operation) data dependencies into internal sysrepo data tree
+ * starting with a subtree, recursively.
  *
- * @param[in] sr_mod Module of the data.
+ * @param[in] sr_mod Module of the data from sysrepo data tree.
  * @param[in] data_root Root node of the data to inspect.
  * @param[in] sr_deps Internal sysrepo data dependencies to add to.
  * @return err_info, NULL on success.
@@ -2726,6 +2763,54 @@ next_sibling:
 }
 
 /**
+ * @brief Rebuild (operation) data dependencies into internal sysrepo data tree.
+ *
+ * @param[in] sr_mod Module data node from sysrepo data tree.
+ * @param[in] ly_mod Parsed libyang module to rebuild.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmmain_ly_rebuild_data_deps(struct lyd_node *sr_mod, const struct lys_module *ly_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lys_node *root;
+    struct ly_set *set;
+    struct lyd_node *ly_data_deps;
+    uint32_t i;
+
+    /* remove any old ones */
+    set = lyd_find_path(sr_mod, "data-deps | op-deps");
+    if (!set) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        return err_info;
+    }
+    for (i = 0; i < set->number; ++i) {
+        lyd_free(set->set.d[i]);
+    }
+    ly_set_free(set);
+
+    /* create new data deps */
+    ly_data_deps = lyd_new(sr_mod, NULL, "data-deps");
+    if (!ly_data_deps) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        return err_info;
+    }
+
+    LY_TREE_FOR(ly_mod->data, root) {
+        if (root->nodetype & (LYS_AUGMENT | LYS_GROUPING)) {
+            /* augments will be traversed where applied and groupings where instantiated */
+            continue;
+        }
+
+        if ((err_info = sr_shmmain_ly_add_data_deps_r(sr_mod, root, ly_data_deps))) {
+            return err_info;
+        }
+    }
+
+    return NULL;
+}
+
+/**
  * @brief Add module into internal sysrepo data.
  *
  * @param[in] ly_mod Module to add.
@@ -2737,8 +2822,7 @@ static sr_error_info_t *
 sr_shmmain_ly_add_module(const struct lys_module *ly_mod, struct lyd_node *sr_mods, struct lyd_node **sr_mod_p)
 {
     sr_error_info_t *err_info = NULL;
-    struct lys_node *root;
-    struct lyd_node *sr_mod, *ly_data_deps;
+    struct lyd_node *sr_mod;
     uint8_t i;
 
     sr_mod = lyd_new(sr_mods, NULL, "module");
@@ -2764,21 +2848,9 @@ sr_shmmain_ly_add_module(const struct lys_module *ly_mod, struct lyd_node *sr_mo
         }
     }
 
-    ly_data_deps = lyd_new(sr_mod, NULL, "data-deps");
-    if (!ly_data_deps) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+    /* creates data deps if none exist yet */
+    if ((err_info = sr_shmmain_ly_rebuild_data_deps(sr_mod, ly_mod))) {
         return err_info;
-    }
-
-    LY_TREE_FOR(ly_mod->data, root) {
-        if (root->nodetype & (LYS_AUGMENT | LYS_GROUPING)) {
-            /* augments will be traversed where applied and groupings where instantiated */
-            continue;
-        }
-
-        if ((err_info = sr_shmmain_ly_add_data_deps_r(sr_mod, root, ly_data_deps))) {
-            return err_info;
-        }
     }
 
     if (sr_mod_p && !*sr_mod_p) {
