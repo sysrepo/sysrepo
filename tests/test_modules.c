@@ -18,6 +18,7 @@
 #include <setjmp.h>
 #include <string.h>
 #include <stdarg.h>
+#include <ctype.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -57,7 +58,7 @@ teardown_f(void **state)
 static void
 cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
 {
-    char *str, buf[1024];
+    char *str, *ptr, buf[1024];
     struct lyd_node *data;
     struct ly_set *set;
     int ret;
@@ -80,6 +81,13 @@ cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
     ly_set_free(set);
     lyd_free_withsiblings(data);
     assert_int_equal(ret, 0);
+
+    /* set replay support timestamp to zeroes */
+    for (ptr = strstr(str, "<replay-support>"); ptr; ptr = strstr(ptr, "<replay-support>")) {
+        for (ptr += 16; isdigit(ptr[0]); ++ptr) {
+            ptr[0] = '0';
+        }
+    }
 
     assert_string_equal(str, expected);
     free(str);
@@ -125,7 +133,7 @@ test_data_deps(void **state)
     "<module xmlns=\"urn:sysrepo\">"
         "<name>ietf-interfaces</name>"
         "<revision>2014-05-08</revision>"
-        "<replay-support/>"
+        "<replay-support>0000000000</replay-support>"
         "<removed/>"
     "</module>"
     );
@@ -139,7 +147,7 @@ test_data_deps(void **state)
     cmp_int_data(st->conn, "refs",
     "<module xmlns=\"urn:sysrepo\">"
         "<name>refs</name>"
-        "<replay-support/>"
+        "<replay-support>0000000000</replay-support>"
         "<removed/>"
         "<data-deps>"
             "<module>test</module>"
@@ -179,7 +187,7 @@ test_op_deps(void **state)
     cmp_int_data(st->conn, "ops-ref",
     "<module xmlns=\"urn:sysrepo\">"
         "<name>ops-ref</name>"
-        "<replay-support/>"
+        "<replay-support>0000000000</replay-support>"
         "<removed/>"
     "</module>"
     );
@@ -275,7 +283,7 @@ test_remove_dep_module(void **state)
     cmp_int_data(st->conn, "ops-ref",
     "<module xmlns=\"urn:sysrepo\">"
         "<name>ops-ref</name>"
-        "<replay-support/>"
+        "<replay-support>0000000000</replay-support>"
         "<removed/>"
     "</module>"
     );

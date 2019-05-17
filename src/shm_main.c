@@ -754,7 +754,7 @@ sr_shmmain_ly_int_data_print(struct lyd_node **sr_mods)
     sr_ly_mod = (*sr_mods)->schema->module;
 
     /* validate */
-    if (lyd_validate_modules(sr_mods, &sr_ly_mod, 1, LYD_OPT_CONFIG)) {
+    if (lyd_validate_modules(sr_mods, &sr_ly_mod, 1, LYD_OPT_DATA)) {
         sr_errinfo_new_ly(&err_info, sr_ly_mod->ctx);
         return err_info;
     }
@@ -1200,8 +1200,11 @@ sr_shmmain_sched_change_features(struct lyd_node *sr_mods, struct ly_ctx *old_ct
         }
         assert(mod_name);
 
-        /* load old and updated module */
-        old_ly_mod = ly_ctx_load_module(old_ctx, mod_name, revision);
+        /* load the module twice to set old and new features (it could have already been loaded into old_ctx) */
+        old_ly_mod = ly_ctx_get_module(old_ctx, mod_name, NULL, 1);
+        if (!old_ly_mod) {
+            old_ly_mod = ly_ctx_load_module(old_ctx, mod_name, revision);
+        }
         if (!old_ly_mod) {
             sr_errinfo_new_ly(&err_info, old_ctx);
             goto cleanup;
@@ -1511,7 +1514,7 @@ sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_no
     } else {
         /* load sysrepo data */
 parse_int_sr_data:
-        sr_mods = lyd_parse_path(conn->ly_ctx, path, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
+        sr_mods = lyd_parse_path(conn->ly_ctx, path, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT);
         if (!sr_mods) {
             sr_errinfo_new_ly(&err_info, conn->ly_ctx);
             goto cleanup;
@@ -1538,22 +1541,13 @@ parse_int_sr_data:
                 goto cleanup;
             }
 
-            /* change features */
-            if ((err_info = sr_shmmain_sched_change_features(sr_mods, old_ctx, new_ctx, &change))) {
+            /* update modules */
+            if ((err_info = sr_shmmain_sched_update_modules(sr_mods, old_ctx, new_ctx, &change))) {
                 goto cleanup;
             }
 
-            if (change) {
-                /* create a new context because the current revision of a module may have been loaded into this one */
-                ly_ctx_destroy(new_ctx, NULL);
-                new_ctx = NULL;
-                if ((err_info = sr_ly_ctx_new(&new_ctx))) {
-                    goto cleanup;
-                }
-            }
-
-            /* update modules */
-            if ((err_info = sr_shmmain_sched_update_modules(sr_mods, old_ctx, new_ctx, &change))) {
+            /* change features */
+            if ((err_info = sr_shmmain_sched_change_features(sr_mods, old_ctx, new_ctx, &change))) {
                 goto cleanup;
             }
 
@@ -2974,7 +2968,8 @@ sr_shmmain_update_replay_support(sr_conn_ctx_t *conn, const char *mod_name, int 
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL;
-    char *path = NULL;
+    char *path = NULL, buf[21];
+    time_t from_ts, to_ts;
     struct lyd_node *node;
     struct ly_set *set = NULL;
 
@@ -2994,8 +2989,17 @@ sr_shmmain_update_replay_support(sr_conn_ctx_t *conn, const char *mod_name, int 
         /* remove replay support */
         lyd_free(set->set.d[0]);
     } else if (replay_support && !set->number) {
+        /* find earliest stored notification or use current time */
+        if ((err_info = sr_replay_find_file(mod_name, 1, 0, &from_ts, &to_ts))) {
+            goto cleanup;
+        }
+        if (!from_ts) {
+            from_ts = time(NULL);
+        }
+        sprintf(buf, "%ld", from_ts);
+
         /* add replay support */
-        node = lyd_new_path(sr_mods, NULL, path, NULL, 0, 0);
+        node = lyd_new_path(sr_mods, NULL, path, buf, 0, 0);
         if (!node) {
             sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mods)->ctx);
             SR_ERRINFO_INT(&err_info);

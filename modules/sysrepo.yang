@@ -57,6 +57,7 @@ module sysrepo {
     }
 
     container sysrepo-modules {
+        config false;
         list module {
             key "name";
 
@@ -69,7 +70,7 @@ module sysrepo {
             }
 
             leaf replay-support {
-                type empty;
+                type uint64;
             }
 
             choice changed-module {
