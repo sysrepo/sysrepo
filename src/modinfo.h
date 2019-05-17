@@ -96,8 +96,8 @@ sr_error_info_t *sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_n
  * @param[in] mod_info Mod info to use.
  * @param[in] finish_diff Whether to update diff with possible changes caused by validation.
  * @param[in] sid Sysrepo session ID.
- * @param[out] cb_error_info Callback error info in case a data-provider of data required
- * because of an instance-identifier failed.
+ * @param[out] cb_error_info Callback error info in case an operational subscriber data required
+ * because of an instance-identifier retrieval failed.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *sid,
@@ -112,8 +112,8 @@ sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_
  * @param[in] shm_dep_count Main SHM dependency count.
  * @param[in] output Whether this is the output of an operation.
  * @param[in] sid Sysrepo session ID.
- * @param[out] cb_error_info Callback error info in case a data-provider of data required
- * because of an instance-identifier failed.
+ * @param[out] cb_error_info Callback error info in case an operational subscriber data required
+ * because of an instance-identifier retrieval failed.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_mod_data_dep_t *shm_deps,
@@ -126,7 +126,7 @@ sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct l
  * @param[in] mod_type Only module types which data should be loaded.
  * @param[in] cache Whether it makes sense to use cached data, if available.
  * @param[in] sid Sysrepo session ID.
- * @param[out] cb_error_info Callback error info in case a data-provider of required data failed.
+ * @param[out] cb_error_info Callback error info in case an operational subscriber of required data failed.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache, sr_sid_t *sid,

@@ -279,7 +279,7 @@ int sr_get_error(sr_session_ctx_t *session, const sr_error_info_t **error_info);
  * @brief Sets detailed error information into provided session. Used to notify
  * the client library about errors that occurred in the application code.
  *
- * @note Intended for change, RPC/action, or data-provide callbacks to be used
+ * @note Intended for change, RPC/action, or operational callbacks to be used
  * on the provided session.
  *
  * @param[in] session Session provided in a callback.

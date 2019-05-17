@@ -747,7 +747,7 @@ sr_modcache_module_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_m
  * @param[in] mod_info Mod info to use.
  * @param[in] mod Mod info module to process.
  * @param[in] sid Sysrepo session ID.
- * @param[out] cb_error_info Callback error info returned by data-provide subscribers, if any.
+ * @param[out] cb_error_info Callback error info returned by operational subscribers, if any.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *

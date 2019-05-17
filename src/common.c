@@ -313,7 +313,7 @@ sr_sub_oper_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *
                 --subs->oper_sub_count;
 
                 if (!subs->oper_sub_count) {
-                    /* no other data-provide subscriptions */
+                    /* no other operational subscriptions */
                     free(subs->oper_subs);
                     subs->oper_subs = NULL;
                 }

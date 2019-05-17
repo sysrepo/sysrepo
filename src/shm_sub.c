@@ -1081,7 +1081,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
 
     if (*cb_err_info) {
         /* failed callback or timeout */
-        SR_LOG_WRN("Event \"data-provide\" with ID %u failed (%s).", event_id, sr_strerror((*cb_err_info)->err_code));
+        SR_LOG_WRN("Event \"operational\" with ID %u failed (%s).", event_id, sr_strerror((*cb_err_info)->err_code));
 
         /* SUB WRITE LOCK */
         if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, 1, __func__))) {
@@ -1091,7 +1091,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
         sr_shmsub_notify_write_event(sub_shm, event_id, 0, NULL, NULL, 0);
         goto cleanup_wrunlock;
     } else {
-        SR_LOG_INF("Event \"data-provide\" with ID %u succeeded.", event_id);
+        SR_LOG_INF("Event \"operational\" with ID %u succeeded.", event_id);
     }
 
     /* SUB READ LOCK */
@@ -1110,7 +1110,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
     *data = lyd_parse_mem(ly_mod->ctx, shm_sub.addr + sizeof *sub_shm, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT);
     if (ly_errno) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse returned \"data-provide\" data.");
+        sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse returned \"operational\" data.");
         goto cleanup_rdunlock;
     }
 
