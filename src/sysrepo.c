@@ -77,8 +77,8 @@ error:
 API int
 sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 {
-    sr_conn_ctx_t *conn = NULL;
     sr_error_info_t *err_info = NULL;
+    sr_conn_ctx_t *conn = NULL;
     int nonexistent;
 
     SR_CHECK_ARG_APIRET(!conn_p, NULL, err_info);
@@ -147,6 +147,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
         free(conn->mod_cache.mods);
     }
 
+    /* free attributes */
     ly_ctx_destroy(conn->ly_ctx, NULL);
     pthread_mutex_destroy(&conn->ptr_lock);
     if (conn->main_shm_create_lock > -1) {

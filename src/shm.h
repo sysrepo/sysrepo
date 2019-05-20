@@ -209,12 +209,12 @@ typedef struct sr_multi_sub_shm_s {
  *
  * FOR SUBSCRIBERS
  * followed by:
- * event SR_EV_UPDATE, SR_EV_CHANGE, SR_EV_DONE, SR_EV_ABORT - char *diff_lyb - diff tree
+ * event SR_SUB_EV_UPDATE, SR_SUB_EV_CHANGE, SR_SUB_EV_DONE, SR_SUB_EV_ABORT - char *diff_lyb - diff tree
  *
  * FOR ORIGINATOR (when subscriber_count is 0)
  * followed by:
- * event SR_EV_UPDATE - char *edit_lyb
- * or if err_code is set - char *error_message; char *error_xpath
+ * event SR_SUB_EV_SUCCESS - char *edit_lyb
+ * event SR_SUB_EV_ERROR - char *error_message; char *error_xpath
  */
 
 /*
@@ -222,20 +222,20 @@ typedef struct sr_multi_sub_shm_s {
  *
  * FOR SUBSCRIBERS
  * followed by:
- * event SR_EV_CHANGE - time_t notif_timestamp; char *notif_lyb - notification
+ * event SR_SUB_EV_NOTIF - time_t notif_timestamp; char *notif_lyb - notification
  */
 
 /*
- * data provider subscription SHM (generic)
+ * operational subscription SHM (generic)
  *
  * FOR SUBSCRIBER
  * followed by:
- * event SR_EV_CHANGE - char *parent_lyb - existing data tree parent
+ * event SR_SUB_EV_OPER - char *parent_lyb - existing data tree parent
  *
  * FOR ORIGINATOR
  * followed by:
- * event SR_EV_NONE - char *data_lyb - parent with state data connected
- * or if err_code is set - char *error_message; char *error_xpath
+ * event SR_SUB_EV_SUCCESS - char *data_lyb - parent with state data connected
+ * event SR_SUB_EV_ERROR - char *error_message; char *error_xpath
  */
 
 /*
@@ -243,12 +243,12 @@ typedef struct sr_multi_sub_shm_s {
  *
  * FOR SUBSCRIBER
  * followed by:
- * event SR_EV_CHANGE - char *input_lyb - RPC/action with input
+ * event SR_SUB_EV_RPC - char *input_lyb - RPC/action with input
  *
  * FOR ORIGINATOR
  * followed by:
- * event SR_EV_NONE - char *data_lyb - RPC/action with output
- * or if err_code is set - char *error_message; char *error_xpath
+ * event SR_SUB_EV_SUCCESS - char *data_lyb - RPC/action with output
+ * event SR_SUB_EV_ERROR - char *error_message; char *error_xpath
  */
 
 /*

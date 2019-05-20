@@ -83,20 +83,17 @@ sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
     mem[2] = realloc(conf_sub->subs, (conf_sub->sub_count + 1) * sizeof *conf_sub->subs);
     SR_CHECK_MEM_GOTO(!mem[2], err_info, error_unlock);
     conf_sub->subs = mem[2];
+    memset(conf_sub->subs + conf_sub->sub_count, 0, sizeof *conf_sub->subs);
 
     if (xpath) {
         mem[3] = strdup(xpath);
         SR_CHECK_MEM_RET(!mem[3], err_info);
         conf_sub->subs[conf_sub->sub_count].xpath = mem[3];
-    } else {
-        conf_sub->subs[conf_sub->sub_count].xpath = NULL;
     }
     conf_sub->subs[conf_sub->sub_count].priority = priority;
     conf_sub->subs[conf_sub->sub_count].opts = sub_opts;
     conf_sub->subs[conf_sub->sub_count].cb = conf_cb;
     conf_sub->subs[conf_sub->sub_count].private_data = private_data;
-    conf_sub->subs[conf_sub->sub_count].event_id = 0;
-    conf_sub->subs[conf_sub->sub_count].event = SR_SUB_EV_NONE;
 
     ++conf_sub->sub_count;
 
@@ -143,7 +140,7 @@ sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
 
         for (j = 0; j < conf_sub->sub_count; ++j) {
             if ((!xpath && conf_sub->subs[j].xpath) || (xpath && !conf_sub->subs[j].xpath)
-                    || strcmp(conf_sub->subs[j].xpath, xpath)) {
+                    || (xpath && conf_sub->subs[j].xpath && strcmp(conf_sub->subs[j].xpath, xpath))) {
                 continue;
             }
             if ((conf_sub->subs[j].priority != priority) || (conf_sub->subs[j].opts != sub_opts)
@@ -406,7 +403,7 @@ sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs)
         free(rpc_sub->xpath);
         sr_shm_clear(&rpc_sub->sub_shm);
         if (i < subs->rpc_sub_count - 1) {
-            memcpy(&rpc_sub, &subs->rpc_subs[subs->rpc_sub_count - 1], sizeof *rpc_sub);
+            memcpy(rpc_sub, &subs->rpc_subs[subs->rpc_sub_count - 1], sizeof *rpc_sub);
         }
         --subs->rpc_sub_count;
 
@@ -488,11 +485,8 @@ sr_sub_notif_add(const char *mod_name, const char *xpath, time_t start_time, tim
         mem[3] = strdup(xpath);
         SR_CHECK_MEM_GOTO(!mem[3], err_info, error_unlock);
         notif_sub->subs[notif_sub->sub_count].xpath = mem[3];
-    } else {
-        notif_sub->subs[notif_sub->sub_count].xpath = NULL;
     }
     notif_sub->subs[notif_sub->sub_count].start_time = start_time;
-    notif_sub->subs[notif_sub->sub_count].replayed = 0;
     notif_sub->subs[notif_sub->sub_count].stop_time = stop_time;
     notif_sub->subs[notif_sub->sub_count].cb = notif_cb;
     notif_sub->subs[notif_sub->sub_count].tree_cb = notif_tree_cb;
