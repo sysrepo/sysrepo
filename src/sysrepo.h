@@ -195,11 +195,11 @@ typedef struct sr_error_info_s {
  * @brief Connects to the sysrepo datastore.
  *
  * @param[in] opts Options overriding default connection handling by this call.
- * @param[out] conn_ctx Connection context that can be used for subsequent API calls
+ * @param[out] conn Connection that can be used for subsequent API calls
  * (automatically allocated, it is supposed to be released by the caller using ::sr_disconnect).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx);
+int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
 
 /**
  * @brief Disconnects from the sysrepo datastore.
@@ -207,9 +207,12 @@ int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx);
  * Cleans up and frees connection context allocated by ::sr_connect. All sessions and subscriptions
  * started within the connection will be automatically stopped and cleaned up too.
  *
- * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
+ * @note Connection can no longer be used even on error.
+ *
+ * @param[in] conn_ctx Connection acquired with ::sr_connect call.
+ * @return Error code (::SR_ERR_OK on success).
  */
-void sr_disconnect(sr_conn_ctx_t *conn_ctx);
+int sr_disconnect(sr_conn_ctx_t *conn);
 
 /**
  * @brief Get the libyang context used by a connection. Can be used in an application for working with data
@@ -223,7 +226,7 @@ const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
 /**
  * @brief Starts a new session.
  *
- * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
+ * @param[in] conn Connection acquired with ::sr_connect call.
  * @param[in] datastore Datastore on which all sysrepo functions within this
  * session will operate. Later on, datastore can be later changed using
  * ::sr_session_switch_ds call. Functionality of some sysrepo calls does not depend on
@@ -233,12 +236,14 @@ const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
  * calls (automatically allocated, can be released by calling ::sr_session_stop).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_session_start(sr_conn_ctx_t *conn_ctx, const sr_datastore_t datastore, sr_session_ctx_t **session);
+int sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session_ctx_t **session);
 
 /**
- * @brief Stops current session and releases resources and subscriptions tied to the session.
+ * @brief Stops current session and releases resources tied to the session.
  *
- * @note Also releases any locks held by this session.
+ * Also releases any locks held and frees subscriptions created by this session.
+ *
+ * @note Session can no longer be used even on error.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @return Error code (::SR_ERR_OK on success).
@@ -1034,8 +1039,10 @@ int sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *ses
  * @brief Unsubscribes from a subscription acquired by any of sr_*_subscribe
  * calls and releases all subscription-related data.
  *
- * @note In case that the same subscription context was used to subscribe for
+ * In case that the same subscription context was used to subscribe for
  * multiple subscriptions, unsubscribes from all of them.
+ *
+ * @note Subscription will no longer work even on error.
  *
  * @param[in] subscription Subscription context acquired by any of sr_*_subscribe calls.
  * @return Error code (::SR_ERR_OK on success).

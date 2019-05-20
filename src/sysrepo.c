@@ -123,21 +123,22 @@ error:
     return sr_api_ret(NULL, err_info);
 }
 
-API void
+API int
 sr_disconnect(sr_conn_ctx_t *conn)
 {
-    if (!conn) {
-        return;
-    }
+    int ret = SR_ERR_OK, rc;
 
-    /* stop all subscriptions */
-    while (conn->subscription_count) {
-        sr_unsubscribe(conn->subscriptions[0]);
+    if (!conn) {
+        return ret;
     }
 
     /* stop all the sessions */
     while (conn->session_count) {
-        sr_session_stop(conn->sessions[0]);
+        /* API function */
+        rc = sr_session_stop(conn->sessions[0]);
+        if (rc != SR_ERR_OK) {
+            ret = rc;
+        }
     }
 
     /* free cache */
@@ -157,6 +158,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
     sr_shm_clear(&conn->main_shm);
     sr_shm_clear(&conn->main_ext_shm);
     free(conn);
+    return ret;
 }
 
 API const struct ly_ctx *
@@ -167,82 +169,6 @@ sr_get_context(sr_conn_ctx_t *conn)
     }
 
     return conn->ly_ctx;
-}
-
-/**
- * @brief Add a generic pointer to an array.
- *
- * @param[in] ptr_lock Pointers lock.
- * @param[in,out] ptrs Pointer array to enlarge.
- * @param[in,out] ptr_count Pointer array count.
- * @param[in] add_ptr Pointer to add.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_conn_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *add_ptr)
-{
-    sr_error_info_t *err_info = NULL;
-    void *mem;
-
-    /* PTR LOCK */
-    if ((err_info = sr_mlock(ptr_lock, -1, __func__))) {
-        return err_info;
-    }
-
-    /* add the session into conn */
-    mem = realloc(*ptrs, (*ptr_count + 1) * sizeof(void *));
-    if (!mem) {
-        /* PTR UNLOCK */
-        sr_munlock(ptr_lock);
-
-        SR_ERRINFO_MEM(&err_info);
-        return err_info;
-    }
-    *ptrs = mem;
-    (*ptrs)[*ptr_count] = add_ptr;
-    ++(*ptr_count);
-
-    /* PTR UNLOCK */
-    sr_munlock(ptr_lock);
-
-    return NULL;
-}
-
-/**
- * @brief Delete a generic pointer from an array.
- *
- * @param[in,out] ptrs Pointer array to delete from.
- * @param[in,out] ptr_count Pointer array count.
- * @param[in] del_ptr Pointer to delete.
- */
-static void
-sr_conn_ptr_del(void ***ptrs, uint32_t *ptr_count, void *del_ptr)
-{
-    uint32_t i;
-    int found = 0;
-    sr_error_info_t *err_info = NULL;
-
-    for (i = 0; i < *ptr_count; ++i) {
-        if ((*ptrs)[i] == del_ptr) {
-            if (i < *ptr_count - 1) {
-                /* this item was not the last, move the last in its place */
-                (*ptrs)[i] = (*ptrs)[*ptr_count - 1];
-            }
-            --(*ptr_count);
-            if (!*ptr_count) {
-                /* there are no more items */
-                free(*ptrs);
-                *ptrs = NULL;
-            }
-            found = 1;
-            break;
-        }
-    }
-    if (!found) {
-        /* it is written at least */
-        SR_ERRINFO_INT(&err_info);
-        sr_errinfo_free(&err_info);
-    }
 }
 
 API int
@@ -283,12 +209,15 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session
     }
 
     /* add the session into conn */
-    if ((err_info = sr_conn_ptr_add(&conn->ptr_lock, (void ***)&conn->sessions, &conn->session_count, *session))) {
+    if ((err_info = sr_ptr_add(&conn->ptr_lock, (void ***)&conn->sessions, &conn->session_count, *session))) {
         goto error;
     }
 
     (*session)->conn = conn;
     (*session)->ds = datastore;
+    if ((err_info = sr_mutex_init(&(*session)->ptr_lock, 0))) {
+        goto error;
+    }
 
     SR_LOG_INF("Session %u (user \"%s\") created.", (*session)->sid.sr, (*session)->sid.user);
 
@@ -304,42 +233,47 @@ error:
 API int
 sr_session_stop(sr_session_ctx_t *session)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     uint32_t i;
 
     if (!session) {
         return sr_api_ret(NULL, NULL);
     }
 
-    /* PTR LOCK */
-    if ((err_info = sr_mlock(&session->conn->ptr_lock, -1, __func__))) {
-        return sr_api_ret(NULL, err_info);
+    /* remove ourselves from conn sessions */
+    tmp_err = sr_ptr_del(&session->conn->ptr_lock, (void ***)&session->conn->sessions, &session->conn->session_count, session);
+    if (tmp_err) {
+        /* continue */
+        sr_errinfo_merge(&err_info, tmp_err);
     }
 
-    /* remove ourselves from conn sessions */
-    sr_conn_ptr_del((void ***)&session->conn->sessions, &session->conn->session_count, session);
-
-    /* PTR UNLOCK */
-    sr_munlock(&session->conn->ptr_lock);
-
     /* SHM WRITE LOCK */
-    err_info = sr_shmmain_lock_remap(session->conn, 1, 0);
-    if (err_info) {
-        sr_errinfo_free(&err_info);
-        SR_LOG_WRN("Session %u (NC SID %u) locks will not be released, if any.", session->sid.sr, session->sid.nc);
+    if ((tmp_err = sr_shmmain_lock_remap(session->conn, 1, 0))) {
+        /* continue */
+        sr_errinfo_merge(&err_info, tmp_err);
     } else {
         /* release any held locks */
         sr_shmmod_release_locks(session->conn, session->sid);
+
+        /* stop all subscriptions of this session */
+        while (session->subscription_count) {
+            if ((tmp_err = sr_subs_session_del(session, session->subscriptions[0]))) {
+                /* continue */
+                sr_errinfo_merge(&err_info, tmp_err);
+            }
+        }
 
         /* SHM WRITE UNLOCK */
         sr_shmmain_unlock(session->conn, 1, 0);
     }
 
+    /* free attributes */
     free(session->sid.user);
     for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {
         lyd_free_withsiblings(session->dt[i].edit);
     }
     sr_errinfo_free(&session->err_info);
+    pthread_mutex_destroy(&session->ptr_lock);
     free(session);
     return sr_api_ret(NULL, err_info);
 }
@@ -2546,17 +2480,6 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
         return sr_api_ret(NULL, NULL);
     }
 
-    /* PTR LOCK */
-    if ((err_info = sr_mlock(&subscription->conn->ptr_lock, -1, __func__))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* remove ourselves from conn sessions */
-    sr_conn_ptr_del((void ***)&subscription->conn->subscriptions, &subscription->conn->subscription_count, subscription);
-
-    /* PTR UNLOCK */
-    sr_munlock(&subscription->conn->ptr_lock);
-
     if (ATOMIC_LOAD_RELAXED(subscription->thread_running)) {
         /* signal the thread to quit */
         ATOMIC_STORE_RELAXED(subscription->thread_running, 0);
@@ -2575,28 +2498,28 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
 
     /* SHM WRITE LOCK */
     if ((tmp_err = sr_shmmain_lock_remap(subscription->conn, 1, 1))) {
+        /* continue */
         sr_errinfo_merge(&err_info, tmp_err);
-        return sr_api_ret(NULL, err_info);
-    }
+    } else {
+        /* delete all subscriptions (also removes this subscription from all the sessions) */
+        if ((tmp_err = sr_subs_del_all(subscription))) {
+            /* continue */
+            sr_errinfo_merge(&err_info, tmp_err);
+        }
 
-    if ((tmp_err = sr_subs_del_all(subscription->conn, subscription))) {
+        /* defrag main SHM if needed */
+        if ((tmp_err = sr_check_main_shm_defrag(subscription->conn))) {
+            /* continue */
+            sr_errinfo_merge(&err_info, tmp_err);
+        }
+
+        /* SHM WRITE UNLOCK */
         sr_shmmain_unlock(subscription->conn, 1, 1);
-        sr_errinfo_merge(&err_info, tmp_err);
-        return sr_api_ret(NULL, err_info);
     }
-
-    /* defrag main SHM if needed */
-    if ((tmp_err = sr_check_main_shm_defrag(subscription->conn))) {
-        sr_shmmain_unlock(subscription->conn, 1, 1);
-        sr_errinfo_merge(&err_info, tmp_err);
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(subscription->conn, 1, 1);
 
     /* unlink event pipe */
     if ((tmp_err = sr_path_evpipe(subscription->evpipe_num, &path))) {
+        /* continue */
         sr_errinfo_merge(&err_info, tmp_err);
     } else {
         ret = unlink(path);
@@ -2606,6 +2529,7 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
         }
     }
 
+    /* free attributes */
     close(subscription->evpipe);
     pthread_mutex_destroy(&subscription->subs_lock);
     free(subscription);
@@ -2853,7 +2777,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_conf_add(module_name, xpath, session->ds, callback, private_data, priority, sub_opts,
+    if ((err_info = sr_sub_conf_add(session, module_name, xpath, callback, private_data, priority, sub_opts,
             *subscription))) {
         goto error_wrunlock_unsub_unmod;
     }
@@ -2863,12 +2787,10 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         goto error_wrunlock_unsub_unmod;
     }
 
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        /* add the subscription into conn */
-        if ((err_info = sr_conn_ptr_add(&conn->ptr_lock, (void ***)&conn->subscriptions, &conn->subscription_count,
+    /* add the subscription into session */
+    if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
                 *subscription))) {
-            goto error_wrunlock_unsub_unmod;
-        }
+        goto error_wrunlock_unsub_unmod;
     }
 
     /* SHM WRITE UNLOCK */
@@ -3417,7 +3339,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callbac
     }
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_rpc_add(module_name, path, callback, tree_callback, private_data, *subscription))) {
+    if ((err_info = sr_sub_rpc_add(session, module_name, path, callback, tree_callback, private_data, *subscription))) {
         goto error_unlock_unsub_unmod;
     }
 
@@ -3426,12 +3348,10 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callbac
         goto error_unlock_unsub_unmod;
     }
 
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        /* add the subscription into conn */
-        if ((err_info = sr_conn_ptr_add(&conn->ptr_lock, (void ***)&conn->subscriptions, &conn->subscription_count,
+    /* add the subscription into session */
+    if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
                 *subscription))) {
-            goto error_unlock_unsub_unmod;
-        }
+        goto error_unlock_unsub_unmod;
     }
 
     /* SHM WRITE UNLOCK */
@@ -3746,7 +3666,7 @@ cleanup_shm_unlock:
 /**
  * @brief Subscribe to a notification.
  *
- * @param[in] conn Connection to use.
+ * @param[in] session Session subscription.
  * @param[in] ly_mod Notification module.
  * @param[in] xpath XPath to subscribe to.
  * @param[in] start_time Optional subscription start time.
@@ -3759,16 +3679,19 @@ cleanup_shm_unlock:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-_sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, const char *xpath, time_t start_time,
+_sr_event_notif_subscribe(sr_session_ctx_t *session, const struct lys_module *ly_mod, const char *xpath, time_t start_time,
         time_t stop_time, sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback, void *private_data,
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set;
     const struct lys_node *ctx_node;
+    sr_conn_ctx_t *conn;
     uint32_t i;
 
     assert((callback && !tree_callback) || (!callback && tree_callback));
+
+    conn = session->conn;
 
     /* is the xpath valid, if any? */
     if (xpath) {
@@ -3824,8 +3747,8 @@ _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
     }
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_notif_add(ly_mod->name, xpath, start_time, stop_time, callback, tree_callback, private_data,
-            *subscription))) {
+    if ((err_info = sr_sub_notif_add(session, ly_mod->name, xpath, start_time, stop_time, callback, tree_callback,
+                private_data, *subscription))) {
         goto error_unlock_unsub_unmod;
     }
 
@@ -3836,12 +3759,10 @@ _sr_event_notif_subscribe(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
         }
     }
 
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        /* add the subscription into conn */
-        if ((err_info = sr_conn_ptr_add(&conn->ptr_lock, (void ***)&conn->subscriptions, &conn->subscription_count,
+    /* add the subscription into session */
+    if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
                 *subscription))) {
-            goto error_unlock_unsub_unmod;
-        }
+        goto error_unlock_unsub_unmod;
     }
 
     /* SHM WRITE UNLOCK */
@@ -3903,8 +3824,8 @@ sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, con
     sr_shmmain_unlock(session->conn, 0, 0);
 
     /* subscribe */
-    err_info = _sr_event_notif_subscribe(session->conn, ly_mod, xpath, start_time, stop_time, callback, NULL,
-            private_data, opts, subscription);
+    err_info = _sr_event_notif_subscribe(session, ly_mod, xpath, start_time, stop_time, callback, NULL, private_data,
+            opts, subscription);
     return sr_api_ret(session, err_info);
 }
 
@@ -3943,8 +3864,8 @@ sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name
     sr_shmmain_unlock(session->conn, 0, 0);
 
     /* subscribe */
-    err_info = _sr_event_notif_subscribe(session->conn, ly_mod, xpath, start_time, stop_time, NULL, callback,
-            private_data, opts, subscription);
+    err_info = _sr_event_notif_subscribe(session, ly_mod, xpath, start_time, stop_time, NULL, callback, private_data,
+            opts, subscription);
     return sr_api_ret(session, err_info);
 }
 
@@ -4193,7 +4114,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     }
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_oper_add(module_name, path, callback, private_data, *subscription))) {
+    if ((err_info = sr_sub_oper_add(session, module_name, path, callback, private_data, *subscription))) {
         goto error_unlock_unsub_unmod;
     }
 
@@ -4202,12 +4123,10 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
         goto error_unlock_unsub_unmod;
     }
 
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        /* add the subscription into conn */
-        if ((err_info = sr_conn_ptr_add(&conn->ptr_lock, (void ***)&conn->subscriptions, &conn->subscription_count,
+    /* add the subscription into session */
+    if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
                 *subscription))) {
-            goto error_unlock_unsub_unmod;
-        }
+        goto error_unlock_unsub_unmod;
     }
 
     /* SHM WRITE UNLOCK */

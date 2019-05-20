@@ -195,11 +195,9 @@ struct sr_conn_ctx_s {
     struct ly_ctx *ly_ctx;          /**< Libyang context, also available to user. */
     sr_conn_options_t opts;         /**< Connection options. */
 
-    pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions and subscriptions. */
+    pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions. */
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
     uint32_t session_count;         /**< Session count. */
-    sr_subscription_ctx_t **subscriptions;  /**< Array of subscriptions for these connection sessions. */
-    uint32_t subscription_count;    /**< Subscription count. */
 
     int main_shm_create_lock;       /**< Process-shared file lock for creating main SHM. */
     sr_rwlock_t main_shm_remap_lock;    /**< Session-shared lock for remapping main SHM. */
@@ -229,6 +227,10 @@ struct sr_session_ctx_s {
     sr_sid_t sid;                   /**< Session information. */
     sr_error_info_t *err_info;      /**< Session error information. */
 
+    pthread_mutex_t ptr_lock;       /**< Lock for accessing pointers to subscriptions. */
+    sr_subscription_ctx_t **subscriptions;  /**< Array of subscriptions of this session. */
+    uint32_t subscription_count;    /**< Subscription count. */
+
     struct {
         struct lyd_node *edit;      /**< Prepared edit data tree. */
         struct lyd_node *diff;      /**< Diff data tree, used for module change iterator. */
@@ -255,6 +257,7 @@ struct sr_subscription_ctx_s {
             sr_subscr_options_t opts;   /**< Subscription options. */
             sr_module_change_cb cb; /**< Subscription callback. */
             void *private_data;     /**< Subscription callback private data. */
+            sr_session_ctx_t *sess; /**< Subscription session. */
 
             uint32_t event_id;      /**< Event ID of the last processed event. */
             sr_sub_event_t event;   /**< Type of the last processed event. */
@@ -271,6 +274,7 @@ struct sr_subscription_ctx_s {
             char *xpath;            /**< Subscription XPath. */
             sr_oper_get_items_cb cb;    /**< Subscription callback. */
             void *private_data;     /**< Subscription callback private data. */
+            sr_session_ctx_t *sess; /**< Subscription session. */
 
             uint32_t event_id;      /**< Event ID of the last processed event. */
             sr_shm_t sub_shm;       /**< Subscription SHM. */
@@ -284,6 +288,7 @@ struct sr_subscription_ctx_s {
         sr_rpc_cb cb;               /**< Subscription value callback. */
         sr_rpc_tree_cb tree_cb;     /**< Subscription tree callback. */
         void *private_data;         /**< Subscription callback private data. */
+        sr_session_ctx_t *sess; /**< Subscription session. */
 
         uint32_t event_id;          /**< Event ID of the last processed event. */
         sr_shm_t sub_shm;           /**< Subscription SHM. */
@@ -300,6 +305,7 @@ struct sr_subscription_ctx_s {
             sr_event_notif_cb cb;   /**< Subscription value callback. */
             sr_event_notif_tree_cb tree_cb; /**< Subscription tree callback. */
             void *private_data;     /**< Subscription callback private data. */
+            sr_session_ctx_t *sess; /**< Subscription session. */
         } *subs;                    /**< Notification subscriptions for each XPath. */
         uint32_t sub_count;         /**< Notification module XPath subscription count. */
 
@@ -324,9 +330,9 @@ struct sr_change_iter_s {
 /**
  * @brief Add a configuration subscription into subscription structure.
  *
+ * @param[in] sess Subscription session.
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
- * @param[in] ds Subscription datastore.
  * @param[in] conf_cb Subscription callback.
  * @param[in] private_data Subscription callback private data.
  * @param[in] priority Subscription priority.
@@ -334,7 +340,7 @@ struct sr_change_iter_s {
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_sub_conf_add(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb conf_cb,
+sr_error_info_t *sr_sub_conf_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, sr_module_change_cb conf_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs);
 
 /**
@@ -355,6 +361,7 @@ void sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds,
 /**
  * @brief Add an operational subscription into subscription structure.
  *
+ * @param[in] sess Subscription session.
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
  * @param[in] oper_cb Subscription callback.
@@ -362,8 +369,8 @@ void sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds,
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_sub_oper_add(const char *mod_name, const char *xpath, sr_oper_get_items_cb oper_cb, void *private_data,
-        sr_subscription_ctx_t *subs);
+sr_error_info_t *sr_sub_oper_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath,
+        sr_oper_get_items_cb oper_cb, void *private_data, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Delete an operational subscription from subscription structure.
@@ -377,6 +384,7 @@ void sr_sub_oper_del(const char *mod_name, const char *xpath, sr_subscription_ct
 /**
  * @brief Add an RPC subscription into subscription structure.
  *
+ * @param[in] sess Subscription session.
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
  * @param[in] rpc_cb Subscription value callback.
@@ -385,8 +393,8 @@ void sr_sub_oper_del(const char *mod_name, const char *xpath, sr_subscription_ct
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_sub_rpc_add(const char *mod_name, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb,
-        void *private_data, sr_subscription_ctx_t *subs);
+sr_error_info_t *sr_sub_rpc_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, sr_rpc_cb rpc_cb,
+        sr_rpc_tree_cb rpc_tree_cb, void *private_data, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Delete an RPC subscription from subscription structure.
@@ -399,6 +407,7 @@ void sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs);
 /**
  * @brief Add a notification subscription into subscription structure.
  *
+ * @param[in] sess Subscription session.
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
  * @param[in] start_time Subscription start time.
@@ -409,8 +418,9 @@ void sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs);
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_sub_notif_add(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time,
-        sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs);
+sr_error_info_t *sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, time_t start_time,
+        time_t stop_time, sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb, void *private_data,
+        sr_subscription_ctx_t *subs);
 
 /**
  * @brief Delete a notification subscription from subscription structure.
@@ -429,13 +439,30 @@ void sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time
         sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs, int has_subs_lock);
 
 /**
- * @brief Delete all subscriptions from a subscription structure, from main SHM, and their SHM segments as well.
+ * @brief Count subscriptions of session \p sess in subscriptions structure \p subs.
  *
- * @param[in] conn Connection of the subscriptions.
+ * @param[in] sess Subscription session.
+ * @param[in] subs Session subscription.
+ * @return Number of session subscriptions.
+ */
+int sr_subs_session_count(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs);
+
+/**
+ * @brief Delete all subscriptions in \p subs of session \p sess.
+ *
+ * @param[in] sess Subscription session.
+ * @param[in] subs Session subscription.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_subs_session_del(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs);
+
+/**
+ * @brief Delete all subscriptions in \p subs of all the sessions.
+ *
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_subs_del_all(sr_conn_ctx_t *conn, sr_subscription_ctx_t *subs);
+sr_error_info_t *sr_subs_del_all(sr_subscription_ctx_t *subs);
 
 /**
  * @brief Find notifications subscribers for a module.
@@ -469,6 +496,27 @@ sr_error_info_t *sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb c
 /*
  * Utility functions
  */
+
+/**
+ * @brief Add a generic pointer to a ptr array.
+ *
+ * @param[in] ptr_lock Pointers lock.
+ * @param[in,out] ptrs Pointer array to enlarge.
+ * @param[in,out] ptr_count Pointer array count.
+ * @param[in] add_ptr Pointer to add.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *add_ptr);
+
+/**
+ * @brief Delete a generic pointer from a ptr array.
+ *
+ * @param[in,out] ptrs Pointer array to delete from.
+ * @param[in,out] ptr_count Pointer array count.
+ * @param[in] del_ptr Pointer to delete.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *del_ptr);
 
 /**
  * @brief Clear a temporary (callback) session.

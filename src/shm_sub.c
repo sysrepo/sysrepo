@@ -2196,7 +2196,7 @@ sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs
 sr_error_info_t *
 sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_subscription_ctx_t *subs, int *mod_finished)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     time_t cur_time;
     struct modsub_notifsub_s *notif_sub;
     uint32_t i;
@@ -2215,9 +2215,19 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_su
                 return err_info;
             }
 
+            /* remove the subscription from the session if the only subscription */
+            if (sr_subs_session_count(notif_sub->sess, subs) == 1) {
+                if ((tmp_err = sr_ptr_del(&notif_sub->sess->ptr_lock, (void ***)&notif_sub->sess->subscriptions,
+                        &notif_sub->sess->subscription_count, subs))) {
+                    /* continue */
+                    sr_errinfo_merge(&err_info, tmp_err);
+                }
+            }
+
             /* remove the subscription from main SHM */
-            if ((err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, subs->evpipe_num, 0, NULL))) {
-                return err_info;
+            if ((tmp_err = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, subs->evpipe_num, 0, NULL))) {
+                /* continue */
+                sr_errinfo_merge(&err_info, tmp_err);
             }
 
             if (notif_subs->sub_count == 1) {
@@ -2240,7 +2250,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_su
         ++i;
     }
 
-    return NULL;
+    return err_info;
 }
 
 sr_error_info_t *
