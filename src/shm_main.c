@@ -2060,13 +2060,13 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
 
     /* map it (will be zeroed) */
     if ((err_info = sr_shm_remap(&conn->main_shm, sizeof *main_shm))) {
-        return err_info;
+        goto cleanup;
     }
 
     /* init attributes */
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
     if ((err_info = sr_rwlock_init(&main_shm->lock, 1))) {
-        return err_info;
+        goto cleanup;
     }
     ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
     ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
@@ -2075,17 +2075,17 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
     conn->main_ext_shm.fd = shm_open(SR_MAIN_EXT_SHM, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
     if (conn->main_ext_shm.fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to create ext shared memory (%s).", strerror(errno));
-        return err_info;
+        goto cleanup;
     }
 
     /* map it (will be zeroed) */
     if ((err_info = sr_shm_remap(&conn->main_ext_shm, sizeof(size_t)))) {
-        return err_info;
+        goto cleanup;
     }
 
     /* create libyang context */
     if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-        return err_info;
+        goto cleanup;
     }
 
     /* parse libyang internal data tree and apply any scheduled changes */
@@ -2111,6 +2111,11 @@ sr_shmmain_create(sr_conn_ctx_t *conn)
     /* success */
 
 cleanup:
+    if (err_info) {
+        /* remove any created SHM so it is not considered properly created */
+        shm_unlink(SR_MAIN_SHM);
+        shm_unlink(SR_MAIN_EXT_SHM);
+    }
     lyd_free_withsiblings(sr_mods);
     return err_info;
 }
