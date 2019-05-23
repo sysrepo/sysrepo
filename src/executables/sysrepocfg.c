@@ -264,7 +264,7 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* print exported data */
-    lyd_print_file(file ? file : stdout, data, format, LYP_FORMAT);
+    lyd_print_file(file ? file : stdout, data, format, LYP_FORMAT | LYP_WITHSIBLINGS);
     lyd_free_withsiblings(data);
 
     /* cleanup */
