@@ -44,6 +44,7 @@ help_print(void)
         "  -i, --import[=<file-path>]   Import the configuration from a file or STDIN.\n"
         "  -o, --export[=<file-path>]   Export configuration to a file or STDOUT.\n"
         "  -e, --edit[=<editor>]        Edit configuration data using <editor> or read from $VISUAL or $EDITOR env variables.\n"
+        "  -g, --merge <file-path>      Merge the configuration/edit in a file.\n"
         "  -r, --rpc[=<editor>]         Send a RPC/action using <editor> or read from $VISUAL or $EDITOR env variables.\n"
         "                               Output is printed to STDOUT.\n"
         "\n"
@@ -54,11 +55,11 @@ help_print(void)
         "                               (edit, import, export op).\n"
         "  -x, --xpath <xpath>          XPath to select (export op).\n"
         "  -f, --format <format>        Data format to be used, by default based on file extension or \"xml\" if not applicable\n"
-        "                               (\"xml\", \"json\", or \"lyb\") (edit, import, export, rpc op).\n"
+        "                               (\"xml\", \"json\", or \"lyb\") (import, export, edit, merge, rpc op).\n"
         "  -l, --lock                   Lock the specified datastore for the whole operation (edit op).\n"
         "  -p, --permanent              Make all changes in the \"running\" datastore permanent by performing a copy-config\n"
         "                               from \"running\" to \"startup\" (edit op).\n"
-        "  -n, --not-strict             Silently ignore any unknown data (edit, import, rpc op).\n"
+        "  -n, --not-strict             Silently ignore any unknown data (import, edit, merge, rpc op).\n"
         "  -v, --verbosity <level>      Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
         "\n"
     );
@@ -354,6 +355,33 @@ cleanup_unlock:
 }
 
 static int
+op_merge(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format, int not_strict)
+{
+    struct lyd_node *data;
+    int r, flags;
+
+    flags = LYD_OPT_EDIT | (not_strict ? 0 : LYD_OPT_STRICT);
+    if (load_data(sess, file_path, format, flags, &data)) {
+        return EXIT_FAILURE;
+    }
+
+    r = sr_edit_batch(sess, data, "merge");
+    lyd_free_withsiblings(data);
+    if (r != SR_ERR_OK) {
+        error_print(r, "Failed to prepare merge");
+        return EXIT_FAILURE;
+    }
+
+    r = sr_apply_changes(sess);
+    if (r != SR_ERR_OK) {
+        error_print(r, "Failed to merge data");
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}
+
+static int
 op_rpc(sr_session_ctx_t *sess, const char *editor, LYD_FORMAT format, int not_strict)
 {
     char tmp_file[22];
@@ -442,6 +470,7 @@ main(int argc, char** argv)
         {"import",          optional_argument, NULL, 'i'},
         {"export",          optional_argument, NULL, 'o'},
         {"edit",            optional_argument, NULL, 'e'},
+        {"merge",           required_argument, NULL, 'g'},
         {"rpc",             optional_argument, NULL, 'r'},
         {"datastore",       required_argument, NULL, 'd'},
         {"module",          required_argument, NULL, 'm'},
@@ -460,7 +489,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hi::o::e::r::d:m:x:f:lpnv:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hi::o::e::g:r::d:m:x:f:lpnv:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             help_print();
@@ -495,6 +524,14 @@ main(int argc, char** argv)
                 editor = optarg;
             }
             operation = 'e';
+            break;
+        case 'g':
+            if (operation) {
+                error_print(0, "Operation already specified");
+                goto cleanup;
+            }
+            file_path = optarg;
+            operation = 'g';
             break;
         case 'r':
             if (operation) {
@@ -612,6 +649,9 @@ main(int argc, char** argv)
         break;
     case 'e':
         rc = op_edit(sess, editor, module_name, format, lock, permanent, not_strict);
+        break;
+    case 'g':
+        rc = op_merge(sess, file_path, format, not_strict);
         break;
     case 'r':
         rc = op_rpc(sess, editor, format, not_strict);
