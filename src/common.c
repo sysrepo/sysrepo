@@ -2550,7 +2550,7 @@ sr_ly_data_dup_xpath_select(const struct lyd_node *data, char **xpaths, uint16_t
 
         /* merge into one set */
         if (set) {
-            if (ly_set_merge(set, cur_set, 0)) {
+            if (ly_set_merge(set, cur_set, 0) == -1) {
                 ly_set_free(cur_set);
                 sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
                 goto error;
