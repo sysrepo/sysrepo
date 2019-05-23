@@ -50,9 +50,9 @@ help_print(void)
         "\n"
         "Available other-options:\n"
         "  -d, --datastore <datastore>  Datastore to be operated on, \"running\" by default (\"running\", \"startup\",\n"
-        "                               or \"operational\") (edit, import, export op).\n"
+        "                               \"candidate\", \"operational\", or \"state\") (import, export, edit, merge op).\n"
         "  -m, --module <module-name>   Module to be operated on, otherwise it is operated on full datastore\n"
-        "                               (edit, import, export op).\n"
+        "                               (import, export, edit op).\n"
         "  -x, --xpath <xpath>          XPath to select (export op).\n"
         "  -f, --format <format>        Data format to be used, by default based on file extension or \"xml\" if not applicable\n"
         "                               (\"xml\", \"json\", or \"lyb\") (import, export, edit, merge, rpc op).\n"
@@ -548,8 +548,12 @@ main(int argc, char** argv)
                 ds = SR_DS_RUNNING;
             } else if (!strcmp(optarg, "startup")) {
                 ds = SR_DS_STARTUP;
+            } else if (!strcmp(optarg, "candidate")) {
+                ds = SR_DS_CANDIDATE;
             } else if (!strcmp(optarg, "operational")) {
                 ds = SR_DS_OPERATIONAL;
+            } else if (!strcmp(optarg, "state")) {
+                ds = SR_DS_STATE;
             } else {
                 error_print(0, "Unknown datastore \"%s\"", optarg);
                 goto cleanup;
