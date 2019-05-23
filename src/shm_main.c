@@ -2860,7 +2860,7 @@ sr_shmmain_ly_add_module(const struct lys_module *ly_mod, struct lyd_node *sr_mo
 }
 
 /**
- * @brief Add module with imports into internal sysrepo data.
+ * @brief Add module with all implemented imports into internal sysrepo data, recursively.
  *
  * @param[in] main_shm Main SHM.
  * @param[in] main_ext_shm Main ext SHM.
@@ -2870,31 +2870,44 @@ sr_shmmain_ly_add_module(const struct lys_module *ly_mod, struct lyd_node *sr_mo
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_ly_add_module_with_imps(sr_shm_t *main_shm, char *main_ext_shm_addr, const struct lys_module *ly_mod,
+sr_shmmain_ly_add_module_with_imps_r(sr_shm_t *main_shm, char *main_ext_shm_addr, const struct lys_module *ly_mod,
         struct lyd_node *sr_mods, struct lyd_node **sr_mod_p)
 {
     sr_error_info_t *err_info = NULL;
+    struct ly_set *set;
     const char *mod_str;
+    char *xpath;
     uint8_t i;
 
-    if (sr_shmmain_find_module(main_shm, main_ext_shm_addr, ly_mod->name, 0)) {
-        /* module has already been added */
-        return NULL;
-    }
+    if (ly_mod->implemented) {
+        if (asprintf(&xpath, "module[name='%s']", ly_mod->name) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            return err_info;
+        }
+        set = lyd_find_path(sr_mods, xpath);
+        free(xpath);
+        if (!set) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mods)->ctx);
+            return err_info;
+        } else if (set->number) {
+            ly_set_free(set);
+            /* module has already been added */
+            return NULL;
+        }
+        ly_set_free(set);
 
-    mod_str = *sr_mod_p ? "Dependency module" : "Module";
-    if ((err_info = sr_shmmain_ly_add_module(ly_mod, sr_mods, sr_mod_p))) {
-        return err_info;
+        mod_str = *sr_mod_p ? "Dependency module" : "Module";
+        if ((err_info = sr_shmmain_ly_add_module(ly_mod, sr_mods, sr_mod_p))) {
+            return err_info;
+        }
+        SR_LOG_INF("%s \"%s\" was installed.", mod_str, ly_mod->name);
     }
-    SR_LOG_INF("%s \"%s\" was installed.", mod_str, ly_mod->name);
 
     /* all newly implemented modules will be added also from imports */
     for (i = 0; i < ly_mod->imp_size; ++i) {
-        if (ly_mod->imp[i].module->implemented) {
-            if ((err_info = sr_shmmain_ly_add_module_with_imps(main_shm, main_ext_shm_addr, ly_mod->imp[i].module,
-                        sr_mods, sr_mod_p))) {
-                return err_info;
-            }
+        if ((err_info = sr_shmmain_ly_add_module_with_imps_r(main_shm, main_ext_shm_addr, ly_mod->imp[i].module,
+                    sr_mods, sr_mod_p))) {
+            return err_info;
         }
     }
 
@@ -2914,7 +2927,7 @@ sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *ly
 
     /* add module into persistent data tree */
     assert(ly_mod->implemented);
-    if ((err_info = sr_shmmain_ly_add_module_with_imps(&conn->main_shm, conn->main_ext_shm.addr, ly_mod, sr_mods, &sr_mod))) {
+    if ((err_info = sr_shmmain_ly_add_module_with_imps_r(&conn->main_shm, conn->main_ext_shm.addr, ly_mod, sr_mods, &sr_mod))) {
         goto cleanup;
     }
 
