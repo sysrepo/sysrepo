@@ -144,7 +144,7 @@ read_file(FILE *file, char **mem)
 
     if (ferror(file)) {
         free(*mem);
-        error_print(0, "Error reading from file");
+        error_print(0, "Error reading from file (%s)", strerror(errno));
         return EXIT_FAILURE;
     } else if (!feof(file)) {
         free(*mem);
