@@ -209,7 +209,7 @@ int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
  *
  * @note Connection can no longer be used even on error.
  *
- * @param[in] conn_ctx Connection acquired with ::sr_connect call.
+ * @param[in] conn Connection acquired with ::sr_connect call.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_disconnect(sr_conn_ctx_t *conn);
