@@ -869,13 +869,17 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t **c_ct
             state = DM_COMMIT_VALIDATE_MERGED;
             break;
         case DM_COMMIT_VALIDATE_MERGED:
-            rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, commit_ctx->session, errors, err_cnt);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR_MSG("Validation after merging failed");
-                rc = SR_ERR_VALIDATION_FAILED;
-                goto cleanup;
+            if (session->datastore == SR_DS_CANDIDATE) {
+                SR_LOG_DBG_MSG("Commit (5/10): merged models validation skipped");
+            } else {
+                rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, commit_ctx->session, errors, err_cnt);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR_MSG("Validation after merging failed");
+                    rc = SR_ERR_VALIDATION_FAILED;
+                    goto cleanup;
+                }
+                SR_LOG_DBG_MSG("Commit (5/10): merged models validation succeeded");
             }
-            SR_LOG_DBG_MSG("Commit (5/10): merged models validation succeeded");
             state = DM_COMMIT_NACM;
             break;
         case DM_COMMIT_NACM:
