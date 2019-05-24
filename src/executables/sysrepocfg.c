@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -41,25 +42,32 @@ help_print(void)
         "\n"
         "Available operation-options:\n"
         "  -h, --help                   Prints usage help.\n"
-        "  -i, --import[=<file-path>]   Import the configuration from a file or STDIN.\n"
-        "  -o, --export[=<file-path>]   Export configuration to a file or STDOUT.\n"
-        "  -e, --edit[=<editor>]        Edit configuration data using <editor> or read from $VISUAL or $EDITOR env variables.\n"
-        "  -g, --merge <file-path>      Merge the configuration/edit in a file.\n"
-        "  -r, --rpc[=<editor>]         Send a RPC/action using <editor> or read from $VISUAL or $EDITOR env variables.\n"
-        "                               Output is printed to STDOUT.\n"
+        "  -I, --import[=<file-path>]   Import the configuration from a file or STDIN.\n"
+        "  -X, --export[=<file-path>]   Export configuration to a file or STDOUT.\n"
+        "  -E, --edit[=<file-path>/<editor>]\n"
+        "                               Edit configuration data by merging (applying) a configuration (edit) file or\n"
+        "                               by editing the current datastore content using a text editor.\n"
+        "  -R, --rpc[=<file-path>/<editor>]\n"
+        "                               Send a RPC/action in a file or using a text editor. Output is printed to STDOUT.\n"
+        "  -N, --notification[=<file-path>/<editor>]\n"
+        "                               Send a notification in a file or using a text editor.\n"
+        "  -C, --copy-from <file-path>/<source-datastore>\n"
+        "                               Perform a copy-config from a file or a datastore.\n"
+        "\n"
+        "       When both a <file-path> and <editor>/<target-datastore> can be specified, it is always first checked\n"
+        "       that the file exists. If not, then it is interpreted as the other parameter."
+        "       If no <file-path> and no <editor> is set, use text editor in $VISUAL or $EDITOR environment variables.\n"
         "\n"
         "Available other-options:\n"
         "  -d, --datastore <datastore>  Datastore to be operated on, \"running\" by default (\"running\", \"startup\",\n"
-        "                               \"candidate\", \"operational\", or \"state\") (import, export, edit, merge op).\n"
+        "                               \"candidate\", \"operational\", or \"state\") (import, export, edit, copy-from op).\n"
         "  -m, --module <module-name>   Module to be operated on, otherwise it is operated on full datastore\n"
-        "                               (import, export, edit op).\n"
+        "                               (import, export, edit, copy-from op).\n"
         "  -x, --xpath <xpath>          XPath to select (export op).\n"
         "  -f, --format <format>        Data format to be used, by default based on file extension or \"xml\" if not applicable\n"
-        "                               (\"xml\", \"json\", or \"lyb\") (import, export, edit, merge, rpc op).\n"
+        "                               (\"xml\", \"json\", or \"lyb\") (import, export, edit, rpc, notification, copy-from op).\n"
         "  -l, --lock                   Lock the specified datastore for the whole operation (edit op).\n"
-        "  -p, --permanent              Make all changes in the \"running\" datastore permanent by performing a copy-config\n"
-        "                               from \"running\" to \"startup\" (edit op).\n"
-        "  -n, --not-strict             Silently ignore any unknown data (import, edit, merge, rpc op).\n"
+        "  -n, --not-strict             Silently ignore any unknown data (import, edit, rpc, notification, copy-from op).\n"
         "  -v, --verbosity <level>      Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
         "\n"
     );
@@ -95,10 +103,22 @@ error_ly_print(struct ly_ctx *ctx)
 }
 
 static int
-edit_input(const char *editor, const char *path)
+step_edit_input(const char *editor, const char *path)
 {
     int ret;
     pid_t pid, wait_pid;
+
+    /* learn what editor to use */
+    if (!editor) {
+        editor = getenv("VISUAL");
+    }
+    if (!editor) {
+        editor = getenv("EDITOR");
+    }
+    if (!editor) {
+        error_print(0, "Editor not specified nor read from the environment");
+        return EXIT_FAILURE;
+    }
 
     if ((pid = vfork()) == -1) {
         error_print(0, "Fork failed (%s)", strerror(errno));
@@ -126,7 +146,7 @@ edit_input(const char *editor, const char *path)
 }
 
 static int
-read_file(FILE *file, char **mem)
+step_read_file(FILE *file, char **mem)
 {
     size_t mem_size, mem_used;
 
@@ -157,7 +177,7 @@ read_file(FILE *file, char **mem)
 }
 
 static int
-load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format, int flags, struct lyd_node **data)
+step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format, int flags, struct lyd_node **data)
 {
     struct ly_ctx *ly_ctx;
     char *ptr;
@@ -189,7 +209,7 @@ load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format, int 
         *data = lyd_parse_path(ly_ctx, file_path, format, flags, NULL);
     } else {
         /* we need to load the data into memory first */
-        if (read_file(stdin, &ptr)) {
+        if (step_read_file(stdin, &ptr)) {
             return EXIT_FAILURE;
         }
         *data = lyd_parse_mem(ly_ctx, ptr, format, flags);
@@ -205,13 +225,43 @@ load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format, int 
 }
 
 static int
+step_create_input_file(LYD_FORMAT format, char *tmp_file)
+{
+    int suffix, fd;
+
+    if (format == LYD_LYB) {
+        error_print(0, "LYB binary format cannot be opened in a text editor");
+        return EXIT_FAILURE;
+    } else if (format == LYD_UNKNOWN) {
+        format = LYD_XML;
+    }
+
+    /* create temporary file */
+    if (format == LYD_JSON) {
+        sprintf(tmp_file, "/tmp/srtmpXXXXXX.json");
+        suffix = 5;
+    } else {
+        sprintf(tmp_file, "/tmp/srtmpXXXXXX.xml");
+        suffix = 4;
+    }
+    fd = mkstemps(tmp_file, suffix);
+    if (fd == -1) {
+        error_print(0, "Failed to open temporary file (%s)", strerror(errno));
+        return EXIT_FAILURE;
+    }
+    close(fd);
+
+    return EXIT_SUCCESS;
+}
+
+static int
 op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name, LYD_FORMAT format, int not_strict)
 {
     struct lyd_node *data;
     int r, flags;
 
     flags = LYD_OPT_CONFIG | (not_strict ? 0 : LYD_OPT_STRICT);
-    if (load_data(sess, file_path, format, flags, &data)) {
+    if (step_load_data(sess, file_path, format, flags, &data)) {
         return EXIT_FAILURE;
     }
 
@@ -275,45 +325,40 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
 }
 
 static int
-op_edit(sr_session_ctx_t *sess, const char *editor, const char *module_name, LYD_FORMAT format, int lock, int permanent,
-        int not_strict)
+op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const char *module_name, LYD_FORMAT format,
+        int lock, int not_strict)
 {
     char tmp_file[22];
-    int suffix, fd, r, rc = EXIT_FAILURE;
+    int r, flags, rc = EXIT_FAILURE;
+    struct lyd_node *data;
 
-    if (format == LYD_LYB) {
-        error_print(0, "LYB binary format cannot be opened in a text editor");
-        return EXIT_FAILURE;
-    } else if (format == LYD_UNKNOWN) {
-        format = LYD_XML;
-    }
+    if (file_path) {
+        /* just apply an edit form a file */
+        flags = LYD_OPT_EDIT | (not_strict ? 0 : LYD_OPT_STRICT);
+        if (step_load_data(sess, file_path, format, flags, &data)) {
+            return EXIT_FAILURE;
+        }
 
-    /* learn what editor to use */
-    if (!editor) {
-        editor = getenv("VISUAL");
-    }
-    if (!editor) {
-        editor = getenv("EDITOR");
-    }
-    if (!editor) {
-        error_print(0, "Editor not specified nor read from the environment");
-        return EXIT_FAILURE;
+        r = sr_edit_batch(sess, data, "merge");
+        lyd_free_withsiblings(data);
+        if (r != SR_ERR_OK) {
+            error_print(r, "Failed to prepare edit");
+            return EXIT_FAILURE;
+        }
+
+        r = sr_apply_changes(sess);
+        if (r != SR_ERR_OK) {
+            error_print(r, "Failed to merge edit data");
+            return EXIT_FAILURE;
+        }
+
+        return EXIT_SUCCESS;
     }
 
     /* create temporary file */
-    if (format == LYD_JSON) {
-        sprintf(tmp_file, "/tmp/srtmpXXXXXX.json");
-        suffix = 5;
-    } else {
-        sprintf(tmp_file, "/tmp/srtmpXXXXXX.xml");
-        suffix = 4;
-    }
-    fd = mkstemps(tmp_file, suffix);
-    if (fd == -1) {
-        error_print(0, "Failed to open temporary file (%s)", strerror(errno));
+    if (step_create_input_file(format, tmp_file)) {
         return EXIT_FAILURE;
     }
-    close(fd);
 
     /* lock if requested */
     if (lock && ((r = sr_lock(sess, module_name)) != SR_ERR_OK)) {
@@ -327,21 +372,13 @@ op_edit(sr_session_ctx_t *sess, const char *editor, const char *module_name, LYD
     }
 
     /* edit */
-    if (edit_input(editor, tmp_file)) {
+    if (step_edit_input(editor, tmp_file)) {
         goto cleanup_unlock;
     }
 
     /* use import operation to store edited data */
     if (op_import(sess, tmp_file, module_name, format, not_strict)) {
         goto cleanup_unlock;
-    }
-
-    /* perform copy-config */
-    if (permanent && (sr_session_get_ds(sess) == SR_DS_RUNNING)) {
-        if ((r = sr_copy_config(sess, module_name, SR_DS_RUNNING, SR_DS_STARTUP)) != SR_ERR_OK) {
-            error_print(r, "Copy-config failed");
-            goto cleanup_unlock;
-        }
     }
 
     /* success */
@@ -355,81 +392,29 @@ cleanup_unlock:
 }
 
 static int
-op_merge(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format, int not_strict)
-{
-    struct lyd_node *data;
-    int r, flags;
-
-    flags = LYD_OPT_EDIT | (not_strict ? 0 : LYD_OPT_STRICT);
-    if (load_data(sess, file_path, format, flags, &data)) {
-        return EXIT_FAILURE;
-    }
-
-    r = sr_edit_batch(sess, data, "merge");
-    lyd_free_withsiblings(data);
-    if (r != SR_ERR_OK) {
-        error_print(r, "Failed to prepare merge");
-        return EXIT_FAILURE;
-    }
-
-    r = sr_apply_changes(sess);
-    if (r != SR_ERR_OK) {
-        error_print(r, "Failed to merge data");
-        return EXIT_FAILURE;
-    }
-
-    return EXIT_SUCCESS;
-}
-
-static int
-op_rpc(sr_session_ctx_t *sess, const char *editor, LYD_FORMAT format, int not_strict)
+op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format, int not_strict)
 {
     char tmp_file[22];
-    int suffix, fd, r, flags;
+    int r, flags;
     struct lyd_node *input, *output, *node;
 
-    if (format == LYD_LYB) {
-        error_print(0, "LYB binary format cannot be opened in a text editor");
-        return EXIT_FAILURE;
-    } else if (format == LYD_UNKNOWN) {
-        format = LYD_XML;
-    }
+    if (!file_path) {
+        /* create temp file */
+        if (step_create_input_file(format, tmp_file)) {
+            return EXIT_FAILURE;
+        }
 
-    /* learn what editor to use */
-    if (!editor) {
-        editor = getenv("VISUAL");
-    }
-    if (!editor) {
-        editor = getenv("EDITOR");
-    }
-    if (!editor) {
-        error_print(0, "Editor not specified nor read from the environment");
-        return EXIT_FAILURE;
-    }
+        /* load rpc/action into the file */
+        if (step_edit_input(editor, tmp_file)) {
+            return EXIT_FAILURE;
+        }
 
-    /* create temporary file */
-    if (format == LYD_JSON) {
-        sprintf(tmp_file, "/tmp/srtmpXXXXXX.json");
-        suffix = 5;
-    } else {
-        sprintf(tmp_file, "/tmp/srtmpXXXXXX.xml");
-        suffix = 4;
-    }
-    fd = mkstemps(tmp_file, suffix);
-    if (fd == -1) {
-        error_print(0, "Failed to open temporary file (%s)", strerror(errno));
-        return EXIT_FAILURE;
-    }
-    close(fd);
-
-    /* load rpc/action into a file */
-    if (edit_input(editor, tmp_file)) {
-        return EXIT_FAILURE;
+        file_path = tmp_file;
     }
 
     /* load the file */
     flags = LYD_OPT_RPC | (not_strict ? 0 : LYD_OPT_STRICT);
-    if (load_data(sess, tmp_file, format, flags, &input)) {
+    if (step_load_data(sess, file_path, format, flags, &input)) {
         return EXIT_FAILURE;
     }
 
@@ -455,29 +440,126 @@ op_rpc(sr_session_ctx_t *sess, const char *editor, LYD_FORMAT format, int not_st
     return EXIT_SUCCESS;
 }
 
+static int
+op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format, int not_strict)
+{
+    char tmp_file[22];
+    int r, flags;
+    struct lyd_node *notif;
+
+    if (!file_path) {
+        /* create temp file */
+        if (step_create_input_file(format, tmp_file)) {
+            return EXIT_FAILURE;
+        }
+
+        /* load notif into the file */
+        if (step_edit_input(editor, tmp_file)) {
+            return EXIT_FAILURE;
+        }
+
+        file_path = tmp_file;
+    }
+
+    /* load the file */
+    flags = LYD_OPT_NOTIF | (not_strict ? 0 : LYD_OPT_STRICT);
+    if (step_load_data(sess, file_path, format, flags, &notif)) {
+        return EXIT_FAILURE;
+    }
+
+    /* send notification */
+    r = sr_event_notif_send_tree(sess, notif);
+    lyd_free_withsiblings(notif);
+    if (r) {
+        error_print(r, "Sending notification failed");
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}
+
+static int
+op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds, sr_datastore_t target_ds,
+        const char *module_name, LYD_FORMAT format, int not_strict)
+{
+    int r, flags;
+    struct lyd_node *data;
+
+    if (file_path) {
+        /* load the file */
+        flags = LYD_OPT_CONFIG | (not_strict ? 0 : LYD_OPT_STRICT);
+        if (step_load_data(sess, file_path, format, flags, &data)) {
+            return EXIT_FAILURE;
+        }
+
+        /* replace config */
+        r = sr_replace_config(sess, module_name, data, target_ds);
+        if (r) {
+            error_print(r, "Replace config failed");
+            return EXIT_FAILURE;
+        }
+    } else {
+        /* copy config */
+        r = sr_copy_config(sess, module_name, source_ds, target_ds);
+        if (r) {
+            error_print(r, "Copy config failed");
+            return EXIT_FAILURE;
+        }
+    }
+
+    return EXIT_SUCCESS;
+}
+
+static int
+arg_is_file(const char *optarg)
+{
+    return !access(optarg, F_OK);
+}
+
+static int
+arg_get_ds(const char *optarg, sr_datastore_t *ds)
+{
+    if (!strcmp(optarg, "running")) {
+        *ds = SR_DS_RUNNING;
+    } else if (!strcmp(optarg, "startup")) {
+        *ds = SR_DS_STARTUP;
+    } else if (!strcmp(optarg, "candidate")) {
+        *ds = SR_DS_CANDIDATE;
+    } else if (!strcmp(optarg, "operational")) {
+        *ds = SR_DS_OPERATIONAL;
+    } else if (!strcmp(optarg, "state")) {
+        *ds = SR_DS_STATE;
+    } else {
+        error_print(0, "Unknown datastore \"%s\"", optarg);
+        return -1;
+    }
+
+    return 0;
+}
+
 int
 main(int argc, char** argv)
 {
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
-    sr_datastore_t ds = SR_DS_RUNNING;
+    sr_datastore_t ds = SR_DS_RUNNING, source_ds;
     LYD_FORMAT format = LYD_UNKNOWN;
     const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL;
     sr_log_level_t log_level = 0;
-    int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, permanent = 0, not_strict = 0;
+    int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
-        {"import",          optional_argument, NULL, 'i'},
-        {"export",          optional_argument, NULL, 'o'},
-        {"edit",            optional_argument, NULL, 'e'},
-        {"merge",           required_argument, NULL, 'g'},
-        {"rpc",             optional_argument, NULL, 'r'},
+        {"import",          optional_argument, NULL, 'I'},
+        {"export",          optional_argument, NULL, 'X'},
+        {"edit",            optional_argument, NULL, 'E'},
+        {"rpc",             optional_argument, NULL, 'R'},
+        {"notification",    optional_argument, NULL, 'N'},
+        {"copy-from",       required_argument, NULL, 'C'},
         {"datastore",       required_argument, NULL, 'd'},
         {"module",          required_argument, NULL, 'm'},
         {"xpath",           required_argument, NULL, 'x'},
         {"format",          required_argument, NULL, 'f'},
         {"lock",            no_argument,       NULL, 'l'},
-        {"permanent",       no_argument,       NULL, 'p'},
         {"not-strict",      no_argument,       NULL, 'n'},
         {"verbosity",       required_argument, NULL, 'v'},
     };
@@ -489,13 +571,13 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hi::o::e::g:r::d:m:x:f:lpnv:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hI::X::E::R::N::C:d:m:x:f:lnv:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             help_print();
             rc = EXIT_SUCCESS;
             goto cleanup;
-        case 'i':
+        case 'I':
             if (operation) {
                 error_print(0, "Operation already specified");
                 goto cleanup;
@@ -503,9 +585,9 @@ main(int argc, char** argv)
             if (optarg) {
                 file_path = optarg;
             }
-            operation = 'i';
+            operation = opt;
             break;
-        case 'o':
+        case 'X':
             if (operation) {
                 error_print(0, "Operation already specified");
                 goto cleanup;
@@ -513,49 +595,66 @@ main(int argc, char** argv)
             if (optarg) {
                 file_path = optarg;
             }
-            operation = 'o';
+            operation = opt;
             break;
-        case 'e':
+        case 'E':
             if (operation) {
                 error_print(0, "Operation already specified");
                 goto cleanup;
             }
             if (optarg) {
-                editor = optarg;
+                if (arg_is_file(optarg)) {
+                    file_path = optarg;
+                } else {
+                    editor = optarg;
+                }
             }
-            operation = 'e';
+            operation = opt;
             break;
-        case 'g':
-            if (operation) {
-                error_print(0, "Operation already specified");
-                goto cleanup;
-            }
-            file_path = optarg;
-            operation = 'g';
-            break;
-        case 'r':
+        case 'R':
             if (operation) {
                 error_print(0, "Operation already specified");
                 goto cleanup;
             }
             if (optarg) {
-                editor = optarg;
+                if (arg_is_file(optarg)) {
+                    file_path = optarg;
+                } else {
+                    editor = optarg;
+                }
             }
-            operation = 'r';
+            operation = opt;
+            break;
+        case 'N':
+            if (operation) {
+                error_print(0, "Operation already specified");
+                goto cleanup;
+            }
+            if (optarg) {
+                if (arg_is_file(optarg)) {
+                    file_path = optarg;
+                } else {
+                    editor = optarg;
+                }
+            }
+            operation = opt;
+            break;
+        case 'C':
+            if (operation) {
+                error_print(0, "Operation already specified");
+                goto cleanup;
+            }
+            if (arg_is_file(optarg)) {
+                file_path = optarg;
+            } else {
+                if (arg_get_ds(optarg, &source_ds)) {
+                    goto cleanup;
+                }
+            }
+            operation = opt;
             break;
         case 'd':
-            if (!strcmp(optarg, "running")) {
-                ds = SR_DS_RUNNING;
-            } else if (!strcmp(optarg, "startup")) {
-                ds = SR_DS_STARTUP;
-            } else if (!strcmp(optarg, "candidate")) {
-                ds = SR_DS_CANDIDATE;
-            } else if (!strcmp(optarg, "operational")) {
-                ds = SR_DS_OPERATIONAL;
-            } else if (!strcmp(optarg, "state")) {
-                ds = SR_DS_STATE;
-            } else {
-                error_print(0, "Unknown datastore \"%s\"", optarg);
+            if (arg_get_ds(optarg, &ds)) {
                 goto cleanup;
             }
             break;
@@ -593,9 +692,6 @@ main(int argc, char** argv)
             break;
         case 'l':
             lock = 1;
-            break;
-        case 'p':
-            permanent = 1;
             break;
         case 'n':
             not_strict = 1;
@@ -645,20 +741,23 @@ main(int argc, char** argv)
 
     /* perform the operation */
     switch (operation) {
-    case 'i':
+    case 'I':
         rc = op_import(sess, file_path, module_name, format, not_strict);
         break;
-    case 'o':
+    case 'X':
         rc = op_export(sess, file_path, module_name, xpath, format);
         break;
-    case 'e':
-        rc = op_edit(sess, editor, module_name, format, lock, permanent, not_strict);
+    case 'E':
+        rc = op_edit(sess, file_path, editor, module_name, format, lock, not_strict);
         break;
-    case 'g':
-        rc = op_merge(sess, file_path, format, not_strict);
+    case 'R':
+        rc = op_rpc(sess, file_path, editor, format, not_strict);
         break;
-    case 'r':
-        rc = op_rpc(sess, editor, format, not_strict);
+    case 'N':
+        rc = op_notif(sess, file_path, editor, format, not_strict);
+        break;
+    case 'C':
+        rc = op_copy(sess, file_path, source_ds, ds, module_name, format, not_strict);
         break;
     case 0:
         error_print(0, "No operation specified");
