@@ -36,8 +36,9 @@ extern "C" {
 namespace sysrepo {
 
 // Data
-Data::Data(sr_data_t data, sr_type_t type, S_Deleter deleter) {_d = data; _t = type; _deleter = deleter;}
-Data::~Data() {}
+Data::Data(sr_data_t data, sr_type_t type)
+    : _d(data), _t(type) {}
+Data::~Data() = default;
 char *Data::get_binary() const {
     if (_t != SR_BINARY_T) throw_exception(SR_ERR_DATA_MISSING);
     return _d.binary_val;
@@ -104,23 +105,23 @@ uint64_t Data::get_uint64() const {
 }
 
 // Val
-Val::Val(sr_val_t *val, S_Deleter deleter) {
+Val::Val(sr_val_t *val) {
     if (val == nullptr)
         throw_exception(SR_ERR_INVAL_ARG);
     _val = val;
-    _deleter = deleter;
 }
-Val::Val() {
+Val::Val() : _val(nullptr) {}
+Val::~Val() {
+    if (_val) {
+        sr_free_val(_val);
+    }
     _val = nullptr;
-    _deleter = S_Deleter(new Deleter(_val));
 }
-Val::~Val() {}
 Val::Val(const char *value, sr_type_t type) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,value,type);
-    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(bool bool_val, sr_type_t type) {
     if (type != SR_BOOL_T)
@@ -129,70 +130,60 @@ Val::Val(bool bool_val, sr_type_t type) {
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,bool_val,type);
-    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(double decimal64_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,decimal64_val);
-    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(int8_t int8_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,int8_val);
-    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(int16_t int16_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,int16_val);
-    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(int32_t int32_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,int32_val);
-    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(int64_t int64_val, sr_type_t type) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,int64_val,type);
-    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(uint8_t uint8_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,uint8_val);
-    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(uint16_t uint16_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,uint16_val);
-    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(uint32_t uint32_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,uint32_val);
-    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(uint64_t uint64_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,uint64_val);
-    _deleter = S_Deleter(new Deleter(_val));
 }
 void Val::set(const char *xpath, const char *value, sr_type_t type) {
     switch (type)
@@ -370,7 +361,7 @@ void Val::dflt_set(bool data) {
     _val->dflt = data;
 }
 S_Data Val::data() {
-    S_Data data(new Data(_val->data, _val->type, _deleter));
+    S_Data data(new Data(_val->data, _val->type));
     return data;
 }
 bool Val::empty() {
@@ -410,44 +401,43 @@ S_Val Val::dup() {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Deleter deleter(new Deleter(new_val));
-    S_Val val(new Val(new_val, deleter));
+    S_Val val(new Val(new_val));
     return val;
 }
 
 // Vals
-Vals::Vals(const sr_val_t *vals, const size_t cnt, S_Deleter deleter) {
+Vals::Vals(const sr_val_t *vals, const size_t cnt) {
     _vals = (sr_val_t *) vals;
     _cnt = (size_t) cnt;
-
-    _deleter = deleter;
 }
-Vals::Vals(sr_val_t **vals, size_t *cnt, S_Deleter deleter) {
+Vals::Vals(sr_val_t **vals, size_t *cnt) {
     if (!vals || !cnt || (!*vals && *cnt))
         throw_exception(SR_ERR_INVAL_ARG);
     _vals = *vals;
     _cnt = *cnt;
-    _deleter = deleter;
 }
 Vals::Vals(size_t cnt): Vals() {
     if (cnt) {
         int ret = sr_new_values(cnt, &_vals);
         if (ret != SR_ERR_OK)
             throw_exception(ret);
-
         _cnt = cnt;
-        _deleter = S_Deleter(new Deleter(_vals, _cnt));
     }
 }
 Vals::Vals(): _cnt(0), _vals(nullptr) {}
-Vals::~Vals() {}
+Vals::~Vals() {
+    if (_vals) {
+        sr_free_values(_vals, _cnt);
+    }
+    _vals = nullptr;
+}
 S_Val Vals::val(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Vals::val: index out of range");
     if (!_vals)
         throw std::logic_error("Vals::val: called on null Vals");
 
-    S_Val val(new Val(&_vals[n], _deleter));
+    S_Val val(new Val(&_vals[n]));
     return val;
 }
 S_Vals Vals::dup() {
@@ -456,8 +446,7 @@ S_Vals Vals::dup() {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Deleter deleter(new Deleter(new_val, _cnt));
-    S_Vals vals(new Vals(new_val, _cnt, deleter));
+    S_Vals vals(new Vals(new_val, _cnt));
     return vals;
 }
 sr_val_t* Vals::reallocate(size_t n) {
@@ -465,8 +454,6 @@ sr_val_t* Vals::reallocate(size_t n) {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
     _cnt = n;
-    if (_deleter)
-        _deleter->update_vals_with_count(_vals, _cnt);
     return _vals;
 }
 
@@ -495,7 +482,7 @@ S_Vals Vals_Holder::allocate(size_t n) {
     *p_cnt = n;
     _allocate = false;
 
-    p_Vals = S_Vals(new Vals(p_vals, p_cnt, nullptr));
+    p_Vals = S_Vals(new Vals(p_vals, p_cnt));
     return p_Vals;
 }
 S_Vals Vals_Holder::reallocate(size_t n) {
@@ -506,24 +493,29 @@ S_Vals Vals_Holder::reallocate(size_t n) {
     *p_cnt = n;
     return p_Vals;
 }
-Vals_Holder::~Vals_Holder() {}
+Vals_Holder::~Vals_Holder() {
+    if (*p_vals) {
+        sr_free_values(*p_vals, *p_cnt);
+    }
+    *p_vals = nullptr;
+}
 
 // Val_iter
 Val_Iter::Val_Iter(sr_val_iter_t *iter) {_iter = iter;}
-Val_Iter::~Val_Iter() {}
+Val_Iter::~Val_Iter() = default;
 
 // Change_Iter
-Change_Iter::Change_Iter(sr_change_iter_t *iter) {_iter = iter;}
-Change_Iter::~Change_Iter() {}
+Change_Iter::Change_Iter(sr_change_iter_t *iter) : _iter(iter) {}
+Change_Iter::~Change_Iter() = default;
 
 // Error
 Error::Error() {_info = nullptr;}
-Error::Error(const sr_error_info_t *info) {_info = info;}
-Error::~Error() {}
+Error::Error(const sr_error_info_t *info) : _info(info) {}
+Error::~Error() = default;
 
 // Errors
-Errors::Errors() {_info = nullptr; _cnt = 0;}
-Errors::~Errors() {}
+Errors::Errors() : _cnt(0), _info(nullptr) {}
+Errors::~Errors() = default;
 S_Error Errors::error(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Errors:error: index out of range");
@@ -533,23 +525,26 @@ S_Error Errors::error(size_t n) {
 }
 
 // Schema_Revision
-Schema_Revision::Schema_Revision(sr_sch_revision_t rev) {_rev = rev;}
-Schema_Revision::~Schema_Revision() {}
+Schema_Revision::Schema_Revision(sr_sch_revision_t rev) : _rev(rev) {}
+Schema_Revision::~Schema_Revision() = default;
 
 // Schema_Submodule
-Schema_Submodule::Schema_Submodule(sr_sch_submodule_t sub, S_Deleter deleter) {
-    _sub = sub;
-    _deleter = deleter;
-}
-Schema_Submodule::~Schema_Submodule() {}
+Schema_Submodule::Schema_Submodule(sr_sch_submodule_t sub)
+    : _sub(sub) {}
+Schema_Submodule::~Schema_Submodule() = default;
 S_Schema_Revision Schema_Submodule::revision() {
     S_Schema_Revision rev(new Schema_Revision(_sub.revision));
     return rev;
 }
 
 // Yang_Schema
-Yang_Schema::Yang_Schema(sr_schema_t *sch, S_Deleter deleter) {_sch = sch; _deleter = deleter;}
-Yang_Schema::~Yang_Schema() {}
+Yang_Schema::Yang_Schema(sr_schema_t *sch) : _sch(sch) {}
+Yang_Schema::~Yang_Schema() {
+    if (_sch) {
+        sr_free_schemas(_sch, 1);
+    }
+    _sch = nullptr;
+}
 S_Schema_Revision Yang_Schema::revision() {
     S_Schema_Revision rev(new Schema_Revision(_sch->revision));
     return rev;
@@ -558,7 +553,7 @@ S_Schema_Submodule Yang_Schema::submodule(size_t n) {
     if (n >= _sch->submodule_count)
         throw std::out_of_range("Schema_Submodule::submodule: index out of range");
 
-    S_Schema_Submodule sub(new Schema_Submodule(_sch->submodules[n], _deleter));
+    S_Schema_Submodule sub(new Schema_Submodule(_sch->submodules[n]));
     return sub;
 }
 char *Yang_Schema::enabled_features(size_t n) {
@@ -569,27 +564,29 @@ char *Yang_Schema::enabled_features(size_t n) {
 }
 
 // Yang_Schemas
-Yang_Schemas::Yang_Schemas() {
+Yang_Schemas::Yang_Schemas()
+    : _sch(nullptr), _cnt(0) {}
+Yang_Schemas::~Yang_Schemas() {
+    if (_sch) {
+        sr_free_schemas(_sch, _cnt);
+    }
     _sch = nullptr;
-    _cnt = 0;
-    _deleter = S_Deleter(new Deleter(_sch, _cnt));
 }
-Yang_Schemas::~Yang_Schemas() {}
 S_Yang_Schema Yang_Schemas::schema(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Yang_Schema::schema: index out of range");
 
-    S_Yang_Schema rev(new Yang_Schema((sr_schema_t *) &_sch[n], _deleter));
+    S_Yang_Schema rev(new Yang_Schema((sr_schema_t *) &_sch[n]));
     return rev;
 }
 
 // Fd_Change
-Fd_Change::Fd_Change(sr_fd_change_t *ch) {_ch = ch;}
-Fd_Change::~Fd_Change() {}
+Fd_Change::Fd_Change(sr_fd_change_t *ch) : _ch(ch) {}
+Fd_Change::~Fd_Change() = default;
 
 // Fd_Changes
-Fd_Changes::Fd_Changes(sr_fd_change_t *ch, size_t cnt) {_ch = ch; _cnt = cnt;}
-Fd_Changes::~Fd_Changes() {}
+Fd_Changes::Fd_Changes(sr_fd_change_t *ch, size_t cnt) : _ch(ch), _cnt(cnt) {}
+Fd_Changes::~Fd_Changes() = default;
 S_Fd_Change Fd_Changes::fd_change(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Fd_Changes::fd_change: index out of range");
@@ -598,7 +595,7 @@ S_Fd_Change Fd_Changes::fd_change(size_t n) {
     return change;
 }
 
-Iter_Value::Iter_Value(sr_val_iter_t *iter) {_iter = iter;}
+Iter_Value::Iter_Value(sr_val_iter_t *iter) : _iter(iter) {}
 Iter_Value::~Iter_Value() {if (_iter) sr_free_val_iter(_iter);}
 void Iter_Value::Set(sr_val_iter_t *iter) {
     if (_iter)
@@ -606,34 +603,20 @@ void Iter_Value::Set(sr_val_iter_t *iter) {
     _iter = iter;
 }
 
-Iter_Change::Iter_Change(sr_change_iter_t *iter) {_iter = iter;}
+Iter_Change::Iter_Change(sr_change_iter_t *iter) : _iter(iter) {}
 Iter_Change::~Iter_Change() {if (_iter) sr_free_change_iter(_iter);}
 
 Change::Change() {
     _oper = SR_OP_CREATED;
-    _new = nullptr;
-    _old = nullptr;
-
-    _deleter_old = S_Deleter(new Deleter(_old));
-    _deleter_new = S_Deleter(new Deleter(_new));
+    _old = S_Val(new Val(new sr_val_t));
+    _new = S_Val(new Val(new sr_val_t));
 }
 S_Val Change::new_val() {
-    if (_new == nullptr) return nullptr;
-
-    S_Val new_val(new Val(_new, _deleter_new));
-    return new_val;
+    return _new;
 }
 S_Val Change::old_val() {
-    if (_old == nullptr) return nullptr;
-
-    S_Val old_val(new Val(_old, _deleter_old));
-    return old_val;
+    return _old;
 }
-Change::~Change() {
-    if (_new)
-        sr_free_val(_new);
-    if (_old)
-        sr_free_val(_old);
-}
+Change::~Change() = default;
 
 }

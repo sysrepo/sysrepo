@@ -57,26 +57,5 @@ typedef union count_e {
     size_t *p_cnt;
 } count_t;
 
-class Deleter
-{
-public:
-    Deleter(sr_val_t *val);
-    Deleter(sr_val_t *vals, size_t cnt);
-    Deleter(sr_val_t **vals, size_t *cnt);
-    Deleter(sr_node_t *tree);
-    Deleter(sr_node_t *trees, size_t cnt);
-    Deleter(sr_node_t **trees, size_t *cnt);
-    Deleter(sr_schema_t *sch, size_t cnt);
-    Deleter(sr_session_ctx_t *sess);
-    ~Deleter();
-
-    void update_vals_with_count(sr_val_t *val, size_t cnt);
-
-private:
-    count_t c;
-    value_t v;
-    Free_Type _t;
-};
-
 }
 #endif

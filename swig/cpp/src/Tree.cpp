@@ -35,7 +35,6 @@ namespace sysrepo {
 
 Tree::Tree() {
     _node = nullptr;
-    _deleter = S_Deleter(new Deleter(_node));
 }
 Tree::Tree(const char *root_name, const char *root_module_name) {
     sr_node_t *node;
@@ -43,14 +42,17 @@ Tree::Tree(const char *root_name, const char *root_module_name) {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    _deleter = S_Deleter(new Deleter(node));
     _node = node;
 }
-Tree::Tree(sr_node_t *tree, S_Deleter deleter) {
+Tree::Tree(sr_node_t *tree) {
     _node = tree;
-    _deleter = deleter;
 }
-Tree::~Tree() {}
+Tree::~Tree() {
+    if (_node) {
+        sr_free_tree(_node);
+    }
+    _node = nullptr;
+}
 S_Tree Tree::dup() {
     if (!_node)
         throw std::logic_error("Tree::dup: called on null Tree");
@@ -59,15 +61,14 @@ S_Tree Tree::dup() {
     int ret = sr_dup_tree(_node, &tree_dup);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    S_Deleter deleter(new Deleter(tree_dup));
-    S_Tree dup(new Tree(tree_dup, deleter));
+    S_Tree dup(new Tree(tree_dup));
     return dup;
 }
 S_Tree Tree::node() {
     if (!_node)
         throw std::logic_error("Tree::node: called on null Tree");
 
-    S_Tree node(new Tree(_node, _deleter));
+    S_Tree node(new Tree(_node));
     return node;
 }
 S_Tree Tree::parent() {
@@ -76,7 +77,7 @@ S_Tree Tree::parent() {
     if (!_node->parent)
         return nullptr;
 
-    S_Tree node(new Tree(_node->parent, _deleter));
+    S_Tree node(new Tree(_node->parent));
     return node;
 }
 S_Tree Tree::next() {
@@ -85,7 +86,7 @@ S_Tree Tree::next() {
     if (!_node->next)
         return nullptr;
 
-    S_Tree node(new Tree(_node->next, _deleter));
+    S_Tree node(new Tree(_node->next));
     return node;
 }
 S_Tree Tree::prev() {
@@ -94,7 +95,7 @@ S_Tree Tree::prev() {
     if (!_node->prev)
         return nullptr;
 
-    S_Tree node(new Tree(_node->prev, _deleter));
+    S_Tree node(new Tree(_node->prev));
     return node;
 }
 S_Tree Tree::first_child() {
@@ -103,7 +104,7 @@ S_Tree Tree::first_child() {
     if (!_node->first_child)
         return nullptr;
 
-    S_Tree node(new Tree(_node->first_child, _deleter));
+    S_Tree node(new Tree(_node->first_child));
     return node;
 }
 S_Tree Tree::last_child() {
@@ -112,7 +113,7 @@ S_Tree Tree::last_child() {
     if (!_node->last_child)
         return nullptr;
 
-    S_Tree node(new Tree(_node->last_child, _deleter));
+    S_Tree node(new Tree(_node->last_child));
     return node;
 }
 std::string Tree::to_string(int depth_limit) {
@@ -260,24 +261,25 @@ Trees::Trees(size_t cnt): Trees() {
             throw_exception(ret);
 
         _cnt = cnt;
-        _deleter = S_Deleter(new Deleter(_trees, _cnt));
     }
 }
 Trees::Trees(): _cnt(0), _trees(nullptr)
 {
 }
-Trees::Trees(sr_node_t **trees, size_t *cnt, S_Deleter deleter) {
+Trees::Trees(sr_node_t **trees, size_t *cnt) {
     _trees = *trees;
     _cnt = *cnt;
-    _deleter = deleter;
 }
-Trees::Trees(const sr_node_t *trees, const size_t n, S_Deleter deleter) {
+Trees::Trees(const sr_node_t *trees, const size_t n) {
     _trees = (sr_node_t *) trees;
     _cnt = (size_t) n;
-
-    _deleter = deleter;
 }
-Trees::~Trees() {}
+Trees::~Trees() {
+    if (_trees) {
+        sr_free_trees(_trees, _cnt);
+    }
+    _trees = nullptr;
+}
 S_Tree Trees::tree(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Trees::tree: index out of range");
@@ -285,7 +287,7 @@ S_Tree Trees::tree(size_t n) {
         throw std::logic_error("Trees::tree: called on null Trees");
 
 
-    S_Tree tree(new Tree(&_trees[n], _deleter));
+    S_Tree tree(new Tree(&_trees[n]));
     return tree;
 }
 S_Trees Trees::dup() {
@@ -320,9 +322,9 @@ S_Trees Trees_Holder::allocate(size_t n) {
     int ret = sr_new_trees(n, p_trees);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
-    S_Trees trees(new Trees(p_trees, p_cnt, nullptr));
+    S_Trees trees(new Trees(p_trees, p_cnt));
     return trees;
 }
-Trees_Holder::~Trees_Holder() {}
+Trees_Holder::~Trees_Holder() = default;
 
 }

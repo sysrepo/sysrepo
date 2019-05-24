@@ -66,7 +66,6 @@ class Logs;
 class Change;
 class Counter;
 class Callback;
-class Deleter;
 
 using S_Iter_Value       = std::shared_ptr<Iter_Value>;
 using S_Iter_Change      = std::shared_ptr<Iter_Change>;
@@ -95,7 +94,6 @@ using S_Logs             = std::shared_ptr<Logs>;
 using S_Change           = std::shared_ptr<Change>;
 using S_Counter          = std::shared_ptr<Counter>;
 using S_Callback         = std::shared_ptr<Callback>;
-using S_Deleter          = std::shared_ptr<Deleter>;
 
 /* this is a workaround for python not recognizing
  * enum's in function default values */

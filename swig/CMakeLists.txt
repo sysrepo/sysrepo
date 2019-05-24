@@ -60,8 +60,7 @@ set(SYSREPO_CPP_SOURCES
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Session.cpp
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Struct.cpp
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Xpath.cpp
-        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Tree.cpp
-    ${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.cpp)
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Tree.cpp)
 
 set(SYSREPO_HPP_SOURCES
     ${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.hpp

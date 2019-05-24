@@ -49,7 +49,7 @@ public:
     /** Wrapper for [sr_new_tree](@ref sr_new_tree).*/
     Tree(const char *root_name, const char *root_module_name);
     /** Wrapper for [sr_node_t](@ref sr_node_t).*/
-    Tree(sr_node_t *tree, S_Deleter deleter);
+    Tree(sr_node_t *tree);
     /** Wrapper for [sr_dup_tree](@ref sr_dup_tree).*/
     S_Tree dup();
     /** Get the node value.*/
@@ -61,7 +61,7 @@ public:
     /** Getter for dflt.*/
     bool dflt() {return _node->dflt;};
     /** Getter for data.*/
-    S_Data data() {S_Data data(new Data(_node->data, _node->type, _deleter)); return data;};
+    S_Data data() {S_Data data(new Data(_node->data, _node->type)); return data;};
     /** Getter for module_name.*/
     char *module_name() {return _node->module_name;};
     /** Getter for parent.*/
@@ -117,7 +117,6 @@ public:
 
 private:
     sr_node_t *_node;
-    S_Deleter _deleter;
 };
 
 /**
@@ -132,9 +131,9 @@ public:
     /** Wrapper for [sr_node_t](@ref sr_node_t) array, create n-array.*/
     Trees(size_t n);
     /** Wrapper for [sr_node_t](@ref sr_node_t) array, internal use only.*/
-    Trees(sr_node_t **trees, size_t *cnt, S_Deleter deleter = nullptr);
+    Trees(sr_node_t **trees, size_t *cnt);
     /** Wrapper for [sr_node_t](@ref sr_node_t) array, internal use only.*/
-    Trees(const sr_node_t *trees, const size_t n, S_Deleter deleter = nullptr);
+    Trees(const sr_node_t *trees, const size_t n);
     /** Getter for [sr_node_t](@ref sr_node_t), get the n-th element in array.*/
     S_Tree tree(size_t n);
     /** Wrapper for [sr_dup_trees](@ref sr_dup_trees) */
@@ -149,7 +148,6 @@ public:
 private:
     size_t _cnt;
     sr_node_t *_trees;
-    S_Deleter _deleter;
 };
 
 /**

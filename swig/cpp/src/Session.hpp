@@ -58,7 +58,7 @@ public:
     Session(S_Connection conn, sr_datastore_t datastore = (sr_datastore_t) DS_RUNNING, \
             const sr_sess_options_t opts = SESS_DEFAULT, const char *user_name = nullptr);
     /** Wrapper for [sr_session_ctx_t](@ref sr_session_ctx_t), for internal use only.*/
-    Session(sr_session_ctx_t *sess, sr_sess_options_t opts = SESS_DEFAULT, S_Deleter deleter = nullptr);
+    Session(sr_session_ctx_t *sess, sr_sess_options_t opts = SESS_DEFAULT);
     /** Wrapper for [sr_session_stop](@ref sr_session_stop) */
     void session_stop();
     /** Wrapper for [sr_session_switch_ds](@ref sr_session_switch_ds) */
@@ -148,7 +148,6 @@ private:
     sr_datastore_t _datastore;
     sr_sess_options_t _opts;
     S_Connection _conn;
-    S_Deleter _deleter;
 };
 
 /**
@@ -239,7 +238,6 @@ public:
 private:
     sr_subscription_ctx_t *_sub;
     S_Session _sess;
-    S_Deleter sess_deleter;
 };
 
 /**@} */
