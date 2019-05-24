@@ -89,9 +89,9 @@ into _startup_ to rectify this.
 _Candidate_ datastore is meant to be a place to prepare configuration data without impacting the actual device. Be
 careful, because the actual use of this datastore is not restricted so it does not behave strictly according to
 @ref rfcs "NETCONF" definition and follows general datastore rules instead (more in @ref edit_data). The specific
-features implemented are following. This datastore __mirrors__ _running_ datastore until it is modified. After that
-it can be reset to this behavior again only by calling ::sr_copy_config(). Also, ::sr_lock() will fail if a session
-tries to lock this datastore after some changes on it are performed.
+features implemented are following. This datastore can be __invalid__ and __mirrors__ _running_ datastore until
+it is modified. After that it can be reset to this behavior again only by calling ::sr_copy_config(). Also, ::sr_lock()
+will fail if a session tries to lock this datastore after some changes on it are performed.
 
 _Operational_ datastore maintains the currently used configuration. It is read-only and generally corresponds to
 _running_ with some possible differences. If there are any defined, it also includes state data nodes and may have

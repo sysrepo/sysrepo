@@ -1578,10 +1578,6 @@ sr_validate(sr_session_ctx_t *session)
 
     SR_CHECK_ARG_APIRET(!session, session, err_info);
 
-    if (IS_WRITABLE_DS(session->ds) && !session->dt[session->ds].edit) {
-        return sr_api_ret(session, NULL);
-    }
-
     memset(&mod_info, 0, sizeof mod_info);
 
     /* SHM READ LOCK */
@@ -1683,7 +1679,7 @@ sr_apply_changes(sr_session_ctx_t *session)
     }
 
     /* validate new data trees */
-    if ((err_info = sr_modinfo_validate(&mod_info, 1, NULL, NULL))) {
+    if ((session->ds != SR_DS_CANDIDATE) && (err_info = sr_modinfo_validate(&mod_info, 1, NULL, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -1739,7 +1735,7 @@ sr_apply_changes(sr_session_ctx_t *session)
             }
 
             /* validate updated data trees */
-            if ((err_info = sr_modinfo_validate(&mod_info, 1, NULL, NULL))) {
+            if ((session->ds != SR_DS_CANDIDATE) && (err_info = sr_modinfo_validate(&mod_info, 1, NULL, NULL))) {
                 goto cleanup_mods_unlock;
             }
 
@@ -1878,7 +1874,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
             goto cleanup_mods_unlock;
         }
         /* while there are no changes for callbacks, some default flags changed so we must store them */
-    } else {
+    } else if (trg_datastore != SR_DS_CANDIDATE) {
         /* validate the new config */
         if ((err_info = sr_modinfo_validate(&mod_info, 1, NULL, NULL))) {
             goto cleanup_mods_unlock;
