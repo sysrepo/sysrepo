@@ -119,9 +119,9 @@ set (SYSREPOPLUGIND_SRC
 # libsysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_library(srobj OBJECT ${LIB_SRC})
-add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
-
 set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
+add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
+set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_VERSION} SOVERSION ${SYSREPO_SOVERSION})
 
 # dependencies
 target_link_libraries(sysrepo rt)
@@ -134,7 +134,6 @@ set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
 target_link_libraries(sysrepo ${CMAKE_THREAD_LIBS_INIT})
 
-# check for non-portable functions and headers
 set(CMAKE_REQUIRED_LIBRARIES pthread)
 
 # sysrepoctl tool
