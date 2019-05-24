@@ -846,11 +846,11 @@ int sr_discard_changes(sr_session_ctx_t *session);
  * @param[in] module_name If specified, limits the replace operation only to this module.
  * @param[in] src_config Source configuration to replace the datastore one. Is ALWAYS spent
  * and cannot be used by the application!
- * @param[in] dst_datastore Destination datastore.
+ * @param[in] trg_datastore Target datastore.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
-        sr_datastore_t dst_datastore);
+        sr_datastore_t trg_datastore);
 
 /**
  * @brief Replaces a configuration datastore with the contents of
@@ -866,11 +866,11 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
  * @param[in] session Session to use.
  * @param[in] module_name Optional module name that limits the copy operation only to this module.
  * @param[in] src_datastore Source datastore.
- * @param[in] dst_datastore Destination datastore.
+ * @param[in] trg_datastore Target datastore.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore,
-        sr_datastore_t dst_datastore);
+        sr_datastore_t trg_datastore);
 
 /** @} editdata */
 

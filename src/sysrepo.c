@@ -1834,12 +1834,12 @@ sr_discard_changes(sr_session_ctx_t *session)
  * @param[in] session Session to use.
  * @param[in] ly_mod Optional specific module.
  * @param[in] src_data Source data for the replace, they are spent.
- * @param[in] dst_datastore Destination datastore.
+ * @param[in] trg_datastore Destination datastore.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, struct lyd_node **src_data,
-        sr_datastore_t dst_datastore)
+        sr_datastore_t trg_datastore)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -1848,7 +1848,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
     memset(&mod_info, 0, sizeof mod_info);
 
     /* collect all required modules */
-    if ((err_info = sr_shmmod_collect_modules(session->conn, ly_mod, dst_datastore, MOD_INFO_DEP | MOD_INFO_INV_DEP, &mod_info))) {
+    if ((err_info = sr_shmmod_collect_modules(session->conn, ly_mod, trg_datastore, MOD_INFO_DEP | MOD_INFO_INV_DEP, &mod_info))) {
         return err_info;
     }
 
@@ -1936,12 +1936,12 @@ cleanup_mods_unlock:
 
 API int
 sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
-        sr_datastore_t dst_datastore)
+        sr_datastore_t trg_datastore)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(dst_datastore), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(trg_datastore), session, err_info);
 
     /* find first sibling */
     for (; src_config && src_config->prev->next; src_config = src_config->prev);
@@ -1961,7 +1961,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     }
 
     /* replace the configuration */
-    if ((err_info = _sr_replace_config(session, ly_mod, &src_config, dst_datastore))) {
+    if ((err_info = _sr_replace_config(session, ly_mod, &src_config, trg_datastore))) {
         goto cleanup_shm_unlock;
     }
 
@@ -1976,15 +1976,15 @@ cleanup_shm_unlock:
 }
 
 API int
-sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, sr_datastore_t dst_datastore)
+sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, sr_datastore_t trg_datastore)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
     const struct lys_module *ly_mod = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(src_datastore) || !IS_WRITABLE_DS(dst_datastore), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(src_datastore) || !IS_WRITABLE_DS(trg_datastore), session, err_info);
 
-    if (src_datastore == dst_datastore) {
+    if (src_datastore == trg_datastore) {
         /* nothing to do */
         return sr_api_ret(session, NULL);
     }
@@ -2015,7 +2015,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         goto cleanup_shm_unlock;
     }
 
-    if ((src_datastore == SR_DS_RUNNING) && (dst_datastore == SR_DS_CANDIDATE)) {
+    if ((src_datastore == SR_DS_RUNNING) && (trg_datastore == SR_DS_CANDIDATE)) {
         /* special case, just reset candidate */
         err_info = sr_modinfo_candidate_reset(&mod_info);
 
@@ -2035,11 +2035,11 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     }
 
     /* replace the configuration */
-    if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, dst_datastore))) {
+    if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, trg_datastore))) {
         goto cleanup_shm_unlock;
     }
 
-    if ((src_datastore == SR_DS_CANDIDATE) && (dst_datastore == SR_DS_RUNNING)) {
+    if ((src_datastore == SR_DS_CANDIDATE) && (trg_datastore == SR_DS_RUNNING)) {
         /* reset candidate after it was applied in running */
         if ((err_info = sr_modinfo_candidate_reset(&mod_info))) {
             goto cleanup_shm_unlock;
