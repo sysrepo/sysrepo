@@ -168,6 +168,9 @@ if(HAVE_MKSTEMPS)
 endif(HAVE_MKSTEMPS)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 CHECK_SYMBOL_EXISTS("F_OFD_SETLKW" "fcntl.h" HAVE_LINUX_OFD_LOCK)
+if (HAVE_LINUX_OFD_LOCK)
+    add_definitions(-D_GNU_SOURCE)
+endif()
 
 # user options
 set(ENABLE_NACM 0 CACHE BOOL
