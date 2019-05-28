@@ -405,8 +405,8 @@ public:
     friend class Session;
 
 private:
-    size_t _cnt;
     sr_schema_t *_sch;
+    size_t _cnt;
 };
 
 /**
