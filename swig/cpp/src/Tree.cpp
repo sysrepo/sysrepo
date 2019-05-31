@@ -44,8 +44,8 @@ Tree::Tree(const char *root_name, const char *root_module_name) {
 
     _node = node;
 }
-Tree::Tree(sr_node_t *tree) {
-    _node = tree;
+Tree::Tree(const sr_node_t *tree) {
+    _node = const_cast<sr_node_t*>(tree);
 }
 Tree::~Tree() {
     if (_node) {
@@ -61,14 +61,14 @@ S_Tree Tree::dup() {
     int ret = sr_dup_tree(_node, &tree_dup);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    S_Tree dup(new Tree(tree_dup));
+    S_Tree dup(std::make_shared<Tree>(tree_dup));
     return dup;
 }
 S_Tree Tree::node() {
     if (!_node)
         throw std::logic_error("Tree::node: called on null Tree");
 
-    S_Tree node(new Tree(_node));
+    S_Tree node(std::make_shared<Tree>(_node));
     return node;
 }
 S_Tree Tree::parent() {
@@ -77,7 +77,7 @@ S_Tree Tree::parent() {
     if (!_node->parent)
         return nullptr;
 
-    S_Tree node(new Tree(_node->parent));
+    S_Tree node(std::make_shared<Tree>(_node->parent));
     return node;
 }
 S_Tree Tree::next() {
@@ -86,7 +86,7 @@ S_Tree Tree::next() {
     if (!_node->next)
         return nullptr;
 
-    S_Tree node(new Tree(_node->next));
+    S_Tree node(std::make_shared<Tree>(_node->next));
     return node;
 }
 S_Tree Tree::prev() {
@@ -95,7 +95,7 @@ S_Tree Tree::prev() {
     if (!_node->prev)
         return nullptr;
 
-    S_Tree node(new Tree(_node->prev));
+    S_Tree node(std::make_shared<Tree>(_node->prev));
     return node;
 }
 S_Tree Tree::first_child() {
@@ -104,7 +104,7 @@ S_Tree Tree::first_child() {
     if (!_node->first_child)
         return nullptr;
 
-    S_Tree node(new Tree(_node->first_child));
+    S_Tree node(std::make_shared<Tree>(_node->first_child));
     return node;
 }
 S_Tree Tree::last_child() {
@@ -113,7 +113,7 @@ S_Tree Tree::last_child() {
     if (!_node->last_child)
         return nullptr;
 
-    S_Tree node(new Tree(_node->last_child));
+    S_Tree node(std::make_shared<Tree>(_node->last_child));
     return node;
 }
 std::string Tree::to_string(int depth_limit) {
@@ -256,7 +256,7 @@ void Tree::set(uint64_t uint64_val) {
 
 Trees::Trees(size_t cnt): Trees() {
     if (cnt) {
-        int ret = sr_new_trees(cnt, &_trees);
+        int ret = sr_new_trees(cnt, &_trees->_node);
         if (ret != SR_ERR_OK)
             throw_exception(ret);
 
@@ -266,17 +266,17 @@ Trees::Trees(size_t cnt): Trees() {
 Trees::Trees(): _cnt(0), _trees(nullptr)
 {
 }
-Trees::Trees(sr_node_t **trees, size_t *cnt) {
-    _trees = *trees;
+Trees::Trees(const sr_node_t **trees, size_t *cnt) {
+    _trees = std::make_shared<Tree>(*trees);
     _cnt = *cnt;
 }
 Trees::Trees(const sr_node_t *trees, const size_t n) {
-    _trees = (sr_node_t *) trees;
+    _trees = std::make_shared<Tree>(trees);
     _cnt = (size_t) n;
 }
 Trees::~Trees() {
     if (_trees) {
-        sr_free_trees(_trees, _cnt);
+        sr_free_trees(_trees->_node, _cnt);
     }
     _trees = nullptr;
 }
@@ -287,7 +287,7 @@ S_Tree Trees::tree(size_t n) {
         throw std::logic_error("Trees::tree: called on null Trees");
 
 
-    S_Tree tree(new Tree(&_trees[n]));
+    S_Tree tree(std::make_shared<Tree>(&_trees->_node[n]));
     return tree;
 }
 S_Trees Trees::dup() {
@@ -297,33 +297,33 @@ S_Trees Trees::dup() {
         throw std::logic_error("Trees::tree: called on null Trees");
 
     sr_node_t *tree_dup = nullptr;
-    int ret = sr_dup_trees(_trees, _cnt, &tree_dup);
+    int ret = sr_dup_trees(_trees->_node, _cnt, &tree_dup);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    S_Trees dup(new Trees(tree_dup, _cnt));
+    S_Trees dup(std::make_shared<Trees>(tree_dup, _cnt));
     return dup;
 }
 
 // Trees_Holder
-Trees_Holder::Trees_Holder(sr_node_t **trees, size_t *cnt) {
-    p_trees = trees;
-    p_cnt = cnt;
+Trees_Holder::Trees_Holder(S_Trees trees) {
+    _trees = trees;
     _allocate = true;
 }
 S_Trees Trees_Holder::allocate(size_t n) {
     if (_allocate == false)
         throw_exception(SR_ERR_DATA_EXISTS);
-    _allocate = false;
 
     if (n == 0)
         return nullptr;
 
-    *p_cnt = n;
+    sr_node_t** p_trees = nullptr;
     int ret = sr_new_trees(n, p_trees);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
-    S_Trees trees(new Trees(p_trees, p_cnt));
-    return trees;
+    _allocate = false;
+
+    _trees = std::make_shared<Trees>(const_cast<sr_node_t const**>(p_trees), &n);
+    return _trees;
 }
 Trees_Holder::~Trees_Holder() = default;
 

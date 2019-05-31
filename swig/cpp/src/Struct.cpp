@@ -361,7 +361,7 @@ void Val::dflt_set(bool data) {
     _val->dflt = data;
 }
 S_Data Val::data() {
-    S_Data data(new Data(_val->data, _val->type));
+    S_Data data(std::make_shared<Data>(_val->data, _val->type));
     return data;
 }
 bool Val::empty() {
@@ -401,24 +401,24 @@ S_Val Val::dup() {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Val val(new Val(new_val));
+    S_Val val(std::make_shared<Val>(new_val));
     return val;
 }
 
 // Vals
 Vals::Vals(const sr_val_t *vals, const size_t cnt) {
-    _vals = (sr_val_t *) vals;
-    _cnt = (size_t) cnt;
+    _vals = std::make_shared<Val>(vals);
+    _cnt = cnt;
 }
-Vals::Vals(sr_val_t **vals, size_t *cnt) {
+Vals::Vals(const sr_val_t **vals, const size_t *cnt) {
     if (!vals || !cnt || (!*vals && *cnt))
         throw_exception(SR_ERR_INVAL_ARG);
-    _vals = *vals;
+    _vals = std::make_shared<Val>(*vals);
     _cnt = *cnt;
 }
 Vals::Vals(size_t cnt): Vals() {
     if (cnt) {
-        int ret = sr_new_values(cnt, &_vals);
+        int ret = sr_new_values(cnt, &_vals->_val);
         if (ret != SR_ERR_OK)
             throw_exception(ret);
         _cnt = cnt;
@@ -427,7 +427,7 @@ Vals::Vals(size_t cnt): Vals() {
 Vals::Vals(): _cnt(0), _vals(nullptr) {}
 Vals::~Vals() {
     if (_vals) {
-        sr_free_values(_vals, _cnt);
+        sr_free_values(_vals->_val, _cnt);
     }
     _vals = nullptr;
 }
@@ -437,36 +437,35 @@ S_Val Vals::val(size_t n) {
     if (!_vals)
         throw std::logic_error("Vals::val: called on null Vals");
 
-    S_Val val(new Val(&_vals[n]));
+    S_Val val(std::make_shared<Val>(&_vals->_val[n]));
     return val;
 }
 S_Vals Vals::dup() {
     sr_val_t *new_val = nullptr;
-    int ret = sr_dup_values(_vals, _cnt, &new_val);
+    int ret = sr_dup_values(_vals->_val, _cnt, &new_val);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Vals vals(new Vals(new_val, _cnt));
+    S_Vals vals(std::make_shared<Vals>(new_val, _cnt));
     return vals;
 }
 sr_val_t* Vals::reallocate(size_t n) {
-    int ret = sr_realloc_values(_cnt,n,&_vals);
+    int ret = sr_realloc_values(_cnt, n, &_vals->_val);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
     _cnt = n;
-    return _vals;
+    return _vals->_val;
 }
 
 // Vals_Holder
-Vals_Holder::Vals_Holder(sr_val_t **vals, size_t *cnt) {
-    if (!vals || !cnt || (!*vals && *cnt))
+Vals_Holder::Vals_Holder(S_Vals vals) {
+    if (!vals || !vals->_vals)
         throw_exception(SR_ERR_INVAL_ARG);
-    p_vals = vals;
-    p_cnt = cnt;
+    _vals = vals;
     _allocate = true;
 }
 S_Vals Vals_Holder::vals(void) {
-    return p_Vals;
+    return _vals;
 }
 S_Vals Vals_Holder::allocate(size_t n) {
     if (_allocate == false)
@@ -475,30 +474,23 @@ S_Vals Vals_Holder::allocate(size_t n) {
     if (n == 0)
         return nullptr;
 
+    sr_val_t** p_vals = nullptr;
     int ret = sr_new_values(n, p_vals);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
-
-    *p_cnt = n;
     _allocate = false;
 
-    p_Vals = S_Vals(new Vals(p_vals, p_cnt));
-    return p_Vals;
+    _vals = std::make_shared<Vals>(const_cast<sr_val_t const**>(p_vals), &n);
+    return _vals;
 }
 S_Vals Vals_Holder::reallocate(size_t n) {
     if (_allocate == true) {
         return allocate(n);
     }
-    *p_vals = p_Vals->reallocate(n);
-    *p_cnt = n;
-    return p_Vals;
+    _vals->reallocate(n);
+    return _vals;
 }
-Vals_Holder::~Vals_Holder() {
-    if (*p_vals) {
-        sr_free_values(*p_vals, *p_cnt);
-    }
-    *p_vals = nullptr;
-}
+Vals_Holder::~Vals_Holder() = default;
 
 // Val_iter
 Val_Iter::Val_Iter(sr_val_iter_t *iter) {_iter = iter;}
@@ -520,7 +512,7 @@ S_Error Errors::error(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Errors:error: index out of range");
 
-    S_Error error(new Error(&_info[n]));
+    S_Error error(std::make_shared<Error>(&_info[n]));
     return error;
 }
 
@@ -533,7 +525,7 @@ Schema_Submodule::Schema_Submodule(sr_sch_submodule_t sub)
     : _sub(sub) {}
 Schema_Submodule::~Schema_Submodule() = default;
 S_Schema_Revision Schema_Submodule::revision() {
-    S_Schema_Revision rev(new Schema_Revision(_sub.revision));
+    S_Schema_Revision rev(std::make_shared<Schema_Revision>(_sub.revision));
     return rev;
 }
 
@@ -546,14 +538,14 @@ Yang_Schema::~Yang_Schema() {
     _sch = nullptr;
 }
 S_Schema_Revision Yang_Schema::revision() {
-    S_Schema_Revision rev(new Schema_Revision(_sch->revision));
+    S_Schema_Revision rev(std::make_shared<Schema_Revision>(_sch->revision));
     return rev;
 }
 S_Schema_Submodule Yang_Schema::submodule(size_t n) {
     if (n >= _sch->submodule_count)
         throw std::out_of_range("Schema_Submodule::submodule: index out of range");
 
-    S_Schema_Submodule sub(new Schema_Submodule(_sch->submodules[n]));
+    S_Schema_Submodule sub(std::make_shared<Schema_Submodule>(_sch->submodules[n]));
     return sub;
 }
 char *Yang_Schema::enabled_features(size_t n) {
@@ -576,7 +568,7 @@ S_Yang_Schema Yang_Schemas::schema(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Yang_Schema::schema: index out of range");
 
-    S_Yang_Schema rev(new Yang_Schema((sr_schema_t *) &_sch[n]));
+    S_Yang_Schema rev(std::make_shared<Yang_Schema>((sr_schema_t *) &_sch[n]));
     return rev;
 }
 
@@ -591,7 +583,7 @@ S_Fd_Change Fd_Changes::fd_change(size_t n) {
     if (n >= _cnt)
         throw std::out_of_range("Fd_Changes::fd_change: index out of range");
 
-    S_Fd_Change change(new Fd_Change(&_ch[n]));
+    S_Fd_Change change(std::make_shared<Fd_Change>(&_ch[n]));
     return change;
 }
 
@@ -608,8 +600,8 @@ Iter_Change::~Iter_Change() {if (_iter) sr_free_change_iter(_iter);}
 
 Change::Change() {
     _oper = SR_OP_CREATED;
-    _old = S_Val(new Val(new sr_val_t));
-    _new = S_Val(new Val(new sr_val_t));
+    _old = S_Val(std::make_shared<Val>(new sr_val_t));
+    _new = S_Val(std::make_shared<Val>(new sr_val_t));
 }
 S_Val Change::new_val() {
     return _new;

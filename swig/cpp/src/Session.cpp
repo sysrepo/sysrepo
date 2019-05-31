@@ -94,7 +94,7 @@ void Session::session_switch_ds(sr_datastore_t ds)
 
 S_Error Session::get_last_error()
 {
-    S_Error error(new Error());
+    S_Error error(std::make_shared<Error>());
 
     sr_get_last_error(_sess, &error->_info);
     if (error->_info == nullptr) {
@@ -105,7 +105,7 @@ S_Error Session::get_last_error()
 
 S_Errors Session::get_last_errors()
 {
-    S_Errors errors(new Errors());
+    S_Errors errors(std::make_shared<Errors>());
 
     sr_get_last_errors(_sess, &errors->_info, &errors->_cnt);
     if (errors->_cnt == 0) {
@@ -116,7 +116,7 @@ S_Errors Session::get_last_errors()
 
 S_Yang_Schemas Session::list_schemas()
 {
-    S_Yang_Schemas schema(new Yang_Schemas());
+    S_Yang_Schemas schema(std::make_shared<Yang_Schemas>());
 
     int ret = sr_list_schemas(_sess, &schema->_sch, &schema->_cnt);
     if (SR_ERR_OK == ret) {
@@ -150,7 +150,7 @@ std::string Session::get_schema(const char *module_name, const char *revision,\
 
 S_Val Session::get_item(const char *xpath)
 {
-    S_Val value(new Val());
+    S_Val value(std::make_shared<Val>());
 
     int ret = sr_get_item(_sess, xpath, &value->_val);
     if (SR_ERR_OK == ret) {
@@ -163,9 +163,9 @@ S_Val Session::get_item(const char *xpath)
 }
 S_Vals Session::get_items(const char *xpath)
 {
-    S_Vals values(new Vals());
+    S_Vals values(std::make_shared<Vals>());
 
-    int ret = sr_get_items(_sess, xpath, &values->_vals, &values->_cnt);
+    int ret = sr_get_items(_sess, xpath, &values->_vals->_val, &values->_cnt);
     if (SR_ERR_OK == ret) {
         return values;
     }
@@ -177,7 +177,7 @@ S_Vals Session::get_items(const char *xpath)
 
 S_Iter_Value Session::get_items_iter(const char *xpath)
 {
-    S_Iter_Value iter(new Iter_Value());
+    S_Iter_Value iter(std::make_shared<Iter_Value>());
 
     int ret = sr_get_items_iter(_sess, xpath, &iter->_iter);
     if (SR_ERR_OK == ret) {
@@ -191,7 +191,7 @@ S_Iter_Value Session::get_items_iter(const char *xpath)
 
 S_Val Session::get_item_next(S_Iter_Value iter)
 {
-    S_Val value(new Val());
+    S_Val value(std::make_shared<Val>());
 
     int ret = sr_get_item_next(_sess, iter->_iter, &value->_val);
     if (SR_ERR_OK == ret) {
@@ -203,7 +203,7 @@ S_Val Session::get_item_next(S_Iter_Value iter)
 
 S_Tree Session::get_subtree(const char *xpath, sr_get_subtree_options_t opts)
 {
-    S_Tree tree(new Tree());
+    S_Tree tree(std::make_shared<Tree>());
 
     int ret = sr_get_subtree(_sess, xpath, opts, &tree->_node);
     if (SR_ERR_OK == ret) {
@@ -217,9 +217,9 @@ S_Tree Session::get_subtree(const char *xpath, sr_get_subtree_options_t opts)
 
 S_Trees Session::get_subtrees(const char *xpath, sr_get_subtree_options_t opts)
 {
-    S_Trees trees(new Trees());
+    S_Trees trees(std::make_shared<Trees>());
 
-    int ret = sr_get_subtrees(_sess, xpath, opts, &trees->_trees, &trees->_cnt);
+    int ret = sr_get_subtrees(_sess, xpath, opts, &trees->_trees->_node, &trees->_cnt);
     if (SR_ERR_OK == ret) {
         return trees;
     }
@@ -236,7 +236,7 @@ S_Tree Session::get_child(S_Tree in_tree)
         return nullptr;
     }
 
-    S_Tree out_tree(new Tree(node));
+    S_Tree out_tree(std::make_shared<Tree>(node));
     return out_tree;
 }
 
@@ -247,7 +247,7 @@ S_Tree Session::get_next_sibling(S_Tree in_tree)
         return nullptr;
     }
 
-    S_Tree out_tree(new Tree(node));
+    S_Tree out_tree(std::make_shared<Tree>(node));
     return out_tree;
 }
 
@@ -258,7 +258,7 @@ S_Tree Session::get_parent(S_Tree in_tree)
         return nullptr;
     }
 
-    S_Tree out_tree(new Tree(node));
+    S_Tree out_tree(std::make_shared<Tree>(node));
     return out_tree;
 }
 
@@ -362,7 +362,7 @@ void Session::discard_changes()
 
 S_Iter_Change Session::get_changes_iter(const char *xpath)
 {
-    S_Iter_Change iter(new Iter_Change());
+    S_Iter_Change iter(std::make_shared<Iter_Change>());
 
     int ret = sr_get_changes_iter(_sess, xpath, &iter->_iter);
     if (SR_ERR_OK == ret) {
@@ -376,7 +376,7 @@ S_Iter_Change Session::get_changes_iter(const char *xpath)
 
 S_Change Session::get_change_next(S_Iter_Change iter)
 {
-    S_Change change(new Change());
+    S_Change change(std::make_shared<Change>());
 
     int ret = sr_get_change_next(_sess, iter->_iter, &change->_oper, &change->_old->_val, &change->_new->_val);
     if (SR_ERR_OK == ret) {
@@ -450,7 +450,7 @@ Callback::Callback() = default;
 Callback::~Callback() = default;
 
 static int module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx) {
-    S_Session sess(new Session(session));
+    S_Session sess(std::make_shared<Session>(session));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->module_change(sess, module_name, event, wrap->private_ctx["module_change"]);
 }
@@ -463,46 +463,46 @@ static void feature_enable_cb(const char *module_name, const char *feature_name,
     return wrap->feature_enable(module_name, feature_name, enabled, wrap->private_ctx["feature_enable"]);
 }
 static int subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event, void *private_ctx) {
-    S_Session sess(new Session(session));
+    S_Session sess(std::make_shared<Session>(session));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->subtree_change(sess, xpath, event, wrap->private_ctx["subtree_change"]);
 }
 static int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx) {
-    S_Vals in_vals(new Vals(input, input_cnt));
-    S_Vals_Holder out_vals(new Vals_Holder(output, output_cnt));
+    S_Vals in_vals(std::make_shared<Vals>(input, input_cnt));
+    S_Vals_Holder out_vals(std::make_shared<Vals_Holder>(std::make_shared<Vals>(const_cast<sr_val_t const **>(output), output_cnt)));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->rpc(xpath, in_vals, out_vals, wrap->private_ctx["rpc_cb"]);
 }
 static int action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output, size_t *output_cnt, void *private_ctx) {
-    S_Vals in_vals(new Vals(input, input_cnt));
-    S_Vals_Holder out_vals(new Vals_Holder(output, output_cnt));
+    S_Vals in_vals(std::make_shared<Vals>(input, input_cnt));
+    S_Vals_Holder out_vals(std::make_shared<Vals_Holder>(std::make_shared<Vals>(const_cast<sr_val_t const **>(output), output_cnt)));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->action(xpath, in_vals, out_vals, wrap->private_ctx["action_cb"]);
 }
 static int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx) {
-    S_Trees in_tree(new Trees(input, input_cnt));
-    S_Trees_Holder out_tree(new Trees_Holder(output, output_cnt));
+    S_Trees in_tree(std::make_shared<Trees>(input, input_cnt));
+    S_Trees_Holder out_tree(std::make_shared<Trees_Holder>(std::make_shared<Trees>(const_cast<sr_node_t const**>(output), output_cnt)));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->rpc_tree(xpath, in_tree, out_tree, wrap->private_ctx["rpc_tree"]);
 }
 static int action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output, size_t *output_cnt, void *private_ctx) {
-    S_Trees in_tree(new Trees(input, input_cnt));
-    S_Trees_Holder out_tree(new Trees_Holder(output, output_cnt));
+    S_Trees in_tree(std::make_shared<Trees>(input, input_cnt));
+    S_Trees_Holder out_tree(std::make_shared<Trees_Holder>(std::make_shared<Trees>(const_cast<sr_node_t const**>(output), output_cnt)));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->action_tree(xpath, in_tree, out_tree, wrap->private_ctx["action_tree"]);
 }
 static void event_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx) {
-    S_Vals vals(new Vals(values, values_cnt));
+    S_Vals vals(std::make_shared<Vals>(values, values_cnt));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->event_notif(notif_type, xpath, vals, timestamp, wrap->private_ctx["event_notif"]);
 }
 static void event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx) {
-    S_Trees vals(new Trees(trees, tree_cnt));
+    S_Trees vals(std::make_shared<Trees>(trees, tree_cnt));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->event_notif_tree(notif_type, xpath, vals, timestamp, wrap->private_ctx["event_notif_tree"]);
 }
 static int dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, void *private_ctx) {
-    S_Vals_Holder vals(new Vals_Holder(values, values_cnt));
+    S_Vals_Holder vals(std::make_shared<Vals_Holder>(std::make_shared<Vals>(const_cast<sr_val_t const **>(values), values_cnt)));
     Callback *wrap = (Callback*) private_ctx;
     return wrap->dp_get_items(xpath, vals, request_id, original_xpath, wrap->private_ctx["dp_get_items"]);
 }
@@ -644,9 +644,9 @@ void Subscribe::unsubscribe()
 
 S_Vals Session::rpc_send(const char *xpath, S_Vals input)
 {
-    S_Vals output(new Vals());
+    S_Vals output(std::make_shared<Vals>());
 
-    int ret = sr_rpc_send(_sess, xpath, input->_vals, input->_cnt, &output->_vals, &output->_cnt);
+    int ret = sr_rpc_send(_sess, xpath, input->_vals->_val, input->_cnt, &output->_vals->_val, &output->_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -661,9 +661,9 @@ S_Vals Session::rpc_send(const char *xpath, S_Vals input)
 
 S_Trees Session::rpc_send(const char *xpath, S_Trees input)
 {
-    S_Trees output(new Trees());
+    S_Trees output(std::make_shared<Trees>());
 
-    int ret = sr_rpc_send_tree(_sess, xpath, input->_trees, input->_cnt, &output->_trees, &output->_cnt);
+    int ret = sr_rpc_send_tree(_sess, xpath, input->_trees->_node, input->_cnt, &output->_trees->_node, &output->_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -679,9 +679,9 @@ S_Trees Session::rpc_send(const char *xpath, S_Trees input)
 
 S_Vals Session::action_send(const char *xpath, S_Vals input)
 {
-    S_Vals output(new Vals());
+    S_Vals output(std::make_shared<Vals>());
 
-    int ret = sr_action_send(_sess, xpath, input->_vals, input->_cnt, &output->_vals, &output->_cnt);
+    int ret = sr_action_send(_sess, xpath, input->_vals->_val, input->_cnt, &output->_vals->_val, &output->_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -696,9 +696,9 @@ S_Vals Session::action_send(const char *xpath, S_Vals input)
 
 S_Trees Session::action_send(const char *xpath, S_Trees input)
 {
-    S_Trees output(new Trees());
+    S_Trees output(std::make_shared<Trees>());
 
-    int ret = sr_action_send_tree(_sess, xpath, input->_trees, input->_cnt, &output->_trees, &output->_cnt);
+    int ret = sr_action_send_tree(_sess, xpath, input->_trees->_node, input->_cnt, &output->_trees->_node, &output->_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -713,7 +713,7 @@ S_Trees Session::action_send(const char *xpath, S_Trees input)
 
 void Session::event_notif_send(const char *xpath, S_Vals values, const sr_ev_notif_flag_t options)
 {
-    int ret = sr_event_notif_send(_sess, xpath, values->_vals, values->val_cnt(), options);
+    int ret = sr_event_notif_send(_sess, xpath, values->_vals->_val, values->val_cnt(), options);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
@@ -721,7 +721,7 @@ void Session::event_notif_send(const char *xpath, S_Vals values, const sr_ev_not
 
 void Session::event_notif_send(const char *xpath, S_Trees trees, const sr_ev_notif_flag_t options)
 {
-    int ret = sr_event_notif_send_tree(_sess, xpath, trees->_trees, trees->tree_cnt(), options);
+    int ret = sr_event_notif_send_tree(_sess, xpath, trees->_trees->_node, trees->tree_cnt(), options);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }

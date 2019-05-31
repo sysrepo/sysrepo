@@ -171,6 +171,7 @@ public:
     friend class Change;
     friend class Session;
     friend class Subscribe;
+    friend class Vals;
 
 private:
     sr_val_t *_val;
@@ -186,7 +187,7 @@ public:
     /** Wrapper for [sr_val_t](@ref sr_val_t) array, internal use only.*/
     Vals(const sr_val_t *vals, const size_t cnt);
     /** Wrapper for [sr_val_t](@ref sr_val_t) array, internal use only.*/
-    Vals(sr_val_t **vals, size_t *cnt);
+    Vals(const sr_val_t **vals, const size_t *cnt);
     /** Wrapper for [sr_val_t](@ref sr_val_t) array, create n-array.*/
     Vals(size_t cnt);
     /** Constructor for an empty [sr_val_t](@ref sr_val_t) array.*/
@@ -203,10 +204,11 @@ public:
 
     friend class Session;
     friend class Subscribe;
+    friend class Vals_Holder;
 
 private:
     size_t _cnt;
-    sr_val_t *_vals;
+    S_Val _vals;
 };
 
 /**
@@ -217,19 +219,16 @@ class Vals_Holder
 {
 public:
     /** Wrapper for [sr_val_t](@ref sr_val_t) array, used only in callbacks.*/
-    Vals_Holder(sr_val_t **vals, size_t *cnt);
+    Vals_Holder(S_Vals vals);
     /** Create [sr_val_t](@ref sr_val_t) array of n size.*/
     S_Vals allocate(size_t n);
     /** Resize [sr_val_t](@ref sr_val_t) array to n size.*/
     S_Vals reallocate(size_t n);
-    size_t val_cnt(void) { return *p_cnt; }
     S_Vals vals(void);
     ~Vals_Holder();
 
 private:
-    size_t *p_cnt;
-    sr_val_t **p_vals;
-    S_Vals p_Vals;
+    S_Vals _vals;
     bool _allocate;
 };
 
