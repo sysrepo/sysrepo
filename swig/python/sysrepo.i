@@ -68,9 +68,6 @@ public:
     int module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, \
                                  PyObject *private_ctx) {
         PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
 
         sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
         std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
@@ -96,9 +93,6 @@ public:
     int subtree_change(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
                        PyObject *private_ctx) {
         PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
 
         sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
         std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
@@ -123,9 +117,6 @@ public:
 
     void module_install(const char *module_name, const char *revision, sr_module_state_t state, PyObject *private_ctx) {
         PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
         arglist = Py_BuildValue("(ssOO)", module_name, revision, state, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
@@ -137,9 +128,6 @@ public:
 
     void feature_enable(const char *module_name, const char *feature_name, bool enabled, PyObject *private_ctx) {
         PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
         arglist = Py_BuildValue("(ssOO)", module_name, feature_name, enabled ? Py_True: Py_False, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
@@ -152,12 +140,9 @@ public:
     int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
 
         sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(input, input_cnt);
-        sysrepo::S_Vals s_out_vals = std::make_shared<sysrepo::Vals>(const_cast<sr_val_t const **>(output), output_cnt);
+        sysrepo::S_Vals s_out_vals = std::make_shared<Vals>(*output, output_cnt);
         sysrepo::Vals_Holder *out_vals = new sysrepo::Vals_Holder(s_out_vals);
 
         std::shared_ptr<sysrepo::Vals> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Vals>(in_vals) : 0;
@@ -188,12 +173,9 @@ public:
     int action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
 
         sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(input, input_cnt);
-        sysrepo::S_Vals s_out_vals = std::make_shared<sysrepo::Vals>(const_cast<sr_val_t const **>(output), output_cnt);
+        sysrepo::S_Vals s_out_vals = std::make_shared<Vals>(*output, output_cnt);
         sysrepo::Vals_Holder *out_vals = new sysrepo::Vals_Holder(s_out_vals);
 
         std::shared_ptr<sysrepo::Vals> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Vals>(in_vals) : 0;
@@ -224,13 +206,11 @@ public:
     int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
 
         sysrepo::Trees *in_vals =(sysrepo::Trees *)new sysrepo::Trees(input, input_cnt);
-        sysrepo::S_Trees s_out_trees = std::make_shared<sysrepo::Trees>(const_cast<sr_node_t const **>(output), output_cnt);
+        sysrepo::S_Trees s_out_trees = std::make_shared<Trees>(*output, output_cnt);
         sysrepo::Trees_Holder *out_vals = new sysrepo::Trees_Holder(s_out_trees);
+
         std::shared_ptr<sysrepo::Trees> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Trees_t, SWIG_POINTER_DISOWN);
 
@@ -259,12 +239,9 @@ public:
     int action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
 
         sysrepo::Trees *in_vals =(sysrepo::Trees *)new sysrepo::Trees(input, input_cnt);
-        sysrepo::S_Trees s_out_trees = std::make_shared<sysrepo::Trees>(const_cast<sr_node_t const **>(output), output_cnt);
+        sysrepo::S_Trees s_out_trees = std::make_shared<Trees>(*output, output_cnt);
         sysrepo::Trees_Holder *out_vals = new sysrepo::Trees_Holder(s_out_trees);
         std::shared_ptr<sysrepo::Trees> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Trees_t, SWIG_POINTER_DISOWN);
@@ -294,15 +271,13 @@ public:
 
     int dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, PyObject *private_ctx) {
         PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
-        sysrepo::S_Vals s_out_vals = std::make_shared<sysrepo::Vals>(const_cast<sr_val_t const **>(values), values_cnt);
+
+        sysrepo::S_Vals s_out_vals = std::make_shared<Vals>(*values, values_cnt);
         sysrepo::Vals_Holder *out_vals = new sysrepo::Vals_Holder(s_out_vals);
         std::shared_ptr<sysrepo::Vals_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<sysrepo::Vals_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_Holder_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOlsO)", xpath, out, (long)request_id, original_xpath, private_ctx);
+        arglist = Py_BuildValue("(sOisO)", xpath, out, request_id, original_xpath, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
@@ -321,15 +296,12 @@ public:
 
     void event_notif(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, PyObject *private_ctx) {
         PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
 
         sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(values, values_cnt);
         std::shared_ptr<sysrepo::Vals> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOlO)", xpath, in, (long)timestamp, private_ctx);
+        arglist = Py_BuildValue("(sOO)", xpath, in, timestamp, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
@@ -343,15 +315,12 @@ public:
 
     void event_notif_tree(const sr_ev_notif_type_t, const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, PyObject *private_ctx) {
         PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
 
         sysrepo::Trees *in_vals =(sysrepo::Trees *)new sysrepo::Trees(trees, tree_cnt);
         std::shared_ptr<sysrepo::Trees> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Trees_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOlO)", xpath, in, (long)timestamp, private_ctx);
+        arglist = Py_BuildValue("(sOO)", xpath, in, timestamp, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
