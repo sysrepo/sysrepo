@@ -142,7 +142,7 @@ public:
         PyObject *arglist;
 
         sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(input, input_cnt);
-        sysrepo::S_Vals s_out_vals = std::make_shared<Vals>(*output, output_cnt);
+        sysrepo::S_Vals s_out_vals = std::make_shared<sysrepo::Vals>(*output, output_cnt);
         sysrepo::Vals_Holder *out_vals = new sysrepo::Vals_Holder(s_out_vals);
 
         std::shared_ptr<sysrepo::Vals> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Vals>(in_vals) : 0;
@@ -175,7 +175,7 @@ public:
         PyObject *arglist;
 
         sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(input, input_cnt);
-        sysrepo::S_Vals s_out_vals = std::make_shared<Vals>(*output, output_cnt);
+        sysrepo::S_Vals s_out_vals = std::make_shared<sysrepo::Vals>(*output, output_cnt);
         sysrepo::Vals_Holder *out_vals = new sysrepo::Vals_Holder(s_out_vals);
 
         std::shared_ptr<sysrepo::Vals> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Vals>(in_vals) : 0;
@@ -208,7 +208,7 @@ public:
         PyObject *arglist;
 
         sysrepo::Trees *in_vals =(sysrepo::Trees *)new sysrepo::Trees(input, input_cnt);
-        sysrepo::S_Trees s_out_trees = std::make_shared<Trees>(*output, output_cnt);
+        sysrepo::S_Trees s_out_trees = std::make_shared<sysrepo::Trees>(*output, output_cnt);
         sysrepo::Trees_Holder *out_vals = new sysrepo::Trees_Holder(s_out_trees);
 
         std::shared_ptr<sysrepo::Trees> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Trees>(in_vals) : 0;
@@ -241,7 +241,7 @@ public:
         PyObject *arglist;
 
         sysrepo::Trees *in_vals =(sysrepo::Trees *)new sysrepo::Trees(input, input_cnt);
-        sysrepo::S_Trees s_out_trees = std::make_shared<Trees>(*output, output_cnt);
+        sysrepo::S_Trees s_out_trees = std::make_shared<sysrepo::Trees>(*output, output_cnt);
         sysrepo::Trees_Holder *out_vals = new sysrepo::Trees_Holder(s_out_trees);
         std::shared_ptr<sysrepo::Trees> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Trees_t, SWIG_POINTER_DISOWN);
@@ -272,7 +272,7 @@ public:
     int dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, PyObject *private_ctx) {
         PyObject *arglist;
 
-        sysrepo::S_Vals s_out_vals = std::make_shared<Vals>(*values, values_cnt);
+        sysrepo::S_Vals s_out_vals = std::make_shared<sysrepo::Vals>(*values, values_cnt);
         sysrepo::Vals_Holder *out_vals = new sysrepo::Vals_Holder(s_out_vals);
         std::shared_ptr<sysrepo::Vals_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<sysrepo::Vals_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_Holder_t, SWIG_POINTER_DISOWN);
