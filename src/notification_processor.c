@@ -1012,6 +1012,7 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
         CHECK_NULL_NOMEM_GOTO(subscription->username, rc, cleanup);
     }
 
+    subscription->session_id = rp_session->id;
     subscription->dst_id = dst_id;
     subscription->dst_address = strdup(dst_address);
     CHECK_NULL_NOMEM_GOTO(subscription->dst_address, rc, cleanup);

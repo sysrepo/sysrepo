@@ -125,6 +125,11 @@ module sysrepo-persistent-data {
           description "Destination-local subscription identifier.";
         }
 
+        leaf session-id {
+          type uint32;
+          description "Session id responsible for creating subscription.";
+        }
+
         leaf xpath {
           when "../type = 'subtree-change' or ../type = 'dp-get-items' or ../type = 'rpc' " +
                "or ../type = 'action' or ../type = 'event-notification'";

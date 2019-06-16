@@ -49,6 +49,7 @@
 #define PM_XPATH_SUBSCRIPTION_LIST            PM_XPATH_MODULE "/subscriptions/subscription"
 
 #define PM_XPATH_SUBSCRIPTION                 PM_XPATH_SUBSCRIPTION_LIST "[type='" PM_MODULE_NAME ":%s'][destination-address='%s'][destination-id='%"PRIu32"']"
+#define PM_XPATH_SUBSCRIPTION_SESSION_ID      PM_XPATH_SUBSCRIPTION      "/session-id"
 #define PM_XPATH_SUBSCRIPTION_XPATH           PM_XPATH_SUBSCRIPTION      "/xpath"
 #define PM_XPATH_SUBSCRIPTION_USERNAME        PM_XPATH_SUBSCRIPTION      "/username"
 #define PM_XPATH_SUBSCRIPTION_EVENT           PM_XPATH_SUBSCRIPTION      "/event"
@@ -451,6 +452,9 @@ pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscript
             }
             if (0 == strcmp(node->schema->name, "destination-id") && NULL != node_ll->value_str) {
                 subscription->dst_id = atoi(node_ll->value_str);
+            }
+            if (0 == strcmp(node->schema->name, "session-id") && NULL != node_ll->value_str) {
+                subscription->session_id = atoi(node_ll->value_str);
             }
             if (0 == strcmp(node->schema->name, "xpath") && NULL != node_ll->value_str) {
                 subscription->xpath = strdup(node_ll->value_str);
@@ -1147,6 +1151,14 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
         rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, true, true, NULL);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
     }
+
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_SESSION_ID, module_name,
+            sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+    snprintf(buff, sizeof(buff), "%"PRIu32, subscription->session_id);
+    value = buff;
+    rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, true, NULL);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
+
     if (NULL != subscription->xpath) {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_XPATH, module_name,
                 sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);

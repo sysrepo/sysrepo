@@ -902,7 +902,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t **c_ct
             }
             break;
         case DM_COMMIT_NOTIFY_VERIFY:
-            rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_VERIFY, commit_ctx);
+            rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_VERIFY, commit_ctx, session->id);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Sending of verify notifications failed");
             state = commit_ctx->state;
             SR_LOG_DBG_MSG("Commit (7/10): verify phase done");
@@ -933,7 +933,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t **c_ct
             state = DM_COMMIT_NOTIFY_APPLY;
             break;
         case DM_COMMIT_NOTIFY_APPLY:
-            rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_APPLY, commit_ctx);
+            rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_APPLY, commit_ctx, session->id);
             if (SR_ERR_OK == rc && !rp_ctx->do_not_generate_config_change) {
                 rc = rp_dt_generate_config_change_notification(rp_ctx, session, commit_ctx);
             }
@@ -941,7 +941,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t **c_ct
             SR_LOG_DBG_MSG("Commit (9/10): apply notifications sent");
             break;
         case DM_COMMIT_NOTIFY_ABORT:
-            rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_ABORT, commit_ctx);
+            rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_ABORT, commit_ctx, session->id);
             session->state = RP_REQ_FINISHED;
             *errors = commit_ctx->errors;
             *err_cnt = commit_ctx->err_cnt;

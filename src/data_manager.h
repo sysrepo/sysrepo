@@ -542,9 +542,10 @@ int dm_commit_netconf_access_control(nacm_ctx_t *nacm_ctx, dm_session_t *session
  * @param [in] session
  * @param [in] ev type of the notification that should be generated
  * @param [in] c_ctx
+ * @param [in] session id that generated the change
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, dm_commit_context_t *c_ctx);
+int dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, dm_commit_context_t *c_ctx, uint32_t session_id);
 
 /**
  * @brief Frees all resources allocated in commit context closes

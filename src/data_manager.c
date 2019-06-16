@@ -4995,10 +4995,17 @@ dm_commit_netconf_access_control(nacm_ctx_t *nacm_ctx, dm_session_t *session, dm
  * SR_EV_ABORT: skip subscription that returned an error and specified SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG flag
  */
 static bool
-dm_should_skip_subscription(np_subscription_t *subscription, dm_commit_context_t *c_ctx, sr_notif_event_t ev)
+dm_should_skip_subscription(np_subscription_t *subscription, dm_commit_context_t *c_ctx, sr_notif_event_t ev,
+                            uint32_t session_id)
 {
     if (NULL == subscription || NULL == c_ctx) {
         return false;
+    }
+
+    /* Don't notify the subscriber if the session of the subscriber is responsible
+     * for generating the notification. */
+    if (subscription->session_id == session_id) {
+        return true;
     }
 
     if (SR_EV_VERIFY == ev || SR_EV_ABORT == ev) {
@@ -5023,7 +5030,7 @@ dm_should_skip_subscription(np_subscription_t *subscription, dm_commit_context_t
 }
 
 int
-dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, dm_commit_context_t *c_ctx)
+dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, dm_commit_context_t *c_ctx, uint32_t session_id)
 {
     CHECK_NULL_ARG3(dm_ctx, session, c_ctx);
     int rc = SR_ERR_OK;
@@ -5172,7 +5179,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
         if (NULL != ms->subscriptions) {
             for (size_t s = 0; s < ms->subscriptions->count; s++) {
                 np_subscription_t *sub = ms->subscriptions->data[s];
-                if (dm_should_skip_subscription(sub, c_ctx, ev)) {
+                if (dm_should_skip_subscription(sub, c_ctx, ev, session_id)) {
                     continue;
                 }
 
