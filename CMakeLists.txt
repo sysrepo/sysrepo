@@ -114,6 +114,12 @@ include_directories(${YANG_INCLUDE_DIR})
 find_package(Protobuf-c REQUIRED)
 include_directories(${PROTOBUF-C_INCLUDE_DIR})
 
+# find bash
+find_program(BASH bash /usr/bin)
+if(BASH-NOTFOUND)
+    message(FATAL_ERROR "Faild to find bash in /usr/bin")
+endif()
+
 # find libavl and/or libredblack
 find_package(AVL)
 find_package(RedBlack)
