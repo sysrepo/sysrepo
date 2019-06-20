@@ -267,6 +267,9 @@ ac_check_module_node_permissions(ac_session_t *session, const char *module_name,
                 free(module_info);
                 return rc;
             }
+            if (NULL != node_xpath) {
+                module_info->xpath = strdup(node_xpath);
+            }
         }
         rc = sr_btree_insert(session->module_info_btree, module_info);
         if (SR_ERR_OK != rc) {
