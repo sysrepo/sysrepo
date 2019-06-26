@@ -36,7 +36,9 @@
 #include <pwd.h>
 #include <grp.h>
 //! @cond doxygen_suppress
+#ifndef __USE_XOPEN
 #define __USE_XOPEN
+#endif
 //! @endcond
 #include <time.h>
 #include <libyang/libyang.h>
