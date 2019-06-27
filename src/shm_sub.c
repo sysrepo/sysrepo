@@ -2316,13 +2316,13 @@ wait_for_event:
 
         /* use select() to wait for a new event */
         ret = select(subs->evpipe + 1, &rfds, NULL, NULL, &tv);
-        if (ret == -1) {
+        if ((ret == -1) && (errno != EINTR)) {
             /* error */
             SR_ERRINFO_SYSERRNO(&err_info, "select");
             sr_errinfo_free(&err_info);
             goto error;
-        } else if (!ret && !stop_time_in) {
-            /* timeout, retry */
+        } else if ((!ret || (errno == EINTR)) && !stop_time_in) {
+            /* timeout/signal received, retry */
             goto wait_for_event;
         }
     }
