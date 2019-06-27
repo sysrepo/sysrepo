@@ -1,0 +1,12 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+
+Name: @PROJECT_NAME@
+Description: @SYSREPO_DESC@
+Version: @SYSREPO_VERSION@
+Requires.private: libyang
+Libs: -L${libdir} -lsysrepo
+Cflags: -I${includedir}
+
+SR_REPO_PATH=@REPO_PATH@

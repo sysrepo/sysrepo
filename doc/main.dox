@@ -103,7 +103,7 @@ subscriptions. It is supported mainly to allow virtual pre-NMDA datastores.
 
 # Threading Model @anchor threads
 
-Firstly, regarding @ref conn_sess, a session is not synchronized at all so it __must not be shared__ among multiple
+Firstly, regarding @ref conn_sess, a __session__ is not synchronized at all so it __must not be shared__ among multiple
 threads. Each thread should always create its own session to ensure correct behavior. Other than that there should be
 no restrictions and all Sysrepo API functions should be correctly synchronized for many processes each with several
 threads.

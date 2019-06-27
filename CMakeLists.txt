@@ -89,6 +89,7 @@ check_include_file("stdatomic.h" SR_HAVE_STDATOMIC)
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/srpd_common.h.in" "${PROJECT_BINARY_DIR}/srpd_common.h" ESCAPE_QUOTES @ONLY)
+configure_file("${PROJECT_SOURCE_DIR}/libsysrepo.pc.in" "${PROJECT_BINARY_DIR}/libsysrepo.pc" @ONLY)
 include_directories(${PROJECT_BINARY_DIR})
 include_directories("${PROJECT_SOURCE_DIR}/src")
 
@@ -152,6 +153,8 @@ target_link_libraries(sysrepo-plugind sysrepo dl)
 install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+install(FILES "${PROJECT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
 # doxygen documentation
 find_package(Doxygen)
