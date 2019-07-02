@@ -146,6 +146,16 @@ struct sr_mod_s {
 };
 
 /**
+ * @brief Connection state.
+ */
+typedef struct sr_conn_state_s {
+    sr_conn_ctx_t *conn_ctx;    /**< Connection, process-specific pointer, do not access! */
+    pid_t pid;                  /**< PID of process that created this connection. */
+    off_t evpipes;              /**< Array of event pipes of subscriptions on this connection. */
+    uint32_t evpipe_count;      /**< Event pipe count. */
+} sr_conn_state_t;
+
+/**
  * @brief Main SHM.
  */
 typedef struct sr_main_shm_s {
@@ -153,6 +163,10 @@ typedef struct sr_main_shm_s {
     uint32_t ver;               /**< Main SHM version (installed module set version). */
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
+    struct {
+        off_t conns;            /**< Array of existing connections. */
+        uint32_t conn_count;    /**< Number of existing connections. */
+    } conn_state;               /**< Information about connection state. */
 } sr_main_shm_t;
 
 /**
@@ -304,6 +318,40 @@ sr_error_info_t *sr_shmmain_createlock(sr_conn_ctx_t *conn);
  * @param[in] conn Connection to use.
  */
 void sr_shmmain_createunlock(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Add connection into main SHM state.
+ *
+ * @param[in] conn Connection to add.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_state_add_conn(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Remove a connection from main SHM state.
+ *
+ * @param[in] conn Connection to delete.
+ */
+void sr_shmmain_state_del_conn(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Add an event pipe into main SHM state.
+ * Main SHM lock is expected to be held.
+ *
+ * @param[in] conn Connection of the subscription.
+ * @param[in] evpipe_num Event pipe number.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
+
+/**
+ * @brief Remove and event pipe from main SHM state.
+ * Main SHM lock is expected to be held.
+ *
+ * @param[in] conn Connection of the subscription.
+ * @param[in] evpipe_num Event pipe number.
+ */
+void sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
 
 /**
  * @brief Parse internal sysrepo module data.

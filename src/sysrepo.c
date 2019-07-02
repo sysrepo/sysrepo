@@ -112,6 +112,11 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     /* CREATE UNLOCK */
     sr_shmmain_createunlock(conn);
 
+    /* add connection into state */
+    if ((err_info = sr_shmmain_state_add_conn(conn))) {
+        goto error;
+    }
+
     *conn_p = conn;
     return sr_api_ret(NULL, NULL);
 
@@ -140,6 +145,9 @@ sr_disconnect(sr_conn_ctx_t *conn)
             ret = rc;
         }
     }
+
+    /* remove from state */
+    sr_shmmain_state_del_conn(conn);
 
     /* free cache */
     if (conn->opts & SR_CONN_CACHE_RUNNING) {
@@ -2502,6 +2510,9 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
+    /* remove subscription from main SHM state */
+    sr_shmmain_state_del_evpipe(subscription->conn, subscription->evpipe_num);
+
     /* defrag main SHM if needed */
     if ((tmp_err = sr_check_main_shm_defrag(subscription->conn))) {
         /* continue */
@@ -2531,20 +2542,23 @@ API int
 sr_unsubscribe(sr_subscription_ctx_t *subscription)
 {
     sr_error_info_t *err_info = NULL;
+    sr_conn_ctx_t *conn;
 
     if (!subscription) {
         return sr_api_ret(NULL, NULL);
     }
 
+    conn = subscription->conn;
+
     /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(subscription->conn, 1, 1))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
         return sr_api_ret(NULL, err_info);
     }
 
     err_info = _sr_unsubscribe(subscription);
 
     /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(subscription->conn, 1, 1);
+    sr_shmmain_unlock(conn, 1, 1);
 
     return sr_api_ret(NULL, err_info);
 }
@@ -2699,6 +2713,11 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t
     (*subs_p)->evpipe = open(path, O_RDWR | O_NONBLOCK);
     if ((*subs_p)->evpipe == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "open");
+        goto error;
+    }
+
+    /* add the new subscription into main SHM state */
+    if ((err_info = sr_shmmain_state_add_evpipe(conn, (*subs_p)->evpipe_num))) {
         goto error;
     }
 
