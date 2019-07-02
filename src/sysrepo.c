@@ -2465,16 +2465,20 @@ cleanup_unlock:
     return sr_api_ret(session, err_info);
 }
 
-API int
-sr_unsubscribe(sr_subscription_ctx_t *subscription)
+/**
+ * @brief Unsubscribe (free) a subscription (main SHM and remap lock is expected to be held).
+ *
+ * @param[in] subscription Subscription to free.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+_sr_unsubscribe(sr_subscription_ctx_t *subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     char *path;
     int ret;
 
-    if (!subscription) {
-        return sr_api_ret(NULL, NULL);
-    }
+    assert(subscription);
 
     if (ATOMIC_LOAD_RELAXED(subscription->thread_running)) {
         /* signal the thread to quit */
@@ -2492,25 +2496,16 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
         }
     }
 
-    /* SHM WRITE LOCK */
-    if ((tmp_err = sr_shmmain_lock_remap(subscription->conn, 1, 1))) {
+    /* delete all subscriptions (also removes this subscription from all the sessions) */
+    if ((tmp_err = sr_subs_del_all(subscription))) {
         /* continue */
         sr_errinfo_merge(&err_info, tmp_err);
-    } else {
-        /* delete all subscriptions (also removes this subscription from all the sessions) */
-        if ((tmp_err = sr_subs_del_all(subscription))) {
-            /* continue */
-            sr_errinfo_merge(&err_info, tmp_err);
-        }
+    }
 
-        /* defrag main SHM if needed */
-        if ((tmp_err = sr_check_main_shm_defrag(subscription->conn))) {
-            /* continue */
-            sr_errinfo_merge(&err_info, tmp_err);
-        }
-
-        /* SHM WRITE UNLOCK */
-        sr_shmmain_unlock(subscription->conn, 1, 1);
+    /* defrag main SHM if needed */
+    if ((tmp_err = sr_check_main_shm_defrag(subscription->conn))) {
+        /* continue */
+        sr_errinfo_merge(&err_info, tmp_err);
     }
 
     /* unlink event pipe */
@@ -2529,6 +2524,28 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     close(subscription->evpipe);
     pthread_mutex_destroy(&subscription->subs_lock);
     free(subscription);
+    return err_info;
+}
+
+API int
+sr_unsubscribe(sr_subscription_ctx_t *subscription)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (!subscription) {
+        return sr_api_ret(NULL, NULL);
+    }
+
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(subscription->conn, 1, 1))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    err_info = _sr_unsubscribe(subscription);
+
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(subscription->conn, 1, 1);
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -2801,7 +2818,7 @@ error_wrunlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_sub_conf_del(module_name, xpath, session->ds, callback, private_data, priority, sub_opts, *subscription);
     } else {
-        sr_unsubscribe(*subscription);
+        _sr_unsubscribe(*subscription);
         *subscription = NULL;
     }
 
@@ -3364,7 +3381,7 @@ error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_sub_rpc_del(path, *subscription);
     } else {
-        sr_unsubscribe(*subscription);
+        _sr_unsubscribe(*subscription);
         *subscription = NULL;
     }
 
@@ -3777,7 +3794,7 @@ error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_sub_notif_del(ly_mod->name, xpath, start_time, stop_time, callback, tree_callback, private_data, *subscription, 0);
     } else {
-        sr_unsubscribe(*subscription);
+        _sr_unsubscribe(*subscription);
         *subscription = NULL;
     }
 
@@ -4142,7 +4159,7 @@ error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_sub_oper_del(module_name, path, *subscription);
     } else {
-        sr_unsubscribe(*subscription);
+        _sr_unsubscribe(*subscription);
         *subscription = NULL;
     }
 
