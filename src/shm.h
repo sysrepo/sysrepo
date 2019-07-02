@@ -151,7 +151,7 @@ struct sr_mod_s {
 typedef struct sr_main_shm_s {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing main (ext) SHM. */
     uint32_t ver;               /**< Main SHM version (installed module set version). */
-    ATOMIC_T new_sr_sid;        /**< SID for new session. */
+    ATOMIC_T new_sr_sid;        /**< SID for a new session. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
 } sr_main_shm_t;
 

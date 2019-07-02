@@ -2802,6 +2802,7 @@ error_wrunlock_unsub:
         sr_sub_conf_del(module_name, xpath, session->ds, callback, private_data, priority, sub_opts, *subscription);
     } else {
         sr_unsubscribe(*subscription);
+        *subscription = NULL;
     }
 
 error_wrunlock:
@@ -3364,6 +3365,7 @@ error_unlock_unsub:
         sr_sub_rpc_del(path, *subscription);
     } else {
         sr_unsubscribe(*subscription);
+        *subscription = NULL;
     }
 
 error_unlock:
@@ -3776,6 +3778,7 @@ error_unlock_unsub:
         sr_sub_notif_del(ly_mod->name, xpath, start_time, stop_time, callback, tree_callback, private_data, *subscription, 0);
     } else {
         sr_unsubscribe(*subscription);
+        *subscription = NULL;
     }
 
 error_unlock:
@@ -4140,6 +4143,7 @@ error_unlock_unsub:
         sr_sub_oper_del(module_name, path, *subscription);
     } else {
         sr_unsubscribe(*subscription);
+        *subscription = NULL;
     }
 
 error_unlock:
