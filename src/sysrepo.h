@@ -156,9 +156,11 @@ typedef struct sr_session_ctx_s sr_session_ctx_t;
  * @brief Flags used to override default connection handling by ::sr_connect call.
  */
 typedef enum sr_conn_flag_e {
-    SR_CONN_DEFAULT = 0,          /**< No special behaviour. */
-    SR_CONN_CACHE_RUNNING = 1,    /**< Always cache running datastore data which makes mainly repeated retrieval of data
-                                       much faster. Affects all sessions created on this connection. */
+    SR_CONN_DEFAULT = 0,            /**< No special behaviour. */
+    SR_CONN_CACHE_RUNNING = 1,      /**< Always cache running datastore data which makes mainly repeated retrieval of data
+                                         much faster. Affects all sessions created on this connection. */
+    SR_CONN_NO_SCHED_CHANGES = 2,   /**< Do not parse internal modules data and apply any scheduled changes. Makes
+                                         creating the connection faster but, obviously, scheduled changes are not applied. */
 } sr_conn_flag_t;
 
 /**
@@ -192,7 +194,8 @@ typedef struct sr_error_info_s {
 } sr_error_info_t;
 
 /**
- * @brief Connects to the sysrepo datastore.
+ * @brief Connects to the sysrepo datastore. If possible (no other connections exist), also applies
+ * any scheduled changes.
  *
  * @param[in] opts Options overriding default connection handling by this call.
  * @param[out] conn Connection that can be used for subsequent API calls

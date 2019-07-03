@@ -354,17 +354,63 @@ sr_error_info_t *sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpip
 void sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
 
 /**
- * @brief Parse internal sysrepo module data.
+ * @brief Check whether internal module data file exists.
+ *
+ * @param[out] exists Whether the file exists.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_ly_int_data_exists(int *exists);
+
+/**
+ * @brief Store (print) internal module data.
+ *
+ * @param[in,out] sr_mods Data to store, are validated so could (in theory) be modified.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_ly_int_data_print(struct lyd_node **sr_mods);
+
+/**
+ * @brief Create default internal module data. All libyang internal implemented modules
+ * are installed also into sysrepo. Sysrepo internal modules ietf-netconf, ietf-netconf-with-defaults,
+ * and ietf-netconf-notifications are also installed.
  *
  * @param[in] conn Connection to use.
- * @param[in] apply_sched Whether to apply scheduled changes stored in these data.
+ * @param[out] sr_mods_p Created default internal data.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_ly_int_data_create(sr_conn_ctx_t *conn, struct lyd_node **sr_mods_p);
+
+/**
+ * @brief Parse internal module data.
+ *
+ * @param[in] conn Connection to use.
  * @param[out] sr_mods_p Sysrepo modules data tree.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_node **sr_mods_p);
+sr_error_info_t *sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, struct lyd_node **sr_mods_p);
+
+/**
+ * @brief Apply scheduled changes in internal module data. If applying any changes fails,
+ * the data tree is no longer valid! It should be used further only if \p change was set.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in,out] sr_mods_p Sysrepo modules data tree.
+ * @param[out] change Whether the internal sysrepo data tree was changed.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_ly_int_data_sched_apply(sr_conn_ctx_t *conn, struct lyd_node *sr_mods, int *change);
+
+/**
+ * @brief Initialize libyang context with only the internal sysrepo module.
+ *
+ * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_ly_ctx_init(sr_conn_ctx_t *conn);
 
 /**
  * @brief Update libyang context to be consistent with main SHM modules.
+ * Checks whether main SHM modules are different from internal libyang context first.
  *
  * @param[in] conn Connection to use.
  * @return err_info, NULL on success.

@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <stdarg.h>
 #include <getopt.h>
 
@@ -65,6 +66,8 @@ help_print(void)
         "  -c, --change <module>\n"
         "                       Change access rights, features, or replay support of the specified module.\n"
         "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
+        "  -C, --connection-count\n"
+        "                       Prints the number of sysrepo connections to STDOUT.\n"
         "\n"
         "Available other-options:\n"
         "  -s, --search-dir <dir-path>\n"
@@ -359,6 +362,7 @@ main(int argc, char** argv)
     mode_t perms = -1;
     sr_log_level_t log_level = 0;
     int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1;
+    uint32_t conn_count;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
         {"list",            no_argument,       NULL, 'l'},
@@ -366,6 +370,7 @@ main(int argc, char** argv)
         {"uninstall",       required_argument, NULL, 'u'},
         {"change",          required_argument, NULL, 'c'},
         {"update",          required_argument, NULL, 'U'},
+        {"connection-count",no_argument,       NULL, 'C'},
         {"search-dir",      required_argument, NULL, 's'},
         {"enable-feature",  required_argument, NULL, 'e'},
         {"disable-feature", required_argument, NULL, 'd'},
@@ -383,7 +388,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hli:u:c:U:s:e:d:r:o:g:p:v:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hli:u:c:U:Cs:e:d:r:o:g:p:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             help_print();
@@ -427,6 +432,13 @@ main(int argc, char** argv)
             }
             operation = 'U';
             file_path = optarg;
+            break;
+        case 'C':
+            if (operation) {
+                error_print(0, "Operation already specified");
+                goto cleanup;
+            }
+            operation = 'C';
             break;
         case 's':
             if (search_dir) {
@@ -509,10 +521,12 @@ main(int argc, char** argv)
         goto cleanup;
     }
 
-    /* create connection */
-    if ((r = sr_connect(0, &conn)) != SR_ERR_OK) {
-        error_print(r, "Failed to connect");
-        goto cleanup;
+    if (operation != 'C') {
+        /* create connection */
+        if ((r = sr_connect(0, &conn)) != SR_ERR_OK) {
+            error_print(r, "Failed to connect");
+            goto cleanup;
+        }
     }
 
     /* perform the operation */
@@ -583,6 +597,15 @@ main(int argc, char** argv)
             error_print(r, "Failed to update module \"%s\"", file_path);
             goto cleanup;
         }
+        rc = EXIT_SUCCESS;
+        break;
+    case 'C':
+        /* connection-count */
+        if ((r = sr_connection_count(&conn_count)) != SR_ERR_OK) {
+            error_print(r, "Failed to get connection count");
+            goto cleanup;
+        }
+        fprintf(stdout, "%u\n", conn_count);
         rc = EXIT_SUCCESS;
         break;
     case 0:

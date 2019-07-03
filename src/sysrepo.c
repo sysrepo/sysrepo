@@ -46,21 +46,22 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     conn = calloc(1, sizeof *conn);
     SR_CHECK_MEM_RET(!conn, err_info);
 
+    if ((err_info = sr_shmmain_ly_ctx_init(conn))) {
+        goto error1;
+    }
+
     conn->opts = opts;
 
     if ((err_info = sr_mutex_init(&conn->ptr_lock, 0))) {
-        goto error;
+        goto error2;
     }
 
     if ((err_info = sr_shmmain_createlock_open(&conn->main_shm_create_lock))) {
-        pthread_mutex_destroy(&conn->ptr_lock);
-        goto error;
+        goto error3;
     }
 
     if ((err_info = sr_rwlock_init(&conn->main_shm_remap_lock, 0))) {
-        pthread_mutex_destroy(&conn->ptr_lock);
-        close(conn->main_shm_create_lock);
-        goto error;
+        goto error4;
     }
 
     conn->main_shm.fd = -1;
@@ -69,7 +70,13 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     *conn_p = conn;
     return NULL;
 
-error:
+error4:
+    close(conn->main_shm_create_lock);
+error3:
+    pthread_mutex_destroy(&conn->ptr_lock);
+error2:
+    ly_ctx_destroy(conn->ly_ctx, NULL);
+error1:
     free(conn);
     return err_info;
 }
@@ -80,7 +87,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = NULL;
     struct lyd_node *sr_mods = NULL;
-    int created = 0;
+    int created = 0, changed = 0, exists;
 
     SR_CHECK_ARG_APIRET(!conn_p, NULL, err_info);
 
@@ -109,35 +116,66 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto cleanup_unlock;
     }
 
-    /* create libyang context */
+    /* check whether any internal module data exist */
+    if ((err_info = sr_shmmain_ly_int_data_exists(&exists))) {
+        goto cleanup_unlock;
+    }
+    if (!exists) {
+        /* create new persistent module data file */
+        if ((err_info = sr_shmmain_ly_int_data_create(conn, &sr_mods))) {
+            goto cleanup_unlock;
+        }
+        changed = 1;
+    } else if (created || (!(opts & SR_CONN_NO_SCHED_CHANGES) && !((sr_main_shm_t *)conn->main_shm.addr)->conn_state.conn_count)) {
+        /* if there are no connections, parse internal data and apply scheduled changes */
+        if ((err_info = sr_shmmain_ly_int_data_parse(conn, &sr_mods))) {
+            goto cleanup_unlock;
+        }
+        if ((err_info = sr_shmmain_ly_int_data_sched_apply(conn, sr_mods, &changed))) {
+            goto cleanup_unlock;
+        }
+    }
+
+    if (changed) {
+        /* store updated internal sysrepo data */
+        if ((err_info = sr_shmmain_ly_int_data_print(&sr_mods))) {
+            goto cleanup_unlock;
+        }
+    }
+
+    if (changed || created) {
+        /* clear all main SHM modules (if main SHM was just created, there aren't any anyway) */
+        if ((err_info = sr_shm_remap(&conn->main_shm, sizeof(sr_main_shm_t)))) {
+            goto cleanup_unlock;
+        }
+
+        /* clear main ext SHM (there can be no connections and no modules) */
+        if ((err_info = sr_shm_remap(&conn->main_ext_shm, sizeof(size_t)))) {
+            goto cleanup_unlock;
+        }
+        /* set wasted mem to 0 */
+        *((size_t *)conn->main_ext_shm.addr) = 0;
+
+        /* add all the modules in internal sysrepo data into main SHM */
+        if ((err_info = sr_shmmain_shm_add(conn, sr_mods->child))) {
+            goto cleanup_unlock;
+        }
+
+        /* update version */
+        ++((sr_main_shm_t *)conn->main_shm.addr)->ver;
+    }
+
+    /* update libyang context with current modules from SHM */
     if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
         goto cleanup_unlock;
     }
 
     if (created) {
-        /* parse libyang internal data tree and apply any scheduled changes */
-        if ((err_info = sr_shmmain_ly_int_data_parse(conn, 1, &sr_mods))) {
-            goto cleanup_unlock;
-        }
-
-        /* fill main SHM content with all modules in internal sysrepo data */
-        if ((err_info = sr_shmmain_shm_add(conn, sr_mods->child))) {
-            goto cleanup_unlock;
-        }
-
-        /* update libyang context with info from SHM */
-        if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-            goto cleanup_unlock;
-        }
-
         /* copy full datastore from <startup> to <running> */
         if ((err_info = sr_shmmain_files_startup2running(conn))) {
             goto cleanup_unlock;
         }
     }
-
-    /* store current main SHM version */
-    conn->main_ver = ((sr_main_shm_t *)conn->main_shm.addr)->ver;
 
     /* CREATE UNLOCK */
     sr_shmmain_createunlock(conn->main_shm_create_lock);
@@ -1141,7 +1179,7 @@ sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data)
 
     SR_CHECK_ARG_APIRET(!conn || !sysrepo_data, NULL, err_info);
 
-    err_info = sr_shmmain_ly_int_data_parse(conn, 0, sysrepo_data);
+    err_info = sr_shmmain_ly_int_data_parse(conn, sysrepo_data);
 
     return sr_api_ret(NULL, err_info);
 }

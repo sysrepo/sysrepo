@@ -992,13 +992,34 @@ sr_shmmain_ext_get_module_size(struct lyd_node *sr_mods)
     return shm_size;
 }
 
-/**
- * @brief Store (print) internal persistent data.
- *
- * @param[in,out] sr_mods Data to store, are validated so could be (in theory) modified.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
+sr_shmmain_ly_int_data_exists(int *exists)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path = NULL;
+
+    /* get internal startup file path */
+    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
+        goto cleanup;
+    }
+
+    /* check the existence of the data file */
+    if (access(path, F_OK) == -1) {
+        if (errno != ENOENT) {
+            SR_ERRINFO_SYSERRNO(&err_info, "access");
+            goto cleanup;
+        }
+        *exists = 0;
+    } else {
+        *exists = 1;
+    }
+
+cleanup:
+    free(path);
+    return err_info;
+}
+
+sr_error_info_t *
 sr_shmmain_ly_int_data_print(struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
@@ -1030,6 +1051,120 @@ sr_shmmain_ly_int_data_print(struct lyd_node **sr_mods)
     free(path);
 
     return NULL;
+}
+
+sr_error_info_t *
+sr_shmmain_ly_int_data_create(sr_conn_ctx_t *conn, struct lyd_node **sr_mods_p)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod, *ly_mod2;
+    struct lyd_node *sr_mods = NULL;
+    uint32_t i;
+
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, SR_YANG_MOD, NULL, 1);
+    SR_CHECK_INT_RET(!ly_mod, err_info);
+
+    /* create empty container */
+    sr_mods = lyd_new(NULL, ly_mod, "sysrepo-modules");
+    SR_CHECK_INT_RET(!sr_mods, err_info);
+
+    /* for internal libyang modules create files and store in the persistent module data tree */
+    i = 0;
+    while ((i < ly_ctx_internal_modules_count(conn->ly_ctx)) && (ly_mod = ly_ctx_get_module_iter(conn->ly_ctx, &i))) {
+        /* module must be implemented */
+        if (ly_mod->implemented) {
+            if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
+                goto error;
+            }
+            if ((err_info = sr_shmmain_ly_add_module(ly_mod, sr_mods, NULL))) {
+                goto error;
+            }
+
+            SR_LOG_INF("Libyang internal module \"%s\" was installed.", ly_mod->name);
+        }
+    }
+
+    /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
+    if (!(ly_mod = lys_parse_mem(conn->ly_ctx, ietf_netconf_yang, LYS_YANG))) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        goto error;
+    }
+    if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
+        goto error;
+    }
+
+    if (!(ly_mod2 = lys_parse_mem(conn->ly_ctx, ietf_netconf_with_defaults_yang, LYS_YANG))) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        goto error;
+    }
+    if ((err_info = sr_create_module_files_with_imps_r(ly_mod2))) {
+        goto error;
+    }
+
+    if ((err_info = sr_shmmain_ly_add_module(ly_mod2, sr_mods, NULL))) {
+        goto error;
+    }
+    SR_LOG_INF("Sysrepo internal module \"%s\" was installed.", ly_mod2->name);
+
+    if ((err_info = sr_shmmain_ly_add_module(ly_mod, sr_mods, NULL))) {
+        goto error;
+    }
+    SR_LOG_INF("Sysrepo internal dependency module \"%s\" was installed.", ly_mod->name);
+
+    /* install ietf-netconf-notifications */
+    if (!(ly_mod = lys_parse_mem(conn->ly_ctx, ietf_netconf_notifications_yang, LYS_YANG))) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        goto error;
+    }
+    if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
+        goto error;
+    }
+
+    if ((err_info = sr_shmmain_ly_add_module(ly_mod, sr_mods, NULL))) {
+        goto error;
+    }
+    SR_LOG_INF("Sysrepo internal module \"%s\" was installed.", ly_mod->name);
+
+    *sr_mods_p = sr_mods;
+    return NULL;
+
+error:
+    lyd_free_withsiblings(sr_mods);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, struct lyd_node **sr_mods_p)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_mods = NULL;
+    char *path;
+
+    assert(conn->ly_ctx);
+    assert(sr_mods_p);
+
+    /* get internal startup file path */
+    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
+        goto cleanup;
+    }
+
+    /* load sysrepo data */
+    sr_mods = lyd_parse_path(conn->ly_ctx, path, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT);
+    if (!sr_mods) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        goto cleanup;
+    }
+
+    /* success */
+
+cleanup:
+    free(path);
+    if (err_info) {
+        lyd_free_withsiblings(sr_mods);
+    } else {
+        *sr_mods_p = sr_mods;
+    }
+    return err_info;
 }
 
 /**
@@ -1196,11 +1331,11 @@ cleanup:
  *
  * @param[in] sr_mods Internal data to modify.
  * @param[out] change Whether any change to the data was performed.
- * @param[in,out] apply_sched Whether to continue with applying scheduled changes.
+ * @param[out] fail Whether any scheduled module removal failed.
  * @return err_info, NULL on error.
  */
 static sr_error_info_t *
-sr_shmmain_sched_remove_modules(struct lyd_node *sr_mods, int *change, int *apply_sched)
+sr_shmmain_sched_remove_modules(struct lyd_node *sr_mods, int *change, int *fail)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *ly_ctx;
@@ -1211,7 +1346,6 @@ sr_shmmain_sched_remove_modules(struct lyd_node *sr_mods, int *change, int *appl
     uint32_t i, idx;
 
     assert(sr_mods);
-    assert(*apply_sched);
 
     ly_ctx = lyd_node_module(sr_mods)->ctx;
 
@@ -1255,8 +1389,8 @@ sr_shmmain_sched_remove_modules(struct lyd_node *sr_mods, int *change, int *appl
                     /* this module cannot be removed */
                     SR_LOG_WRN("Cannot remove module \"%s\" because some other installed module depends on it.", mod_name);
 
-                    /* do not apply any scheduled changes */
-                    *apply_sched = 0;
+                    /* we failed, do not apply any scheduled changes */
+                    *fail = 1;
                     goto cleanup;
                 }
             }
@@ -1559,110 +1693,16 @@ cleanup:
 }
 
 /**
- * @brief Create default internal persistent data. All libyang internal implemented modules
- * are installed also into sysrepo. Sysrepo internal modules ietf-netconf, ietf-netconf-with-defaults,
- * and ietf-netconf-notifications are also installed.
- *
- * @param[in] conn Connection to use.
- * @param[out] sr_mods_p Created default internal data.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_shmmain_ly_int_data_create(sr_conn_ctx_t *conn, struct lyd_node **sr_mods_p)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod, *ly_mod2;
-    struct lyd_node *sr_mods = NULL;
-    uint32_t i;
-
-    ly_mod = ly_ctx_get_module(conn->ly_ctx, SR_YANG_MOD, NULL, 1);
-    SR_CHECK_INT_RET(!ly_mod, err_info);
-
-    /* create empty container */
-    sr_mods = lyd_new(NULL, ly_mod, "sysrepo-modules");
-    SR_CHECK_INT_RET(!sr_mods, err_info);
-
-    /* for internal libyang modules create files and store in the persistent module data tree */
-    i = 0;
-    while ((i < ly_ctx_internal_modules_count(conn->ly_ctx)) && (ly_mod = ly_ctx_get_module_iter(conn->ly_ctx, &i))) {
-        /* module must be implemented */
-        if (ly_mod->implemented) {
-            if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
-                goto error;
-            }
-            if ((err_info = sr_shmmain_ly_add_module(ly_mod, sr_mods, NULL))) {
-                goto error;
-            }
-
-            SR_LOG_INF("Libyang internal module \"%s\" was installed.", ly_mod->name);
-        }
-    }
-
-    /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
-    if (!(ly_mod = lys_parse_mem(conn->ly_ctx, ietf_netconf_yang, LYS_YANG))) {
-        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        goto error;
-    }
-    if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
-        goto error;
-    }
-
-    if (!(ly_mod2 = lys_parse_mem(conn->ly_ctx, ietf_netconf_with_defaults_yang, LYS_YANG))) {
-        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        goto error;
-    }
-    if ((err_info = sr_create_module_files_with_imps_r(ly_mod2))) {
-        goto error;
-    }
-
-    if ((err_info = sr_shmmain_ly_add_module(ly_mod2, sr_mods, NULL))) {
-        goto error;
-    }
-    SR_LOG_INF("Sysrepo internal module \"%s\" was installed.", ly_mod2->name);
-
-    if ((err_info = sr_shmmain_ly_add_module(ly_mod, sr_mods, NULL))) {
-        goto error;
-    }
-    SR_LOG_INF("Sysrepo internal dependency module \"%s\" was installed.", ly_mod->name);
-
-    /* install ietf-netconf-notifications */
-    if (!(ly_mod = lys_parse_mem(conn->ly_ctx, ietf_netconf_notifications_yang, LYS_YANG))) {
-        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        goto error;
-    }
-    if ((err_info = sr_create_module_files_with_imps_r(ly_mod))) {
-        goto error;
-    }
-
-    if ((err_info = sr_shmmain_ly_add_module(ly_mod, sr_mods, NULL))) {
-        goto error;
-    }
-    SR_LOG_INF("Sysrepo internal module \"%s\" was installed.", ly_mod->name);
-
-    /* store the updated persistent data tree */
-    if ((err_info = sr_shmmain_ly_int_data_print(&sr_mods))) {
-        goto error;
-    }
-
-    *sr_mods_p = sr_mods;
-    return NULL;
-
-error:
-    lyd_free_withsiblings(sr_mods);
-    return err_info;
-}
-
-/**
  * @brief Check that persistent (startup) module data can be loaded into updated context.
  * On success also print all the updated modules and updated LYB data.
  *
  * @param[in] old_ctx Context with previous modules.
  * @param[in] new_ctx Context with updated modules.
- * @param[out] apply_sched Whether to continue with applying scheduled changes.
+ * @param[out] fail Whether any data failed to be parsed.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_sched_check_data(struct ly_ctx *old_ctx, struct ly_ctx *new_ctx, int *apply_sched)
+sr_shmmain_sched_check_data(struct ly_ctx *old_ctx, struct ly_ctx *new_ctx, int *fail)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *old_data = NULL, *new_data = NULL, *mod_data;
@@ -1694,7 +1734,7 @@ sr_shmmain_sched_check_data(struct ly_ctx *old_ctx, struct ly_ctx *new_ctx, int 
     new_data = lyd_parse_mem(new_ctx, data_json, LYD_JSON, LYD_OPT_CONFIG);
     if (ly_errno) {
         sr_log_wrn_ly(new_ctx);
-        *apply_sched = 0;
+        *fail = 1;
         goto cleanup;
     }
 
@@ -1740,106 +1780,81 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_node **sr_mods_p)
+sr_shmmain_ly_int_data_sched_apply(sr_conn_ctx_t *conn, struct lyd_node *sr_mods, int *change)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *sr_mods = NULL;
     struct ly_ctx *old_ctx = NULL, *new_ctx = NULL;
-    char *path;
-    int change;
+    int fail = 0;
 
-    assert(conn->ly_ctx);
-    assert(sr_mods_p);
+    assert(sr_mods && change);
 
-    /* get internal startup file path */
-    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
-        return err_info;
+    SR_LOG_INFMSG("Applying scheduled changes.");
+
+    *change = 0;
+
+    /* there can be no connections when applying context changes */
+    assert(!((sr_main_shm_t *)conn->main_shm.addr)->conn_state.conn_count);
+
+    /* remove modules */
+    if ((err_info = sr_shmmain_sched_remove_modules(sr_mods, change, &fail)) || fail) {
+        goto cleanup;
     }
 
-    /* check the existence of the data file */
-    if (access(path, R_OK) == -1) {
-        if (conn->main_shm.size > sizeof(sr_main_shm_t)) {
-            /* we have some modules but no file on disk, should not happen */
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" was unexpectedly deleted.", path);
+    /* create temporary contexts */
+    if ((err_info = sr_ly_ctx_new(&old_ctx)) || (err_info = sr_ly_ctx_new(&new_ctx))) {
+        goto cleanup;
+    }
+
+    /* update modules */
+    if ((err_info = sr_shmmain_sched_update_modules(sr_mods, old_ctx, new_ctx, change))) {
+        goto cleanup;
+    }
+
+    /* change features */
+    if ((err_info = sr_shmmain_sched_change_features(sr_mods, old_ctx, new_ctx, change))) {
+        goto cleanup;
+    }
+
+    if (change) {
+        /* check that persistent module data can be loaded with updated modules */
+        if ((err_info = sr_shmmain_sched_check_data(old_ctx, new_ctx, &fail)) || fail) {
             goto cleanup;
-        }
-
-        /* create new persistent module data file */
-        if ((err_info = sr_shmmain_ly_int_data_create(conn, &sr_mods))) {
-            goto cleanup;
-        }
-    } else {
-        /* load sysrepo data */
-parse_int_sr_data:
-        sr_mods = lyd_parse_path(conn->ly_ctx, path, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT);
-        if (!sr_mods) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            goto cleanup;
-        }
-
-        /* apply all the scheduled changes now that it is safe (there can be no connections created yet) */
-        if (apply_sched) {
-            change = 0;
-
-            /* remove modules */
-            if ((err_info = sr_shmmain_sched_remove_modules(sr_mods, &change, &apply_sched))) {
-                goto cleanup;
-            }
-
-            if (!apply_sched) {
-                /* scheduled modules could not be removed, do not apply any scheduled changes */
-                SR_LOG_WRNMSG("Failed to remove scheduled modules, leaving all changes scheduled.");
-                lyd_free_withsiblings(sr_mods);
-                goto parse_int_sr_data;
-            }
-
-            /* create temporary contexts */
-            if ((err_info = sr_ly_ctx_new(&old_ctx)) || (err_info = sr_ly_ctx_new(&new_ctx))) {
-                goto cleanup;
-            }
-
-            /* update modules */
-            if ((err_info = sr_shmmain_sched_update_modules(sr_mods, old_ctx, new_ctx, &change))) {
-                goto cleanup;
-            }
-
-            /* change features */
-            if ((err_info = sr_shmmain_sched_change_features(sr_mods, old_ctx, new_ctx, &change))) {
-                goto cleanup;
-            }
-
-            if (change) {
-                /* check that persistent module data can be loaded with updated modules */
-                if ((err_info = sr_shmmain_sched_check_data(old_ctx, new_ctx, &apply_sched))) {
-                    goto cleanup;
-                }
-
-                if (!apply_sched) {
-                    SR_LOG_WRNMSG("Failed to parse some module data, leaving all changes scheduled.");
-                    lyd_free_withsiblings(sr_mods);
-                    goto parse_int_sr_data;
-                }
-
-                /* store updated internal sysrepo data */
-                if ((err_info = sr_shmmain_ly_int_data_print(&sr_mods))) {
-                    goto cleanup;
-                }
-            }
         }
     }
 
     /* success */
 
 cleanup:
-    free(path);
+    if (fail) {
+        SR_LOG_WRNMSG("Failed to apply some changes, leaving all changes scheduled.");
+        *change = 0;
+    }
     ly_ctx_destroy(old_ctx, NULL);
     ly_ctx_destroy(new_ctx, NULL);
-    if (err_info) {
-        lyd_free_withsiblings(sr_mods);
-    } else {
-        *sr_mods_p = sr_mods;
-    }
     return err_info;
+}
+
+sr_error_info_t *
+sr_shmmain_ly_ctx_init(sr_conn_ctx_t *conn)
+{
+    sr_error_info_t *err_info = NULL;
+
+    assert(!conn->ly_ctx);
+
+    /* libyang context init */
+    if ((err_info = sr_ly_ctx_new(&conn->ly_ctx))) {
+        return err_info;
+    }
+
+    /* load just the internal module */
+    if (!lys_parse_mem(conn->ly_ctx, sysrepo_yang, LYS_YANG)) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        ly_ctx_destroy(conn->ly_ctx, NULL);
+        conn->ly_ctx = NULL;
+        return err_info;
+    }
+
+    return NULL;
 }
 
 sr_error_info_t *
@@ -1852,20 +1867,9 @@ sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
     uint16_t i;
     int ret;
 
-    if (!conn->ly_ctx) {
-        /* very first init */
-        if ((err_info = sr_ly_ctx_new(&conn->ly_ctx))) {
-            return err_info;
-        }
+    assert(conn->ly_ctx);
 
-        /* load just the internal module */
-        if (!lys_parse_mem(conn->ly_ctx, sysrepo_yang, LYS_YANG)) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            return err_info;
-        }
-    }
-
-    if (conn->main_shm.size > sizeof(sr_main_shm_t)) {
+    if (conn->main_ver != ((sr_main_shm_t *)conn->main_shm.addr)->ver) {
         /* load new modules from SHM */
         SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
             mod = ly_ctx_get_module(conn->ly_ctx, conn->main_ext_shm.addr + shm_mod->name, shm_mod->rev, 0);
@@ -1893,6 +1897,9 @@ sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
                 }
             }
         }
+
+        /* update version */
+        conn->main_ver = ((sr_main_shm_t *)conn->main_shm.addr)->ver;
     }
 
     return NULL;
@@ -2407,15 +2414,9 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap)
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
-    /* check SHM version and update context as necessary */
-    if (conn->main_ver != main_shm->ver) {
-        /* update libyang context (just add new modules) */
-        if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-            goto error_remap_shm_unlock;
-        }
-
-        /* update version */
-        conn->main_ver = main_shm->ver;
+    /* update libyang context as necessary (just add new modules) */
+    if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
+        goto error_remap_shm_unlock;
     }
 
     return NULL;
@@ -3114,7 +3115,7 @@ sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *ly
     struct lyd_node *sr_mods = NULL, *sr_mod = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods))) {
+    if ((err_info = sr_shmmain_ly_int_data_parse(conn, &sr_mods))) {
         goto cleanup;
     }
 
@@ -3185,7 +3186,7 @@ sr_shmmain_update_replay_support(sr_conn_ctx_t *conn, const char *mod_name, int 
     struct ly_set *set = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods))) {
+    if ((err_info = sr_shmmain_ly_int_data_parse(conn, &sr_mods))) {
         goto cleanup;
     }
 
@@ -3295,7 +3296,7 @@ sr_shmmain_unsched_del_module_with_imps(sr_conn_ctx_t *conn, const struct lys_mo
     sr_error_info_t *err_info = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods))) {
+    if ((err_info = sr_shmmain_ly_int_data_parse(conn, &sr_mods))) {
         goto cleanup;
     }
 
@@ -3321,7 +3322,7 @@ sr_shmmain_deferred_del_module(sr_conn_ctx_t *conn, const char *mod_name)
     char *path = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods))) {
+    if ((err_info = sr_shmmain_ly_int_data_parse(conn, &sr_mods))) {
         goto cleanup;
     }
 
@@ -3366,7 +3367,7 @@ sr_shmmain_deferred_upd_module(sr_conn_ctx_t *conn, const struct lys_module *ly_
     char *path = NULL, *yang_str = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods))) {
+    if ((err_info = sr_shmmain_ly_int_data_parse(conn, &sr_mods))) {
         goto cleanup;
     }
 
@@ -3418,7 +3419,7 @@ sr_shmmain_unsched_upd_module(sr_conn_ctx_t *conn, const char *mod_name)
     char *path = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods))) {
+    if ((err_info = sr_shmmain_ly_int_data_parse(conn, &sr_mods))) {
         goto cleanup;
     }
 
@@ -3463,7 +3464,7 @@ sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, co
     char *path = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 0, &sr_mods))) {
+    if ((err_info = sr_shmmain_ly_int_data_parse(conn, &sr_mods))) {
         goto cleanup;
     }
 

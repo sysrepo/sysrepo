@@ -269,17 +269,12 @@ test_remove_dep_module(void **state)
     ret = sr_remove_module(st->conn, "ops-ref");
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* close connection, remove main shared memory so that changes are applied */
+    /* close connection so that changes are applied */
     sr_disconnect(st->conn);
     st->conn = NULL;
     ret = sr_connection_count(&conn_count);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(conn_count, 0);
-
-    ret = unlink("/dev/shm/sr_main");
-    assert_int_equal(ret, 0);
-    ret = unlink("/dev/shm/sr_ext_main");
-    assert_int_equal(ret, 0);
 
     /* recreate connection, changes fail to be applied and should remain scheduled */
     ret = sr_connect(0, &st->conn);
@@ -329,16 +324,12 @@ test_update_module(void **state)
     ret = sr_update_module(st->conn, TESTS_DIR "/files/rev@1970-01-01.yang", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* close connection, remove main shared memory so that changes are applied */
+    /* close connection so that changes are applied */
     sr_disconnect(st->conn);
     st->conn = NULL;
     ret = sr_connection_count(&conn_count);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(conn_count, 0);
-    ret = unlink("/dev/shm/sr_main");
-    assert_int_equal(ret, 0);
-    ret = unlink("/dev/shm/sr_ext_main");
-    assert_int_equal(ret, 0);
 
     /* recreate connection */
     ret = sr_connect(0, &st->conn);
@@ -359,16 +350,12 @@ test_update_module(void **state)
     ret = sr_remove_module(st->conn, "rev");
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* actually delete it */
+    /* delete the module */
     sr_disconnect(st->conn);
     st->conn = NULL;
     ret = sr_connection_count(&conn_count);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(conn_count, 0);
-    ret = unlink("/dev/shm/sr_main");
-    assert_int_equal(ret, 0);
-    ret = unlink("/dev/shm/sr_ext_main");
-    assert_int_equal(ret, 0);
 
     /* recreate connection */
     ret = sr_connect(0, &st->conn);
@@ -421,16 +408,12 @@ test_change_feature(void **state)
     ret = sr_disable_module_feature(st->conn, "features", "feat1");
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* close connection (also frees session), remove main shared memory so that changes are applied */
+    /* close connection (also frees session) so that changes are applied */
     sr_disconnect(st->conn);
     st->conn = NULL;
     ret = sr_connection_count(&conn_count);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(conn_count, 0);
-    ret = unlink("/dev/shm/sr_main");
-    assert_int_equal(ret, 0);
-    ret = unlink("/dev/shm/sr_ext_main");
-    assert_int_equal(ret, 0);
 
     /* recreate connection and session */
     ret = sr_connect(0, &st->conn);
@@ -457,16 +440,12 @@ test_change_feature(void **state)
     ret = sr_apply_changes(sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* close connection (also frees session), remove main shared memory so that changes are applied */
+    /* close connection (also frees session) so that changes are applied */
     sr_disconnect(st->conn);
     st->conn = NULL;
     ret = sr_connection_count(&conn_count);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(conn_count, 0);
-    ret = unlink("/dev/shm/sr_main");
-    assert_int_equal(ret, 0);
-    ret = unlink("/dev/shm/sr_ext_main");
-    assert_int_equal(ret, 0);
 
     /* recreate connection and session */
     ret = sr_connect(0, &st->conn);
