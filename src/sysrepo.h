@@ -215,6 +215,14 @@ int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
 int sr_disconnect(sr_conn_ctx_t *conn);
 
 /**
+ * @brief Learn the current global number of (some possibly dead) connections.
+ *
+ * @param[out] conn_count Current number of connections.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_connection_count(uint32_t *conn_count);
+
+/**
  * @brief Get the libyang context used by a connection. Can be used in an application for working with data
  * and schemas. Do NOT change this context!
  *

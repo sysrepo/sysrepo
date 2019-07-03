@@ -307,17 +307,17 @@ sr_error_info_t *sr_shmmain_createlock_open(int *shm_lock);
  * @brief Lock main SHM file lock. Note that the oldest standard file locks
  * are used, which lock for the whole process (every thread).
  *
- * @param[in] conn Connection to use.
+ * @param[in] shm_lock Opened SHM create lock file descriptor.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_createlock(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_createlock(int shm_lock);
 
 /**
  * @brief Unlock main SHM file lock.
  *
- * @param[in] conn Connection to use.
+ * @param[in] shm_lock Locked SHM create lock file descriptor.
  */
-void sr_shmmain_createunlock(sr_conn_ctx_t *conn);
+void sr_shmmain_createunlock(int shm_lock);
 
 /**
  * @brief Add connection into main SHM state.
@@ -364,21 +364,47 @@ void sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
 sr_error_info_t *sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, int apply_sched, struct lyd_node **sr_mods_p);
 
 /**
- * @brief Create main SHM.
+ * @brief Update libyang context to be consistent with main SHM modules.
  *
  * @param[in] conn Connection to use.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_create(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn);
 
 /**
- * @brief Open main SHM.
+ * @brief Copy startup files into running files.
  *
  * @param[in] conn Connection to use.
- * @param[out] nonexistent Whether main SHM failed to opened because it does not exist.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent);
+sr_error_info_t *sr_shmmain_files_startup2running(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Remap main SHM and add modules and their inverse dependencies into it.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] sr_mod First module to add.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_shm_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod);
+
+/**
+ * @brief Open (and init if needed) main SHM.
+ *
+ * @param[in,out] shm SHM structure to use.
+ * @param[in,out] created Whether the main SHM was created. If NULL, do not create the memory if it does not exist.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_shm_main_open(sr_shm_t *shm, int *created);
+
+/**
+ * @brief Open (and init if needed) main ext SHM.
+ *
+ * @param[in,out] shm SHM structure to use.
+ * @param[in] zero Whether to zero (or init) main ext SHM.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_shm_ext_open(sr_shm_t *shm, int zero);
 
 /*
  * Main SHM common functions

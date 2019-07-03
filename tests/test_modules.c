@@ -255,6 +255,7 @@ test_remove_dep_module(void **state)
 {
     struct state *st = (struct state *)*state;
     int ret;
+    uint32_t conn_count;
 
     /* install modules with one dependeing on the other */
     ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0);
@@ -271,6 +272,10 @@ test_remove_dep_module(void **state)
     /* close connection, remove main shared memory so that changes are applied */
     sr_disconnect(st->conn);
     st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+
     ret = unlink("/dev/shm/sr_main");
     assert_int_equal(ret, 0);
     ret = unlink("/dev/shm/sr_ext_main");
@@ -298,6 +303,7 @@ test_update_module(void **state)
 {
     struct state *st = (struct state *)*state;
     int ret;
+    uint32_t conn_count;
 
     /* install rev */
     ret = sr_install_module(st->conn, TESTS_DIR "/files/rev.yang", TESTS_DIR "/files", NULL, 0);
@@ -326,6 +332,9 @@ test_update_module(void **state)
     /* close connection, remove main shared memory so that changes are applied */
     sr_disconnect(st->conn);
     st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
     ret = unlink("/dev/shm/sr_main");
     assert_int_equal(ret, 0);
     ret = unlink("/dev/shm/sr_ext_main");
@@ -353,6 +362,9 @@ test_update_module(void **state)
     /* actually delete it */
     sr_disconnect(st->conn);
     st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
     ret = unlink("/dev/shm/sr_main");
     assert_int_equal(ret, 0);
     ret = unlink("/dev/shm/sr_ext_main");
@@ -370,6 +382,7 @@ test_change_feature(void **state)
     sr_session_ctx_t *sess;
     const char *en_feat = "feat1";
     int ret;
+    uint32_t conn_count;
 
     ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -411,6 +424,9 @@ test_change_feature(void **state)
     /* close connection (also frees session), remove main shared memory so that changes are applied */
     sr_disconnect(st->conn);
     st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
     ret = unlink("/dev/shm/sr_main");
     assert_int_equal(ret, 0);
     ret = unlink("/dev/shm/sr_ext_main");
@@ -444,6 +460,9 @@ test_change_feature(void **state)
     /* close connection (also frees session), remove main shared memory so that changes are applied */
     sr_disconnect(st->conn);
     st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
     ret = unlink("/dev/shm/sr_main");
     assert_int_equal(ret, 0);
     ret = unlink("/dev/shm/sr_ext_main");

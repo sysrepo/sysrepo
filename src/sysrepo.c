@@ -79,52 +79,93 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = NULL;
-    int nonexistent;
+    struct lyd_node *sr_mods = NULL;
+    int created = 0;
 
     SR_CHECK_ARG_APIRET(!conn_p, NULL, err_info);
 
     /* check that all required directories exist */
     if ((err_info = sr_shmmain_check_dirs())) {
-        goto error;
+        goto cleanup;
     }
 
     /* create basic connection structure */
     if ((err_info = sr_conn_new(opts, &conn))) {
-        goto error;
+        goto cleanup;
     }
 
     /* CREATE LOCK */
-    if ((err_info = sr_shmmain_createlock(conn))) {
-        goto error;
+    if ((err_info = sr_shmmain_createlock(conn->main_shm_create_lock))) {
+        goto cleanup;
     }
 
-    /* try to open the shared memory */
-    if ((err_info = sr_shmmain_open(conn, &nonexistent))) {
-        goto error_unlock;
+    /* open the main SHM */
+    if ((err_info = sr_shmmain_shm_main_open(&conn->main_shm, &created))) {
+        goto cleanup_unlock;
     }
-    if (nonexistent) {
-        /* shared memory does not exist yet, create it */
-        if ((err_info = sr_shmmain_create(conn))) {
-            goto error_unlock;
+
+    /* open the main ext SHM */
+    if ((err_info = sr_shmmain_shm_ext_open(&conn->main_ext_shm, created))) {
+        goto cleanup_unlock;
+    }
+
+    /* create libyang context */
+    if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
+        goto cleanup_unlock;
+    }
+
+    if (created) {
+        /* parse libyang internal data tree and apply any scheduled changes */
+        if ((err_info = sr_shmmain_ly_int_data_parse(conn, 1, &sr_mods))) {
+            goto cleanup_unlock;
+        }
+
+        /* fill main SHM content with all modules in internal sysrepo data */
+        if ((err_info = sr_shmmain_shm_add(conn, sr_mods->child))) {
+            goto cleanup_unlock;
+        }
+
+        /* update libyang context with info from SHM */
+        if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
+            goto cleanup_unlock;
+        }
+
+        /* copy full datastore from <startup> to <running> */
+        if ((err_info = sr_shmmain_files_startup2running(conn))) {
+            goto cleanup_unlock;
         }
     }
 
+    /* store current main SHM version */
+    conn->main_ver = ((sr_main_shm_t *)conn->main_shm.addr)->ver;
+
     /* CREATE UNLOCK */
-    sr_shmmain_createunlock(conn);
+    sr_shmmain_createunlock(conn->main_shm_create_lock);
 
     /* add connection into state */
     if ((err_info = sr_shmmain_state_add_conn(conn))) {
-        goto error;
+        goto cleanup;
     }
 
-    *conn_p = conn;
-    return sr_api_ret(NULL, NULL);
+    /* success */
+    goto cleanup;
 
-error_unlock:
+cleanup_unlock:
     /* CREATE UNLOCK */
-    sr_shmmain_createunlock(conn);
-error:
-    sr_disconnect(conn);
+    sr_shmmain_createunlock(conn->main_shm_create_lock);
+
+cleanup:
+    lyd_free_withsiblings(sr_mods);
+    if (err_info) {
+        sr_disconnect(conn);
+        if (created) {
+            /* remove any created SHM so it is not considered properly created */
+            shm_unlink(SR_MAIN_SHM);
+            shm_unlink(SR_MAIN_EXT_SHM);
+        }
+    } else {
+        *conn_p = conn;
+    }
     return sr_api_ret(NULL, err_info);
 }
 
@@ -167,6 +208,63 @@ sr_disconnect(sr_conn_ctx_t *conn)
     sr_shm_clear(&conn->main_ext_shm);
     free(conn);
     return ret;
+}
+
+API int
+sr_connection_count(uint32_t *conn_count)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_main_shm_t *main_shm;
+    sr_shm_t shm = SR_SHM_INITIALIZER;
+    int shm_lock = -1;
+
+
+    SR_CHECK_ARG_APIRET(!conn_count, NULL, err_info);
+
+    if ((err_info = sr_shmmain_createlock_open(&shm_lock))) {
+        goto cleanup;
+    }
+
+    /* CREATE LOCK */
+    if ((err_info = sr_shmmain_createlock(shm_lock))) {
+        goto cleanup;
+    }
+
+    /* open the main SHM */
+    err_info = sr_shmmain_shm_main_open(&shm, NULL);
+
+    /* CREATE UNLOCK */
+    sr_shmmain_createunlock(shm_lock);
+
+    if (err_info) {
+        goto cleanup;
+    }
+    if (shm.fd == -1) {
+        /* main SHM does not even exist yet */
+        *conn_count = 0;
+        goto cleanup;
+    }
+
+    main_shm = (sr_main_shm_t *)shm.addr;
+
+    /* MAIN SHM READ LOCK */
+    if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, 0, __func__))) {
+        goto cleanup;
+    }
+
+    *conn_count = main_shm->conn_state.conn_count;
+
+    /* MAIN SHM READ UNLOCK */
+    sr_rwunlock(&main_shm->lock, 0, __func__);
+
+    /* success */
+
+cleanup:
+    if (shm_lock > -1) {
+        close(shm_lock);
+    }
+    sr_shm_clear(&shm);
+    return sr_api_ret(NULL, err_info);
 }
 
 API const struct ly_ctx *

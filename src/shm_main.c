@@ -657,11 +657,7 @@ sr_shmmain_createlock_open(int *shm_lock)
         return err_info;
     }
 
-    *shm_lock = open(path, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
-    if (errno == EEXIST) {
-        /* it exists already, just open it */
-        *shm_lock = open(path, O_RDWR, 0);
-    }
+    *shm_lock = open(path, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
     free(path);
     if (*shm_lock == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "open");
@@ -672,18 +668,18 @@ sr_shmmain_createlock_open(int *shm_lock)
 }
 
 sr_error_info_t *
-sr_shmmain_createlock(sr_conn_ctx_t *conn)
+sr_shmmain_createlock(int shm_lock)
 {
     struct flock fl;
     int ret;
     sr_error_info_t *err_info = NULL;
 
-    assert(conn->main_shm_create_lock > -1);
+    assert(shm_lock > -1);
 
     memset(&fl, 0, sizeof fl);
     fl.l_type = F_WRLCK;
     do {
-        ret = fcntl(conn->main_shm_create_lock, F_SETLKW, &fl);
+        ret = fcntl(shm_lock, F_SETLKW, &fl);
     } while ((ret == -1) && (errno == EINTR));
     if (ret == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "fcntl");
@@ -694,13 +690,13 @@ sr_shmmain_createlock(sr_conn_ctx_t *conn)
 }
 
 void
-sr_shmmain_createunlock(sr_conn_ctx_t *conn)
+sr_shmmain_createunlock(int shm_lock)
 {
     struct flock fl;
 
     memset(&fl, 0, sizeof fl);
     fl.l_type = F_UNLCK;
-    if (fcntl(conn->main_shm_create_lock, F_SETLK, &fl) == -1) {
+    if (fcntl(shm_lock, F_SETLK, &fl) == -1) {
         assert(0);
     }
 }
@@ -1846,13 +1842,7 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Update libyang context to reflect main SHM modules.
- *
- * @param[in] conn Connection to use.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
@@ -1908,13 +1898,7 @@ sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
     return NULL;
 }
 
-/**
- * @brief Copy startup files into running files.
- *
- * @param[in] conn Connection to use.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
@@ -2245,14 +2229,7 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Remap main SHM and add modules and their inverse dependencies into it.
- *
- * @param[in] conn Connection to use.
- * @param[in] sr_mod First module to add.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_shmmain_shm_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
 {
     sr_error_info_t *err_info = NULL;
@@ -2307,124 +2284,78 @@ sr_shmmain_shm_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
 }
 
 sr_error_info_t *
-sr_shmmain_create(sr_conn_ctx_t *conn)
+sr_shmmain_shm_main_open(sr_shm_t *shm, int *created)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
-    struct lyd_node *sr_mods = NULL;
+    int creat = 0;
 
-    /* create shared memory */
-    conn->main_shm.fd = shm_open(SR_MAIN_SHM, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
-    if (conn->main_shm.fd == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to create shared memory (%s).", strerror(errno));
-        return err_info;
+    /* try to open the shared memory */
+    shm->fd = shm_open(SR_MAIN_SHM, O_RDWR, SR_MAIN_SHM_PERM);
+    if ((shm->fd == -1) && (errno == ENOENT)) {
+        if (!created) {
+            /* we do not want to create the memory now */
+            return NULL;
+        }
+
+        /* create shared memory */
+        shm->fd = shm_open(SR_MAIN_SHM, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
+        creat = 1;
+    }
+    if (shm->fd == -1) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open shared memory (%s).", strerror(errno));
+        goto error;
     }
 
-    /* map it (will be zeroed) */
-    if ((err_info = sr_shm_remap(&conn->main_shm, sizeof *main_shm))) {
-        goto cleanup;
+    /* map it with proper size */
+    if ((err_info = sr_shm_remap(shm, creat ? sizeof *main_shm : 0))) {
+        goto error;
     }
 
-    /* init attributes */
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-    if ((err_info = sr_rwlock_init(&main_shm->lock, 1))) {
-        goto cleanup;
-    }
-    ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
-    ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
-
-    /* create ext shared memory */
-    conn->main_ext_shm.fd = shm_open(SR_MAIN_EXT_SHM, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
-    if (conn->main_ext_shm.fd == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to create ext shared memory (%s).", strerror(errno));
-        goto cleanup;
+    if (creat) {
+        /* init the memory */
+        main_shm = (sr_main_shm_t *)shm->addr;
+        if ((err_info = sr_rwlock_init(&main_shm->lock, 1))) {
+            goto error;
+        }
+        ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
+        ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
     }
 
-    /* map it (will be zeroed) */
-    if ((err_info = sr_shm_remap(&conn->main_ext_shm, sizeof(size_t)))) {
-        goto cleanup;
+    if (created) {
+        *created = creat;
     }
+    return NULL;
 
-    /* create libyang context */
-    if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-        goto cleanup;
-    }
-
-    /* parse libyang internal data tree and apply any scheduled changes */
-    if ((err_info = sr_shmmain_ly_int_data_parse(conn, 1, &sr_mods))) {
-        goto cleanup;
-    }
-
-    /* fill main SHM content with all modules in internal sysrepo data */
-    if ((err_info = sr_shmmain_shm_add(conn, sr_mods->child))) {
-        goto cleanup;
-    }
-
-    /* update libyang context with info from SHM */
-    if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-        goto cleanup;
-    }
-
-    /* copy full datastore from <startup> to <running> */
-    if ((err_info = sr_shmmain_files_startup2running(conn))) {
-        goto cleanup;
-    }
-
-    /* success */
-
-cleanup:
-    if (err_info) {
-        /* remove any created SHM so it is not considered properly created */
-        shm_unlink(SR_MAIN_SHM);
-        shm_unlink(SR_MAIN_EXT_SHM);
-    }
-    lyd_free_withsiblings(sr_mods);
+error:
+    sr_shm_clear(shm);
     return err_info;
 }
 
 sr_error_info_t *
-sr_shmmain_open(sr_conn_ctx_t *conn, int *nonexistent)
+sr_shmmain_shm_ext_open(sr_shm_t *shm, int zero)
 {
     sr_error_info_t *err_info = NULL;
 
-    *nonexistent = 0;
-
-    /* try to open the shared memory */
-    conn->main_shm.fd = shm_open(SR_MAIN_SHM, O_RDWR, SR_MAIN_SHM_PERM);
-    if (conn->main_shm.fd == -1) {
-        if (errno == ENOENT) {
-            *nonexistent = 1;
-            return NULL;
-        }
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open shared memory (%s).", strerror(errno));
-        return err_info;
-    }
-
-    /* get SHM size and map it */
-    if ((err_info = sr_shm_remap(&conn->main_shm, 0))) {
-        return err_info;
-    }
-
-    /* the same for external main SHM part, it must exist now */
-    conn->main_ext_shm.fd = shm_open(SR_MAIN_EXT_SHM, O_RDWR, SR_MAIN_SHM_PERM);
-    if (conn->main_ext_shm.fd == -1) {
+    shm->fd = shm_open(SR_MAIN_EXT_SHM, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
+    if (shm->fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open ext shared memory (%s).", strerror(errno));
-        return err_info;
+        goto error;
     }
 
-    if ((err_info = sr_shm_remap(&conn->main_ext_shm, 0))) {
-        return err_info;
+    /* either zero the memory or keep it exactly the way it was */
+    if ((err_info = sr_shm_remap(shm, zero ? sizeof(size_t) : 0))) {
+        goto error;
     }
-
-    /* create libyang context */
-    if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-        return err_info;
+    if (zero) {
+        *((size_t *)shm->addr) = 0;
     }
-
-    /* store current version */
-    conn->main_ver = ((sr_main_shm_t *)conn->main_shm.addr)->ver;
 
     return NULL;
+
+error:
+    sr_shm_clear(shm);
+    return err_info;
 }
 
 sr_mod_t *
@@ -2463,7 +2394,7 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap)
     }
 
     /* if SHM changed, we can safely remap it because no other session can be using the mapping (because SHM cannot
-     * change while an API call is executing and SHM would be remapped already if the change happened before
+     * change while an API call is executing and SHM would be remapped already if the change happened before)
      */
 
     /* remap main (ext) SHM */
