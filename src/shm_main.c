@@ -710,11 +710,6 @@ sr_shmmain_state_add_conn(sr_conn_ctx_t *conn)
     sr_conn_state_t *conn_s;
     uint32_t new_ext_size;
 
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
-        return err_info;
-    }
-
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
     /* moving existing state */
@@ -723,7 +718,7 @@ sr_shmmain_state_add_conn(sr_conn_ctx_t *conn)
 
     /* remap main ext SHM */
     if ((err_info = sr_shm_remap(&conn->main_ext_shm, new_ext_size))) {
-        goto error_unlock;
+        return err_info;
     }
 
     /* add wasted memory */
@@ -745,32 +740,18 @@ sr_shmmain_state_add_conn(sr_conn_ctx_t *conn)
     conn_s->evpipes = 0;
     conn_s->evpipe_count = 0;
 
-error_unlock:
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 1);
-    return err_info;
+    return NULL;
 }
 
 void
-sr_shmmain_state_del_conn(sr_conn_ctx_t *conn)
+sr_shmmain_state_del_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid)
 {
     sr_error_info_t *err_info = NULL;
-    sr_main_shm_t *main_shm;
     sr_conn_state_t *conn_s;
     uint32_t i;
-    pid_t pid;
-
-    /* SHM WRITE LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
-        sr_errinfo_free(&err_info);
-        return;
-    }
-
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
     /* find the connection */
-    pid = getpid();
-    conn_s = (sr_conn_state_t *)(conn->main_ext_shm.addr + main_shm->conn_state.conns);
+    conn_s = (sr_conn_state_t *)(ext_shm_addr + main_shm->conn_state.conns);
     for (i = 0; i < main_shm->conn_state.conn_count; ++i) {
         if ((conn == conn_s[i].conn_ctx) && (pid == conn_s[i].pid)) {
             break;
@@ -779,11 +760,11 @@ sr_shmmain_state_del_conn(sr_conn_ctx_t *conn)
     if (i == main_shm->conn_state.conn_count) {
         SR_ERRINFO_INT(&err_info);
         sr_errinfo_free(&err_info);
-        goto error_unlock;
+        return;
     }
 
-    /* add wasted memory */
-    *((size_t *)conn->main_ext_shm.addr) += sizeof *conn_s;
+    /* add wasted memory for evpipes and connection itself */
+    *((size_t *)ext_shm_addr) += (conn_s[i].evpipe_count * sizeof(uint32_t)) + sizeof *conn_s;
 
     --main_shm->conn_state.conn_count;
     if (!main_shm->conn_state.conn_count) {
@@ -793,10 +774,6 @@ sr_shmmain_state_del_conn(sr_conn_ctx_t *conn)
         /* replace the deleted connection with the last one */
         memcpy(&conn_s[i], &conn_s[main_shm->conn_state.conn_count], sizeof *conn_s);
     }
-
-error_unlock:
-    /* SHM WRITE UNLOCK */
-    sr_shmmain_unlock(conn, 1, 1);
 }
 
 sr_error_info_t *
@@ -895,6 +872,55 @@ sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
         /* replace the deleted evpipe with the last one */
         evpipes[j] = evpipes[conn_s[i].evpipe_count];
     }
+}
+
+sr_error_info_t *
+sr_shmmain_state_recover(sr_shm_t *shm_main, sr_shm_t *shm_ext)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_conn_state_t *conn_s;
+    sr_mod_t *shm_mod;
+    sr_main_shm_t *main_shm;
+    uint32_t i, j, k, *evpipes;
+
+    main_shm = (sr_main_shm_t *)shm_main->addr;
+
+    conn_s = (sr_conn_state_t *)(shm_ext->addr + main_shm->conn_state.conns);
+    i = 0;
+    while (i < main_shm->conn_state.conn_count) {
+        if (!sr_process_exists(conn_s[i].pid)) {
+            SR_LOG_WRN("Cleaning subscriptions after a non-existent sysrepo client with PID %ld.", (long)conn_s[i].pid);
+
+            /* go through all the modules and their subscriptions and delete any matching (stale) ones */
+            evpipes = (uint32_t *)(shm_ext->addr + conn_s[i].evpipes);
+            for (j = 0; j < conn_s[i].evpipe_count; ++j) {
+                SR_SHM_MOD_FOR(shm_main->addr, shm_main->size, shm_mod) {
+                    for (k = 0; k < SR_WRITABLE_DS_COUNT; ++k) {
+                        tmp_err = sr_shmmod_conf_subscription_del(shm_ext->addr, shm_mod, NULL, k, 0, 0, evpipes[j], 1, NULL);
+                        if (tmp_err) {
+                            sr_errinfo_merge(&err_info, tmp_err);
+                        }
+                    }
+                    if ((tmp_err = sr_shmmod_oper_subscription_del(shm_ext->addr, shm_mod, NULL, evpipes[j], 1))) {
+                        sr_errinfo_merge(&err_info, tmp_err);
+                    }
+                    if ((tmp_err = sr_shmmod_rpc_subscription_del(shm_ext->addr, shm_mod, NULL, evpipes[j], 1))) {
+                        sr_errinfo_merge(&err_info, tmp_err);
+                    }
+                    if ((tmp_err = sr_shmmod_notif_subscription_del(shm_ext->addr, shm_mod, evpipes[j], 1, NULL))) {
+                        sr_errinfo_merge(&err_info, tmp_err);
+                    }
+                }
+            }
+
+            /* remove this connection from state */
+            sr_shmmain_state_del_conn(main_shm, shm_ext->addr, conn_s[i].conn_ctx, conn_s[i].pid);
+        } else {
+            ++i;
+        }
+    }
+
+    return err_info;
 }
 
 /**

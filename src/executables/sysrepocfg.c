@@ -55,7 +55,7 @@ help_print(void)
         "                               Perform a copy-config from a file or a datastore.\n"
         "\n"
         "       When both a <file-path> and <editor>/<target-datastore> can be specified, it is always first checked\n"
-        "       that the file exists. If not, then it is interpreted as the other parameter."
+        "       that the file exists. If not, then it is interpreted as the other parameter.\n"
         "       If no <file-path> and no <editor> is set, use text editor in $VISUAL or $EDITOR environment variables.\n"
         "\n"
         "Available other-options:\n"

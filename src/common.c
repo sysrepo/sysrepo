@@ -25,6 +25,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mman.h>
+#include <signal.h>
 #include <pwd.h>
 #include <grp.h>
 #include <inttypes.h>
@@ -650,6 +651,10 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs)
     struct modsub_conf_s *conf_subs;
     struct modsub_oper_s *oper_sub;
     struct modsub_notif_s *notif_sub;
+    sr_mod_t *shm_mod;
+    sr_shm_t *ext_shm;
+
+    ext_shm = &sess->conn->main_ext_shm;
 
     /* remove ourselves from session subscriptions */
     if ((err_info = sr_ptr_del(&sess->ptr_lock, (void ***)&sess->subscriptions, &sess->subscription_count, subs))) {
@@ -660,10 +665,14 @@ conf_subs_del:
     /* configuration subscriptions */
     for (i = 0; i < subs->conf_sub_count; ++i) {
         conf_subs = &subs->conf_subs[i];
+
+        /* find module */
+        shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, ext_shm->addr, conf_subs->module_name, 0);
+        SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < conf_subs->sub_count; ++j) {
             if (conf_subs->subs[j].sess == sess) {
                 /* remove the subscription from the main SHM */
-                if ((err_info = sr_shmmod_conf_subscription(sess->conn, conf_subs->module_name, conf_subs->subs[j].xpath,
+                if ((err_info = sr_shmmod_conf_subscription_del(ext_shm->addr, shm_mod, conf_subs->subs[j].xpath,
                             conf_subs->ds, conf_subs->subs[j].priority, conf_subs->subs[j].opts, subs->evpipe_num, 0, &last_removed))) {
                     return err_info;
                 }
@@ -693,11 +702,15 @@ oper_subs_del:
     /* operational subscriptions */
     for (i = 0; i < subs->oper_sub_count; ++i) {
         oper_sub = &subs->oper_subs[i];
+
+        /* find module */
+        shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, ext_shm->addr, oper_sub->module_name, 0);
+        SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < oper_sub->sub_count; ++j) {
             if (oper_sub->subs[j].sess == sess) {
                 /* remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmmod_oper_subscription(sess->conn, oper_sub->module_name, oper_sub->subs[j].xpath,
-                            SR_OPER_SUB_NONE, subs->evpipe_num, 0))) {
+                if ((err_info = sr_shmmod_oper_subscription_del(ext_shm->addr, shm_mod, oper_sub->subs[j].xpath,
+                            subs->evpipe_num, 0))) {
                     return err_info;
                 }
 
@@ -723,10 +736,15 @@ rpc_subs_del:
     /* RPC/action subscriptions */
     for (i = 0; i < subs->rpc_sub_count; ++i) {
         if (subs->rpc_subs[i].sess == sess) {
-            /* remove the subscriptions from the main SHM */
             mod_name = sr_get_first_ns(subs->rpc_subs[i].xpath);
             SR_CHECK_INT_RET(!mod_name, err_info);
-            if ((err_info = sr_shmmod_rpc_subscription(sess->conn, mod_name, subs->rpc_subs[i].xpath, subs->evpipe_num, 0))) {
+
+            /* find module */
+            shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, ext_shm->addr, mod_name, 0);
+            SR_CHECK_INT_RET(!shm_mod, err_info);
+
+            /* remove the subscription from the main SHM */
+            if ((err_info = sr_shmmod_rpc_subscription_del(ext_shm->addr, shm_mod, subs->rpc_subs[i].xpath, subs->evpipe_num, 0))) {
                 free(mod_name);
                 return err_info;
             }
@@ -754,10 +772,14 @@ notif_subs_del:
     /* notification subscriptions */
     for (i = 0; i < subs->notif_sub_count; ++i) {
         notif_sub = &subs->notif_subs[i];
+
+        /* find module */
+        shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, ext_shm->addr, notif_sub->module_name, 0);
+        SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < notif_sub->sub_count; ++j) {
             if (notif_sub->subs[j].sess == sess) {
                 /* remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmmod_notif_subscription(sess->conn, notif_sub->module_name, subs->evpipe_num, 0,
+                if ((err_info = sr_shmmod_notif_subscription_del(ext_shm->addr, shm_mod, subs->evpipe_num, 0,
                             &last_removed))) {
                     return err_info;
                 }
@@ -1662,6 +1684,20 @@ error:
         free(*group);
     }
     return err_info;
+}
+
+int
+sr_process_exists(pid_t pid)
+{
+    if (!kill(pid, 0)) {
+        return 1;
+    }
+
+    if (errno != ESRCH) {
+        SR_LOG_WRN("Failed to check existence of process with PID %ld (%s).", (long)pid, strerror(errno));
+    }
+
+    return 0;
 }
 
 void

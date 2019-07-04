@@ -321,6 +321,7 @@ void sr_shmmain_createunlock(int shm_lock);
 
 /**
  * @brief Add connection into main SHM state.
+ * Main SHM lock is expected to be held.
  *
  * @param[in] conn Connection to add.
  * @return err_info, NULL on success.
@@ -329,10 +330,14 @@ sr_error_info_t *sr_shmmain_state_add_conn(sr_conn_ctx_t *conn);
 
 /**
  * @brief Remove a connection from main SHM state.
+ * Main SHM lock is expected to be held.
  *
- * @param[in] conn Connection to delete.
+ * @param[in] main_shm Main SHM structure.
+ * @param[in] ext_shm_addr Main ext SHM address.
+ * @param[in] conn Connection context to delete.
+ * @param[in] pid Connection PID to delete.
  */
-void sr_shmmain_state_del_conn(sr_conn_ctx_t *conn);
+void sr_shmmain_state_del_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
 
 /**
  * @brief Add an event pipe into main SHM state.
@@ -352,6 +357,16 @@ sr_error_info_t *sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpip
  * @param[in] evpipe_num Event pipe number.
  */
 void sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
+
+/**
+ * @brief Recover (properly unsubscribe and close) all connections whose process no longer exists.
+ * Main SHM lock is expected to be held.
+ *
+ * @param[in] shm_main Main SHM.
+ * @param[in] shm_ext Main ext SHM.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_state_recover(sr_shm_t *shm_main, sr_shm_t *shm_ext);
 
 /**
  * @brief Check whether internal module data file exists.
@@ -651,65 +666,114 @@ void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable);
 void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
 
 /**
- * @brief Add/remove main SHM module configuration subscriptions.
+ * @brief Add main SHM module configuration subscription.
  * May remap main SHM!
  *
- * @param[in] conn Connection to use.
- * @param[in] mod_name Module name.
+ * @param[in] shm_ext Main ext SHM.
+ * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] ds Datastore.
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscription options.
  * @param[in] evpipe_num Subscription event pipe number.
- * @param[in] add Whether to add or remove the subscription.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_conf_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath,
+        sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num);
+
+/**
+ * @brief Remove main SHM module configuration subscription.
+ *
+ * @param[in] ext_shm_addr Main ext SHM address.
+ * @param[in] shm_mod SHM module.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] ds Datastore.
+ * @param[in] priority Subscription priority.
+ * @param[in] sub_opts Subscription options.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
  * @param[out] last_removed Whether this is the last module configuration subscription that was removed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_conf_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
-        sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num, int add, int *last_removed);
+sr_error_info_t *sr_shmmod_conf_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath,
+        sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num, int all_evpipe, int *last_removed);
 
 /**
- * @brief Add/remove main SHM module operational subscription.
+ * @brief Add main SHM module operational subscription.
  * May remap main SHM!
  *
- * @param[in] conn Connection to use.
- * @param[in] mod_name Module name.
+ * @param[in] shm_ext Main ext SHM.
+ * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] sub_type Data-provide subscription type.
  * @param[in] evpipe_num Subscription event pipe number.
- * @param[in] add Whether to add or remove the subscription.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_oper_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
-        sr_mod_oper_sub_type_t sub_type, uint32_t evpipe_num,int add);
+sr_error_info_t *sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath,
+        sr_mod_oper_sub_type_t sub_type, uint32_t evpipe_num);
 
 /**
- * @brief Add/remove main SHM module RPC/action subscription.
- * May remap main SHM!
+ * @brief Remove main SHM module operational subscription.
  *
- * @param[in] conn Connection to use.
- * @param[in] mod_name Module name.
+ * @param[in] ext_shm_addr Main ext SHM address.
+ * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] evpipe_num Subscription event pipe number.
- * @param[in] add Whether to add or remove the subscription.
+ * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_rpc_subscription(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath,
-        uint32_t evpipe_num, int add);
+sr_error_info_t *sr_shmmod_oper_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath,
+        uint32_t evpipe_num, int all_evpipe);
 
 /**
- * @brief Add/remove main SHM module notification subscriptions.
+ * @brief Add main SHM module RPC/action subscription.
  * May remap main SHM!
  *
- * @param[in] conn Connection to use.
- * @param[in] mod_name Module name.
+ * @param[in] shm_ext Main ext SHM.
+ * @param[in] shm_mod SHM module.
+ * @param[in] xpath Subscription XPath.
  * @param[in] evpipe_num Subscription event pipe number.
- * @param[in] add Whether to add or remove the subscription.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_rpc_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath,
+        uint32_t evpipe_num);
+
+/**
+ * @brief Remove main SHM module RPC/action subscription.
+ *
+ * @param[in] ext_shm_addr Main ext SHM address.
+ * @param[in] shm_mod SHM module.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_rpc_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath,
+        uint32_t evpipe_num, int all_evpipe);
+
+/**
+ * @brief Add main SHM module notification subscription.
+ * May remap main SHM!
+ *
+ * @param[in] shm_ext Main ext SHM.
+ * @param[in] shm_mod SHM module.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t evpipe_num);
+
+/**
+ * @brief Remove main SHM module notification subscription.
+ *
+ * @param[in] ext_shm_addr Main ext SHM address.
+ * @param[in] shm_mod SHM module.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
  * @param[out] last_removed Whether this is the last module notification subscription that was removed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_notif_subscription(sr_conn_ctx_t *conn, const char *mod_name, uint32_t evpipe_num, int add,
-        int *last_removed);
+sr_error_info_t *sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num,
+        int all_evpipe, int *last_removed);
 
 /**
  * @brief Add an inverse dependency to a module, check for duplicities.

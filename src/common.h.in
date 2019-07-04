@@ -685,6 +685,14 @@ sr_error_info_t *sr_perm_check(const char *mod_name, int wr);
 sr_error_info_t *sr_perm_get(const char *mod_name, char **owner, char **group, mode_t *perm);
 
 /**
+ * @brief Check whether a process exists.
+ *
+ * @param[in] pid Process PID.
+ * @return 0 if not, non-zero if it exists.
+ */
+int sr_process_exists(pid_t pid);
+
+/**
  * @brief Get current time with an offset.
  *
  * @param[out] ts Current time offset by \p add_ms.

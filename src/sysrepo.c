@@ -180,10 +180,16 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     /* CREATE UNLOCK */
     sr_shmmain_createunlock(conn->main_shm_create_lock);
 
-    /* add connection into state */
-    if ((err_info = sr_shmmain_state_add_conn(conn))) {
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
         goto cleanup;
     }
+
+    /* add connection into state */
+    err_info = sr_shmmain_state_add_conn(conn);
+
+    /* SHM WRITE UNLOCK */
+    sr_shmmain_unlock(conn, 1, 1);
 
     /* success */
     goto cleanup;
@@ -210,6 +216,7 @@ cleanup:
 API int
 sr_disconnect(sr_conn_ctx_t *conn)
 {
+    sr_error_info_t *err_info = NULL;
     int ret = SR_ERR_OK, rc;
 
     if (!conn) {
@@ -225,8 +232,17 @@ sr_disconnect(sr_conn_ctx_t *conn)
         }
     }
 
-    /* remove from state */
-    sr_shmmain_state_del_conn(conn);
+    /* SHM WRITE LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1))) {
+        ret = err_info->err_code;
+        sr_errinfo_free(&err_info);
+    } else {
+        /* remove from state */
+        sr_shmmain_state_del_conn((sr_main_shm_t *)conn->main_shm.addr, conn->main_ext_shm.addr, conn, getpid());
+
+        /* SHM WRITE UNLOCK */
+        sr_shmmain_unlock(conn, 1, 1);
+    }
 
     /* free cache */
     if (conn->opts & SR_CONN_CACHE_RUNNING) {
@@ -245,6 +261,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
     sr_shm_clear(&conn->main_shm);
     sr_shm_clear(&conn->main_ext_shm);
     free(conn);
+
     return ret;
 }
 
@@ -255,7 +272,6 @@ sr_connection_count(uint32_t *conn_count)
     sr_main_shm_t *main_shm;
     sr_shm_t shm = SR_SHM_INITIALIZER;
     int shm_lock = -1;
-
 
     SR_CHECK_ARG_APIRET(!conn_count, NULL, err_info);
 
@@ -302,6 +318,69 @@ cleanup:
         close(shm_lock);
     }
     sr_shm_clear(&shm);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_connection_recover(void)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_main_shm_t *main_shm;
+    sr_shm_t shm_main = SR_SHM_INITIALIZER, shm_ext = SR_SHM_INITIALIZER;
+    int shm_lock = -1;
+
+    if ((err_info = sr_shmmain_createlock_open(&shm_lock))) {
+        goto cleanup;
+    }
+
+    /* CREATE LOCK */
+    if ((err_info = sr_shmmain_createlock(shm_lock))) {
+        goto cleanup;
+    }
+
+    /* open the main SHM */
+    err_info = sr_shmmain_shm_main_open(&shm_main, NULL);
+
+    /* CREATE UNLOCK */
+    sr_shmmain_createunlock(shm_lock);
+
+    if (err_info) {
+        goto cleanup;
+    }
+    if (shm_main.fd == -1) {
+        /* main SHM does not even exist yet */
+        goto cleanup;
+    }
+
+    main_shm = (sr_main_shm_t *)shm_main.addr;
+
+    /* MAIN SHM WRITE LOCK */
+    if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, 1, __func__))) {
+        goto cleanup;
+    }
+
+    /* open main ext SHM */
+    if ((err_info = sr_shmmain_shm_ext_open(&shm_ext, 0))) {
+        goto cleanup_unlock;
+    }
+
+    /* clear all stale connections */
+    if ((err_info = sr_shmmain_state_recover(&shm_main, &shm_ext))) {
+        goto cleanup_unlock;
+    }
+
+    /* success */
+
+cleanup_unlock:
+    /* MAIN SHM WRITE UNLOCK */
+    sr_rwunlock(&main_shm->lock, 1, __func__);
+
+cleanup:
+    if (shm_lock > -1) {
+        close(shm_lock);
+    }
+    sr_shm_clear(&shm_main);
+    sr_shm_clear(&shm_ext);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -2890,6 +2969,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
     sr_subscr_options_t sub_opts;
+    sr_mod_t *shm_mod;
 
     SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || !module_name || !callback ||
             ((opts & SR_SUBSCR_PASSIVE) && (opts & SR_SUBSCR_ENABLED)) || !subscription, session, err_info);
@@ -2938,9 +3018,13 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         }
     }
 
+    /* find module */
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, module_name, 0);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, error_wrunlock_unsub);
+
     /* add module subscription into main SHM */
-    if ((err_info = sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts,
-            (*subscription)->evpipe_num, 1, NULL))) {
+    if ((err_info = sr_shmmod_conf_subscription_add(&conn->main_ext_shm, shm_mod, xpath, session->ds, priority, sub_opts,
+            (*subscription)->evpipe_num))) {
         goto error_wrunlock_unsub;
     }
 
@@ -2967,7 +3051,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     return sr_api_ret(session, NULL);
 
 error_wrunlock_unsub_unmod:
-    sr_shmmod_conf_subscription(conn, module_name, xpath, session->ds, priority, sub_opts, (*subscription)->evpipe_num, 0, NULL);
+    sr_shmmod_conf_subscription_del(conn->main_ext_shm.addr, shm_mod, xpath, session->ds, priority, sub_opts,
+            (*subscription)->evpipe_num, 0, NULL);
 
 error_wrunlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
@@ -3451,6 +3536,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callbac
     const struct lys_node *op;
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
+    sr_mod_t *shm_mod;
 
     SR_CHECK_ARG_APIRET(!session || !path || (!callback && !tree_callback) || !subscription, session, err_info);
 
@@ -3502,8 +3588,12 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callbac
         }
     }
 
+    /* find module */
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, module_name, 0);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, error_unlock_unsub);
+
     /* add RPC/action subscription into main SHM */
-    if ((err_info = sr_shmmod_rpc_subscription(conn, module_name, path, (*subscription)->evpipe_num, 1))) {
+    if ((err_info = sr_shmmod_rpc_subscription_add(&conn->main_ext_shm, shm_mod, path, (*subscription)->evpipe_num))) {
         goto error_unlock_unsub;
     }
 
@@ -3530,7 +3620,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callbac
     return sr_api_ret(session, NULL);
 
 error_unlock_unsub_unmod:
-    sr_shmmod_rpc_subscription(conn, module_name, path, (*subscription)->evpipe_num, 0);
+    sr_shmmod_rpc_subscription_del(conn->main_ext_shm.addr, shm_mod, path, (*subscription)->evpipe_num, 0);
 
 error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
@@ -3858,6 +3948,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const struct lys_module *ly
     const struct lys_node *ctx_node;
     sr_conn_ctx_t *conn;
     uint32_t i;
+    sr_mod_t *shm_mod;
 
     assert((callback && !tree_callback) || (!callback && tree_callback));
 
@@ -3909,9 +4000,13 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const struct lys_module *ly
         }
     }
 
+    /* find module */
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, ly_mod->name, 0);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, error_unlock_unsub);
+
     if (!start_time) {
         /* add notification subscription into main SHM now if replay was not requested */
-        if ((err_info = sr_shmmod_notif_subscription(conn, ly_mod->name, (*subscription)->evpipe_num, 1, NULL))) {
+        if ((err_info = sr_shmmod_notif_subscription_add(&conn->main_ext_shm, shm_mod, (*subscription)->evpipe_num))) {
             goto error_unlock_unsub;
         }
     }
@@ -3942,7 +4037,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const struct lys_module *ly
 
 error_unlock_unsub_unmod:
     if (!start_time) {
-        sr_shmmod_notif_subscription(conn, ly_mod->name, (*subscription)->evpipe_num, 0, NULL);
+        sr_shmmod_notif_subscription_del(conn->main_ext_shm.addr, shm_mod, (*subscription)->evpipe_num, 0, NULL);
     }
 
 error_unlock_unsub:
@@ -4211,6 +4306,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     const struct lys_module *mod;
     struct ly_set *set = NULL;
     sr_mod_oper_sub_type_t sub_type;
+    sr_mod_t *shm_mod;
     uint16_t i;
 
     SR_CHECK_ARG_APIRET(!session || !module_name || !path || !callback || !subscription, session, err_info);
@@ -4279,8 +4375,12 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
         }
     }
 
+    /* find module */
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, module_name, 0);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, error_unlock_unsub);
+
     /* add oper subscription into main SHM */
-    if ((err_info = sr_shmmod_oper_subscription(conn, module_name, path, sub_type, (*subscription)->evpipe_num, 1))) {
+    if ((err_info = sr_shmmod_oper_subscription_add(&conn->main_ext_shm, shm_mod, path, sub_type, (*subscription)->evpipe_num))) {
         goto error_unlock_unsub;
     }
 
@@ -4308,7 +4408,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     return sr_api_ret(session, NULL);
 
 error_unlock_unsub_unmod:
-    sr_shmmod_oper_subscription(conn, module_name, path, SR_OPER_SUB_NONE, (*subscription)->evpipe_num, 0);
+    sr_shmmod_oper_subscription_del(conn->main_ext_shm.addr, shm_mod, path, (*subscription)->evpipe_num, 0);
 
 error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {

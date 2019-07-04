@@ -2199,6 +2199,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_su
     sr_error_info_t *err_info = NULL, *tmp_err;
     time_t cur_time;
     struct modsub_notifsub_s *notif_sub;
+    sr_mod_t *shm_mod;
     uint32_t i;
     sr_sid_t sid = {0};
 
@@ -2211,21 +2212,25 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_su
         if (notif_sub->stop_time && (notif_sub->stop_time < cur_time)) {
             /* subscription is finished */
             if ((err_info = sr_notif_call_callback(subs->conn, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-                    SR_EV_NOTIF_STOP, NULL, cur_time, sid))) {
+                        SR_EV_NOTIF_STOP, NULL, cur_time, sid))) {
                 return err_info;
             }
 
             /* remove the subscription from the session if the only subscription */
             if (sr_subs_session_count(notif_sub->sess, subs) == 1) {
                 if ((tmp_err = sr_ptr_del(&notif_sub->sess->ptr_lock, (void ***)&notif_sub->sess->subscriptions,
-                        &notif_sub->sess->subscription_count, subs))) {
+                            &notif_sub->sess->subscription_count, subs))) {
                     /* continue */
                     sr_errinfo_merge(&err_info, tmp_err);
                 }
             }
 
+            /* find module */
+            shm_mod = sr_shmmain_find_module(&subs->conn->main_shm, subs->conn->main_ext_shm.addr, notif_subs->module_name, 0);
+            SR_CHECK_INT_RET(!shm_mod, err_info);
+
             /* remove the subscription from main SHM */
-            if ((tmp_err = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, subs->evpipe_num, 0, NULL))) {
+            if ((tmp_err = sr_shmmod_notif_subscription_del(subs->conn->main_ext_shm.addr, shm_mod, subs->evpipe_num, 0, NULL))) {
                 /* continue */
                 sr_errinfo_merge(&err_info, tmp_err);
             }
@@ -2258,6 +2263,7 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
+    sr_mod_t *shm_mod;
     uint32_t i;
 
     for (i = 0; i < notif_subs->sub_count; ++i) {
@@ -2269,8 +2275,12 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
                 return err_info;
             }
 
+            /* find module */
+            shm_mod = sr_shmmain_find_module(&subs->conn->main_shm, subs->conn->main_ext_shm.addr, notif_subs->module_name, 0);
+            SR_CHECK_INT_RET(!shm_mod, err_info);
+
             /* now we can add notification subscription into main SHM because it will process realtime notifications */
-            if ((err_info = sr_shmmod_notif_subscription(subs->conn, notif_subs->module_name, subs->evpipe_num, 1, NULL))) {
+            if ((err_info = sr_shmmod_notif_subscription_add(&subs->conn->main_ext_shm, shm_mod, subs->evpipe_num))) {
                 return err_info;
             }
 
