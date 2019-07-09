@@ -175,7 +175,7 @@ typedef struct sr_rwlock_s {
 
 struct modsub_conf_s;
 struct modsub_oper_s;
-struct modsub_rpc_s;
+struct opsub_rpc_s;
 struct modsub_notif_s;
 
 #include "replay.h"
@@ -199,10 +199,10 @@ struct sr_conn_ctx_s {
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
     uint32_t session_count;         /**< Session count. */
 
-    int main_shm_create_lock;       /**< Process-shared file lock for creating main SHM. */
-    sr_rwlock_t main_shm_remap_lock;    /**< Session-shared lock for remapping main SHM. */
+    int main_shm_create_lock;       /**< Process-shared file lock for creating main/ext SHM. */
+    sr_rwlock_t main_shm_remap_lock;    /**< Session-shared lock for remapping main/ext SHM. */
     sr_shm_t main_shm;              /**< Main SHM structure. */
-    sr_shm_t main_ext_shm;          /**< Main external SHM structure (all stored offsets point here). */
+    sr_shm_t ext_shm;               /**< External SHM structure (all stored offsets point here). */
     uint32_t main_ver;              /**< Last accessed main SHM version. */
 
     struct sr_mod_cache_s {
@@ -283,18 +283,6 @@ struct sr_subscription_ctx_s {
     } *oper_subs;                   /**< Operational subscriptions for each module. */
     uint32_t oper_sub_count;        /**< Operational module subscription count. */
 
-    struct modsub_rpc_s {
-        char *xpath;                /**< Subscription XPath. */
-        sr_rpc_cb cb;               /**< Subscription value callback. */
-        sr_rpc_tree_cb tree_cb;     /**< Subscription tree callback. */
-        void *private_data;         /**< Subscription callback private data. */
-        sr_session_ctx_t *sess; /**< Subscription session. */
-
-        uint32_t event_id;          /**< Event ID of the last processed event. */
-        sr_shm_t sub_shm;           /**< Subscription SHM. */
-    } *rpc_subs;                    /**< RPC subscriptions for each XPath. */
-    uint32_t rpc_sub_count;         /**< RPC XPath subscription count. */
-
     struct modsub_notif_s {
         char *module_name;          /**< Module of the subscriptions. */
         struct modsub_notifsub_s {
@@ -313,6 +301,25 @@ struct sr_subscription_ctx_s {
         sr_shm_t sub_shm;           /**< Subscription SHM. */
     } *notif_subs;                  /**< Notification subscriptions for each module. */
     uint32_t notif_sub_count;       /**< Notification module subscription count. */
+
+    struct opsub_rpc_s {
+        char *op_path;              /**< Subscription RPC/action path. */
+        struct opsub_rpcsub_s {
+            char *xpath;            /**< Subscription XPath. */
+            uint32_t priority;      /**< Subscription priority. */
+            sr_rpc_cb cb;           /**< Subscription value callback. */
+            sr_rpc_tree_cb tree_cb; /**< Subscription tree callback. */
+            void *private_data;     /**< Subscription callback private data. */
+            sr_session_ctx_t *sess; /**< Subscription session. */
+
+            uint32_t event_id;      /**< Event ID of the last processed event. */
+            sr_sub_event_t event;   /**< Type of the last processed event. */
+        } *subs;                    /**< RPC/action subscription for each XPath. */
+        uint32_t sub_count;         /**< RPC/action XPath subscription count. */
+
+        sr_shm_t sub_shm;           /**< Subscription SHM. */
+    } *rpc_subs;                    /**< RPC/action subscriptions for each operation. */
+    uint32_t rpc_sub_count;         /**< RPC/action operation subscription count. */
 };
 
 /**
@@ -382,29 +389,6 @@ sr_error_info_t *sr_sub_oper_add(sr_session_ctx_t *sess, const char *mod_name, c
 void sr_sub_oper_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *subs);
 
 /**
- * @brief Add an RPC subscription into subscription structure.
- *
- * @param[in] sess Subscription session.
- * @param[in] mod_name Subscription module name.
- * @param[in] xpath Subscription XPath.
- * @param[in] rpc_cb Subscription value callback.
- * @param[in] rpc_tree_cb Subscription tree callback.
- * @param[in] private_data Subscription callback private data.
- * @param[in,out] subs Subscription structure.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_sub_rpc_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, sr_rpc_cb rpc_cb,
-        sr_rpc_tree_cb rpc_tree_cb, void *private_data, sr_subscription_ctx_t *subs);
-
-/**
- * @brief Delete an RPC subscription from subscription structure.
- *
- * @param[in] xpath Subscription XPath.
- * @param[in,out] subs Subscription structure.
- */
-void sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs);
-
-/**
  * @brief Add a notification subscription into subscription structure.
  *
  * @param[in] sess Subscription session.
@@ -437,6 +421,36 @@ sr_error_info_t *sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, 
  */
 void sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb,
         sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs, int has_subs_lock);
+
+/**
+ * @brief Add an RPC subscription into subscription structure.
+ *
+ * @param[in] sess Subscription session.
+ * @param[in] op_path Subscription operation path.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] rpc_cb Subscription value callback.
+ * @param[in] rpc_tree_cb Subscription tree callback.
+ * @param[in] private_data Subscription callback private data.
+ * @param[in] priority Subscription priority.
+ * @param[in,out] subs Subscription structure.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_sub_rpc_add(sr_session_ctx_t *sess, const char *op_path, const char *xpath, sr_rpc_cb rpc_cb,
+        sr_rpc_tree_cb rpc_tree_cb, void *private_data, uint32_t priority, sr_subscription_ctx_t *subs);
+
+/**
+ * @brief Delete an RPC subscription from subscription structure.
+ *
+ * @param[in] op_path Subscription operation path.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] rpc_cb Subscription value callback.
+ * @param[in] rpc_tree_cb Subscription tree callback.
+ * @param[in] private_data Subscription callback private data.
+ * @param[in] priority Subscription priority.
+ * @param[in,out] subs Subscription structure.
+ */
+void sr_sub_rpc_del(const char *op_path, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb,
+        void *private_data, uint32_t priority, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Count subscriptions of session \p sess in subscriptions structure \p subs.
@@ -881,7 +895,7 @@ const char *sr_ev2str(sr_sub_event_t ev);
  * @param[in] ev Internal event.
  * @return Public API event.
  */
-sr_notif_event_t sr_ev2api(sr_sub_event_t ev);
+sr_event_t sr_ev2api(sr_sub_event_t ev);
 
 /**
  * @brief Transform a libyang node into sysrepo value.

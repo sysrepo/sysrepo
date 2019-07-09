@@ -128,7 +128,7 @@ sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_data
         mod = lyd_node_module(root);
 
         /* find the module in SHM and add it with any dependencies */
-        shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, mod->name, 0);
+        shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, mod->name, 0);
         SR_CHECK_INT_RET(!shm_mod, err_info);
         if ((err_info = sr_modinfo_add_mod(shm_mod, mod, MOD_INFO_REQ, MOD_INFO_DEP | MOD_INFO_INV_DEP, mod_info))) {
             return err_info;
@@ -206,7 +206,7 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t d
         }
 
         /* find the module in SHM and add it with any dependencies */
-        shm_mod = sr_shmmain_find_module(&mod_info->conn->main_shm, mod_info->conn->main_ext_shm.addr, ly_mod->name, 0);
+        shm_mod = sr_shmmain_find_module(&mod_info->conn->main_shm, mod_info->conn->ext_shm.addr, ly_mod->name, 0);
         SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
         if ((err_info = sr_modinfo_add_mod(shm_mod, ly_mod, MOD_INFO_REQ, MOD_INFO_DEP | MOD_INFO_INV_DEP, mod_info))) {
             goto cleanup;
@@ -235,7 +235,7 @@ sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
 
     if (ly_mod) {
         /* only one module */
-        shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, ly_mod->name, 0);
+        shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, ly_mod->name, 0);
         SR_CHECK_INT_RET(!shm_mod, err_info);
 
         if ((err_info = sr_modinfo_add_mod(shm_mod, ly_mod, MOD_INFO_REQ, mod_req_deps, mod_info))) {
@@ -247,7 +247,7 @@ sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
 
     /* all modules */
     SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
-        ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->main_ext_shm.addr + shm_mod->name, NULL, 1);
+        ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->ext_shm.addr + shm_mod->name, NULL, 1);
         SR_CHECK_INT_RET(!ly_mod, err_info);
 
         /* do not collect dependencies, all the modules are added anyway */
@@ -275,7 +275,7 @@ sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
     mod_info->conn = conn;
 
     /* find the module in SHM */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, lyd_node_module(op)->name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, lyd_node_module(op)->name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* if this is a nested action/notification, we will also need this module's data */
@@ -286,16 +286,16 @@ sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
     }
 
     /* find this operation dependencies */
-    shm_op_deps = (sr_mod_op_dep_t *)(conn->main_ext_shm.addr + shm_mod->op_deps);
+    shm_op_deps = (sr_mod_op_dep_t *)(conn->ext_shm.addr + shm_mod->op_deps);
     for (i = 0; i < shm_mod->op_dep_count; ++i) {
-        if (!strcmp(op_path, conn->main_ext_shm.addr + shm_op_deps[i].xpath)) {
+        if (!strcmp(op_path, conn->ext_shm.addr + shm_op_deps[i].xpath)) {
             break;
         }
     }
     SR_CHECK_INT_RET(i == shm_mod->op_dep_count, err_info);
 
     /* collect dependencies */
-    *shm_deps = (sr_mod_data_dep_t *)(conn->main_ext_shm.addr + (output ? shm_op_deps[i].out_deps : shm_op_deps[i].in_deps));
+    *shm_deps = (sr_mod_data_dep_t *)(conn->ext_shm.addr + (output ? shm_op_deps[i].out_deps : shm_op_deps[i].in_deps));
     *shm_dep_count = (output ? shm_op_deps[i].out_dep_count : shm_op_deps[i].in_dep_count);
     for (i = 0; i < *shm_dep_count; ++i) {
         if ((*shm_deps)[i].type == SR_DEP_INSTID) {
@@ -304,11 +304,11 @@ sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
         }
 
         /* find the dependency */
-        dep_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, NULL, (*shm_deps)[i].module);
+        dep_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, NULL, (*shm_deps)[i].module);
         SR_CHECK_INT_RET(!dep_mod, err_info);
 
         /* find ly module */
-        ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->main_ext_shm.addr + dep_mod->name, NULL, 1);
+        ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->ext_shm.addr + dep_mod->name, NULL, 1);
         SR_CHECK_INT_RET(!ly_mod, err_info);
 
         /* add dependency */
@@ -487,7 +487,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
                 if (shm_lock->write_locked) {
                     /* this should never happen, write lock is held during some API calls */
                     sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Session %u (NC SID %u) was working with module \"%s\"!",
-                            sid.sr, sid.nc, conn->main_ext_shm.addr + shm_mod->name);
+                            sid.sr, sid.nc, conn->ext_shm.addr + shm_mod->name);
                     sr_errinfo_free(&err_info);
                     shm_lock->write_locked = 0;
                 }
@@ -726,101 +726,6 @@ continue_loop:
 }
 
 sr_error_info_t *
-sr_shmmod_rpc_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num)
-{
-    sr_error_info_t *err_info = NULL;
-    off_t xpath_off, rpc_subs_off;
-    sr_mod_rpc_sub_t *shm_sub;
-    size_t new_ext_size;
-    uint16_t i;
-
-    assert(xpath);
-
-    /* check that this exact subscription does not exist yet */
-    shm_sub = (sr_mod_rpc_sub_t *)(shm_ext->addr + shm_mod->rpc_subs);
-    for (i = 0; i < shm_mod->rpc_sub_count; ++i) {
-        if (!strcmp(shm_ext->addr + shm_sub[i].xpath, xpath)) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL,
-                    "RPC/action handler subscription for \"%s\" already exists.", xpath);
-            return err_info;
-        }
-    }
-
-    /* moving all existing subscriptions (if any) and adding a new one */
-    rpc_subs_off = shm_ext->size;
-    xpath_off = rpc_subs_off + (shm_mod->rpc_sub_count + 1) * sizeof *shm_sub;
-    new_ext_size = xpath_off + strlen(xpath) + 1;
-
-    /* remap main ext SHM */
-    if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
-        return err_info;
-    }
-
-    /* add wasted memory */
-    *((size_t *)shm_ext->addr) += shm_mod->rpc_sub_count * sizeof *shm_sub;
-
-    /* move subscriptions */
-    memcpy(shm_ext->addr + rpc_subs_off, shm_ext->addr + shm_mod->rpc_subs,
-            shm_mod->rpc_sub_count * sizeof *shm_sub);
-    shm_mod->rpc_subs = rpc_subs_off;
-
-    /* fill new subscription */
-    shm_sub = (sr_mod_rpc_sub_t *)(shm_ext->addr + shm_mod->rpc_subs);
-    shm_sub += i;
-    strcpy(shm_ext->addr + xpath_off, xpath);
-    shm_sub->xpath = xpath_off;
-    shm_sub->evpipe_num = evpipe_num;
-
-    ++shm_mod->rpc_sub_count;
-
-    return NULL;
-}
-
-sr_error_info_t *
-sr_shmmod_rpc_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
-        int all_evpipe)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_mod_rpc_sub_t *shm_sub;
-    uint16_t i;
-
-    /* find the subscription */
-    shm_sub = (sr_mod_rpc_sub_t *)(ext_shm_addr + shm_mod->rpc_subs);
-    for (i = 0; i < shm_mod->rpc_sub_count; ++i) {
-continue_loop:
-        if (all_evpipe) {
-            if (shm_sub[i].evpipe_num == evpipe_num) {
-                break;
-            }
-        } else if (!strcmp(ext_shm_addr + shm_sub[i].xpath, xpath)) {
-            break;
-        }
-    }
-    if (all_evpipe && (i == shm_mod->rpc_sub_count)) {
-        return NULL;
-    }
-    SR_CHECK_INT_RET(i == shm_mod->rpc_sub_count, err_info);
-
-    /* add wasted memory */
-    *((size_t *)ext_shm_addr) += sizeof *shm_sub + strlen(ext_shm_addr + shm_sub[i].xpath) + 1;
-
-    --shm_mod->rpc_sub_count;
-    if (!shm_mod->rpc_sub_count) {
-        /* the only subscription removed */
-        shm_mod->rpc_subs = 0;
-    } else if (i < shm_mod->rpc_sub_count) {
-        /* replace the removed subscription with the last one */
-        memcpy(&shm_sub[i], &shm_sub[shm_mod->rpc_sub_count], sizeof *shm_sub);
-    }
-
-    if (all_evpipe) {
-        goto continue_loop;
-    }
-
-    return NULL;
-}
-
-sr_error_info_t *
 sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
@@ -912,11 +817,11 @@ sr_shmmod_add_inv_dep(sr_conn_ctx_t *conn, const char *mod_name, off_t inv_dep_m
     uint32_t i;
 
     /* find the module */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, mod_name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, mod_name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* check for duplicities */
-    shm_inv_deps = (off_t *)(conn->main_ext_shm.addr + shm_mod->inv_data_deps);
+    shm_inv_deps = (off_t *)(conn->ext_shm.addr + shm_mod->inv_data_deps);
     for (i = 0; i < shm_mod->inv_data_dep_count; ++i) {
         if (shm_inv_deps[i] == inv_dep_mod_name) {
             break;
@@ -932,20 +837,20 @@ sr_shmmod_add_inv_dep(sr_conn_ctx_t *conn, const char *mod_name, off_t inv_dep_m
     new_ext_size = inv_deps_off + (shm_mod->inv_data_dep_count + 1) * sizeof(off_t);
 
     /* remap main ext SHM */
-    if ((err_info = sr_shm_remap(&conn->main_ext_shm, new_ext_size))) {
+    if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size))) {
         return err_info;
     }
 
     /* add wasted memory */
-    *((size_t *)conn->main_ext_shm.addr) += shm_mod->inv_data_dep_count * sizeof(off_t);
+    *((size_t *)conn->ext_shm.addr) += shm_mod->inv_data_dep_count * sizeof(off_t);
 
     /* move existing inverse data deps */
-    memcpy(conn->main_ext_shm.addr + inv_deps_off, conn->main_ext_shm.addr + shm_mod->inv_data_deps,
+    memcpy(conn->ext_shm.addr + inv_deps_off, conn->ext_shm.addr + shm_mod->inv_data_deps,
            shm_mod->inv_data_dep_count * sizeof(off_t));
     shm_mod->inv_data_deps = inv_deps_off;
 
     /* fill new inverse data dep */
-    shm_inv_deps = (off_t *)(conn->main_ext_shm.addr + shm_mod->inv_data_deps);
+    shm_inv_deps = (off_t *)(conn->ext_shm.addr + shm_mod->inv_data_deps);
     shm_inv_deps[i] = inv_dep_mod_name;
 
     ++shm_mod->inv_data_dep_count;

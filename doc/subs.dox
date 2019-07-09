@@ -17,7 +17,7 @@ or only when there are actual events. This can be learnt by the subscription eve
 
 These are the most common kinds of subscriptions. A callback can be set to be called when specific configuration
 changes occur so that it can appropriately react and adjust the system or whatever it manages accordingly. There can
-be many subscribers for the same data.
+be many subscribers for the same data and arbitrary XPath filters can be applied.
 
 On some changes, the callback is called with an event. By default, there are always 2 events following one after
 the other. On _change_, the new datastore content is prepared but not written yet and so the changes can be refused
@@ -38,9 +38,15 @@ and optionally with only selected changes.
 
 ## RPC/Action Subscriptions @anchor rpc_subs
 
-All the functions can be used for both RPCs and actions. There can only be one subscription for each RPC/action and
-without it, the RPC/action cannot even be sent. Callbacks work a one would expect, they are provided with the input
-and can fail or succeed with optionally generating some output that is sent back to the original sender.
+All the functions can be used for both RPCs and actions. If there are no matching subscriptions, the RPC/action
+cannot even be sent. Callbacks work as one would expect, on _rpc_ event they are provided each with the input and
+can fail or succeed with optionally generating some output that is sent back to the original sender. There
+can be predicates on the subscription XPath filtering only specific RPC/action instances.
+
+In case there are several subscriptions matching a single RPC/action, it is best to make sure there is only __one__
+subscription with the lowest priority (will be called last). This (main) subscription will be the one generating
+output for the sender (previous outputs will be overwritten) and, additionally, will never receive the _abort_
+event (in case it fails, only all the other higher priority callbacks will get called).
 
 @ref rpc_subs_api
 

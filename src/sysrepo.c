@@ -65,7 +65,7 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     }
 
     conn->main_shm.fd = -1;
-    conn->main_ext_shm.fd = -1;
+    conn->ext_shm.fd = -1;
 
     *conn_p = conn;
     return NULL;
@@ -112,7 +112,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     }
 
     /* open the main ext SHM */
-    if ((err_info = sr_shmmain_shm_ext_open(&conn->main_ext_shm, created))) {
+    if ((err_info = sr_shmmain_shm_ext_open(&conn->ext_shm, created))) {
         goto cleanup_unlock;
     }
 
@@ -150,11 +150,11 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         }
 
         /* clear main ext SHM (there can be no connections and no modules) */
-        if ((err_info = sr_shm_remap(&conn->main_ext_shm, sizeof(size_t)))) {
+        if ((err_info = sr_shm_remap(&conn->ext_shm, sizeof(size_t)))) {
             goto cleanup_unlock;
         }
         /* set wasted mem to 0 */
-        *((size_t *)conn->main_ext_shm.addr) = 0;
+        *((size_t *)conn->ext_shm.addr) = 0;
 
         /* add all the modules in internal sysrepo data into main SHM */
         if ((err_info = sr_shmmain_shm_add(conn, sr_mods->child))) {
@@ -205,7 +205,7 @@ cleanup:
         if (created) {
             /* remove any created SHM so it is not considered properly created */
             shm_unlink(SR_MAIN_SHM);
-            shm_unlink(SR_MAIN_EXT_SHM);
+            shm_unlink(SR_EXT_SHM);
         }
     } else {
         *conn_p = conn;
@@ -238,7 +238,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
         sr_errinfo_free(&err_info);
     } else {
         /* remove from state */
-        sr_shmmain_state_del_conn((sr_main_shm_t *)conn->main_shm.addr, conn->main_ext_shm.addr, conn, getpid());
+        sr_shmmain_state_del_conn((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
 
         /* SHM WRITE UNLOCK */
         sr_shmmain_unlock(conn, 1, 1);
@@ -259,7 +259,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
     }
     sr_rwlock_destroy(&conn->main_shm_remap_lock);
     sr_shm_clear(&conn->main_shm);
-    sr_shm_clear(&conn->main_ext_shm);
+    sr_shm_clear(&conn->ext_shm);
     free(conn);
 
     return ret;
@@ -749,31 +749,31 @@ sr_check_main_shm_defrag(sr_conn_ctx_t *conn)
     sr_error_info_t *err_info = NULL;
     char *buf;
 
-    if (*((size_t *)conn->main_ext_shm.addr) <= SR_SHM_WASTED_MAX_MEM) {
+    if (*((size_t *)conn->ext_shm.addr) <= SR_SHM_WASTED_MAX_MEM) {
         /* not enough wasted memory, leave it as it is */
         return NULL;
     }
 
     SR_LOG_DBGMSG("#SHM before defrag");
-    sr_shmmain_ext_print(&conn->main_shm, conn->main_ext_shm.addr, conn->main_ext_shm.size);
+    sr_shmmain_ext_print(&conn->main_shm, conn->ext_shm.addr, conn->ext_shm.size);
 
     /* defrag mem into a separate memory */
-    if ((err_info = sr_shmmain_ext_defrag(&conn->main_shm, &conn->main_ext_shm, &buf))) {
+    if ((err_info = sr_shmmain_ext_defrag(&conn->main_shm, &conn->ext_shm, &buf))) {
         return err_info;
     }
 
     /* remap main ext SHM */
-    if ((err_info = sr_shm_remap(&conn->main_ext_shm, conn->main_ext_shm.size - *((size_t *)conn->main_ext_shm.addr)))) {
+    if ((err_info = sr_shm_remap(&conn->ext_shm, conn->ext_shm.size - *((size_t *)conn->ext_shm.addr)))) {
         goto cleanup;
     }
 
-    SR_LOG_INF("Main ext SHM was defragmented and %u B were saved.", *((size_t *)conn->main_ext_shm.addr));
+    SR_LOG_INF("Main ext SHM was defragmented and %u B were saved.", *((size_t *)conn->ext_shm.addr));
 
     /* copy the defragmented memory into ext SHM (has wasted set to 0) */
-    memcpy(conn->main_ext_shm.addr, buf, conn->main_ext_shm.size);
+    memcpy(conn->ext_shm.addr, buf, conn->ext_shm.size);
 
     SR_LOG_DBGMSG("#SHM after defrag");
-    sr_shmmain_ext_print(&conn->main_shm, conn->main_ext_shm.addr, conn->main_ext_shm.size);
+    sr_shmmain_ext_print(&conn->main_shm, conn->ext_shm.addr, conn->ext_shm.size);
 
     /* success */
 
@@ -1083,7 +1083,7 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
     }
 
     /* try to find this module in main SHM */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, module_name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, module_name, 0);
     if (!shm_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup_unlock;
@@ -2667,7 +2667,7 @@ process_events:
 
     /* RPC/action subscriptions */
     for (i = 0; i < subscription->rpc_sub_count; ++i) {
-        if ((err_info = sr_shmsub_rpc_listen_process_events(&subscription->rpc_subs[i], subscription->conn))) {
+        if ((err_info = sr_shmsub_rpc_listen_process_rpc_events(&subscription->rpc_subs[i], subscription->conn))) {
             goto cleanup_unlock;
         }
     }
@@ -3019,11 +3019,11 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* find module */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, module_name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, module_name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error_wrunlock_unsub);
 
     /* add module subscription into main SHM */
-    if ((err_info = sr_shmmod_conf_subscription_add(&conn->main_ext_shm, shm_mod, xpath, session->ds, priority, sub_opts,
+    if ((err_info = sr_shmmod_conf_subscription_add(&conn->ext_shm, shm_mod, xpath, session->ds, priority, sub_opts,
             (*subscription)->evpipe_num))) {
         goto error_wrunlock_unsub;
     }
@@ -3051,7 +3051,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     return sr_api_ret(session, NULL);
 
 error_wrunlock_unsub_unmod:
-    sr_shmmod_conf_subscription_del(conn->main_ext_shm.addr, shm_mod, xpath, session->ds, priority, sub_opts,
+    sr_shmmod_conf_subscription_del(conn->ext_shm.addr, shm_mod, xpath, session->ds, priority, sub_opts,
             (*subscription)->evpipe_num, 0, NULL);
 
 error_wrunlock_unsub:
@@ -3528,17 +3528,18 @@ sr_free_change_iter(sr_change_iter_t *iter)
  * @return err_code (SR_ERR_OK on success).
  */
 static int
-_sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callback, sr_rpc_tree_cb tree_callback,
-        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+_sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, sr_rpc_tree_cb tree_callback,
+        void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL;
-    char *module_name = NULL, *op_path;
+    char *module_name = NULL, *op_path = NULL;
     const struct lys_node *op;
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
-    sr_mod_t *shm_mod;
+    sr_rpc_t *shm_rpc;
+    int last_removed;
 
-    SR_CHECK_ARG_APIRET(!session || !path || (!callback && !tree_callback) || !subscription, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !xpath || (!callback && !tree_callback) || !subscription, session, err_info);
 
     conn = session->conn;
 
@@ -3547,9 +3548,9 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callbac
         return sr_api_ret(session, err_info);
     }
 
-    module_name = sr_get_first_ns(path);
+    module_name = sr_get_first_ns(xpath);
     if (!module_name) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid path \"%s\".", path);
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid xpath \"%s\".", xpath);
         goto error_unlock;
     }
 
@@ -3565,19 +3566,17 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callbac
         goto error_unlock;
     }
 
-    /* is the path valid? */
-    if ((err_info = sr_get_trim_predicates(path, &op_path))) {
+    /* is the xpath valid? */
+    if ((err_info = sr_get_trim_predicates(xpath, &op_path))) {
         goto error_unlock;
     }
 
-    op = ly_ctx_get_node(conn->ly_ctx, NULL, op_path, 0);
-    free(op_path);
-    if (!op) {
+    if (!(op = ly_ctx_get_node(conn->ly_ctx, NULL, op_path, 0))) {
         sr_errinfo_new_ly(&err_info, conn->ly_ctx);
         goto error_unlock;
     }
     if (!(op->nodetype & (LYS_RPC | LYS_ACTION))) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Path \"%s\" does not identify an RPC nor an action.", path);
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Path \"%s\" does not identify an RPC nor an action.", op_path);
         goto error_unlock;
     }
 
@@ -3588,43 +3587,49 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callbac
         }
     }
 
-    /* find module */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, module_name, 0);
-    SR_CHECK_INT_GOTO(!shm_mod, err_info, error_unlock_unsub);
+    /* find RPC struct or add a new one */
+    shm_rpc = sr_shmmain_find_rpc((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, op_path, 0);
+    if (!shm_rpc && (err_info = sr_shmmain_add_rpc(conn, op_path, &shm_rpc))) {
+        goto error_unlock_unsub;
+    }
 
     /* add RPC/action subscription into main SHM */
-    if ((err_info = sr_shmmod_rpc_subscription_add(&conn->main_ext_shm, shm_mod, path, (*subscription)->evpipe_num))) {
+    if ((err_info = sr_shmmain_rpc_subscription_add(&conn->ext_shm, shm_rpc, xpath, priority, (*subscription)->evpipe_num))) {
         goto error_unlock_unsub;
     }
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_rpc_add(session, module_name, path, callback, tree_callback, private_data, *subscription))) {
-        goto error_unlock_unsub_unmod;
+    if ((err_info = sr_sub_rpc_add(session, op_path, xpath, callback, tree_callback, private_data, priority, *subscription))) {
+        goto error_unlock_unsub_unrpc;
     }
 
     /* defrag main SHM if needed */
     if ((err_info = sr_check_main_shm_defrag(conn))) {
-        goto error_unlock_unsub_unmod;
+        goto error_unlock_unsub_unrpc;
     }
 
     /* add the subscription into session */
     if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
                 *subscription))) {
-        goto error_unlock_unsub_unmod;
+        goto error_unlock_unsub_unrpc;
     }
 
     /* SHM WRITE UNLOCK */
     sr_shmmain_unlock(conn, 1, 1);
 
     free(module_name);
+    free(op_path);
     return sr_api_ret(session, NULL);
 
-error_unlock_unsub_unmod:
-    sr_shmmod_rpc_subscription_del(conn->main_ext_shm.addr, shm_mod, path, (*subscription)->evpipe_num, 0);
+error_unlock_unsub_unrpc:
+    sr_shmmain_rpc_subscription_del(conn->ext_shm.addr, shm_rpc, xpath, priority, (*subscription)->evpipe_num, 0, &last_removed);
+    if (last_removed) {
+        sr_shmmain_del_rpc((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, NULL, shm_rpc->op_path);
+    }
 
 error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
-        sr_sub_rpc_del(path, *subscription);
+        sr_sub_rpc_del(op_path, xpath, callback, tree_callback, private_data, priority, *subscription);
     } else {
         _sr_unsubscribe(*subscription);
         *subscription = NULL;
@@ -3635,21 +3640,22 @@ error_unlock:
     sr_shmmain_unlock(conn, 1, 1);
 
     free(module_name);
+    free(op_path);
     return sr_api_ret(session, err_info);
 }
 
 API int
-sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callback, void *private_data,
-        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, void *private_data,
+        uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
-    return _sr_rpc_subscribe(session, path, callback, NULL, private_data, opts, subscription);
+    return _sr_rpc_subscribe(session, xpath, callback, NULL, private_data, priority, opts, subscription);
 }
 
 API int
-sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *path, sr_rpc_tree_cb callback, void *private_data,
-        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_cb callback, void *private_data,
+        uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
-    return _sr_rpc_subscribe(session, path, NULL, callback, private_data, opts, subscription);
+    return _sr_rpc_subscribe(session, xpath, NULL, callback, private_data, priority, opts, subscription);
 }
 
 API int
@@ -3719,58 +3725,6 @@ cleanup:
     return sr_api_ret(session, err_info);
 }
 
-/**
- * @brief Find an RPC/action subscriber.
- *
- * @param[in] conn Connection to use.
- * @param[in] input RPC/action received full tree.
- * @param[in] input_op RPC/action operation.
- * @param[out] xpath RPC/action subscription xpath.
- * @param[out] evpipe_num Event pipe number.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_rpc_find_subscriber(sr_conn_ctx_t *conn, const struct lyd_node *input, const struct lyd_node *input_op,
-        const char **xpath, uint32_t *evpipe_num)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_mod_t *shm_mod;
-    sr_mod_rpc_sub_t *shm_subs;
-    struct ly_set *set;
-    char *rpc_xpath;
-    uint16_t i;
-
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, lyd_node_module(input_op)->name, 0);
-    SR_CHECK_INT_RET(!shm_mod, err_info);
-
-    /* try to find a matching subscription */
-    shm_subs = (sr_mod_rpc_sub_t *)(conn->main_ext_shm.addr + shm_mod->rpc_subs);
-    for (i = 0; i < shm_mod->rpc_sub_count; ++i) {
-        set = lyd_find_path(input, conn->main_ext_shm.addr + shm_subs[i].xpath);
-        if (!set) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            return err_info;
-        } else if (set->number) {
-            assert((set->number == 1) && (set->set.d[0]->schema->nodetype & (LYS_RPC | LYS_ACTION)));
-            ly_set_free(set);
-            break;
-        }
-        ly_set_free(set);
-    }
-
-    if (i < shm_mod->rpc_sub_count) {
-        *xpath = conn->main_ext_shm.addr + shm_subs[i].xpath;
-        *evpipe_num = shm_subs[i].evpipe_num;
-    } else {
-        rpc_xpath = lyd_path(input_op);
-        SR_CHECK_MEM_RET(!rpc_xpath, err_info);
-        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "There is no subscriber to \"%s\" %s.", rpc_xpath,
-                (input_op->schema->nodetype == LYS_RPC) ? "RPC" : "action");
-        free(rpc_xpath);
-    }
-    return err_info;
-}
-
 API int
 sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_node **output)
 {
@@ -3779,9 +3733,8 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     struct lyd_node *input_op;
     sr_mod_data_dep_t *shm_deps;
     uint16_t shm_dep_count;
-    uint32_t evpipe_num;
-    const char *sub_path;
     char *op_path = NULL, *str;
+    uint32_t event_id = 0;
 
     SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
 
@@ -3822,11 +3775,6 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
         goto cleanup_shm_unlock;
     }
 
-    /* check that there is a subscriber */
-    if ((err_info = sr_rpc_find_subscriber(session->conn, input, input_op, &sub_path, &evpipe_num))) {
-        goto cleanup_shm_unlock;
-    }
-
     /* get operation path (without predicates) */
     str = lyd_path(input_op);
     SR_CHECK_INT_GOTO(!str, err_info, cleanup_shm_unlock);
@@ -3860,8 +3808,14 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
         goto cleanup_mods_unlock;
     }
 
-    /* publish RPC in an event for a subscriber and wait for a reply */
-    if ((err_info = sr_shmsub_rpc_notify(sub_path, input, session->sid, evpipe_num, output, &cb_err_info)) || cb_err_info) {
+    /* publish RPC in an event and wait for a reply from the last subscriber */
+    if ((err_info = sr_shmsub_rpc_notify(mod_info.conn, op_path, input, session->sid, &event_id, output, &cb_err_info))) {
+        goto cleanup_mods_unlock;
+    }
+
+    if (cb_err_info) {
+        /* "rpc" event failed, publish "abort" event and finish */
+        err_info = sr_shmsub_rpc_notify_abort(mod_info.conn, op_path, input, session->sid, event_id);
         goto cleanup_mods_unlock;
     }
 
@@ -4001,12 +3955,12 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const struct lys_module *ly
     }
 
     /* find module */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, ly_mod->name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, ly_mod->name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error_unlock_unsub);
 
     if (!start_time) {
         /* add notification subscription into main SHM now if replay was not requested */
-        if ((err_info = sr_shmmod_notif_subscription_add(&conn->main_ext_shm, shm_mod, (*subscription)->evpipe_num))) {
+        if ((err_info = sr_shmmod_notif_subscription_add(&conn->ext_shm, shm_mod, (*subscription)->evpipe_num))) {
             goto error_unlock_unsub;
         }
     }
@@ -4037,7 +3991,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const struct lys_module *ly
 
 error_unlock_unsub_unmod:
     if (!start_time) {
-        sr_shmmod_notif_subscription_del(conn->main_ext_shm.addr, shm_mod, (*subscription)->evpipe_num, 0, NULL);
+        sr_shmmod_notif_subscription_del(conn->ext_shm.addr, shm_mod, (*subscription)->evpipe_num, 0, NULL);
     }
 
 error_unlock_unsub:
@@ -4220,7 +4174,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     }
 
     /* check write/read perm */
-    shm_mod = sr_shmmain_find_module(&session->conn->main_shm, session->conn->main_ext_shm.addr, lyd_node_module(notif)->name, 0);
+    shm_mod = sr_shmmain_find_module(&session->conn->main_shm, session->conn->ext_shm.addr, lyd_node_module(notif)->name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_shm_unlock);
     if ((err_info = sr_perm_check(lyd_node_module(notif)->name, (shm_mod->flags & SR_MOD_REPLAY_SUPPORT) ? 1 : 0))) {
         goto cleanup_shm_unlock;
@@ -4376,11 +4330,11 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     }
 
     /* find module */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, module_name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, module_name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error_unlock_unsub);
 
     /* add oper subscription into main SHM */
-    if ((err_info = sr_shmmod_oper_subscription_add(&conn->main_ext_shm, shm_mod, path, sub_type, (*subscription)->evpipe_num))) {
+    if ((err_info = sr_shmmod_oper_subscription_add(&conn->ext_shm, shm_mod, path, sub_type, (*subscription)->evpipe_num))) {
         goto error_unlock_unsub;
     }
 
@@ -4408,7 +4362,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     return sr_api_ret(session, NULL);
 
 error_unlock_unsub_unmod:
-    sr_shmmod_oper_subscription_del(conn->main_ext_shm.addr, shm_mod, path, (*subscription)->evpipe_num, 0);
+    sr_shmmod_oper_subscription_del(conn->ext_shm.addr, shm_mod, path, (*subscription)->evpipe_num, 0);
 
 error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {

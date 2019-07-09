@@ -68,7 +68,7 @@ oven_thread(void *arg)
 }
 
 static int
-oven_config_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_notif_event_t event, void *private_data)
+oven_config_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event, void *private_data)
 {
     int rc;
     sr_val_t *val;
@@ -142,12 +142,13 @@ oven_state_cb(sr_session_ctx_t *session, const char *module_name, const char *pa
 
 static int
 oven_insert_food_cb(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt,
-        sr_val_t **output, size_t *output_cnt, void *private_data)
+        sr_event_t event, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     (void)session;
     (void)path;
     (void)input;
     (void)input_cnt;
+    (void)event;
     (void)output;
     (void)output_cnt;
     (void)private_data;
@@ -174,12 +175,13 @@ oven_insert_food_cb(sr_session_ctx_t *session, const char *path, const sr_val_t 
 
 static int
 oven_remove_food_cb(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt,
-        sr_val_t **output, size_t *output_cnt, void *private_data)
+        sr_event_t event, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     (void)session;
     (void)path;
     (void)input;
     (void)input_cnt;
+    (void)event;
     (void)output;
     (void)output_cnt;
     (void)private_data;
@@ -223,13 +225,13 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_data)
     }
 
     /* subscribe for insert-food RPC calls */
-    rc = sr_rpc_subscribe(session, "/oven:insert-food", oven_insert_food_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscription);
+    rc = sr_rpc_subscribe(session, "/oven:insert-food", oven_insert_food_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscription);
     if (rc != SR_ERR_OK) {
         goto error;
     }
 
     /* subscribe for remove-food RPC calls */
-    rc = sr_rpc_subscribe(session, "/oven:remove-food", oven_remove_food_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscription);
+    rc = sr_rpc_subscribe(session, "/oven:remove-food", oven_remove_food_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscription);
     if (rc != SR_ERR_OK) {
         goto error;
     }

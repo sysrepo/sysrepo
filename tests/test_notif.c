@@ -267,7 +267,7 @@ notif_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, 
 }
 
 static int
-module_change_dummy_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_notif_event_t event,
+module_change_dummy_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         void *private_data)
 {
     (void)session;

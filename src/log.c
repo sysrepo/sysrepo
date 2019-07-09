@@ -147,17 +147,6 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
     va_list vargs;
     int ret, idx;
 
-    /* special case, when we have no memory, we would try to allocate rror info in vain */
-    if (err_code == SR_ERR_NOMEM) {
-        /* check that both private and public structures are the same (could be compile-time) */
-        assert(sizeof(struct sr_error_info_err_s) == sizeof *(*err_info)->err);
-        assert(!xpath && !format);
-
-        sr_errinfo_free(err_info);
-        *err_info = &sr_errinfo_mem;
-        goto print;
-    }
-
     if (!*err_info) {
         *err_info = calloc(1, sizeof **err_info);
         if (!*err_info) {
@@ -194,7 +183,6 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
     ++(*err_info)->err_count;
 
     /* print it */
-print:
     idx = (*err_info)->err_count - 1;
     sr_log_msg(0, SR_LL_ERR, (*err_info)->err[idx].message, (*err_info)->err[idx].xpath);
 }

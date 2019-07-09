@@ -98,7 +98,7 @@ clear_interfaces(void **state)
 
 /* TEST 1 (no threads) */
 static int
-enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_notif_event_t event,
+enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         void *private_data)
 {
     sr_change_oper_t op;

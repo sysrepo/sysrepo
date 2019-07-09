@@ -31,6 +31,8 @@
 struct state {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
+    volatile int cb_called;
+    pthread_barrier_t barrier;
 };
 
 static int
@@ -40,6 +42,9 @@ setup(void **state)
 
     st = calloc(1, sizeof *st);
     *state = st;
+
+    st->cb_called = 0;
+    pthread_barrier_init(&st->barrier, NULL, 2);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
         return 1;
@@ -83,6 +88,7 @@ teardown(void **state)
     ret += sr_remove_module(st->conn, "test");
 
     sr_disconnect(st->conn);
+    pthread_barrier_destroy(&st->barrier);
     free(st);
     return ret;
 }
@@ -102,13 +108,14 @@ clear_ops(void **state)
 
 /* TEST 1 */
 static int
-rpc_fail_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, struct lyd_node *output,
-        void *private_data)
+rpc_fail_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+        struct lyd_node *output, void *private_data)
 {
     char *str1;
     const char *str2;
     int ret;
 
+    (void)event;
     (void)output;
     (void)private_data;
 
@@ -139,7 +146,7 @@ test_fail(void **state)
     int ret;
 
     /* subscribe /*/
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc1", rpc_fail_cb, st, 0, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc1", rpc_fail_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* send RPC */
@@ -164,19 +171,6 @@ test_fail(void **state)
     ret = sr_rpc_send_tree(st->sess, input, &output);
     for (; input->parent; input = input->parent);
     lyd_free_withsiblings(input);
-    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
-
-    /* will not be called */
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_fail_cb, st, SR_SUBSCR_CTX_REUSE, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* try to send an action again, still fails */
-    input = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='1']/cont2/act1", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
-    assert_non_null(input);
-
-    ret = sr_rpc_send_tree(st->sess, input, &output);
-    for (; input->parent; input = input->parent);
-    lyd_free_withsiblings(input);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
 
     sr_unsubscribe(subscr);
@@ -185,11 +179,12 @@ test_fail(void **state)
 /* TEST 2 */
 static int
 rpc_rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
-        sr_val_t **output, size_t *output_cnt, void *private_data)
+        sr_event_t event, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     static int rpc2_called = 0;
 
     (void)session;
+    (void)event;
     (void)private_data;
 
     if (!strcmp(xpath, "/ops:rpc1")) {
@@ -244,7 +239,7 @@ rpc_rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, 
 }
 
 static int
-module_change_dummy_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_notif_event_t event,
+module_change_dummy_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         void *private_data)
 {
     (void)session;
@@ -267,11 +262,11 @@ test_rpc(void **state)
     int ret;
 
     /* subscribe */
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_rpc_cb, NULL, 0, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_rpc_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation */
@@ -370,8 +365,8 @@ test_rpc(void **state)
 
 /* TEST 3 */
 static int
-rpc_action_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, struct lyd_node *output,
-        void *private_data)
+rpc_action_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+        struct lyd_node *output, void *private_data)
 {
     struct lyd_node *node;
     char *str1;
@@ -379,6 +374,7 @@ rpc_action_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_nod
     int ret;
 
     (void)session;
+    (void)event;
     (void)private_data;
 
     if (!strcmp(xpath, "/ops:cont/list1/cont2/act1")) {
@@ -421,9 +417,9 @@ test_action(void **state)
     int ret;
 
     /* subscribe */
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_action_cb, NULL, 0, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/act2", rpc_action_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/act2", rpc_action_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
@@ -493,14 +489,15 @@ test_action(void **state)
 
 /* TEST 4 */
 static int
-rpc_action_pred_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, struct lyd_node *output,
-        void *private_data)
+rpc_action_pred_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+        struct lyd_node *output, void *private_data)
 {
     char *str1;
     const char *str2;
     int ret;
 
     (void)session;
+    (void)event;
     (void)output;
     (void)private_data;
 
@@ -533,14 +530,20 @@ test_action_pred(void **state)
     struct lyd_node *node, *input_op, *output_op;
     int ret;
 
+    /* you cannot subscribe to more actions */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1 or /ops:rpc1", rpc_action_pred_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_LY);
+
     /* subscribe with some predicates */
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one' or k='two']/cont2/act1", rpc_action_pred_cb, NULL, 0, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one' or k='two']/cont2/act1", rpc_action_pred_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='three' or k='four']/cont2/act1", rpc_action_pred_cb, NULL,
-            SR_SUBSCR_CTX_REUSE, &subscr);
+            0, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='zero']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='one']", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='two']", NULL, 0);
@@ -613,6 +616,373 @@ test_action_pred(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST 5 */
+static int
+rpc_multi_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+        struct lyd_node *output, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)xpath;
+    (void)input;
+    (void)event;
+    (void)output;
+
+    ++st->cb_called;
+    return SR_ERR_OK;
+}
+
+static void
+test_multi(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    struct lyd_node *node, *input_op, *output_op;
+    int ret;
+
+    /* subscribe */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_multi_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one' or k='two']/cont2/act1", rpc_multi_cb, st,
+            0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='two' or k='three' or k='four']/cont2/act1",
+            rpc_multi_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some data needed for validation and executing the actions */
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='zero']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='one']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='two']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='three']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to the data so they are actually present in operational */
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /*
+     * create first action
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='zero']/cont2/act1", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l6", "val", 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(input_op, NULL, "l7", "val", 0, 0);
+    assert_non_null(node);
+
+    /* send action */
+    st->cb_called = 0;
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    for (; input_op->parent; input_op = input_op->parent);
+    lyd_free_withsiblings(input_op);
+    for (; output_op->parent; output_op = output_op->parent);
+    lyd_free_withsiblings(output_op);
+
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(st->cb_called, 1);
+
+    /*
+     * create second action
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='one']/cont2/act1", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l6", "val2", 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(input_op, NULL, "l7", "val2", 0, 0);
+    assert_non_null(node);
+
+    /* send action */
+    st->cb_called = 0;
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    for (; input_op->parent; input_op = input_op->parent);
+    lyd_free_withsiblings(input_op);
+    for (; output_op->parent; output_op = output_op->parent);
+    lyd_free_withsiblings(output_op);
+
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(st->cb_called, 2);
+
+    /*
+     * create third action
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='two']/cont2/act1", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l6", "val3", 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(input_op, NULL, "l7", "val3", 0, 0);
+    assert_non_null(node);
+
+    /* send action */
+    st->cb_called = 0;
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    for (; input_op->parent; input_op = input_op->parent);
+    lyd_free_withsiblings(input_op);
+    for (; output_op->parent; output_op = output_op->parent);
+    lyd_free_withsiblings(output_op);
+
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(st->cb_called, 3);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST 6 */
+static int
+rpc_multi_fail0_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+        struct lyd_node *output, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    struct lyd_node *node;
+    static int call_no = 1;
+    int ret = SR_ERR_OK;
+
+    (void)session;
+    (void)xpath;
+    (void)input;
+
+    ++st->cb_called;
+
+    /* create output data in all cases, it should always be freed */
+    node = lyd_new_path(output, NULL, "l5", "0", 0, LYD_PATH_OPT_OUTPUT);
+    assert_non_null(node);
+
+    switch (call_no) {
+    case 1:
+        assert_int_equal(event, SR_EV_RPC);
+        assert_int_equal(st->cb_called, 3);
+        /* callback fails */
+        ret = SR_ERR_NOMEM;
+        ++call_no;
+        break;
+    case 2:
+        assert_int_equal(event, SR_EV_RPC);
+        assert_int_equal(st->cb_called, 3);
+        ++call_no;
+        break;
+    default:
+        fail();
+    }
+
+    return ret;
+}
+
+static int
+rpc_multi_fail1_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+        struct lyd_node *output, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    struct lyd_node *node;
+    static int call_no = 1;
+    int ret = SR_ERR_OK;
+
+    (void)session;
+    (void)xpath;
+    (void)input;
+
+    ++st->cb_called;
+
+    /* create output data in all cases, it should always be freed */
+    node = lyd_new_path(output, NULL, "l5", "1", 0, LYD_PATH_OPT_OUTPUT);
+    assert_non_null(node);
+
+    switch (call_no) {
+    case 1:
+        if (event == SR_EV_RPC) {
+            assert_int_equal(st->cb_called, 2);
+        } else {
+            assert_int_equal(event, SR_EV_ABORT);
+            assert_int_equal(st->cb_called, 5);
+            ++call_no;
+            /* last callback */
+            pthread_barrier_wait(&st->barrier);
+        }
+        break;
+    case 2:
+        assert_int_equal(event, SR_EV_RPC);
+        assert_int_equal(st->cb_called, 2);
+        /* callback fails */
+        ret = SR_ERR_NOT_FOUND;
+        ++call_no;
+        break;
+    case 3:
+        assert_int_equal(event, SR_EV_RPC);
+        assert_int_equal(st->cb_called, 2);
+        ++call_no;
+        break;
+    default:
+        fail();
+    }
+
+    return ret;
+}
+
+static int
+rpc_multi_fail2_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+        struct lyd_node *output, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    struct lyd_node *node;
+    static int call_no = 1;
+    int ret = SR_ERR_OK;
+
+    (void)session;
+    (void)xpath;
+    (void)input;
+
+    ++st->cb_called;
+
+    /* create output data in all cases, it should always be freed */
+    node = lyd_new_path(output, NULL, "l5", "2", 0, LYD_PATH_OPT_OUTPUT);
+    assert_non_null(node);
+
+    switch (call_no) {
+    case 1:
+        if (event == SR_EV_RPC) {
+            assert_int_equal(st->cb_called, 1);
+        } else {
+            assert_int_equal(event, SR_EV_ABORT);
+            assert_int_equal(st->cb_called, 4);
+            ++call_no;
+        }
+        break;
+    case 2:
+        if (event == SR_EV_RPC) {
+            assert_int_equal(st->cb_called, 1);
+        } else {
+            assert_int_equal(event, SR_EV_ABORT);
+            assert_int_equal(st->cb_called, 3);
+            ++call_no;
+            /* last callback */
+            pthread_barrier_wait(&st->barrier);
+        }
+        break;
+    case 3:
+        assert_int_equal(event, SR_EV_RPC);
+        assert_int_equal(st->cb_called, 1);
+        /* callback fails, last callback (but there is no callback for abort, synchronizing would block) */
+        ret = SR_ERR_BAD_ELEMENT;
+        ++call_no;
+        break;
+    case 4:
+        assert_int_equal(event, SR_EV_RPC);
+        assert_int_equal(st->cb_called, 1);
+        ++call_no;
+        break;
+    default:
+        fail();
+    }
+
+    return ret;
+}
+
+static void
+test_multi_fail(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    struct lyd_node *node, *input_op, *output_op;
+    int ret;
+
+    /* subscribe */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail0_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail1_cb, st, 1, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail2_cb, st, 2, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /*
+     * create first RPC
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:rpc3", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l4", "val", 0, 0);
+    assert_non_null(node);
+
+    /* send RPC */
+    st->cb_called = 0;
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    lyd_free_withsiblings(input_op);
+    lyd_free_withsiblings(output_op);
+
+    pthread_barrier_wait(&st->barrier);
+
+    /* it should fail with 5 total callback calls */
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(st->cb_called, 5);
+
+    /*
+     * create second RPC
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:rpc3", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l4", "val", 0, 0);
+    assert_non_null(node);
+
+    /* send RPC */
+    st->cb_called = 0;
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    lyd_free_withsiblings(input_op);
+    lyd_free_withsiblings(output_op);
+
+    pthread_barrier_wait(&st->barrier);
+
+    /* it should fail with 3 total callback calls */
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(st->cb_called, 3);
+
+    /*
+     * create third RPC
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:rpc3", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l4", "val", 0, 0);
+    assert_non_null(node);
+
+    /* send RPC */
+    st->cb_called = 0;
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    lyd_free_withsiblings(input_op);
+    lyd_free_withsiblings(output_op);
+
+    /* it should fail with 1 total callback calls */
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(st->cb_called, 1);
+
+    /*
+     * create fourth RPC
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:rpc3", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l4", "val", 0, 0);
+    assert_non_null(node);
+
+    /* send RPC */
+    st->cb_called = 0;
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    lyd_free_withsiblings(input_op);
+
+    /* it should not fail */
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(st->cb_called, 3);
+
+    /* check output */
+    assert_string_equal(output_op->child->schema->name, "l5");
+    assert_int_equal(((struct lyd_node_leaf_list *)output_op->child)->value.uint16, 0);
+    lyd_free_withsiblings(output_op);
+
+    sr_unsubscribe(subscr);
+}
+
 /* MAIN */
 int
 main(void)
@@ -622,6 +992,8 @@ main(void)
         cmocka_unit_test_teardown(test_rpc, clear_ops),
         cmocka_unit_test_teardown(test_action, clear_ops),
         cmocka_unit_test_teardown(test_action_pred, clear_ops),
+        cmocka_unit_test_teardown(test_multi, clear_ops),
+        cmocka_unit_test(test_multi_fail),
     };
 
     sr_log_stderr(SR_LL_INF);

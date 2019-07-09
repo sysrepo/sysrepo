@@ -159,7 +159,7 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
 }
 
 const char *
-ev_to_str(sr_notif_event_t ev)
+ev_to_str(sr_event_t ev)
 {
     switch (ev) {
     case SR_EV_CHANGE:
@@ -173,7 +173,7 @@ ev_to_str(sr_notif_event_t ev)
 }
 
 static int
-module_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_notif_event_t event,
+module_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         void *private_data)
 {
     sr_change_iter_t *it = NULL;

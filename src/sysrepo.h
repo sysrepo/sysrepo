@@ -1079,13 +1079,13 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  */
 
 /**
- * @brief Type of the notification event that has occurred (passed to application callbacks).
+ * @brief Type of the event that has occurred (passed to application callbacks).
  *
  * @note Each change is normally announced twice: first as ::SR_EV_CHANGE event and then as ::SR_EV_DONE or ::SR_EV_ABORT
  * event. If the subscriber does not support verification, it can subscribe only to ::SR_EV_DONE event by providing
  * ::SR_SUBSCR_DONE_ONLY subscription flag.
  */
-typedef enum sr_notif_event_e {
+typedef enum sr_event_e {
     SR_EV_UPDATE,  /**< Occurs before any other events and the subscriber can update the apply-changes diff.
                         It is performed by calling `sr_*_item()` or ::sr_edit_batch() on the callback session
                         __without__ calling ::sr_apply_changes() or any other function. */
@@ -1096,10 +1096,14 @@ typedef enum sr_notif_event_e {
     SR_EV_DONE,    /**< Occurs just after the changes have been successfully committed to the datastore,
                         the subscriber can apply the changes now, but it cannot deny the changes in this
                         phase anymore (any returned errors are just logged and ignored). */
-    SR_EV_ABORT,   /**< Occurs in case that the commit transaction has failed (possibly because one of the verifiers
-                        has denied the change / returned an error). The subscriber is supposed to return the managed
-                        application to the state before the commit. Any returned errors are just logged and ignored. */
-} sr_notif_event_t;
+    SR_EV_ABORT,   /**< Occurs in case that the commit transaction has failed because one of the verifiers
+                        has denied the change (returned an error). The subscriber is supposed to return the managed
+                        application to the state before the commit. Any returned errors are just logged and ignored.
+                        This event is also generated for RPC subscriptions when a later callback has failed and
+                        this one has already successfully processed ::SR_EV_RPC. The callback that failed will never
+                        get this event! */
+    SR_EV_RPC,     /**< Occurs for a standard RPC execution. If a later callback fails, ::SR_EV_ABORT is generated. */
+} sr_event_t;
 
 /**
  * @brief Type of the operation made on an item, used by changeset retrieval in ::sr_get_change_next.
@@ -1129,7 +1133,7 @@ typedef struct sr_change_iter_s sr_change_iter_t;
  * @return Error code (::SR_ERR_OK on success).
  */
 typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name, const char *xpath,
-        sr_notif_event_t event, void *private_data);
+        sr_event_t event, void *private_data);
 
 /**
  * @brief Subscribes for changes made in the specified module.
@@ -1233,7 +1237,8 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @brief Callback to be called for RPC or action specified by xpath.
  * Subscribe to it by ::sr_rpc_subscribe call.
  *
- * @param[in] path Path identifying the RPC/action.
+ * @param[in] session Callback session to use.
+ * @param[in] op_path Simple operation path identifying the RPC/action.
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
  * @param[out] output Array of output parameters. Should be allocated on heap,
@@ -1242,23 +1247,24 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe call.
  * @return Error code (::SR_ERR_OK on success).
  */
-typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt,
-        sr_val_t **output, size_t *output_cnt, void *private_data);
+typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt,
+        sr_event_t event, sr_val_t **output, size_t *output_cnt, void *private_data);
 
 /**
  * @brief Callback to be called for RPC or action specified by xpath.
  * This operates with libyang trees rather than with sysrepo values,
  * use it with ::sr_rpc_subscribe_tree and ::sr_rpc_send_tree.
  *
- * @param[in] path Path identifying the RPC/action.
+ * @param[in] session Callback session to use.
+ * @param[in] op_path Simple operation path identifying the RPC/action.
  * @param[in] input Data tree of input parameters.
  * @param[out] output Data tree of output parameters. Should be allocated on heap,
  * will be freed by sysrepo after sending of the RPC response.
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe_tree call.
  * @return Error code (::SR_ERR_OK on success).
  */
-typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input,
-        struct lyd_node *output, void *private_data);
+typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, struct lyd_node *output, void *private_data);
 
 /**
  * @brief Subscribes for delivery of RPC or action specified by path.
@@ -1266,18 +1272,19 @@ typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, const char *xpath, cons
  * Required WRITE access.
  *
  * @param[in] session Session to use.
- * @param[in] path Path identifying the RPC/action. For actions it is possible to use predicates
- * to subscribe to specific parent list instances only.
+ * @param[in] xpath XPath identifying the RPC/action. Any predicates are allowed.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
+ * priority will be called sooner, callbacks with the priority of 0 will be called at the end).
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
  * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
  * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb callback, void *private_data,
-        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, void *private_data,
+        uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Subscribes for delivery of RPC or action specified by path. Unlike ::sr_rpc_subscribe, this
@@ -1288,18 +1295,19 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *path, sr_rpc_cb call
  * Required WRITE access.
  *
  * @param[in] session Session to use.
- * @param[in] path Path identifying the RPC/action. For actions it is possible to use predicates
- * to subscribe to specific parent list instances only.
+ * @param[in] xpath XPath identifying the RPC/action. Any predicates are allowed.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
+ * priority will be called sooner, callbacks with the priority of 0 will be called at the end).
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
  * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
  * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *path, sr_rpc_tree_cb callback,
-        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_cb callback,
+        void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Sends an RPC or action specified by xpath and waits for the result.

@@ -24,7 +24,7 @@
 #include "common.h"
 
 #define SR_MAIN_SHM "/sr_main"              /**< Main SHM name. */
-#define SR_MAIN_EXT_SHM "/sr_ext_main"      /**< Main external SHM name. */
+#define SR_EXT_SHM "/sr_ext"                /**< External SHM name. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
@@ -86,14 +86,6 @@ typedef struct sr_mod_oper_sub_s {
 } sr_mod_oper_sub_t;
 
 /**
- * @brief Main ext SHM RPC/action subscription.
- */
-typedef struct sr_mod_rpc_sub_s {
-    off_t xpath;                /**< XPath of the RPC/action subscribed to. */
-    uint32_t evpipe_num;        /**< Event pipe number. */
-} sr_mod_rpc_sub_t;
-
-/**
  * @brief Main ext SHM notification subscription.
  */
 typedef struct sr_mod_notif_sub_s {
@@ -138,15 +130,30 @@ struct sr_mod_s {
     off_t oper_subs;            /**< Array of operational subscriptions. */
     uint16_t oper_sub_count;    /**< Number of operational subscriptions. */
 
-    off_t rpc_subs;             /**< Array of RPC/action subscriptions. */
-    uint16_t rpc_sub_count;     /**< Number of RPC/action subscriptions. */
-
     off_t notif_subs;           /**< Array of notification subscriptions. */
     uint16_t notif_sub_count;   /**< Number of notification subscriptions. */
 };
 
 /**
- * @brief Connection state.
+ * @brief Ext SHM RPC/action specific subscription.
+ */
+typedef struct sr_rpc_sub_s {
+    off_t xpath;                /**< Full XPath of the RPC/action subscription. */
+    uint32_t priority;          /**< Subscription priority. */
+    uint32_t evpipe_num;        /**< Event pipe number. */
+} sr_rpc_sub_t;
+
+/**
+ * @brief Ext SHM RPC/action subscriptions for a single operation.
+ */
+typedef struct sr_rpc_s {
+    off_t op_path;              /**< Simple path of the RPC/action subscribed to. */
+    off_t subs;                 /**< Array of RPC/action subscriptions. */
+    uint16_t sub_count;         /**< Number of RPC/action subscriptions. */
+} sr_rpc_t;
+
+/**
+ * @brief Ext SHM connection state.
  */
 typedef struct sr_conn_state_s {
     sr_conn_ctx_t *conn_ctx;    /**< Connection, process-specific pointer, do not access! */
@@ -161,8 +168,13 @@ typedef struct sr_conn_state_s {
 typedef struct sr_main_shm_s {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing main (ext) SHM. */
     uint32_t ver;               /**< Main SHM version (installed module set version). */
+
+    off_t rpc_subs;             /**< Array of RPC/action subscriptions. */
+    uint16_t rpc_sub_count;     /**< Number of RPC/action subscriptions. */
+
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
+
     struct {
         off_t conns;            /**< Array of existing connections. */
         uint32_t conn_count;    /**< Number of existing connections. */
@@ -272,21 +284,21 @@ typedef struct sr_multi_sub_shm_s {
 /**
  * @brief Debug print the contents of main ext SHM.
  *
- * @param[in] main_shm Main SHM.
- * @param[in] main_ext_shm_addr Main ext SHM mapping address.
- * @param[in] main_ext_shm_size Main ext SHM mapping size.
+ * @param[in] shm_main Main SHM.
+ * @param[in] ext_shm_addr Main ext SHM mapping address.
+ * @param[in] ext_shm_size Main ext SHM mapping size.
  */
-void sr_shmmain_ext_print(sr_shm_t *main_shm, char *main_ext_shm_addr, size_t main_ext_shm_size);
+void sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size);
 
 /**
  * @brief Defragment main ext SHM.
  *
- * @param[in] main_shm Main SHM.
- * @param[in] main_ext_shm Main ext SHM.
+ * @param[in] shm_main Main SHM.
+ * @param[in] shm_ext Main ext SHM.
  * @param[out] defrag_ext_buf Defragmented main ext SHM memory copy.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_ext_defrag(sr_shm_t *main_shm, sr_shm_t *main_ext_shm, char **defrag_ext_buf);
+sr_error_info_t *sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_buf);
 
 /**
  * @brief Check all used directories and create them if any are missing.
@@ -474,15 +486,28 @@ sr_error_info_t *sr_shmmain_shm_ext_open(sr_shm_t *shm, int zero);
 /**
  * @brief Find a specific main SHM module.
  *
- * Either of name or name_off must be set.
+ * Either name or name_off must be set.
  *
- * @param[in] main_shm Main SHM.
- * @param[in] main_ext_shm_addr Main ext SHM address.
+ * @param[in] shm_main Main SHM.
+ * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] name String name of the module.
  * @param[in] name_off Main ext SHM offset of the name (faster lookup, \p main_ext_shm_addr is not needed).
  * @return Main SHM module, NULL if not found.
  */
-sr_mod_t *sr_shmmain_find_module(sr_shm_t *main_shm, char *main_ext_shm_addr, const char *name, off_t name_off);
+sr_mod_t *sr_shmmain_find_module(sr_shm_t *shm_main, char *ext_shm_addr, const char *name, off_t name_off);
+
+/**
+ * @brief Find a specific main SHM RPC.
+ *
+ * Either op_path or op_path_off must be set.
+ *
+ * @param[in] main_shm Main SHM structure.
+ * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] op_path String name of the RPCmodule.
+ * @param[in] op_path_off Main ext SHM offset of the op_path (faster lookup, \p ext_shm_addr is not needed).
+ * @return Main SHM RPC, NULL if not found.
+ */
+sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_path, off_t op_path_off);
 
 /**
  * @brief Lock main SHM and its mapping and remap it if needed (it was changed).
@@ -504,6 +529,35 @@ sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap);
 void sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap);
 
 /**
+ * @brief Add main SHM RPC/action subscription.
+ * May remap main SHM!
+ *
+ * @param[in] shm_ext Main ext SHM.
+ * @param[in] shm_rpc SHM RPC.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] priority Subscription priority.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, sr_rpc_t *shm_rpc, const char *xpath,
+        uint32_t priority, uint32_t evpipe_num);
+
+/**
+ * @brief Remove main SHM RPC/action subscription.
+ *
+ * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] shm_rpc SHM RPC.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] priority Subscription priority.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
+ * @param[out] last_removed Whether this is the last RPC subscription that was removed.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_rpc_subscription_del(char *ext_shm_addr, sr_rpc_t *shm_rpc, const char *xpath,
+        uint32_t priority, uint32_t evpipe_num, int all_evpipe, int *last_removed);
+
+/**
  * @brief Add a module with any imports into main SHM and persistent internal data.
  * May remap main SHM!
  *
@@ -512,6 +566,30 @@ void sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *ly_mod);
+
+/**
+ * @brief Add an RPC/action into main SHM.
+ * May remap main SHM!
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] op_path Simple RPC/action path.
+ * @param[out] shm_rpc_p If set, return the newly added RPC/action on success.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_add_rpc(sr_conn_ctx_t *conn, const char *op_path, sr_rpc_t **shm_rpc_p);
+
+/**
+ * @brief Remove an RPC/action from main SHM.
+ *
+ * Either op_path or op_path_off must be set.
+ *
+ * @param[in] main_shm Main SHM structure.
+ * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] op_path RPC/action path.
+ * @param[in] op_path_off RPC/action path offset.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_del_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_path, off_t op_path_off);
 
 /**
  * @brief Change replay support of a module in main SHM and persistent internal data.
@@ -726,32 +804,6 @@ sr_error_info_t *sr_shmmod_oper_subscription_del(char *ext_shm_addr, sr_mod_t *s
         uint32_t evpipe_num, int all_evpipe);
 
 /**
- * @brief Add main SHM module RPC/action subscription.
- * May remap main SHM!
- *
- * @param[in] shm_ext Main ext SHM.
- * @param[in] shm_mod SHM module.
- * @param[in] xpath Subscription XPath.
- * @param[in] evpipe_num Subscription event pipe number.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_rpc_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath,
-        uint32_t evpipe_num);
-
-/**
- * @brief Remove main SHM module RPC/action subscription.
- *
- * @param[in] ext_shm_addr Main ext SHM address.
- * @param[in] shm_mod SHM module.
- * @param[in] xpath Subscription XPath.
- * @param[in] evpipe_num Subscription event pipe number.
- * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_rpc_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath,
-        uint32_t evpipe_num, int all_evpipe);
-
-/**
  * @brief Add main SHM module notification subscription.
  * May remap main SHM!
  *
@@ -870,7 +922,7 @@ sr_error_info_t *sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_in
  * @param[in] sid Originator sysrepo session ID.
  * @param[in] evpipe_num Subscriber event pipe number.
  * @param[out] data Data provided by the subscriber.
- * @param[out] cb_err_info Callback error information generated by the subscriber, if any.
+ * @param[out] cb_err_info Callback error information generated by a subscriber, if any.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const struct lyd_node *parent,
@@ -879,16 +931,30 @@ sr_error_info_t *sr_shmsub_oper_notify(const struct lys_module *ly_mod, const ch
 /**
  * @brief Notify about (generate) an RPC/action event.
  *
- * @param[in] xpath XPath of the operation.
+ * @param[in] conn Connection to use.
+ * @param[in] op_path Path identifying the RPC/action.
  * @param[in] input Operation input tree.
  * @param[in] sid Originator sysrepo session ID.
- * @param[in] evpipe_num Subscriber event pipe number.
- * @param[out] output Operation output returned by the subscriber.
- * @param[out] cb_err_info Callback error information generated by the subscriber, if any.
+ * @param[in,out] event_id Generated event ID, set to 0 when passing.
+ * @param[out] output Operation output returned by the last subscriber.
+ * @param[out] cb_err_info Callback error information generated by a subscriber, if any.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_rpc_notify(const char *xpath, const struct lyd_node *input, sr_sid_t sid, uint32_t evpipe_num,
-        struct lyd_node **output, sr_error_info_t **cb_err_info);
+sr_error_info_t *sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_node *input,
+        sr_sid_t sid, uint32_t *event_id, struct lyd_node **output, sr_error_info_t **cb_err_info);
+
+/**
+ * @brief Notify about (generate) an RPC/action abort event.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] op_path Path identifying the RPC/action.
+ * @param[in] input Operation input tree.
+ * @param[in] sid Originator sysrepo session ID.
+ * @param[in] event_id Generated event ID from previous event.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_node *input,
+        sr_sid_t sid, uint32_t event_id);
 
 /**
  * @brief Notify about (generate) a notification event.
@@ -922,13 +988,13 @@ sr_error_info_t *sr_shmsub_conf_listen_process_module_events(struct modsub_conf_
 sr_error_info_t *sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_conn_ctx_t *conn);
 
 /**
- * @brief Process all RPC/action events, if any.
+ * @brief Process all RPC/action events for one RPC/action, if any.
  *
- * @param[in] rpc_sub RPC/action subscription.
+ * @param[in] rpc_sub RPC/action subscriptions.
  * @param[in] conn Connection to use.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_rpc_listen_process_events(struct modsub_rpc_s *rpc_sub, sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ctx_t *conn);
 
 /**
  * @brief Process all module notification events, if any.

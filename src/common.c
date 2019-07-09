@@ -185,7 +185,6 @@ sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
 
     /* SUBS UNLOCK */
     sr_munlock(&subs->subs_lock);
-    return;
 }
 
 sr_error_info_t *
@@ -330,104 +329,6 @@ sr_sub_oper_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *
 
     /* SUBS UNLOCK */
     sr_munlock(&subs->subs_lock);
-    return;
-}
-
-sr_error_info_t *
-sr_sub_rpc_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, sr_rpc_cb rpc_cb,
-        sr_rpc_tree_cb rpc_tree_cb, void *private_data, sr_subscription_ctx_t *subs)
-{
-    sr_error_info_t *err_info = NULL;
-    struct modsub_rpc_s *rpc_sub = NULL;
-    void *mem;
-
-    assert(mod_name && xpath && (rpc_cb || rpc_tree_cb) && (!rpc_cb || !rpc_tree_cb));
-
-    /* SUBS LOCK */
-    if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
-        return err_info;
-    }
-
-    /* add another subscription */
-    mem = realloc(subs->rpc_subs, (subs->rpc_sub_count + 1) * sizeof *subs->rpc_subs);
-    SR_CHECK_MEM_GOTO(!mem, err_info, error_unlock);
-    subs->rpc_subs = mem;
-    rpc_sub = &subs->rpc_subs[subs->rpc_sub_count];
-    memset(rpc_sub, 0, sizeof *rpc_sub);
-    rpc_sub->sub_shm.fd = -1;
-
-    /* set attributes */
-    rpc_sub->xpath = strdup(xpath);
-    SR_CHECK_MEM_GOTO(!rpc_sub->xpath, err_info, error_unlock);
-    rpc_sub->cb = rpc_cb;
-    rpc_sub->tree_cb = rpc_tree_cb;
-    rpc_sub->private_data = private_data;
-    rpc_sub->sess = sess;
-
-    /* create specific SHM and map it */
-    if ((err_info = sr_shmsub_open_map(mod_name, "rpc", sr_str_hash(xpath), &rpc_sub->sub_shm, sizeof(sr_sub_shm_t)))) {
-        free(rpc_sub->xpath);
-        goto error_unlock;
-    }
-
-    ++subs->rpc_sub_count;
-
-    /* SUBS UNLOCK */
-    sr_munlock(&subs->subs_lock);
-    return NULL;
-
-error_unlock:
-    /* SUBS UNLOCK */
-    sr_munlock(&subs->subs_lock);
-
-    return err_info;
-}
-
-void
-sr_sub_rpc_del(const char *xpath, sr_subscription_ctx_t *subs)
-{
-    sr_error_info_t *err_info = NULL;
-    uint32_t i;
-    struct modsub_rpc_s *rpc_sub;
-
-    /* SUBS LOCK */
-    if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
-        sr_errinfo_free(&err_info);
-        return;
-    }
-
-    for (i = 0; i < subs->rpc_sub_count; ++i) {
-        rpc_sub = &subs->rpc_subs[i];
-
-        if (strcmp(xpath, rpc_sub->xpath)) {
-            continue;
-        }
-
-        /* found our subscription, replace it with the last */
-        free(rpc_sub->xpath);
-        sr_shm_clear(&rpc_sub->sub_shm);
-        if (i < subs->rpc_sub_count - 1) {
-            memcpy(rpc_sub, &subs->rpc_subs[subs->rpc_sub_count - 1], sizeof *rpc_sub);
-        }
-        --subs->rpc_sub_count;
-
-        if (!subs->rpc_sub_count) {
-            /* no other RPC/action subscriptions */
-            free(subs->rpc_subs);
-            subs->rpc_subs = NULL;
-        }
-
-        /* SUBS UNLOCK */
-        sr_munlock(&subs->subs_lock);
-        return;
-    }
-
-    /* unreachable */
-    assert(0);
-
-    /* SUBS UNLOCK */
-    sr_munlock(&subs->subs_lock);
-    return;
 }
 
 sr_error_info_t *
@@ -590,7 +491,163 @@ sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, tim
         /* SUBS UNLOCK */
         sr_munlock(&subs->subs_lock);
     }
-    return;
+}
+
+sr_error_info_t *
+sr_sub_rpc_add(sr_session_ctx_t *sess, const char *op_path, const char *xpath, sr_rpc_cb rpc_cb,
+        sr_rpc_tree_cb rpc_tree_cb, void *private_data, uint32_t priority, sr_subscription_ctx_t *subs)
+{
+    sr_error_info_t *err_info = NULL;
+    struct opsub_rpc_s *rpc_sub = NULL;
+    uint32_t i;
+    char *mod_name;
+    void *mem[4] = {NULL};
+
+    assert(op_path && xpath && (rpc_cb || rpc_tree_cb) && (!rpc_cb || !rpc_tree_cb));
+
+    /* SUBS LOCK */
+    if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
+        return err_info;
+    }
+
+    /* try to find this RPC/action subscriptions, they may already exist */
+    for (i = 0; i < subs->rpc_sub_count; ++i) {
+        if (!strcmp(op_path, subs->rpc_subs[i].op_path)) {
+            break;
+        }
+    }
+
+    if (i == subs->rpc_sub_count) {
+        mem[0] = realloc(subs->rpc_subs, (subs->rpc_sub_count + 1) * sizeof *subs->rpc_subs);
+        SR_CHECK_MEM_GOTO(!mem[0], err_info, error_unlock);
+        subs->rpc_subs = mem[0];
+
+        rpc_sub = &subs->rpc_subs[i];
+        memset(rpc_sub, 0, sizeof *rpc_sub);
+        rpc_sub->sub_shm.fd = -1;
+
+        /* set attributes */
+        mem[1] = strdup(op_path);
+        SR_CHECK_MEM_GOTO(!mem[1], err_info, error_unlock);
+        rpc_sub->op_path = mem[1];
+
+        /* get module name */
+        mod_name = sr_get_first_ns(xpath);
+
+        /* create specific SHM and map it */
+        err_info = sr_shmsub_open_map(mod_name, "rpc", sr_str_hash(op_path), &rpc_sub->sub_shm, sizeof(sr_multi_sub_shm_t));
+        free(mod_name);
+        if (err_info) {
+            goto error_unlock;
+        }
+
+        /* make the subscription visible only after everything succeeds */
+        ++subs->rpc_sub_count;
+    } else {
+        rpc_sub = &subs->rpc_subs[i];
+    }
+
+    /* add another subscription */
+    mem[2] = realloc(rpc_sub->subs, (rpc_sub->sub_count + 1) * sizeof *rpc_sub->subs);
+    SR_CHECK_MEM_GOTO(!mem[2], err_info, error_unlock);
+    rpc_sub->subs = mem[2];
+    memset(rpc_sub->subs + rpc_sub->sub_count, 0, sizeof *rpc_sub->subs);
+
+    /* set attributes */
+    mem[3] = strdup(xpath);
+    SR_CHECK_MEM_GOTO(!mem[3], err_info, error_unlock);
+    rpc_sub->subs[rpc_sub->sub_count].xpath = mem[3];
+    rpc_sub->subs[rpc_sub->sub_count].priority = priority;
+    rpc_sub->subs[rpc_sub->sub_count].cb = rpc_cb;
+    rpc_sub->subs[rpc_sub->sub_count].tree_cb = rpc_tree_cb;
+    rpc_sub->subs[rpc_sub->sub_count].private_data = private_data;
+    rpc_sub->subs[rpc_sub->sub_count].sess = sess;
+
+    ++rpc_sub->sub_count;
+
+    /* SUBS UNLOCK */
+    sr_munlock(&subs->subs_lock);
+    return NULL;
+
+error_unlock:
+    /* SUBS UNLOCK */
+    sr_munlock(&subs->subs_lock);
+
+    for (i = 0; i < 4; ++i) {
+        free(mem[i]);
+    }
+    if (mem[1]) {
+        --subs->rpc_sub_count;
+        sr_shm_clear(&rpc_sub->sub_shm);
+    }
+    return err_info;
+}
+
+void
+sr_sub_rpc_del(const char *op_path, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb, void *private_data,
+        uint32_t priority, sr_subscription_ctx_t *subs)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i, j;
+    struct opsub_rpc_s *rpc_sub;
+
+    /* SUBS LOCK */
+    if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    for (i = 0; i < subs->rpc_sub_count; ++i) {
+        rpc_sub = &subs->rpc_subs[i];
+
+        if (strcmp(op_path, rpc_sub->op_path)) {
+            continue;
+        }
+
+        for (j = 0; j < rpc_sub->sub_count; ++j) {
+            if (strcmp(rpc_sub->subs[j].xpath, xpath) || (rpc_sub->subs[j].priority != priority)) {
+                continue;
+            }
+            if ((rpc_sub->subs[j].cb != rpc_cb) || (rpc_sub->subs[j].tree_cb != rpc_tree_cb)
+                        || (rpc_sub->subs[j].private_data != private_data)) {
+                continue;
+            }
+
+            /* found our subscription, replace it with the last */
+            free(rpc_sub->subs[j].xpath);
+            if (j < rpc_sub->sub_count - 1) {
+                memcpy(&rpc_sub->subs[j], &rpc_sub->subs[rpc_sub->sub_count - 1], sizeof *rpc_sub->subs);
+            }
+            --rpc_sub->sub_count;
+
+            if (!rpc_sub->sub_count) {
+                /* no other subscriptions for this RPC/action, replace it with the last */
+                free(rpc_sub->op_path);
+                sr_shm_clear(&rpc_sub->sub_shm);
+                free(rpc_sub->subs);
+                if (i < subs->rpc_sub_count - 1) {
+                    memcpy(rpc_sub, &subs->rpc_subs[subs->rpc_sub_count - 1], sizeof *rpc_sub);
+                }
+                --subs->rpc_sub_count;
+
+                if (!subs->rpc_sub_count) {
+                    /* no other RPC/action subscriptions */
+                    free(subs->rpc_subs);
+                    subs->rpc_subs = NULL;
+                }
+            }
+
+            /* SUBS UNLOCK */
+            sr_munlock(&subs->subs_lock);
+            return;
+        }
+    }
+
+    /* unreachable */
+    assert(0);
+
+    /* SUBS UNLOCK */
+    sr_munlock(&subs->subs_lock);
 }
 
 int
@@ -600,6 +657,7 @@ sr_subs_session_count(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs)
     struct modsub_conf_s *conf_subs;
     struct modsub_oper_s *oper_subs;
     struct modsub_notif_s *notif_sub;
+    struct opsub_rpc_s *rpc_sub;
 
     /* configuration subscriptions */
     for (i = 0; i < subs->conf_sub_count; ++i) {
@@ -621,18 +679,21 @@ sr_subs_session_count(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs)
         }
     }
 
-    /* RPC/action subscriptions */
-    for (i = 0; i < subs->rpc_sub_count; ++i) {
-        if (subs->rpc_subs[i].sess == sess) {
-            ++count;
-        }
-    }
-
     /* notification subscriptions */
     for (i = 0; i < subs->notif_sub_count; ++i) {
         notif_sub = &subs->notif_subs[i];
         for (j = 0; j < notif_sub->sub_count; ++j) {
             if (notif_sub->subs[j].sess == sess) {
+                ++count;
+            }
+        }
+    }
+
+    /* RPC/action subscriptions */
+    for (i = 0; i < subs->rpc_sub_count; ++i) {
+        rpc_sub = &subs->rpc_subs[i];
+        for (j = 0; j < rpc_sub->sub_count; ++j) {
+            if (rpc_sub->subs[j].sess == sess) {
                 ++count;
             }
         }
@@ -651,10 +712,12 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs)
     struct modsub_conf_s *conf_subs;
     struct modsub_oper_s *oper_sub;
     struct modsub_notif_s *notif_sub;
+    struct opsub_rpc_s *rpc_sub;
     sr_mod_t *shm_mod;
+    sr_rpc_t *shm_rpc;
     sr_shm_t *ext_shm;
 
-    ext_shm = &sess->conn->main_ext_shm;
+    ext_shm = &sess->conn->ext_shm;
 
     /* remove ourselves from session subscriptions */
     if ((err_info = sr_ptr_del(&sess->ptr_lock, (void ***)&sess->subscriptions, &sess->subscription_count, subs))) {
@@ -732,42 +795,6 @@ oper_subs_del:
         }
     }
 
-rpc_subs_del:
-    /* RPC/action subscriptions */
-    for (i = 0; i < subs->rpc_sub_count; ++i) {
-        if (subs->rpc_subs[i].sess == sess) {
-            mod_name = sr_get_first_ns(subs->rpc_subs[i].xpath);
-            SR_CHECK_INT_RET(!mod_name, err_info);
-
-            /* find module */
-            shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, ext_shm->addr, mod_name, 0);
-            SR_CHECK_INT_RET(!shm_mod, err_info);
-
-            /* remove the subscription from the main SHM */
-            if ((err_info = sr_shmmod_rpc_subscription_del(ext_shm->addr, shm_mod, subs->rpc_subs[i].xpath, subs->evpipe_num, 0))) {
-                free(mod_name);
-                return err_info;
-            }
-
-            /* delete the SHM file itself so that there is no leftover event */
-            if ((err_info = sr_path_sub_shm(mod_name, "rpc", sr_str_hash(subs->rpc_subs[i].xpath), 0, &path))) {
-                free(mod_name);
-                return err_info;
-            }
-            if (shm_unlink(path) == -1) {
-                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-            }
-            free(path);
-            free(mod_name);
-
-            /* remove the subscription from the subscription structure */
-            sr_sub_rpc_del(subs->rpc_subs[i].xpath, subs);
-
-            /* restart loop */
-            goto rpc_subs_del;
-        }
-    }
-
 notif_subs_del:
     /* notification subscriptions */
     for (i = 0; i < subs->notif_sub_count; ++i) {
@@ -806,6 +833,54 @@ notif_subs_del:
         }
     }
 
+rpc_subs_del:
+    /* RPC/action subscriptions */
+    for (i = 0; i < subs->rpc_sub_count; ++i) {
+        rpc_sub = &subs->rpc_subs[i];
+
+        /* find RPC/action */
+        shm_rpc = sr_shmmain_find_rpc((sr_main_shm_t *)sess->conn->main_shm.addr, ext_shm->addr, rpc_sub->op_path, 0);
+        SR_CHECK_INT_RET(!shm_rpc, err_info);
+        for (j = 0; j < rpc_sub->sub_count; ++j) {
+            if (rpc_sub->subs[j].sess == sess) {
+                /* remove the subscription from the main SHM */
+                if ((err_info = sr_shmmain_rpc_subscription_del(ext_shm->addr, shm_rpc, rpc_sub->subs[j].xpath,
+                            rpc_sub->subs[j].priority, subs->evpipe_num, 0, &last_removed))) {
+                    return err_info;
+                }
+
+                if (last_removed) {
+                    /* get module name */
+                    mod_name = sr_get_first_ns(rpc_sub->op_path);
+
+                    /* delete the SHM file itself so that there is no leftover event */
+                    err_info = sr_path_sub_shm(mod_name, "rpc", sr_str_hash(rpc_sub->op_path), 0, &path);
+                    free(mod_name);
+                    if (err_info) {
+                        return err_info;
+                    }
+                    if (shm_unlink(path) == -1) {
+                        SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
+                    }
+                    free(path);
+
+                    /* delete also RPC */
+                    err_info = sr_shmmain_del_rpc((sr_main_shm_t *)sess->conn->main_shm.addr, ext_shm->addr, rpc_sub->op_path, 0);
+                    if (err_info) {
+                        return err_info;
+                    }
+                }
+
+                /* remove the subscription from the subscription structure */
+                sr_sub_rpc_del(rpc_sub->op_path, rpc_sub->subs[j].xpath, rpc_sub->subs[j].cb, rpc_sub->subs[j].tree_cb,
+                        rpc_sub->subs[j].private_data, rpc_sub->subs[j].priority, subs);
+
+                /* restart loops */
+                goto rpc_subs_del;
+            }
+        }
+    }
+
     return NULL;
 }
 
@@ -817,6 +892,7 @@ sr_subs_del_all(sr_subscription_ctx_t *subs)
     struct modsub_conf_s *conf_subs;
     struct modsub_oper_s *oper_subs;
     struct modsub_notif_s *notif_sub;
+    struct opsub_rpc_s *rpc_sub;
 
 subs_del:
     /* configuration subscriptions */
@@ -843,21 +919,24 @@ subs_del:
         }
     }
 
-    /* RPC/action subscriptions */
-    for (i = 0; i < subs->rpc_sub_count; ++i) {
-        /* remove all subscriptions in subs from the session */
-        if ((err_info = sr_subs_session_del(subs->rpc_subs[i].sess, subs))) {
-            return err_info;
-        }
-        goto subs_del;
-    }
-
     /* notification subscriptions */
     for (i = 0; i < subs->notif_sub_count; ++i) {
         notif_sub = &subs->notif_subs[i];
         for (j = 0; j < notif_sub->sub_count; ++j) {
             /* remove all subscriptions in subs from the session */
             if ((err_info = sr_subs_session_del(notif_sub->subs[j].sess, subs))) {
+                return err_info;
+            }
+            goto subs_del;
+        }
+    }
+
+    /* RPC/action subscriptions */
+    for (i = 0; i < subs->rpc_sub_count; ++i) {
+        rpc_sub = &subs->rpc_subs[i];
+        for (j = 0; j < rpc_sub->sub_count; ++j) {
+            /* remove all subscriptions in subs from the session */
+            if ((err_info = sr_subs_session_del(rpc_sub->subs[i].sess, subs))) {
                 return err_info;
             }
             goto subs_del;
@@ -873,10 +952,10 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
 
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->main_ext_shm.addr, mod_name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, mod_name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    *notif_subs = (sr_mod_notif_sub_t *)(conn->main_ext_shm.addr + shm_mod->notif_subs);
+    *notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
     *notif_sub_count = shm_mod->notif_sub_count;
     return NULL;
 }
@@ -2283,7 +2362,7 @@ sr_ev2str(sr_sub_event_t ev)
     return NULL;
 }
 
-sr_notif_event_t
+sr_event_t
 sr_ev2api(sr_sub_event_t ev)
 {
     sr_error_info_t *err_info = NULL;
@@ -2297,6 +2376,8 @@ sr_ev2api(sr_sub_event_t ev)
         return SR_EV_DONE;
     case SR_SUB_EV_ABORT:
         return SR_EV_ABORT;
+    case SR_SUB_EV_RPC:
+        return SR_EV_RPC;
     default:
         SR_ERRINFO_INT(&err_info);
         sr_errinfo_free(&err_info);

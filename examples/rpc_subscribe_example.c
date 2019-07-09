@@ -116,11 +116,12 @@ print_val(const sr_val_t *value)
 
 static int
 rpc_cb(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt,
-        sr_val_t **output, size_t *output_cnt, void *private_data)
+        sr_event_t event, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     size_t i;
 
     (void)session;
+    (void)event;
     (void)private_data;
 
     printf("\n\n ========== RPC \"%s\" RECEIVED: =======================\n\n", path);
@@ -183,7 +184,7 @@ main(int argc, char **argv)
     }
 
     /* subscribe for the RPC */
-    rc = sr_rpc_subscribe(session, path, rpc_cb, NULL, 0, &subscription);
+    rc = sr_rpc_subscribe(session, path, rpc_cb, NULL, 0, 0, &subscription);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }

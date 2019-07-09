@@ -60,4 +60,13 @@ Existing installed YANG modules can be updated to newer revision.
 sysrepoctl --update ~/Documents/modules/ietf-netconf@2013-09-29.yang
 ~~~
 
+## -C, \-\-connection-count
+
+Get the number of currently connected clients. Can be used to check whether some schema changes
+can be immediately applied (if there are no connections) or not.
+
+~~~
+sysrepoctl --connection-count
+~~~
+
 */

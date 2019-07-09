@@ -118,7 +118,7 @@ teardown_f(void **state)
 
 /* TEST 1 */
 static int
-module_empty_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_notif_event_t event,
+module_empty_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
@@ -487,7 +487,7 @@ test_empty(void **state)
 
 /* TEST 2 */
 static int
-module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_notif_event_t event,
+module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
@@ -818,7 +818,7 @@ test_simple(void **state)
 
 /* TEST 3 */
 static int
-module_userord_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_notif_event_t event,
+module_userord_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
@@ -1076,7 +1076,7 @@ test_userord(void **state)
 
 /* TEST 4 */
 static int
-module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_notif_event_t event,
+module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
