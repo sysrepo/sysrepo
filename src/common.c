@@ -2347,6 +2347,8 @@ sr_ev2str(sr_sub_event_t ev)
         return "done";
     case SR_SUB_EV_ABORT:
         return "abort";
+    case SR_SUB_EV_ENABLED:
+        return "enabled";
     case SR_SUB_EV_OPER:
         return "operational";
     case SR_SUB_EV_RPC:
@@ -2376,6 +2378,8 @@ sr_ev2api(sr_sub_event_t ev)
         return SR_EV_DONE;
     case SR_SUB_EV_ABORT:
         return SR_EV_ABORT;
+    case SR_SUB_EV_ENABLED:
+        return SR_EV_ENABLED;
     case SR_SUB_EV_RPC:
         return SR_EV_RPC;
     default:

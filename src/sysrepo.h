@@ -1005,6 +1005,9 @@ typedef enum sr_subscr_flag_e {
 
     /**
      * @brief The subscriber wants to be notified about the current configuration at the moment of subscribing.
+     * It will receive ::SR_EV_ENABLED event, whose applying can fail causing the whole subscription to fail.
+     * On success this event will be followed by ::SR_EV_DONE. Be careful, ::SR_EV_ENABLED will be triggered
+     * even if there are no data so there will not be any changes!
      */
     SR_SUBSCR_ENABLED = 16,
 
@@ -1102,6 +1105,9 @@ typedef enum sr_event_e {
                         This event is also generated for RPC subscriptions when a later callback has failed and
                         this one has already successfully processed ::SR_EV_RPC. The callback that failed will never
                         get this event! */
+    SR_EV_ENABLED, /**< Occurs for subscriptions with the flag ::SR_SUBSCR_ENABLED and is normally followed by
+                        ::SR_EV_DONE. It can fail and will also be triggered even when there is no startup configuration
+                        (which is different from the ::SR_EV_CHANGE event). */
     SR_EV_RPC,     /**< Occurs for a standard RPC execution. If a later callback fails, ::SR_EV_ABORT is generated. */
 } sr_event_t;
 

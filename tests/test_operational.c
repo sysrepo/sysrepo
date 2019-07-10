@@ -110,9 +110,11 @@ enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char
         assert_string_equal(module_name, "ietf-interfaces");
 
         if (*called == 0) {
-            assert_int_equal(event, SR_EV_CHANGE);
-        } else {
+            assert_int_equal(event, SR_EV_ENABLED);
+        } else if (*called == 1) {
             assert_int_equal(event, SR_EV_DONE);
+        } else {
+            fail();
         }
 
         /* get changes iter */
@@ -174,6 +176,26 @@ enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char
         assert_int_equal(new_val->dflt, 1);
 
         sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+    } else if (!strcmp(xpath, "/ietf-interfaces:interfaces/interface[name='eth256']")) {
+        assert_string_equal(module_name, "ietf-interfaces");
+
+        if (*called == 0) {
+            assert_int_equal(event, SR_EV_ENABLED);
+        } else if (*called == 1) {
+            assert_int_equal(event, SR_EV_DONE);
+        } else {
+            fail();
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/ietf-interfaces:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
 
         /* no more changes */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
@@ -259,7 +281,7 @@ test_enabled_partial(void **state)
     ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth256']",
             enabled_change_cb, &called, 0, SR_SUBSCR_ENABLED, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(called, 0);
+    assert_int_equal(called, 2);
 
     /* "operational" should be empty again */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);

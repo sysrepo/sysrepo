@@ -2842,34 +2842,31 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
         }
     }
 
-    if (mod_info.diff) {
-        tmp_sess.conn = conn;
-        tmp_sess.ds = mod_info.ds;
-        tmp_sess.dt[tmp_sess.ds].diff = mod_info.diff;
+    tmp_sess.conn = conn;
+    tmp_sess.ds = mod_info.ds;
+    tmp_sess.dt[tmp_sess.ds].diff = mod_info.diff;
 
-        if (!(opts & SR_SUBSCR_DONE_ONLY)) {
-            tmp_sess.ev = SR_SUB_EV_CHANGE;
-            SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(tmp_sess.ev));
-
-            /* present all changes in a regular "change" event */
-            err_code = callback(&tmp_sess, ly_mod->name, xpath, sr_ev2api(tmp_sess.ev), private_data);
-            if (err_code != SR_ERR_OK) {
-                /* callback failed but it is the only one so no "abort" event is necessary */
-                sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, NULL, "Subscribing to \"%s\" changes failed.", ly_mod->name);
-                if (tmp_sess.err_info && (tmp_sess.err_info->err_code == SR_ERR_OK)) {
-                    /* remember callback error info */
-                    sr_errinfo_merge(&err_info, tmp_sess.err_info);
-                }
-                goto cleanup_mods_unlock;
-            }
-        }
-
-        /* finish with a "done" event just because this event should imitate a regular configuration change */
-        tmp_sess.ev = SR_SUB_EV_DONE;
+    if (!(opts & SR_SUBSCR_DONE_ONLY)) {
+        tmp_sess.ev = SR_SUB_EV_ENABLED;
         SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(tmp_sess.ev));
 
-        callback(&tmp_sess, ly_mod->name, xpath, sr_ev2api(tmp_sess.ev), private_data);
+        /* present all changes in an "enabled" event */
+        err_code = callback(&tmp_sess, ly_mod->name, xpath, sr_ev2api(tmp_sess.ev), private_data);
+        if (err_code != SR_ERR_OK) {
+            /* callback failed but it is the only one so no "abort" event is necessary */
+            sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, NULL, "Subscribing to \"%s\" changes failed.", ly_mod->name);
+            if (tmp_sess.err_info && (tmp_sess.err_info->err_code == SR_ERR_OK)) {
+                /* remember callback error info */
+                sr_errinfo_merge(&err_info, tmp_sess.err_info);
+            }
+            goto cleanup_mods_unlock;
+        }
     }
+
+    /* finish with a "done" event just because this event should imitate a regular configuration change */
+    tmp_sess.ev = SR_SUB_EV_DONE;
+    SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(tmp_sess.ev));
+    callback(&tmp_sess, ly_mod->name, xpath, sr_ev2api(tmp_sess.ev), private_data);
 
     /* success */
 
@@ -3083,7 +3080,7 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
     SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || (session->ev == SR_SUB_EV_NONE) || !xpath || !iter,
             session, err_info);
 
-    if (!session->dt[session->ds].diff) {
+    if ((session->ev != SR_SUB_EV_ENABLED) && (session->ev != SR_SUB_EV_DONE) && !session->dt[session->ds].diff) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Session without changes.");
         return sr_api_ret(session, err_info);
     }
@@ -3094,7 +3091,11 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
         return sr_api_ret(session, err_info);
     }
 
-    (*iter)->set = lyd_find_path(session->dt[session->ds].diff, xpath);
+    if (session->dt[session->ds].diff) {
+        (*iter)->set = lyd_find_path(session->dt[session->ds].diff, xpath);
+    } else {
+        (*iter)->set = ly_set_new();
+    }
     SR_CHECK_MEM_GOTO(!(*iter)->set, err_info, error);
     (*iter)->idx = 0;
 

@@ -193,6 +193,7 @@ typedef enum sr_sub_event_e {
     SR_SUB_EV_CHANGE,           /**< New change event ready. */
     SR_SUB_EV_DONE,             /**< New done event ready. */
     SR_SUB_EV_ABORT,            /**< New abort event ready. */
+    SR_SUB_EV_ENABLED,          /**< New enabled event ready. */
     SR_SUB_EV_OPER,             /**< New operational event ready. */
     SR_SUB_EV_RPC,              /**< New RPC/action event ready. */
     SR_SUB_EV_NOTIF,            /**< New notification event ready. */
@@ -200,7 +201,8 @@ typedef enum sr_sub_event_e {
 
 /** Whether an event is one to be processed by the listeners (subscribers). */
 #define SR_IS_LISTEN_EVENT(ev) ((ev == SR_SUB_EV_UPDATE) || (ev == SR_SUB_EV_CHANGE) || (ev == SR_SUB_EV_DONE) \
-        || (ev == SR_SUB_EV_ABORT) || (ev == SR_SUB_EV_OPER) || (ev == SR_SUB_EV_RPC) || (ev == SR_SUB_EV_NOTIF))
+        || (ev == SR_SUB_EV_ABORT) || (ev == SR_SUB_EV_ENABLED) || (ev == SR_SUB_EV_OPER) || (ev == SR_SUB_EV_RPC) \
+        || (ev == SR_SUB_EV_NOTIF))
 
 /** Whether an event is one to be processed by the originators. */
 #define SR_IS_NOTIFY_EVENT(ev) ((ev == SR_SUB_EV_SUCCESS) || (ev == SR_SUB_EV_ERROR))
