@@ -524,7 +524,7 @@ main(int argc, char** argv)
 
     /* check for additional argument */
     if (optind < argc) {
-        error_print(0, "Redundant parameters");
+        error_print(0, "Redundant parameters (%s)", argv[optind]);
         goto cleanup;
     }
 
