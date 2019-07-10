@@ -611,7 +611,7 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
                 sizeof(sr_rpc_t), main_shm->rpc_sub_count, ext_buf, &ext_buf_cur);
 
     /* copy RPC subscriptions */
-    shm_rpc = (sr_rpc_t *)(shm_ext->addr + main_shm->rpc_subs);
+    shm_rpc = (sr_rpc_t *)(ext_buf + main_shm->rpc_subs);
     for (i = 0; i < main_shm->rpc_sub_count; ++i) {
         shm_rpc[i].subs = sr_shmmain_defrag_copy_array_with_string(shm_ext->addr, shm_rpc[i].subs,
                 sizeof(sr_rpc_sub_t), shm_rpc[i].sub_count, ext_buf, &ext_buf_cur);
