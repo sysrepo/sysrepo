@@ -147,12 +147,19 @@ sr_log_msg(int plugin, sr_log_level_t ll, const char *msg, const char *path)
     }
 }
 
-void
-sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpath, const char *format, ...)
+/**
+ * @brief Add a new error into error_info.
+ *
+ * @param[in,out] err_info Existing error_info.
+ * @param[in] err_code Error code.
+ * @param[in] xpath Error XPath.
+ * @param[in] format Error message format.
+ * @param[in] vargs Error message variable arguments.
+ */
+static void
+sr_errinfo_add(sr_error_info_t **err_info, sr_error_t err_code, const char *xpath, const char *format, va_list vargs)
 {
     void *mem;
-    va_list vargs;
-    int ret, idx;
 
     if (!*err_info) {
         *err_info = calloc(1, sizeof **err_info);
@@ -170,11 +177,14 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
     }
     (*err_info)->err = mem;
 
-    va_start(vargs, format);
-    ret = vasprintf(&(*err_info)->err[(*err_info)->err_count].message, format, vargs);
-    va_end(vargs);
-    if (ret == -1) {
-        return;
+    if (vargs) {
+        if (vasprintf(&(*err_info)->err[(*err_info)->err_count].message, format, vargs) == -1) {
+            return;
+        }
+    } else {
+        if (!((*err_info)->err[(*err_info)->err_count].message = strdup(format))) {
+            return;
+        }
     }
 
     if (xpath) {
@@ -188,6 +198,17 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
     }
 
     ++(*err_info)->err_count;
+}
+
+void
+sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpath, const char *format, ...)
+{
+    va_list vargs;
+    int idx;
+
+    va_start(vargs, format);
+    sr_errinfo_add(err_info, err_code, xpath, format, vargs);
+    va_end(vargs);
 
     /* print it */
     idx = (*err_info)->err_count - 1;
@@ -293,7 +314,7 @@ sr_errinfo_merge(sr_error_info_t **err_info, sr_error_info_t *err_info2)
     }
 
     for (i = 0; i < err_info2->err_count; ++i) {
-        sr_errinfo_new(err_info, err_info2->err_code, err_info2->err[i].xpath, err_info2->err[i].message);
+        sr_errinfo_add(err_info, err_info2->err_code, err_info2->err[i].xpath, err_info2->err[i].message, NULL);
 
         free(err_info2->err[i].xpath);
         free(err_info2->err[i].message);
