@@ -130,14 +130,14 @@ test_data_deps(void **state)
 
     /* check current internal data */
     cmp_int_data(st->conn, "test",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>test</name>"
         "<removed/>"
         "<inverse-data-deps>refs</inverse-data-deps>"
     "</module>"
     );
     cmp_int_data(st->conn, "ietf-interfaces",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>ietf-interfaces</name>"
         "<revision>2014-05-08</revision>"
         "<replay-support>0000000000</replay-support>"
@@ -145,14 +145,14 @@ test_data_deps(void **state)
     "</module>"
     );
     cmp_int_data(st->conn, "iana-if-type",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>iana-if-type</name>"
         "<revision>2014-05-08</revision>"
         "<removed/>"
     "</module>"
     );
     cmp_int_data(st->conn, "refs",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>refs</name>"
         "<replay-support>0000000000</replay-support>"
         "<removed/>"
@@ -192,7 +192,7 @@ test_op_deps(void **state)
 
     /* check current internal data */
     cmp_int_data(st->conn, "ops-ref",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>ops-ref</name>"
         "<replay-support>0000000000</replay-support>"
         "<removed/>"
@@ -200,7 +200,7 @@ test_op_deps(void **state)
     );
 
     cmp_int_data(st->conn, "ops",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>ops</name>"
         "<removed/>"
         "<op-deps>"
@@ -288,7 +288,7 @@ test_remove_dep_module(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     cmp_int_data(st->conn, "ops-ref",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>ops-ref</name>"
         "<replay-support>0000000000</replay-support>"
         "<removed/>"
@@ -312,7 +312,7 @@ test_update_module(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     cmp_int_data(st->conn, "rev",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>rev</name>"
     "</module>"
     );
@@ -344,7 +344,7 @@ test_update_module(void **state)
 
     /* check that the module was updated */
     cmp_int_data(st->conn, "rev",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>rev</name>"
         "<revision>1970-01-01</revision>"
         "<op-deps>"
@@ -386,14 +386,14 @@ test_change_feature(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     cmp_int_data(st->conn, "features",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>features</name>"
         "<enabled-feature>feat1</enabled-feature>"
         "<data-deps><module>test</module></data-deps>"
     "</module>"
     );
     cmp_int_data(st->conn, "test",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>test</name>"
         "<inverse-data-deps>features</inverse-data-deps>"
     "</module>"
@@ -430,7 +430,7 @@ test_change_feature(void **state)
 
     /* check that the feature was not disabled */
     cmp_int_data(st->conn, "features",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>features</name>"
         "<enabled-feature>feat1</enabled-feature>"
         "<changed-feature>"
@@ -462,14 +462,14 @@ test_change_feature(void **state)
 
     /* check that the feature was disabled and dependency removed */
     cmp_int_data(st->conn, "features",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>features</name>"
     "</module>"
     );
 
     /* check that the inverse dependency was removed */
     cmp_int_data(st->conn, "test",
-    "<module xmlns=\"urn:sysrepo\">"
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>test</name>"
     "</module>"
     );
