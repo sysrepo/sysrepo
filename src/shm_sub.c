@@ -1670,8 +1670,9 @@ sr_shmsub_conf_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct mod
  * @param[in] data Optional data to write after the structure.
  * @param[in] data_len Additional data length.
  * @param[in] err_code Optional error code if a callback failed.
+ * @return err_info, NULL on success.
  */
-static void
+static sr_error_info_t *
 sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t valid_subscr_count, const char *data,
         uint32_t data_len, sr_error_t err_code)
 {
@@ -1680,8 +1681,7 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
 
     event = multi_sub_shm->event;
 
-    multi_sub_shm->subscriber_count -= valid_subscr_count;
-    if (!multi_sub_shm->subscriber_count || err_code) {
+    if (!multi_sub_shm->subscriber_count || (multi_sub_shm->subscriber_count == valid_subscr_count) || err_code) {
         /* last subscriber finished or an error, update event */
         switch (event) {
         case SR_SUB_EV_UPDATE:
@@ -1702,12 +1702,14 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
             multi_sub_shm->event = SR_SUB_EV_NONE;
             break;
         default:
-            SR_ERRINFO_INT(&err_info);
-            sr_errinfo_free(&err_info);
-            break;
+            /* no longer a listener event, we could have timeouted */
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Unable to finish processing event with ID %u priority %u "
+                    "(timeout probably).", multi_sub_shm->event_id, multi_sub_shm->priority);
+            return err_info;
         }
     }
 
+    multi_sub_shm->subscriber_count -= valid_subscr_count;
     if (data && data_len) {
         /* write whatever data we have */
         memcpy(((char *)multi_sub_shm) + sizeof *multi_sub_shm, data, data_len);
@@ -1715,6 +1717,7 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
 
     SR_LOG_INF("Finished processing \"%s\" event%s with ID %u priority %u (remaining %u subscribers).", sr_ev2str(event),
             err_code ? " (callback fail)" : "", multi_sub_shm->event_id, multi_sub_shm->priority, multi_sub_shm->subscriber_count);
+    return NULL;
 }
 
 /**
@@ -1909,12 +1912,11 @@ process_event:
     }
 
     /* finish event */
-    sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code);
+    err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code);
 
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, 1, __func__);
 
-    /* success */
     goto cleanup;
 
 cleanup_rdunlock:
@@ -2386,12 +2388,11 @@ process_event:
     }
 
     /* finish event */
-    sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code);
+    err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code);
 
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, 1, __func__);
 
-    /* success */
     goto cleanup;
 
 cleanup_rdunlock:
@@ -2463,10 +2464,14 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     }
 
     /* finish event */
-    sr_shmsub_multi_listen_write_event(multi_sub_shm, notif_subs->sub_count, NULL, 0, 0);
+    err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, notif_subs->sub_count, NULL, 0, 0);
 
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, 1, __func__);
+
+    if (err_info) {
+        goto cleanup;
+    }
 
     /* go to the operation, not the root */
     notif_op = notif;
