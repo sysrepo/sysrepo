@@ -271,7 +271,7 @@ public:
         std::shared_ptr<sysrepo::Vals_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<sysrepo::Vals_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_Holder_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOisO)", xpath, out, request_id, original_xpath, private_ctx);
+        arglist = Py_BuildValue("(sOlsO)", xpath, out, (long)request_id, original_xpath, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
@@ -295,7 +295,7 @@ public:
         std::shared_ptr<sysrepo::Vals> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOO)", xpath, in, timestamp, private_ctx);
+        arglist = Py_BuildValue("(sOlO)", xpath, in, (long)timestamp, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
@@ -314,7 +314,7 @@ public:
         std::shared_ptr<sysrepo::Trees> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Trees_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOO)", xpath, in, timestamp, private_ctx);
+        arglist = Py_BuildValue("(sOlO)", xpath, in, (long)timestamp, private_ctx);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
