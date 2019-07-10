@@ -94,22 +94,22 @@ public:
     /** Setter for decimal64 value.*/
     void set(double decimal64_val);
     /** Setter for int8 value, C++ only.*/
-    void set(int8_t int8_val, sr_type_t type);
+    void set(int8_t int8_val);
     /** Setter for int16 value, C++ only.*/
-    void set(int16_t int16_val, sr_type_t type);
+    void set(int16_t int16_val);
     /** Setter for int32 value, C++ only.*/
-    void set(int32_t int32_val, sr_type_t type);
+    void set(int32_t int32_val);
     /** Setter for int64 value, type can be SR_INT8_T, SR_INT16_T, SR_INT32_T,
-     * SR_INT64_T, SR_UINT8_T, SR_UINT16_T and SR_UINT32_T,*/
-    void set(int64_t int64_val, sr_type_t type);
+     * SR_INT64_T, SR_UINT8_T, SR_UINT16_T, SR_UINT32_T, and SR_UINT64_T */
+    void set(int64_t int64_val, sr_type_t type = SR_INT64_T);
     /** Setter for uint8 value, C++ only.*/
-    void set(uint8_t uint8_val, sr_type_t type);
+    void set(uint8_t uint8_val);
     /** Setter for uint16 value, C++ only.*/
-    void set(uint16_t uint16_val, sr_type_t type);
+    void set(uint16_t uint16_val);
     /** Setter for uint32 value, C++ only.*/
-    void set(uint32_t uint32_val, sr_type_t type);
+    void set(uint32_t uint32_val);
     /** Setter for uint64 value, C++ only.*/
-    void set(uint64_t uint64_val, sr_type_t type);
+    void set(uint64_t uint64_val);
     ~Tree();
 
     friend class Session;

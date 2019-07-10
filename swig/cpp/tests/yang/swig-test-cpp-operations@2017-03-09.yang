@@ -40,6 +40,10 @@ module swig-test-cpp-operations {
     }
 
     container cpp-operations {
+        leaf test-child {
+                type string;
+        }
+
         list test-get {
             key "name";
 
@@ -47,6 +51,22 @@ module swig-test-cpp-operations {
                 type string;
                 description
                   "Name of the test.";
+            }
+
+            leaf number {
+                 type int32;
+            }
+        }
+
+        list user {
+            description "An ordered list";
+            ordered-by user;
+            config true;
+
+            key "name";
+
+            leaf name {
+                type string;
             }
 
             leaf number {

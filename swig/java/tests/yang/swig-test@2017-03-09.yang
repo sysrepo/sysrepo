@@ -24,38 +24,6 @@ module swig-test {
 
     }
 
-    container lua {
-        list test {
-            key "name"; 
-
-            leaf name {
-                type string;
-                description
-                  "Name of the test.";
-            }
-
-            leaf number {
-                 type int32;
-            }
-        }                        
-    }
-
-    container lua-changes {
-        list test {
-            key "name"; 
-
-            leaf name {
-                type string;
-                description
-                  "Name of the test.";
-            }
-
-            leaf number {
-                 type int32;
-            }
-        }                        
-    }
-
     container java-operations {
         list test-get {
             key "name"; 

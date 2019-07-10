@@ -39,9 +39,9 @@ void init_test(sysrepo::S_Session sess)
 
     subs->module_change_subscribe(module_name.c_str(), cb, NULL, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY);
 
-    for (int i = LOW_BOUND; i < HIGH_BOUND; i++) {
+    for (int32_t i = LOW_BOUND; i < HIGH_BOUND; i++) {
         const auto xpath = get_xpath(get_test_name(i), "number");
-        sysrepo::S_Val vset(new sysrepo::Val((int32_t)i, SR_INT32_T));
+        sysrepo::S_Val vset(new sysrepo::Val(i));
         sess->set_item(xpath.c_str(), vset);
     }
 
@@ -122,7 +122,7 @@ test_module_change_modify(sysrepo::S_Session sess)
     subs->module_change_subscribe(module_name.c_str(), cb, NULL, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY);
 
     const auto xpath = get_xpath(get_test_name(LOW_BOUND), "number");
-    sysrepo::S_Val vset(new sysrepo::Val((int32_t)42, SR_INT32_T));
+    sysrepo::S_Val vset(new sysrepo::Val(int32_t{42}));
     sess->set_item(xpath.c_str(), vset);
     sess->commit();
     subs->unsubscribe();
@@ -162,7 +162,7 @@ test_module_change_create(sysrepo::S_Session sess)
     subs->module_change_subscribe(module_name.c_str(), cb, NULL, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY);
 
     const auto xpath = get_xpath(get_test_name(HIGH_BOUND), "number");
-    sysrepo::S_Val vset(new sysrepo::Val((int32_t)42, SR_INT32_T));
+    sysrepo::S_Val vset(new sysrepo::Val("42",SR_INT32_T));
     sess->set_item(xpath.c_str(), vset);
     sess->commit();
 

@@ -2,11 +2,12 @@ cmake_minimum_required(VERSION 2.8.12)
 project(sysrepo)
 set(SYSREPO_DESC "YANG-based system repository")
 include(GNUInstallDirs)
+include(CheckIncludeFile)
 
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 7)
-set(SYSREPO_MICRO_VERSION 7)
+set(SYSREPO_MICRO_VERSION 8)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION})
 
@@ -16,12 +17,10 @@ set(CMAKE_MACOSX_RPATH TRUE)
 # setup bindings
 set(GEN_LANGUAGE_BINDINGS 1 CACHE BOOL "Enable language bindings generation.")
 set(GEN_PYTHON_BINDINGS 1 CACHE BOOL "Enable python bindings.")
-set(GEN_LUA_BINDINGS 1 CACHE BOOL "Enable Lua bindings.")
 set(GEN_CPP_BINDINGS 1 CACHE BOOL "Enable C++ bindings.")
 set(BUILD_CPP_EXAMPLES 1 CACHE BOOL "Build C++ examples.")
 set(GEN_JAVA_BINDINGS 0 CACHE BOOL "Enable Java bindings.")
 set(GEN_PYTHON_VERSION "2" CACHE STRING "Python version")
-set(GEN_LUA_VERSION "5.1" CACHE STRING "Lua version")
 set(GEN_PYTHON2_TESTS 1 CACHE BOOL "Enable Python2 tests.")
 
 # set default build type if not specified by user
@@ -44,6 +43,14 @@ set(CALL_TARGET_BINS_DIRECTLY ON CACHE BOOL "Enable calling sysrepoctl/sysrepocf
 set(INDIRECT_YANG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/yang/" CACHE PATH "Where to store YANG files when not executing sysrepoctl directly")
 set(CALL_SYSREPOCTL_BIN "${CMAKE_BINARY_DIR}/src/sysrepoctl" CACHE PATH "Path to the sysrepoctl binary to be used at install time")
 set(CALL_SYSREPOCFG_BIN "${CMAKE_BINARY_DIR}/src/sysrepocfg" CACHE PATH "Path to the sysrepocfg binary to be used at install time")
+
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    set(COMPILER_FORMAT_ATTR "__attribute__ ((__format__(archetype, string_index, first_to_check)))")
+elseif(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    set(COMPILER_FORMAT_ATTR "__attribute__ ((__format__(archetype, string_index, first_to_check)))")
+else()
+    set(COMPILER_FORMAT_ATTR "")
+endif()
 
 if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
@@ -90,7 +97,12 @@ MESSAGE(STATUS "sysrepo repository location: ${REPOSITORY_LOC}")
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/inc")
+include_directories("${CMAKE_CURRENT_BINARY_DIR}/inc")
+configure_file(${PROJECT_SOURCE_DIR}/inc/sysrepo.h ${PROJECT_BINARY_DIR}/inc/sysrepo.h COPYONLY)
+configure_file(${PROJECT_SOURCE_DIR}/inc/sysrepo/plugins.h ${PROJECT_BINARY_DIR}/inc/sysrepo/plugins.h COPYONLY)
+configure_file(${PROJECT_SOURCE_DIR}/inc/sysrepo/trees.h.in ${PROJECT_BINARY_DIR}/inc/sysrepo/trees.h @ONLY)
+configure_file(${PROJECT_SOURCE_DIR}/inc/sysrepo/values.h.in ${PROJECT_BINARY_DIR}/inc/sysrepo/values.h @ONLY)
+configure_file(${PROJECT_SOURCE_DIR}/inc/sysrepo/xpath.h ${PROJECT_BINARY_DIR}/inc/sysrepo/xpath.h COPYONLY)
 
 # find required libraries
 find_package(EV REQUIRED)
@@ -101,6 +113,12 @@ include_directories(${YANG_INCLUDE_DIR})
 
 find_package(Protobuf-c REQUIRED)
 include_directories(${PROTOBUF-C_INCLUDE_DIR})
+
+# find bash
+find_program(BASH bash /usr/bin)
+if(BASH-NOTFOUND)
+    message(FATAL_ERROR "Faild to find bash in /usr/bin")
+endif()
 
 # find libavl and/or libredblack
 find_package(AVL)
@@ -140,6 +158,9 @@ set(CMAKE_REQUIRED_LIBRARIES pthread)
 include(CheckFunctionExists)
 include(CheckIncludeFiles)
 include(CheckStructHasMember)
+include(CheckSymbolExists)
+set(CMAKE_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS} -D_GNU_SOURCE")
+check_include_file(stdatomic.h HAVE_STDATOMIC)
 CHECK_FUNCTION_EXISTS(pthread_rwlockattr_setkind_np HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
 CHECK_FUNCTION_EXISTS(getpeereid HAVE_GETPEEREID)
 CHECK_FUNCTION_EXISTS(getpeerucred HAVE_GETPEERUCRED)
@@ -152,12 +173,16 @@ if(HAVE_MKSTEMPS)
     set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -DHAVE_MKSTEMPS")
 endif(HAVE_MKSTEMPS)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
+CHECK_SYMBOL_EXISTS("F_OFD_SETLKW" "fcntl.h" HAVE_LINUX_OFD_LOCK)
+if (HAVE_LINUX_OFD_LOCK)
+    add_definitions(-D_GNU_SOURCE)
+endif()
 
 # user options
 set(ENABLE_NACM 0 CACHE BOOL
     "Enable NETCONF Access Control Model (RFC 6536).")
 
-set(NACM_RECOVERY_UID 0 CACHE INTEGER
+set(NACM_RECOVERY_UID 0 CACHE STRING
     "UID to be used to identify NACM recovery session, default value is 0.")
 
 set(ENABLE_NOTIF_STORE 1 CACHE BOOL
@@ -188,25 +213,25 @@ else()
 endif()
 
 # timeouts
-set(REQUEST_TIMEOUT 15 CACHE INTEGER
+set(REQUEST_TIMEOUT 15 CACHE STRING
     "Timeout (in seconds) for Sysrepo API requests. Set to 0 for no timeout.")
 
-set(COMMIT_VERIFY_TIMEOUT 10 CACHE INTEGER
+set(COMMIT_VERIFY_TIMEOUT 10 CACHE STRING
     "Timeout (in seconds) that a commit request can wait for answer from commit verifiers and change notification subscribers.")
 
-set(OPER_DATA_PROVIDE_TIMEOUT 2 CACHE INTEGER
+set(OPER_DATA_PROVIDE_TIMEOUT 2 CACHE STRING
     "Timeout (in seconds) that a request can wait for operational data from data providers.")
 
-set(NOTIF_AGE_TIMEOUT 60 CACHE INTEGER
+set(NOTIF_AGE_TIMEOUT 60 CACHE STRING
     "Timeout (in minutes) after which stored notifications will be aged out and erased from notification store.")
 
-set(NOTIF_TIME_WINDOW 10 CACHE INTEGER
+set(NOTIF_TIME_WINDOW 10 CACHE STRING
     "Time window (in minutes) for notifications to be grouped into one data file (larger window produces larger data files).")
 
-set(GET_ITEMS_FETCH_LIMIT 100 CACHE INTEGER
+set(GET_ITEMS_FETCH_LIMIT 100 CACHE STRING
     "Number of items being fetched in one message from Sysrepo Engine when processing sr_get_items_iter calls. Increasing this can improve efficiency when working with large datastores at the cost of higher memory usage peaks.")
 
-set(GET_SUBTREE_CHUNK_CHILD_LIMIT 20 CACHE INTEGER
+set(GET_SUBTREE_CHUNK_CHILD_LIMIT 20 CACHE STRING
     "Maximum number of children nodes (of any parent node) being fetched in one message from Sysrepo Engine when processing sr_get_subtree(s)_*_chunk(s). Increasing this can improve efficiency when working with large datastores at the cost of higher memory usage peaks.")
 
 # add subdirectories
@@ -313,12 +338,9 @@ if(ENABLE_NACM)
     INSTALL_YANG("ietf-netconf-acm" "@2018-02-14" "644")
 endif(ENABLE_NACM)
 
-find_package(PkgConfig QUIET)
-if(PKG_CONFIG_FOUND)
-    # generate and install pkg-config file
-    configure_file("libsysrepo.pc.in" "libsysrepo.pc" @ONLY)
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
-endif()
+# generate and install pkg-config file
+configure_file("libsysrepo.pc.in" "libsysrepo.pc" @ONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
 # install doc (man)
 install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepoctl.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)

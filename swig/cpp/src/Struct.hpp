@@ -99,67 +99,69 @@ public:
     Val();
     /** Wrapper for [sr_val_t](@ref sr_val_t).*/
     Val(sr_val_t *val, S_Deleter deleter);
-    /** Constructor for string value, type can be SR_STRING_T, SR_BINARY_T, SR_BITS_T, SR_ENUM_T,
-     * SR_IDENTITYREF_T and SR_INSTANCEID_T.*/
-    Val(const char *val, sr_type_t type = SR_STRING_T);
+   /** Constructor for string value, , type can be any type except SR_UNKNOWN_T,
+      *  SR_ANYXML_T, SR_TREE_ITERATOR_T, SR_NOTIFICATION_T, and SR_ANYDATA_T */
+     Val(const char *val, sr_type_t type = SR_STRING_T);
     /** Constructor for bool value.*/
-    Val(bool bool_val, sr_type_t type = SR_BOOL_T);
+    explicit Val(bool bool_val, sr_type_t type = SR_BOOL_T);
     /** Constructor for decimal64 value.*/
-    Val(double decimal64_val);
+    explicit Val(double decimal64_val);
     /** Constructor for int8 value, C++ only.*/
-    Val(int8_t int8_val, sr_type_t type);
+    explicit Val(int8_t int8_val);
     /** Constructor for int16 value, C++ only.*/
-    Val(int16_t int16_val, sr_type_t type);
+    explicit Val(int16_t int16_val);
     /** Constructor for int32 value, C++ only.*/
-    Val(int32_t int32_val, sr_type_t type);
+    explicit Val(int32_t int32_val);
     /** Constructor for int64 value, type can be SR_INT8_T, SR_INT16_T, SR_INT32_T,
-     * SR_INT64_T, SR_UINT8_T, SR_UINT16_T and SR_UINT32_T,*/
-    Val(int64_t int64_val, sr_type_t type);
+     * SR_INT64_T, SR_UINT8_T, SR_UINT16_T, SR_UINT32_T, and SR_UINT64_T*/
+    Val(int64_t int64_val, sr_type_t type = SR_INT64_T);
     /** Constructor for uint8 value, C++ only.*/
-    Val(uint8_t uint8_val, sr_type_t type);
+    explicit Val(uint8_t uint8_val);
     /** Constructor for uint16 value, C++ only.*/
-    Val(uint16_t uint16_val, sr_type_t type);
+    explicit Val(uint16_t uint16_val);
     /** Constructor for uint32 value, C++ only.*/
-    Val(uint32_t uint32_val, sr_type_t type);
+    explicit Val(uint32_t uint32_val);
     /** Constructor for uint64 value, C++ only.*/
-    Val(uint64_t uint64_val, sr_type_t type);
+    explicit Val(uint64_t uint64_val);
    ~Val();
-    /** Setter for string value, type can be SR_STRING_T, SR_BINARY_T, SR_BITS_T, SR_ENUM_T,
-     * SR_IDENTITYREF_T and SR_INSTANCEID_T.*/
+    /** Setter for string value, type can be any type except SR_UNKNOWN_T,
+      * SR_ANYXML_T,S SR_TREE_ITERATOR_T, SR_NOTIFICATION_T, and SR_ANYDATA_T */
     void set(const char *xpath, const char *val, sr_type_t type = SR_STRING_T);
     /** Setter for bool value.*/
     void set(const char *xpath, bool bool_val, sr_type_t type = SR_BOOL_T);
     /** Setter for decimal64 value.*/
     void set(const char *xpath, double decimal64_val);
     /** Setter for int8 value, C++ only.*/
-    void set(const char *xpath, int8_t int8_val, sr_type_t type);
+    void set(const char *xpath, int8_t int8_val);
     /** Setter for int16 value, C++ only.*/
-    void set(const char *xpath, int16_t int16_val, sr_type_t type);
+    void set(const char *xpath, int16_t int16_val);
     /** Setter for int32 value, C++ only.*/
-    void set(const char *xpath, int32_t int32_val, sr_type_t type);
+    void set(const char *xpath, int32_t int32_val);
     /** Setter for int64 value, type can be SR_INT8_T, SR_INT16_T, SR_INT32_T,
-     * SR_INT64_T, SR_UINT8_T, SR_UINT16_T and SR_UINT32_T,*/
-    void set(const char *xpath, int64_t int64_val, sr_type_t type);
+     * SR_INT64_T, SR_UINT8_T, SR_UINT16_T, SR_UINT32_T, and SR_UINT64_T*/
+    void set(const char *xpath, int64_t int64_val, sr_type_t type = SR_INT64_T);
     /** Setter for uint8 value, C++ only.*/
-    void set(const char *xpath, uint8_t uint8_val, sr_type_t type);
+    void set(const char *xpath, uint8_t uint8_val);
     /** Setter for uint16 value, C++ only.*/
-    void set(const char *xpath, uint16_t uint16_val, sr_type_t type);
+    void set(const char *xpath, uint16_t uint16_val);
     /** Setter for uint32 value, C++ only.*/
-    void set(const char *xpath, uint32_t uint32_val, sr_type_t type);
+    void set(const char *xpath, uint32_t uint32_val);
     /** Setter for uint64 value, C++ only.*/
-    void set(const char *xpath, uint64_t uint64_val, sr_type_t type);
+    void set(const char *xpath, uint64_t uint64_val);
     /** Getter for xpath.*/
-    char *xpath() {return _val->xpath;};
+    char *xpath();
     /** Setter for xpath.*/
-    void xpath_set(char *xpath);
+    void xpath_set(const char *xpath);
     /** Getter for type.*/
-    sr_type_t type() {return _val->type;};
+    sr_type_t type();
     /** Getter for dflt.*/
-    bool dflt() {return _val->dflt;};
+    bool dflt();
     /** Setter for dflt.*/
-    void dflt_set(bool data) {_val->dflt = data;};
+    void dflt_set(bool data);
     /** Getter for data.*/
-    S_Data data() {S_Data data(new Data(_val->data, _val->type, _deleter)); return data;};
+    S_Data data();
+    /** true if Val is empty */
+    bool empty();
     /** Wrapper for [sr_print_val_mem](@ref sr_print_val_mem) */
     std::string to_string();
     /** Wrapper for [sr_val_to_string](@ref sr_val_to_string) */
@@ -197,6 +199,8 @@ public:
     size_t val_cnt() {return _cnt;};
     /** Wrapper for [sr_dup_values](@ref sr_dup_values) */
     S_Vals dup();
+    /** Wrapper for [sr_realloc_values](@ref sr_realloc_values) */
+    sr_val_t* reallocate(size_t n);
 
     friend class Session;
     friend class Subscribe;
@@ -218,11 +222,16 @@ public:
     Vals_Holder(sr_val_t **vals, size_t *cnt);
     /** Create [sr_val_t](@ref sr_val_t) array of n size.*/
     S_Vals allocate(size_t n);
+    /** Resize [sr_val_t](@ref sr_val_t) array to n size.*/
+    S_Vals reallocate(size_t n);
+    size_t val_cnt(void) { return *p_cnt; }
+    S_Vals vals(void);
     ~Vals_Holder();
 
 private:
     size_t *p_cnt;
     sr_val_t **p_vals;
+    S_Vals p_Vals;
     bool _allocate;
 };
 

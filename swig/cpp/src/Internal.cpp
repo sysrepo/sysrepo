@@ -19,6 +19,7 @@
  * limitations under the License.
  */
 
+#include <cassert>
 #include <iostream>
 
 #include "Sysrepo.hpp"
@@ -108,6 +109,14 @@ Deleter::~Deleter() {
     v._sess = nullptr;
     break;
     }
+}
+
+/** @short Notify the deleter that the underlying storage was reallocated */
+void Deleter::update_vals_with_count(sr_val_t *val, size_t cnt)
+{
+    assert(_t == Free_Type::VALS);
+    v._val = val;
+    c._cnt = cnt;
 }
 
 }

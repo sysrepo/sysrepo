@@ -74,8 +74,8 @@ typedef enum rp_capability_change_type_e {
 #define CONFIG_CHANGE_USERNAME_XPATH "/ietf-netconf-notifications:netconf-config-change/changed-by/username"
 #define CONFIG_CHANGE_SESSION_ID_XPATH "/ietf-netconf-notifications:netconf-config-change/changed-by/session-id"
 #define CONFIG_CHANGE_DATASTORE_XPATH "/ietf-netconf-notifications:netconf-config-change/datastore"
-#define CONFIG_CHANGE_TARGET_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%d]/target"
-#define CONFIG_CHANGE_OPERATION_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%d]/operation"
+#define CONFIG_CHANGE_TARGET_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%lu]/target"
+#define CONFIG_CHANGE_OPERATION_XPATH "/ietf-netconf-notifications:netconf-config-change/edit[%lu]/operation"
 //! @endcond
 
 /**
@@ -2477,7 +2477,7 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
 
     /* prepare xpaths where nested data will be requested */
     if (LYS_LIST == sch_node->nodetype) {
-        rc = rp_dt_create_instance_xps(session, sch_node, &xpaths, &xp_count);
+        rc = rp_dt_create_instance_xps(session, xpath, &xpaths, &xp_count);
         CHECK_RC_MSG_RETURN(rc, "Failed to create xpaths for instances of sch node");
     } else {
         xpaths = calloc(1, sizeof(*xpaths));

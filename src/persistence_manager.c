@@ -700,7 +700,7 @@ pm_get_cached_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subsc
             CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add a subscription into the subscription list.");
 
             /* increase copy refcount */
-            subscription->copy_cnt += 1;
+            ATOMIC_INC(&subscription->copy_cnt);
         }
     }
 
@@ -801,7 +801,7 @@ pm_cache_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscripti
             CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add a subscription into the cache list.");
 
             /* increase copy refcount */
-            subscription->copy_cnt += 1;
+            ATOMIC_INC(&subscription->copy_cnt);
         }
     }
 

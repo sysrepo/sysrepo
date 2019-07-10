@@ -373,8 +373,5 @@ int main(){
             cmocka_unit_test_setup_teardown(set_and_get_items_from_feature_of_submodule, set_items_data_and_feature_import_setup, set_items_data_and_feature_import_teardown)
     };
 
-    watchdog_start(300);
-    int ret = cmocka_run_group_tests(tests, setup, teardown);
-    watchdog_stop();
-    return ret;
+    return cmocka_run_group_tests(tests, setup, teardown);
 }

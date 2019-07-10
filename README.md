@@ -24,7 +24,7 @@ Sysrepo can be easily integrated with management agents such as [NETCONF](https:
 -	plugins infrastructure for loosely-coupled integration with sysrepo
 -	YANG 1.1 support
 -	custom RPC, Event Notifications, YANG 1.1 Actions support
--	Python 2 & 3, Lua 5.1 & 5.2, Java bindigs
+-	Python 2 & 3, Java bindigs
 -	notification store & notification replay
 -	NACM (NETCONF Access Control Model) - disabled by default
 -	(TODO) confirmed commit support

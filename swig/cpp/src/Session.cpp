@@ -203,11 +203,9 @@ S_Val Session::get_item_next(S_Iter_Value iter)
     if (SR_ERR_OK == ret) {
         value->_deleter = std::make_shared<Deleter>(value->_val);
         return value;
-    }
-    if (SR_ERR_NOT_FOUND == ret) {
+    } else {
         return nullptr;
     }
-    throw_exception(ret);
 }
 
 S_Tree Session::get_subtree(const char *xpath, sr_get_subtree_options_t opts)

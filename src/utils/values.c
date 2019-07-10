@@ -103,7 +103,7 @@ sr_new_val_ctx(sr_mem_ctx_t *sr_mem, const char *xpath, sr_val_t **value_p)
     }
 
     if (sr_mem) {
-        sr_mem->obj_count += 1;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
     *value_p = value;
     return SR_ERR_OK;
@@ -153,7 +153,7 @@ sr_new_values_ctx(sr_mem_ctx_t *sr_mem, size_t count, sr_val_t **values_p)
         for (size_t i = 0; i < count; ++i) {
             values[i]._sr_mem = sr_mem;
         }
-        sr_mem->obj_count += 1; /* 1 for the entire array */
+        ATOMIC_INC(&sr_mem->obj_count); /* 1 for the entire array */
     }
 
     *values_p = values;
@@ -201,15 +201,17 @@ sr_realloc_values(size_t old_value_cnt, size_t new_value_cnt, sr_val_t **values_
         return SR_ERR_INTERNAL;
     }
 
-    /* zero the new memory */
-    memset(values + old_value_cnt, 0, (new_value_cnt - old_value_cnt) * sizeof *values);
+    if (new_value_cnt > old_value_cnt) {
+        /* zero the new memory */
+        memset(values + old_value_cnt, 0, (new_value_cnt - old_value_cnt) * sizeof *values);
+    }
 
     if (sr_mem) {
         for (size_t i = old_value_cnt; i < new_value_cnt; ++i) {
             values[i]._sr_mem = sr_mem;
         }
         if (0 == old_value_cnt) {
-            sr_mem->obj_count += 1; /* 1 for the entire array */
+            ATOMIC_INC(&sr_mem->obj_count); /* 1 for the entire array */
         }
     }
 

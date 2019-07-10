@@ -19,7 +19,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -1482,7 +1484,7 @@ static int
 md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *root, sr_list_t *being_parsed)
 {
     int rc = SR_ERR_OK;
-    struct lys_node *node = NULL, *child = NULL, *parent = NULL;
+    struct lys_node *node = NULL, *child = NULL, *parent = NULL, *iter = NULL;
     const struct lys_module *main_module_schema = NULL;
     md_module_t *dest_module = NULL;
     bool process_children = true;
@@ -1606,9 +1608,9 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
             }
             case LYS_AUGMENT:
             {
-                struct lys_node_augment *augment = (struct lys_node_augment *)node;
-                if (NULL != augment->when) {
-                    when = augment->when->cond;
+                struct lys_node_augment *aug = (struct lys_node_augment *)node;
+                if (NULL != aug->when) {
+                    when = aug->when->cond;
                 }
                 break;
             }
@@ -1697,7 +1699,8 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                 /* skip */
             } else if (LYS_CONFIG_R & node->flags) {
                 /*< this node has operational data (and all descendands as well) */
-                if (NULL == node->parent) {
+                for (iter = node->parent; iter && (iter->nodetype == LYS_USES); iter = iter->parent);
+                if (NULL == iter) {
                     rc = SR_ERR_NOT_FOUND;
                     if (augment) {
                         rc = md_check_op_data_subtree(dest_module, node);
@@ -1751,16 +1754,6 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                         if (augment) {
                             if (node->nodetype == LYS_AUGMENT) {
                                 child = (struct lys_node *)lys_getnext(NULL, node, NULL, 0);
-                                if (child != NULL) {
-                                    if (child->nodetype & (LYS_CONTAINER | LYS_LIST)) {
-                                        /* All op data means containers/lists containing children will have
-                                           PRIV_OP_SUBTREE set. Empty containers/lists will not have this set.
-                                           Neither will containers that only have children from a different schema. */
-                                        assert(((intptr_t)child->priv & PRIV_OP_SUBTREE) || child->child == NULL || main_module_schema != lys_node_module(child->child));
-                                    } else {
-                                        assert(child->flags & LYS_CONFIG_R);
-                                    }
-                                }
                             } else {
                                 child = node;
                             }
@@ -1798,8 +1791,8 @@ next_node:
                     process_children = true;
                 } else {
                     parent = lys_parent(node);
-                    if (!augment) {
-                        /* if we already got into augment data, we have to go back */
+                    if (!augment || (node->parent && (node->parent->nodetype == LYS_AUGMENT) && (node->parent != root))) {
+                        /* if we already got into augment data, we have to go back (not if this is not the starting augment) */
                         node = parent;
                     } else {
                         /* if processing augment, we must be able to go back through

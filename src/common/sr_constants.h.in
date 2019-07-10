@@ -38,6 +38,19 @@
 #cmakedefine HAVE_STAT_ST_MTIM
 #cmakedefine HAVE_TIMED_LOCK
 #cmakedefine HAVE_FSETXATTR
+#cmakedefine HAVE_LINUX_OFD_LOCK
+#cmakedefine HAVE_STDATOMIC
+#ifdef HAVE_STDATOMIC
+# include <stdatomic.h>
+
+# define ATOMIC_UINT32_T atomic_uint_fast32_t
+# define ATOMIC_INC(x) atomic_fetch_add(x, 1)
+# define ATOMIC_DEC(x) atomic_fetch_sub(x, 1)
+#else
+# define ATOMIC_UINT32_T uint32_t
+# define ATOMIC_INC(x) __sync_fetch_and_add(x, 1)
+# define ATOMIC_DEC(x) __sync_fetch_and_sub(x, 1)
+#endif
 
 /** Use libavl (if defined) or libredblack (if not defined) for binary tree manipulations. */
 #cmakedefine USE_AVL_LIB
@@ -181,5 +194,9 @@
 /** libyang format flag.
  */
 #define SR_FILE_FORMAT_LY @FILE_FORMAT_LY@
+
+/** Compiler macro for generating printf-like errors.
+ */
+#define FORMAT(archetype, string_index, first_to_check) @COMPILER_FORMAT_ATTR@
 
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

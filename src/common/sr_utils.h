@@ -1,11 +1,12 @@
 /**
  * @file sr_utils.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
- *         Milan Lenco <milan.lenco@pantheon.tech>
+ *         Milan Lenco <milan.lenco@pantheon.tech>, Pavol Hanzel <pavol.hanzel@pantheon.tech>
  * @brief Sysrepo utility functions API.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
+ * Copyright 2018 PANTHEON Tech.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -184,7 +185,7 @@ int sr_vasprintf(char **strp, const char *fmt, va_list ap);
  *                 a format specifier in the format string
  * @return Error code (SR_ERR_OK on success)
  */
-int sr_asprintf(char **strp, const char *fmt, ...);
+int sr_asprintf(char **strp, const char *fmt, ...) FORMAT(printf, 2, 3);
 
 /**
  * @brief Copies the first string from the beginning of the xpath up to the first colon,
@@ -618,7 +619,7 @@ void sr_free_node(sr_node_t *node);
  * @param[in] msg_fmt Error message format string.
  */
 int sr_add_error(sr_error_info_t **sr_errors, size_t *sr_error_cnt, const char *xpath,
-        const char *msg_fmt, ...);
+        const char *msg_fmt, ...) FORMAT(printf, 4, 5);
 
 /**
  * @brief Frees an array of detailed error information.
@@ -723,7 +724,7 @@ bool sr_lys_module_has_data(const struct lys_module *module);
  * @param [in] print_ctx Print context to use for printing.
  * @param [in] format Format string followed by corresponding set of extra arguments.
  */
-int sr_print(sr_print_ctx_t *print_ctx, const char *format, ...);
+int sr_print(sr_print_ctx_t *print_ctx, const char *format, ...) FORMAT(printf, 2, 3);
 
 /**
  * @brief Creates the uri for module with the following pattern:
