@@ -1,5 +1,5 @@
 module sysrepo {
-    namespace "urn:sysrepo";
+    namespace "http://www.sysrepo.org/yang/sysrepo";
     prefix sr;
 
     yang-version 1.1;
@@ -21,7 +21,12 @@ module sysrepo {
                <mvasko@cesnet.cz>";
 
     description
-      "Sysrepo YANG datastore internal attrobutes and information.";
+      "Sysrepo YANG datastore internal attributes and information.";
+
+    revision "2019-07-10" {
+      description
+        "Initial revision.";
+    }
 
     typedef module-ref {
         description
