@@ -5,13 +5,6 @@ include(GNUInstallDirs)
 include(CheckSymbolExists)
 include(CheckIncludeFile)
 
-# setup version
-set(SYSREPO_MAJOR_VERSION 1)
-set(SYSREPO_MINOR_VERSION 0)
-set(SYSREPO_MICRO_VERSION 0)
-set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
-set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION})
-
 # osx specific
 set(CMAKE_MACOSX_RPATH TRUE)
 
@@ -30,6 +23,24 @@ set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
 if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
+
+# Version of the project
+# Generic version of not only the library. Major version is reserved for really big changes of the project,
+# minor version changes with added functionality (new tool, functionality of the tool or library, ...) and
+# micro version is changed with a set of small changes or bugfixes anywhere in the project.
+set(SYSREPO_MAJOR_VERSION 1)
+set(SYSREPO_MINOR_VERSION 0)
+set(SYSREPO_MICRO_VERSION 0)
+set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
+
+# Version of the library
+# Major version is changed with every backward non-compatible API/ABI change in libyang, minor version changes
+# with backward compatible change and micro version is connected with any internal change of the library.
+set(SYSREPO_MAJOR_SOVERSION 1)
+set(SYSREPO_MINOR_SOVERSION 0)
+set(SYSREPO_MICRO_SOVERSION 0)
+set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
+set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
 # options
 if((CMAKE_BUILD_TYPE_LOWER STREQUAL debug) OR (CMAKE_BUILD_TYPE_LOWER STREQUAL package))
@@ -122,7 +133,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_library(srobj OBJECT ${LIB_SRC})
 set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
 add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
-set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_VERSION} SOVERSION ${SYSREPO_SOVERSION})
+set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_VERSION} SOVERSION ${SYSREPO_SOVERSION_FULL})
 
 # dependencies
 target_link_libraries(sysrepo rt)
