@@ -185,12 +185,7 @@ sr_shmsub_notify_finish_wrunlock(sr_sub_shm_t *sub_shm, size_t shm_struct_size, 
 
         err_xpath = ptr;
 
-        if (err_code == SR_ERR_NOMEM) {
-            /* exception for this error */
-            sr_errinfo_new(cb_err_info, err_code, NULL, NULL);
-        } else {
-            sr_errinfo_new(cb_err_info, err_code, err_xpath[0] ? err_xpath : NULL, err_msg[0] ? err_msg : sr_strerror(err_code));
-        }
+        sr_errinfo_new(cb_err_info, err_code, err_xpath[0] ? err_xpath : NULL, err_msg[0] ? err_msg : sr_strerror(err_code));
     } else if (sub_shm->event == SR_SUB_EV_SUCCESS) {
         /* we were notified about the success and can clear it now */
         sub_shm->event = SR_SUB_EV_NONE;
