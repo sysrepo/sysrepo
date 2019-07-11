@@ -88,7 +88,7 @@ char *Data::get_string() const {
 }
 uint8_t Data::get_uint8() const {
     if (_t != SR_UINT8_T) throw_exception(SR_ERR_DATA_MISSING);
-    return _d.uint32_val;
+    return _d.uint8_val;
 }
 uint16_t Data::get_uint16() const {
     if (_t != SR_UINT16_T) throw_exception(SR_ERR_DATA_MISSING);
@@ -116,292 +116,182 @@ Val::Val() {
 }
 Val::~Val() {}
 Val::Val(const char *value, sr_type_t type) {
-    int ret = SR_ERR_OK;
-    sr_val_t *val = nullptr;
-    val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-
-    if (val == nullptr)
+    _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
+    if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
-
-    val->type = type;
-
-    if (type == SR_BINARY_T || type == SR_BITS_T || type == SR_ENUM_T || type == SR_IDENTITYREF_T || \
-        type == SR_INSTANCEID_T || type == SR_STRING_T) {
-        ret = sr_val_set_str_data(val, type, value);
-        if (ret != SR_ERR_OK)
-            throw_exception(ret);
-    } else if (value != nullptr && ( type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
-        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T)) {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val = val;
-    _deleter = S_Deleter(new Deleter(val));
+    set(nullptr,value,type);
+    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(bool bool_val, sr_type_t type) {
-    sr_val_t *val = nullptr;
-    val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
-        throw_exception(SR_ERR_NOMEM);
-    if (type == SR_BOOL_T) {
-	val->data.bool_val = bool_val;
-    } else {
-        free(val);
+    if (type != SR_BOOL_T)
         throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
-    _val = val;
-    _deleter = S_Deleter(new Deleter(val));
+    _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
+    if (_val == nullptr)
+        throw_exception(SR_ERR_NOMEM);
+    set(nullptr,bool_val,type);
+    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(double decimal64_val) {
-    sr_val_t *val = nullptr;
-    val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr) {
+    _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
+    if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
-    } else {
-	val->data.decimal64_val = decimal64_val;
-    }
-
-    val->type = SR_DECIMAL64_T;
-    _val = val;
-    _deleter = S_Deleter(new Deleter(val));
+    set(nullptr,decimal64_val);
+    _deleter = S_Deleter(new Deleter(_val));
 }
-Val::Val(int8_t int8_val, sr_type_t type) {
-    sr_val_t *val = nullptr;
-    val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
+Val::Val(int8_t int8_val) {
+    _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
+    if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
-    if (type == SR_INT8_T) {
-	val->data.int8_val = int8_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
-    _val = val;
-    _deleter = S_Deleter(new Deleter(val));
+    set(nullptr,int8_val);
+    _deleter = S_Deleter(new Deleter(_val));
 }
-Val::Val(int16_t int16_val, sr_type_t type) {
-    sr_val_t *val = nullptr;
-    val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
+Val::Val(int16_t int16_val) {
+    _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
+    if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
-    if (type == SR_INT16_T) {
-	val->data.int16_val = int16_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
-    _val = val;
-    _deleter = S_Deleter(new Deleter(val));
+    set(nullptr,int16_val);
+    _deleter = S_Deleter(new Deleter(_val));
 }
-Val::Val(int32_t int32_val, sr_type_t type) {
-    sr_val_t *val = nullptr;
-    val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
+Val::Val(int32_t int32_val) {
+    _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
+    if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
-    if (type == SR_INT32_T) {
-	val->data.int32_val = int32_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
-    _val = val;
-    _deleter = S_Deleter(new Deleter(val));
+    set(nullptr,int32_val);
+    _deleter = S_Deleter(new Deleter(_val));
 }
 Val::Val(int64_t int64_val, sr_type_t type) {
-    sr_val_t *val = nullptr;
-    val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
+    _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
+    if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
-    if (type == SR_UINT64_T) {
-        val->data.uint64_val = (uint64_t) int64_val;
-    } else if (type == SR_UINT32_T) {
-        val->data.uint32_val = (uint32_t) int64_val;
-    } else if (type == SR_UINT16_T) {
-        val->data.uint16_val = (uint16_t) int64_val;
-    } else if (type == SR_UINT8_T) {
-        val->data.uint8_val = (uint8_t) int64_val;
-    } else if (type == SR_INT64_T) {
-        val->data.int64_val = (int64_t) int64_val;
-    } else if (type == SR_INT32_T) {
-        val->data.int32_val = (int32_t) int64_val;
-    } else if (type == SR_INT16_T) {
-        val->data.int16_val = (int16_t) int64_val;
-    } else if (type == SR_INT8_T) {
-        val->data.int8_val = (int8_t) int64_val;
-    } else {
-	    printf("\nERROR \n\n\n\n");
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
-    _val = val;
-    _deleter = S_Deleter(new Deleter(val));
+    set(nullptr,int64_val,type);
+    _deleter = S_Deleter(new Deleter(_val));
 }
-Val::Val(uint8_t uint8_val, sr_type_t type) {
-    sr_val_t *val = nullptr;
-    val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
+Val::Val(uint8_t uint8_val) {
+    _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
+    if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
-    if (type == SR_UINT8_T) {
-	val->data.uint8_val = uint8_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
-    _val = val;
-    _deleter = S_Deleter(new Deleter(val));
+    set(nullptr,uint8_val);
+    _deleter = S_Deleter(new Deleter(_val));
 }
-Val::Val(uint16_t uint16_val, sr_type_t type) {
-    sr_val_t *val = nullptr;
-    val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
+Val::Val(uint16_t uint16_val) {
+    _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
+    if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
-    if (type == SR_UINT16_T) {
-	val->data.uint16_val = uint16_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
-    _val = val;
-    _deleter = S_Deleter(new Deleter(val));
+    set(nullptr,uint16_val);
+    _deleter = S_Deleter(new Deleter(_val));
 }
-Val::Val(uint32_t uint32_val, sr_type_t type) {
-    sr_val_t *val = nullptr;
-    val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
+Val::Val(uint32_t uint32_val) {
+    _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
+    if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
-    if (type == SR_UINT32_T) {
-	val->data.uint32_val = uint32_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
-    _val = val;
-    _deleter = S_Deleter(new Deleter(val));
+    set(nullptr,uint32_val);
+    _deleter = S_Deleter(new Deleter(_val));
 }
-Val::Val(uint64_t uint64_val, sr_type_t type) {
-    sr_val_t *val = nullptr;
-    val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == nullptr)
+Val::Val(uint64_t uint64_val) {
+    _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
+    if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
-    if (type == SR_UINT64_T) {
-	val->data.uint64_val = uint64_val;
-    } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    val->type = type;
-    _val = val;
-    _deleter = S_Deleter(new Deleter(val));
+    set(nullptr,uint64_val);
+    _deleter = S_Deleter(new Deleter(_val));
 }
 void Val::set(const char *xpath, const char *value, sr_type_t type) {
-    int ret = SR_ERR_OK;
-    if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
+    switch (type)
+    {
+        case SR_LIST_T:
+        case SR_CONTAINER_T:
+        case SR_CONTAINER_PRESENCE_T:
+        case SR_LEAF_EMPTY_T: {
+            if ((value != nullptr) && (*value))
+                throw_exception(SR_ERR_INVAL_ARG);
+            xpath_set(xpath);
+            _val->type = type;
+            break;
+        }
 
-    ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
+        case SR_BINARY_T:
+        case SR_BITS_T:
+        case SR_ENUM_T:
+        case SR_IDENTITYREF_T:
+        case SR_INSTANCEID_T:
+        case SR_STRING_T: {
+            xpath_set(xpath);
+            int ret = sr_val_set_str_data(_val, type, value);
+            if (ret != SR_ERR_OK)
+                throw_exception(ret);
+            _val->type = type;
+            break;
+        }
 
-    _val->type = type;
+        case SR_BOOL_T: {
+            set(xpath,(!strcasecmp(value,"true") ? true : false));
+            break;
+        }
 
-    if (type == SR_BINARY_T || type == SR_BITS_T || type == SR_ENUM_T || type == SR_IDENTITYREF_T || \
-        type == SR_INSTANCEID_T || type == SR_STRING_T) {
-        ret = sr_val_set_str_data(_val, type, value);
-        if (ret != SR_ERR_OK)
-            throw_exception(ret);
-    } else if (value != nullptr && ( type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
-        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T)) {
-        throw_exception(SR_ERR_INVAL_ARG);
+        case SR_DECIMAL64_T: {
+            set(xpath,std::atof(value));
+            break;
+        }
+
+        case SR_INT8_T:
+        case SR_INT16_T:
+        case SR_INT32_T:
+        case SR_INT64_T:
+        case SR_UINT8_T:
+        case SR_UINT16_T:
+        case SR_UINT32_T:
+        case SR_UINT64_T: {
+            set(xpath,int64_t{std::atoll(value)},type);
+            break;
+        }
+
+        case SR_UNKNOWN_T:
+        case SR_ANYXML_T:
+        case SR_TREE_ITERATOR_T:
+        case SR_NOTIFICATION_T:
+        case SR_ANYDATA_T:
+        default: {
+            throw_exception(SR_ERR_INVAL_ARG);
+            break;
+        }
     }
 }
 void Val::set(const char *xpath, bool bool_val, sr_type_t type) {
-    if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
-
-    int ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-
-    if (type == SR_BOOL_T) {
-	    _val->data.bool_val = bool_val;
-    } else {
+    if (type != SR_BOOL_T)
         throw_exception(SR_ERR_INVAL_ARG);
-    }
 
-    _val->type = type;
+    xpath_set(xpath);
+
+    _val->data.bool_val = bool_val;
+    _val->type = SR_BOOL_T;
 }
 void Val::set(const char *xpath, double decimal64_val) {
-    if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
-
-    int ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
+    xpath_set(xpath);
 
     _val->data.decimal64_val = decimal64_val;
 
     _val->type = SR_DECIMAL64_T;
 }
-void Val::set(const char *xpath, int8_t int8_val, sr_type_t type) {
-    if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
+void Val::set(const char *xpath, int8_t int8_val) {
+    xpath_set(xpath);
 
-    int ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-
-    if (type == SR_INT8_T) {
-	    _val->data.int8_val = int8_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.int8_val = int8_val;
+    _val->type = SR_INT8_T;
 }
-void Val::set(const char *xpath, int16_t int16_val, sr_type_t type) {
-    if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
+void Val::set(const char *xpath, int16_t int16_val) {
+    xpath_set(xpath);
 
-    int ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-
-    if (type == SR_INT16_T) {
-	    _val->data.int16_val = int16_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.int16_val = int16_val;
+    _val->type = SR_INT16_T;
 }
-void Val::set(const char *xpath, int32_t int32_val, sr_type_t type) {
-    if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
+void Val::set(const char *xpath, int32_t int32_val) {
+    xpath_set(xpath);
 
-    int ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-
-    if (type == SR_INT32_T) {
-	    _val->data.int32_val = int32_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.int32_val = int32_val;
+    _val->type = SR_INT32_T;
 }
 
 void Val::set(const char *xpath, int64_t int64_val, sr_type_t type) {
-    if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
-
-    int ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
+    xpath_set(xpath);
 
     if (type == SR_UINT64_T) {
         _val->data.uint64_val = (uint64_t) int64_val;
@@ -425,65 +315,66 @@ void Val::set(const char *xpath, int64_t int64_val, sr_type_t type) {
 
     _val->type = type;
 }
-void Val::set(const char *xpath, uint8_t uint8_val, sr_type_t type) {
-    if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
+void Val::set(const char *xpath, uint8_t uint8_val) {
+    xpath_set(xpath);
 
-    int ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-
-    if (type == SR_UINT8_T) {
-	    _val->data.uint8_val = uint8_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.uint8_val = uint8_val;
+    _val->type = SR_UINT8_T;
 }
-void Val::set(const char *xpath, uint16_t uint16_val, sr_type_t type) {
-    if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
+void Val::set(const char *xpath, uint16_t uint16_val) {
+    xpath_set(xpath);
 
-    int ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-
-    if (type == SR_UINT16_T) {
-	    _val->data.uint16_val = uint16_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.uint16_val = uint16_val;
+    _val->type = SR_UINT16_T;
 }
-void Val::set(const char *xpath, uint32_t uint32_val, sr_type_t type) {
-    if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
+void Val::set(const char *xpath, uint32_t uint32_val) {
+    xpath_set(xpath);
 
-    int ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-
-    if (type == SR_UINT32_T) {
-	    _val->data.uint32_val = uint32_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.uint32_val = uint32_val;
+    _val->type = SR_UINT32_T;
 }
-void Val::set(const char *xpath, uint64_t uint64_val, sr_type_t type) {
-    if (_val == nullptr) throw_exception(SR_ERR_OPERATION_FAILED);
+void Val::set(const char *xpath, uint64_t uint64_val) {
+    xpath_set(xpath);
 
-    int ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-
-    if (type == SR_UINT64_T) {
-	    _val->data.uint64_val = uint64_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
+    _val->data.uint64_val = uint64_val;
+    _val->type = SR_UINT64_T;
 }
-void Val::xpath_set(char *xpath) {
-    int ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
+char *Val::xpath() {
+    if (_val == nullptr)
+        throw_exception(SR_ERR_OPERATION_FAILED);
+    return _val->xpath;
+}
+void Val::xpath_set(const char *xpath) {
+    if ((_val == nullptr) || ((xpath == nullptr) && (_val->xpath != nullptr)))
+        throw_exception(SR_ERR_OPERATION_FAILED);
+
+    if (xpath != nullptr) {
+        int ret = sr_val_set_xpath(_val, xpath);
+        if (ret != SR_ERR_OK)
+            throw_exception(ret);
+    }
+}
+sr_type_t Val::type() {
+    if (_val == nullptr)
+        throw_exception(SR_ERR_OPERATION_FAILED);
+    return _val->type;
+}
+bool Val::dflt() {
+    if (_val == nullptr)
+        throw_exception(SR_ERR_OPERATION_FAILED);
+    return _val->dflt;
+}
+void Val::dflt_set(bool data) {
+    if (_val == nullptr)
+        throw_exception(SR_ERR_OPERATION_FAILED);
+    _val->dflt = data;
+}
+S_Data Val::data() {
+    S_Data data(new Data(_val->data, _val->type, _deleter));
+    return data;
+}
+bool Val::empty() {
+    return !_val;
 }
 std::string Val::to_string() {
     char *mem = nullptr;
@@ -532,6 +423,8 @@ Vals::Vals(const sr_val_t *vals, const size_t cnt, S_Deleter deleter) {
     _deleter = deleter;
 }
 Vals::Vals(sr_val_t **vals, size_t *cnt, S_Deleter deleter) {
+    if (!vals || !cnt || (!*vals && *cnt))
+        throw_exception(SR_ERR_INVAL_ARG);
     _vals = *vals;
     _cnt = *cnt;
     _deleter = deleter;
@@ -567,27 +460,51 @@ S_Vals Vals::dup() {
     S_Vals vals(new Vals(new_val, _cnt, deleter));
     return vals;
 }
+sr_val_t* Vals::reallocate(size_t n) {
+    int ret = sr_realloc_values(_cnt,n,&_vals);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+    _cnt = n;
+    if (_deleter)
+        _deleter->update_vals_with_count(_vals, _cnt);
+    return _vals;
+}
 
 // Vals_Holder
 Vals_Holder::Vals_Holder(sr_val_t **vals, size_t *cnt) {
+    if (!vals || !cnt || (!*vals && *cnt))
+        throw_exception(SR_ERR_INVAL_ARG);
     p_vals = vals;
     p_cnt = cnt;
     _allocate = true;
 }
+S_Vals Vals_Holder::vals(void) {
+    return p_Vals;
+}
 S_Vals Vals_Holder::allocate(size_t n) {
     if (_allocate == false)
         throw_exception(SR_ERR_DATA_EXISTS);
-    _allocate = false;
 
     if (n == 0)
         return nullptr;
 
-    *p_cnt = n;
     int ret = sr_new_values(n, p_vals);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
-    S_Vals vals(new Vals(p_vals, p_cnt, nullptr));
-    return vals;
+
+    *p_cnt = n;
+    _allocate = false;
+
+    p_Vals = S_Vals(new Vals(p_vals, p_cnt, nullptr));
+    return p_Vals;
+}
+S_Vals Vals_Holder::reallocate(size_t n) {
+    if (_allocate == true) {
+        return allocate(n);
+    }
+    *p_vals = p_Vals->reallocate(n);
+    *p_cnt = n;
+    return p_Vals;
 }
 Vals_Holder::~Vals_Holder() {}
 

@@ -368,7 +368,7 @@ sr_gpb_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uint
 
     /* make association between the message and the context */
     if (sr_mem) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
         msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
     }
 
@@ -636,7 +636,7 @@ sr_gpb_resp_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uin
 
     /* make association between the message and the context */
     if (sr_mem) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
         msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
     }
 
@@ -725,7 +725,7 @@ sr_gpb_notif_alloc(sr_mem_ctx_t *sr_mem, const Sr__SubscriptionType type, const 
 
     /* make association between the message and the context */
     if (sr_mem) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
         msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
     }
 
@@ -774,7 +774,7 @@ sr_gpb_notif_ack_alloc(sr_mem_ctx_t *sr_mem, Sr__Msg *notification, Sr__Msg **ms
 
     /* make association between the message and the context */
     if (sr_mem) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
         msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
     }
 
@@ -873,7 +873,7 @@ sr_gpb_internal_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, S
 
     /* make association between the message and the context */
     if (sr_mem) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
         msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
     }
 
@@ -1675,7 +1675,7 @@ sr_dup_gpb_to_val_t(sr_mem_ctx_t *sr_mem, const Sr__Value *gpb_value, sr_val_t *
     }
 
     if (sr_mem) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
     *value = val;
     return rc;
@@ -1753,7 +1753,7 @@ sr_values_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Value **gpb_values, size_t gpb_val
     }
 
     if (sr_mem && sr_values) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
     *sr_values_p = sr_values;
     *sr_value_cnt_p = gpb_value_cnt;
@@ -1869,7 +1869,7 @@ sr_dup_gpb_to_tree(sr_mem_ctx_t *sr_mem, const Sr__Node *gpb_tree, sr_node_t **s
     }
 
     if (sr_mem) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
     *sr_tree = tree;
     return rc;
@@ -1999,7 +1999,7 @@ sr_trees_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Node **gpb_trees, size_t gpb_tree_c
     }
 
     if (sr_mem && sr_trees) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
     *sr_trees_p = sr_trees;
     *sr_tree_cnt_p = gpb_tree_cnt;
@@ -2041,7 +2041,7 @@ sr_changes_sr_to_gpb(sr_list_t *sr_changes, sr_mem_ctx_t *sr_mem, Sr__Change ***
                 if (sr_mem) {
                     rc = sr_dup_val_ctx(ch->new_value, sr_mem, &value_dup);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t.");
-                    --sr_mem->obj_count; /* do not treat value_dup as an object on its own */
+                    ATOMIC_DEC(&sr_mem->obj_count); /* do not treat value_dup as an object on its own */
                 } else {
                     value_dup = ch->new_value;
                 }
@@ -2052,7 +2052,7 @@ sr_changes_sr_to_gpb(sr_list_t *sr_changes, sr_mem_ctx_t *sr_mem, Sr__Change ***
                 if (sr_mem) {
                     rc = sr_dup_val_ctx(ch->old_value, sr_mem, &value_dup);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t.");
-                    --sr_mem->obj_count; /* do not treat value_dup as an object on its own */
+                    ATOMIC_DEC(&sr_mem->obj_count); /* do not treat value_dup as an object on its own */
                 } else {
                     value_dup = ch->old_value;
                 }
@@ -2721,7 +2721,7 @@ sr_schemas_gpb_to_sr(sr_mem_ctx_t *sr_mem, const Sr__Schema **gpb_schemas, const
     }
 
     if (sr_mem && schemas) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
     *sr_schemas = schemas;
     return SR_ERR_OK;

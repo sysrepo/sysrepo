@@ -822,6 +822,21 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, sr
     }
 
     /* validate input data */
+    if (merge) {
+        rc = srcfg_get_module_data(ly_ctx, module, &current_dt);
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
+
+        rc = srcfg_merge_data_trees(&current_dt, new_dt);
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
+
+        lyd_free_withsiblings(new_dt);
+        new_dt = current_dt;
+    }
+
     rc = srcfg_merge_data_trees(&new_dt, deps_dt);
     if (SR_ERR_OK != rc) {
         goto cleanup;

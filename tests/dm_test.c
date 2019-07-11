@@ -1143,9 +1143,6 @@ main()
             cmocka_unit_test(dm_schema_node_xpath_hash),
     };
 
-    watchdog_start(300);
-    int ret = cmocka_run_group_tests(tests, setup, NULL);
-    watchdog_stop();
-    return ret;
+    return cmocka_run_group_tests(tests, setup, NULL);
 }
 

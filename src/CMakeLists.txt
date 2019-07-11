@@ -5,12 +5,11 @@ set(EXECUTABLES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/executables")
 set(UTILS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/utils")
 
 include_directories(
-    "${PROJECT_SOURCE_DIR}/inc" 
-    "${CMAKE_CURRENT_SOURCE_DIR}" 
-    "${CLIENTLIB_DIR}" 
-    "${COMMON_DIR}" 
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CLIENTLIB_DIR}"
+    "${COMMON_DIR}"
     "${COMMON_BIN_DIR}"
-    "${EXECUTABLES_DIR}" 
+    "${EXECUTABLES_DIR}"
     "${UTILS_DIR}"
 )
 
@@ -125,4 +124,4 @@ target_link_libraries(sysrepocfg sysrepo ${YANG_LIBRARIES})
 install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(TARGETS sysrepo_a DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(TARGETS sysrepod sysrepo-plugind sysrepoctl sysrepocfg DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(DIRECTORY "${PROJECT_SOURCE_DIR}/inc/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY "${PROJECT_BINARY_DIR}/inc/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

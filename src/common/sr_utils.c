@@ -20,6 +20,7 @@
  * limitations under the License.
  */
 
+#include "sr_constants.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -241,12 +242,32 @@ sr_copy_all_ns(const char *xpath, char ***namespaces_p, size_t *ns_count_p)
     int rc = SR_ERR_OK;
     char *xp, *sptr, *ptr, *cur_node, **tmp, **namespaces = NULL;
     size_t ns_count = 0;
+    static const char qchars[] = "\"'";
+    const char *qchar;
+    char *q1, *q2, *qptr;
 
     if (xpath[0] != '/') {
         return SR_ERR_INVAL_ARG;
     }
 
     xp = strdup(xpath);
+
+    // Blank quoted strings in the xpath, which may contain '/' characters
+    for (qchar = qchars; *qchar; qchar++) {
+        q1 = strchr(xp, *qchar);
+        while (q1) {
+            q2 = strchr(q1 + 1, *qchar);
+            if (!q2) {
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+
+            for (qptr = q1 + 1; qptr < q2; qptr++) {
+                *qptr = ' ';
+            }
+            q1 = strchr(q2 + 1, *qchar);
+        }
+    }
 
     for (cur_node = strtok_r(xp, "/", &sptr); cur_node; cur_node = strtok_r(NULL, "/", &sptr)) {
         if (cur_node[strlen(cur_node) - 1] == ']') {
@@ -421,10 +442,18 @@ sr_lock_fd_internal(int fd, bool lock, bool write, bool wait)
     fl.l_whence = SEEK_SET; /* from the beginning */
     fl.l_start = 0;         /* with offset 0*/
     fl.l_len = 0;           /* to EOF */
+#ifdef HAVE_LINUX_OFD_LOCK
+    fl.l_pid = 0;
+#else
     fl.l_pid = getpid();
+#endif
 
     /* set the lock, waiting if requested and necessary */
+#ifdef HAVE_LINUX_OFD_LOCK
+    ret = fcntl(fd, wait ? F_OFD_SETLKW : F_OFD_SETLK, &fl);
+#else
     ret = fcntl(fd, wait ? F_SETLKW : F_SETLK, &fl);
+#endif
 
     if (-1 == ret) {
         SR_LOG_WRN("Unable to acquire the lock on fd %d: %s", fd, sr_strerror_safe(errno));
@@ -1768,7 +1797,7 @@ sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_
     trees = sr_calloc(sr_mem, tree_cnt, sizeof *trees);
     CHECK_NULL_NOMEM_GOTO(trees, rc, cleanup);
     if (sr_mem) {
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
     }
 
     for (i = j = 0; i < nodes->number && 0 == rc; ++i) {

@@ -139,8 +139,5 @@ main() {
             cmocka_unit_test_setup_teardown(np_notif_store_test, test_setup, test_teardown),
     };
 
-    watchdog_start(300);
-    int ret = cmocka_run_group_tests(tests, NULL, NULL);
-    watchdog_stop();
-    return ret;
+    return cmocka_run_group_tests(tests, NULL, NULL);
 }

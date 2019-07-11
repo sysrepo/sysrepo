@@ -46,7 +46,7 @@ main(int argc, char **argv)
         (list entry will be automatically created if it does not exist) */
         const char *xpath_num = "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv6/address[ip='fe80::ab8']/prefix-length";
         uint8_t num = 64;
-        sysrepo::S_Val value_num(new sysrepo::Val(num, SR_UINT8_T));
+        sysrepo::S_Val value_num(new sysrepo::Val(num));
         sess->set_item(xpath_num, value_num);
 
         sess->commit();

@@ -1020,7 +1020,7 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
     }
     if (NULL != sr_mem) {
         msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
-        ++sr_mem->obj_count;
+        ATOMIC_INC(&sr_mem->obj_count);
     } else {
         msg->_sysrepo_mem_ctx = (uint64_t) NULL;
     }

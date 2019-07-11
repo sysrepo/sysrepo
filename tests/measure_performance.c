@@ -890,7 +890,7 @@ perf_libyang_get_node(void **state, int op_num, int *items)
     struct ly_ctx *ctx = *state;
     assert_non_null(ctx);
 
-    struct lyd_node *root = lyd_parse_path(ctx, EXAMPLE_MODULE_DATA_FILE_NAME, LYD_XML, LYD_OPT_CONFIG | LYD_OPT_STRICT);
+    struct lyd_node *root = lyd_parse_path(ctx, EXAMPLE_MODULE_DATA_FILE_NAME, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
     assert_non_null(root);
 
     /* perform a lyd_get_node op */
@@ -912,7 +912,7 @@ perf_libyang_get_all_list(void **state, int op_num, int *items)
     struct ly_ctx *ctx = *state;
     assert_non_null(ctx);
 
-    struct lyd_node *root = lyd_parse_path(ctx, EXAMPLE_MODULE_DATA_FILE_NAME, LYD_XML, LYD_OPT_CONFIG | LYD_OPT_STRICT);
+    struct lyd_node *root = lyd_parse_path(ctx, EXAMPLE_MODULE_DATA_FILE_NAME, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
     assert_non_null(root);
 
     /* perform a lyd_get_node op */

@@ -56,7 +56,7 @@ typedef struct np_subscription_s {
     bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
     bool enable_nacm;                  /**< TRUE if the NETCONF Access Control is enabled for this subscription. */
     sr_api_variant_t api_variant;      /**< API variant -- values vs. trees (relevant for the callback type only). */
-    size_t copy_cnt;                   /**< Count of other references to the primary structure. 0 means no other copies exist. */
+    ATOMIC_UINT32_T copy_cnt;          /**< Count of other references to the primary structure. 0 means no other copies exist. */
 } np_subscription_t;
 
 /**

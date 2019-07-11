@@ -2791,8 +2791,5 @@ int main(){
             cmocka_unit_test(extended_ident_ref_in_installed_module),
     };
 
-    watchdog_start(300);
-    int ret = cmocka_run_group_tests(tests, setup, teardown);
-    watchdog_stop();
-    return ret;
+    return cmocka_run_group_tests(tests, setup, teardown);
 }

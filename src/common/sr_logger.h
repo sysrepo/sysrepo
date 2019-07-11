@@ -1,11 +1,12 @@
 /**
  * @file sr_logger.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
- *         Milan Lenco <milan.lenco@pantheon.tech>
+ *         Milan Lenco <milan.lenco@pantheon.tech>, Pavol Hanzel <pavol.hanzel@pantheon.tech>
  * @brief Sysrepo logging API.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
+ * Copyright 2018 PANTHEON Tech.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -224,7 +225,7 @@ void sr_logger_cleanup();
  * @param[in] level Log level.
  * @param[in] format Format message.
  */
-void sr_log_to_cb(sr_log_level_t level, const char *format, ...);
+void sr_log_to_cb(sr_log_level_t level, const char *format, ...) FORMAT(printf, 2, 3);
 
 /**
  * @brief Prints string representation of errno using strerror_r and returns pointer
