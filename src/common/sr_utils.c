@@ -21,9 +21,6 @@
  */
 
 #include "sr_constants.h"
-#ifdef HAVE_LINUX_OFD_LOCK
-#define _GNU_SOURCE
-#endif
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
