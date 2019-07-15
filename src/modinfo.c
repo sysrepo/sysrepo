@@ -435,8 +435,8 @@ sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, sr
 
     /* add default state data so that parents exist and we ask for data that could exist */
     if (lyd_validate_modules(data, &ly_mod, 1, LYD_OPT_DATA)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        return err_info;
+        sr_log_wrn_ly(ly_mod->ctx);
+        SR_LOG_WRNMSG("Failed to validate and add default nodes on state data subtree, continuing.");
     }
 
     return NULL;
@@ -821,6 +821,12 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             /* append any operational data provided by clients */
             if ((err_info = sr_module_oper_data_update(mod, *sid, mod_info->ds, mod_info->conn->ext_shm.addr,
                         &mod_info->data, cb_error_info))) {
+                return err_info;
+            }
+
+            /* some operational data were added and they were not required to be valid, they are now */
+            if (lyd_validate_modules(&mod_info->data, &mod->ly_mod, 1, LYD_OPT_DATA)) {
+                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
                 return err_info;
             }
         }
