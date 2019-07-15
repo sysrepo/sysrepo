@@ -728,8 +728,11 @@ sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, sr_er
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
         if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
                     &cur_priority)) {
-            SR_LOG_INF("There are no subscribers for changes of the module \"%s\" in %s DS.",
-                    mod->ly_mod->name, sr_ds2str(mod_info->ds));
+            if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
+                    &cur_priority)) {
+                SR_LOG_INF("There are no subscribers for changes of the module \"%s\" in %s DS.",
+                        mod->ly_mod->name, sr_ds2str(mod_info->ds));
+            }
             continue;
         }
 
