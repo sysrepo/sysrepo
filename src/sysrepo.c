@@ -3362,12 +3362,6 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
 
     /* create values */
     switch (op) {
-    case SR_OP_CREATED:
-        *old_value = NULL;
-        if ((err_info = sr_lyd_node2sr_val(node, NULL, NULL, new_value))) {
-            return sr_api_ret(session, err_info);
-        }
-        break;
     case SR_OP_DELETED:
         if ((err_info = sr_lyd_node2sr_val(node, NULL, NULL, old_value))) {
             return sr_api_ret(session, err_info);
@@ -3401,6 +3395,16 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
             return sr_api_ret(session, err_info);
         }
         break;
+    case SR_OP_CREATED:
+        if (!sr_ly_is_userord(node)) {
+            /* not a user-ordered list, so the operation is a simple creation */
+            *old_value = NULL;
+            if ((err_info = sr_lyd_node2sr_val(node, NULL, NULL, new_value))) {
+                return sr_api_ret(session, err_info);
+            }
+            break;
+        }
+        /* fallthrough */
     case SR_OP_MOVED:
         if (node->schema->nodetype == LYS_LEAFLIST) {
             attr_name = "value";
