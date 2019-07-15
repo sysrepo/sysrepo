@@ -1103,7 +1103,7 @@ sr_edit_apply_move(struct lyd_node **first_node, struct lyd_node *parent_node, s
         enum edit_op *next_op)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *old_sibling_before = NULL, *sibling_before = NULL;
+    struct lyd_node *old_sibling_before, *sibling_before;
     char *old_sibling_before_val = NULL, *sibling_before_val = NULL;
     enum edit_op diff_op;
 
@@ -1145,6 +1145,42 @@ sr_edit_apply_move(struct lyd_node **first_node, struct lyd_node *parent_node, s
 
     *next_op = EDIT_CONTINUE;
     return NULL;
+}
+
+sr_error_info_t *
+sr_edit_created_subtree_apply_move(struct lyd_node *match_subtree)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sibling_before, *next, *elem;
+    char *sibling_before_val;
+
+    LY_TREE_DFS_BEGIN(match_subtree, next, elem) {
+        if (sr_ly_is_userord(elem)) {
+            sibling_before_val = NULL;
+            sibling_before = sr_edit_find_previous_instance(elem);
+            if (sibling_before) {
+                sibling_before_val = sr_edit_create_userord_predicate(sibling_before);
+            }
+
+            if (elem->schema->nodetype == LYS_LIST) {
+                if (!lyd_insert_attr(elem, NULL, "yang:key", sibling_before_val ? sibling_before_val : "")) {
+                    sr_errinfo_new_ly(&err_info, lyd_node_module(elem)->ctx);
+                }
+            } else {
+                if (!lyd_insert_attr(elem, NULL, "yang:value", sibling_before_val ? sibling_before_val : "")) {
+                    sr_errinfo_new_ly(&err_info, lyd_node_module(elem)->ctx);
+                }
+            }
+            free(sibling_before_val);
+            if (err_info) {
+                break;
+            }
+        }
+
+        LY_TREE_DFS_END(match_subtree, next, elem);
+    }
+
+    return err_info;
 }
 
 /**
@@ -2276,7 +2312,7 @@ sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **diff_p)
     uint32_t i;
     int attr_free;
     struct ly_ctx *ly_ctx;
-    struct lyd_node *diff = NULL, *node, *sibling_before;
+    struct lyd_node *diff = NULL, *node, *iter, *sibling_before;
     enum edit_op op;
     char *attr_val, *prev_attr_val;
 
@@ -2369,6 +2405,15 @@ sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **diff_p)
                 if (sibling_before) {
                     attr_val = sr_edit_create_userord_predicate(sibling_before);
                     attr_free = 1;
+                }
+            }
+
+            /* add correct attributes to any nested user-ordered lists */
+            if (!(node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA))) {
+                LY_TREE_FOR(node->child, iter) {
+                    if ((err_info = sr_edit_created_subtree_apply_move(iter))) {
+                        goto error;
+                    }
                 }
             }
             break;

@@ -2843,7 +2843,13 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
         mod_info.mods[0].state |= MOD_INFO_CHANGED;
 
         LY_TREE_FOR(enabled_data, node) {
+            /* top-level "create" operation that is inherited */
             if ((err_info = sr_edit_set_oper(node, "create"))) {
+                goto cleanup_mods_unlock;
+            }
+
+            /* user-ordered lists need information about position */
+            if ((err_info = sr_edit_created_subtree_apply_move(node))) {
                 goto cleanup_mods_unlock;
             }
         }
@@ -3461,7 +3467,6 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
 
     /* create values */
     switch (*operation) {
-    case SR_OP_CREATED:
     case SR_OP_DELETED:
         /* nothing to do */
         break;
@@ -3484,6 +3489,12 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
             *prev_dflt = 1;
         }
         break;
+    case SR_OP_CREATED:
+        if (!sr_ly_is_userord(*node)) {
+            /* nothing to do */
+            break;
+        }
+        /* fallthrough */
     case SR_OP_MOVED:
         if ((*node)->schema->nodetype == LYS_LEAFLIST) {
             attr_name = "value";

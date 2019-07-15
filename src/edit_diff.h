@@ -45,6 +45,14 @@ sr_error_info_t *sr_edit_set_oper(struct lyd_node *edit, const char *op);
 void sr_edit_del_attr(struct lyd_node *edit, const char *name);
 
 /**
+ * @brief Apply edit move operation on the whole created data subtree (only user-ordered lists are affected).
+ *
+ * @param[in] match_subtree Starting diff/edit node that should have "create" operation.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_edit_created_subtree_apply_move(struct lyd_node *match_subtree);
+
+/**
  * @brief Apply sysrepo edit on a specific module data tree.
  *
  * @param[in] edit Edit tree to apply.
