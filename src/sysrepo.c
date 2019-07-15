@@ -3556,6 +3556,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
     sr_rpc_t *shm_rpc;
+    off_t shm_rpc_off;
     int last_removed;
 
     SR_CHECK_ARG_APIRET(!session || !xpath || (!callback && !tree_callback) || !subscription, session, err_info);
@@ -3611,11 +3612,13 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     if (!shm_rpc && (err_info = sr_shmmain_add_rpc(conn, op_path, &shm_rpc))) {
         goto error_unlock_unsub;
     }
+    shm_rpc_off = ((char *)shm_rpc) - conn->ext_shm.addr;
 
-    /* add RPC/action subscription into main SHM */
-    if ((err_info = sr_shmmain_rpc_subscription_add(&conn->ext_shm, shm_rpc, xpath, priority, (*subscription)->evpipe_num))) {
+    /* add RPC/action subscription into main SHM (which may be remapped) */
+    if ((err_info = sr_shmmain_rpc_subscription_add(&conn->ext_shm, shm_rpc_off, xpath, priority, (*subscription)->evpipe_num))) {
         goto error_unlock_unsub;
     }
+    shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + shm_rpc_off);
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_rpc_add(session, op_path, xpath, callback, tree_callback, private_data, priority, *subscription))) {

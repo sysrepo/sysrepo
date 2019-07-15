@@ -2544,15 +2544,18 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap)
 }
 
 sr_error_info_t *
-sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, sr_rpc_t *shm_rpc, const char *xpath, uint32_t priority,
+sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rpc_off, const char *xpath, uint32_t priority,
         uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
+    sr_rpc_t *shm_rpc;
     off_t xpath_off, subs_off;
     sr_rpc_sub_t *shm_sub;
     size_t new_ext_size;
 
     assert(xpath);
+
+    shm_rpc = (sr_rpc_t *)(shm_ext->addr + shm_rpc_off);
 
     /* moving all existing subscriptions (if any) and adding a new one */
     subs_off = shm_ext->size;
@@ -2563,6 +2566,7 @@ sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, sr_rpc_t *shm_rpc, const char
     if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
         return err_info;
     }
+    shm_rpc = (sr_rpc_t *)(shm_ext->addr + shm_rpc_off);
 
     /* add wasted memory */
     *((size_t *)shm_ext->addr) += shm_rpc->sub_count * sizeof *shm_sub;

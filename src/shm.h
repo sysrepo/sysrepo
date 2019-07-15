@@ -542,13 +542,13 @@ void sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap);
  * May remap main SHM!
  *
  * @param[in] shm_ext Main ext SHM.
- * @param[in] shm_rpc SHM RPC.
+ * @param[in] shm_rpc_off SHM RPC offset.
  * @param[in] xpath Subscription XPath.
  * @param[in] priority Subscription priority.
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, sr_rpc_t *shm_rpc, const char *xpath,
+sr_error_info_t *sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rpc_off, const char *xpath,
         uint32_t priority, uint32_t evpipe_num);
 
 /**
