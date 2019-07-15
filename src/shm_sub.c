@@ -873,6 +873,9 @@ sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
             /* write "done" event with the same LYB data trees */
+            if (!mod->event_id) {
+                mod->event_id = ++multi_sub_shm->event_id;
+            }
             sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->event_id, cur_priority, SR_SUB_EV_DONE, &sid,
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
 
