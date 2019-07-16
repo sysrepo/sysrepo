@@ -1190,7 +1190,8 @@ int sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_
  *
  * @note If the operation is ::SR_OP_MOVED the meaning of new_value and old value argument is
  * as follows - the value pointed by new_value was moved after the old_value. If the
- * old value is NULL it was moved to the first position.
+ * old value is NULL it was moved to the first position. The same applies for operation ::SR_OP_CREATED
+ * if the created instance was a user-ordered (leaf-)list.
  *
  * @param[in] session Session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
  * @param[in,out] iter Iterator acquired with ::sr_get_changes_iter call.
@@ -1209,7 +1210,8 @@ int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_cha
  * by ::sr_get_changes_iter call as a tree. If there is no item left, ::SR_ERR_NOT_FOUND is returned.
  *
  * @note Meaning of output parameters varies based on the operation:
- * ::SR_OP_CREATED - \p node is the created node.
+ * ::SR_OP_CREATED - \p node is the created node, for user-ordered lists either \p prev_value or \p prev_list is
+ * always set with meaning similar to ::SR_OP_MOVED.
  * ::SR_OP_MODIFIED - \p node is the modified node, \p prev_value is set to the previous value of the leaf,
  * \p prev_dflt is set if the previous leaf value was the default.
  * ::SR_OP_DELETED - \p node is the deleted node.

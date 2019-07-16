@@ -244,7 +244,9 @@ test_enabled_partial(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_null(subtree);
+    assert_non_null(subtree);
+    assert_int_equal(subtree->dflt, 1);
+    lyd_free_withsiblings(subtree);
 
     /* subscribe to one specific interface and also expect to be notified */
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
@@ -297,7 +299,9 @@ test_enabled_partial(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_null(subtree);
+    assert_non_null(subtree);
+    assert_int_equal(subtree->dflt, 1);
+    lyd_free_withsiblings(subtree);
 
     /* unsusbcribe */
     sr_unsubscribe(subscr);

@@ -2138,10 +2138,12 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/test:cont/l2[k='subscr']");
         assert_non_null(new_val);
         assert_string_equal(new_val->xpath, "/test:cont/l2[k='subscr2']");
 
+        sr_free_val(old_val);
         sr_free_val(new_val);
 
         /* 4th change */
