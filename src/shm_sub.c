@@ -2203,16 +2203,13 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
 
     /* go to the top-level for printing */
     if (*output_op) {
-        while ((*output_op)->parent) {
-            *output_op = (*output_op)->parent;
-        }
-        if ((*output_op)->prev != *output_op) {
-            SR_LOG_WRNMSG("RPC/action callback returned output with some siblings, ignoring them.");
-        }
         if ((*output_op)->schema != input_op->schema) {
             sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, NULL, "RPC/action callback returned \"%s\" node "
                     "instead of \"%s\" output.", (*output_op)->schema->name, input_op->schema->name);
             goto cleanup;
+        }
+        while ((*output_op)->parent) {
+            *output_op = (*output_op)->parent;
         }
     }
 
