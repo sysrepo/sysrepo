@@ -2201,6 +2201,21 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
         }
     }
 
+    /* go to the top-level for printing */
+    if (*output_op) {
+        while ((*output_op)->parent) {
+            *output_op = (*output_op)->parent;
+        }
+        if ((*output_op)->prev != *output_op) {
+            SR_LOG_WRNMSG("RPC/action callback returned output with some siblings, ignoring them.");
+        }
+        if ((*output_op)->schema != input_op->schema) {
+            sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, NULL, "RPC/action callback returned \"%s\" node "
+                    "instead of \"%s\" output.", (*output_op)->schema->name, input_op->schema->name);
+            goto cleanup;
+        }
+    }
+
     /* success */
 
 cleanup:
@@ -2341,13 +2356,6 @@ process_event:
             goto cleanup;
         }
 
-        /* go to the top-level for printing */
-        if (output) {
-            while (output->parent) {
-                output = output->parent;
-            }
-        }
-
         /* SUB READ LOCK */
         if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, 0, __func__))) {
             goto cleanup;
@@ -2370,7 +2378,7 @@ process_event:
             goto cleanup_rdunlock;
         }
     } else {
-        if (lyd_print_mem(&data, output, LYD_LYB, LYP_WITHSIBLINGS)) {
+        if (lyd_print_mem(&data, output, LYD_LYB, 0)) {
             sr_errinfo_new_ly(&err_info, conn->ly_ctx);
             goto cleanup_rdunlock;
         }
