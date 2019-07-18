@@ -249,6 +249,29 @@ int sr_connection_recover(void);
 const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
 
 /**
+ * @brief Callback to be called before applying a diff. Set it using ::sr_set_diff_check_callback.
+ *
+ * @param[in] session Session that can be used for obtaining changed data (by ::sr_get_changes_iter call),
+ * learn about initiator session IDs, or return detailed errors. Do not stop this session.
+ * @param[in] diff Diff to be applied.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+typedef int (*sr_diff_check_cb)(sr_session_ctx_t *session, const struct lyd_node *diff);
+
+/**
+ * @brief Set callback for checking every diff before it is applied on the datastore.
+ * The diff is final (only CRUD operations) but without any implicit changes caused
+ * by validation. This callback is primarily meant to allow full NACM
+ * (NETCONF Access Control) to be performed by a NETCONF server.
+ *
+ * Required ROOT access.
+ *
+ * @param[in] conn Connection, whose all sessions diffs will be passed to this callback.
+ * @param[in] callback Callback to call for every diff.
+ */
+void sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback);
+
+/**
  * @brief Starts a new session.
  *
  * @param[in] conn Connection acquired with ::sr_connect call.

@@ -401,6 +401,25 @@ sr_get_context(sr_conn_ctx_t *conn)
     return conn->ly_ctx;
 }
 
+API void
+sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (!conn) {
+        return;
+    }
+
+    if (geteuid()) {
+        /* not a root */
+        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Root access required.");
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    conn->diff_check_cb = callback;
+}
+
 API int
 sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session_ctx_t **session)
 {
@@ -1874,6 +1893,8 @@ sr_apply_changes(sr_session_ctx_t *session)
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct lyd_node *update_edit;
     struct sr_mod_info_s mod_info;
+    const char *err_msg = NULL, *err_xpath = NULL;
+    int ret;
 
     SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds), session, err_info);
 
@@ -1905,6 +1926,20 @@ sr_apply_changes(sr_session_ctx_t *session)
 
     /* create diff */
     if ((err_info = sr_modinfo_edit_apply(&mod_info, session->dt[session->ds].edit, 1))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* call connection diff callback */
+    if (mod_info.diff && session->conn->diff_check_cb && (ret = session->conn->diff_check_cb(session, mod_info.diff))) {
+        /* create cb_err_info */
+        if (session->err_info && session->err_info->err_code == SR_ERR_OK) {
+            err_msg = session->err_info->err[0].message;
+        }
+        if (!err_msg) {
+            err_msg = sr_strerror(ret);
+        }
+        err_xpath = session->err_info->err[0].xpath;
+        sr_errinfo_new(&cb_err_info, ret, err_xpath, err_msg);
         goto cleanup_mods_unlock;
     }
 
@@ -2069,6 +2104,8 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
+    const char *err_msg = NULL, *err_xpath = NULL;
+    int ret;
 
     assert(!*src_data || !(*src_data)->prev->next);
     memset(&mod_info, 0, sizeof mod_info);
@@ -2095,6 +2132,20 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
 
     /* update affected data and create corresponding diff */
     if ((err_info = sr_modinfo_replace(&mod_info, src_data))) {
+        goto cleanup_mods_unlock;
+    }
+
+    /* call connection diff callback */
+    if (mod_info.diff && session->conn->diff_check_cb && (ret = session->conn->diff_check_cb(session, mod_info.diff))) {
+        /* create cb_err_info */
+        if (session->err_info && session->err_info->err_code == SR_ERR_OK) {
+            err_msg = session->err_info->err[0].message;
+        }
+        if (!err_msg) {
+            err_msg = sr_strerror(ret);
+        }
+        err_xpath = session->err_info->err[0].xpath;
+        sr_errinfo_new(&cb_err_info, ret, err_xpath, err_msg);
         goto cleanup_mods_unlock;
     }
 
