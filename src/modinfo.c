@@ -424,6 +424,10 @@ sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, sr
 
     /* merge into full data tree */
     if (oper_data) {
+        /* add default state data so that parents exist and we ask for descendants
+         * that can exist (it should not fail with TRUSTED flag, we do not care even if it does) */
+        lyd_validate_modules(&oper_data, &ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
+
         if (!*data) {
             *data = oper_data;
         } else if (lyd_merge(*data, oper_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
@@ -431,12 +435,6 @@ sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, sr
             sr_errinfo_new_ly(&err_info, ly_mod->ctx);
             return err_info;
         }
-    }
-
-    /* add default state data so that parents exist and we ask for data that could exist */
-    if (lyd_validate_modules(data, &ly_mod, 1, LYD_OPT_DATA)) {
-        sr_log_wrn_ly(ly_mod->ctx);
-        SR_LOG_WRNMSG("Failed to validate and add default nodes on state data subtree, continuing.");
     }
 
     return NULL;
@@ -649,6 +647,11 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
         return err_info;
     }
 
+    /* add any accessible non-presence containers */
+    if ((err_info = sr_ly_module_data_add_np_cont(enabled_mod_data, mod->ly_mod))) {
+        return err_info;
+    }
+
     return NULL;
 }
 
@@ -821,12 +824,6 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             /* append any operational data provided by clients */
             if ((err_info = sr_module_oper_data_update(mod, *sid, mod_info->ds, mod_info->conn->ext_shm.addr,
                         &mod_info->data, cb_error_info))) {
-                return err_info;
-            }
-
-            /* some operational data were added and they were not required to be valid, they are now */
-            if (lyd_validate_modules(&mod_info->data, &mod->ly_mod, 1, LYD_OPT_DATA)) {
-                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
                 return err_info;
             }
         }

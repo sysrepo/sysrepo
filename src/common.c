@@ -2791,6 +2791,75 @@ cleanup:
     return err_info;
 }
 
+sr_error_info_t *
+sr_ly_module_data_add_np_cont(struct lyd_node **data, const struct lys_module *ly_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_node *last;
+    struct lyd_node *iter, *elem, *next, *root;
+
+    /* add top-level NP containers */
+    for (last = lys_getnext(NULL, NULL, ly_mod, 0); last; last = lys_getnext(last, NULL, ly_mod, 0)) {
+        if ((last->nodetype == LYS_CONTAINER) && !((struct lys_node_container *)last)->presence) {
+            /* check that it exists in the data */
+            LY_TREE_FOR(*data, iter) {
+                if (iter->schema == last) {
+                    break;
+                }
+            }
+            if (!iter) {
+                /* it does not, add it */
+                iter = lyd_new(NULL, ly_mod, last->name);
+                if (!iter) {
+                    sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+                    return err_info;
+                }
+                iter->dflt = 1;
+                if (!*data) {
+                    *data = iter;
+                } else if (lyd_insert_sibling(data, iter)) {
+                    lyd_free(iter);
+                    sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+                    return err_info;
+                }
+            }
+        }
+    }
+
+    /* add nested NP containers */
+    LY_TREE_FOR(*data, root) {
+        if (lyd_node_module(root) != ly_mod) {
+            continue;
+        }
+
+        LY_TREE_DFS_BEGIN(root, next, elem) {
+            for (last = lys_getnext(NULL, elem->schema, NULL, 0); last; last = lys_getnext(last, elem->schema, NULL, 0)) {
+                if ((last->nodetype == LYS_CONTAINER) && !((struct lys_node_container *)last)->presence) {
+                    /* check that it exists in the data (it must be a node with children) */
+                    assert(!(elem->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)));
+                    LY_TREE_FOR(elem->child, iter) {
+                        if (iter->schema == last) {
+                            break;
+                        }
+                    }
+                    if (!iter) {
+                        /* it does not, add it */
+                        iter = lyd_new(elem, NULL, last->name);
+                        if (!iter) {
+                            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+                            return err_info;
+                        }
+                        iter->dflt = 1;
+                    }
+                }
+            }
+            LY_TREE_DFS_END(root, next, elem);
+        }
+    }
+
+    return NULL;
+}
+
 int
 sr_ly_is_userord(const struct lyd_node *node)
 {

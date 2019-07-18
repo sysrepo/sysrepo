@@ -984,6 +984,15 @@ sr_error_info_t *sr_ly_data_dup_xpath_select(const struct lyd_node *data, char *
 sr_error_info_t *sr_ly_data_xpath_complement(struct lyd_node **data, const char *xpath);
 
 /**
+ * @brief Add any accessible NP containers from the module into the data tree.
+ *
+ * @param[in,out] data Data tree to add containers to.
+ * @param[in] ly_mod Module to add containers from.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ly_module_data_add_np_cont(struct lyd_node **data, const struct lys_module *ly_mod);
+
+/**
  * @brief Get a hash of a string value.
  *
  * @param[in] str String to hash.

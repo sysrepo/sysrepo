@@ -531,9 +531,9 @@ test_config(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
-    assert_int_equal(data->next->dflt, 1);
+    assert_int_equal(data->dflt, 1);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->next, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     lyd_free_withsiblings(data);
