@@ -1768,7 +1768,7 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
 {
     sr_error_info_t *err_info = NULL;
     const char *attr_full_name;
-    struct lyd_node *valid_edit = NULL;
+    struct lyd_node *valid_edit = NULL, *node;
 
     SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || !edit || !default_operation, session, err_info);
     SR_CHECK_ARG_APIRET(strcmp(default_operation, "merge") && strcmp(default_operation, "replace")
@@ -1806,9 +1806,11 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     } else {
         attr_full_name = "ietf-netconf:operation";
     }
-    if (!lyd_insert_attr(valid_edit, NULL, attr_full_name, default_operation)) {
-        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
-        goto error;
+    LY_TREE_FOR(valid_edit, node) {
+        if (!lyd_insert_attr(node, NULL, attr_full_name, default_operation)) {
+            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+            goto error;
+        }
     }
 
     session->dt[session->ds].edit = valid_edit;
