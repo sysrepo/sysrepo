@@ -88,6 +88,25 @@ error1:
     return err_info;
 }
 
+/**
+ * @brief Free a connection structure.
+ *
+ * @param[in] conn Connection to free.
+ */
+static void
+sr_conn_free(sr_conn_ctx_t *conn)
+{
+    ly_ctx_destroy(conn->ly_ctx, NULL);
+    pthread_mutex_destroy(&conn->ptr_lock);
+    if (conn->main_shm_create_lock > -1) {
+        close(conn->main_shm_create_lock);
+    }
+    sr_rwlock_destroy(&conn->main_shm_remap_lock);
+    sr_shm_clear(&conn->main_shm);
+    sr_shm_clear(&conn->ext_shm);
+    free(conn);
+}
+
 API int
 sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 {
@@ -208,7 +227,7 @@ cleanup_unlock:
 cleanup:
     lyd_free_withsiblings(sr_mods);
     if (err_info) {
-        sr_disconnect(conn);
+        sr_conn_free(conn);
         if (created) {
             /* remove any created SHM so it is not considered properly created */
             shm_unlink(SR_MAIN_SHM);
@@ -259,15 +278,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
     }
 
     /* free attributes */
-    ly_ctx_destroy(conn->ly_ctx, NULL);
-    pthread_mutex_destroy(&conn->ptr_lock);
-    if (conn->main_shm_create_lock > -1) {
-        close(conn->main_shm_create_lock);
-    }
-    sr_rwlock_destroy(&conn->main_shm_remap_lock);
-    sr_shm_clear(&conn->main_shm);
-    sr_shm_clear(&conn->ext_shm);
-    free(conn);
+    sr_conn_free(conn);
 
     return ret;
 }
