@@ -1788,7 +1788,10 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     SR_CHECK_ARG_APIRET(strcmp(default_operation, "merge") && strcmp(default_operation, "replace")
             && strcmp(default_operation, "none"), session, err_info);
 
-    if (session->dt[session->ds].edit) {
+    if (session->conn->ly_ctx != edit->schema->module->ctx) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Data trees must be created using the session connection libyang context.");
+        return sr_api_ret(session, err_info);
+    } else if (session->dt[session->ds].edit) {
         /* do not allow merging NETCONF edits into sysrepo ones, it can cause some unexpected results */
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "There are already some session changes.");
         return sr_api_ret(session, err_info);
@@ -2235,6 +2238,10 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     const struct lys_module *ly_mod = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(trg_datastore), session, err_info);
+    if (src_config && (session->conn->ly_ctx != src_config->schema->module->ctx)) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Data trees must be created using the session connection libyang context.");
+        return sr_api_ret(session, err_info);
+    }
 
     /* find first sibling */
     for (; src_config && src_config->prev->next; src_config = src_config->prev);
@@ -3830,6 +3837,10 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     uint32_t event_id = 0;
 
     SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
+    if (session->conn->ly_ctx != input->schema->module->ctx) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Data trees must be created using the session connection libyang context.");
+        return sr_api_ret(session, err_info);
+    }
 
     *output = NULL;
     memset(&mod_info, 0, sizeof mod_info);
@@ -4234,6 +4245,10 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     char *xpath = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !notif, session, err_info);
+    if (session->conn->ly_ctx != notif->schema->module->ctx) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Data trees must be created using the session connection libyang context.");
+        return sr_api_ret(session, err_info);
+    }
 
     memset(&mod_info, 0, sizeof mod_info);
 
