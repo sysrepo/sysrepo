@@ -1347,11 +1347,13 @@ sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
         goto cleanup_mods_unlock;
     }
 
-    *value = malloc(sizeof **value);
-    SR_CHECK_MEM_GOTO(!*value, err_info, cleanup_mods_unlock);
+    if (set->number) {
+        *value = malloc(sizeof **value);
+        SR_CHECK_MEM_GOTO(!*value, err_info, cleanup_mods_unlock);
 
-    if ((err_info = sr_val_ly2sr(set->set.d[0], *value))) {
-        goto cleanup_mods_unlock;
+        if ((err_info = sr_val_ly2sr(set->set.d[0], *value))) {
+            goto cleanup_mods_unlock;
+        }
     }
 
     /* success */
