@@ -23,6 +23,11 @@ foreach(test_name IN LISTS tests)
     set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT "MALLOC_CHECK_=3 CMOCKA_TEST_ABORT=1")
 endforeach(test_name)
 
+# measure_performance benchmark binary
+set(SR_PERF measure_performance)
+add_executable(${SR_PERF} ${SR_PERF}.c)
+target_link_libraries(${SR_PERF} ${CMOCKA_LIBRARIES} sysrepo yang)
+
 # get notification directory
 if(NOTIFICATION_PATH)
     set(TESTS_NOTIF_DIR "${NOTIFICATION_PATH}")
