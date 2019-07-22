@@ -1587,14 +1587,15 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, struct lyd_node **data
             goto cleanup_mods_unlock;
         }
 
+        /* always find parent */
+        while (node->parent) {
+            node = node->parent;
+        }
+
+        /* connect to the result */
         if (!*data) {
-            /* find parent */
-            while (node->parent) {
-                node = node->parent;
-            }
             *data = node;
         } else {
-            /* merge */
             if (lyd_merge(*data, node, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
                 sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
                 lyd_free_withsiblings(node);
