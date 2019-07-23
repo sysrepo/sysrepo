@@ -167,10 +167,34 @@ srcfg_compare_modules_cb(const void *a, const void *b) {
 }
 
 /**
+ * @brief Load missing module required by imported data.
+ */
+static const struct lys_module *
+srcfg_import_module_clb(struct ly_ctx *ctx, const char *name, const char *ns, int options, void *user_data)
+{
+    md_ctx_t *md_ctx = (md_ctx_t *)user_data;
+    const struct lys_module *ly_mod;
+    md_module_t *module;
+    int rc;
+
+    if (name) {
+        rc = md_get_module_info(md_ctx, name, NULL, NULL, &module);
+    } else {
+        rc = md_get_module_info_by_ns(md_ctx, ns, &module);
+    }
+    if (rc != SR_ERR_OK) {
+        return NULL;
+    }
+
+    ly_mod = lys_parse_path(ctx, module->filepath, LYS_YANG);
+    return ly_mod;
+}
+
+/**
  * @brief Initializes libyang ctx with all schemas installed for specified module in sysrepo.
  */
 static int
-srcfg_ly_init(struct ly_ctx **ly_ctx, md_module_t *module)
+srcfg_ly_init(struct ly_ctx **ly_ctx, md_module_t *module, md_ctx_t *md_ctx)
 {
     int rc = SR_ERR_OK;
     dm_schema_info_t *si = NULL;
@@ -212,6 +236,9 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, md_module_t *module)
             lys_features_enable(mod, mod->features[i].name);
         }
     }
+
+    /* set data callback */
+    ly_ctx_set_module_data_clb(si->ly_ctx, srcfg_import_module_clb, md_ctx);
 
     *ly_ctx = si->ly_ctx;
     si->ly_ctx = NULL;
@@ -1180,7 +1207,7 @@ cleanup:
  */
 static int
 srcfg_import_operation(md_module_t *module, srcfg_datastore_t datastore, const char *filepath,
-                       LYD_FORMAT format, bool permanent, bool merge, bool strict)
+                       LYD_FORMAT format, bool permanent, bool merge, bool strict, md_ctx_t *md_ctx)
 {
     int rc = SR_ERR_INTERNAL, ret = 0;
     struct ly_ctx *ly_ctx = NULL;
@@ -1189,7 +1216,7 @@ srcfg_import_operation(md_module_t *module, srcfg_datastore_t datastore, const c
     CHECK_NULL_ARG(module);
 
     /* init libyang context */
-    ret = srcfg_ly_init(&ly_ctx, module);
+    ret = srcfg_ly_init(&ly_ctx, module, md_ctx);
     CHECK_RC_MSG_GOTO(ret, fail, "Failed to initialize libyang context.");
 
     if (filepath) {
@@ -1229,7 +1256,7 @@ cleanup:
  * @brief Performs the --import operation from an xpath.
  */
 static int
-srcfg_import_xpath_operation(md_module_t *module, srcfg_datastore_t datastore, const char *xpath, const char *xpathvalue, bool permanent)
+srcfg_import_xpath_operation(md_module_t *module, srcfg_datastore_t datastore, const char *xpath, const char *xpathvalue, bool permanent, md_ctx_t *md_ctx)
 {
     int rc = SR_ERR_INTERNAL, ret = 0;
     struct ly_ctx *ly_ctx = NULL;
@@ -1237,7 +1264,7 @@ srcfg_import_xpath_operation(md_module_t *module, srcfg_datastore_t datastore, c
     CHECK_NULL_ARG(module);
 
     /* init libyang context */
-    ret = srcfg_ly_init(&ly_ctx, module);
+    ret = srcfg_ly_init(&ly_ctx, module, md_ctx);
     CHECK_RC_MSG_GOTO(ret, fail, "Failed to initialize libyang context.");
 
     /* import datastore data */
@@ -1327,7 +1354,7 @@ cleanup:
  * @brief Performs the --export operation.
  */
 static int
-srcfg_export_operation(md_module_t *module, const char *filepath, LYD_FORMAT format)
+srcfg_export_operation(md_module_t *module, const char *filepath, LYD_FORMAT format, md_ctx_t *md_ctx)
 {
     int rc = SR_ERR_INTERNAL, ret = 0;
     struct ly_ctx *ly_ctx = NULL;
@@ -1336,7 +1363,7 @@ srcfg_export_operation(md_module_t *module, const char *filepath, LYD_FORMAT for
     CHECK_NULL_ARG(module);
 
     /* init libyang context */
-    ret = srcfg_ly_init(&ly_ctx, module);
+    ret = srcfg_ly_init(&ly_ctx, module, md_ctx);
     CHECK_RC_MSG_GOTO(ret, fail, "Failed to initialize libyang context.");
 
     /* try to open/create the output file if needed */
@@ -1375,7 +1402,7 @@ cleanup:
  * @brief Performs the xpath --export operation.
  */
 static int
-srcfg_export_xpath_operation(md_module_t *module, const char *filepath, const char *xpath, LYD_FORMAT format)
+srcfg_export_xpath_operation(md_module_t *module, const char *filepath, const char *xpath, LYD_FORMAT format, md_ctx_t *md_ctx)
 {
     int rc = SR_ERR_INTERNAL, ret = 0;
     struct ly_ctx *ly_ctx = NULL;
@@ -1384,7 +1411,7 @@ srcfg_export_xpath_operation(md_module_t *module, const char *filepath, const ch
     CHECK_NULL_ARG(module);
 
     /* init libyang context */
-    ret = srcfg_ly_init(&ly_ctx, module);
+    ret = srcfg_ly_init(&ly_ctx, module, md_ctx);
     CHECK_RC_MSG_GOTO(ret, fail, "Failed to initialize libyang context.");
 
     /* try to open/create the output file if needed */
@@ -1487,7 +1514,7 @@ srcfg_prompt(const char *question, const char *positive, const char *negative)
  */
 static int
 srcfg_edit_operation(md_module_t *module, srcfg_datastore_t datastore, LYD_FORMAT format,
-                     const char *editor, bool keep, bool permanent, bool merge, bool strict)
+                     const char *editor, bool keep, bool permanent, bool merge, bool strict, md_ctx_t *md_ctx)
 {
     int rc = SR_ERR_INTERNAL, ret = 0;
     struct ly_ctx *ly_ctx = NULL;
@@ -1501,7 +1528,7 @@ srcfg_edit_operation(md_module_t *module, srcfg_datastore_t datastore, LYD_FORMA
     CHECK_NULL_ARG2(module, editor);
 
     /* init libyang context */
-    ret = srcfg_ly_init(&ly_ctx, module);
+    ret = srcfg_ly_init(&ly_ctx, module, md_ctx);
     CHECK_RC_MSG_GOTO(ret, fail, "Failed to initialize libyang context.");
 
     /* lock module for the time of editing if requested */
@@ -2043,19 +2070,19 @@ main(int argc, char* argv[])
     /* call selected operation */
     switch (operation) {
     case SRCFG_OP_EDIT:
-        rc = srcfg_edit_operation(module, datastore, format, editor, keep, permanent, false, strict);
+        rc = srcfg_edit_operation(module, datastore, format, editor, keep, permanent, false, strict, md_ctx);
         break;
     case SRCFG_OP_IMPORT:
-        rc = srcfg_import_operation(module, datastore, filepath, format, permanent, false, strict);
+        rc = srcfg_import_operation(module, datastore, filepath, format, permanent, false, strict, md_ctx);
         break;
     case SRCFG_OP_EXPORT:
-        rc = srcfg_export_operation(module, filepath, format);
+        rc = srcfg_export_operation(module, filepath, format, md_ctx);
         break;
     case SRCFG_OP_EXPORT_XPATH:
-        rc = srcfg_export_xpath_operation(module, filepath, xpath, format);
+        rc = srcfg_export_xpath_operation(module, filepath, xpath, format, md_ctx);
         break;
     case SRCFG_OP_IMPORT_XPATH:
-        rc = srcfg_import_xpath_operation(module, datastore, xpath, xpathvalue, permanent);
+        rc = srcfg_import_xpath_operation(module, datastore, xpath, xpathvalue, permanent, md_ctx);
         break;
     case SRCFG_OP_DELETE_XPATH:
         rc = srcfg_delete_xpath_operation((const char **) xpathdel, xpathdel_count);
@@ -2064,7 +2091,7 @@ main(int argc, char* argv[])
         free(xpathdel);
         break;
     case SRCFG_OP_MERGE:
-        rc = srcfg_import_operation(module, datastore, filepath, format, permanent, true, strict);
+        rc = srcfg_import_operation(module, datastore, filepath, format, permanent, true, strict, md_ctx);
         break;
     }
 
