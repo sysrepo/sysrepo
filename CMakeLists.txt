@@ -117,7 +117,9 @@ set(LIB_SRC
     src/edit_diff.c
     src/shm_main.c
     src/shm_mod.c
-    src/shm_sub.c)
+    src/shm_sub.c
+    src/utils/values.c
+    src/utils/xpath.c)
 
 set (SYSREPOCTL_SRC
     src/executables/sysrepoctl.c)
@@ -163,6 +165,8 @@ target_link_libraries(sysrepo-plugind sysrepo dl)
 # installation
 install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src/utils/xpath.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
 install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(FILES "${PROJECT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
