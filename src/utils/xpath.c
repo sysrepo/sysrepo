@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include "xpath.h"
+#include "common.h"
 
 static char *
 sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, bool skip_namespace)
@@ -91,19 +92,19 @@ sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, bool skip_namespac
 
 }
 
-char *
+API char *
 sr_xpath_next_node(char *xpath, sr_xpath_ctx_t *state)
 {
     return sr_get_next_node_internal(xpath, state, true);
 }
 
-char *
+API char *
 sr_xpath_next_node_with_ns(char *xpath, sr_xpath_ctx_t *state)
 {
     return sr_get_next_node_internal(xpath, state, false);
 }
 
-char *
+API char *
 sr_xpath_next_key_name(char *xpath, sr_xpath_ctx_t *state)
 {
     char *index = NULL, *key = NULL, *quot = NULL;
@@ -156,7 +157,7 @@ sr_xpath_next_key_name(char *xpath, sr_xpath_ctx_t *state)
     return key;
 }
 
-char *
+API char *
 sr_xpath_next_key_value(char *xpath, sr_xpath_ctx_t *state)
 {
     char *index = NULL, *value = NULL, *val_quot = NULL;
@@ -204,7 +205,7 @@ sr_xpath_next_key_value(char *xpath, sr_xpath_ctx_t *state)
     return value;
 }
 
-char *
+API char *
 sr_xpath_node(char *xpath, const char *node_name, sr_xpath_ctx_t *state)
 {
     char *index = NULL;
@@ -245,7 +246,7 @@ sr_xpath_node(char *xpath, const char *node_name, sr_xpath_ctx_t *state)
 
 }
 
-char *
+API char *
 sr_xpath_node_rel(char *xpath, const char *node_name, sr_xpath_ctx_t *state)
 {
     char *index = NULL;
@@ -282,7 +283,7 @@ sr_xpath_node_rel(char *xpath, const char *node_name, sr_xpath_ctx_t *state)
 
 }
 
-char *
+API char *
 sr_xpath_node_idx(char* xpath, size_t index, sr_xpath_ctx_t* state)
 {
     char *node = NULL;
@@ -319,7 +320,7 @@ sr_xpath_node_idx(char* xpath, size_t index, sr_xpath_ctx_t* state)
     return node;
 }
 
-char *
+API char *
 sr_xpath_node_idx_rel(char* xpath, size_t index, sr_xpath_ctx_t* state)
 {
     char *node = NULL;
@@ -351,7 +352,7 @@ sr_xpath_node_idx_rel(char* xpath, size_t index, sr_xpath_ctx_t* state)
     return node;
 }
 
-char *
+API char *
 sr_xpath_node_key_value(char *xpath, const char *key, sr_xpath_ctx_t *state)
 {
     char *index = NULL, *key_xp = NULL;
@@ -397,7 +398,7 @@ sr_xpath_node_key_value(char *xpath, const char *key, sr_xpath_ctx_t *state)
     return sr_xpath_next_key_value(NULL, state);
 }
 
-char *
+API char *
 sr_xpath_node_key_value_idx(char *xpath, size_t index, sr_xpath_ctx_t *state)
 {
     char *res = NULL;
@@ -440,7 +441,7 @@ sr_xpath_node_key_value_idx(char *xpath, size_t index, sr_xpath_ctx_t *state)
     return sr_xpath_next_key_value(NULL, state);
 }
 
-char *
+API char *
 sr_xpath_key_value(char *xpath, const char *node_name, const char *key_name, sr_xpath_ctx_t *state)
 {
     char *res = NULL;
@@ -477,7 +478,7 @@ sr_xpath_key_value(char *xpath, const char *node_name, const char *key_name, sr_
 
 }
 
-char *
+API char *
 sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_xpath_ctx_t *state)
 {
     char *res = NULL;
@@ -513,7 +514,7 @@ sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_xpat
     return res;
 }
 
-char *
+API char *
 sr_xpath_last_node(char *xpath, sr_xpath_ctx_t *state)
 {
     char *res = NULL;
@@ -535,7 +536,7 @@ sr_xpath_last_node(char *xpath, sr_xpath_ctx_t *state)
     return state->current_node;
 }
 
-char *
+API char *
 sr_xpath_node_name(const char *xpath)
 {
     const char *res = NULL, *quot = NULL;
@@ -561,7 +562,7 @@ sr_xpath_node_name(const char *xpath)
     return (char *)res;
 }
 
-bool
+API bool
 sr_xpath_node_name_eq(const char *xpath, const char *node_name)
 {
     char *xp_node_name = NULL;
@@ -575,7 +576,7 @@ sr_xpath_node_name_eq(const char *xpath, const char *node_name)
     }
 }
 
-void
+API void
 sr_xpath_recover(sr_xpath_ctx_t *state)
 {
     if (NULL != state) {

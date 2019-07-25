@@ -89,7 +89,7 @@ sr_val_str_data_ptr(sr_val_t *value, sr_type_t type)
     }
 }
 
-int
+API int
 sr_new_val(const char *xpath, sr_val_t **value_p)
 {
     int ret = SR_ERR_OK;
@@ -112,7 +112,7 @@ sr_new_val(const char *xpath, sr_val_t **value_p)
     return SR_ERR_OK;
 }
 
-int
+API int
 sr_new_values(size_t count, sr_val_t **values_p)
 {
     sr_val_t *values = NULL;
@@ -131,7 +131,7 @@ sr_new_values(size_t count, sr_val_t **values_p)
     return SR_ERR_OK;
 }
 
-int
+API int
 sr_realloc_values(size_t old_value_cnt, size_t new_value_cnt, sr_val_t **values_p)
 {
     sr_val_t *values = NULL;
@@ -177,7 +177,7 @@ sr_mem_edit_string(char **string_p, const char *new_val)
     return SR_ERR_OK;
 }
 
-int
+API int
 sr_val_set_xpath(sr_val_t *value, const char *xpath)
 {
     return sr_mem_edit_string(&value->xpath, xpath);
@@ -213,7 +213,7 @@ sr_mem_edit_string_va(char **string_p, const char *format, va_list args)
     return SR_ERR_OK;
 }
 
-int
+API int
 sr_val_build_xpath(sr_val_t *value, const char *format, ...)
 {
     va_list arg_list;
@@ -226,7 +226,7 @@ sr_val_build_xpath(sr_val_t *value, const char *format, ...)
     return rc;
 }
 
-int
+API int
 sr_val_set_str_data(sr_val_t *value, sr_type_t type, const char *string_val)
 {
     char **str_to_edit = NULL;
@@ -257,7 +257,7 @@ sr_val_build_str_data_va(sr_val_t *value, sr_type_t type, const char *format, va
     return rc;
 }
 
-int
+API int
 sr_val_build_str_data(sr_val_t *value, sr_type_t type, const char *format, ...)
 {
     va_list arg_list;
@@ -270,7 +270,7 @@ sr_val_build_str_data(sr_val_t *value, sr_type_t type, const char *format, ...)
     return rc;
 }
 
-int
+API int
 sr_dup_val_data(sr_val_t *dest, const sr_val_t *source)
 {
     int rc = SR_ERR_OK;
@@ -317,7 +317,7 @@ sr_dup_val_data(sr_val_t *dest, const sr_val_t *source)
     return rc;
 }
 
-int
+API int
 sr_dup_val(const sr_val_t *value, sr_val_t **value_dup_p)
 {
     int rc = SR_ERR_OK;
@@ -343,7 +343,7 @@ cleanup:
     return rc;
 }
 
-int
+API int
 sr_dup_values(const sr_val_t *values, size_t count, sr_val_t **values_dup_p)
 {
     int rc = SR_ERR_OK;
@@ -531,7 +531,7 @@ sr_print_val_ctx(sr_print_ctx_t *print_ctx, const sr_val_t *value)
     return rc;
 }
 
-int
+API int
 sr_print_val(const sr_val_t *value)
 {
     sr_print_ctx_t print_ctx = { 0, };
@@ -542,7 +542,7 @@ sr_print_val(const sr_val_t *value)
     return sr_print_val_ctx(&print_ctx, value);
 }
 
-int
+API int
 sr_print_val_fd(int fd, const sr_val_t *value)
 {
     sr_print_ctx_t print_ctx = { 0, };
@@ -553,7 +553,7 @@ sr_print_val_fd(int fd, const sr_val_t *value)
     return sr_print_val_ctx(&print_ctx, value);
 }
 
-int
+API int
 sr_print_val_stream(FILE *stream, const sr_val_t *value)
 {
     sr_print_ctx_t print_ctx = { 0, };
@@ -564,7 +564,7 @@ sr_print_val_stream(FILE *stream, const sr_val_t *value)
     return sr_print_val_ctx(&print_ctx, value);
 }
 
-int
+API int
 sr_print_val_mem(char **mem_p, const sr_val_t *value)
 {
     int rc = SR_ERR_OK;
@@ -627,7 +627,7 @@ sr_asprintf(char **strp, const char *fmt, ...)
     return rc;
 }
 
-char *
+API char *
 sr_val_to_str(const sr_val_t *value)
 {
     char *out = NULL;
@@ -748,7 +748,7 @@ cleanup:
     return out;
 }
 
-int
+API int
 sr_val_to_buff(const sr_val_t *value, char buffer[], size_t size)
 {
     size_t len = 0;
