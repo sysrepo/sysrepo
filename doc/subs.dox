@@ -6,10 +6,11 @@ an existing subscription and then multiple events will be handled by a single su
 there is a dedicated thread for handling all the events in a subscription structure so no further action is required.
 
 If this is not desired, it is possible to handle events on a subscription without a separate thread. When subscribing,
-a flag needs to be used so that the thread is not created. Be careful, if you use it, the subscription exists and
-events can occur but they are not being handled so they can time out, for example, unless processed manually. That
-can be achieved by a function that processes all pending events on a subscription. It can either be called periodically
-or only when there are actual events. This can be learnt by the subscription event pipe being ready for reading.
+the flag ::SR_SUBSCR_NO_THREAD needs to be used so that the thread is not created. Be careful, if you use it,
+the subscription exists and events can occur but they are not being handled so they can time out, for example, unless
+processed manually. That can be achieved by a function that processes all pending events on a subscription.
+::sr_process_events() can either be called periodically or only when there are actual events. This can be learnt by
+the subscription event pipe (::sr_get_event_pipe()) being ready for reading.
 
 @ref subs_api
 
@@ -31,6 +32,18 @@ There is one special event _update_ that is generated only for subscriptions tha
 any of the other ones mentioned before because it allows to further modify the data changes that are being handled.
 Callback with this event can fail and cause the changes to be immediately refused.
 
+Also, a subscription can request _enabled_ event and get the current configuration at the time of subscribing. This event
+is normally followed by _done_ event, just like _change_ event. However, _enabled_ event is generated even if the current
+configuration is empty (so there will be no changes available in the callback)!
+
+On the events _update_ and _change_, the callback can return a special ::SR_ERR_CALLBACK_SHELVE value. This causes
+the event not to be processed and simply skipped (shelved). When all the events on the subscription are processed
+next time, this subscription callback with the same event is called again. This special return value can be returned
+several times but be careful for the timeout not to elapse! Typically, this whole mechanism is used only when the events
+are handled by the application, not by a Sysrepo thread (::SR_SUBSCR_NO_THREAD). Otherwise the application does not have
+full control over calling the event processing function ::sr_process_events() (strictly speaking, it can be called
+directly even if Sysrepo thread is handling this subscription, but there is likely no use-case).
+
 For each of these events, the configuration changes are retrieved using an iterator, which can be created several times
 and optionally with only selected changes.
 
@@ -47,6 +60,8 @@ In case there are several subscriptions matching a single RPC/action, it is best
 subscription with the lowest priority (will be called last). This (main) subscription will be the one generating
 output for the sender (previous outputs will be overwritten) and, additionally, will never receive the _abort_
 event (in case it fails, only all the other higher priority callbacks will get called).
+
+RPC subscriptions can also return ::SR_ERR_CALLBACK_SHELVE on _rpc_ event.
 
 @ref rpc_subs_api
 
@@ -70,6 +85,8 @@ to read the current state of a device, for example, and then return them as _sta
 they can also be used to provide _configuration_ data nodes. In that case they should return only the
 configuration that is actually in-use by the managed device. Much more details and explanations can be found
 in the NMDA @ref rfcs "RFC".
+
+Just like configuration and RPC subscription, operational subscription callback can return ::SR_ERR_CALLBACK_SHELVE.
 
 @ref oper_subs_api
 

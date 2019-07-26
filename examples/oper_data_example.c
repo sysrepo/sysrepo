@@ -28,10 +28,12 @@
 volatile int exit_application = 0;
 
 static int
-dp_get_items_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
-        void *private_data)
+dp_get_items_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     (void)session;
+    (void)request_xpath;
+    (void)request_id;
     (void)private_data;
 
     printf("\n\n ========== DATA FOR \"%s\" \"%s\" REQUESTED =======================\n\n", module_name, xpath);

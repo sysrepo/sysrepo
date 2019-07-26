@@ -174,7 +174,7 @@ ev_to_str(sr_event_t ev)
 
 static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_data)
+        uint32_t request_id, void *private_data)
 {
     sr_change_iter_t *it = NULL;
     int rc = SR_ERR_OK;
@@ -183,6 +183,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, const char 
     sr_val_t *new_value = NULL;
 
     (void)xpath;
+    (void)request_id;
     (void)private_data;
 
     printf("\n\n ========== EVENT %s CHANGES: ====================================\n\n", ev_to_str(event));

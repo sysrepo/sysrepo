@@ -126,7 +126,7 @@ teardown_f(void **state)
 /* TEST 1 */
 static int
 module_empty_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_ctx)
+        uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
@@ -136,6 +136,7 @@ module_empty_cb(sr_session_ctx_t *session, const char *module_name, const char *
 
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
+    (void)request_id;
 
     switch (st->cb_called) {
     case 0:
@@ -495,7 +496,7 @@ test_empty(void **state)
 /* TEST 2 */
 static int
 module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_ctx)
+        uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
@@ -505,6 +506,7 @@ module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char 
 
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
+    (void)request_id;
 
     switch (st->cb_called) {
     case 0:
@@ -826,7 +828,7 @@ test_simple(void **state)
 /* TEST 3 */
 static int
 module_userord_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_ctx)
+        uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
@@ -836,6 +838,7 @@ module_userord_cb(sr_session_ctx_t *session, const char *module_name, const char
 
     assert_string_equal(module_name, "test");
     assert_null(xpath);
+    (void)request_id;
 
     switch (st->cb_called) {
     case 0:
@@ -1084,7 +1087,7 @@ test_userord(void **state)
 /* TEST 4 */
 static int
 module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_ctx)
+        uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
@@ -1093,6 +1096,7 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
     int ret;
 
     assert_null(xpath);
+    (void)request_id;
 
     switch (st->cb_called) {
     case 0:

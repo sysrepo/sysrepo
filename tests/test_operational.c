@@ -106,12 +106,14 @@ clear_interfaces(void **state)
 /* TEST 1 (no threads) */
 static int
 enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_data)
+        uint32_t request_id, void *private_data)
 {
     sr_change_oper_t op;
     sr_change_iter_t *iter;
     sr_val_t *old_val, *new_val;
     int ret, *called = (int *)private_data;
+
+    assert_int_equal(request_id, 0);
 
     if (!strcmp(xpath, "/ietf-interfaces:interfaces/interface[name='eth128']")) {
         assert_string_equal(module_name, "ietf-interfaces");
@@ -309,13 +311,15 @@ test_enabled_partial(void **state)
 
 /* TEST 2 */
 static int
-simple_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
-        void *private_data)
+simple_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
     struct lyd_node *node;
 
+    assert_string_equal(request_xpath, "/ietf-interfaces:*");
     assert_int_equal(sr_session_get_nc_id(session), 64);
+    (void)request_id;
     (void)private_data;
 
     ly_ctx = sr_get_context(sr_session_get_connection(session));
@@ -429,11 +433,14 @@ test_simple(void **state)
 
 /* TEST 3 */
 static int
-fail_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
-        void *private_data)
+fail_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     (void)session;
+    (void)request_id;
     (void)private_data;
+
+    assert_string_equal(request_xpath, "/ietf-interfaces:*");
 
     assert_string_equal(module_name, "ietf-interfaces");
     assert_string_equal(xpath, "/ietf-interfaces:interfaces-state");
@@ -476,12 +483,15 @@ test_fail(void **state)
 
 /* TEST 4 */
 static int
-config_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
-        void *private_data)
+config_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
 
+    (void)request_id;
     (void)private_data;
+
+    assert_string_equal(request_xpath, "/ietf-interfaces:*");
 
     ly_ctx = sr_get_context(sr_session_get_connection(session));
 
@@ -554,14 +564,16 @@ test_config(void **state)
 
 /* TEST 5 */
 static int
-list_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
-        void *private_data)
+list_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     struct lyd_node *node;
 
     (void)session;
+    (void)request_id;
     (void)private_data;
 
+    assert_string_equal(request_xpath, "/ietf-interfaces:*");
     assert_string_equal(module_name, "ietf-interfaces");
     assert_non_null(parent);
     assert_non_null(*parent);
@@ -646,16 +658,18 @@ test_list(void **state)
 
 /* TEST 6 */
 static int
-nested_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
-        void *private_data)
+nested_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
     struct lyd_node *node;
 
+    (void)request_id;
     (void)private_data;
 
     ly_ctx = sr_get_context(sr_session_get_connection(session));
 
+    assert_string_equal(request_xpath, "/ietf-interfaces:*");
     assert_string_equal(module_name, "ietf-interfaces");
     assert_non_null(parent);
 
@@ -778,16 +792,18 @@ test_nested(void **state)
 
 /* TEST 7 */
 static int
-mixed_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, struct lyd_node **parent,
-        void *private_data)
+mixed_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
     struct lyd_node *node;
 
+    (void)request_id;
     (void)private_data;
 
     ly_ctx = sr_get_context(sr_session_get_connection(session));
 
+    assert_string_equal(request_xpath, "/ietf-interfaces:*");
     assert_string_equal(module_name, "ietf-interfaces");
     assert_string_equal(xpath, "/ietf-interfaces:*");
     assert_non_null(parent);

@@ -54,6 +54,7 @@ static const char *const sr_errlist[] = {
         "Requested resource already locked",    /* SR_ERR_LOCKED */
         "Timeout expired",                      /* SR_ERR_TIME_OUT */
         "User callback failed",                 /* SR_ERR_CALLBACK_FAILED */
+        "User callback shelved",                /** SR_ERR_CALLBACK_SHELVE */
 };
 
 struct sr_error_info_err_s {

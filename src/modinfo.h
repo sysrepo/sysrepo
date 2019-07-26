@@ -51,7 +51,7 @@ struct sr_mod_info_s {
         uint8_t state;          /**< Module state (flags). */
         const struct lys_module *ly_mod;    /**< Module libyang structure. */
 
-        uint32_t event_id;      /**< Event ID of the published event. */
+        uint32_t request_id;    /**< Request ID of the published event. */
     } *mods;                    /**< Relevant modules. */
     uint32_t mod_count;         /**< Modules count. */
 };
@@ -133,11 +133,12 @@ sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct l
  * @param[in] mod_type Only module types which data should be loaded.
  * @param[in] cache Whether it makes sense to use cached data, if available.
  * @param[in] sid Sysrepo session ID.
+ * @param[in] request_id XPath of the data request.
  * @param[out] cb_error_info Callback error info in case an operational subscriber of required data failed.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache, sr_sid_t *sid,
-        sr_error_info_t **cb_error_info);
+        const char *request_id, sr_error_info_t **cb_error_info);
 
 /**
  * @brief Filter data from mod info.

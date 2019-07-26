@@ -67,6 +67,8 @@ typedef enum sr_error_e {
     SR_ERR_LOCKED,             /**< Requested resource is already locked. */
     SR_ERR_TIME_OUT,           /**< Time out has expired. */
     SR_ERR_CALLBACK_FAILED,    /**< User callback failure caused the operation to fail. */
+    SR_ERR_CALLBACK_SHELVE,    /**< User callback has not processed the event and will do so
+                                    on the next event processing. */
 } sr_error_t;
 
 /**
@@ -1164,12 +1166,14 @@ typedef struct sr_change_iter_s sr_change_iter_t;
  * (by ::sr_get_changes_iter call) and learn about initiator session IDs. Do not stop this session.
  * @param[in] module_name Name of the module where the change has occurred.
  * @param[in] xpath XPath used when subscribing, NULL if the whole module was subscribed to.
- * @param[in] event Type of the notification event that has occurred.
+ * @param[in] event Type of the callback event that has occurred.
+ * @param[in] request_id Request ID unique for the specific \p module_name. Connected events
+ * for one request (::SR_EV_CHANGE and ::SR_EV_DONE, for example) ahve the same request ID.
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_module_change_subscribe call.
  * @return Error code (::SR_ERR_OK on success).
  */
 typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name, const char *xpath,
-        sr_event_t event, void *private_data);
+        sr_event_t event, uint32_t request_id, void *private_data);
 
 /**
  * @brief Subscribes for changes made in the specified module.
@@ -1279,6 +1283,8 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @param[in] op_path Simple operation path identifying the RPC/action.
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
+ * @param[in] event Type of the callback event that has occurred.
+ * @param[in] request_id Request ID unique for the specific \p op_path.
  * @param[out] output Array of output parameters. Should be allocated on heap,
  * will be freed by sysrepo after sending of the RPC response.
  * @param[out] output_cnt Number of output parameters.
@@ -1286,7 +1292,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @return Error code (::SR_ERR_OK on success).
  */
 typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt,
-        sr_event_t event, sr_val_t **output, size_t *output_cnt, void *private_data);
+        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data);
 
 /**
  * @brief Callback to be called for RPC or action specified by xpath.
@@ -1296,13 +1302,15 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *op_path, const s
  * @param[in] session Callback session to use.
  * @param[in] op_path Simple operation path identifying the RPC/action.
  * @param[in] input Data tree of input parameters.
+ * @param[in] event Type of the callback event that has occurred.
+ * @param[in] request_id Request ID unique for the specific \p op_path.
  * @param[out] output Data tree of output parameters. Should be allocated on heap,
  * will be freed by sysrepo after sending of the RPC response.
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe_tree call.
  * @return Error code (::SR_ERR_OK on success).
  */
 typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input,
-        sr_event_t event, struct lyd_node *output, void *private_data);
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data);
 
 /**
  * @brief Subscribes for delivery of RPC or action specified by path.
@@ -1532,13 +1540,15 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
  * Do not stop this session.
  * @param[in] module_name Name of the affected module.
  * @param[in] path Path identifying the subtree that is supposed to be provided, same as the one used for the subscription.
+ * @param[in] request_xpath XPath as requested by a client. Can be NULL.
+ * @param[in] request_id Request ID unique for the specific \p module_name.
  * @param[in,out] parent Pointer to an existing parent of the requested nodes. Is NULL for top-level nodes.
  * Called is supposed to append the requested nodes to this data subtree.
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_oper_get_items_subscribe call.
  * @return Error code (::SR_ERR_OK on success).
  */
 typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, const char *module_name, const char *path,
-        struct lyd_node **parent, void *private_data);
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data);
 
 /**
  * @brief Register for providing operational data at the given xpath.

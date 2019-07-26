@@ -115,7 +115,7 @@ teardown_f(void **state)
 /* TEST 1 */
 static int
 module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_ctx)
+        uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
@@ -127,6 +127,8 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
     bool prev_dflt;
     int ret;
 
+    (void)request_id;
+
     assert_int_equal(sr_session_get_nc_id(session), 52);
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
@@ -134,7 +136,8 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
     switch (st->cb_called) {
     case 0:
     case 1:
-        if (st->cb_called == 0) {
+    case 2:
+        if (st->cb_called < 2) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -193,7 +196,7 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
         assert_int_equal(ret, 0);
         lyd_free(subtree);
 
-        if (st->cb_called == 0) {
+        if (st->cb_called < 2) {
             assert_null(str1);
         } else {
             str2 =
@@ -210,9 +213,9 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
             free(str1);
         }
         break;
-    case 2:
     case 3:
-        if (st->cb_called == 2) {
+    case 4:
+        if (st->cb_called == 3) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -271,7 +274,7 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
         assert_int_equal(ret, 0);
         lyd_free_withsiblings(subtree);
 
-        if (st->cb_called == 2) {
+        if (st->cb_called == 3) {
             str2 =
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
                 "<interface>"
@@ -291,6 +294,9 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
     }
 
     ++st->cb_called;
+    if (st->cb_called == 1) {
+        return SR_ERR_CALLBACK_SHELVE;
+    }
     return SR_ERR_OK;
 }
 
@@ -380,11 +386,22 @@ subscribe_change_done_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 4) && (count < 1500)) {
+    while ((st->cb_called < 1) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 4);
+    assert_int_equal(st->cb_called, 1);
+
+    /* callback was shelved, process it again */
+    ret = sr_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    count = 0;
+    while ((st->cb_called < 5) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 5);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -409,13 +426,15 @@ test_change_done(void **state)
 /* TEST 2 */
 static int
 module_update_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_ctx)
+        uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
     sr_change_iter_t *iter;
     sr_val_t *old_val, *new_val;
     int ret;
+
+    (void)request_id;
 
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
@@ -684,12 +703,13 @@ test_update(void **state)
 /* TEST 3 */
 static int
 module_update_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_ctx)
+        uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     int ret = SR_ERR_OK;
 
     (void)session;
+    (void)request_id;
 
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
@@ -809,13 +829,15 @@ test_update_fail(void **state)
 /* TEST 4 */
 static int
 module_test_change_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_ctx)
+        uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
     sr_change_iter_t *iter;
     sr_val_t *old_val, *new_val;
     int ret;
+
+    (void)request_id;
 
     assert_string_equal(module_name, "test");
     assert_null(xpath);
@@ -881,13 +903,15 @@ module_test_change_fail_cb(sr_session_ctx_t *session, const char *module_name, c
 
 static int
 module_ifc_change_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_ctx)
+        uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
     sr_change_iter_t *iter;
     sr_val_t *old_val, *new_val;
     int ret = SR_ERR_OK;
+
+    (void)request_id;
 
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
@@ -1165,13 +1189,15 @@ test_change_fail(void **state)
 /* TEST 5 */
 static int
 module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_ctx)
+        uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
     sr_change_iter_t *iter;
     sr_val_t *old_val, *new_val;
     int ret;
+
+    (void)request_id;
 
     assert_string_equal(module_name, "defaults");
     assert_null(xpath);
@@ -1632,13 +1658,15 @@ test_change_done_dflt(void **state)
 /* TEST 6 */
 static int
 module_change_done_when_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_ctx)
+        uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
     sr_change_iter_t *iter;
     sr_val_t *old_val, *new_val;
     int ret;
+
+    (void)request_id;
 
     assert_null(xpath);
 
@@ -2035,13 +2063,15 @@ test_change_done_when(void **state)
 /* TEST 7 */
 static int
 module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_ctx)
+        uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
     sr_change_iter_t *iter;
     sr_val_t *old_val, *new_val;
     int ret;
+
+    (void)request_id;
 
     assert_string_equal(module_name, "test");
 

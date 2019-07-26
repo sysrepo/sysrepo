@@ -191,7 +191,8 @@ typedef struct dp_setup_s {
 
 
 int
-data_provide_cb(sr_session_ctx_t *session, const char *module_name, const char *path, struct lyd_node **parent, void *private_data)
+data_provide_cb(sr_session_ctx_t *session, const char *module_name, const char *path, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     size_t if_count = *((size_t *) private_data);
     int rc = SR_ERR_OK;
@@ -201,6 +202,8 @@ data_provide_cb(sr_session_ctx_t *session, const char *module_name, const char *
     (void)session;
     (void)module_name;
     (void)path;
+    (void)request_xpath;
+    (void)request_id;
 
     for (size_t i = 0; i < if_count; i++) {
         asprintf(&xpath, "interface[name='eth%zu']", i);
@@ -725,13 +728,14 @@ perf_commit_test(void **state, int op_num, int *items)
 
 static int
 test_rpc_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt,
-        sr_event_t event, sr_val_t **output, size_t *output_cnt, void *private_data)
+        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     sr_val_t *v = NULL;
     (void)session;
     (void)op_path;
     (void)input;
     (void)event;
+    (void)request_id;
     (void)private_data;
 
     /* check input */
@@ -752,12 +756,13 @@ test_rpc_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *inpu
 
 static int
 test_dummy_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        void *private_data)
+        uint32_t request_id, void *private_data)
 {
     (void)session;
     (void)module_name;
     (void)xpath;
     (void)event;
+    (void)request_id;
     (void)private_data;
     return SR_ERR_OK;
 }
