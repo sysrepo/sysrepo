@@ -8,6 +8,13 @@ Applications can use sysrepo to store their configuration modeled by provided YA
 
 Sysrepo can be easily integrated with management agents such as [NETCONF](https://tools.ietf.org/html/rfc6241) or [RESTCONF](https://tools.ietf.org/html/rfc8040) servers, using the same client library API that applications use to access their configuration. As of now, sysrepo is integrated with the [Netopeer 2 NETCONF server](https://github.com/CESNET/Netopeer2). This means that applications that use sysrepo to store their configuration can automatically benefit from the ability to being controlled via NETCONF.
 
+## Migration from Sysrepo version 0.7.x or older
+
+This Sysrepo is a complete rewrite of these older versions. We tried to keep the API as similar as possible but there were
+some smaller or even bigger changes (mostly for the sake of efficiency). All these changes should be mentioned in `CHANGES`
+text file. It is also best to look at least briefly at the documentation where you will find information about major
+design changes (most importantly, no `sysrepod`).
+
 ## Provided Features
 
 * Ability to store / retrieve YANG-modeled data elements adressed by XPath
