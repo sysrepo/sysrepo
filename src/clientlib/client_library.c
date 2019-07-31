@@ -1757,7 +1757,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
     }
     if (NULL != node2) {
         /* something unrequested left in the chunk, deallocate it */
-        assert(true == bounded_slice);
+        //assert(true == bounded_slice);
         do {
             next = node2->next;
             node2->next = node2->prev = node2->parent = NULL;
