@@ -258,6 +258,55 @@ test_op_deps(void **state)
 }
 
 static void
+test_inv_deps(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-routing.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_remove_module(st->conn, "ietf-routing");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "ietf-interfaces");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current internal data */
+    cmp_int_data(st->conn, "ietf-routing",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>ietf-routing</name>"
+        "<revision>2015-04-17</revision>"
+        "<removed/>"
+        "<data-deps>"
+            "<module>ietf-interfaces</module>"
+        "</data-deps>"
+        "<op-deps>"
+            "<xpath xmlns:rt=\"urn:ietf:params:xml:ns:yang:ietf-routing\">/rt:fib-route</xpath>"
+            "<in>"
+                "<module>ietf-routing</module>"
+            "</in>"
+            "<out>"
+                "<module>ietf-routing</module>"
+            "</out>"
+        "</op-deps>"
+        "<inverse-data-deps>ietf-interfaces</inverse-data-deps>"
+    "</module>"
+    );
+
+    cmp_int_data(st->conn, "ietf-interfaces",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>ietf-interfaces</name>"
+        "<revision>2014-05-08</revision>"
+        "<removed/>"
+        "<data-deps>"
+            "<module>ietf-routing</module>"
+        "</data-deps>"
+        "<inverse-data-deps>ietf-routing</inverse-data-deps>"
+    "</module>"
+    );
+}
+
+static void
 test_remove_dep_module(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -500,6 +549,7 @@ main(void)
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(test_data_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_op_deps, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_inv_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_remove_dep_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_feature, setup_f, teardown_f),

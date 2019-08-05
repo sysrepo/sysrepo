@@ -1347,20 +1347,23 @@ cleanup:
 /**
  * @brief Add inverse dependencies of this module dependant modules into internal sysrepo data.
  *
- * @param[in] ly_mod Module with dependencies.
- * @param[in] sr_mods Internal sysrepo data with \p ly_mod already added.
+ * @param[in] mod_name Name of the module with dependencies.
+ * @param[in] sr_mods Internal sysrepo data with \p mod_name module already added.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_ly_add_inv_data_deps(const struct lys_module *ly_mod, struct lyd_node *sr_mods)
+sr_shmmain_ly_add_inv_data_deps(const char *mod_name, struct lyd_node *sr_mods)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL, *set2;
     struct lyd_node *node;
     char *xpath = NULL, *xpath2;
+    struct ly_ctx *ly_ctx;
     uint16_t i;
 
-    if (asprintf(&xpath, "module[name='%s']/data-deps/module", ly_mod->name) == -1) {
+    ly_ctx = lyd_node_module(sr_mods)->ctx;
+
+    if (asprintf(&xpath, "module[name='%s']/data-deps/module", mod_name) == -1) {
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
@@ -1368,7 +1371,7 @@ sr_shmmain_ly_add_inv_data_deps(const struct lys_module *ly_mod, struct lyd_node
     /* select all the dependencies */
     set = lyd_find_path(sr_mods, xpath);
     if (!set) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        sr_errinfo_new_ly(&err_info, ly_ctx);
         goto cleanup;
     }
 
@@ -1388,10 +1391,10 @@ sr_shmmain_ly_add_inv_data_deps(const struct lys_module *ly_mod, struct lyd_node
         assert(set2->number == 1);
 
         /* add inverse dependency */
-        node = lyd_new_leaf(set2->set.d[0], NULL, "inverse-data-deps", ly_mod->name);
+        node = lyd_new_leaf(set2->set.d[0], NULL, "inverse-data-deps", mod_name);
         ly_set_free(set2);
         if (!node) {
-            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+            sr_errinfo_new_ly(&err_info, ly_ctx);
             goto cleanup;
         }
     }
@@ -1598,7 +1601,7 @@ sr_shmmain_sched_update_modules(struct lyd_node *sr_mods, struct ly_ctx *old_ctx
         if ((err_info = sr_shmmain_ly_rebuild_data_deps(set->set.d[i]->parent, new_ly_mod))) {
             goto cleanup;
         }
-        if ((err_info = sr_shmmain_ly_add_inv_data_deps(new_ly_mod, sr_mods))) {
+        if ((err_info = sr_shmmain_ly_add_inv_data_deps(new_ly_mod->name, sr_mods))) {
             goto cleanup;
         }
 
@@ -1753,7 +1756,7 @@ sr_shmmain_sched_change_features(struct lyd_node *sr_mods, struct ly_ctx *old_ct
         if ((err_info = sr_shmmain_ly_rebuild_data_deps(sr_mod, new_ly_mod))) {
             goto cleanup;
         }
-        if ((err_info = sr_shmmain_ly_add_inv_data_deps(new_ly_mod, sr_mods))) {
+        if ((err_info = sr_shmmain_ly_add_inv_data_deps(new_ly_mod->name, sr_mods))) {
             goto cleanup;
         }
 
@@ -3308,7 +3311,7 @@ sr_error_info_t *
 sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *sr_mods = NULL, *sr_mod = NULL;
+    struct lyd_node *sr_mods = NULL, *sr_mod = NULL, *mod;
 
     /* parse current module information */
     if ((err_info = sr_shmmain_ly_int_data_parse(conn, &sr_mods))) {
@@ -3322,8 +3325,10 @@ sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *ly
     }
 
     /* also remember inverse dependencies now that all the modules were added */
-    if ((err_info = sr_shmmain_ly_add_inv_data_deps(ly_mod, sr_mods))) {
-        goto cleanup;
+    LY_TREE_FOR(sr_mod, mod) {
+        if ((err_info = sr_shmmain_ly_add_inv_data_deps(sr_ly_leaf_value_str(mod->child), sr_mods))) {
+            goto cleanup;
+        }
     }
 
     /* store the updated persistent data tree */
