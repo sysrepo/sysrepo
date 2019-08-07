@@ -68,8 +68,8 @@ help_print(void)
         "\n"
         "  -l, --list           List YANG modules in sysrepo.\n"
         "  -i, --install <path> Install the specified schema into sysrepo. Can be in either YANG or YIN format.\n"
-        "  -u, --uninstall <module>\n"
-        "                       Uninstall the specified module from sysrepo.\n"
+        "  -u, --uninstall <module>[,<module2>,<module3> ...]\n"
+        "                       Uninstall the specified module(s) from sysrepo.\n"
         "  -c, --change <module>\n"
         "                       Change access rights, features, or replay support of the specified module.\n"
         "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
@@ -556,9 +556,12 @@ main(int argc, char** argv)
         break;
     case 'u':
         /* uninstall */
-        if ((r = sr_remove_module(conn, module_name)) != SR_ERR_OK) {
-            error_print(r, "Failed to uninstall module \"%s\"", module_name);
-            goto cleanup;
+        ptr = (char *)module_name;
+        for (module_name = strtok(ptr, ","); module_name; module_name = strtok(NULL, ",")) {
+            if ((r = sr_remove_module(conn, module_name)) != SR_ERR_OK) {
+                error_print(r, "Failed to uninstall module \"%s\"", module_name);
+                goto cleanup;
+            }
         }
         rc = EXIT_SUCCESS;
         break;
