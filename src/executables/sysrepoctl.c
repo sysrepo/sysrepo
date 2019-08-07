@@ -549,8 +549,11 @@ main(int argc, char** argv)
     case 'i':
         /* install */
         if ((r = sr_install_module(conn, file_path, search_dir, (const char **)features, feat_count)) != SR_ERR_OK) {
-            error_print(r, "Failed to install module \"%s\"", file_path);
-            goto cleanup;
+            /* succeed if the module is already installed */
+            if (r != SR_ERR_EXISTS) {
+                error_print(r, "Failed to install module \"%s\"", file_path);
+                goto cleanup;
+            }
         }
         rc = EXIT_SUCCESS;
         break;
