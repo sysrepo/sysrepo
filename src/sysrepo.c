@@ -1345,15 +1345,17 @@ sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
     if (set->number > 1) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "More subtrees match \"%s\".", path);
         goto cleanup_mods_unlock;
+    } else if (!set->number) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "No data found for \"%s\".", path);
+        goto cleanup_mods_unlock;
     }
 
-    if (set->number) {
-        *value = malloc(sizeof **value);
-        SR_CHECK_MEM_GOTO(!*value, err_info, cleanup_mods_unlock);
+    /* create return value */
+    *value = malloc(sizeof **value);
+    SR_CHECK_MEM_GOTO(!*value, err_info, cleanup_mods_unlock);
 
-        if ((err_info = sr_val_ly2sr(set->set.d[0], *value))) {
-            goto cleanup_mods_unlock;
-        }
+    if ((err_info = sr_val_ly2sr(set->set.d[0], *value))) {
+        goto cleanup_mods_unlock;
     }
 
     /* success */

@@ -638,7 +638,7 @@ typedef struct sr_val_s {
 
 /**
  * @brief Retrieves a single data element selected by the provided path. If multiple
- * nodes match, ::SR_ERR_INVAL_ARG is returned.
+ * nodes match, ::SR_ERR_INVAL_ARG is returned and if no node matches, ::SR_ERR_NOT_FOUND is returned.
  *
  * If the path identifies an empty leaf, a list or a container, the value
  * has no data filled in and its type is set properly
