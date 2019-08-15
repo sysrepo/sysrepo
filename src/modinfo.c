@@ -1161,29 +1161,60 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache
 sr_error_info_t *
 sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session, struct ly_set **result)
 {
-    struct sr_mod_info_mod_s *mod;
-    uint32_t i;
     sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_mod_s *mod;
+    struct lyd_node *edit, *diff;
+    uint32_t i;
 
     *result = NULL;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        if (mod->state & MOD_INFO_REQ) {
-            if ((session->ev == SR_SUB_EV_NONE) && IS_WRITABLE_DS(session->ds)) {
-                if (mod_info->data_cached && (session->ds == SR_DS_RUNNING) && session->dt[SR_DS_RUNNING].edit) {
-                    /* data will be changed, we cannot use the cache anymore */
-                    mod_info->data = lyd_dup_withsiblings(mod_info->data, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_WHEN);
-                    mod_info->data_cached = 0;
+        if ((mod->state & MOD_INFO_REQ) && IS_WRITABLE_DS(session->ds)) {
+            edit = NULL;
+            diff = NULL;
 
-                    /* CACHE READ UNLOCK */
-                    sr_rwunlock(&mod_info->conn->mod_cache.lock, 0, __func__);
+            /* collect edit/diff to be applied based on the handled event */
+            switch (session->ev) {
+            case SR_SUB_EV_CHANGE:
+            case SR_SUB_EV_ENABLED:
+            case SR_SUB_EV_UPDATE:
+                diff = session->dt[session->ds].diff;
+                if (session->ev != SR_SUB_EV_UPDATE) {
+                    break;
                 }
+                /* fallthrough */
+            case SR_SUB_EV_NONE:
+                edit = session->dt[session->ds].edit;
+                break;
+            case SR_SUB_EV_DONE:
+            case SR_SUB_EV_ABORT:
+            case SR_SUB_EV_OPER:
+            case SR_SUB_EV_RPC:
+            case SR_SUB_EV_NOTIF:
+                /* no changes to apply for these events */
+                break;
+            default:
+                SR_ERRINFO_INT(&err_info);
+                goto cleanup;
+            }
 
-                /* apply any performed changes to get the session-specific data */
-                if ((err_info = sr_edit_mod_apply(session->dt[session->ds].edit, mod->ly_mod, &mod_info->data, NULL))) {
-                    goto cleanup;
-                }
+            if (mod_info->data_cached && (session->ds == SR_DS_RUNNING) && (edit || diff)) {
+                /* data will be changed, we cannot use the cache anymore */
+                mod_info->data = lyd_dup_withsiblings(mod_info->data, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_WHEN);
+                mod_info->data_cached = 0;
+
+                /* CACHE READ UNLOCK */
+                sr_rwunlock(&mod_info->conn->mod_cache.lock, 0, __func__);
+            }
+
+            /* apply any currently handled changes (diff) or additional performed ones (edit) to get
+             * the session-specific data tree */
+            if ((err_info = sr_diff_mod_apply(diff, mod->ly_mod, &mod_info->data))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, NULL))) {
+                goto cleanup;
             }
         }
     }

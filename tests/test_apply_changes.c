@@ -192,26 +192,24 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
         ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
+        ret = lyd_schema_sort(subtree, 1);
+        assert_int_equal(ret, 0);
         ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
         assert_int_equal(ret, 0);
         lyd_free(subtree);
 
-        if (st->cb_called < 2) {
-            assert_null(str1);
-        } else {
-            str2 =
-            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-                " xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
-                "<interface>"
-                    "<name>eth52</name>"
-                    "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-                    "<enabled ncwd:default=\"true\">true</enabled>"
-                "</interface>"
-            "</interfaces>";
+        str2 =
+        "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+            "<interface>"
+                "<name>eth52</name>"
+                "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+                "<enabled ncwd:default=\"true\">true</enabled>"
+            "</interface>"
+        "</interfaces>";
 
-            assert_string_equal(str1, str2);
-            free(str1);
-        }
+        assert_string_equal(str1, str2);
+        free(str1);
         break;
     case 3:
     case 4:
@@ -274,20 +272,7 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
         assert_int_equal(ret, 0);
         lyd_free_withsiblings(subtree);
 
-        if (st->cb_called == 3) {
-            str2 =
-            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-                "<interface>"
-                    "<name>eth52</name>"
-                    "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-                "</interface>"
-            "</interfaces>";
-
-            assert_string_equal(str1, str2);
-            free(str1);
-        } else {
-            assert_null(str1);
-        }
+        assert_null(str1);
         break;
     default:
         fail();
