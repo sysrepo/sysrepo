@@ -3058,6 +3058,11 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     SR_CHECK_ARG_APIRET(!session || !IS_WRITABLE_DS(session->ds) || !module_name || !callback ||
             ((opts & SR_SUBSCR_PASSIVE) && (opts & SR_SUBSCR_ENABLED)) || !subscription, session, err_info);
 
+    if ((opts & SR_SUBSCR_CTX_REUSE) && !*subscription) {
+        /* invalid option, remove */
+        opts &= ~SR_SUBSCR_CTX_REUSE;
+    }
+
     conn = session->conn;
     /* only these options are relevant outside this function and will be stored */
     sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE);
@@ -3639,6 +3644,11 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 
     SR_CHECK_ARG_APIRET(!session || !xpath || (!callback && !tree_callback) || !subscription, session, err_info);
 
+    if ((opts & SR_SUBSCR_CTX_REUSE) && !*subscription) {
+        /* invalid option, remove */
+        opts &= ~SR_SUBSCR_CTX_REUSE;
+    }
+
     conn = session->conn;
 
     /* SHM WRITE LOCK */
@@ -4010,6 +4020,11 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const struct lys_module *ly
 
     assert((callback && !tree_callback) || (!callback && tree_callback));
 
+    if ((opts & SR_SUBSCR_CTX_REUSE) && !*subscription) {
+        /* invalid option, remove */
+        opts &= ~SR_SUBSCR_CTX_REUSE;
+    }
+
     conn = session->conn;
 
     /* is the xpath valid, if any? */
@@ -4372,6 +4387,11 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     uint16_t i;
 
     SR_CHECK_ARG_APIRET(!session || !module_name || !path || !callback || !subscription, session, err_info);
+
+    if ((opts & SR_SUBSCR_CTX_REUSE) && !*subscription) {
+        /* invalid option, remove */
+        opts &= ~SR_SUBSCR_CTX_REUSE;
+    }
 
     conn = session->conn;
 
