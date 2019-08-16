@@ -528,7 +528,7 @@ sr_shmmod_conf_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
     /* moving all existing subscriptions (if any) and adding a new one */
     conf_subs_off = shm_ext->size;
     xpath_off = conf_subs_off + (shm_mod->conf_sub[ds].sub_count + 1) * sizeof *shm_sub;
-    new_ext_size = xpath_off + (xpath ? strlen(xpath) + 1 : 0);
+    new_ext_size = xpath_off + (xpath ? sr_shmlen(xpath) : 0);
 
     /* remap main ext SHM */
     if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
@@ -595,7 +595,7 @@ continue_loop:
     SR_CHECK_INT_RET(i == shm_mod->conf_sub[ds].sub_count, err_info);
 
     /* add wasted memory */
-    *((size_t *)ext_shm_addr) += sizeof *shm_sub + (shm_sub[i].xpath ? strlen(ext_shm_addr + shm_sub[i].xpath) + 1 : 0);
+    *((size_t *)ext_shm_addr) += sizeof *shm_sub + (shm_sub[i].xpath ? sr_shmlen(ext_shm_addr + shm_sub[i].xpath) : 0);
 
     --shm_mod->conf_sub[ds].sub_count;
     if (!shm_mod->conf_sub[ds].sub_count) {
@@ -648,7 +648,7 @@ sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
     /* get new offsets and SHM size */
     oper_subs_off = shm_ext->size;
     xpath_off = oper_subs_off + (shm_mod->oper_sub_count + 1) * sizeof *shm_sub;
-    new_ext_size = xpath_off + (xpath ? strlen(xpath) + 1 : 0);
+    new_ext_size = xpath_off + (xpath ? sr_shmlen(xpath) : 0);
 
     /* remap main ext SHM */
     if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
@@ -712,7 +712,7 @@ continue_loop:
     SR_CHECK_INT_RET(i == shm_mod->oper_sub_count, err_info);
 
     /* add wasted memory */
-    *((size_t *)ext_shm_addr) += sizeof *shm_sub + strlen(ext_shm_addr + shm_sub[i].xpath) + 1;
+    *((size_t *)ext_shm_addr) += sizeof *shm_sub + sr_shmlen(ext_shm_addr + shm_sub[i].xpath);
 
     --shm_mod->oper_sub_count;
     if (!shm_mod->oper_sub_count) {

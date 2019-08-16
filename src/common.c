@@ -1876,6 +1876,33 @@ sr_shmcpy(char *shm_addr, const void *src, size_t size, char **shm_end)
     return ret;
 }
 
+off_t
+sr_shmstrcpy(char *shm_addr, const char *str, char **shm_end)
+{
+    off_t ret;
+
+    assert(str);
+
+    strcpy(*shm_end, str);
+    ret = *shm_end - shm_addr;
+    *shm_end += sr_shmlen(str);
+
+    return ret;
+}
+
+int
+sr_shmlen(const char *str)
+{
+    int len;
+
+    len = strlen(str) + 1;
+
+    /* align */
+    len += ((~len) + 1) & (SR_SHM_STR_ALIGN - 1);
+
+    return len;
+}
+
 sr_error_info_t *
 sr_mutex_init(pthread_mutex_t *lock, int shared)
 {

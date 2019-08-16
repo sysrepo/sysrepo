@@ -181,7 +181,7 @@ sr_shmsub_notify_finish_wrunlock(sr_sub_shm_t *sub_shm, size_t shm_struct_size, 
         ptr += sizeof err_code;
 
         err_msg = ptr;
-        ptr += strlen(err_msg) + 1;
+        ptr += sr_shmlen(err_msg);
 
         err_xpath = ptr;
 
@@ -226,7 +226,7 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, uint32_t request_id, sr_sub_
     }
     if (data && data_len) {
         /* write any event data */
-        memcpy(((char *)sub_shm) + sizeof *sub_shm + (xpath ? strlen(xpath) + 1 : 0), data, data_len);
+        memcpy(((char *)sub_shm) + sizeof *sub_shm + (xpath ? sr_shmlen(xpath) : 0), data, data_len);
     }
 
     if (event) {
@@ -1764,7 +1764,7 @@ sr_shmsub_prepare_error(sr_error_t err_code, sr_session_ctx_t *tmp_sess, char **
         assert(tmp_sess->err_info->err_count == 1);
 
         /* error message */
-        msg_len = strlen(tmp_sess->err_info->err[0].message);
+        msg_len = sr_shmlen(tmp_sess->err_info->err[0].message) - 1;
         data_len += msg_len;
         data = sr_realloc(data, data_len);
         SR_CHECK_MEM_RET(!data, err_info);
@@ -1772,7 +1772,7 @@ sr_shmsub_prepare_error(sr_error_t err_code, sr_session_ctx_t *tmp_sess, char **
 
         /* error xpath */
         if (tmp_sess->err_info->err[0].xpath) {
-            data_len += strlen(tmp_sess->err_info->err[0].xpath);
+            data_len += sr_shmlen(tmp_sess->err_info->err[0].xpath) - 1;
             data = sr_realloc(data, data_len);
             SR_CHECK_MEM_RET(!data, err_info);
             /* print it after the error message string */
@@ -2050,7 +2050,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
 
         /* parse data parent */
         ly_errno = 0;
-        parent = lyd_parse_mem(conn->ly_ctx, oper_sub->sub_shm.addr + sizeof(sr_sub_shm_t) + strlen(request_xpath) + 1,
+        parent = lyd_parse_mem(conn->ly_ctx, oper_sub->sub_shm.addr + sizeof(sr_sub_shm_t) + sr_shmlen(request_xpath),
                 LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
         SR_CHECK_INT_GOTO(ly_errno, err_info, error_rdunlock);
         /* go to the actual parent, not the root */

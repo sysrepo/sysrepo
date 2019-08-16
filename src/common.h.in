@@ -99,6 +99,9 @@
 /** where SHM files are stored */
 #define SR_SHM_DIR "/dev/shm"
 
+/** all ext SHM string sizes will be aligned to this number (B) */
+#define SR_SHM_STR_ALIGN (sizeof(void *))
+
 /** notification file will never exceed this size (kB) */
 #define SR_EV_NOTIF_FILE_MAX_SIZE 1024
 
@@ -751,6 +754,24 @@ void sr_shm_clear(sr_shm_t *shm);
  * @return Offset of the copied memory in SHM.
  */
 off_t sr_shmcpy(char *shm_addr, const void *src, size_t size, char **shm_end);
+
+/**
+ * @brief Copy string into SHM.
+ *
+ * @param[in] shm_addr Mapped SHM address.
+ * @param[in] str Source string.
+ * @param[in,out] shm_end Current SHM end pointer, it is updated.
+ * @return Offset of the copied memory in SHM.
+ */
+off_t sr_shmstrcpy(char *shm_addr, const char *str, char **shm_end);
+
+/**
+ * @brief Get required memory in ext SHM for a string.
+ *
+ * @param[in] str String to be examined.
+ * @return Number of required bytes.
+ */
+int sr_shmlen(const char *str);
 
 /**
  * @brief Wrapper for pthread_mutex_init().
