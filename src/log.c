@@ -327,87 +327,31 @@ sr_errinfo_merge(sr_error_info_t **err_info, sr_error_info_t *err_info2)
 void
 sr_log(sr_log_level_t ll, const char *format, ...)
 {
-    va_list ap, ap2;
-    ssize_t msg_len = SR_MSG_LEN_START, req_len;
+    va_list ap;
     char *msg;
+    int msg_len = 0;
 
     va_start(ap, format);
-    va_copy(ap2, ap);
-
-    /* initial length */
-    msg = malloc(msg_len);
-    if (!msg) {
-        goto cleanup;
-    }
-
-    /* learn how much bytes are needed */
-    req_len = vsnprintf(msg, msg_len, format, ap);
-    if (req_len == -1) {
-        goto cleanup;
-    } else if (req_len >= SR_MSG_LEN_START) {
-        /* the intial size was not enough */
-        msg_len = req_len + 1;
-        msg = sr_realloc(msg, msg_len);
-        if (!msg) {
-            goto cleanup;
-        }
-
-        /* now print the full message */
-        req_len = vsnprintf(msg, msg_len, format, ap2);
-        if (req_len == -1) {
-            goto cleanup;
-        }
-    }
+    sr_vsprintf(&msg, &msg_len, 0, format, ap);
+    va_end(ap);
 
     sr_log_msg(0, ll, msg, NULL);
-
-cleanup:
     free(msg);
-    va_end(ap);
-    va_end(ap2);
 }
 
 API void
 srp_log(sr_log_level_t ll, const char *format, ...)
 {
-    va_list ap, ap2;
-    ssize_t msg_len = SR_MSG_LEN_START, req_len;
+    va_list ap;
     char *msg;
+    int msg_len = 0;
 
     va_start(ap, format);
-    va_copy(ap2, ap);
-
-    /* initial length */
-    msg = malloc(msg_len);
-    if (!msg) {
-        goto cleanup;
-    }
-
-    /* learn how much bytes are needed */
-    req_len = vsnprintf(msg, msg_len, format, ap);
-    if (req_len == -1) {
-        goto cleanup;
-    } else if (req_len >= SR_MSG_LEN_START) {
-        /* the intial size was not enough */
-        msg_len = req_len + 1;
-        msg = sr_realloc(msg, msg_len);
-        if (!msg) {
-            goto cleanup;
-        }
-
-        /* now print the full message */
-        req_len = vsnprintf(msg, msg_len, format, ap2);
-        if (req_len == -1) {
-            goto cleanup;
-        }
-    }
+    sr_vsprintf(&msg, &msg_len, 0, format, ap);
+    va_end(ap);
 
     sr_log_msg(1, ll, msg, NULL);
-
-cleanup:
     free(msg);
-    va_end(ap);
-    va_end(ap2);
 }
 
 API const char *

@@ -2318,6 +2318,65 @@ sr_msleep(uint32_t msec)
     return NULL;
 }
 
+int
+sr_vsprintf(char **str, int *str_len, int offset, const char *format, va_list ap)
+{
+    va_list ap2;
+    int req_len;
+
+    if (!*str_len) {
+        *str_len = SR_MSG_LEN_START;
+        *str = malloc(*str_len);
+        if (!*str) {
+            req_len = -1;
+            goto cleanup;
+        }
+    }
+
+    va_copy(ap2, ap);
+
+    /* learn how much bytes are needed */
+    req_len = vsnprintf(*str + offset, *str_len - offset, format, ap);
+    if (req_len == -1) {
+        goto cleanup;
+    } else if (req_len >= *str_len - offset) {
+        /* the length is not enough */
+        *str_len = req_len + offset + 1;
+        *str = sr_realloc(*str, *str_len);
+        if (!*str) {
+            req_len = -1;
+            goto cleanup;
+        }
+
+        /* now print the full message */
+        req_len = vsnprintf(*str + offset, *str_len - offset, format, ap2);
+        if (req_len == -1) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    if (req_len == -1) {
+        free(*str);
+        *str = NULL;
+    }
+    va_end(ap2);
+    return req_len;
+}
+
+int
+sr_sprintf(char **str, int *str_len, int offset, const char *format, ...)
+{
+    va_list ap;
+    int ret;
+
+    va_start(ap, format);
+    ret = sr_vsprintf(str, str_len, offset, format, ap);
+    va_end(ap);
+
+    return ret;
+}
+
 sr_error_info_t *
 sr_file_get_size(int fd, size_t *size)
 {
