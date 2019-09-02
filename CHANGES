@@ -1,3 +1,4 @@
+- !! no bindings are available for now (C++ and Python are planned and being worked on)
 - sr_*_item flag SR_EDIT_NON_RECURSIVE not supported for sr_delete_item()
 - sr_node_t -> struct lyd_node *
 - sr_get_subtree(s) removed opts (no iterative retrieval)
