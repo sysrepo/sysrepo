@@ -107,8 +107,9 @@ typedef struct sr_mod_notif_sub_s {
  */
 struct sr_mod_s {
     struct sr_mod_lock_s {
-        sr_rwlock_t lock;       /**< Process-shared lock for accessing module data. */
-        uint8_t write_locked;   /**< Whether module data are WRITE locked (lock may not be WRITE locked to allow data reading). */
+        sr_rwlock_t lock;       /**< Process-shared lock for accessing module instance data. */
+        uint8_t write_locked;   /**< Whether module data are WRITE locked (lock itself may not be WRITE locked
+                                     to allow data reading). */
         uint8_t ds_locked;      /**< Whether module data are datastore locked (NETCONF locks). */
         sr_sid_t sid;           /**< Session ID of the locking session (user is always NULL). */
         time_t ds_ts;           /**< Timestamp of the datastore lock. */

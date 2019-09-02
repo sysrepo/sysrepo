@@ -775,13 +775,13 @@ sr_parse_module(struct ly_ctx *ly_ctx, const char *schema_path, LYS_INFORMAT for
 }
 
 /**
- * @brief Defragment main SHM if needed.
+ * @brief Defragment ext SHM if needed.
  *
  * @param[in] conn Connection to use.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_check_main_shm_defrag(sr_conn_ctx_t *conn)
+sr_check_ext_shm_defrag(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     char *buf;
@@ -799,7 +799,7 @@ sr_check_main_shm_defrag(sr_conn_ctx_t *conn)
         return err_info;
     }
 
-    /* remap main ext SHM */
+    /* remap ext SHM */
     if ((err_info = sr_shm_remap(&conn->ext_shm, conn->ext_shm.size - *((size_t *)conn->ext_shm.addr)))) {
         goto cleanup;
     }
@@ -893,8 +893,8 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     /* update version */
     conn->main_ver = ++((sr_main_shm_t *)conn->main_shm.addr)->ver;
 
-    /* defrag main SHM if needed */
-    if ((err_info = sr_check_main_shm_defrag(conn))) {
+    /* defrag ext SHM if needed */
+    if ((err_info = sr_check_ext_shm_defrag(conn))) {
         goto cleanup_unlock;
     }
 
@@ -2811,8 +2811,8 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
     /* remove subscription from main SHM state */
     sr_shmmain_state_del_evpipe(subscription->conn, subscription->evpipe_num);
 
-    /* defrag main SHM if needed */
-    if ((tmp_err = sr_check_main_shm_defrag(subscription->conn))) {
+    /* defrag ext SHM if needed */
+    if ((tmp_err = sr_check_ext_shm_defrag(subscription->conn))) {
         /* continue */
         sr_errinfo_merge(&err_info, tmp_err);
     }
@@ -3125,8 +3125,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         goto error_wrunlock_unsub_unmod;
     }
 
-    /* defrag main SHM if needed */
-    if ((err_info = sr_check_main_shm_defrag(conn))) {
+    /* defrag ext SHM if needed */
+    if ((err_info = sr_check_ext_shm_defrag(conn))) {
         goto error_wrunlock_unsub_unmod;
     }
 
@@ -3715,8 +3715,8 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
         goto error_unlock_unsub_unrpc;
     }
 
-    /* defrag main SHM if needed */
-    if ((err_info = sr_check_main_shm_defrag(conn))) {
+    /* defrag ext SHM if needed */
+    if ((err_info = sr_check_ext_shm_defrag(conn))) {
         goto error_unlock_unsub_unrpc;
     }
 
@@ -4473,8 +4473,8 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
         goto error_unlock_unsub_unmod;
     }
 
-    /* defrag main SHM if needed */
-    if ((err_info = sr_check_main_shm_defrag(conn))) {
+    /* defrag ext SHM if needed */
+    if ((err_info = sr_check_ext_shm_defrag(conn))) {
         goto error_unlock_unsub_unmod;
     }
 
