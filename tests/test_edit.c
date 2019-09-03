@@ -119,7 +119,9 @@ test_delete(void **state)
     char *str;
     int ret;
 
-    /* remove on no data */
+    /* remove on no data (allow same operation on the same node) */
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type", 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess);

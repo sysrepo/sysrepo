@@ -2522,6 +2522,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         const char *def_operation, const sr_move_position_t *position, const char *keys, const char *val)
 {
     struct lyd_node *node, *sibling, *parent;
+    struct ly_set *set;
     const char *op, *attr_val;
     int opts, own_oper, next_iter_oper, skip_count;
     sr_error_info_t *err_info = NULL;
@@ -2530,6 +2531,22 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     opts = LYD_PATH_OPT_NOPARENTRET | (!strcmp(operation, "remove") || !strcmp(operation, "delete") ? LYD_PATH_OPT_EDIT : 0);
     node = lyd_new_path(session->dt[session->ds].edit, session->conn->ly_ctx, xpath, (void *)value, 0, opts);
     if (!node) {
+        if ((ly_errno == LY_EVALID) && (ly_vecode(session->conn->ly_ctx) == LYVE_PATH_EXISTS)) {
+            set = lyd_find_path(session->dt[session->ds].edit, xpath);
+            if (!set || (set->number != 1)) {
+                ly_set_free(set);
+                SR_ERRINFO_INT(&err_info);
+                goto error;
+            }
+            node = set->set.d[0];
+            ly_set_free(set);
+
+            op = sr_edit_find_oper(node, 1, NULL);
+            if (!strcmp(op, operation)) {
+                /* same node with same operation, silently ignore */
+                return NULL;
+            }
+        }
         sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid datastore edit.");
         goto error;
