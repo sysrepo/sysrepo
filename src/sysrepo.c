@@ -4385,6 +4385,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     sr_conn_ctx_t *conn;
     char *schema_path = NULL;
     const struct lys_module *mod;
+    struct lys_node *next, *elem;
     struct ly_set *set = NULL;
     sr_mod_oper_sub_type_t sub_type;
     sr_mod_t *shm_mod;
@@ -4428,24 +4429,28 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     /* find out what kinds of nodes are provided */
     sub_type = SR_OPER_SUB_NONE;
     for (i = 0; i < set->number; ++i) {
-        switch (set->set.s[i]->flags & LYS_CONFIG_MASK) {
-        case LYS_CONFIG_R:
-            if (sub_type == SR_OPER_SUB_CONFIG) {
-                sub_type = SR_OPER_SUB_MIXED;
+        LY_TREE_DFS_BEGIN(set->set.s[i], next, elem) {
+            if ((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_R) {
+                if (sub_type == SR_OPER_SUB_CONFIG) {
+                    sub_type = SR_OPER_SUB_MIXED;
+                } else {
+                    sub_type = SR_OPER_SUB_STATE;
+                }
             } else {
-                sub_type = SR_OPER_SUB_STATE;
+                assert((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_W);
+                if (sub_type == SR_OPER_SUB_STATE) {
+                    sub_type = SR_OPER_SUB_MIXED;
+                } else {
+                    sub_type = SR_OPER_SUB_CONFIG;
+                }
             }
-            break;
-        case LYS_CONFIG_W:
-            if (sub_type == SR_OPER_SUB_STATE) {
-                sub_type = SR_OPER_SUB_MIXED;
-            } else {
-                sub_type = SR_OPER_SUB_CONFIG;
+
+            if ((sub_type == SR_OPER_SUB_STATE) || (sub_type == SR_OPER_SUB_MIXED)) {
+                /* redundant to look recursively */
+                break;
             }
-            break;
-        default:
-            SR_ERRINFO_INT(&err_info);
-            goto error_unlock;
+
+            LY_TREE_DFS_END(set->set.s[i], next, elem);
         }
 
         if (sub_type == SR_OPER_SUB_MIXED) {
