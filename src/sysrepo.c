@@ -96,15 +96,17 @@ error1:
 static void
 sr_conn_free(sr_conn_ctx_t *conn)
 {
-    ly_ctx_destroy(conn->ly_ctx, NULL);
-    pthread_mutex_destroy(&conn->ptr_lock);
-    if (conn->main_shm_create_lock > -1) {
-        close(conn->main_shm_create_lock);
+    if (conn) {
+        ly_ctx_destroy(conn->ly_ctx, NULL);
+        pthread_mutex_destroy(&conn->ptr_lock);
+        if (conn->main_shm_create_lock > -1) {
+            close(conn->main_shm_create_lock);
+        }
+        sr_rwlock_destroy(&conn->main_shm_remap_lock);
+        sr_shm_clear(&conn->main_shm);
+        sr_shm_clear(&conn->ext_shm);
+        free(conn);
     }
-    sr_rwlock_destroy(&conn->main_shm_remap_lock);
-    sr_shm_clear(&conn->main_shm);
-    sr_shm_clear(&conn->ext_shm);
-    free(conn);
 }
 
 API int
