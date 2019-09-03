@@ -1177,7 +1177,6 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
             /* collect edit/diff to be applied based on the handled event */
             switch (session->ev) {
             case SR_SUB_EV_CHANGE:
-            case SR_SUB_EV_ENABLED:
             case SR_SUB_EV_UPDATE:
                 diff = session->dt[session->ds].diff;
                 if (session->ev != SR_SUB_EV_UPDATE) {
@@ -1187,6 +1186,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
             case SR_SUB_EV_NONE:
                 edit = session->dt[session->ds].edit;
                 break;
+            case SR_SUB_EV_ENABLED:
             case SR_SUB_EV_DONE:
             case SR_SUB_EV_ABORT:
             case SR_SUB_EV_OPER:
