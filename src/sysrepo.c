@@ -4042,7 +4042,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const struct lys_module *ly
         set = lys_find_path(ly_mod, NULL, "//.");
     }
     if (!set) {
-        SR_ERRINFO_INT(&err_info);
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         return err_info;
     }
 
