@@ -112,6 +112,35 @@ clear_test(void **state)
 }
 
 static void
+test_edit_item(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+
+    /* same edits are ignored */
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* should also work for leaf-lists */
+    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "15", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "16", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "15", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:cont/ll2[.='16']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/test:cont/ll2[.='16']", 0);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
 test_delete(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -119,7 +148,7 @@ test_delete(void **state)
     char *str;
     int ret;
 
-    /* remove on no data (allow same operation on the same node) */
+    /* remove on no data */
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type", 0);
@@ -422,6 +451,7 @@ int
 main(void)
 {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test(test_edit_item),
         cmocka_unit_test_teardown(test_delete, clear_interfaces),
         cmocka_unit_test(test_delete_invalid),
         cmocka_unit_test_teardown(test_create1, clear_interfaces),

@@ -2517,39 +2517,72 @@ sr_edit_is_superior_op(const char *new_op, const char *cur_op)
     return 0;
 }
 
+static sr_error_info_t *
+sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, const char *value, const char *operation)
+{
+    sr_error_info_t *err_info = NULL;
+    char *uniq_xpath;
+    const char *op;
+    struct lyd_node *node;
+    struct ly_set *set;
+
+    if ((ly_errno == LY_EVALID) && (ly_vecode(session->conn->ly_ctx) == LYVE_PATH_EXISTS)) {
+        /* build an expression identifying a single node */
+        if (value && (xpath[strlen(xpath) - 1] != ']')) {
+            if (asprintf(&uniq_xpath, "%s[.='%s']", xpath, value) == -1) {
+                uniq_xpath = NULL;
+            }
+        } else {
+            uniq_xpath = strdup(xpath);
+        }
+        if (!uniq_xpath) {
+            SR_ERRINFO_MEM(&err_info);
+            return err_info;
+        }
+
+        /* find the node */
+        set = lyd_find_path(session->dt[session->ds].edit, uniq_xpath);
+        free(uniq_xpath);
+        if (!set || (set->number != 1)) {
+            ly_set_free(set);
+            SR_ERRINFO_INT(&err_info);
+            return err_info;
+        }
+        node = set->set.d[0];
+        ly_set_free(set);
+
+        op = sr_edit_find_oper(node, 1, NULL);
+        if (!strcmp(op, operation)) {
+            /* same node with same operation, silently ignore and clear the error */
+            ly_err_clean(session->conn->ly_ctx, NULL);
+            return NULL;
+        }
+    }
+
+    sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid datastore edit.");
+    return err_info;
+}
+
 sr_error_info_t *
 sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, const char *operation,
         const char *def_operation, const sr_move_position_t *position, const char *keys, const char *val)
 {
+    sr_error_info_t *err_info = NULL;
     struct lyd_node *node, *sibling, *parent;
-    struct ly_set *set;
     const char *op, *attr_val;
     int opts, own_oper, next_iter_oper, skip_count;
-    sr_error_info_t *err_info = NULL;
 
     /* merge the change into existing edit */
     opts = LYD_PATH_OPT_NOPARENTRET | (!strcmp(operation, "remove") || !strcmp(operation, "delete") ? LYD_PATH_OPT_EDIT : 0);
     node = lyd_new_path(session->dt[session->ds].edit, session->conn->ly_ctx, xpath, (void *)value, 0, opts);
     if (!node) {
-        if ((ly_errno == LY_EVALID) && (ly_vecode(session->conn->ly_ctx) == LYVE_PATH_EXISTS)) {
-            set = lyd_find_path(session->dt[session->ds].edit, xpath);
-            if (!set || (set->number != 1)) {
-                ly_set_free(set);
-                SR_ERRINFO_INT(&err_info);
-                goto error;
-            }
-            node = set->set.d[0];
-            ly_set_free(set);
-
-            op = sr_edit_find_oper(node, 1, NULL);
-            if (!strcmp(op, operation)) {
-                /* same node with same operation, silently ignore */
-                return NULL;
-            }
+        /* check whether it is an error */
+        if ((err_info = sr_edit_add_check_same_node_op(session, xpath, value, operation))) {
+            goto error;
         }
-        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid datastore edit.");
-        goto error;
+        /* node with the same operation already exists, silently ignore */
+        return NULL;
     }
 
     /* check arguments */
