@@ -272,7 +272,7 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     struct lyd_node *data;
     int r, flags;
 
-    flags = LYD_OPT_CONFIG | (not_strict ? 0 : LYD_OPT_STRICT);
+    flags = LYD_OPT_CONFIG | LYD_OPT_NOEXTDEPS | (not_strict ? 0 : LYD_OPT_STRICT);
     if (step_load_data(sess, file_path, format, flags, &data)) {
         return EXIT_FAILURE;
     }
@@ -345,8 +345,8 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
     struct lyd_node *data;
 
     if (file_path) {
-        /* just apply an edit form a file */
-        flags = LYD_OPT_EDIT | (not_strict ? 0 : LYD_OPT_STRICT);
+        /* just apply an edit from a file */
+        flags = LYD_OPT_EDIT | LYD_OPT_NOEXTDEPS | (not_strict ? 0 : LYD_OPT_STRICT);
         if (step_load_data(sess, file_path, format, flags, &data)) {
             return EXIT_FAILURE;
         }
@@ -425,7 +425,7 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
     }
 
     /* load the file */
-    flags = LYD_OPT_RPC | (not_strict ? 0 : LYD_OPT_STRICT);
+    flags = LYD_OPT_RPC | LYD_OPT_NOEXTDEPS | (not_strict ? 0 : LYD_OPT_STRICT);
     if (step_load_data(sess, file_path, format, flags, &input)) {
         return EXIT_FAILURE;
     }
@@ -474,7 +474,7 @@ op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_
     }
 
     /* load the file */
-    flags = LYD_OPT_NOTIF | (not_strict ? 0 : LYD_OPT_STRICT);
+    flags = LYD_OPT_NOTIF | LYD_OPT_NOEXTDEPS | (not_strict ? 0 : LYD_OPT_STRICT);
     if (step_load_data(sess, file_path, format, flags, &notif)) {
         return EXIT_FAILURE;
     }
@@ -499,7 +499,7 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
 
     if (file_path) {
         /* load the file */
-        flags = LYD_OPT_CONFIG | (not_strict ? 0 : LYD_OPT_STRICT);
+        flags = LYD_OPT_CONFIG | LYD_OPT_NOEXTDEPS | (not_strict ? 0 : LYD_OPT_STRICT);
         if (step_load_data(sess, file_path, format, flags, &data)) {
             return EXIT_FAILURE;
         }
