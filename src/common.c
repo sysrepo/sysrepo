@@ -3183,12 +3183,9 @@ retry_open:
         err_info = sr_path_ds_shm(ly_mod->name, SR_DS_CANDIDATE, 0, &path);
         break;
     case SR_DS_OPERATIONAL:
+    case SR_DS_STATE:
     case SR_DS_RUNNING:
         err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, 0, &path);
-        break;
-    case SR_DS_STATE:
-        /* forbidden */
-        SR_ERRINFO_INT(&err_info);
         break;
     }
     if (err_info) {
