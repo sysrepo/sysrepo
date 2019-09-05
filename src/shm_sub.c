@@ -1868,10 +1868,9 @@ process_event:
         if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, 0, __func__))) {
             goto cleanup;
         }
-        assert(event == multi_sub_shm->event);
         assert(request_id == multi_sub_shm->request_id);
 
-        if ((multi_sub_shm->event == SR_SUB_EV_UPDATE) || (multi_sub_shm->event == SR_SUB_EV_CHANGE)) {
+        if ((event == SR_SUB_EV_UPDATE) || (event == SR_SUB_EV_CHANGE)) {
             if (ret == SR_ERR_CALLBACK_SHELVE) {
                 /* this subscription did not process the event yet, skip it */
                 SR_LOG_INF("Shelved processing \"%s\" event with ID %u priority %u.", sr_ev2str(multi_sub_shm->event),
@@ -1880,7 +1879,7 @@ process_event:
             } else if (ret != SR_ERR_OK) {
                 /* whole event failed */
                 err_code = ret;
-                if (multi_sub_shm->event == SR_SUB_EV_CHANGE) {
+                if (event == SR_SUB_EV_CHANGE) {
                     /* remember request ID and "abort" event so that we do not process it */
                     conf_sub->request_id = multi_sub_shm->request_id;
                     conf_sub->event = SR_SUB_EV_ABORT;
@@ -2394,10 +2393,9 @@ process_event:
         if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, 0, __func__))) {
             goto cleanup;
         }
-        assert(event == multi_sub_shm->event);
         assert(request_id == multi_sub_shm->request_id);
 
-        if (multi_sub_shm->event == SR_SUB_EV_RPC) {
+        if (event == SR_SUB_EV_RPC) {
             if (ret == SR_ERR_CALLBACK_SHELVE) {
                 /* this subscription did not process the event yet, skip it */
                 SR_LOG_INF("Shelved processing \"%s\" event with ID %u priority %u.",
