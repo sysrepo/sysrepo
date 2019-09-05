@@ -372,38 +372,15 @@ sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, co
         uint32_t evpipe_num, const struct lyd_node *parent, int trim_config_data, struct lyd_node **data,
         sr_error_info_t **cb_error_info)
 {
-    uint32_t i;
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *oper_data = NULL, *parent_dup = NULL, *key, *key_dup;
+    struct lyd_node *oper_data = NULL, *parent_dup = NULL;
 
     if (parent) {
         /* duplicate parent so that it is a stand-alone subtree */
-        parent_dup = lyd_dup(parent, LYD_DUP_OPT_WITH_PARENTS);
+        parent_dup = lyd_dup(parent, LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_WITH_KEYS);
         if (!parent_dup) {
             sr_errinfo_new_ly(&err_info, ly_mod->ctx);
             return err_info;
-        }
-
-        /* duplicate also keys if needed */
-        if (parent->schema->nodetype == LYS_LIST) {
-            for (i = 0, key = parent->child; i < ((struct lys_node_list *)parent->schema)->keys_size; ++i) {
-                assert(key);
-                assert((struct lys_node_leaf *)key->schema == ((struct lys_node_list *)parent->schema)->keys[i]);
-
-                key_dup = lyd_dup(key, 0);
-                if (!key_dup) {
-                    lyd_free_withsiblings(parent_dup);
-                    sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-                    return err_info;
-                }
-
-                if (lyd_insert(parent_dup, key_dup)) {
-                    lyd_free_withsiblings(key_dup);
-                    lyd_free_withsiblings(parent_dup);
-                    sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-                    return err_info;
-                }
-            }
         }
 
         /* go top-level */
