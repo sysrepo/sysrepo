@@ -1,7 +1,7 @@
 /**
- * @file srpd_common.h
+ * @file bin_common.h
  * @author Michal Vasko <mvasko@cesnet.cz>
- * @brief common sysrepo-plugind routines header
+ * @brief common binaries header
  *
  * @copyright
  * Copyright 2018 Deutsche Telekom AG.
@@ -19,8 +19,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _SRPD_COMMON_H
-#define _SRPD_COMMON_H
+#ifndef _BIN_COMMON_H
+#define _BIN_COMMON_H
+
+/** sysrepo version */
+#define SR_VERSION "@SYSREPO_VERSION@"
+
+/** sysrepo soversion */
+#define SR_SOVERSION "@SYSREPO_SOVERSION_FULL@"
 
 /** sysrepo-plugind working directory. */
 #define SRPD_WORK_DIR "/"

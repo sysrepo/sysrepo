@@ -22,8 +22,6 @@
 #define _GNU_SOURCE
 #define _DEFAULT_SOURCE
 
-#include "sysrepo.h"
-
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -38,17 +36,29 @@
 
 #include <libyang/libyang.h>
 
+#include "sysrepo.h"
+#include "bin_common.h"
+
+static void
+version_print(void)
+{
+    printf(
+        "sysrepocfg - sysrepo configuration manipulation tool, compiled with libsysrepo v%s (SO v%s)\n"
+        "\n",
+        SR_VERSION, SR_SOVERSION
+    );
+}
+
 static void
 help_print(void)
 {
     printf(
-        "sysrepocfg - sysrepo configuration tool\n"
-        "\n"
         "Usage:\n"
         "  sysrepocfg <operation-option> [other-options]\n"
         "\n"
         "Available operation-options:\n"
         "  -h, --help                   Prints usage help.\n"
+        "  -V, --version                Prints only information about sysrepo version.\n"
         "  -I, --import[=<file-path>]   Import the configuration from a file or STDIN.\n"
         "  -X, --export[=<file-path>]   Export configuration to a file or STDOUT.\n"
         "  -E, --edit[=<file-path>/<editor>]\n"
@@ -561,6 +571,7 @@ main(int argc, char** argv)
     int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
+        {"version",         no_argument,       NULL, 'V'},
         {"import",          optional_argument, NULL, 'I'},
         {"export",          optional_argument, NULL, 'X'},
         {"edit",            optional_argument, NULL, 'E'},
@@ -574,6 +585,7 @@ main(int argc, char** argv)
         {"lock",            no_argument,       NULL, 'l'},
         {"not-strict",      no_argument,       NULL, 'n'},
         {"verbosity",       required_argument, NULL, 'v'},
+        {NULL,              0,                 NULL, 0},
     };
 
     if (argc == 1) {
@@ -583,10 +595,15 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hI::X::E::R::N::C:d:m:x:f:lnv:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:d:m:x:f:lnv:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
+            version_print();
             help_print();
+            rc = EXIT_SUCCESS;
+            goto cleanup;
+        case 'V':
+            version_print();
             rc = EXIT_SUCCESS;
             goto cleanup;
         case 'I':

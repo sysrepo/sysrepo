@@ -39,7 +39,7 @@
 #include <dlfcn.h>
 
 #include "sysrepo.h"
-#include "srpd_common.h"
+#include "bin_common.h"
 
 /** protected flag for terminating sysrepo-plugind */
 int loop_finish;
@@ -54,16 +54,25 @@ struct srpd_plugin_s {
 };
 
 static void
+version_print(void)
+{
+    printf(
+        "sysrepo-plugind - sysrepo plugin daemon, compiled with libsysrepo v%s (SO v%s)\n"
+        "\n",
+        SR_VERSION, SR_SOVERSION
+    );
+}
+
+static void
 help_print(void)
 {
     printf(
-        "sysrepo-plugind - sysrepo plugin daemon\n"
-        "\n"
         "Usage:\n"
         "  sysrepo-plugind [-h] [-v <level>] [-d]\n"
         "\n"
         "Options:\n"
         "  -h, --help           Prints usage help.\n"
+        "  -V, --version        Prints only information about sysrepo version.\n"
         "  -v, --verbosity <level>\n"
         "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
         "  -d, --debug          Debug mode - is not daemonized and logs to stderr instead of syslog.\n"
@@ -287,16 +296,23 @@ main(int argc, char** argv)
     int plugin_count, i, r, rc = EXIT_FAILURE, opt, debug = 0;
     struct option options[] = {
         {"help",      no_argument,       NULL, 'h'},
+        {"version",   no_argument,       NULL, 'V'},
         {"verbosity", required_argument, NULL, 'v'},
         {"debug",     no_argument,       NULL, 'd'},
+        {NULL,        0,                 NULL, 0},
     };
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hv:d", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVv:d", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
+            version_print();
             help_print();
+            rc = EXIT_SUCCESS;
+            goto cleanup;
+        case 'V':
+            version_print();
             rc = EXIT_SUCCESS;
             goto cleanup;
         case 'v':

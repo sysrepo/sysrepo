@@ -21,8 +21,6 @@
  */
 #define _GNU_SOURCE
 
-#include "sysrepo.h"
-
 #include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +30,9 @@
 #include <getopt.h>
 
 #include <libyang/libyang.h>
+
+#include "sysrepo.h"
+#include "bin_common.h"
 
 #define SRCTL_LIST_NAME "Module Name"
 #define SRCTL_LIST_REVISION "Revision"
@@ -55,17 +56,25 @@ struct list_item {
 };
 
 static void
+version_print(void)
+{
+    printf(
+        "sysrepocfg - sysrepo YANG schema manipulation tool, compiled with libsysrepo v%s (SO v%s)\n"
+        "\n",
+        SR_VERSION, SR_SOVERSION
+    );
+}
+
+static void
 help_print(void)
 {
     printf(
-        "sysrepoctl - sysrepo control tool\n"
-        "\n"
         "Usage:\n"
         "  sysrepoctl <operation-option> [other-options]\n"
         "\n"
         "Available operation-options:\n"
         "  -h, --help           Prints usage help.\n"
-        "\n"
+        "  -V, --version        Prints only information about sysrepo version.\n"
         "  -l, --list           List YANG modules in sysrepo.\n"
         "  -i, --install <path> Install the specified schema into sysrepo. Can be in either YANG or YIN format.\n"
         "  -u, --uninstall <module>[,<module2>,<module3> ...]\n"
@@ -372,6 +381,7 @@ main(int argc, char** argv)
     uint32_t conn_count;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
+        {"version",         no_argument,       NULL, 'V'},
         {"list",            no_argument,       NULL, 'l'},
         {"install",         required_argument, NULL, 'i'},
         {"uninstall",       required_argument, NULL, 'u'},
@@ -386,6 +396,7 @@ main(int argc, char** argv)
         {"group",           required_argument, NULL, 'g'},
         {"permissions",     required_argument, NULL, 'p'},
         {"verbosity",       required_argument, NULL, 'v'},
+        {NULL,              0,                 NULL, 0},
     };
 
     if (argc == 1) {
@@ -395,10 +406,15 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hli:u:c:U:Cs:e:d:r:o:g:p:v:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:Cs:e:d:r:o:g:p:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
+            version_print();
             help_print();
+            rc = EXIT_SUCCESS;
+            goto cleanup;
+        case 'V':
+            version_print();
             rc = EXIT_SUCCESS;
             goto cleanup;
         case 'l':
