@@ -1582,7 +1582,7 @@ int sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_na
  */
 
 /**
- * @brief Sysrepo plugin initialization callback name that must exists in every plugin.
+ * @brief Sysrepo plugin initialization callback name that must exist in every plugin.
  */
 #define SRP_INIT_CB     "sr_plugin_init_cb"
 
