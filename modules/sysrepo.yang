@@ -77,7 +77,7 @@ module sysrepo {
         leaf-list module {
             type module-ref;
             description
-              "Module that is being dependend on.";
+              "Module that is being dependent on.";
         }
 
         list inst-id {

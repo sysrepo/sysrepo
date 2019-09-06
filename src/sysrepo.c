@@ -139,7 +139,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto cleanup_unlock;
     }
 
-    /* open the main ext SHM */
+    /* open the ext SHM */
     if ((err_info = sr_shmmain_shm_ext_open(&conn->ext_shm, created))) {
         goto cleanup_unlock;
     }
@@ -177,7 +177,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
             goto cleanup_unlock;
         }
 
-        /* clear main ext SHM (there can be no connections and no modules) */
+        /* clear ext SHM (there can be no connections and no modules) */
         if ((err_info = sr_shm_remap(&conn->ext_shm, sizeof(size_t)))) {
             goto cleanup_unlock;
         }

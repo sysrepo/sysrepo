@@ -431,7 +431,7 @@ sr_error_info_t *sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, struct lyd_no
  * the data tree is no longer valid! It should be used further only if \p change was set.
  *
  * @param[in] conn Connection to use.
- * @param[in,out] sr_mods_p Sysrepo modules data tree.
+ * @param[in,out] sr_mods Sysrepo modules data tree.
  * @param[out] change Whether the internal sysrepo data tree was changed.
  * @return err_info, NULL on success.
  */

@@ -758,7 +758,7 @@ sr_shmmain_state_add_conn(sr_conn_ctx_t *conn)
     conn_state_off = conn->ext_shm.size;
     new_ext_size = conn_state_off + (main_shm->conn_state.conn_count + 1) * sizeof *conn_s;
 
-    /* remap main ext SHM */
+    /* remap ext SHM */
     if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size))) {
         return err_info;
     }
@@ -1293,7 +1293,7 @@ sr_remove_data_files(const char *mod_name)
 }
 
 /**
- * @brief Delete theinverse dependency refs of a module from internal sysrepo data.
+ * @brief Delete the inverse dependency refs of a module from internal sysrepo data.
  *
  * @param[in] sr_mod Module node whose inverse dependencies are to be deleted.
  * @return err_info, NULL on success.
