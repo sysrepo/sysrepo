@@ -543,6 +543,83 @@ test_change_feature(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_foreign_aug(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+    uint32_t conn_count;
+
+    /*
+     * install modules together
+     */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/aug.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "aug",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>aug</name>"
+        "<inverse-data-deps>aug-trg</inverse-data-deps>"
+    "</module>"
+    );
+
+    cmp_int_data(st->conn, "aug-trg",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>aug-trg</name>"
+        "<data-deps>"
+            "<module>aug</module>"
+        "</data-deps>"
+    "</module>"
+    );
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "aug");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "aug-trg");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* close connection so that changes are applied */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+
+    /* recreate connection */
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /*
+     * install modules one-by-one
+     */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/aug-trg.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/aug.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "aug",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>aug</name>"
+        "<inverse-data-deps>aug-trg</inverse-data-deps>"
+    "</module>"
+    );
+
+    cmp_int_data(st->conn, "aug-trg",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>aug-trg</name>"
+        "<data-deps>"
+            "<module>aug</module>"
+        "</data-deps>"
+    "</module>"
+    );
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "aug");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "aug-trg");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -553,6 +630,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_remove_dep_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_feature, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_foreign_aug, setup_f, teardown_f),
     };
 
     sr_log_stderr(SR_LL_INF);

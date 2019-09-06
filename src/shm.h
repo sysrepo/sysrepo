@@ -837,18 +837,6 @@ sr_error_info_t *sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *s
 sr_error_info_t *sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num,
         int all_evpipe, int *last_removed);
 
-/**
- * @brief Add an inverse dependency to a module, check for duplicities.
- * May remap main SHM!
- *
- * @param[in] conn Connection to use.
- * @param[in] mod_name Name of the module to add inverse dependency into.
- * @param[in] inv_dep_mod_name Name offset of the module to be added as inverse dep into \p mod_name.
- * @param[in,out] shm_end Current main SHM end (will not be equal to size if main SHM was premapped), is updated.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_add_inv_dep(sr_conn_ctx_t *conn, const char *mod_name, off_t inv_dep_mod_name, off_t *shm_end);
-
 /*
  * Subscription SHM functions.
  */
