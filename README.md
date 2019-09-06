@@ -96,6 +96,23 @@ The `Debug` mode is currently used as the default one. to switch to the
 $ cmake -D CMAKE_BUILD_TYPE:String="Release" ..
 ```
 
+#### Code Coverage
+
+To generate statistical information about code coverage by tests, set
+`ENABLE_COVERAGE` option to `ON`:
+```
+$ cmake -D ENABLE_COVERAGE="ON" ..
+```
+and then the make's `coverage` target should be available to geenrate statistics:
+```
+$ make coverage
+```
+
+Note that `gcc` compiler is required for this option and additional tools are required:
+* gcov
+* lcov
+* genhtml
+
 ## Usage
 
 All Sysrepo functions are available via the main header:
