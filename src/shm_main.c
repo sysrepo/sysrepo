@@ -384,7 +384,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
 }
 
 /**
- * @brief Copy data deps array from main ext SHM to buffer to defragment it.
+ * @brief Copy data deps array from ext SHM to buffer to defragment it.
  *
  * @param[in] shm_main Main SHM.
  * @param[in] ext_shm_addr Ext SHM mapping address.
@@ -483,9 +483,9 @@ sr_shmmain_defrag_copy_inv_data_deps(sr_shm_t *shm_main, char *ext_shm_addr, off
 }
 
 /**
- * @brief Copy an array from main ext SHM to buffer to defragment it.
+ * @brief Copy an array from ext SHM to buffer to defragment it.
  *
- * @param[in] ext_shm_addr Main ext SHM mapping address.
+ * @param[in] ext_shm_addr Ext SHM mapping address.
  * @param[in] array SHM offset of the array.
  * @param[in] size Array item size.
  * @param[in] count Array item count.
@@ -844,7 +844,7 @@ sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
     evpipes_off = conn->ext_shm.size;
     new_ext_size = evpipes_off + (conn_s[i].evpipe_count + 1) * sizeof evpipe_num;
 
-    /* remap main ext SHM */
+    /* remap ext SHM */
     if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size))) {
         return err_info;
     }
@@ -2080,7 +2080,7 @@ error:
  * @param[in] sr_dep_parent Dependencies in internal sysrepo data.
  * @param[in] shm_deps Main SHM data dependencies to fill.
  * @param[out] dep_i Number of dependencies filled.
- * @param[in,out] ext_cur Current main ext SHM position.
+ * @param[in,out] ext_cur Current ext SHM position.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -2180,7 +2180,7 @@ sr_shmmain_shm_add_modules(char *ext_shm_addr, struct lyd_node *first_sr_mod, sr
         }
         first_shm_mod->ver = 1;
 
-        /* set all arrays and pointers to main ext SHM */
+        /* set all arrays and pointers to ext SHM */
         LY_TREE_FOR(first_sr_mod->child, sr_child) {
             if (!strcmp(sr_child->schema->name, "name")) {
                 /* copy module name */
@@ -2255,7 +2255,7 @@ sr_shmmain_shm_add_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct l
         assert(!first_shm_mod->inv_data_dep_count);
         assert(!first_shm_mod->op_dep_count);
 
-        /* set all arrays and pointers to main ext SHM */
+        /* set all arrays and pointers to ext SHM */
         LY_TREE_FOR(first_sr_mod->child, sr_child) {
             if (!strcmp(sr_child->schema->name, "data-deps")) {
                 /* just count data dependencies */
@@ -2695,7 +2695,7 @@ sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rpc_off, const char
     xpath_off = subs_off + (shm_rpc->sub_count + 1) * sizeof *shm_sub;
     new_ext_size = xpath_off + sr_shmlen(xpath);
 
-    /* remap main ext SHM */
+    /* remap ext SHM */
     if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
         return err_info;
     }
