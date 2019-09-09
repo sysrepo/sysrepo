@@ -105,7 +105,7 @@
 /** notification file will never exceed this size (kB) */
 #define SR_EV_NOTIF_FILE_MAX_SIZE 1024
 
-/** maximum main ext SHM wasted memory (B) */
+/** maximum ext SHM wasted memory (B) */
 #define SR_SHM_WASTED_MAX_MEM 4096
 
 /** maximum time read lock can be held on rwlocks; used when unlocking (ms) */

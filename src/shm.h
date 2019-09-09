@@ -35,7 +35,7 @@
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
- * @brief Main ext SHM module dependency type.
+ * @brief Ext SHM module dependency type.
  */
 typedef enum sr_mod_dep_type_e {
     SR_DEP_REF,         /**< Module reference (leafref, when, must). */
@@ -43,7 +43,7 @@ typedef enum sr_mod_dep_type_e {
 } sr_mod_dep_type_t;
 
 /**
- * @brief Main ext SHM module data dependency.
+ * @brief Ext SHM module data dependency.
  * (typedef sr_mod_data_dep_t)
  */
 struct sr_mod_data_dep_s {
@@ -53,7 +53,7 @@ struct sr_mod_data_dep_s {
 };
 
 /**
- * @brief Main ext SHM module operation dependency.
+ * @brief Ext SHM module operation dependency.
  */
 typedef struct sr_mod_op_dep_s {
     off_t xpath;                /**< XPath of the node with the dependency. */
@@ -64,7 +64,7 @@ typedef struct sr_mod_op_dep_s {
 } sr_mod_op_dep_t;
 
 /**
- * @brief Main ext SHM module configuration subscriptions.
+ * @brief Ext SHM module configuration subscriptions.
  */
 typedef struct sr_mod_conf_sub_s {
     off_t xpath;                /**< XPath of the subscription. */
@@ -74,7 +74,7 @@ typedef struct sr_mod_conf_sub_s {
 } sr_mod_conf_sub_t;
 
 /**
- * @brief Main ext SHM module operational subscription type.
+ * @brief Ext SHM module operational subscription type.
  */
 typedef enum sr_mod_oper_sub_type_e {
     SR_OPER_SUB_NONE = 0,         /**< Invalid type. */
@@ -84,7 +84,7 @@ typedef enum sr_mod_oper_sub_type_e {
 } sr_mod_oper_sub_type_t;
 
 /**
- * @brief Main ext SHM module operational subscription.
+ * @brief Ext SHM module operational subscription.
  */
 typedef struct sr_mod_oper_sub_s {
     off_t xpath;                /**< XPath of the subscription. */
@@ -93,7 +93,7 @@ typedef struct sr_mod_oper_sub_s {
 } sr_mod_oper_sub_t;
 
 /**
- * @brief Main ext SHM notification subscription.
+ * @brief Ext SHM notification subscription.
  */
 typedef struct sr_mod_notif_sub_s {
     uint32_t evpipe_num;        /**< Event pipe number. */
@@ -292,20 +292,20 @@ typedef struct sr_multi_sub_shm_s {
  */
 
 /**
- * @brief Debug print the contents of main ext SHM.
+ * @brief Debug print the contents of Ext SHM.
  *
  * @param[in] shm_main Main SHM.
- * @param[in] ext_shm_addr Main ext SHM mapping address.
- * @param[in] ext_shm_size Main ext SHM mapping size.
+ * @param[in] ext_shm_addr Ext SHM mapping address.
+ * @param[in] ext_shm_size Ext SHM mapping size.
  */
 void sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size);
 
 /**
- * @brief Defragment main ext SHM.
+ * @brief Defragment Ext SHM.
  *
  * @param[in] shm_main Main SHM.
- * @param[in] shm_ext Main ext SHM.
- * @param[out] defrag_ext_buf Defragmented main ext SHM memory copy.
+ * @param[in] shm_ext Ext SHM.
+ * @param[out] defrag_ext_buf Defragmented Ext SHM memory copy.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_buf);
@@ -355,7 +355,7 @@ sr_error_info_t *sr_shmmain_state_add_conn(sr_conn_ctx_t *conn);
  * Main SHM lock is expected to be held.
  *
  * @param[in] main_shm Main SHM structure.
- * @param[in] ext_shm_addr Main ext SHM address.
+ * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] conn Connection context to delete.
  * @param[in] pid Connection PID to delete.
  */
@@ -385,7 +385,7 @@ void sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
  * Main SHM lock is expected to be held.
  *
  * @param[in] shm_main Main SHM.
- * @param[in] shm_ext Main ext SHM.
+ * @param[in] shm_ext Ext SHM.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmain_state_recover(sr_shm_t *shm_main, sr_shm_t *shm_ext);
@@ -481,10 +481,10 @@ sr_error_info_t *sr_shmmain_shm_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod
 sr_error_info_t *sr_shmmain_shm_main_open(sr_shm_t *shm, int *created);
 
 /**
- * @brief Open (and init if needed) main ext SHM.
+ * @brief Open (and init if needed) Ext SHM.
  *
  * @param[in,out] shm SHM structure to use.
- * @param[in] zero Whether to zero (or init) main ext SHM.
+ * @param[in] zero Whether to zero (or init) Ext SHM.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmain_shm_ext_open(sr_shm_t *shm, int zero);
@@ -501,7 +501,7 @@ sr_error_info_t *sr_shmmain_shm_ext_open(sr_shm_t *shm, int zero);
  * @param[in] shm_main Main SHM.
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] name String name of the module.
- * @param[in] name_off Main ext SHM offset of the name (faster lookup, \p main_ext_shm_addr is not needed).
+ * @param[in] name_off Ext SHM offset of the name (faster lookup, \p main_ext_shm_addr is not needed).
  * @return Main SHM module, NULL if not found.
  */
 sr_mod_t *sr_shmmain_find_module(sr_shm_t *shm_main, char *ext_shm_addr, const char *name, off_t name_off);
@@ -514,7 +514,7 @@ sr_mod_t *sr_shmmain_find_module(sr_shm_t *shm_main, char *ext_shm_addr, const c
  * @param[in] main_shm Main SHM structure.
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] op_path String name of the RPCmodule.
- * @param[in] op_path_off Main ext SHM offset of the op_path (faster lookup, \p ext_shm_addr is not needed).
+ * @param[in] op_path_off Ext SHM offset of the op_path (faster lookup, \p ext_shm_addr is not needed).
  * @return Main SHM RPC, NULL if not found.
  */
 sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_path, off_t op_path_off);
@@ -542,7 +542,7 @@ void sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap);
  * @brief Add main SHM RPC/action subscription.
  * May remap main SHM!
  *
- * @param[in] shm_ext Main ext SHM.
+ * @param[in] shm_ext Ext SHM.
  * @param[in] shm_rpc_off SHM RPC offset.
  * @param[in] xpath Subscription XPath.
  * @param[in] priority Subscription priority.
@@ -757,7 +757,7 @@ void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
  * @brief Add main SHM module configuration subscription.
  * May remap main SHM!
  *
- * @param[in] shm_ext Main ext SHM.
+ * @param[in] shm_ext Ext SHM.
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] ds Datastore.
@@ -772,7 +772,7 @@ sr_error_info_t *sr_shmmod_conf_subscription_add(sr_shm_t *shm_ext, sr_mod_t *sh
 /**
  * @brief Remove main SHM module configuration subscription.
  *
- * @param[in] ext_shm_addr Main ext SHM address.
+ * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] ds Datastore.
@@ -790,7 +790,7 @@ sr_error_info_t *sr_shmmod_conf_subscription_del(char *ext_shm_addr, sr_mod_t *s
  * @brief Add main SHM module operational subscription.
  * May remap main SHM!
  *
- * @param[in] shm_ext Main ext SHM.
+ * @param[in] shm_ext Ext SHM.
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] sub_type Data-provide subscription type.
@@ -803,7 +803,7 @@ sr_error_info_t *sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *sh
 /**
  * @brief Remove main SHM module operational subscription.
  *
- * @param[in] ext_shm_addr Main ext SHM address.
+ * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] evpipe_num Subscription event pipe number.
@@ -817,7 +817,7 @@ sr_error_info_t *sr_shmmod_oper_subscription_del(char *ext_shm_addr, sr_mod_t *s
  * @brief Add main SHM module notification subscription.
  * May remap main SHM!
  *
- * @param[in] shm_ext Main ext SHM.
+ * @param[in] shm_ext Ext SHM.
  * @param[in] shm_mod SHM module.
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
@@ -827,7 +827,7 @@ sr_error_info_t *sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *s
 /**
  * @brief Remove main SHM module notification subscription.
  *
- * @param[in] ext_shm_addr Main ext SHM address.
+ * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] shm_mod SHM module.
  * @param[in] evpipe_num Subscription event pipe number.
  * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.

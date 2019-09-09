@@ -379,7 +379,7 @@ sr_connection_recover(void)
         goto cleanup;
     }
 
-    /* open main ext SHM */
+    /* open ext SHM */
     if ((err_info = sr_shmmain_shm_ext_open(&shm_ext, 0))) {
         goto cleanup_unlock;
     }
@@ -806,7 +806,7 @@ sr_check_ext_shm_defrag(sr_conn_ctx_t *conn)
         goto cleanup;
     }
 
-    SR_LOG_INF("Main ext SHM was defragmented and %u B were saved.", *((size_t *)conn->ext_shm.addr));
+    SR_LOG_INF("Ext SHM was defragmented and %u B were saved.", *((size_t *)conn->ext_shm.addr));
 
     /* copy the defragmented memory into ext SHM (has wasted set to 0) */
     memcpy(conn->ext_shm.addr, buf, conn->ext_shm.size);

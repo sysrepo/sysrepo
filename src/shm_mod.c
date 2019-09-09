@@ -530,7 +530,7 @@ sr_shmmod_conf_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
     xpath_off = conf_subs_off + (shm_mod->conf_sub[ds].sub_count + 1) * sizeof *shm_sub;
     new_ext_size = xpath_off + (xpath ? sr_shmlen(xpath) : 0);
 
-    /* remap main ext SHM */
+    /* remap ext SHM */
     if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
         return err_info;
     }
@@ -650,7 +650,7 @@ sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
     xpath_off = oper_subs_off + (shm_mod->oper_sub_count + 1) * sizeof *shm_sub;
     new_ext_size = xpath_off + (xpath ? sr_shmlen(xpath) : 0);
 
-    /* remap main ext SHM */
+    /* remap ext SHM */
     if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
         return err_info;
     }
@@ -744,7 +744,7 @@ sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t 
     notif_subs_off = shm_ext->size;
     new_ext_size = notif_subs_off + (shm_mod->notif_sub_count + 1) * sizeof *shm_sub;
 
-    /* remap main ext SHM */
+    /* remap ext SHM */
     if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
         return err_info;
     }
