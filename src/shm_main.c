@@ -2475,6 +2475,13 @@ sr_shmmain_shm_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
         return err_info;
     }
 
+    /*
+     * Dependencies of old modules are rebuild because of possible
+     * 1) new inverse dependencies when new modules depend on the old ones;
+     * 2) new dependencies in the old modules in case they were added by foreign augments in the new modules.
+     * Checking these cases would probably be more costly than just always rebuilding all dependnecies.
+     */
+
     /* remove all dependencies of all modules from SHM */
     sr_shmmain_shm_del_modules_deps(&conn->main_shm, conn->ext_shm.addr, (sr_mod_t *)(conn->main_shm.addr + sizeof(sr_main_shm_t)));
 
