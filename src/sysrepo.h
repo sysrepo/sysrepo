@@ -206,6 +206,9 @@ typedef struct sr_error_info_s {
  * @brief Connects to the sysrepo datastore. If possible (no other connections exist), also applies
  * any scheduled changes.
  *
+ * @note Do not use `fork()` after creating a connection. Sysrepo internally stores PID of
+ * every created connection and this way a mismatch of PID and connection is created.
+ *
  * @param[in] opts Options overriding default connection handling by this call.
  * @param[out] conn Connection that can be used for subsequent API calls
  * (automatically allocated, it is supposed to be released by the caller using ::sr_disconnect).

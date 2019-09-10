@@ -838,7 +838,11 @@ sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
             break;
         }
     }
-    SR_CHECK_INT_RET(i == main_shm->conn_state.conn_count, err_info);
+    if (i == main_shm->conn_state.conn_count) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL,
+                "Connection not found in internal state (perhaps fork() was used and PID has changed).");
+        return err_info;
+    }
 
     /* moving existing evpipes */
     evpipes_off = conn->ext_shm.size;
