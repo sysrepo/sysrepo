@@ -348,7 +348,15 @@ main(int argc, char** argv)
         goto cleanup;
     }
 
-    /* create connection */
+    /* load plugins */
+    if (load_plugins(&plugins, &plugin_count)) {
+        goto cleanup;
+    }
+
+    /* daemonize, sysrepo-plugind no longer directly logs to stderr */
+    daemon_init(debug, log_level);
+
+    /* create connection (after we have forked so that our PID is correct) */
     if ((r = sr_connect(0, &conn)) != SR_ERR_OK) {
         error_print(r, "Failed to connect");
         goto cleanup;
@@ -359,14 +367,6 @@ main(int argc, char** argv)
         error_print(r, "Failed to start new session");
         goto cleanup;
     }
-
-    /* load plugins */
-    if (load_plugins(&plugins, &plugin_count)) {
-        goto cleanup;
-    }
-
-    /* daemonize, sysrepo-plugind no longer directly logs to stderr */
-    daemon_init(debug, log_level);
 
     /* init plugins */
     for (i = 0; i < plugin_count; ++i) {
