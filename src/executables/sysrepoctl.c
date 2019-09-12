@@ -242,7 +242,9 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
         for (i = 0; i < ly_mod->inc_size; ++i) {
             str = ly_mod->inc[i].submodule->name;
             cur_item->submodules = realloc(cur_item->submodules, strlen(cur_item->submodules) + 1 + strlen(str) + 1);
-            strcat(cur_item->submodules, " ");
+            if (i) {
+                strcat(cur_item->submodules, " ");
+            }
             strcat(cur_item->submodules, str);
         }
 
