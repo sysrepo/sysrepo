@@ -1836,19 +1836,57 @@ cleanup:
  * @brief Check that persistent (startup) module data can be loaded into updated context.
  * On success also print all the updated modules and updated LYB data.
  *
+ * @param[in] sr_mods Internal data with all implemented modules.
  * @param[in] old_ctx Context with previous modules.
  * @param[in] new_ctx Context with updated modules.
  * @param[out] fail Whether any data failed to be parsed.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_sched_check_data(struct ly_ctx *old_ctx, struct ly_ctx *new_ctx, int *fail)
+sr_shmmain_sched_check_data(const struct lyd_node *sr_mods, struct ly_ctx *old_ctx, struct ly_ctx *new_ctx, int *fail)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *old_data = NULL, *new_data = NULL, *mod_data;
+    struct lyd_node *sr_mod, *node, *old_data = NULL, *new_data = NULL, *mod_data;
     const struct lys_module *old_ly_mod, *new_ly_mod;
     char *data_json = NULL;
+    const char *mod_name, *revision;
     uint32_t idx;
+
+    /* we first need to load all the implemented modules (there can be modules augmenting some of those
+     * already present, it is not possible to load config data without them) */
+    LY_TREE_FOR(sr_mods->child, sr_mod) {
+        /* learn about the module */
+        mod_name = NULL;
+        revision = NULL;
+        LY_TREE_FOR(sr_mod->child, node) {
+            if (!strcmp(node->schema->name, "name")) {
+                mod_name = sr_ly_leaf_value_str(node);
+            } else if (!strcmp(node->schema->name, "revision")) {
+                revision = sr_ly_leaf_value_str(node);
+                break;
+            }
+        }
+        assert(mod_name);
+
+        /* load the module into both contexts, if not already there */
+        old_ly_mod = ly_ctx_get_module(old_ctx, mod_name, NULL, 1);
+        if (old_ly_mod) {
+            assert(ly_ctx_get_module(new_ctx, mod_name, NULL, 1));
+            continue;
+        }
+        assert(!ly_ctx_get_module(new_ctx, mod_name, NULL, 1));
+
+        old_ly_mod = ly_ctx_load_module(old_ctx, mod_name, revision);
+        if (!old_ly_mod) {
+            sr_errinfo_new_ly(&err_info, old_ctx);
+            goto cleanup;
+        }
+        new_ly_mod = ly_ctx_load_module(new_ctx, mod_name, revision);
+        if (!new_ly_mod) {
+            sr_errinfo_new_ly(&err_info, new_ctx);
+            goto cleanup;
+        }
+    }
 
     idx = 0;
     while ((old_ly_mod = ly_ctx_get_module_iter(old_ctx, &idx))) {
@@ -1957,7 +1995,7 @@ sr_shmmain_ly_int_data_sched_apply(sr_conn_ctx_t *conn, struct lyd_node *sr_mods
 
     if (change) {
         /* check that persistent module data can be loaded with updated modules */
-        if ((err_info = sr_shmmain_sched_check_data(old_ctx, new_ctx, &fail)) || fail) {
+        if ((err_info = sr_shmmain_sched_check_data(sr_mods, old_ctx, new_ctx, &fail)) || fail) {
             goto cleanup;
         }
     }
