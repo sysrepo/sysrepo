@@ -1132,7 +1132,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
 
     /* parse returned data */
     ly_errno = 0;
-    *data = lyd_parse_mem(ly_mod->ctx, shm_sub.addr + sizeof *sub_shm, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT);
+    *data = lyd_parse_mem(ly_mod->ctx, shm_sub.addr + sizeof *sub_shm, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
     if (ly_errno) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse returned \"operational\" data.");
@@ -2050,7 +2050,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         /* parse data parent */
         ly_errno = 0;
         parent = lyd_parse_mem(conn->ly_ctx, oper_sub->sub_shm.addr + sizeof(sr_sub_shm_t) + sr_shmlen(request_xpath),
-                LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
+                LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
         SR_CHECK_INT_GOTO(ly_errno, err_info, error_rdunlock);
         /* go to the actual parent, not the root */
         if ((err_info = sr_ly_find_last_parent(&parent, 0))) {
