@@ -1897,7 +1897,7 @@ sr_shmmain_sched_check_data(struct ly_ctx *old_ctx, struct ly_ctx *new_ctx, int 
         }
 
         /* module was updated, print it (keep old module as it can still be imported by some modules) */
-        if ((err_info = sr_store_module_file(new_ly_mod))) {
+        if ((err_info = sr_store_module_files(new_ly_mod))) {
             goto cleanup;
         }
 

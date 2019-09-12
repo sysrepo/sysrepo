@@ -1146,7 +1146,13 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     return NULL;
 }
 
-sr_error_info_t *
+/**
+ * @brief Store the YANG file of a module.
+ *
+ * @param[in] ly_mod Module to store.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
 sr_store_module_file(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
@@ -1162,6 +1168,7 @@ sr_store_module_file(const struct lys_module *ly_mod)
         return NULL;
     }
 
+    /* print the (sub)module file */
     if (lys_print_path(path, ly_mod, LYS_YANG, NULL, 0, 0)) {
         free(path);
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
@@ -1174,16 +1181,37 @@ sr_store_module_file(const struct lys_module *ly_mod)
         return err_info;
     }
 
-    SR_LOG_INF("Module file \"%s%s%s\" installed.", ly_mod->name, ly_mod->rev_size ? "@" : "",
-            ly_mod->rev_size ? ly_mod->rev[0].date : "");
+    SR_LOG_INF("%s file \"%s%s%s\" installed.", ly_mod->type ? "Submodule" : "Module", ly_mod->name,
+            ly_mod->rev_size ? "@" : "", ly_mod->rev_size ? ly_mod->rev[0].date : "");
     free(path);
+    return NULL;
+}
+
+sr_error_info_t *
+sr_store_module_files(const struct lys_module *ly_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    uint16_t i;
+
+    /* store module file */
+    if ((err_info = sr_store_module_file(ly_mod))) {
+        return err_info;
+    }
+
+    /* store files of all submodules */
+    for (i = 0; i < ly_mod->inc_size; ++i) {
+        if ((err_info = sr_store_module_file((struct lys_module *)ly_mod->inc[i].submodule))) {
+            return err_info;
+        }
+    }
+
     return NULL;
 }
 
 /**
  * @brief Create startup and running data file for a module.
  *
- * @param[in] ly_mod Module to create daa files for.
+ * @param[in] ly_mod Module to create data files for.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -1285,7 +1313,7 @@ sr_create_module_files_with_imps_r(const struct lys_module *ly_mod)
         return err_info;
     }
 
-    if (!sr_ly_module_is_internal(ly_mod) && (err_info = sr_store_module_file(ly_mod))) {
+    if (!sr_ly_module_is_internal(ly_mod) && (err_info = sr_store_module_files(ly_mod))) {
         return err_info;
     }
 
@@ -1312,7 +1340,7 @@ sr_create_module_update_imps_r(const struct lys_module *ly_mod)
             continue;
         }
 
-        if ((err_info = sr_store_module_file(ly_imp_mod))) {
+        if ((err_info = sr_store_module_files(ly_imp_mod))) {
             return err_info;
         }
 
