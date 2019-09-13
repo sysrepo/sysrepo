@@ -2543,20 +2543,22 @@ sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, con
         /* find the node */
         set = lyd_find_path(session->dt[session->ds].edit, uniq_xpath);
         free(uniq_xpath);
-        if (!set || (set->number != 1)) {
+        if (!set || (set->number > 1)) {
             ly_set_free(set);
             SR_ERRINFO_INT(&err_info);
             return err_info;
-        }
-        node = set->set.d[0];
-        ly_set_free(set);
+        } else if (set->number == 1) {
+            node = set->set.d[0];
+            ly_set_free(set);
 
-        op = sr_edit_find_oper(node, 1, NULL);
-        if (!strcmp(op, operation)) {
-            /* same node with same operation, silently ignore and clear the error */
-            ly_err_clean(session->conn->ly_ctx, NULL);
-            return NULL;
-        }
+            op = sr_edit_find_oper(node, 1, NULL);
+            if (!strcmp(op, operation)) {
+                /* same node with same operation, silently ignore and clear the error */
+                ly_err_clean(session->conn->ly_ctx, NULL);
+                return NULL;
+            } /* else node has a different operation, error */
+        } /* else set->number == 0; it must be leaf and there already is one with another value, error */
+        ly_set_free(set);
     }
 
     sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
