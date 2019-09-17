@@ -3224,7 +3224,7 @@ retry_open:
     if (ds == SR_DS_STARTUP) {
         fd = open(path, O_RDONLY);
     } else {
-        fd = shm_open(path, O_RDONLY, 0666);
+        fd = shm_open(path, O_RDONLY, 0);
     }
     if (fd == -1) {
         if ((ds == SR_DS_CANDIDATE) && (errno == ENOENT)) {
@@ -3292,9 +3292,9 @@ sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_no
 
     /* open */
     if (ds == SR_DS_STARTUP) {
-        fd = open(path, O_WRONLY | O_CREAT | O_TRUNC);
+        fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, SR_FILE_PERM);
     } else {
-        fd = shm_open(path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        fd = shm_open(path, O_WRONLY | O_CREAT | O_TRUNC, SR_FILE_PERM);
     }
     if (fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
