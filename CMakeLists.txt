@@ -168,7 +168,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_library(srobj OBJECT ${LIB_SRC})
 set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
 add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
-set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_VERSION} SOVERSION ${SYSREPO_SOVERSION_FULL})
+set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
 
 # dependencies
 target_link_libraries(sysrepo rt)
