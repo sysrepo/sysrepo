@@ -985,35 +985,90 @@ sr_shmmain_state_recover(sr_shm_t *shm_main, sr_shm_t *shm_ext)
 }
 
 /**
- * @brief Calculate how much ext SHM space is taken by connection state.
+ * @brief Calculate how much ext SHM space is taken by connection state, RPCs,
+ * their subscriptions, and any existing module subscriptions.
+ *
+ * It is based on the current main SHM and ext SHM data.
  *
  * @param[in] shm_main Main SHM.
- * @return SHM size of the state.
+ * @param[in] ext_shm_addr Ext SHM mapping address.
+ * @return Ext SHM size of the considered data.
  */
 static size_t
-sr_shmmain_ext_get_state_size(sr_main_shm_t *shm_main, char *ext_shm_addr)
+sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
 {
     size_t shm_size = 0;
-    uint32_t i;
+    uint32_t i, j;
+    sr_main_shm_t *main_shm;
+    sr_rpc_t *shm_rpc;
+    sr_rpc_sub_t *rpc_subs;
+    sr_mod_t *shm_mod;
+    sr_mod_conf_sub_t *conf_subs;
+    sr_mod_oper_sub_t *oper_subs;
     sr_conn_state_t *conn_s;
 
-    conn_s = (sr_conn_state_t *)(ext_shm_addr + shm_main->conn_state.conns);
-    for (i = 0; i < shm_main->conn_state.conn_count; ++i) {
+    main_shm = (sr_main_shm_t *)shm_main->addr;
+
+    /* connection state */
+    conn_s = (sr_conn_state_t *)(ext_shm_addr + main_shm->conn_state.conns);
+    for (i = 0; i < main_shm->conn_state.conn_count; ++i) {
         shm_size += conn_s[i].evpipe_count * sizeof(uint32_t);
         shm_size += sizeof *conn_s;
+    }
+
+    /* RPCs and their subscriptions */
+    shm_rpc = (sr_rpc_t *)(ext_shm_addr + main_shm->rpc_subs);
+    for (i = 0; i < main_shm->rpc_sub_count; ++i) {
+        assert(shm_rpc[i].op_path);
+        shm_size += sr_shmlen(ext_shm_addr + shm_rpc[i].op_path);
+
+        rpc_subs = (sr_rpc_sub_t *)(ext_shm_addr + shm_rpc[i].subs);
+        for (j = 0; j < shm_rpc[i].sub_count; ++j) {
+            assert(rpc_subs[j].xpath);
+            shm_size += sr_shmlen(ext_shm_addr + rpc_subs[j].xpath);
+        }
+        shm_size += shm_rpc[i].sub_count * sizeof *rpc_subs;
+    }
+    shm_size += main_shm->rpc_sub_count * sizeof *shm_rpc;
+
+    /* existing module subscriptions */
+    SR_SHM_MOD_FOR(shm_main->addr, shm_main->size, shm_mod) {
+        /* configuration subscriptions */
+        for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {
+            conf_subs = (sr_mod_conf_sub_t *)(ext_shm_addr + shm_mod->conf_sub[i].subs);
+            for (j = 0; j < shm_mod->conf_sub[i].sub_count; ++j) {
+                if (conf_subs[j].xpath) {
+                    shm_size += sr_shmlen(ext_shm_addr + conf_subs[j].xpath);
+                }
+            }
+            shm_size += shm_mod->conf_sub[i].sub_count * sizeof *conf_subs;
+        }
+
+        /* oper subscriptions */
+        oper_subs = (sr_mod_oper_sub_t *)(ext_shm_addr + shm_mod->oper_subs);
+        for (i = 0; i < shm_mod->oper_sub_count; ++i) {
+            assert(oper_subs[i].xpath);
+            shm_size += sr_shmlen(ext_shm_addr + oper_subs[i].xpath);
+        }
+        shm_size += shm_mod->oper_subs * sizeof *oper_subs;
+
+        /* notif subscriptions */
+        shm_size += shm_mod->notif_subs * sizeof(sr_mod_notif_sub_t);
     }
 
     return shm_size;
 }
 
 /**
- * @brief Calculate how much ext SHM space is taken by modules.
+ * @brief Calculate how much ext SHM space is taken by modules and their dependencies.
+ *
+ * It is based on internal persistent module data.
  *
  * @param[in] sr_mods Sysrepo internal persistent module data.
- * @return SHM size of all the modules.
+ * @return Ext SHM size of the considered data.
  */
 static size_t
-sr_shmmain_ext_get_module_size(struct lyd_node *sr_mods)
+sr_shmmain_ext_get_size_ly_modules(struct lyd_node *sr_mods)
 {
     struct lyd_node *sr_mod, *sr_child, *sr_op_dep, *sr_dep, *sr_instid;
     size_t shm_size = 0;
@@ -2504,8 +2559,8 @@ sr_shmmain_shm_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
 
     /* enlarge ext SHM */
     wasted_ext = (size_t *)conn->ext_shm.addr;
-    new_ext_size = sizeof(size_t) + sr_shmmain_ext_get_state_size((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr) +
-            sr_shmmain_ext_get_module_size(sr_mod->parent);
+    new_ext_size = sizeof(size_t) + sr_shmmain_ext_get_size_main_shm(&conn->main_shm, conn->ext_shm.addr) +
+            sr_shmmain_ext_get_size_ly_modules(sr_mod->parent);
     if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size + *wasted_ext))) {
         return err_info;
     }

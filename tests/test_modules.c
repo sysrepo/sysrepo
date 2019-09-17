@@ -620,6 +620,73 @@ test_foreign_aug(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static int
+mod_change_dummy_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+    return SR_ERR_OK;
+}
+
+static int
+rpc_tree_dummy_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
+        uint32_t request_id, struct lyd_node *output, void *private_data)
+{
+    (void)session;
+    (void)op_path;
+    (void)input;
+    (void)event;
+    (void)request_id;
+    (void)output;
+    (void)private_data;
+    return SR_ERR_OK;
+}
+
+static void
+test_install_mod_with_sub(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub;
+    int ret;
+
+    /* install modules, create another connection, session, and subscriptions */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_connect(0, &conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, mod_change_dummy_cb, NULL, 0, 0, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe_tree(sess, "/ops:rpc1", rpc_tree_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* install a module */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "iana-if-type");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "ietf-interfaces");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "ops");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "ops-ref");
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_unsubscribe(sub);
+    sr_disconnect(conn);
+}
+
 int
 main(void)
 {
@@ -631,6 +698,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_update_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_feature, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_foreign_aug, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_install_mod_with_sub, setup_f, teardown_f),
     };
 
     sr_log_stderr(SR_LL_INF);

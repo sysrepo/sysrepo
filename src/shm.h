@@ -35,6 +35,26 @@
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
+ * Main SHM organization
+ *
+ * Except for main and ext SHM there are individual SHM segments for subscriptions and
+ * running data files. These are not covered in the following text.
+ *
+ * There are 2 SHM segments, main SHM and ext SHM.
+ *
+ * Main SHM starts with ::sr_main_shm_t structure. Then is followed by all installed
+ * modules, each with a ::sr_mod_t structure until the end of main SHM. All `off_t`
+ * types in these structures are offset pointers to ext SHM.
+ *
+ * Ext shm starts with a `uint32_t` value representing the number of wasted
+ * bytes in this SHM segment. It is followed by arrays and strings pointed to
+ * by main SHM `off_t` pointers. First, there is the sysrepo state ::sr_conn_state_t
+ * meaning all currently running connections. Then, there is information from ::sr_mod_t
+ * which includes names, dependencies, and subscriptions. Lastly, there are RPCs ::sr_rpc_t.
+ * Also, any pointers in all the previous structures point, again, into ext SHM.
+ */
+
+/**
  * @brief Ext SHM module dependency type.
  */
 typedef enum sr_mod_dep_type_e {
