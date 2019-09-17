@@ -171,7 +171,7 @@ target_link_libraries(sysrepo rt)
 
 find_package(YANG REQUIRED)
 target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
-include_directories(${YANG_INCLUDE_DIR})
+include_directories(${LIBYANG_INCLUDE_DIRS})
 
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
