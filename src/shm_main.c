@@ -1993,7 +1993,7 @@ sr_shmmain_ly_int_data_sched_apply(sr_conn_ctx_t *conn, struct lyd_node *sr_mods
         goto cleanup;
     }
 
-    if (change) {
+    if (*change) {
         /* check that persistent module data can be loaded with updated modules */
         if ((err_info = sr_shmmain_sched_check_data(sr_mods, old_ctx, new_ctx, &fail)) || fail) {
             goto cleanup;
