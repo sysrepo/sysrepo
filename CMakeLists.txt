@@ -76,6 +76,10 @@ if(ENABLE_COVERAGE)
     endif()
 endif()
 
+# bindings
+option(GEN_CPP_BINDINGS "Enable C++ bindings generation." OFF)
+option(BUILD_CPP_EXAMPLES "Enable C++ example application compilation." ON)
+
 set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_COVERAGE} -Wall -Wextra -Wpedantic -std=c99 -Wno-language-extension-token")
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
@@ -214,6 +218,16 @@ if(DOXYGEN_FOUND)
             COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/Doxyfile
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     configure_file(Doxyfile.in Doxyfile)
+endif()
+
+# bindings
+if(GEN_CPP_BINDINGS)
+    if(NOT LIBYANG_CPP_FOUND)
+        message(WARNING "libyang C++ bindings not found! Disabling C++ binding generation.")
+        set(GEN_CPP_BINDINGS OFF)
+    else()
+        add_subdirectory(swig)
+    endif()
 endif()
 
 # examples
