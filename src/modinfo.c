@@ -474,6 +474,9 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_datas
 
     assert(!IS_WRITABLE_DS(ds));
 
+    /* add possible default state data nodes */
+    lyd_validate_modules(data, &mod->ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
+
     /* XPaths are ordered based on depth */
     for (i = 0; i < mod->shm_mod->oper_sub_count; ++i) {
         shm_msub = &((sr_mod_oper_sub_t *)(ext_shm_addr + mod->shm_mod->oper_subs))[i];
