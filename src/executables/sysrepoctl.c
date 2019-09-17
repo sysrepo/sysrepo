@@ -279,7 +279,7 @@ srctl_list(sr_conn_ctx_t *conn)
 {
     int ret;
     const struct ly_ctx *ly_ctx;
-    char flags_str[4], perm_str[4];
+    char flags_str[5], perm_str[4];
     struct lyd_node *data = NULL;
     struct list_item *list = NULL;
     size_t i, line_len, list_count = 0;
