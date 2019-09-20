@@ -1906,6 +1906,93 @@ cleanup:
     return err_info;
 }
 
+sr_error_info_t *
+sr_lydmods_unsched_add_module(struct ly_ctx *ly_ctx, const char *module_name)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_mods = NULL;
+    struct ly_set *set = NULL;
+    char *path = NULL;
+
+    /* parse current module information */
+    if ((err_info = sr_lydmods_parse(ly_ctx, &sr_mods))) {
+        goto cleanup;
+    }
+
+    /* check that the module is scheduled for installation */
+    if (asprintf(&path, "/" SR_YANG_MOD ":sysrepo-modules/installed-module[name=\"%s\"]", module_name) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+    set = lyd_find_path(sr_mods, path);
+    SR_CHECK_INT_GOTO(!set, err_info, cleanup);
+    if (!set->number) {
+        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" not scheduled for installation.", module_name);
+        goto cleanup;
+    }
+
+    /* unschedule installation */
+    lyd_free(set->set.d[0]);
+
+    /* store the updated persistent data tree */
+    if ((err_info = sr_lydmods_print(&sr_mods))) {
+        goto cleanup;
+    }
+
+    SR_LOG_INF("Module \"%s\" installation unscheduled.", module_name);
+
+cleanup:
+    free(path);
+    ly_set_free(set);
+    lyd_free_withsiblings(sr_mods);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_lydmods_deferred_del_module(struct ly_ctx *ly_ctx, const char *mod_name)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_mods = NULL;
+    struct ly_set *set = NULL;
+    char *path = NULL;
+
+    /* parse current module information */
+    if ((err_info = sr_lydmods_parse(ly_ctx, &sr_mods))) {
+        goto cleanup;
+    }
+
+    /* check that the module is not already marked for deletion */
+    if (asprintf(&path, "/" SR_YANG_MOD ":sysrepo-modules/module[name=\"%s\"]/removed", mod_name) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+    set = lyd_find_path(sr_mods, path);
+    SR_CHECK_INT_GOTO(!set, err_info, cleanup);
+    if (set->number == 1) {
+        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" already scheduled for deletion.", mod_name);
+        goto cleanup;
+    }
+
+    /* mark for deletion */
+    if (!lyd_new_path(sr_mods, NULL, path, NULL, 0, LYD_PATH_OPT_NOPARENT)) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        goto cleanup;
+    }
+
+    /* store the updated persistent data tree */
+    if ((err_info = sr_lydmods_print(&sr_mods))) {
+        goto cleanup;
+    }
+
+    SR_LOG_INF("Module \"%s\" scheduled for deletion.", mod_name);
+
+cleanup:
+    free(path);
+    ly_set_free(set);
+    lyd_free_withsiblings(sr_mods);
+    return err_info;
+}
+
 /**
  * @brief Unchedule module (with any implemented dependencies) deletion from internal sysrepo data.
  *
@@ -1977,51 +2064,6 @@ sr_lydmods_unsched_del_module_with_imps(struct ly_ctx *ly_ctx, const struct lys_
     err_info = sr_lydmods_print(&sr_mods);
 
 cleanup:
-    lyd_free_withsiblings(sr_mods);
-    return err_info;
-}
-
-sr_error_info_t *
-sr_lydmods_deferred_del_module(struct ly_ctx *ly_ctx, const char *mod_name)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *sr_mods = NULL;
-    struct ly_set *set = NULL;
-    char *path = NULL;
-
-    /* parse current module information */
-    if ((err_info = sr_lydmods_parse(ly_ctx, &sr_mods))) {
-        goto cleanup;
-    }
-
-    /* check that the module is not already marked for deletion */
-    if (asprintf(&path, "/" SR_YANG_MOD ":sysrepo-modules/module[name=\"%s\"]/removed", mod_name) == -1) {
-        SR_ERRINFO_MEM(&err_info);
-        goto cleanup;
-    }
-    set = lyd_find_path(sr_mods, path);
-    SR_CHECK_INT_GOTO(!set, err_info, cleanup);
-    if (set->number == 1) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" already scheduled for deletion.", mod_name);
-        goto cleanup;
-    }
-
-    /* mark for deletion */
-    if (!lyd_new_path(sr_mods, NULL, path, NULL, 0, LYD_PATH_OPT_NOPARENT)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
-        goto cleanup;
-    }
-
-    /* store the updated persistent data tree */
-    if ((err_info = sr_lydmods_print(&sr_mods))) {
-        goto cleanup;
-    }
-
-    SR_LOG_INF("Module \"%s\" scheduled for deletion.", mod_name);
-
-cleanup:
-    free(path);
-    ly_set_free(set);
     lyd_free_withsiblings(sr_mods);
     return err_info;
 }

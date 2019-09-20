@@ -194,7 +194,8 @@ typedef struct sr_conn_state_s {
  * @brief Main SHM.
  */
 typedef struct sr_main_shm_s {
-    sr_rwlock_t lock;           /**< Process-shared lock for accessing main (ext) SHM. */
+    sr_rwlock_t lock;           /**< Process-shared lock for accessing main and ext SHM. */
+    pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
     uint32_t ver;               /**< Main SHM version (installed module set version). */
 
     off_t rpc_subs;             /**< Array of RPC/action subscriptions. */
@@ -498,9 +499,10 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const
  * @param[in] conn Connection to use.
  * @param[in] wr Whether to WRITE or READ lock main SHM.
  * @param[in] remap Whether to WRITE (main SHM may be remapped) or READ (just protect from remapping) remap lock.
+ * @param[in] lydmods Whether to lydmods LOCK.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap);
+sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap, int lydmods);
 
 /**
  * @brief Unlock main SHM.
@@ -508,8 +510,9 @@ sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap);
  * @param[in] conn Connection to use.
  * @param[in] wr Whether to WRITE or READ unlock main SHM.
  * @param[in] remap Whether to WRITE or READ remap unlock.
+ * @param[in] lydmods Whether to lydmods UNLOCK.
  */
-void sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap);
+void sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap, int lydmods);
 
 /**
  * @brief Add main SHM RPC/action subscription.

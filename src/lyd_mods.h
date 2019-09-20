@@ -87,13 +87,13 @@ sr_error_info_t *sr_lydmods_deferred_add_module(struct ly_ctx *ly_ctx, const str
         int feat_count);
 
 /**
- * @brief Unschedule module deletion from sysrepo module data.
+ * @brief Unschedule module installation from sysrepo module data.
  *
  * @param[in] ly_ctx Context to use for parsing the data.
- * @param[in] ly_mod Module that is scheduled to be deleted.
+ * @param[in] module_name Module name to unschedule.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lydmods_unsched_del_module_with_imps(struct ly_ctx *ly_ctx, const struct lys_module *ly_mod);
+sr_error_info_t *sr_lydmods_unsched_add_module(struct ly_ctx *ly_ctx, const char *module_name);
 
 /**
  * @brief Schedule module deletion to sysrepo module data.
@@ -103,6 +103,15 @@ sr_error_info_t *sr_lydmods_unsched_del_module_with_imps(struct ly_ctx *ly_ctx, 
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lydmods_deferred_del_module(struct ly_ctx *ly_ctx, const char *mod_name);
+
+/**
+ * @brief Unschedule module deletion from sysrepo module data.
+ *
+ * @param[in] ly_ctx Context to use for parsing the data.
+ * @param[in] ly_mod Module that is scheduled to be deleted.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lydmods_unsched_del_module_with_imps(struct ly_ctx *ly_ctx, const struct lys_module *ly_mod);
 
 /**
  * @brief Schedule module update to sysrepo module data.

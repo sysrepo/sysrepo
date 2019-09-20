@@ -1685,6 +1685,9 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         if ((err_info = sr_rwlock_init(&main_shm->lock, 1))) {
             goto error;
         }
+        if ((err_info = sr_mutex_init(&main_shm->lydmods_lock, 1))) {
+            goto error;
+        }
         ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
     }
@@ -1764,7 +1767,7 @@ sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_
 }
 
 sr_error_info_t *
-sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap)
+sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap, int lydmods)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
@@ -1799,6 +1802,11 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap)
         goto error_remap_shm_unlock;
     }
 
+    /* LYDMODS LOCK */
+    if (lydmods && (err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+        goto error_remap_shm_unlock;
+    }
+
     return NULL;
 
 error_remap_shm_unlock:
@@ -1809,7 +1817,7 @@ error_remap_unlock:
 }
 
 void
-sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap)
+sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap, int lydmods)
 {
     sr_main_shm_t *main_shm;
 
@@ -1821,6 +1829,11 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap)
 
     /* REMAP UNLOCK */
     sr_rwunlock(&conn->main_shm_remap_lock, remap, __func__);
+
+    if (lydmods) {
+        /* LYDMODS UNLOCK */
+        sr_munlock(&main_shm->lydmods_lock);
+    }
 }
 
 sr_error_info_t *
