@@ -188,7 +188,6 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t d
     set = lys_xpath_atomize(ctx_node, LYXP_NODE_ELEM, xpath, 0);
     if (!set) {
         sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        SR_ERRINFO_INT(&err_info);
         return err_info;
     }
 
