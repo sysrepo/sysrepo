@@ -427,7 +427,7 @@ sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
 const char *sr_get_repo_path(void);
 
 /**
- * @brief Install a new schema (module) into sysrepo.
+ * @brief Install a new schema (module) into sysrepo. Deferred until there are no connections!
  *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
@@ -440,7 +440,7 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
         int feat_count);
 
 /**
- * @brief Remove an installed module from sysrepo. Deferred until new main SHM creation!
+ * @brief Remove an installed module from sysrepo. Deferred until there are no connections!
  *
  * Required WRITE access.
  *
@@ -451,7 +451,7 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
 int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
 
 /**
- * @brief Update an installed schema (module) to a new revision. Deferred until new main SHM creation!
+ * @brief Update an installed schema (module) to a new revision. Deferred until there are no connections!
  *
  * Required WRITE access.
  *
@@ -512,7 +512,7 @@ int sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const cha
 int sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner, char **group, mode_t *perm);
 
 /**
- * @brief Enable a module feature. Deferred until new main SHM creation!
+ * @brief Enable a module feature. Deferred until there are no connections!
  *
  * Required WRITE access.
  *
@@ -524,7 +524,7 @@ int sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **ow
 int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
 
 /**
- * @brief Disable a module feature. Deferred until new main SHM creation!
+ * @brief Disable a module feature. Deferred until there are no connections!
  *
  * Required WRITE access.
  *

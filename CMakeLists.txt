@@ -148,6 +148,7 @@ set(LIB_SRC
     src/replay.c
     src/modinfo.c
     src/edit_diff.c
+    src/lyd_mods.c
     src/shm_main.c
     src/shm_mod.c
     src/shm_sub.c

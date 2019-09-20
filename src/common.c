@@ -1181,10 +1181,40 @@ sr_store_module_file(const struct lys_module *ly_mod)
         return err_info;
     }
 
-    SR_LOG_INF("%s file \"%s%s%s\" installed.", ly_mod->type ? "Submodule" : "Module", ly_mod->name,
-            ly_mod->rev_size ? "@" : "", ly_mod->rev_size ? ly_mod->rev[0].date : "");
+    SR_LOG_INF("File \"%s%s%s\" was installed.", ly_mod->name, ly_mod->rev_size ? "@" : "",
+            ly_mod->rev_size ? ly_mod->rev[0].date : "");
     free(path);
     return NULL;
+}
+
+/**
+ * @brief Check whether a module is internal libyang module.
+ *
+ * @param[in] ly_mod Module to check.
+ * @return 0 if not, non-zero if it is.
+ */
+static int
+sr_ly_module_is_internal(const struct lys_module *ly_mod)
+{
+    if (!ly_mod->rev_size) {
+        return 0;
+    }
+
+    if (!strcmp(ly_mod->name, "ietf-yang-metadata") && !strcmp(ly_mod->rev[0].date, "2016-08-05")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "yang") && !strcmp(ly_mod->rev[0].date, "2017-02-20")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->rev[0].date, "2013-07-15")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->rev[0].date, "2013-07-15")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->rev[0].date, "2017-08-17")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-yang-library") && !strcmp(ly_mod->rev[0].date, "2018-01-17")) {
+        return 1;
+    }
+
+    return 0;
 }
 
 sr_error_info_t *
@@ -1192,6 +1222,11 @@ sr_store_module_files(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     uint16_t i;
+
+    if (sr_ly_module_is_internal(ly_mod)) {
+        /* no need to store internal modules */
+        return NULL;
+    }
 
     /* store module file */
     if ((err_info = sr_store_module_file(ly_mod))) {
@@ -1208,13 +1243,40 @@ sr_store_module_files(const struct lys_module *ly_mod)
     return NULL;
 }
 
-/**
- * @brief Create startup and running data file for a module.
- *
- * @param[in] ly_mod Module to create data files for.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
+sr_remove_data_files(const char *mod_name)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path;
+
+    if ((err_info = sr_path_startup_file(mod_name, &path))) {
+        return err_info;
+    }
+    if (unlink(path) == -1) {
+        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+    }
+    free(path);
+
+    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 0, &path))) {
+        return err_info;
+    }
+    if ((shm_unlink(path) == -1) && (errno != ENOENT)) {
+        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+    }
+    free(path);
+
+    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_CANDIDATE, 0, &path))) {
+        return err_info;
+    }
+    if ((shm_unlink(path) == -1) && (errno != ENOENT)) {
+        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+    }
+    free(path);
+
+    return NULL;
+}
+
+sr_error_info_t *
 sr_create_data_files(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
@@ -1273,61 +1335,8 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Check whether a module is internal libyang module.
- *
- * @param[in] ly_mod Module to check.
- * @return 0 if not, non-zero if it is.
- */
-static int
-sr_ly_module_is_internal(const struct lys_module *ly_mod)
-{
-    if (!ly_mod->rev_size) {
-        return 0;
-    }
-
-    if (!strcmp(ly_mod->name, "ietf-yang-metadata") && !strcmp(ly_mod->rev[0].date, "2016-08-05")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "yang") && !strcmp(ly_mod->rev[0].date, "2017-02-20")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->rev[0].date, "2013-07-15")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->rev[0].date, "2013-07-15")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->rev[0].date, "2017-08-17")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-yang-library") && !strcmp(ly_mod->rev[0].date, "2018-01-17")) {
-        return 1;
-    }
-
-    return 0;
-}
-
 sr_error_info_t *
-sr_create_module_files_with_imps_r(const struct lys_module *ly_mod)
-{
-    sr_error_info_t *err_info = NULL;
-    uint16_t i;
-
-    if (ly_mod->implemented && (err_info = sr_create_data_files(ly_mod))) {
-        return err_info;
-    }
-
-    if (!sr_ly_module_is_internal(ly_mod) && (err_info = sr_store_module_files(ly_mod))) {
-        return err_info;
-    }
-
-    for (i = 0; i < ly_mod->imp_size; ++i) {
-        if ((err_info = sr_create_module_files_with_imps_r(ly_mod->imp[i].module))) {
-            return err_info;
-        }
-    }
-
-    return NULL;
-}
-
-sr_error_info_t *
-sr_create_module_update_imps_r(const struct lys_module *ly_mod)
+sr_create_module_imps_r(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_module *ly_imp_mod;
@@ -1344,7 +1353,7 @@ sr_create_module_update_imps_r(const struct lys_module *ly_mod)
             return err_info;
         }
 
-        if ((err_info = sr_create_module_update_imps_r(ly_imp_mod))) {
+        if ((err_info = sr_create_module_imps_r(ly_imp_mod))) {
             return err_info;
         }
     }
@@ -1729,12 +1738,11 @@ sr_perm_check(const char *mod_name, int wr)
 
     /* check against effective permissions */
     if (eaccess(path, (wr ? W_OK : R_OK)) == -1) {
-        if (errno == EACCES) {
-            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "%s permission \"%s\" check failed.",
-                    wr ? "Write" : "Read", mod_name);
-        } else {
+        if (errno != EACCES) {
             SR_ERRINFO_SYSERRNO(&err_info, "eaccess");
         }
+        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "%s permission \"%s\" check failed.",
+                wr ? "Write" : "Read", mod_name);
     }
 
     free(path);
@@ -3256,7 +3264,7 @@ retry_open:
     return NULL;
 
 error:
-    if (fd < 0) {
+    if (fd > -1) {
         close(fd);
     }
     free(path);

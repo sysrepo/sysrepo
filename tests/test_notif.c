@@ -51,9 +51,13 @@ static int
 setup(void **state)
 {
     struct state *st;
+    uint32_t conn_count;
 
     st = calloc(1, sizeof *st);
     *state = st;
+
+    sr_connection_count(&conn_count);
+    assert_int_equal(conn_count, 0);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
         return 1;
@@ -74,6 +78,12 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    sr_disconnect(st->conn);
+
+    if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
+        return 1;
+    }
+
     if (sr_set_module_replay_support(st->conn, "ops", 1) != SR_ERR_OK) {
         return 1;
     }

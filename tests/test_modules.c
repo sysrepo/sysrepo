@@ -105,16 +105,27 @@ test_data_deps(void **state)
 {
     struct state *st = (struct state *)*state;
     int ret;
+    uint32_t conn_count;
 
     ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_module_replay_support(st->conn, "ietf-interfaces", 1);
-    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_install_module(st->conn, TESTS_DIR "/files/refs.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_module_replay_support(st->conn, "ietf-interfaces", 1);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_module_replay_support(st->conn, "refs", 1);
     assert_int_equal(ret, SR_ERR_OK);
@@ -174,13 +185,24 @@ static void
 test_op_deps(void **state)
 {
     struct state *st = (struct state *)*state;
+    uint32_t conn_count;
     int ret;
 
     ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_module_replay_support(st->conn, "ops-ref", 1);
-    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_module_replay_support(st->conn, "ops-ref", 1);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_module_replay_support(st->conn, "ops", 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -204,25 +226,6 @@ test_op_deps(void **state)
         "<name>ops</name>"
         "<removed/>"
         "<op-deps>"
-            "<xpath xmlns:o=\"urn:ops\">/o:rpc1</xpath>"
-            "<in>"
-                "<module>ops-ref</module>"
-                "<inst-id>"
-                    "<xpath xmlns:o=\"urn:ops\">/o:rpc1/o:l2</xpath>"
-                    "<default-module>ops-ref</default-module>"
-                "</inst-id>"
-            "</in>"
-        "</op-deps>"
-        "<op-deps>"
-            "<xpath xmlns:o=\"urn:ops\">/o:rpc2</xpath>"
-            "<out>"
-                "<module>ops-ref</module>"
-            "</out>"
-        "</op-deps>"
-        "<op-deps>"
-            "<xpath xmlns:o=\"urn:ops\">/o:rpc3</xpath>"
-        "</op-deps>"
-        "<op-deps>"
             "<xpath xmlns:o=\"urn:ops\">/o:cont/o:list1/o:cont2/o:act1</xpath>"
             "<out>"
                 "<module>ops</module>"
@@ -244,6 +247,25 @@ test_op_deps(void **state)
             "</in>"
         "</op-deps>"
         "<op-deps>"
+            "<xpath xmlns:o=\"urn:ops\">/o:rpc1</xpath>"
+            "<in>"
+                "<module>ops-ref</module>"
+                "<inst-id>"
+                    "<xpath xmlns:o=\"urn:ops\">/o:rpc1/o:l2</xpath>"
+                    "<default-module>ops-ref</default-module>"
+                "</inst-id>"
+            "</in>"
+        "</op-deps>"
+        "<op-deps>"
+            "<xpath xmlns:o=\"urn:ops\">/o:rpc2</xpath>"
+            "<out>"
+                "<module>ops-ref</module>"
+            "</out>"
+        "</op-deps>"
+        "<op-deps>"
+            "<xpath xmlns:o=\"urn:ops\">/o:rpc3</xpath>"
+        "</op-deps>"
+        "<op-deps>"
             "<xpath xmlns:o=\"urn:ops\">/o:notif3</xpath>"
             "<in>"
                 "<module>ops-ref</module>"
@@ -261,9 +283,19 @@ static void
 test_inv_deps(void **state)
 {
     struct state *st = (struct state *)*state;
+    uint32_t conn_count;
     int ret;
 
     ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-routing.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_remove_module(st->conn, "ietf-routing");
@@ -316,9 +348,19 @@ test_remove_dep_module(void **state)
     /* install modules with one dependeing on the other */
     ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_module_replay_support(st->conn, "ops-ref", 1);
-    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_module_replay_support(st->conn, "ops-ref", 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* remove module required by the other module */
@@ -358,6 +400,15 @@ test_update_module(void **state)
 
     /* install rev */
     ret = sr_install_module(st->conn, TESTS_DIR "/files/rev.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
     assert_int_equal(ret, SR_ERR_OK);
 
     cmp_int_data(st->conn, "rev",
@@ -427,11 +478,17 @@ test_change_feature(void **state)
     int ret;
     uint32_t conn_count;
 
-    ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
-    assert_int_equal(ret, SR_ERR_OK);
-
     /* install features with feat1 (will also install test) */
     ret = sr_install_module(st->conn, TESTS_DIR "/files/features.yang", TESTS_DIR "/files", &en_feat, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
     assert_int_equal(ret, SR_ERR_OK);
 
     cmp_int_data(st->conn, "features",
@@ -447,6 +504,9 @@ test_change_feature(void **state)
         "<inverse-data-deps>features</inverse-data-deps>"
     "</module>"
     );
+
+    ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
 
     /* set all data */
     ret = sr_set_item_str(sess, "/test:test-leaf", "2", 0);
@@ -556,6 +616,15 @@ test_foreign_aug(void **state)
     ret = sr_install_module(st->conn, TESTS_DIR "/files/aug.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
     cmp_int_data(st->conn, "aug",
     "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>aug</name>"
@@ -597,6 +666,15 @@ test_foreign_aug(void **state)
     ret = sr_install_module(st->conn, TESTS_DIR "/files/aug.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
     cmp_int_data(st->conn, "aug",
     "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>aug</name>"
@@ -620,73 +698,6 @@ test_foreign_aug(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
-static int
-mod_change_dummy_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
-{
-    (void)session;
-    (void)module_name;
-    (void)xpath;
-    (void)event;
-    (void)request_id;
-    (void)private_data;
-    return SR_ERR_OK;
-}
-
-static int
-rpc_tree_dummy_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
-        uint32_t request_id, struct lyd_node *output, void *private_data)
-{
-    (void)session;
-    (void)op_path;
-    (void)input;
-    (void)event;
-    (void)request_id;
-    (void)output;
-    (void)private_data;
-    return SR_ERR_OK;
-}
-
-static void
-test_install_mod_with_sub(void **state)
-{
-    struct state *st = (struct state *)*state;
-    sr_conn_ctx_t *conn;
-    sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *sub;
-    int ret;
-
-    /* install modules, create another connection, session, and subscriptions */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_connect(0, &conn);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, mod_change_dummy_cb, NULL, 0, 0, &sub);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe_tree(sess, "/ops:rpc1", rpc_tree_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* install a module */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* cleanup */
-    ret = sr_remove_module(st->conn, "iana-if-type");
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_remove_module(st->conn, "ietf-interfaces");
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_remove_module(st->conn, "ops");
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_remove_module(st->conn, "ops-ref");
-    assert_int_equal(ret, SR_ERR_OK);
-    sr_unsubscribe(sub);
-    sr_disconnect(conn);
-}
-
 int
 main(void)
 {
@@ -698,7 +709,6 @@ main(void)
         cmocka_unit_test_setup_teardown(test_update_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_feature, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_foreign_aug, setup_f, teardown_f),
-        cmocka_unit_test_setup_teardown(test_install_mod_with_sub, setup_f, teardown_f),
     };
 
     sr_log_stderr(SR_LL_INF);

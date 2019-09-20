@@ -151,6 +151,8 @@
  * Internal declarations + definitions
  */
 
+extern char sysrepo_yang[];
+
 typedef struct sr_mod_s sr_mod_t;
 
 typedef struct sr_mod_data_dep_s sr_mod_data_dep_t;
@@ -193,6 +195,7 @@ struct modsub_notif_s;
 #include "replay.h"
 #include "modinfo.h"
 #include "edit_diff.h"
+#include "lyd_mods.h"
 #include "shm.h"
 #include "log.h"
 
@@ -569,21 +572,28 @@ sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
 sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
 
 /**
- * @brief Create all module files (YANG module, running file, starutp file) for a module and its imports.
- * Internal and not-implemented modules are handled correctly.
+ * @brief Unlink startup, running, and candidate files of a module.
  *
- * @param[in] ly_mod Module to create files for.
+ * @param[in] mod_name Module name.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_create_module_files_with_imps_r(const struct lys_module *ly_mod);
+sr_error_info_t *sr_remove_data_files(const char *mod_name);
 
 /**
- * @brief Create all update module import files.
+ * @brief Create startup and running data file for a module.
  *
- * @param[in] ly_mod libyang module.
+ * @param[in] ly_mod Module to create data files for.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_create_module_update_imps_r(const struct lys_module *ly_mod);
+sr_error_info_t *sr_create_data_files(const struct lys_module *ly_mod);
+
+/**
+ * @brief Create all module import files.
+ *
+ * @param[in] ly_mod libyang module whose imports to create.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_create_module_imps_r(const struct lys_module *ly_mod);
 
 /**
  * @brief Get the path to a subscription SHM.

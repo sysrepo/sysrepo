@@ -14,23 +14,28 @@ module sysrepo {
     }
 
     organization
-      "CESNET";
+        "CESNET";
 
     contact
-      "Author: Michal Vasko
-               <mvasko@cesnet.cz>";
+        "Author: Michal Vasko
+                 <mvasko@cesnet.cz>";
 
     description
-      "Sysrepo YANG datastore internal attributes and information.";
+        "Sysrepo YANG datastore internal attributes and information.";
+
+    revision "2019-09-17" {
+        description
+            "Added list of scheduled installed modules.";
+    }
 
     revision "2019-07-10" {
-      description
-        "Initial revision.";
+        description
+            "Initial revision.";
     }
 
     typedef module-ref {
         description
-          "Reference to a module.";
+            "Reference to a module.";
         type leafref {
             path "/sysrepo-modules/module/name";
         }
@@ -39,45 +44,65 @@ module sysrepo {
     md:annotation operation {
         type enumeration {
             enum none {
-              description
-                "Node with this operation must exist but does not affect the datastore in any way.";
-              reference
-                "RFC 6241 section 7.2.: default-operation";
+                description
+                    "Node with this operation must exist but does not affect the datastore in any way.";
+                reference
+                    "RFC 6241 section 7.2.: default-operation";
             }
             enum ether {
-              description
-                "Node with this operation does not have to exist and does not affect the datastore in any way.";
+                description
+                    "Node with this operation does not have to exist and does not affect the datastore in any way.";
             }
         }
         description
-          "Additional proprietary <edit-config> operations used internally.";
+            "Additional proprietary <edit-config> operations used internally.";
         reference
-          "RFC 6241 section 7.2.";
+            "RFC 6241 section 7.2.";
     }
 
     md:annotation orig-key {
         type string;
         description
-          "List keys that were originally preceding the list node instance in the configuration.";
+            "List keys that were originally preceding the list node instance in the configuration.";
     }
 
     md:annotation orig-value {
         type string;
         description
-          "Leaf-list value that was originally prceding the leaf-list node instance in the configuration.";
+            "Leaf-list value that was originally prceding the leaf-list node instance in the configuration.";
     }
 
     md:annotation orig-dflt {
         type empty;
         description
-          "Present if the node was originally a default node.";
+            "Present if the node was originally a default node.";
+    }
+
+    grouping module-info-grp {
+        leaf name {
+            type string;
+            description
+                "Module name.";
+        }
+
+        leaf revision {
+            type string;
+            description
+                "Module revision.";
+        }
+
+        leaf-list enabled-feature {
+            type string;
+            description
+                "List of all the enabled features.";
+        }
     }
 
     grouping deps-grp {
         leaf-list module {
             type module-ref;
             description
-              "Module that is being dependent on.";
+                "Module that is being dependent on.";
         }
 
         list inst-id {
@@ -86,13 +111,13 @@ module sysrepo {
             leaf xpath {
                 type yang:xpath1.0;
                 description
-                  "XPath identifying the node with the dependency.";
+                    "XPath identifying the node with the dependency.";
             }
 
             leaf default-module {
                 type module-ref;
                 description
-                  "Module dependency in case the default value is being used.";
+                    "Module dependency in case the default value is being used.";
             }
         }
     }
@@ -100,108 +125,94 @@ module sysrepo {
     container sysrepo-modules {
         config false;
         description
-          "All installed Sysrepo modules.";
+            "All installed Sysrepo modules.";
 
         list module {
             key "name";
             description
-              "Sysrepo module.";
+                "Sysrepo module.";
 
-            leaf name {
-                type string;
-                description
-                  "Module name.";
-            }
-
-            leaf revision {
-                type string;
-                description
-                  "Module revision.";
-            }
+            uses module-info-grp;
 
             leaf replay-support {
                 type uint64;
                 description
-                  "Present only if the module supports replay. Means the earliest stored notification if any present.
-                   Otherwise the time the replay support was switched on.";
+                    "Present only if the module supports replay. Means the earliest stored notification if any present.
+                     Otherwise the time the replay support was switched on.";
             }
 
             choice changed-module {
                 description
-                  "This module is scheduled for a change.";
+                    "This module is scheduled for a change.";
                 leaf removed {
                     type empty;
                     description
-                      "Module was removed.";
+                        "Module was removed.";
                 }
 
                 leaf updated-yang {
                     type string;
                     description
-                      "Module was updated with a newer revision. Content is the whole new YANG module.";
-                }
-            }
-
-            leaf-list enabled-feature {
-                type string;
-                description
-                  "List of all the enabled features.";
-            }
-
-            list changed-feature {
-                key "name";
-                description
-                  "Module features are scheduled for a change.";
-
-                leaf name {
-                    type string;
-                    description
-                      "Changed feature name.";
+                        "Module was updated with a newer revision. Content is the whole new YANG module.";
                 }
 
-                leaf change {
-                    type enumeration {
-                        enum "enable" {
+                case feature-changes {
+                    list changed-feature {
+                        key "name";
+                        description
+                            "Module features are scheduled for a change.";
+
+                        leaf name {
+                            type string;
                             description
-                              "Feature will be enabled.";
+                                "Changed feature name.";
                         }
-                        enum "disable" {
+
+                        leaf change {
+                            type enumeration {
+                                enum "enable" {
+                                    description
+                                        "Feature will be enabled.";
+                                }
+                                enum "disable" {
+                                    description
+                                        "Feature will be disabled.";
+                                }
+                            }
+                            mandatory true;
                             description
-                              "Feature will be disabled.";
+                                "Feature change nature.";
                         }
                     }
-                    mandatory true;
-                    description
-                      "Feature change nature.";
                 }
             }
 
             container data-deps {
                 description
-                  "Module data dependencies on other modules.";
+                    "Module data dependencies on other modules.";
                 uses deps-grp;
             }
 
             list op-deps {
                 key "xpath";
                 description
-                  "Module operation (RPCs, Actions, Notifications) dependencies on other modules.";
+                    "Module operation (RPCs, Actions, Notifications) dependencies on other modules.";
 
                 leaf xpath {
                     type yang:xpath1.0;
                     description
-                      "XPath identifying the operation.";
+                        "XPath identifying the operation.";
                 }
 
                 container in {
                     description
-                      "Operation input or notification dependencies.";
+                        "Operation input or notification dependencies.";
                     uses deps-grp;
                 }
 
                 container out {
                     description
-                      "Operation output dependencies.";
+                        "Operation output dependencies.";
                     uses deps-grp;
                 }
             }
@@ -209,7 +220,22 @@ module sysrepo {
             leaf-list inverse-data-deps {
                 type module-ref;
                 description
-                  "List of modules that depend on this module.";
+                    "List of modules that depend on this module.";
+            }
+        }
+
+        list installed-module {
+            key "name";
+            description
+                "Sysrepo module scheduled to be installed.";
+
+            uses module-info-grp;
+
+            leaf module-yang {
+                type string;
+                mandatory true;
+                description
+                    "Content is the whole new YANG module.";
             }
         }
     }

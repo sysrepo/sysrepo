@@ -46,7 +46,7 @@
  * modules, each with a ::sr_mod_t structure until the end of main SHM. All `off_t`
  * types in these structures are offset pointers to ext SHM.
  *
- * Ext shm starts with a `uint32_t` value representing the number of wasted
+ * Ext shm starts with a `size_t` value representing the number of wasted
  * bytes in this SHM segment. It is followed by arrays and strings pointed to
  * by main SHM `off_t` pointers. First, there is the sysrepo state ::sr_conn_state_t
  * meaning all currently running connections. Then, there is information from ::sr_mod_t
@@ -411,53 +411,6 @@ void sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
 sr_error_info_t *sr_shmmain_state_recover(sr_shm_t *shm_main, sr_shm_t *shm_ext);
 
 /**
- * @brief Check whether internal module data file exists.
- *
- * @param[out] exists Whether the file exists.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_ly_int_data_exists(int *exists);
-
-/**
- * @brief Store (print) internal module data.
- *
- * @param[in,out] sr_mods Data to store, are validated so could (in theory) be modified.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_ly_int_data_print(struct lyd_node **sr_mods);
-
-/**
- * @brief Create default internal module data. All libyang internal implemented modules
- * are installed also into sysrepo. Sysrepo internal modules ietf-netconf, ietf-netconf-with-defaults,
- * and ietf-netconf-notifications are also installed.
- *
- * @param[in] conn Connection to use.
- * @param[out] sr_mods_p Created default internal data.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_ly_int_data_create(sr_conn_ctx_t *conn, struct lyd_node **sr_mods_p);
-
-/**
- * @brief Parse internal module data.
- *
- * @param[in] conn Connection to use.
- * @param[out] sr_mods_p Sysrepo modules data tree.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_ly_int_data_parse(sr_conn_ctx_t *conn, struct lyd_node **sr_mods_p);
-
-/**
- * @brief Apply scheduled changes in internal module data. If applying any changes fails,
- * the data tree is no longer valid! It should be used further only if \p change was set.
- *
- * @param[in] conn Connection to use.
- * @param[in,out] sr_mods Sysrepo modules data tree.
- * @param[out] change Whether the internal sysrepo data tree was changed.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_ly_int_data_sched_apply(sr_conn_ctx_t *conn, struct lyd_node *sr_mods, int *change);
-
-/**
  * @brief Initialize libyang context with only the internal sysrepo module.
  *
  * @param[in] conn Connection to use.
@@ -489,7 +442,7 @@ sr_error_info_t *sr_shmmain_files_startup2running(sr_conn_ctx_t *conn);
  * @param[in] sr_mod First module to add.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_shm_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod);
+sr_error_info_t *sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod);
 
 /**
  * @brief Open (and init if needed) main SHM.
@@ -498,7 +451,7 @@ sr_error_info_t *sr_shmmain_shm_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod
  * @param[in,out] created Whether the main SHM was created. If NULL, do not create the memory if it does not exist.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_shm_main_open(sr_shm_t *shm, int *created);
+sr_error_info_t *sr_shmmain_main_open(sr_shm_t *shm, int *created);
 
 /**
  * @brief Open (and init if needed) Ext SHM.
@@ -507,7 +460,7 @@ sr_error_info_t *sr_shmmain_shm_main_open(sr_shm_t *shm, int *created);
  * @param[in] zero Whether to zero (or init) Ext SHM.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_shm_ext_open(sr_shm_t *shm, int zero);
+sr_error_info_t *sr_shmmain_ext_open(sr_shm_t *shm, int zero);
 
 /*
  * Main SHM common functions
@@ -560,7 +513,7 @@ void sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap);
 
 /**
  * @brief Add main SHM RPC/action subscription.
- * May remap main SHM!
+ * May remap ext SHM!
  *
  * @param[in] shm_ext Ext SHM.
  * @param[in] shm_rpc_off SHM RPC offset.
@@ -588,18 +541,8 @@ sr_error_info_t *sr_shmmain_rpc_subscription_del(char *ext_shm_addr, sr_rpc_t *s
         uint32_t priority, uint32_t evpipe_num, int all_evpipe, int *last_removed);
 
 /**
- * @brief Add a module with any imports into main SHM and persistent internal data.
- * May remap main SHM!
- *
- * @param[in] conn Connection to use.
- * @param[in] ly_mod Module to add.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_add_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *ly_mod);
-
-/**
  * @brief Add an RPC/action into main SHM.
- * May remap main SHM!
+ * May remap ext SHM!
  *
  * @param[in] conn Connection to use.
  * @param[in] op_path Simple RPC/action path.
@@ -622,63 +565,15 @@ sr_error_info_t *sr_shmmain_add_rpc(sr_conn_ctx_t *conn, const char *op_path, sr
 sr_error_info_t *sr_shmmain_del_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_path, off_t op_path_off);
 
 /**
- * @brief Change replay support of a module in main SHM and persistent internal data.
+ * @brief Change replay support of a module in main SHM.
  *
- * @param[in] conn Connection to use.
+ * @param[in] shm_main Main SHM.
+ * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] mod_name Module name.
  * @param[in] replay_support Whether replay support should be enabled or disabled.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_update_replay_support(sr_conn_ctx_t *conn, const char *mod_name, int replay_support);
-
-/**
- * @brief Unschedule module deletion from persistent internal data.
- *
- * @param[in] conn Connection to use.
- * @param[in] ly_mod Module that is scheduled to be deleted.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_unsched_del_module_with_imps(sr_conn_ctx_t *conn, const struct lys_module *ly_mod);
-
-/**
- * @brief Schedule module deletion to persistent internal data.
- *
- * @param[in] conn Connection to use.
- * @param[in] mod_name Module name to delete.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_deferred_del_module(sr_conn_ctx_t *conn, const char *mod_name);
-
-/**
- * @brief Schedule module update to persistent internal data.
- *
- * @param[in] conn Connection to use.
- * @param[in] ly_upd_mod Update module.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_deferred_upd_module(sr_conn_ctx_t *conn, const struct lys_module *ly_upd_mod);
-
-/**
- * @brief Unschedule module update from persistent internal data.
- *
- * @param[in] conn Connection to use.
- * @param[in] mod_name Module name to be updated.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_unsched_upd_module(sr_conn_ctx_t *conn, const char *mod_name);
-
-/**
- * @brief Schedule a feature change (enable/disable) into persistent internal data.
- *
- * @param[in] conn Connection to use.
- * @param[in] mod_name Module name.
- * @param[in] feat_name Feature name.
- * @param[in] to_enable Whether the feature should be enabled or disabled.
- * @param[in] is_enabled Whether the feature is currently enabled or disabled.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_deferred_change_feature(sr_conn_ctx_t *conn, const char *mod_name, const char *feat_name,
-        int to_enable, int is_enabled);
+sr_error_info_t *sr_shmmain_update_replay_support(sr_shm_t *shm_main, char *ext_shm_addr, const char *mod_name, int replay_support);
 
 /*
  * Main SHM module functions
@@ -775,7 +670,7 @@ void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
 
 /**
  * @brief Add main SHM module configuration subscription.
- * May remap main SHM!
+ * May remap ext SHM!
  *
  * @param[in] shm_ext Ext SHM.
  * @param[in] shm_mod SHM module.
@@ -808,7 +703,7 @@ sr_error_info_t *sr_shmmod_conf_subscription_del(char *ext_shm_addr, sr_mod_t *s
 
 /**
  * @brief Add main SHM module operational subscription.
- * May remap main SHM!
+ * May remap ext SHM!
  *
  * @param[in] shm_ext Ext SHM.
  * @param[in] shm_mod SHM module.
@@ -835,7 +730,7 @@ sr_error_info_t *sr_shmmod_oper_subscription_del(char *ext_shm_addr, sr_mod_t *s
 
 /**
  * @brief Add main SHM module notification subscription.
- * May remap main SHM!
+ * May remap ext SHM!
  *
  * @param[in] shm_ext Ext SHM.
  * @param[in] shm_mod SHM module.
@@ -1053,7 +948,7 @@ sr_error_info_t *sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *
 
 /**
  * @brief Check notification subscription replay state and perform it if requested.
- * May remap main SHM!
+ * May remap ext SHM!
  *
  * @param[in] notif_subs Module notification subscriptions.
  * @param[in] subs Subscriptions structure.

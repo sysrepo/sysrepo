@@ -41,12 +41,16 @@ static int
 setup_f(void **state)
 {
     struct state *st;
+    uint32_t conn_count;
 
     st = malloc(sizeof *st);
     if (!st) {
         return 1;
     }
     *state = st;
+
+    sr_connection_count(&conn_count);
+    assert_int_equal(conn_count, 0);
 
     if (sr_connect(0, &st->conn) != SR_ERR_OK) {
         return 1;
@@ -59,6 +63,11 @@ setup_f(void **state)
         return 1;
     }
     if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
+    sr_disconnect(st->conn);
+
+    if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
         return 1;
     }
 

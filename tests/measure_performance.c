@@ -1084,14 +1084,20 @@ main(int argc, char **argv)
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
     int rc, ret = -1, selection = -1;
+    uint32_t conn_count;
 
     if (argc > 1) {
         rc = sscanf(argv[1], "%d", &selection);
         assert_int_equal(rc, 1);
     }
 
+    sr_connection_count(&conn_count);
+    if (conn_count) {
+        puts("There can be no running connections.\n");
+        goto cleanup;
+    }
+
     sr_connect(0, &conn);
-    sr_session_start(conn, SR_DS_RUNNING, &sess);
 
     /* install required modules */
     rc = sr_install_module(conn, TESTS_DIR "/files/example-module.yang", TESTS_DIR "/files", NULL, 0);
@@ -1114,6 +1120,10 @@ main(int argc, char **argv)
     if (rc && (rc != SR_ERR_EXISTS)) {
         goto cleanup;
     }
+
+    sr_disconnect(conn);
+    sr_connect(0, &conn);
+    sr_session_start(conn, SR_DS_RUNNING, &sess);
 
     /* one list instance */
     createDataTreeExampleModule(sess);

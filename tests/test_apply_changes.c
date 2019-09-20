@@ -45,9 +45,13 @@ static int
 setup(void **state)
 {
     struct state *st;
+    uint32_t conn_count;
 
     st = calloc(1, sizeof *st);
     *state = st;
+
+    sr_connection_count(&conn_count);
+    assert_int_equal(conn_count, 0);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
         return 1;
@@ -69,6 +73,11 @@ setup(void **state)
         return 1;
     }
     if (sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
+    sr_disconnect(st->conn);
+
+    if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
         return 1;
     }
 
@@ -1946,9 +1955,9 @@ apply_change_done_when_thread(void *arg)
     ret = sr_get_data(sess, "/when1:* | /when2:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_string_equal(data->schema->name, "l1");
-    assert_string_equal(data->next->schema->name, "cont");
-    assert_string_equal(((struct lyd_node_leaf_list *)data->next->child)->value_str, "bye");
+    assert_string_equal(data->schema->name, "cont");
+    assert_string_equal(((struct lyd_node_leaf_list *)data->child)->value_str, "bye");
+    assert_string_equal(data->next->schema->name, "l1");
 
     lyd_free_withsiblings(data);
 
@@ -1969,10 +1978,10 @@ apply_change_done_when_thread(void *arg)
     ret = sr_get_data(sess, "/when1:* | /when2:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_string_equal(data->schema->name, "l2");
-    assert_string_equal(data->next->schema->name, "ll");
-    assert_int_equal(data->next->dflt, 1);
-    assert_string_equal(((struct lyd_node_leaf_list *)data->next)->value_str, "zzZZzz");
+    assert_string_equal(data->schema->name, "ll");
+    assert_int_equal(data->dflt, 1);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "zzZZzz");
+    assert_string_equal(data->next->schema->name, "l2");
 
     lyd_free_withsiblings(data);
 

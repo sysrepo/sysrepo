@@ -1,17 +1,17 @@
 /**
 @page schema Schemas
 
-Before it is possible to work with any data, YANG schemas (modules) need to be __installed__ into Sysrepo. Once they
-are, they cannot be removed or their features changed that easily. These changes are only scheduled to be performed
-and are applied during new Sysrepo connection creation if there are no other connections. The reason for this mechanism
-is that the context cannot change while there are some data connected to it (_libyang_ requirement) and they often are
-even when no Sysrepo function is being executed. That is the price for having a context created at all times with all
-the schemas so there are no temporary ones needed.
+Before it is possible to work with any data, YANG schemas (modules) need to be __installed__ into Sysrepo. However,
+such a YANG modules change is not performed immediately. These changes, which also include removing, updating a module
+or changing its features, are only scheduled to be performed and are applied during new Sysrepo connection creation
+if there are no other connections. The reason for this mechanism is that the module context cannot change while there
+are some data connected to it (_libyang_ requirement) and they often are even when no Sysrepo function is being executed.
+That is the price for having a context created at all times with all the schemas so there are no temporary ones needed.
 
-Sysrepo allows to __update__ installed modules keeping their current data, which is also deferred until no connections
-exist. The new schema should follow [standardized updating rules](https://tools.ietf.org/html/rfc7950#section-11)
-but Sysrepo only requires for the schema revision to be newer than the previous schema and that the stored module data
-are valid for the new schema. This is checked before the actual update.
+Sysrepo allows to __update__ installed modules keeping their current data, as mentioned before. The new schema should follow
+[standardized updating rules](https://tools.ietf.org/html/rfc7950#section-11) but Sysrepo only requires for the schema
+revision to be newer than the previous schema and that the stored module data are valid for the new schema. This is
+checked before the actual update.
 
 Then, every module __replay__ support and __permissions__ (more in @ref access_control "Access Control") can be changed.
 This must always be performed separately because these attributes cannot be set during installation and defaults are used.

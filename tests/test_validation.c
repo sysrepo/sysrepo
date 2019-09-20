@@ -41,12 +41,16 @@ static int
 setup_f(void **state)
 {
     struct state *st;
+    uint32_t conn_count;
 
     st = malloc(sizeof *st);
     if (!st) {
         return 1;
     }
     *state = st;
+
+    sr_connection_count(&conn_count);
+    assert_int_equal(conn_count, 0);
 
     if (sr_connect(0, &st->conn) != SR_ERR_OK) {
         return 1;
@@ -56,6 +60,11 @@ setup_f(void **state)
         return 1;
     }
     if (sr_install_module(st->conn, TESTS_DIR "/files/refs.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
+    sr_disconnect(st->conn);
+
+    if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
         return 1;
     }
 
@@ -133,10 +142,10 @@ test_leafref(void **state)
     ret = sr_get_data(st->sess, "/test:* | /refs:*", &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_string_equal(data->schema->name, "cont");
-    assert_string_equal(data->next->schema->name, "test-leaf");
-    assert_string_equal(((struct lyd_node_leaf_list *)data->next)->value_str, "10");
-    assert_string_equal(data->next->next->schema->name, "lref");
+    assert_string_equal(data->schema->name, "lref");
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "10");
+    assert_string_equal(data->next->schema->name, "cont");
+    assert_string_equal(data->next->next->schema->name, "test-leaf");
     assert_string_equal(((struct lyd_node_leaf_list *)data->next->next)->value_str, "10");
 
     lyd_free_withsiblings(data);
