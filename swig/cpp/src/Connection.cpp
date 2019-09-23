@@ -24,6 +24,7 @@
 #include <stdexcept>
 
 #include <libyang/Libyang.hpp>
+#include <libyang/Tree_Data.hpp>
 
 #include "Sysrepo.hpp"
 #include "Connection.hpp"
@@ -42,7 +43,7 @@ Connection::Connection(const sr_conn_options_t opts)
 
     /* connect to sysrepo */
     ret = sr_connect(_opts, &_conn);
-    if (SR_ERR_OK != ret) {
+    if (ret != SR_ERR_OK) {
         throw_exception(ret);
         return;
     }
@@ -58,6 +59,143 @@ Connection::~Connection()
 libyang::S_Context Connection::get_context()
 {
     return std::make_shared<libyang::Context>(const_cast<struct ly_ctx *>(sr_get_context(_conn)), nullptr);
+}
+
+void Connection::install_module(const char *schema_path, const char *search_dir, std::vector<std::string> features)
+{
+    int ret, feat_count;
+    const char **feats;
+
+    feat_count = features.size();
+    feats = static_cast<const char **>(malloc(feat_count * sizeof *feats));
+    if (!feats) {
+        throw_exception(SR_ERR_NOMEM);
+    }
+
+    for(uint32_t i = 0; i < features.size(); ++i) {
+        feats[i] = features[i].c_str();
+    }
+
+    ret = sr_install_module(_conn, schema_path, search_dir, feats, feat_count);
+    free(feats);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
+void Connection::remove_module(const char *module_name)
+{
+    int ret;
+
+    ret = sr_remove_module(_conn, module_name);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
+void Connection::update_module(const char *schema_path, const char *search_dir)
+{
+    int ret;
+
+    ret = sr_update_module(_conn, schema_path, search_dir);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
+void Connection::cancel_update_module(const char *module_name)
+{
+    int ret;
+
+    ret = sr_cancel_update_module(_conn, module_name);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
+void Connection::set_module_replay_support(const char *module_name, int replay_support)
+{
+    int ret;
+
+    ret = sr_set_module_replay_support(_conn, module_name, replay_support);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
+void Connection::set_module_access(const char *module_name, const char *owner, const char *group, mode_t perm)
+{
+    int ret;
+
+    ret = sr_set_module_access(_conn, module_name, owner, group, perm);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
+std::tuple<std::string, std::string, mode_t> Connection::get_module_access(const char *module_name)
+{
+    int ret;
+    char *owner, *group;
+    mode_t perm;
+    std::string own;
+    std::string grp;
+
+    ret = sr_get_module_access(_conn, module_name, &owner, &group, &perm);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+
+    own.assign(owner);
+    grp.assign(group);
+    return std::make_tuple(own, grp, perm);
+}
+
+void Connection::enable_module_feature(const char *module_name, const char *feature_name)
+{
+    int ret;
+
+    ret = sr_enable_module_feature(_conn, module_name, feature_name);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
+void Connection::disable_module_feature(const char *module_name, const char *feature_name)
+{
+    int ret;
+
+    ret = sr_disable_module_feature(_conn, module_name, feature_name);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
+libyang::S_Data_Node Connection::get_module_info()
+{
+    int ret;
+    struct lyd_node *info;
+
+    ret = sr_get_module_info(_conn, &info);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+
+    return std::make_shared<libyang::Data_Node>(info);
+}
+
+std::tuple<int, uint32_t, uint32_t, time_t> Connection::get_lock(sr_datastore_t datastore, const char *module_name)
+{
+    int ret, is_locked;
+    uint32_t id, nc_id;
+    time_t timestamp;
+
+    ret = sr_get_lock(_conn, datastore, module_name, &is_locked, &id, &nc_id, &timestamp);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+
+    return std::make_tuple(is_locked, id, nc_id, timestamp);
 }
 
 }

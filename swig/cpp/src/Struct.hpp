@@ -28,6 +28,7 @@
 
 #include "Sysrepo.hpp"
 #include "Internal.hpp"
+#include <libyang/Tree_Data.hpp>
 
 extern "C" {
 #include "sysrepo.h"
@@ -306,11 +307,11 @@ public:
     /** Constructor for an empty [sr_change_oper_t](@ref sr_change_oper_t).*/
     Change();
     ~Change();
-    /** Getter for sr_change_oper_t.*/
+    /** Getter for sr_change_oper_t. */
     sr_change_oper_t oper() {return _oper;};
-    /** Getter for new sr_val_t.*/
+    /** Getter for new sr_val_t. */
     S_Val new_val();
-    /** Getter for old sr_val_t.*/
+    /** Getter for old sr_val_t. */
     S_Val old_val();
 
     friend class Session;
@@ -321,6 +322,37 @@ private:
     sr_val_t *_old;
     S_Deleter _deleter_new;
     S_Deleter _deleter_old;
+};
+
+/**
+ * @brief Class for wrapping tree sr_change_oper_t.
+ * @class Tree_Change
+ */
+class Tree_Change
+{
+public:
+    /** Constructor for an empty [sr_change_oper_t](@ref sr_change_oper_t).*/
+    Tree_Change();
+    ~Tree_Change();
+    /** Getter for sr_change_oper_t. */
+    sr_change_oper_t oper() {return _oper;};
+    /** Getter for the node.*/
+    libyang::S_Data_Node node();
+    /** Getter for previous value. */
+    const char *prev_value() {return _prev_value;};
+    /** Getter for previous list. */
+    const char *prev_list() {return _prev_list;};
+    /** Getter for previous default. */
+    bool prev_dflt() {return _prev_dflt;};
+
+    friend class Session;
+
+private:
+    sr_change_oper_t _oper;
+    const struct lyd_node *_node;
+    const char *_prev_value;
+    const char *_prev_list;
+    bool _prev_dflt;
 };
 
 /** @} */

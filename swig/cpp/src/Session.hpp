@@ -63,10 +63,22 @@ public:
     void session_stop();
     /** Wrapper for [sr_session_switch_ds](@ref sr_session_switch_ds) */
     void session_switch_ds(sr_datastore_t ds);
+    /** Wrapper for [sr_session_get_ds](@ref sr_session_get_ds) */
+    sr_datastore_t session_get_ds();
     /** Wrapper for [sr_get_error](@ref sr_get_error) */
     S_Errors get_error();
     /** Wrapper for [sr_set_error](@ref sr_set_error) */
     void set_error(const char *message, const char *path);
+    /** Wrapper for [sr_session_get_id](@ref sr_session_get_id) */
+    uint32_t get_id();
+    /** Wrapper for [sr_session_set_nc_id](@ref sr_session_set_nc_id) */
+    void set_nc_id(uint32_t nc_id);
+    /** Wrapper for [sr_session_get_nc_id](@ref sr_session_get_nc_id) */
+    uint32_t get_nc_id();
+    /** Wrapper for [sr_session_set_user](@ref sr_session_set_user) */
+    void set_user(const char *user);
+    /** Wrapper for [sr_session_get_user](@ref sr_session_get_user) */
+    const char *get_user();
     /** Get libyang context directly from a session. */
     libyang::S_Context get_context();
 
@@ -88,12 +100,16 @@ public:
     /** Wrapper for [sr_move_item](@ref sr_move_item) */
     void move_item(const char *path, const sr_move_position_t position, const char *list_keys = nullptr, \
             const char *leaflist_value = nullptr);
+    /** Wrapper for [sr_edit_batch](@ref sr_edit_batch) */
+    void edit_batch(const libyang::S_Data_Node edit, const char *default_operation);
     /** Wrapper for [sr_validate](@ref sr_validate) */
     void validate();
     /** Wrapper for [sr_apply_changes](@ref sr_apply_changes) */
     void apply_changes();
     /** Wrapper for [sr_discard_changes](@ref sr_discard_changes) */
     void discard_changes();
+    /** Wrapper for [sr_replace_config](@ref sr_replace_config) */
+    void replace_config(const libyang::S_Data_Node src_config, sr_datastore_t trg_datastore, const char *module_name = nullptr);
     /** Wrapper for [sr_copy_config](@ref sr_copy_config) */
     void copy_config(sr_datastore_t src_datastore, sr_datastore_t trg_datastore, const char *module_name = nullptr);
 
@@ -106,6 +122,8 @@ public:
     S_Iter_Change get_changes_iter(const char *xpath);
     /** Wrapper for [sr_get_change_next](@ref sr_get_change_next) */
     S_Change get_change_next(S_Iter_Change iter);
+    /** Wrapper for [sr_get_change_tree_next](@ref sr_get_change_tree_next) */
+    S_Tree_Change get_change_tree_next(S_Iter_Change iter);
     ~Session();
 
     /** Wrapper for [sr_rpc_send](@ref sr_rpc_send) */
@@ -190,6 +208,10 @@ public:
             void *private_data = nullptr, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     std::vector<S_Callback > cb_list;
 
+    /** Wrapper for [sr_get_event_pipe](@ref sr_get_event_pipe) */
+    int get_event_pipe();
+    /** Wrapper for [sr_process_event](@ref sr_process_events) */
+    time_t process_events(S_Session sess = nullptr);
     /** Wrapper for [sr_unsubscribe](@ref sr_unsubscribe) */
     void unsubscribe();
     ~Subscribe();

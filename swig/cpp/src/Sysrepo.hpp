@@ -53,6 +53,7 @@ class Vals;
 class Xpath_Ctx;
 class Logs;
 class Change;
+class Tree_Change;
 class Callback;
 class Deleter;
 
@@ -69,6 +70,7 @@ using S_Vals             = std::shared_ptr<Vals>;
 using S_Xpath_Ctx        = std::shared_ptr<Xpath_Ctx>;
 using S_Logs             = std::shared_ptr<Logs>;
 using S_Change           = std::shared_ptr<Change>;
+using S_Tree_Change      = std::shared_ptr<Tree_Change>;
 using S_Callback         = std::shared_ptr<Callback>;
 using S_Deleter          = std::shared_ptr<Deleter>;
 
@@ -85,6 +87,11 @@ void throw_exception (int error);
 #else
 void throw_exception [[noreturn]] (int error);
 #endif
+
+/** Wrapper for [sr_connection_recover](@ref sr_connection_recover) */
+void connection_recover();
+/** Wrapper for [sr_get_repo_path](@ref sr_get_repo_path) */
+const char *get_repo_path();
 
 /**
  * @brief Class for wrapping sr_error_t.

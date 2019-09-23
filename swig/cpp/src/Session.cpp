@@ -49,7 +49,7 @@ Session::Session(S_Connection conn, sr_datastore_t datastore)
 
     /* start session */
     ret = sr_session_start(conn->_conn, datastore, &_sess);
-    if (SR_ERR_OK != ret) {
+    if (ret != SR_ERR_OK) {
         goto cleanup;
     }
 
@@ -84,6 +84,11 @@ void Session::session_switch_ds(sr_datastore_t ds)
     }
 }
 
+sr_datastore_t Session::session_get_ds()
+{
+    return sr_session_get_ds(_sess);
+}
+
 S_Errors Session::get_error()
 {
     S_Errors errors(new Errors());
@@ -101,6 +106,34 @@ void Session::set_error(const char *message, const char *path)
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
+}
+
+uint32_t Session::get_id()
+{
+    return sr_session_get_id(_sess);
+}
+
+void Session::set_nc_id(uint32_t nc_id)
+{
+    sr_session_set_nc_id(_sess, nc_id);
+}
+
+uint32_t Session::get_nc_id()
+{
+    return sr_session_get_nc_id(_sess);
+}
+
+void Session::set_user(const char *user)
+{
+    int ret = sr_session_set_user(_sess, user);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
+const char *Session::get_user()
+{
+    return sr_session_get_user(_sess);
 }
 
 libyang::S_Context Session::get_context()
@@ -200,6 +233,14 @@ void Session::move_item(const char *path, const sr_move_position_t position, con
     }
 }
 
+void Session::edit_batch(const libyang::S_Data_Node edit, const char *default_operation)
+{
+    int ret = sr_edit_batch(_sess, edit->swig_node(), default_operation);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
 void Session::validate()
 {
     int ret = sr_validate(_sess);
@@ -220,6 +261,23 @@ void Session::discard_changes()
 {
     int ret = sr_discard_changes(_sess);
     if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
+void Session::replace_config(const libyang::S_Data_Node src_config, sr_datastore_t trg_datastore, const char *module_name)
+{
+    int ret;
+    struct lyd_node *src;
+
+    src = lyd_dup_withsiblings(src_config->swig_node(), LYD_DUP_OPT_RECURSIVE);
+    if (!src) {
+        throw_exception(SR_ERR_NOMEM);
+    }
+
+    ret = sr_replace_config(_sess, module_name, src, trg_datastore);
+    if (ret != SR_ERR_OK) {
+        lyd_free_withsiblings(src);
         throw_exception(ret);
     }
 }
@@ -276,6 +334,21 @@ S_Change Session::get_change_next(S_Iter_Change iter)
     throw_exception(ret);
 }
 
+S_Tree_Change Session::get_change_tree_next(S_Iter_Change iter)
+{
+    S_Tree_Change change(new Tree_Change());
+
+    int ret = sr_get_change_tree_next(_sess, iter->_iter, &change->_oper, &change->_node, &change->_prev_value, \
+            &change->_prev_list, &change->_prev_dflt);
+    if (SR_ERR_OK == ret) {
+        return change;
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
+        return nullptr;
+    }
+    throw_exception(ret);
+}
+
 Session::~Session() {}
 
 S_Vals Session::rpc_send(const char *path, S_Vals input)
@@ -283,7 +356,7 @@ S_Vals Session::rpc_send(const char *path, S_Vals input)
     S_Vals output(new Vals());
 
     int ret = sr_rpc_send(_sess, path, input->_vals, input->_cnt, &output->_vals, &output->_cnt);
-    if (SR_ERR_OK != ret) {
+    if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
 
@@ -301,7 +374,7 @@ libyang::S_Data_Node Session::rpc_send(libyang::S_Data_Node input)
     struct lyd_node *output;
 
     int ret = sr_rpc_send_tree(_sess, input->swig_node(), &output);
-    if (SR_ERR_OK != ret) {
+    if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
 
@@ -419,7 +492,7 @@ void Subscribe::module_change_subscribe(const char *module_name, S_Callback call
 
     int ret = sr_module_change_subscribe(_sess->_sess, module_name, xpath, module_change_cb, callback->get(), priority, \
             opts, &_sub);
-    if (SR_ERR_OK != ret) {
+    if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
 }
@@ -431,7 +504,7 @@ void Subscribe::rpc_subscribe(const char *xpath, S_Callback callback, void *priv
     cb_list.push_back(callback);
 
     int ret = sr_rpc_subscribe(_sess->_sess, xpath, rpc_cb, callback->get(), priority, opts, &_sub);
-    if (SR_ERR_OK != ret) {
+    if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
 }
@@ -443,7 +516,7 @@ void Subscribe::rpc_subscribe_tree(const char *xpath, S_Callback callback, void 
     cb_list.push_back(callback);
 
     int ret = sr_rpc_subscribe_tree(_sess->_sess, xpath, rpc_tree_cb, callback->get(), priority, opts, &_sub);
-    if (SR_ERR_OK != ret) {
+    if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
 }
@@ -456,7 +529,7 @@ void Subscribe::event_notif_subscribe(const char *module_name, S_Callback callba
 
     int ret = sr_event_notif_subscribe(_sess->_sess, module_name, xpath, start_time, stop_time, event_notif_cb, \
             callback->get(), opts, &_sub);
-    if (SR_ERR_OK != ret) {
+    if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
 }
@@ -469,7 +542,7 @@ void Subscribe::event_notif_subscribe_tree(const char *module_name, S_Callback c
 
     int ret = sr_event_notif_subscribe_tree(_sess->_sess, module_name, xpath, start_time, stop_time, event_notif_tree_cb, \
             callback->get(), opts, &_sub);
-    if (SR_ERR_OK != ret) {
+    if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
 }
@@ -481,15 +554,40 @@ void Subscribe::oper_get_items_subscribe(const char *module_name, const char *pa
     cb_list.push_back(callback);
 
     int ret = sr_oper_get_items_subscribe(_sess->_sess, module_name, path, oper_get_items_cb, callback->get(), opts, &_sub);
-    if (SR_ERR_OK != ret) {
+    if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
+}
+
+int Subscribe::get_event_pipe()
+{
+    int ret, ev_pipe;
+
+    ret = sr_get_event_pipe(_sub, &ev_pipe);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+
+    return ev_pipe;
+}
+
+time_t Subscribe::process_events(S_Session sess)
+{
+    int ret;
+    time_t stop_time;
+
+    ret = sr_process_events(_sub, sess ? sess->_sess : nullptr, &stop_time);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+
+    return stop_time;
 }
 
 void Subscribe::unsubscribe()
 {
     int ret = sr_unsubscribe(_sub);
-    if (SR_ERR_OK != ret) {
+    if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
 

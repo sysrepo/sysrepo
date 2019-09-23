@@ -27,6 +27,7 @@
 #include "Struct.hpp"
 #include "Sysrepo.hpp"
 #include "Internal.hpp"
+#include <libyang/Tree_Data.hpp>
 
 extern "C" {
 #include "sysrepo.h"
@@ -546,5 +547,25 @@ Change::~Change() {
     if (_old)
         sr_free_val(_old);
 }
+
+// Tree_Change
+Tree_Change::Tree_Change() {
+    _oper = SR_OP_CREATED;
+    _node = nullptr;
+    _prev_value = nullptr;
+    _prev_list = nullptr;
+    _prev_dflt = false;
+}
+libyang::S_Data_Node Tree_Change::node() {
+    struct lyd_node *tree;
+
+    tree = lyd_dup(_node, LYD_DUP_OPT_WITH_KEYS);
+    if (!tree) {
+        throw_exception(SR_ERR_NOMEM);
+    }
+
+    return std::make_shared<libyang::Data_Node>(tree);
+}
+Tree_Change::~Tree_Change() {}
 
 }
