@@ -1075,8 +1075,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_m
     }
 
     /* validate */
-    flags = ((op->schema->nodetype & (LYS_RPC | LYS_ACTION)) ? (output ? LYD_OPT_RPCREPLY : LYD_OPT_RPC) : LYD_OPT_NOTIF)
-            | LYD_OPT_WHENAUTODEL;
+    flags = ((op->schema->nodetype & (LYS_RPC | LYS_ACTION)) ? (output ? LYD_OPT_RPCREPLY : LYD_OPT_RPC) : LYD_OPT_NOTIF);
     for (top_op = op; top_op->parent; top_op = top_op->parent);
     if (lyd_validate(&top_op, flags, mod_info->data)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);

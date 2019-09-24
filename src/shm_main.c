@@ -1773,7 +1773,7 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap, int lydmods)
     sr_main_shm_t *main_shm;
 
     /* REMAP READ/WRITE LOCK */
-    if ((err_info = sr_rwlock(&conn->main_shm_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, remap, __func__))) {
+    if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, remap, __func__))) {
         return err_info;
     }
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
@@ -1787,10 +1787,7 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap, int lydmods)
      * change while an API call is executing and SHM would be remapped already if the change happened before)
      */
 
-    /* remap main (ext) SHM */
-    if ((err_info = sr_shm_remap(&conn->main_shm, 0))) {
-        goto error_remap_shm_unlock;
-    }
+    /* remap ext SHM */
     if ((err_info = sr_shm_remap(&conn->ext_shm, 0))) {
         goto error_remap_shm_unlock;
     }
@@ -1812,7 +1809,7 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap, int lydmods)
 error_remap_shm_unlock:
     sr_rwunlock(&main_shm->lock, wr, __func__);
 error_remap_unlock:
-    sr_rwunlock(&conn->main_shm_remap_lock, remap, __func__);
+    sr_rwunlock(&conn->ext_remap_lock, remap, __func__);
     return err_info;
 }
 
@@ -1828,7 +1825,7 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap, int lydmods)
     sr_rwunlock(&main_shm->lock, wr, __func__);
 
     /* REMAP UNLOCK */
-    sr_rwunlock(&conn->main_shm_remap_lock, remap, __func__);
+    sr_rwunlock(&conn->ext_remap_lock, remap, __func__);
 
     if (lydmods) {
         /* LYDMODS UNLOCK */

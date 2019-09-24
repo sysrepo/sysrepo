@@ -215,8 +215,8 @@ struct sr_conn_ctx_s {
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
     uint32_t session_count;         /**< Session count. */
 
-    int main_shm_create_lock;       /**< Process-shared file lock for creating main/ext SHM. */
-    sr_rwlock_t main_shm_remap_lock;    /**< Session-shared lock for remapping main/ext SHM. */
+    int main_create_lock;           /**< Process-shared file lock for creating main/ext SHM. */
+    sr_rwlock_t ext_remap_lock;     /**< Session-shared lock for remapping ext SHM. */
     sr_shm_t main_shm;              /**< Main SHM structure. */
     sr_shm_t ext_shm;               /**< External SHM structure (all stored offsets point here). */
     uint32_t main_ver;              /**< Last accessed main SHM version. */

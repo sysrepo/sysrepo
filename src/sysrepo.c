@@ -63,11 +63,11 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto error2;
     }
 
-    if ((err_info = sr_shmmain_createlock_open(&conn->main_shm_create_lock))) {
+    if ((err_info = sr_shmmain_createlock_open(&conn->main_create_lock))) {
         goto error3;
     }
 
-    if ((err_info = sr_rwlock_init(&conn->main_shm_remap_lock, 0))) {
+    if ((err_info = sr_rwlock_init(&conn->ext_remap_lock, 0))) {
         goto error4;
     }
 
@@ -78,7 +78,7 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     return NULL;
 
 error4:
-    close(conn->main_shm_create_lock);
+    close(conn->main_create_lock);
 error3:
     pthread_mutex_destroy(&conn->ptr_lock);
 error2:
@@ -99,10 +99,10 @@ sr_conn_free(sr_conn_ctx_t *conn)
     if (conn) {
         ly_ctx_destroy(conn->ly_ctx, NULL);
         pthread_mutex_destroy(&conn->ptr_lock);
-        if (conn->main_shm_create_lock > -1) {
-            close(conn->main_shm_create_lock);
+        if (conn->main_create_lock > -1) {
+            close(conn->main_create_lock);
         }
-        sr_rwlock_destroy(&conn->main_shm_remap_lock);
+        sr_rwlock_destroy(&conn->ext_remap_lock);
         sr_shm_clear(&conn->main_shm);
         sr_shm_clear(&conn->ext_shm);
         free(conn);
@@ -132,7 +132,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     ly_ctx = conn->ly_ctx;
 
     /* CREATE LOCK */
-    if ((err_info = sr_shmmain_createlock(conn->main_shm_create_lock))) {
+    if ((err_info = sr_shmmain_createlock(conn->main_create_lock))) {
         goto cleanup;
     }
 
@@ -222,7 +222,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     }
 
     /* CREATE UNLOCK */
-    sr_shmmain_createunlock(conn->main_shm_create_lock);
+    sr_shmmain_createunlock(conn->main_create_lock);
 
     /* SHM LOCK */
     if ((err_info = sr_shmmain_lock_remap(conn, 1, 1, 0))) {
@@ -240,7 +240,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 
 cleanup_unlock:
     /* CREATE UNLOCK */
-    sr_shmmain_createunlock(conn->main_shm_create_lock);
+    sr_shmmain_createunlock(conn->main_create_lock);
 
 cleanup:
     lyd_free_withsiblings(sr_mods);
@@ -478,7 +478,7 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session
     }
 
     /* REMAP READ LOCK */
-    if ((err_info = sr_rwlock(&conn->main_shm_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, 0, __func__))) {
+    if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, 0, __func__))) {
         goto error;
     }
 
@@ -491,7 +491,7 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session
     }
 
     /* REMAP READ UNLOCK */
-    sr_rwunlock(&conn->main_shm_remap_lock, 0, __func__);
+    sr_rwunlock(&conn->ext_remap_lock, 0, __func__);
 
     /* remember current real process owner */
     uid = getuid();
