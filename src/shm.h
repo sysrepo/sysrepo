@@ -196,7 +196,6 @@ typedef struct sr_conn_state_s {
 typedef struct sr_main_shm_s {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing main and ext SHM. */
     pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
-    uint32_t ver;               /**< Main SHM version (installed module set version). */
 
     off_t rpc_subs;             /**< Array of RPC/action subscriptions. */
     uint16_t rpc_sub_count;     /**< Number of RPC/action subscriptions. */
@@ -418,15 +417,6 @@ sr_error_info_t *sr_shmmain_state_recover(sr_shm_t *shm_main, sr_shm_t *shm_ext)
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmain_ly_ctx_init(sr_conn_ctx_t *conn);
-
-/**
- * @brief Update libyang context to be consistent with main SHM modules.
- * Checks whether main SHM modules are different from internal libyang context first.
- *
- * @param[in] conn Connection to use.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn);
 
 /**
  * @brief Copy startup files into running files.

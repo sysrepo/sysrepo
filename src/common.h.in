@@ -219,7 +219,6 @@ struct sr_conn_ctx_s {
     sr_rwlock_t ext_remap_lock;     /**< Session-shared lock for remapping ext SHM. */
     sr_shm_t main_shm;              /**< Main SHM structure. */
     sr_shm_t ext_shm;               /**< External SHM structure (all stored offsets point here). */
-    uint32_t main_ver;              /**< Last accessed main SHM version. */
 
     struct sr_mod_cache_s {
         sr_rwlock_t lock;           /**< Session-shared lock for accessing the module cache. */

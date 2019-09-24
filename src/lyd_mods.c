@@ -184,29 +184,6 @@ sr_lydmods_add_inv_data_deps(struct lyd_node *sr_mod)
             goto cleanup;
         }
     }
-    //ly_set_free(set); TODOO
-
-    /*
-     * modules dependencies on the new module (when it added an augment with dependency into foreign modules)
-     */
-    /*if (asprintf(&xpath, "module/data-deps/module[.='%s']", sr_ly_leaf_value_str(sr_mod->child)) == -1) {
-        SR_ERRINFO_MEM(&err_info);
-        goto cleanup;
-    }
-    set = lyd_find_path(sr_mod->parent, xpath);
-    free(xpath);
-    if (!set) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
-        goto cleanup;
-    }
-
-    for (i = 0; i < set->number; ++i) {
-        * add inverse dependency *
-        err_info = sr_lydmods_add_inv_data_dep(sr_mod, sr_ly_leaf_value_str(set->set.d[i]->parent->parent->child));
-        if (!err_info) {
-            goto cleanup;
-        }
-    }*/
 
     /* success */
 
@@ -1331,12 +1308,10 @@ sr_lydmods_load_module(const struct lyd_node *sr_mod, struct ly_ctx *ly_ctx, con
 
     /* the module is not supposed to be loaded yet, but is in case of LY internal modules and dependency modules */
     ly_mod = ly_ctx_get_module(ly_ctx, mod_name, NULL, 1);
-    if (ly_mod) {
-        goto cleanup;
+    if (!ly_mod) {
+        /* load the module */
+        ly_mod = ly_ctx_load_module(ly_ctx, mod_name, revision);
     }
-
-    /* load the module */
-    ly_mod = ly_ctx_load_module(ly_ctx, mod_name, revision);
     if (!ly_mod) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto cleanup;
@@ -1367,18 +1342,8 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Load modules from sysrepo module data into context.
- *
- * @param[in] sr_mods Sysrepo module data.
- * @param[in] ly_ctx Context to load into.
- * @param[in] removed Whether to load removed modules.
- * @param[in] updated Whether to load updated modules.
- * @param[out] change Whether there were any removed or updated modules, if @p removed or @p updated was set.
- * @return error_info, NULL on success.
- */
-static sr_error_info_t *
-sr_lydmods_sched_ctx_load_modules(const struct lyd_node *sr_mods, struct ly_ctx *ly_ctx, int removed, int updated, int *change)
+sr_error_info_t *
+sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, struct ly_ctx *ly_ctx, int removed, int updated, int *change)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mod, *node;
@@ -1440,7 +1405,7 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     if ((err_info = sr_ly_ctx_new(&old_ctx))) {
         goto cleanup;
     }
-    if ((err_info = sr_lydmods_sched_ctx_load_modules(sr_mods, old_ctx, 1, 1, NULL))) {
+    if ((err_info = sr_lydmods_ctx_load_modules(sr_mods, old_ctx, 1, 1, NULL))) {
         goto cleanup;
     }
 
@@ -1774,7 +1739,7 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
     }
 
     /* load all remaining non-updated non-removed modules into new context */
-    if ((err_info = sr_lydmods_sched_ctx_load_modules(sr_mods, new_ctx, 0, 0, change))) {
+    if ((err_info = sr_lydmods_ctx_load_modules(sr_mods, new_ctx, 0, 0, change))) {
         goto cleanup;
     }
 

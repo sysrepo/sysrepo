@@ -62,6 +62,19 @@ sr_error_info_t *sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_m
 sr_error_info_t *sr_lydmods_parse(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p);
 
 /**
+ * @brief Load modules from sysrepo module data into context.
+ *
+ * @param[in] sr_mods Sysrepo module data.
+ * @param[in] ly_ctx Context to load into.
+ * @param[in] removed Whether to load removed modules.
+ * @param[in] updated Whether to load updated modules.
+ * @param[out] change Whether there were any removed or updated modules, if @p removed or @p updated was set.
+ * @return error_info, NULL on success.
+ */
+sr_error_info_t *sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, struct ly_ctx *ly_ctx, int removed,
+        int updated, int *change);
+
+/**
  * @brief Apply all scheduled changes in sysrepo module data.
  *
  * @param[in,out] sr_mods Sysrepo modules data tree.

@@ -1141,54 +1141,6 @@ sr_shmmain_ly_ctx_init(sr_conn_ctx_t *conn)
 }
 
 sr_error_info_t *
-sr_shmmain_ly_ctx_update(sr_conn_ctx_t *conn)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *mod;
-    sr_mod_t *shm_mod;
-    off_t *features;
-    uint16_t i;
-    int ret;
-
-    assert(conn->ly_ctx);
-
-    if (conn->main_ver != ((sr_main_shm_t *)conn->main_shm.addr)->ver) {
-        /* load new modules from SHM */
-        SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
-            mod = ly_ctx_get_module(conn->ly_ctx, conn->ext_shm.addr + shm_mod->name, shm_mod->rev, 0);
-            if (!mod) {
-                /* add the module */
-                if (!(mod = ly_ctx_load_module(conn->ly_ctx, conn->ext_shm.addr + shm_mod->name, shm_mod->rev))) {
-                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                    return err_info;
-                }
-            } else if (!mod->implemented) {
-                /* make the module implemented */
-                if (lys_set_implemented(mod)) {
-                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                    return err_info;
-                }
-            }
-
-            /* enable features */
-            features = (off_t *)(conn->ext_shm.addr + shm_mod->features);
-            for (i = 0; i < shm_mod->feat_count; ++i) {
-                ret = lys_features_enable(mod, conn->ext_shm.addr + features[i]);
-                if (ret) {
-                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                    return err_info;
-                }
-            }
-        }
-
-        /* update version */
-        conn->main_ver = ((sr_main_shm_t *)conn->main_shm.addr)->ver;
-    }
-
-    return NULL;
-}
-
-sr_error_info_t *
 sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
@@ -1789,13 +1741,6 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap, int lydmods)
 
     /* remap ext SHM */
     if ((err_info = sr_shm_remap(&conn->ext_shm, 0))) {
-        goto error_remap_shm_unlock;
-    }
-
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-
-    /* update libyang context as necessary (just add new modules) */
-    if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
         goto error_remap_shm_unlock;
     }
 

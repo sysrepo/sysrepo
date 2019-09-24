@@ -114,7 +114,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = NULL;
-    struct ly_ctx *ly_ctx;
+    struct ly_ctx *fail_ctx = NULL;
     struct lyd_node *sr_mods = NULL;
     int created = 0, changed = 0, exists, ctx_updated = 0, fail;
 
@@ -129,7 +129,6 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     if ((err_info = sr_conn_new(opts, &conn))) {
         goto cleanup;
     }
-    ly_ctx = conn->ly_ctx;
 
     /* CREATE LOCK */
     if ((err_info = sr_shmmain_createlock(conn->main_create_lock))) {
@@ -152,26 +151,35 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     }
     if (!exists) {
         /* create new persistent module data file */
-        if ((err_info = sr_lydmods_create(ly_ctx, &sr_mods))) {
+        if ((err_info = sr_lydmods_create(conn->ly_ctx, &sr_mods))) {
             goto cleanup_unlock;
         }
         changed = 1;
     } else if (created || (!(opts & SR_CONN_NO_SCHED_CHANGES) && !((sr_main_shm_t *)conn->main_shm.addr)->conn_state.conn_count)) {
         /* if there are no connections, parse internal data and apply scheduled changes */
-        if ((err_info = sr_lydmods_parse(ly_ctx, &sr_mods))) {
+        if ((err_info = sr_lydmods_parse(conn->ly_ctx, &sr_mods))) {
             goto cleanup_unlock;
         }
-        if ((err_info = sr_lydmods_sched_apply(sr_mods, ly_ctx, &changed, &fail))) {
+        if ((err_info = sr_lydmods_sched_apply(sr_mods, conn->ly_ctx, &changed, &fail))) {
             goto cleanup_unlock;
         }
         if (fail) {
-            /* the context is not valid anymore, we have to create it from scratch in the connection */
+            /* the context is not valid anymore, we have to create it from scratch in the connection
+             * but it cannot be destroyed right away because sr_mods data was parsed with it */
+            fail_ctx = conn->ly_ctx;
             conn->ly_ctx = NULL;
             if ((err_info = sr_shmmain_ly_ctx_init(conn))) {
                 goto cleanup_unlock;
             }
         } else {
             ctx_updated = 1;
+        }
+    }
+
+    /* update the connection context modules */
+    if (!ctx_updated) {
+        if ((err_info = sr_lydmods_ctx_load_modules(sr_mods, conn->ly_ctx, 1, 1, NULL))) {
+            goto cleanup_unlock;
         }
     }
 
@@ -199,19 +207,6 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         if ((err_info = sr_shmmain_add(conn, sr_mods->child))) {
             goto cleanup_unlock;
         }
-
-        /* update version */
-        ++((sr_main_shm_t *)conn->main_shm.addr)->ver;
-
-        if (ctx_updated) {
-            /* all these modules are already in the context */
-            conn->main_ver = ((sr_main_shm_t *)conn->main_shm.addr)->ver;
-        }
-    }
-
-    /* update libyang context with current modules from SHM */
-    if ((err_info = sr_shmmain_ly_ctx_update(conn))) {
-        goto cleanup_unlock;
     }
 
     if (created) {
@@ -244,9 +239,7 @@ cleanup_unlock:
 
 cleanup:
     lyd_free_withsiblings(sr_mods);
-    if (conn && (conn->ly_ctx != ly_ctx)) {
-        ly_ctx_destroy(ly_ctx, NULL);
-    }
+    ly_ctx_destroy(fail_ctx, NULL);
     if (err_info) {
         sr_conn_free(conn);
         if (created) {
