@@ -53,7 +53,7 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     conn = calloc(1, sizeof *conn);
     SR_CHECK_MEM_RET(!conn, err_info);
 
-    if ((err_info = sr_shmmain_ly_ctx_init(conn))) {
+    if ((err_info = sr_shmmain_ly_ctx_init(&conn->ly_ctx))) {
         goto error1;
     }
 
@@ -167,8 +167,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
             /* the context is not valid anymore, we have to create it from scratch in the connection
              * but it cannot be destroyed right away because sr_mods data was parsed with it */
             fail_ctx = conn->ly_ctx;
-            conn->ly_ctx = NULL;
-            if ((err_info = sr_shmmain_ly_ctx_init(conn))) {
+            if ((err_info = sr_shmmain_ly_ctx_init(&conn->ly_ctx))) {
                 goto cleanup_unlock;
             }
         } else {
@@ -863,13 +862,12 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
 
     /* learn module name and format */
     if ((err_info = sr_get_module_name_format(schema_path, &mod_name, &format))) {
-        return sr_api_ret(NULL, err_info);
+        goto cleanup;
     }
 
     /* SHM LOCK */
     if ((err_info = sr_shmmain_lock_remap(conn, 0, 0, 1))) {
-        free(mod_name);
-        return sr_api_ret(NULL, err_info);
+        goto cleanup;
     }
 
     /* check whether the module is not already in the context */
@@ -924,8 +922,82 @@ cleanup_unlock:
     /* SHM UNLOCK */
     sr_shmmain_unlock(conn, 0, 0, 1);
 
+cleanup:
     ly_ctx_destroy(tmp_ly_ctx, NULL);
     free(mod_name);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char *data, const char *data_path,
+        LYD_FORMAT format)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_ctx *tmp_ly_ctx = NULL;
+    struct lyd_node *sr_mods = NULL, *mod_data = NULL, *next, *node;
+    const struct lys_module *ly_mod;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name || (data && data_path) || (!data && !data_path), NULL, err_info);
+
+    /* create new temporary context */
+    if ((err_info = sr_shmmain_ly_ctx_init(&tmp_ly_ctx))) {
+        goto cleanup;
+    }
+
+    /* SHM LOCK */
+    if ((err_info = sr_shmmain_lock_remap(conn, 0, 0, 1))) {
+        goto cleanup;
+    }
+
+    /* parse sysrepo module data */
+    if ((err_info = sr_lydmods_parse(tmp_ly_ctx, &sr_mods))) {
+        goto cleanup_unlock;
+    }
+
+    /* load the module to be installed */
+    if ((err_info = sr_lydmods_ctx_load_installed_module(sr_mods, tmp_ly_ctx, module_name, &ly_mod))) {
+        goto cleanup_unlock;
+    }
+
+    /* parse module data */
+    ly_errno = 0;
+    if (data_path) {
+        mod_data = lyd_parse_path(tmp_ly_ctx, data_path, format, LYD_OPT_CONFIG | LYD_OPT_NOEXTDEPS);
+    } else {
+        mod_data = lyd_parse_mem(tmp_ly_ctx, data, format, LYD_OPT_CONFIG | LYD_OPT_NOEXTDEPS);
+    }
+    if (ly_errno) {
+        sr_errinfo_new_ly(&err_info, tmp_ly_ctx);
+        goto cleanup_unlock;
+    }
+
+    /* get only this module data */
+    LY_TREE_FOR_SAFE(mod_data, next, node) {
+        if (lyd_node_module(node) != ly_mod) {
+            lyd_free(node);
+        }
+    }
+
+    /* set new startup data for the module */
+    if ((err_info = sr_lydmods_deferred_add_module_data(sr_mods, module_name, mod_data))) {
+        goto cleanup_unlock;
+    }
+
+    /* store updated sysrepo module data */
+    if ((err_info = sr_lydmods_print(&sr_mods))) {
+        goto cleanup_unlock;
+    }
+
+    /* success */
+
+cleanup_unlock:
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(conn, 0, 0, 1);
+
+cleanup:
+    lyd_free_withsiblings(sr_mods);
+    lyd_free_withsiblings(mod_data);
+    ly_ctx_destroy(tmp_ly_ctx, NULL);
     return sr_api_ret(NULL, err_info);
 }
 

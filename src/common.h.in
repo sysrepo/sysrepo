@@ -858,9 +858,10 @@ void *sr_realloc(void *ptr, size_t size);
  *
  * @param[in] to Destination SHM path (name).
  * @param[in] from Source file path.
+ * @param[in] perm Permissions of \p to SHM file, if being created.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_cp_file2shm(const char *to, const char *from);
+sr_error_info_t *sr_cp_file2shm(const char *to, const char *from, mode_t perm);
 
 /**
  * @brief Create all directories in the path.

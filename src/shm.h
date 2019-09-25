@@ -414,10 +414,10 @@ sr_error_info_t *sr_shmmain_state_recover(sr_shm_t *shm_main, sr_shm_t *shm_ext)
 /**
  * @brief Initialize libyang context with only the internal sysrepo module.
  *
- * @param[in] conn Connection to use.
+ * @param[out] ly_ctx Initialized context.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_ly_ctx_init(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_ly_ctx_init(struct ly_ctx **ly_ctx);
 
 /**
  * @brief Copy startup files into running files.

@@ -23,6 +23,11 @@ module sysrepo {
     description
         "Sysrepo YANG datastore internal attributes and information.";
 
+    revision "2019-09-25" {
+        description
+            "Added initial startup data for newly installed modules.";
+    }
+
     revision "2019-09-17" {
         description
             "Added list of scheduled installed modules.";
@@ -236,6 +241,12 @@ module sysrepo {
                 mandatory true;
                 description
                     "Content is the whole new YANG module.";
+            }
+
+            leaf startup-data {
+                type string;
+                description
+                    "Initial startup data to be set for the module, in JSON format.";
             }
         }
     }

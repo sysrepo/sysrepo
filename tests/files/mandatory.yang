@@ -1,0 +1,15 @@
+module mandatory {
+    namespace mand;
+    prefix m;
+
+    container cont {
+        choice choic {
+            mandatory true;
+            leaf l1 {
+                type empty;
+            }
+
+            anydata any2;
+        }
+    }
+}

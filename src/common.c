@@ -1181,8 +1181,7 @@ sr_store_module_file(const struct lys_module *ly_mod)
         return err_info;
     }
 
-    SR_LOG_INF("File \"%s%s%s\" was installed.", ly_mod->name, ly_mod->rev_size ? "@" : "",
-            ly_mod->rev_size ? ly_mod->rev[0].date : "");
+    SR_LOG_INF("File \"%s\" was installed.", strrchr(path, '/') + 1);
     free(path);
     return NULL;
 }
@@ -1297,7 +1296,7 @@ sr_create_data_files(const struct lys_module *ly_mod)
     if (lyd_validate_modules(&root, &ly_mod, 1, LYD_OPT_CONFIG)) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         SR_ERRINFO_VALID(&err_info);
-        return err_info;
+        goto cleanup;
     }
 
     /* print them into a file */
@@ -1306,26 +1305,15 @@ sr_create_data_files(const struct lys_module *ly_mod)
         goto cleanup;
     }
 
-    /* set permissions */
-    if (chmod(path, SR_FILE_PERM)) {
-        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
-        goto cleanup;
-    }
-
     /* repeat for running DS */
     free(path);
     path = NULL;
     if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, 1, &path))) {
-        return err_info;
-    }
-    if ((err_info = sr_module_config_data_set(ly_mod->name, SR_DS_RUNNING, root))) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
         goto cleanup;
     }
 
-    /* set permissions */
-    if (chmod(path, SR_FILE_PERM)) {
-        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+    if ((err_info = sr_module_config_data_set(ly_mod->name, SR_DS_RUNNING, root))) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
         goto cleanup;
     }
 
@@ -2182,7 +2170,7 @@ sr_realloc(void *ptr, size_t size)
 }
 
 sr_error_info_t *
-sr_cp_file2shm(const char *to, const char *from)
+sr_cp_file2shm(const char *to, const char *from, mode_t perm)
 {
     sr_error_info_t *err_info = NULL;
     int fd_to = -1, fd_from = -1;
@@ -2197,7 +2185,7 @@ sr_cp_file2shm(const char *to, const char *from)
     }
 
     /* open "to" SHM */
-    fd_to = shm_open(to, O_WRONLY | O_CREAT, 0666);
+    fd_to = shm_open(to, O_WRONLY | O_CREAT, perm);
     if (fd_to < 0) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" SHM failed (%s).", to, strerror(errno));
         goto cleanup;

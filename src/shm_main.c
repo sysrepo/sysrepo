@@ -1118,22 +1118,20 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
 }
 
 sr_error_info_t *
-sr_shmmain_ly_ctx_init(sr_conn_ctx_t *conn)
+sr_shmmain_ly_ctx_init(struct ly_ctx **ly_ctx)
 {
     sr_error_info_t *err_info = NULL;
 
-    assert(!conn->ly_ctx);
-
     /* libyang context init */
-    if ((err_info = sr_ly_ctx_new(&conn->ly_ctx))) {
+    if ((err_info = sr_ly_ctx_new(ly_ctx))) {
         return err_info;
     }
 
     /* load just the internal module */
-    if (!lys_parse_mem(conn->ly_ctx, sysrepo_yang, LYS_YANG)) {
-        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        ly_ctx_destroy(conn->ly_ctx, NULL);
-        conn->ly_ctx = NULL;
+    if (!lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_YANG)) {
+        sr_errinfo_new_ly(&err_info, *ly_ctx);
+        ly_ctx_destroy(*ly_ctx, NULL);
+        *ly_ctx = NULL;
         return err_info;
     }
 
@@ -1155,7 +1153,7 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
             free(running_path);
             goto error;
         }
-        err_info = sr_cp_file2shm(running_path, startup_path);
+        err_info = sr_cp_file2shm(running_path, startup_path, SR_FILE_PERM);
         free(startup_path);
         free(running_path);
         if (err_info) {
