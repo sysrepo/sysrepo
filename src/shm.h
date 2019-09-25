@@ -168,6 +168,7 @@ struct sr_mod_s {
 typedef struct sr_rpc_sub_s {
     off_t xpath;                /**< Full XPath of the RPC/action subscription. */
     uint32_t priority;          /**< Subscription priority. */
+    int opts;                   /**< Subscription options. */
     uint32_t evpipe_num;        /**< Event pipe number. */
 } sr_rpc_sub_t;
 
@@ -512,11 +513,12 @@ void sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap, int lydmods);
  * @param[in] shm_rpc_off SHM RPC offset.
  * @param[in] xpath Subscription XPath.
  * @param[in] priority Subscription priority.
+ * @param[in] sub_opts Subscriptions options.
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rpc_off, const char *xpath,
-        uint32_t priority, uint32_t evpipe_num);
+        uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
  * @brief Remove main SHM RPC/action subscription.
@@ -793,6 +795,7 @@ sr_error_info_t *sr_shmsub_conf_notify_clear(struct sr_mod_info_s *mod_info, sr_
 
 /**
  * @brief Notify about (generate) a configuration change event.
+ * Main SHM lock(0,0,0) must be held and this function may temporarily unlock it!
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] sid Originator sysrepo session ID.
@@ -837,6 +840,7 @@ sr_error_info_t *sr_shmsub_oper_notify(const struct lys_module *ly_mod, const ch
 
 /**
  * @brief Notify about (generate) an RPC/action event.
+ * Main SHM lock(0,0,0) must be held and this function may temporarily unlock it!
  *
  * @param[in] conn Connection to use.
  * @param[in] op_path Path identifying the RPC/action.

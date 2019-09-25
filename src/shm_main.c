@@ -1779,7 +1779,7 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap, int lydmods)
 }
 
 sr_error_info_t *
-sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rpc_off, const char *xpath, uint32_t priority,
+sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rpc_off, const char *xpath, uint32_t priority, int sub_opts,
         uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
@@ -1816,6 +1816,7 @@ sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rpc_off, const char
     strcpy(shm_ext->addr + xpath_off, xpath);
     shm_sub->xpath = xpath_off;
     shm_sub->priority = priority;
+    shm_sub->opts = sub_opts;
     shm_sub->evpipe_num = evpipe_num;
 
     ++shm_rpc->sub_count;

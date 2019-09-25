@@ -1052,6 +1052,16 @@ typedef enum sr_subscr_flag_e {
      */
     SR_SUBSCR_UPDATE = 32,
 
+    /**
+     * @brief The subscriber wants to modify other subscriptions in its callback. Normally, this would
+     * cause deadlock but with this flag it is possible. But, there are some **limitations**. The callback
+     * MUST not subscribe to the same RPC/module DS changes it is processing (would change subscription count
+     * and cause invalid memory access) and MUST not subscribe on the same ::sr_subscription_ctx_t
+     * `subscription` (would cause a deadlock). Accepted **only** for RPC/action and configuration subscriptions,
+     * it makes no sense for others.
+     */
+    SR_SUBSCR_UNLOCKED = 64,
+
 } sr_subscr_flag_t;
 
 /**
@@ -1164,6 +1174,9 @@ typedef struct sr_change_iter_s sr_change_iter_t;
 /**
  * @brief Callback to be called by the event of changing any running datastore
  * content within the specified module. Subscribe to it by ::sr_module_change_subscribe call.
+ *
+ * @note Callback is allowed to modify modules but MUST not modify subscriptions on ::SR_EV_CHANGE event.
+ * It would result in a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
  *
  * @param[in] session Automatically-created session that can be used for obtaining changed data
  * (by ::sr_get_changes_iter call) and learn about initiator session IDs. Do not stop this session.
@@ -1283,6 +1296,9 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @brief Callback to be called for RPC or action specified by xpath.
  * Subscribe to it by ::sr_rpc_subscribe call.
  *
+ * @note Callback is allowed to modify modules but MUST not modify subscriptions. It would result in
+ * a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
+ *
  * @param[in] session Callback session to use.
  * @param[in] op_path Simple operation path identifying the RPC/action.
  * @param[in] input Array of input parameters.
@@ -1302,6 +1318,9 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *op_path, const s
  * @brief Callback to be called for RPC or action specified by xpath.
  * This operates with libyang trees rather than with sysrepo values,
  * use it with ::sr_rpc_subscribe_tree and ::sr_rpc_send_tree.
+ *
+ * @note Callback is allowed to modify modules but MUST not modify subscriptions. It would result in
+ * a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
  *
  * @param[in] session Callback session to use.
  * @param[in] op_path Simple operation path identifying the RPC/action.
@@ -1418,6 +1437,8 @@ typedef enum sr_ev_notif_type_e {
  * @brief Callback to be called for notifications.
  * Subscribe to it by ::sr_event_notif_subscribe call.
  *
+ * @note Callback is allowed to modify modules and subscriptions.
+ *
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
  * @param[in] notif_type Type of the notification.
@@ -1435,6 +1456,8 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_t
  * @brief Callback to be called for notifications.
  * This callback variant operates with libyang trees rather than with sysrepo values,
  * use it with ::sr_event_notif_subscribe_tree and ::sr_event_notif_send_tree.
+ *
+ * @note Callback is allowed to modify modules and subscriptions.
  *
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
@@ -1538,7 +1561,8 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
  * Callback handler can provide any data matching the xpath but in case there are other nested subscriptions,
  * they will be called after this one.
  *
- * The \p path argument passed to callback can only be the path that was used for the subscription.
+ * @note Callback is allowed to modify modules but MUST not modify subscriptions. It would result in
+ * a deadlock and this callback timeout.
  *
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.

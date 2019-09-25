@@ -1008,6 +1008,76 @@ test_multi_fail(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST 7 */
+static int
+rpc_unlocked_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+        uint32_t request_id, struct lyd_node *output, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    struct lyd_node *node;
+    sr_subscription_ctx_t *tmp;
+    int ret;
+    static int call_no = 1;
+
+    (void)session;
+    (void)xpath;
+    (void)input;
+    (void)request_id;
+
+    ++st->cb_called;
+
+    /* create some output data */
+    node = lyd_new_path(output, NULL, "l5", "0", 0, LYD_PATH_OPT_OUTPUT);
+    assert_non_null(node);
+
+    switch (call_no) {
+    case 1:
+        assert_int_equal(event, SR_EV_RPC);
+        ++call_no;
+        /* subscribe to something and then unsubscribe */
+        ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_unlocked_cb, NULL, 0, 0, &tmp);
+        assert_int_equal(ret, SR_ERR_OK);
+        sr_unsubscribe(tmp);
+        break;
+    default:
+        fail();
+    }
+
+    return SR_ERR_OK;
+}
+
+static void
+test_unlocked(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    struct lyd_node *node, *input_op, *output_op;
+    int ret;
+
+    /* subscribe with unlocked flag */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_unlocked_cb, st, 0, SR_SUBSCR_UNLOCKED, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /*
+     * create first RPC
+     */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:rpc3", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    node = lyd_new_path(input_op, NULL, "l4", "val", 0, 0);
+    assert_non_null(node);
+
+    /* send RPC */
+    st->cb_called = 0;
+    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    lyd_free_withsiblings(input_op);
+    lyd_free_withsiblings(output_op);
+
+    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(subscr);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1019,6 +1089,7 @@ main(void)
         cmocka_unit_test_teardown(test_action_pred, clear_ops),
         cmocka_unit_test_teardown(test_multi, clear_ops),
         cmocka_unit_test(test_multi_fail),
+        cmocka_unit_test(test_unlocked),
     };
 
     sr_log_stderr(SR_LL_INF);

@@ -2453,6 +2453,115 @@ test_change_done_xpath(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST 8 */
+static int
+module_change_unlocked_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_ctx)
+{
+    struct state *st = (struct state *)private_ctx;
+    sr_subscription_ctx_t *tmp;
+    int ret;
+
+    (void)request_id;
+
+    assert_string_equal(module_name, "test");
+
+    switch (st->cb_called) {
+    case 0:
+    case 1:
+        assert_string_equal(xpath, "/test:l1[k='subscr']");
+        if (st->cb_called == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* subscribe to something and then unsubscribe */
+        sr_session_switch_ds(session, SR_DS_STARTUP);
+        ret = sr_module_change_subscribe(session, "test", "/test:cont", module_change_unlocked_cb, st, 0, 0, &tmp);
+        assert_int_equal(ret, SR_ERR_OK);
+        sr_unsubscribe(tmp);
+        break;
+    default:
+        fail();
+    }
+
+    ++st->cb_called;
+    return SR_ERR_OK;
+}
+
+static void *
+apply_change_unlocked_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/test:l1[k='subscr']/v", "25", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform 1st change */
+    ret = sr_apply_changes(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_change_unlocked_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int count, ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "test", "/test:l1[k='subscr']", module_change_unlocked_cb, st, 0,
+            SR_SUBSCR_UNLOCKED, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscription was created */
+    pthread_barrier_wait(&st->barrier);
+
+    count = 0;
+    while ((st->cb_called < 2) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 2);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_change_unlocked(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_change_unlocked_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_change_unlocked_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
 /* MAIN */
 int
 main(void)
@@ -2465,6 +2574,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_done_dflt, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_done_when, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_done_xpath, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_unlocked, setup_f, teardown_f),
     };
 
     sr_log_stderr(SR_LL_INF);

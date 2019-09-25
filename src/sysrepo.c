@@ -3089,7 +3089,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
     conn = session->conn;
     /* only these options are relevant outside this function and will be stored */
-    sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE);
+    sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE | SR_SUBSCR_UNLOCKED);
 
     /* SHM LOCK */
     if ((err_info = sr_shmmain_lock_remap(conn, 0, 0, 0))) {
@@ -3662,6 +3662,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     const struct lys_node *op;
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
+    sr_subscr_options_t sub_opts;
     sr_rpc_t *shm_rpc;
     off_t shm_rpc_off;
     int last_removed;
@@ -3674,6 +3675,8 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     }
 
     conn = session->conn;
+    /* only these options are relevant outside this function and will be stored */
+    sub_opts = opts & SR_SUBSCR_UNLOCKED;
 
     /* SHM LOCK */
     if ((err_info = sr_shmmain_lock_remap(conn, 1, 1, 0))) {
@@ -3727,7 +3730,8 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     shm_rpc_off = ((char *)shm_rpc) - conn->ext_shm.addr;
 
     /* add RPC/action subscription into main SHM (which may be remapped) */
-    if ((err_info = sr_shmmain_rpc_subscription_add(&conn->ext_shm, shm_rpc_off, xpath, priority, (*subscription)->evpipe_num))) {
+    if ((err_info = sr_shmmain_rpc_subscription_add(&conn->ext_shm, shm_rpc_off, xpath, priority, sub_opts,
+                (*subscription)->evpipe_num))) {
         goto error_unlock_unsub;
     }
     shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + shm_rpc_off);
