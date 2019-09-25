@@ -58,6 +58,8 @@ public:
 
     /** Wrapper for [sr_install_module](@ref sr_install_module) */
     void install_module(const char *schema_path, const char *search_dir, std::vector<std::string> features);
+    /** Wrapper for [sr_install_module_data](@ref sr_install_module_data) */
+    void install_module_data(const char *module_name, const char *data, const char *data_path, LYD_FORMAT format);
     /** Wrapper for [sr_remove_module](@ref sr_remove_module) */
     void remove_module(const char *module_name);
     /** Wrapper for [sr_update_module](@ref sr_update_module) */

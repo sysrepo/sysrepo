@@ -83,13 +83,13 @@ public:
     libyang::S_Context get_context();
 
     /** Wrapper for [sr_get_item](@ref sr_get_item) */
-    S_Val get_item(const char *path);
+    S_Val get_item(const char *path, uint32_t timeout_ms = 0);
     /** Wrapper for [sr_get_items](@ref sr_get_items) */
-    S_Vals get_items(const char *xpath);
+    S_Vals get_items(const char *xpath, uint32_t timeout_ms = 0);
     /** Wrapper for [sr_get_subtree](@ref sr_get_subtree) */
-    libyang::S_Data_Node get_subtree(const char *path);
+    libyang::S_Data_Node get_subtree(const char *path, uint32_t timeout_ms = 0);
     /** Wrapper for [sr_get_data](@ref sr_get_data) */
-    libyang::S_Data_Node get_data(const char *xpath);
+    libyang::S_Data_Node get_data(const char *xpath, uint32_t timeout_ms = 0);
 
     /** Wrapper for [sr_set_item](@ref sr_set_item) */
     void set_item(const char *path, S_Val value = nullptr, const sr_edit_options_t opts = EDIT_DEFAULT);
@@ -103,15 +103,17 @@ public:
     /** Wrapper for [sr_edit_batch](@ref sr_edit_batch) */
     void edit_batch(const libyang::S_Data_Node edit, const char *default_operation);
     /** Wrapper for [sr_validate](@ref sr_validate) */
-    void validate();
+    void validate(uint32_t timeout_ms = 0);
     /** Wrapper for [sr_apply_changes](@ref sr_apply_changes) */
-    void apply_changes();
+    void apply_changes(uint32_t timeout_ms = 0);
     /** Wrapper for [sr_discard_changes](@ref sr_discard_changes) */
     void discard_changes();
     /** Wrapper for [sr_replace_config](@ref sr_replace_config) */
-    void replace_config(const libyang::S_Data_Node src_config, sr_datastore_t trg_datastore, const char *module_name = nullptr);
+    void replace_config(const libyang::S_Data_Node src_config, sr_datastore_t trg_datastore, \
+            const char *module_name = nullptr, uint32_t timeout_ms = 0);
     /** Wrapper for [sr_copy_config](@ref sr_copy_config) */
-    void copy_config(sr_datastore_t src_datastore, sr_datastore_t trg_datastore, const char *module_name = nullptr);
+    void copy_config(sr_datastore_t src_datastore, sr_datastore_t trg_datastore, const char *module_name = nullptr, \
+            uint32_t timeout_ms = 0);
 
     /** Wrapper for [sr_lock](@ref sr_lock) */
     void lock(const char *module_name = nullptr);
@@ -127,9 +129,9 @@ public:
     ~Session();
 
     /** Wrapper for [sr_rpc_send](@ref sr_rpc_send) */
-    S_Vals rpc_send(const char *path, S_Vals input);
+    S_Vals rpc_send(const char *path, S_Vals input, uint32_t timeout_ms = 0);
     /** Wrapper for [sr_rpc_send_tree](@ref sr_rpc_send_tree) */
-    libyang::S_Data_Node rpc_send(libyang::S_Data_Node input);
+    libyang::S_Data_Node rpc_send(libyang::S_Data_Node input, uint32_t timeout_ms = 0);
 
     /** Wrapper for [sr_event_notif_send](@ref sr_event_notif_send) */
     void event_notif_send(const char *path, S_Vals values);

@@ -83,6 +83,16 @@ void Connection::install_module(const char *schema_path, const char *search_dir,
     }
 }
 
+void Connection::install_module_data(const char *module_name, const char *data, const char *data_path, LYD_FORMAT format)
+{
+    int ret;
+
+    ret = sr_install_module_data(_conn, module_name, data, data_path, format);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
 void Connection::remove_module(const char *module_name)
 {
     int ret;

@@ -141,11 +141,11 @@ libyang::S_Context Session::get_context()
     return std::make_shared<libyang::Context>(const_cast<struct ly_ctx *>(sr_get_context(sr_session_get_connection(_sess))), nullptr);
 }
 
-S_Val Session::get_item(const char *path)
+S_Val Session::get_item(const char *path, uint32_t timeout_ms)
 {
     S_Val value(new Val());
 
-    int ret = sr_get_item(_sess, path, &value->_val);
+    int ret = sr_get_item(_sess, path, timeout_ms, &value->_val);
     if (SR_ERR_OK == ret) {
         value->_deleter = std::make_shared<Deleter>(value->_val);
         return value;
@@ -156,11 +156,11 @@ S_Val Session::get_item(const char *path)
     throw_exception(ret);
 }
 
-S_Vals Session::get_items(const char *xpath)
+S_Vals Session::get_items(const char *xpath, uint32_t timeout_ms)
 {
     S_Vals values(new Vals());
 
-    int ret = sr_get_items(_sess, xpath, &values->_vals, &values->_cnt);
+    int ret = sr_get_items(_sess, xpath, timeout_ms, &values->_vals, &values->_cnt);
     if (SR_ERR_OK == ret) {
         values->_deleter = std::make_shared<Deleter>(values->_vals, values->_cnt);
         return values;
@@ -171,11 +171,11 @@ S_Vals Session::get_items(const char *xpath)
     throw_exception(ret);
 }
 
-libyang::S_Data_Node Session::get_subtree(const char *path)
+libyang::S_Data_Node Session::get_subtree(const char *path, uint32_t timeout_ms)
 {
     struct lyd_node *subtree;
 
-    int ret = sr_get_subtree(_sess, path, &subtree);
+    int ret = sr_get_subtree(_sess, path, timeout_ms, &subtree);
     if (SR_ERR_OK == ret) {
         return std::make_shared<libyang::Data_Node>(subtree, std::make_shared<libyang::Deleter>(subtree));
     }
@@ -185,11 +185,11 @@ libyang::S_Data_Node Session::get_subtree(const char *path)
     throw_exception(ret);
 }
 
-libyang::S_Data_Node Session::get_data(const char *xpath)
+libyang::S_Data_Node Session::get_data(const char *xpath, uint32_t timeout_ms)
 {
     struct lyd_node *data;
 
-    int ret = sr_get_data(_sess, xpath, &data);
+    int ret = sr_get_data(_sess, xpath, timeout_ms, &data);
     if (SR_ERR_OK == ret) {
         return std::make_shared<libyang::Data_Node>(data, std::make_shared<libyang::Deleter>(data));
     }
@@ -241,17 +241,17 @@ void Session::edit_batch(const libyang::S_Data_Node edit, const char *default_op
     }
 }
 
-void Session::validate()
+void Session::validate(uint32_t timeout_ms)
 {
-    int ret = sr_validate(_sess);
+    int ret = sr_validate(_sess, timeout_ms);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
 }
 
-void Session::apply_changes()
+void Session::apply_changes(uint32_t timeout_ms)
 {
-    int ret = sr_apply_changes(_sess);
+    int ret = sr_apply_changes(_sess, timeout_ms);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
@@ -265,7 +265,8 @@ void Session::discard_changes()
     }
 }
 
-void Session::replace_config(const libyang::S_Data_Node src_config, sr_datastore_t trg_datastore, const char *module_name)
+void Session::replace_config(const libyang::S_Data_Node src_config, sr_datastore_t trg_datastore, const char *module_name, \
+        uint32_t timeout_ms)
 {
     int ret;
     struct lyd_node *src;
@@ -275,16 +276,17 @@ void Session::replace_config(const libyang::S_Data_Node src_config, sr_datastore
         throw_exception(SR_ERR_NOMEM);
     }
 
-    ret = sr_replace_config(_sess, module_name, src, trg_datastore);
+    ret = sr_replace_config(_sess, module_name, src, trg_datastore, timeout_ms);
     if (ret != SR_ERR_OK) {
         lyd_free_withsiblings(src);
         throw_exception(ret);
     }
 }
 
-void Session::copy_config(sr_datastore_t src_datastore, sr_datastore_t trg_datastore, const char *module_name)
+void Session::copy_config(sr_datastore_t src_datastore, sr_datastore_t trg_datastore, const char *module_name, \
+        uint32_t timeout_ms)
 {
-    int ret = sr_copy_config(_sess, module_name, src_datastore, trg_datastore);
+    int ret = sr_copy_config(_sess, module_name, src_datastore, trg_datastore, timeout_ms);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
@@ -351,11 +353,11 @@ S_Tree_Change Session::get_change_tree_next(S_Iter_Change iter)
 
 Session::~Session() {}
 
-S_Vals Session::rpc_send(const char *path, S_Vals input)
+S_Vals Session::rpc_send(const char *path, S_Vals input, uint32_t timeout_ms)
 {
     S_Vals output(new Vals());
 
-    int ret = sr_rpc_send(_sess, path, input->_vals, input->_cnt, &output->_vals, &output->_cnt);
+    int ret = sr_rpc_send(_sess, path, input->_vals, input->_cnt, timeout_ms, &output->_vals, &output->_cnt);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
@@ -369,11 +371,11 @@ S_Vals Session::rpc_send(const char *path, S_Vals input)
     return output;
 }
 
-libyang::S_Data_Node Session::rpc_send(libyang::S_Data_Node input)
+libyang::S_Data_Node Session::rpc_send(libyang::S_Data_Node input, uint32_t timeout_ms)
 {
     struct lyd_node *output;
 
-    int ret = sr_rpc_send_tree(_sess, input->swig_node(), &output);
+    int ret = sr_rpc_send_tree(_sess, input->swig_node(), timeout_ms, &output);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
