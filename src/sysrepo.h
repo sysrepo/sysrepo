@@ -669,11 +669,12 @@ typedef struct sr_val_s {
  *
  * @param[in] session Session to use.
  * @param[in] path Path of the data element to be retrieved.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[out] value Structure containing information about requested element
  * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_val).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
+int sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr_val_t **value);
 
 /**
  * @brief Retrieves an array of data elements selected by the provided XPath
@@ -685,12 +686,13 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
  *
  * @param[in] session Session to use.
  * @param[in] xpath XPath of the data elements to be retrieved.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[out] values Array of structures containing information about requested data elements
  * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_values).
  * @param[out] value_cnt Number of returned elements in the values array.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, size_t *value_cnt);
+int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, sr_val_t **values, size_t *value_cnt);
 
 /**
  * @brief Retrieves a single subtree whose root node is selected by the provided path.
@@ -705,11 +707,12 @@ int sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values
  *
  * @param[in] session Session to use.
  * @param[in] path Path selecting the root node of the subtree to be retrieved.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[out] subtree Nested subtree containing all data of the requested subtree
  * (allocated by the function, it is supposed to be freed by the caller).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_subtree(sr_session_ctx_t *session, const char *path, struct lyd_node **subtree);
+int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, struct lyd_node **subtree);
 
 /**
  * @brief Retrieves tree whose root nodes match the provided XPath.
@@ -727,10 +730,11 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *path, struct lyd_node 
  *
  * @param[in] session Session to use.
  * @param[in] xpath XPath selecting root nodes of subtrees to be retrieved.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[out] data Connected top-level trees with all the selected data (allocated by the function, freed by the caller).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_data(sr_session_ctx_t *session, const char *xpath, struct lyd_node **data);
+int sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, struct lyd_node **data);
 
 /**
  * @brief Frees ::sr_val_t structure and all memory allocated within it.
@@ -875,9 +879,10 @@ int sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const 
  * @see Use ::sr_get_error to retrieve error information if the operation returned an error.
  *
  * @param[in] session Session to use.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_validate(sr_session_ctx_t *session);
+int sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms);
 
 /**
  * @brief Apply changes made in the current session.
@@ -890,9 +895,10 @@ int sr_validate(sr_session_ctx_t *session);
  * Required WRITE access.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_apply_changes(sr_session_ctx_t *session);
+int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
 
 /**
  * @brief Discard non-applied changes made in the current session.
@@ -914,10 +920,11 @@ int sr_discard_changes(sr_session_ctx_t *session);
  * @param[in] src_config Source configuration to replace the datastore one. Is ALWAYS spent
  * and cannot be used by the application!
  * @param[in] trg_datastore Target datastore.
+ * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
-        sr_datastore_t trg_datastore);
+        sr_datastore_t trg_datastore, uint32_t timeout_ms);
 
 /**
  * @brief Replaces a configuration datastore with the contents of
@@ -934,10 +941,11 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
  * @param[in] module_name Optional module name that limits the copy operation only to this module.
  * @param[in] src_datastore Source datastore.
  * @param[in] trg_datastore Target datastore.
+ * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore,
-        sr_datastore_t trg_datastore);
+        sr_datastore_t trg_datastore, uint32_t timeout_ms);
 
 /** @} editdata */
 
@@ -1402,6 +1410,7 @@ int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_t
  * @param[in] input Array of input parameters (array of all nodes that hold some
  * data in RPC/action input subtree - same as ::sr_get_items would return).
  * @param[in] input_cnt Number of input parameters.
+ * @param[in] timeout_ms RPC/action callback timeout in milliseconds. If 0, default is used.
  * @param[out] output Array of output parameters (all nodes that hold some data
  * in RPC/action output subtree). Will be allocated by sysrepo and should be freed by
  * caller using ::sr_free_values.
@@ -1409,7 +1418,7 @@ int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_t
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt,
-        sr_val_t **output, size_t *output_cnt);
+        uint32_t timeout_ms, sr_val_t **output, size_t *output_cnt);
 
 /**
  * @brief Sends an RPC or action specified by xpath and waits for the result. Input and output data
@@ -1419,10 +1428,11 @@ int sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *inp
  *
  * @param[in] session Session to use.
  * @param[in] input Input data tree.
+ * @param[in] timeout_ms RPC/action callback timeout in milliseconds. If 0, default is used.
  * @param[out] output Output data tree. Will be allocated by sysrepo and should be freed by the caller.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_node **output);
+int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t timeout_ms, struct lyd_node **output);
 
 /** @} rpcsubs */
 

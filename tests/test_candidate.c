@@ -99,7 +99,7 @@ clear_interfaces(void **state)
 
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
-    sr_apply_changes(st->sess);
+    sr_apply_changes(st->sess, 0);
 
     return 0;
 }
@@ -114,14 +114,14 @@ test_candidate(void **state)
     int ret;
 
     /* empty datastore */
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(data->dflt, 1);
     lyd_free_withsiblings(data);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(data->dflt, 1);
     lyd_free_withsiblings(data);
@@ -132,12 +132,12 @@ test_candidate(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(data->dflt, 0);
     lyd_free_withsiblings(data);
@@ -148,12 +148,12 @@ test_candidate(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);
@@ -170,7 +170,7 @@ test_candidate(void **state)
 
     ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);
@@ -190,12 +190,12 @@ test_candidate(void **state)
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
 
     /* copy-config to running, should also reset candidate */
-    ret = sr_copy_config(st->sess, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING);
+    ret = sr_copy_config(st->sess, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);

@@ -117,7 +117,7 @@ clear_ops(void **state)
     sr_delete_item(st->sess, "/ops-ref:l1", 0);
     sr_delete_item(st->sess, "/ops-ref:l2", 0);
     sr_delete_item(st->sess, "/ops:cont", 0);
-    sr_apply_changes(st->sess);
+    sr_apply_changes(st->sess, 0);
 
     return 0;
 }
@@ -171,7 +171,7 @@ test_fail(void **state)
     assert_non_null(input);
 
     /* expect an error */
-    ret = sr_rpc_send_tree(st->sess, input, &output);
+    ret = sr_rpc_send_tree(st->sess, input, 0, &output);
     lyd_free_withsiblings(input);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
     ret = sr_get_error(st->sess, &err_info);
@@ -185,7 +185,7 @@ test_fail(void **state)
     input = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='1']/cont2/act1", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
     assert_non_null(input);
 
-    ret = sr_rpc_send_tree(st->sess, input, &output);
+    ret = sr_rpc_send_tree(st->sess, input, 0, &output);
     for (; input->parent; input = input->parent);
     lyd_free_withsiblings(input);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
@@ -293,7 +293,7 @@ test_rpc(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ops-ref:l2", "l2-val", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
@@ -305,7 +305,7 @@ test_rpc(void **state)
     input.dflt = 0;
 
     /* try to send first RPC, expect an error */
-    ret = sr_rpc_send(st->sess, "/ops:rpc1", &input, 1, &output, &output_count);
+    ret = sr_rpc_send(st->sess, "/ops:rpc1", &input, 1, 0, &output, &output_count);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
@@ -322,7 +322,7 @@ test_rpc(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send first RPC again, now should succeed */
-    ret = sr_rpc_send(st->sess, "/ops:rpc1", &input, 1, &output, &output_count);
+    ret = sr_rpc_send(st->sess, "/ops:rpc1", &input, 1, 0, &output, &output_count);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check output data tree */
@@ -334,7 +334,7 @@ test_rpc(void **state)
      */
 
     /* try to send second RPC, expect an error */
-    ret = sr_rpc_send(st->sess, "/ops:rpc2", NULL, 0, &output, &output_count);
+    ret = sr_rpc_send(st->sess, "/ops:rpc2", NULL, 0, 0, &output, &output_count);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
@@ -345,7 +345,7 @@ test_rpc(void **state)
     assert_null(err_info->err[1].xpath);
 
     /* try to send second RPC again, should succeed now */
-    ret = sr_rpc_send(st->sess, "/ops:rpc2", NULL, 0, &output, &output_count);
+    ret = sr_rpc_send(st->sess, "/ops:rpc2", NULL, 0, 0, &output, &output_count);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check output data tree */
@@ -367,7 +367,7 @@ test_rpc(void **state)
     input.dflt = 0;
 
     /* send third RPC */
-    ret = sr_rpc_send(st->sess, "/ops:rpc3", &input, 1, &output, &output_count);
+    ret = sr_rpc_send(st->sess, "/ops:rpc3", &input, 1, 0, &output, &output_count);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check output data tree */
@@ -447,7 +447,7 @@ test_action(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ops:cont/l12", "l12-val", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the data so they are actually present in operational */
@@ -465,7 +465,7 @@ test_action(void **state)
     assert_non_null(node);
 
     /* send first action */
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     for (; input_op->parent; input_op = input_op->parent);
     lyd_free_withsiblings(input_op);
     assert_int_equal(ret, SR_ERR_OK);
@@ -489,7 +489,7 @@ test_action(void **state)
     assert_non_null(node);
 
     /* send second action */
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     for (; input_op->parent; input_op = input_op->parent);
     lyd_free_withsiblings(input_op);
     assert_int_equal(ret, SR_ERR_OK);
@@ -573,7 +573,7 @@ test_action_pred(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the data so they are actually present in operational */
@@ -591,7 +591,7 @@ test_action_pred(void **state)
     assert_non_null(node);
 
     /* send action, fails */
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     for (; input_op->parent; input_op = input_op->parent);
     lyd_free_withsiblings(input_op);
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
@@ -607,7 +607,7 @@ test_action_pred(void **state)
     assert_non_null(node);
 
     /* send action, should be fine */
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     for (; input_op->parent; input_op = input_op->parent);
     lyd_free_withsiblings(input_op);
     for (; output_op->parent; output_op = output_op->parent);
@@ -626,7 +626,7 @@ test_action_pred(void **state)
     assert_non_null(node);
 
     /* send action, should be fine */
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     for (; input_op->parent; input_op = input_op->parent);
     lyd_free_withsiblings(input_op);
     for (; output_op->parent; output_op = output_op->parent);
@@ -684,7 +684,7 @@ test_multi(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the data so they are actually present in operational */
@@ -703,7 +703,7 @@ test_multi(void **state)
 
     /* send action */
     st->cb_called = 0;
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     for (; input_op->parent; input_op = input_op->parent);
     lyd_free_withsiblings(input_op);
     for (; output_op->parent; output_op = output_op->parent);
@@ -724,7 +724,7 @@ test_multi(void **state)
 
     /* send action */
     st->cb_called = 0;
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     for (; input_op->parent; input_op = input_op->parent);
     lyd_free_withsiblings(input_op);
     for (; output_op->parent; output_op = output_op->parent);
@@ -745,7 +745,7 @@ test_multi(void **state)
 
     /* send action */
     st->cb_called = 0;
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     for (; input_op->parent; input_op = input_op->parent);
     lyd_free_withsiblings(input_op);
     for (; output_op->parent; output_op = output_op->parent);
@@ -935,7 +935,7 @@ test_multi_fail(void **state)
 
     /* send RPC */
     st->cb_called = 0;
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_withsiblings(input_op);
     lyd_free_withsiblings(output_op);
 
@@ -955,7 +955,7 @@ test_multi_fail(void **state)
 
     /* send RPC */
     st->cb_called = 0;
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_withsiblings(input_op);
     lyd_free_withsiblings(output_op);
 
@@ -975,7 +975,7 @@ test_multi_fail(void **state)
 
     /* send RPC */
     st->cb_called = 0;
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_withsiblings(input_op);
     lyd_free_withsiblings(output_op);
 
@@ -993,7 +993,7 @@ test_multi_fail(void **state)
 
     /* send RPC */
     st->cb_called = 0;
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_withsiblings(input_op);
 
     /* it should not fail */
@@ -1068,7 +1068,7 @@ test_unlocked(void **state)
 
     /* send RPC */
     st->cb_called = 0;
-    ret = sr_rpc_send_tree(st->sess, input_op, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_withsiblings(input_op);
     lyd_free_withsiblings(output_op);
 

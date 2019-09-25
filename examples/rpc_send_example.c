@@ -146,7 +146,7 @@ main(int argc, char **argv)
     }
 
     /* send the RPC */
-    rc = sr_rpc_send(session, path, NULL, 0, &output, &output_count);
+    rc = sr_rpc_send(session, path, NULL, 0, 0, &output, &output_count);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }

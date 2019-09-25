@@ -1395,7 +1395,7 @@ sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data)
 }
 
 API int
-sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
+sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr_val_t **value)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct ly_set *set = NULL;
@@ -1403,6 +1403,9 @@ sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
 
     SR_CHECK_ARG_APIRET(!session || !path || !value, session, err_info);
 
+    if (!timeout_ms) {
+        timeout_ms = SR_OPER_CB_TIMEOUT;
+    }
     *value = NULL;
     memset(&mod_info, 0, sizeof mod_info);
 
@@ -1427,7 +1430,8 @@ sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
     }
 
     /* load modules data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, path, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, path, timeout_ms, &cb_err_info))
+            || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -1473,7 +1477,7 @@ cleanup_shm_unlock:
 }
 
 API int
-sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, size_t *value_cnt)
+sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, sr_val_t **values, size_t *value_cnt)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct ly_set *set = NULL;
@@ -1482,6 +1486,9 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, si
 
     SR_CHECK_ARG_APIRET(!session || !xpath || !values || !value_cnt, session, err_info);
 
+    if (!timeout_ms) {
+        timeout_ms = SR_OPER_CB_TIMEOUT;
+    }
     *values = NULL;
     *value_cnt = 0;
     memset(&mod_info, 0, sizeof mod_info);
@@ -1507,7 +1514,8 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, si
     }
 
     /* load modules data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, xpath, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, xpath, timeout_ms, &cb_err_info))
+            || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -1554,7 +1562,7 @@ cleanup_shm_unlock:
 }
 
 API int
-sr_get_subtree(sr_session_ctx_t *session, const char *path, struct lyd_node **subtree)
+sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, struct lyd_node **subtree)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -1562,6 +1570,9 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, struct lyd_node **su
 
     SR_CHECK_ARG_APIRET(!session || !path || !subtree, session, err_info);
 
+    if (!timeout_ms) {
+        timeout_ms = SR_OPER_CB_TIMEOUT;
+    }
     memset(&mod_info, 0, sizeof mod_info);
 
     /* SHM LOCK */
@@ -1585,7 +1596,8 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, struct lyd_node **su
     }
 
     /* load modules data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, path, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, path, timeout_ms, &cb_err_info))
+            || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -1630,7 +1642,7 @@ cleanup_shm_unlock:
 }
 
 API int
-sr_get_data(sr_session_ctx_t *session, const char *xpath, struct lyd_node **data)
+sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     uint32_t i;
@@ -1640,6 +1652,9 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, struct lyd_node **data
 
     SR_CHECK_ARG_APIRET(!session || !xpath || !data, session, err_info);
 
+    if (!timeout_ms) {
+        timeout_ms = SR_OPER_CB_TIMEOUT;
+    }
     *data = NULL;
     memset(&mod_info, 0, sizeof mod_info);
 
@@ -1664,7 +1679,8 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, struct lyd_node **data
     }
 
     /* load modules data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, xpath, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, xpath, timeout_ms, &cb_err_info))
+            || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
@@ -1935,13 +1951,16 @@ error:
 }
 
 API int
-sr_validate(sr_session_ctx_t *session)
+sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
 
     SR_CHECK_ARG_APIRET(!session, session, err_info);
 
+    if (!timeout_ms) {
+        timeout_ms = SR_OPER_CB_TIMEOUT;
+    }
     memset(&mod_info, 0, sizeof mod_info);
 
     /* SHM LOCK */
@@ -1967,7 +1986,7 @@ sr_validate(sr_session_ctx_t *session)
     }
 
     /* load all modules data (we need dependencies for validation) */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 0, NULL, NULL, NULL))) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 0, NULL, NULL, timeout_ms, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -2003,7 +2022,7 @@ cleanup_shm_unlock:
 }
 
 API int
-sr_apply_changes(sr_session_ctx_t *session)
+sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct lyd_node *update_edit;
@@ -2017,6 +2036,9 @@ sr_apply_changes(sr_session_ctx_t *session)
         return sr_api_ret(session, NULL);
     }
 
+    if (!timeout_ms) {
+        timeout_ms = SR_CONF_CB_TIMEOUT;
+    }
     memset(&mod_info, 0, sizeof mod_info);
 
     /* SHM LOCK */
@@ -2035,7 +2057,7 @@ sr_apply_changes(sr_session_ctx_t *session)
     }
 
     /* load all modules data (we need dependencies for validation) */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 0, NULL, NULL, NULL))) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 0, NULL, NULL, 0, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -2078,7 +2100,7 @@ sr_apply_changes(sr_session_ctx_t *session)
 
     if (mod_info.diff) {
         /* publish current diff in an "update" event for the subscribers to update it */
-        if ((err_info = sr_shmsub_conf_notify_update(&mod_info, session->sid, &update_edit, &cb_err_info))) {
+        if ((err_info = sr_shmsub_conf_notify_update(&mod_info, session->sid, timeout_ms, &update_edit, &cb_err_info))) {
             goto cleanup_mods_unlock;
         }
         if (cb_err_info) {
@@ -2102,7 +2124,7 @@ sr_apply_changes(sr_session_ctx_t *session)
             mod_info.data = NULL;
 
             /* reload unchanged data back */
-            if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 0, NULL, NULL, NULL))) {
+            if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 0, NULL, NULL, 0, NULL))) {
                 goto cleanup_mods_unlock;
             }
 
@@ -2130,7 +2152,7 @@ sr_apply_changes(sr_session_ctx_t *session)
 
         if (mod_info.diff) {
             /* publish final diff in a "change" event for any subscribers and wait for them */
-            if ((err_info = sr_shmsub_conf_notify_change(&mod_info, session->sid, &cb_err_info))) {
+            if ((err_info = sr_shmsub_conf_notify_change(&mod_info, session->sid, timeout_ms, &cb_err_info))) {
                 goto cleanup_mods_unlock;
             }
             if (cb_err_info) {
@@ -2211,11 +2233,12 @@ sr_discard_changes(sr_session_ctx_t *session)
  * @param[in] ly_mod Optional specific module.
  * @param[in] src_data Source data for the replace, they are spent.
  * @param[in] trg_datastore Destination datastore.
+ * @param[in] timeout_ms Configuration callback timeout in milliseconds.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, struct lyd_node **src_data,
-        sr_datastore_t trg_datastore)
+        sr_datastore_t trg_datastore, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -2241,7 +2264,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
     }
 
     /* load all current modules data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 0, NULL, NULL, NULL))) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 0, NULL, NULL, 0, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -2279,7 +2302,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
 
     if (mod_info.diff) {
         /* publish final diff in a "change" event for any subscribers and wait for them */
-        if ((err_info = sr_shmsub_conf_notify_change(&mod_info, session->sid, &cb_err_info))) {
+        if ((err_info = sr_shmsub_conf_notify_change(&mod_info, session->sid, timeout_ms, &cb_err_info))) {
             goto cleanup_mods_unlock;
         }
         if (cb_err_info) {
@@ -2328,7 +2351,7 @@ cleanup_mods_unlock:
 
 API int
 sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
-        sr_datastore_t trg_datastore)
+        sr_datastore_t trg_datastore, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod = NULL;
@@ -2337,6 +2360,10 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     if (src_config && (session->conn->ly_ctx != src_config->schema->module->ctx)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Data trees must be created using the session connection libyang context.");
         return sr_api_ret(session, err_info);
+    }
+
+    if (!timeout_ms) {
+        timeout_ms = SR_CONF_CB_TIMEOUT;
     }
 
     /* find first sibling */
@@ -2357,7 +2384,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     }
 
     /* replace the configuration */
-    if ((err_info = _sr_replace_config(session, ly_mod, &src_config, trg_datastore))) {
+    if ((err_info = _sr_replace_config(session, ly_mod, &src_config, trg_datastore, timeout_ms))) {
         goto cleanup_shm_unlock;
     }
 
@@ -2372,7 +2399,8 @@ cleanup_shm_unlock:
 }
 
 API int
-sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, sr_datastore_t trg_datastore)
+sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore,
+        sr_datastore_t trg_datastore, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -2385,6 +2413,9 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         return sr_api_ret(session, NULL);
     }
 
+    if (!timeout_ms) {
+        timeout_ms = SR_CONF_CB_TIMEOUT;
+    }
     memset(&mod_info, 0, sizeof mod_info);
 
     /* SHM LOCK */
@@ -2421,7 +2452,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     }
 
     /* get their data */
-    err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 0, NULL, NULL, NULL);
+    err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 0, NULL, NULL, 0, NULL);
 
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info, 0);
@@ -2431,7 +2462,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     }
 
     /* replace the configuration */
-    if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, trg_datastore))) {
+    if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, trg_datastore, timeout_ms))) {
         goto cleanup_shm_unlock;
     }
 
@@ -2991,7 +3022,7 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
     }
 
     /* get the current running datastore data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, NULL, NULL, NULL))) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, NULL, NULL, 0, NULL))) {
         goto cleanup_mods_unlock;
     }
 
@@ -3869,7 +3900,7 @@ sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_
 }
 
 API int
-sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt,
+sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt, uint32_t timeout_ms,
         sr_val_t **output, size_t *output_cnt)
 {
     sr_error_info_t *err_info = NULL;
@@ -3880,6 +3911,9 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
 
     SR_CHECK_ARG_APIRET(!session || !output || !output_cnt, session, err_info);
 
+    if (!timeout_ms) {
+        timeout_ms = SR_RPC_CB_TIMEOUT;
+    }
     *output = NULL;
     *output_cnt = 0;
 
@@ -3897,7 +3931,7 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
     }
 
     /* API function */
-    if ((ret = sr_rpc_send_tree(session, input_tree, &output_tree)) != SR_ERR_OK) {
+    if ((ret = sr_rpc_send_tree(session, input_tree, timeout_ms, &output_tree)) != SR_ERR_OK) {
         lyd_free_withsiblings(input_tree);
         return ret;
     }
@@ -3936,7 +3970,7 @@ cleanup:
 }
 
 API int
-sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_node **output)
+sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t timeout_ms, struct lyd_node **output)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -3952,6 +3986,9 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
         return sr_api_ret(session, err_info);
     }
 
+    if (!timeout_ms) {
+        timeout_ms = SR_RPC_CB_TIMEOUT;
+    }
     *output = NULL;
     memset(&mod_info, 0, sizeof mod_info);
 
@@ -4010,12 +4047,14 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* load all input dependency modules data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, &session->sid, NULL, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, &session->sid, NULL, SR_OPER_CB_TIMEOUT,
+            &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
     /* validate the operation */
-    if ((err_info = sr_modinfo_op_validate(&mod_info, input_op, shm_deps, shm_dep_count, 0, &session->sid, &cb_err_info))) {
+    if ((err_info = sr_modinfo_op_validate(&mod_info, input_op, shm_deps, shm_dep_count, 0, &session->sid,
+            SR_OPER_CB_TIMEOUT, &cb_err_info))) {
         goto cleanup_mods_unlock;
     }
     if (cb_err_info) {
@@ -4023,7 +4062,8 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* publish RPC in an event and wait for a reply from the last subscriber */
-    if ((err_info = sr_shmsub_rpc_notify(mod_info.conn, op_path, input, session->sid, &event_id, output, &cb_err_info))) {
+    if ((err_info = sr_shmsub_rpc_notify(mod_info.conn, op_path, input, session->sid, timeout_ms, &event_id, output,
+            &cb_err_info))) {
         goto cleanup_mods_unlock;
     }
 
@@ -4054,12 +4094,14 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, struct lyd_n
     }
 
     /* load all output dependency modules data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, &session->sid, NULL, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, &session->sid, NULL, SR_OPER_CB_TIMEOUT,
+            &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
     /* validate the operation */
-    if ((err_info = sr_modinfo_op_validate(&mod_info, *output, shm_deps, shm_dep_count, 1, &session->sid, &cb_err_info))) {
+    if ((err_info = sr_modinfo_op_validate(&mod_info, *output, shm_deps, shm_dep_count, 1, &session->sid,
+            SR_OPER_CB_TIMEOUT, &cb_err_info))) {
         goto cleanup_mods_unlock;
     }
     if (cb_err_info) {
@@ -4417,12 +4459,14 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     }
 
     /* load all input dependency modules data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, &session->sid, NULL, &cb_err_info)) || cb_err_info) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, &session->sid, NULL, SR_OPER_CB_TIMEOUT,
+            &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
     /* validate the operation */
-    if ((err_info = sr_modinfo_op_validate(&mod_info, notif_op, shm_deps, shm_dep_count, 0, &session->sid, &cb_err_info))) {
+    if ((err_info = sr_modinfo_op_validate(&mod_info, notif_op, shm_deps, shm_dep_count, 0, &session->sid,
+            SR_OPER_CB_TIMEOUT, &cb_err_info))) {
         goto cleanup_mods_unlock;
     }
     if (cb_err_info) {

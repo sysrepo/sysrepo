@@ -288,7 +288,7 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* replace config (always spends data) */
-    r = sr_replace_config(sess, module_name, data, sr_session_get_ds(sess));
+    r = sr_replace_config(sess, module_name, data, sr_session_get_ds(sess), 0);
     if (r) {
         error_print(r, "Replace config failed");
         return EXIT_FAILURE;
@@ -320,12 +320,12 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     /* get subtrees */
     if (module_name) {
         asprintf(&str, "/%s:*", module_name);
-        r = sr_get_data(sess, str, &data);
+        r = sr_get_data(sess, str, 0, &data);
         free(str);
     } else if (xpath) {
-        r = sr_get_data(sess, xpath, &data);
+        r = sr_get_data(sess, xpath, 0, &data);
     } else {
-        r = sr_get_data(sess, "/*", &data);
+        r = sr_get_data(sess, "/*", 0, &data);
     }
     if (r != SR_ERR_OK) {
         error_print(r, "Getting data failed");
@@ -368,7 +368,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
             return EXIT_FAILURE;
         }
 
-        r = sr_apply_changes(sess);
+        r = sr_apply_changes(sess, 0);
         if (r != SR_ERR_OK) {
             error_print(r, "Failed to merge edit data");
             return EXIT_FAILURE;
@@ -441,7 +441,7 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
     }
 
     /* send rpc/action */
-    r = sr_rpc_send_tree(sess, input, &output);
+    r = sr_rpc_send_tree(sess, input, 0, &output);
     lyd_free_withsiblings(input);
     if (r) {
         error_print(r, "Sending RPC/action failed");
@@ -515,14 +515,14 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
         }
 
         /* replace config */
-        r = sr_replace_config(sess, module_name, data, target_ds);
+        r = sr_replace_config(sess, module_name, data, target_ds, 0);
         if (r) {
             error_print(r, "Replace config failed");
             return EXIT_FAILURE;
         }
     } else {
         /* copy config */
-        r = sr_copy_config(sess, module_name, source_ds, target_ds);
+        r = sr_copy_config(sess, module_name, source_ds, target_ds, 0);
         if (r) {
             error_print(r, "Copy config failed");
             return EXIT_FAILURE;

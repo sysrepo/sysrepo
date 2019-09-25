@@ -362,13 +362,15 @@ sr_oper_data_trim_config_r(struct lyd_node **data)
  * @param[in] sid Sysrepo session ID.
  * @param[in] evpipe_num Subscriber event pipe number.
  * @param[in] parent Data parent required for the subscription, NULL if top-level.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[in,out] data Data tree with appended operational data.
  * @param[out] cb_error_info Callback error info returned by the client, if any.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, const char *request_xpath, sr_sid_t sid,
-        uint32_t evpipe_num, const struct lyd_node *parent, struct lyd_node **data, sr_error_info_t **cb_error_info)
+        uint32_t evpipe_num, const struct lyd_node *parent, uint32_t timeout_ms, struct lyd_node **data,
+        sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *oper_data = NULL, *parent_dup = NULL;
@@ -388,7 +390,8 @@ sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, co
     }
 
     /* get data from client */
-    err_info = sr_shmsub_oper_notify(ly_mod, xpath, request_xpath, parent_dup, sid, evpipe_num, &oper_data, cb_error_info);
+    err_info = sr_shmsub_oper_notify(ly_mod, xpath, request_xpath, parent_dup, sid, evpipe_num, timeout_ms, &oper_data,
+            cb_error_info);
     lyd_free_withsiblings(parent_dup);
     if (err_info) {
         return err_info;
@@ -457,13 +460,14 @@ sr_xpath_oper_data_remove(const char *xpath, struct lyd_node *parent, struct lyd
  * @param[in] ds Datastore of the data.
  * @param[in] request_xpath XPath of the data request.
  * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[in,out] data Operational data tree.
  * @param[out] cb_error_info Callback error info returned by the client, if any.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_datastore_t ds, const char *request_xpath,
-        char *ext_shm_addr, struct lyd_node **data, sr_error_info_t **cb_error_info)
+        char *ext_shm_addr, uint32_t timeout_ms, struct lyd_node **data, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_sub_t *shm_msub;
@@ -472,7 +476,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_datas
     uint16_t i, j;
     struct ly_set *set;
 
-    assert(!IS_WRITABLE_DS(ds));
+    assert(!IS_WRITABLE_DS(ds) && timeout_ms);
 
     /* add possible default state data nodes */
     lyd_validate_modules(data, &mod->ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
@@ -520,7 +524,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_datas
                             || (shm_msub->sub_type == SR_OPER_SUB_STATE))) {
                     /* replace them with the ones retrieved from a client */
                     if ((err_info = sr_xpath_oper_data_append(mod->ly_mod, xpath, request_xpath, sid, shm_msub->evpipe_num,
-                                set->set.d[j], data, cb_error_info))) {
+                                set->set.d[j], timeout_ms, data, cb_error_info))) {
                         goto error;
                     }
                 }
@@ -545,7 +549,7 @@ next_iter:
                         || (shm_msub->sub_type == SR_OPER_SUB_STATE))) {
                 /* replace them with the ones retrieved from a client */
                 if ((err_info = sr_xpath_oper_data_append(mod->ly_mod, xpath, request_xpath, sid, shm_msub->evpipe_num,
-                            NULL, data, cb_error_info))) {
+                            NULL, timeout_ms, data, cb_error_info))) {
                     return err_info;
                 }
             }
@@ -727,12 +731,13 @@ sr_modcache_module_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_m
  * @param[in] mod Mod info module to process.
  * @param[in] sid Sysrepo session ID.
  * @param[in] request_xpath XPath of the data request.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[out] cb_error_info Callback error info returned by operational subscribers, if any.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod, sr_sid_t *sid,
-        const char *request_xpath, sr_error_info_t **cb_error_info)
+        const char *request_xpath, uint32_t timeout_ms, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_cache_s *mod_cache = NULL;
@@ -793,7 +798,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
         if (!IS_WRITABLE_DS(mod_info->ds)) {
             /* append any operational data provided by clients */
             if ((err_info = sr_module_oper_data_update(mod, *sid, mod_info->ds, request_xpath, mod_info->conn->ext_shm.addr,
-                        &mod_info->data, cb_error_info))) {
+                        timeout_ms, &mod_info->data, cb_error_info))) {
                 return err_info;
             }
 
@@ -819,12 +824,13 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
  * @param[in] shm_deps SHM dependencies of relevant instance-identifiers.
  * @param[in] shm_dep_count SHM dependency count.
  * @param[in] sid Sysrepo session ID.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[out] cb_error_info Callback error info returned by data-rpovide subscribers, if any.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_modinfo_add_instid_deps_data(struct sr_mod_info_s *mod_info, sr_mod_data_dep_t *shm_deps, uint16_t shm_dep_count,
-        const struct lyd_node *data, sr_sid_t *sid, sr_error_info_t **cb_error_info)
+        const struct lyd_node *data, sr_sid_t *sid, uint32_t timeout_ms, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn;
@@ -904,7 +910,7 @@ sr_modinfo_add_instid_deps_data(struct sr_mod_info_s *mod_info, sr_mod_data_dep_
 
         /* add this module data if not already there */
         if ((j < mod_info->mod_count) && (err_info = sr_modinfo_module_data_load(mod_info, &mod_info->mods[j], sid,
-                    NULL, cb_error_info))) {
+                    NULL, timeout_ms, cb_error_info))) {
             goto cleanup;
         }
     }
@@ -942,7 +948,7 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *s
                 /* check all instids and add their target modules as deps, other inst-ids do not need to be revalidated */
                 if ((err_info = sr_modinfo_add_instid_deps_data(mod_info,
                         (sr_mod_data_dep_t *)(mod_info->conn->ext_shm.addr + mod->shm_mod->data_deps),
-                        mod->shm_mod->data_dep_count, mod_info->data, sid, cb_error_info))) {
+                        mod->shm_mod->data_dep_count, mod_info->data, sid, 0, cb_error_info))) {
                     goto cleanup;
                 }
             }
@@ -1021,7 +1027,7 @@ cleanup:
 
 sr_error_info_t *
 sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_mod_data_dep_t *shm_deps,
-        uint16_t shm_dep_count, int output, sr_sid_t *sid, sr_error_info_t **cb_error_info)
+        uint16_t shm_dep_count, int output, sr_sid_t *sid, uint32_t timeout_ms, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *top_op;
@@ -1070,7 +1076,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_m
     }
 
     /* check instids and add their target modules as deps */
-    if ((err_info = sr_modinfo_add_instid_deps_data(mod_info, shm_deps, shm_dep_count, op, sid, cb_error_info))) {
+    if ((err_info = sr_modinfo_add_instid_deps_data(mod_info, shm_deps, shm_dep_count, op, sid, timeout_ms, cb_error_info))) {
         goto cleanup;
     }
 
@@ -1095,7 +1101,7 @@ cleanup:
 
 sr_error_info_t *
 sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache, sr_sid_t *sid, const char *request_xpath,
-        sr_error_info_t **cb_error_info)
+        uint32_t timeout_ms, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -1118,7 +1124,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & mod_type) {
-            if ((err_info = sr_modinfo_module_data_load(mod_info, mod, sid, request_xpath, cb_error_info))) {
+            if ((err_info = sr_modinfo_module_data_load(mod_info, mod, sid, request_xpath, timeout_ms, cb_error_info))) {
                 /* if cached, we keep both cache lock and flag, so it is fine */
                 return err_info;
             }

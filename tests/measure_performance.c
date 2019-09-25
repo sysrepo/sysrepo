@@ -286,7 +286,7 @@ perf_data_provide_test(void **state, int op_num, int *items)
         val_cnt = 0;
         value = NULL;
 
-        rc = sr_get_items(dp_setup->session, "/ietf-interfaces:interfaces-state/interface/statistics//*", &value, &val_cnt);
+        rc = sr_get_items(dp_setup->session, "/ietf-interfaces:interfaces-state/interface/statistics//*", 0, &value, &val_cnt);
         assert_int_equal(SR_ERR_OK, rc);
 
         sr_free_values(value, val_cnt);
@@ -314,7 +314,7 @@ perf_get_item_test(void **state, int op_num, int *items)
     for (int i = 0; i<op_num; i++){
 
         /* existing leaf */
-        rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
+        rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &value);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(value);
         assert_int_equal(SR_STRING_T, value->type);
@@ -345,7 +345,7 @@ perf_get_item_first_test(void **state, int op_num, int *items)
     for (int i = 0; i<op_num; i++){
 
         /* existing first node in data tree */
-        rc = sr_get_item(session, "/example-module:container", &value);
+        rc = sr_get_item(session, "/example-module:container", 0, &value);
         if (SR_ERR_OK == rc) {
             *items = 1;
             assert_non_null(value);
@@ -380,7 +380,7 @@ perf_get_item_with_data_load_test(void **state, int op_num, int *items)
 
 
         /* existing leaf */
-        rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
+        rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &value);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(value);
         assert_int_equal(SR_STRING_T, value->type);
@@ -413,7 +413,7 @@ perf_get_items_test(void **state, int op_num, int *items)
     /* perform a get-items request */
     for (int i = 0; i<op_num; i++){
         /* existing leaf */
-        rc = sr_get_items(session, "/example-module:container/list/leaf", &values, &count);
+        rc = sr_get_items(session, "/example-module:container/list/leaf", 0, &values, &count);
         assert_int_equal(SR_ERR_OK, rc);
         sr_free_values(values, count);
     }
@@ -469,7 +469,7 @@ perf_get_ietf_intefaces_test(void **state, int op_num, int *items)
     for (int i = 0; i<op_num; i++){
         count = 0;
         /* existing leaf */
-        rc = sr_get_data(session, "/ietf-interfaces:interfaces/*", &data);
+        rc = sr_get_data(session, "/ietf-interfaces:interfaces/*", 0, &data);
         assert_int_equal(SR_ERR_OK, rc);
         count += get_nodes_cnt(data);
         lyd_free_withsiblings(data);
@@ -498,7 +498,7 @@ perf_get_subtree_test(void **state, int op_num, int *items)
     /* perform a get-item request */
     for (int i = 0; i<op_num; i++){
         /* existing leaf */
-        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &tree);
+        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(tree);
         assert_int_equal(LY_TYPE_STRING, ((struct lys_node_leaf *)tree->schema)->type.base);
@@ -528,7 +528,7 @@ perf_get_subtree_with_data_load_test(void **state, int op_num, int *items)
         assert_int_equal(rc, SR_ERR_OK);
 
         /* existing leaf */
-        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &tree);
+        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(tree);
         assert_int_equal(LY_TYPE_STRING, ((struct lys_node_leaf *)tree->schema)->type.base);
@@ -561,7 +561,7 @@ perf_get_subtrees_test(void **state, int op_num, int *items)
     for (int i = 0; i<op_num; i++){
         count = 0;
         /* existing leaf */
-        rc = sr_get_data(session, "/example-module:container/list/leaf", &trees);
+        rc = sr_get_data(session, "/example-module:container/list/leaf", 0, &trees);
         assert_int_equal(SR_ERR_OK, rc);
         /* skip 2 keys */
         assert_string_equal(trees->child->child->next->next->schema->name, "leaf");
@@ -592,7 +592,7 @@ perf_get_ietf_intefaces_tree_test(void **state, int op_num, int *items)
 
     /* perform a get-subtrees request */
     for (int i = 0; i<op_num; i++){
-        rc = sr_get_data(session, "/ietf-interfaces:interfaces/.", &trees);
+        rc = sr_get_data(session, "/ietf-interfaces:interfaces/.", 0, &trees);
         assert_int_equal(rc, SR_ERR_OK);
         if (0 == i) {
             total_cnt = get_nodes_cnt(trees);
@@ -715,7 +715,7 @@ perf_commit_test(void **state, int op_num, int *items)
             rc = sr_set_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
         }
         assert_int_equal(rc, SR_ERR_OK);
-        rc = sr_apply_changes(session);
+        rc = sr_apply_changes(session, 0);
         assert_int_equal(rc, SR_ERR_OK);
         even = !even;
     }
@@ -799,7 +799,7 @@ perf_rpc_test(void **state, int op_num, int *items)
 
     /* send the RPC */
     for (int i = 0; i < op_num; i++) {
-        rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
+        rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, 0, &output, &output_cnt);
         assert_int_equal(rc, SR_ERR_OK);
         assert_true(output_cnt > 0);
         sr_free_values(output, output_cnt);
@@ -970,7 +970,7 @@ createDataTreeExampleModule(sr_session_ctx_t *sess)
     root = lyd_new_path(NULL, ctx, XPATH, "Leaf value", 0, 0);
     assert_non_null(root);
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, SR_DS_RUNNING));
+    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, SR_DS_RUNNING, 0));
 }
 
 static void
@@ -999,7 +999,7 @@ createDataTreeLargeExampleModule(sr_session_ctx_t *sess, int list_count)
     lyd_new_path(root, ctx, "/example-module:container/list[key1='key1'][key2='key2']/leaf", "Leaf value", 0, 0);
 
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, SR_DS_RUNNING));
+    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, SR_DS_RUNNING, 0));
 }
 
 static void
@@ -1052,7 +1052,7 @@ createDataTreeLargeIETFinterfacesModule(sr_session_ctx_t *sess, size_t if_count)
 
 
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "ietf-interfaces", root, SR_DS_RUNNING));
+    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "ietf-interfaces", root, SR_DS_RUNNING, 0));
 }
 
 int

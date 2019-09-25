@@ -517,7 +517,7 @@ test_change_feature(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/features:l3", "val3", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* disable feature */
@@ -553,7 +553,7 @@ test_change_feature(void **state)
     /* remove the conditional data */
     ret = sr_delete_item(sess, "/features:l2", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* close connection (also frees session) so that changes are applied */
@@ -590,9 +590,9 @@ test_change_feature(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/features:l3", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_copy_config(sess, NULL, SR_DS_STARTUP, SR_DS_RUNNING);
+    ret = sr_copy_config(sess, NULL, SR_DS_STARTUP, SR_DS_RUNNING, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_session_stop(sess);
 

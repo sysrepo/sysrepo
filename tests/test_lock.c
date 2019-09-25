@@ -176,7 +176,7 @@ test_session_stop_unlock(void **state)
     assert_int_equal(ret, SR_ERR_LOCKED);
 
     /* read some data while the module is locked */
-    ret = sr_get_subtree(sess2, "/test:cont", &subtree);
+    ret = sr_get_subtree(sess2, "/test:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_withsiblings(subtree);
 

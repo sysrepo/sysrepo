@@ -102,12 +102,12 @@ clear_interfaces(void **state)
     sr_session_switch_ds(st->sess, SR_DS_STARTUP);
 
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
-    sr_apply_changes(st->sess);
+    sr_apply_changes(st->sess, 0);
 
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);
 
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
-    sr_apply_changes(st->sess);
+    sr_apply_changes(st->sess, 0);
 
     return 0;
 }
@@ -245,14 +245,14 @@ test_enabled_partial(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth128']/type",
             "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* nothing should be in "operational" because there is no subscription */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(subtree);
@@ -273,7 +273,7 @@ test_enabled_partial(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
@@ -307,7 +307,7 @@ test_enabled_partial(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(subtree);
@@ -372,7 +372,7 @@ test_simple(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -383,7 +383,7 @@ test_simple(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
@@ -408,7 +408,7 @@ test_simple(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational again */
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
@@ -472,7 +472,7 @@ test_fail(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as state data provider*/
@@ -484,7 +484,7 @@ test_fail(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     sr_unsubscribe(subscr);
@@ -533,7 +533,7 @@ test_config(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type",
             "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -549,7 +549,7 @@ test_config(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(data->dflt, 1);
 
     ret = lyd_print_mem(&str1, data->next, LYD_XML, LYP_WITHSIBLINGS);
@@ -616,7 +616,7 @@ test_list(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -635,7 +635,7 @@ test_list(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(data->next->dflt, 1);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
@@ -736,7 +736,7 @@ test_nested(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -758,7 +758,7 @@ test_nested(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
@@ -853,7 +853,7 @@ test_mixed(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -869,7 +869,7 @@ test_mixed(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
@@ -916,7 +916,7 @@ test_state(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -932,7 +932,7 @@ test_state(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_STATE);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);

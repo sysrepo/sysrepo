@@ -126,6 +126,15 @@
 /** timeout for locking module cache (s) */
 #define SR_MOD_CACHE_LOCK_TIMEOUT 5
 
+/** default timeout for configuration subscription callback (ms) */
+#define SR_CONF_CB_TIMEOUT 5000
+
+/** default timeout for operational subscription callback (ms) */
+#define SR_OPER_CB_TIMEOUT 5000
+
+/** default timeout for RPC/action subscription callback (ms) */
+#define SR_RPC_CB_TIMEOUT 2000
+
 /** permissions of main SHM lock file and main SHM itself */
 #define SR_MAIN_SHM_PERM 00666
 

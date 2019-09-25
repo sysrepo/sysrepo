@@ -103,7 +103,7 @@ clear_test_refs(void **state)
     sr_delete_item(st->sess, "/refs:ll[.='y']", 0);
     sr_delete_item(st->sess, "/refs:ll[.='z']", 0);
     sr_delete_item(st->sess, "/refs:lll[key='1']", 0);
-    sr_apply_changes(st->sess);
+    sr_apply_changes(st->sess, 0);
 
     return 0;
 }
@@ -120,26 +120,26 @@ test_leafref(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/refs:lref", "10", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* cause leafref not to point at a node (2x) */
     ret = sr_set_item_str(st->sess, "/refs:lref", "8", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_validate(st->sess);
+    ret = sr_validate(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(st->sess, "/test:test-leaf", "8", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_validate(st->sess);
+    ret = sr_validate(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check final datastore contents */
-    ret = sr_get_data(st->sess, "/test:* | /refs:*", &data);
+    ret = sr_get_data(st->sess, "/test:* | /refs:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_string_equal(data->schema->name, "lref");
@@ -160,59 +160,59 @@ test_instid(void **state)
     /* inst-id target does not exist */
     ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:l", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     /* create the target */
     ret = sr_set_item_str(st->sess, "/refs:l", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* point to a leaf-list */
     ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:ll[.='z']", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     ret = sr_set_item_str(st->sess, "/refs:ll", "y", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/refs:ll", "z", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* point to a list */
     ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:lll[refs:key='1']", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     ret = sr_set_item_str(st->sess, "/refs:lll[key='1']", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* foreign leaf */
     ret = sr_set_item_str(st->sess, "/refs:inst-id", "/test:test-leaf", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     ret = sr_set_item_str(st->sess, "/test:test-leaf", "5", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* default inst-id */
     ret = sr_set_item_str(st->sess, "/refs:cont", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     ret = sr_set_item_str(st->sess, "/test:ll1", "-3000", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 }
 

@@ -81,7 +81,7 @@ oven_config_change_cb(sr_session_ctx_t *session, const char *module_name, const 
     (void)private_data;
 
     /* get the value from sysrepo, we do not care if the value did not change in our case */
-    rc = sr_get_item(session, "/oven:oven/temperature", &val);
+    rc = sr_get_item(session, "/oven:oven/temperature", 0, &val);
     if (rc != SR_ERR_OK) {
         goto sr_error;
     }
@@ -89,7 +89,7 @@ oven_config_change_cb(sr_session_ctx_t *session, const char *module_name, const 
     config_temperature = val->data.uint8_val;
     sr_free_val(val);
 
-    rc = sr_get_item(session, "/oven:oven/turned-on", &val);
+    rc = sr_get_item(session, "/oven:oven/turned-on", 0, &val);
     if (rc != SR_ERR_OK) {
         goto sr_error;
     }

@@ -114,7 +114,7 @@ teardown_f(void **state)
     sr_delete_item(sess, "/test:ll1[.='1']", 0);
     sr_delete_item(sess, "/test:ll1[.='2']", 0);
     sr_delete_item(sess, "/test:cont", 0);
-    sr_apply_changes(sess);
+    sr_apply_changes(sess, 0);
 
     sr_session_switch_ds(sess, SR_DS_STARTUP);
 
@@ -124,7 +124,7 @@ teardown_f(void **state)
     sr_delete_item(sess, "/test:ll1[.='1']", 0);
     sr_delete_item(sess, "/test:ll1[.='2']", 0);
     sr_delete_item(sess, "/test:cont", 0);
-    sr_apply_changes(sess);
+    sr_apply_changes(sess, 0);
 
     sr_session_stop(sess);
 
@@ -385,11 +385,11 @@ copy_empty_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform 1st copy-config */
-    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, SR_DS_RUNNING);
+    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, SR_DS_RUNNING, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
@@ -417,18 +417,18 @@ copy_empty_thread(void *arg)
 
     ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform 2nd copy-config */
-    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, SR_DS_RUNNING);
+    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, SR_DS_RUNNING, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
@@ -466,7 +466,7 @@ subscribe_empty_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
@@ -698,15 +698,15 @@ copy_simple_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled", "false", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform 1st copy-config */
-    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, SR_DS_RUNNING);
+    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, SR_DS_RUNNING, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
@@ -735,15 +735,15 @@ copy_simple_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform 2nd copy-config */
-    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, SR_DS_RUNNING);
+    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, SR_DS_RUNNING, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
@@ -784,7 +784,7 @@ subscribe_simple_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(sess, SR_DS_STARTUP);
@@ -794,7 +794,7 @@ subscribe_simple_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
@@ -921,15 +921,15 @@ copy_userord_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_move_item(sess, "/test:cont/ll2[.='1']", SR_MOVE_AFTER, NULL, "2");
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform 1st copy-config */
-    ret = sr_copy_config(sess, "test", SR_DS_STARTUP, SR_DS_RUNNING);
+    ret = sr_copy_config(sess, "test", SR_DS_STARTUP, SR_DS_RUNNING, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/test:*", &data);
+    ret = sr_get_data(sess, "/test:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     node = data;
@@ -971,15 +971,15 @@ copy_userord_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_move_item(sess, "/test:cont/l2[k='a']", SR_MOVE_BEFORE, "[k='b']", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform 2nd copy-config (no changes) */
-    ret = sr_copy_config(sess, "test", SR_DS_STARTUP, SR_DS_RUNNING);
+    ret = sr_copy_config(sess, "test", SR_DS_STARTUP, SR_DS_RUNNING, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree (should be the same) */
-    ret = sr_get_data(sess, "/test:*", &data);
+    ret = sr_get_data(sess, "/test:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     node = data;
@@ -1053,10 +1053,10 @@ subscribe_userord_thread(void *arg)
     ret = sr_set_item_str(sess, "/test:cont/ll2[.='2']", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_copy_config(sess, "test", SR_DS_RUNNING, SR_DS_STARTUP);
+    ret = sr_copy_config(sess, "test", SR_DS_RUNNING, SR_DS_STARTUP, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe */
@@ -1322,12 +1322,12 @@ replace_thread(void *arg)
     assert_non_null(node);
 
     /* perform 1st replace-config */
-    ret = sr_replace_config(sess, "ietf-interfaces", config, SR_DS_RUNNING);
+    ret = sr_replace_config(sess, "ietf-interfaces", config, SR_DS_RUNNING, 0);
     config = NULL;
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/ietf-interfaces:interfaces", &node);
+    ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, &node);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, node, LYD_XML, LYP_WITHSIBLINGS);
@@ -1366,12 +1366,12 @@ replace_thread(void *arg)
     assert_non_null(node);
 
     /* perform 2nd replace-config */
-    ret = sr_replace_config(sess, "test", config, SR_DS_RUNNING);
+    ret = sr_replace_config(sess, "test", config, SR_DS_RUNNING, 0);
     config = NULL;
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/test:*", &node);
+    ret = sr_get_data(sess, "/test:*", 0, &node);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_string_equal(node->schema->name, "l1");
@@ -1415,7 +1415,7 @@ subscribe_replace_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe */
@@ -1435,7 +1435,7 @@ subscribe_replace_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/test:cont/ll2[.='3']", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe */

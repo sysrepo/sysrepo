@@ -198,7 +198,7 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
         sr_free_change_iter(iter);
 
         /* check current data tree */
-        ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", &subtree);
+        ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
         ret = lyd_schema_sort(subtree, 1);
@@ -274,7 +274,7 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
         sr_free_change_iter(iter);
 
         /* check current data tree */
-        ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", &subtree);
+        ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
         ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
@@ -317,11 +317,11 @@ apply_change_done_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform 1st change */
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
@@ -342,11 +342,11 @@ apply_change_done_thread(void *arg)
     /* perform 2nd change */
     ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
@@ -600,11 +600,11 @@ apply_update_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform 1st change */
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
@@ -629,11 +629,11 @@ apply_update_thread(void *arg)
     /* perform 2nd change */
     ret = sr_delete_item(sess, "/ietf-interfaces:interfaces/interface[name='eth52']", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
@@ -749,7 +749,7 @@ apply_update_fail_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform the change (it should fail) */
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
     ret = sr_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
@@ -758,7 +758,7 @@ apply_update_fail_thread(void *arg)
     assert_string_equal(err_info->err[0].xpath, "/path/to/a/node");
 
     /* check current data tree */
-    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
@@ -1061,7 +1061,7 @@ apply_change_fail_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform the change (it should fail) */
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     /* no custom error message set */
@@ -1072,7 +1072,7 @@ apply_change_fail_thread(void *arg)
     assert_null(err_info->err[0].xpath);
 
     /* check current data tree */
-    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
@@ -1087,11 +1087,11 @@ apply_change_fail_thread(void *arg)
     /* perform a single change (it should fail) */
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     /* check current data tree */
-    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", &subtree);
+    ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
@@ -1123,7 +1123,7 @@ subscribe_change_fail_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/test:l1[k='key2']/v", "2", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_ifc_change_fail_cb, st, 0, 0, &subscr);
@@ -1161,7 +1161,7 @@ subscribe_change_fail_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/test:l1[k='key2']", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     sr_session_stop(sess);
@@ -1484,11 +1484,11 @@ apply_change_done_dflt_thread(void *arg)
      *
      * (create list that will cause other 2 containers with 1 default value and another default value to be created)
      */
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/defaults:*", &data);
+    ret = sr_get_data(sess, "/defaults:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_string_equal(data->schema->name, "l1");
@@ -1523,11 +1523,11 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_set_item_str(sess, "/defaults:l1[k='when-true']/cont1/cont2/dflt1", "5", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/defaults:*", &data);
+    ret = sr_get_data(sess, "/defaults:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check only first node */
@@ -1547,11 +1547,11 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_set_item_str(sess, "/defaults:l1[k='when-true']/cont1/cont2/dflt1", "10", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/defaults:*", &data);
+    ret = sr_get_data(sess, "/defaults:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check only first node */
@@ -1571,11 +1571,11 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_delete_item(sess, "/defaults:l1[k='when-true']/cont1/cont2/dflt1", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/defaults:*", &data);
+    ret = sr_get_data(sess, "/defaults:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check only first node */
@@ -1593,11 +1593,11 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_delete_item(sess, "/defaults:l1[k='when-true']", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/defaults:*", &data);
+    ret = sr_get_data(sess, "/defaults:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_null(data);
@@ -1927,13 +1927,13 @@ apply_change_done_when_thread(void *arg)
      *
      * (create container with a leaf and false when)
      */
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_discard_changes(sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/when2:*", &data);
+    ret = sr_get_data(sess, "/when2:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_null(data);
@@ -1948,11 +1948,11 @@ apply_change_done_when_thread(void *arg)
     ret = sr_set_item_str(sess, "/when1:l1", "good", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/when1:* | /when2:*", &data);
+    ret = sr_get_data(sess, "/when1:* | /when2:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_string_equal(data->schema->name, "cont");
@@ -1971,11 +1971,11 @@ apply_change_done_when_thread(void *arg)
     ret = sr_set_item_str(sess, "/when1:l2", "night", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/when1:* | /when2:*", &data);
+    ret = sr_get_data(sess, "/when1:* | /when2:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_string_equal(data->schema->name, "ll");
@@ -1992,11 +1992,11 @@ apply_change_done_when_thread(void *arg)
      */
     ret = sr_delete_item(sess, "/when1:l2", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/when1:* | /when2:*", &data);
+    ret = sr_get_data(sess, "/when1:* | /when2:*", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_null(data);
 
@@ -2381,7 +2381,7 @@ apply_change_done_xpath_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform 1st change */
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform 2nd change */
@@ -2393,7 +2393,7 @@ apply_change_done_xpath_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/test:cont", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that we have finished applying changes */
@@ -2507,7 +2507,7 @@ apply_change_unlocked_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform 1st change */
-    ret = sr_apply_changes(sess);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that we have finished applying changes */
