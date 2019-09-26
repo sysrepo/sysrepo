@@ -155,23 +155,26 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
             goto cleanup_unlock;
         }
         changed = 1;
-    } else if (created || (!(opts & SR_CONN_NO_SCHED_CHANGES) && !((sr_main_shm_t *)conn->main_shm.addr)->conn_state.conn_count)) {
-        /* if there are no connections, parse internal data and apply scheduled changes */
+    } else {
+        /* parse sysrepo module data */
         if ((err_info = sr_lydmods_parse(conn->ly_ctx, &sr_mods))) {
             goto cleanup_unlock;
         }
-        if ((err_info = sr_lydmods_sched_apply(sr_mods, conn->ly_ctx, &changed, &fail))) {
-            goto cleanup_unlock;
-        }
-        if (fail) {
-            /* the context is not valid anymore, we have to create it from scratch in the connection
-             * but it cannot be destroyed right away because sr_mods data was parsed with it */
-            fail_ctx = conn->ly_ctx;
-            if ((err_info = sr_shmmain_ly_ctx_init(&conn->ly_ctx))) {
+        if (created || (!(opts & SR_CONN_NO_SCHED_CHANGES) && !((sr_main_shm_t *)conn->main_shm.addr)->conn_state.conn_count)) {
+            /* apply scheduled changes if we can */
+            if ((err_info = sr_lydmods_sched_apply(sr_mods, conn->ly_ctx, &changed, &fail))) {
                 goto cleanup_unlock;
             }
-        } else {
-            ctx_updated = 1;
+            if (fail) {
+                /* the context is not valid anymore, we have to create it from scratch in the connection
+                 * but it cannot be destroyed right away because sr_mods data was parsed with it */
+                fail_ctx = conn->ly_ctx;
+                if ((err_info = sr_shmmain_ly_ctx_init(&conn->ly_ctx))) {
+                    goto cleanup_unlock;
+                }
+            } else {
+                ctx_updated = 1;
+            }
         }
     }
 
