@@ -81,7 +81,7 @@ endif()
 option(GEN_CPP_BINDINGS "Enable C++ bindings generation." OFF)
 option(BUILD_CPP_EXAMPLES "Enable C++ example application compilation." ON)
 
-set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_COVERAGE} -Wall -Wextra -Wpedantic -std=c99 -Wno-language-extension-token")
+set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_COVERAGE} -Wall -Wextra -Wpedantic -std=c99")
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
 
