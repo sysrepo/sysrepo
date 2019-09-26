@@ -2280,7 +2280,8 @@ sr_error_info_t *
 sr_get_trim_predicates(const char *expr, char **expr2)
 {
     sr_error_info_t *err_info = NULL;
-    char quot = 0, pred = 0, *str;
+    int quot = 0, pred = 0;
+    char *str;
     const char *start, *ptr;
 
     str = malloc(strlen(expr) + 1);
