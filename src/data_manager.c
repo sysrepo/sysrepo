@@ -6186,25 +6186,22 @@ dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modu
     rc = dm_get_module_and_lockw(ctx, module_name, &schema_info);
     CHECK_RC_LOG_RETURN(rc, "Get module failed for module %s", module_name);
 
-    struct lys_node *iter = NULL, *child = NULL;
+    struct lys_node *iter = NULL, *child;
     sr_list_t *stack = NULL;
     rc = sr_list_init(&stack);
     CHECK_RC_MSG_RETURN(rc, "List init failed");
 
     /* iterate through top-level nodes */
-    LY_TREE_FOR(schema_info->module->data, iter)
-    {
-        if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype) && dm_is_node_enabled(iter)) {
+    while ((iter = (struct lys_node *)lys_getnext(iter, NULL, schema_info->module, 0))) {
+        if (dm_is_node_enabled(iter)) {
             rc = dm_set_node_state(iter, DM_NODE_DISABLED);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Set node state failed");
 
-            if ((LYS_CONTAINER | LYS_LIST) & iter->nodetype) {
-                LY_TREE_FOR(iter->child, child)
-                {
-                    if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype) && dm_is_node_enabled(child)) {
-                        rc = sr_list_add(stack, child);
-                        CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
-                    }
+            child = NULL;
+            while ((child = (struct lys_node *)lys_getnext(child, iter, NULL, 0))) {
+                if (dm_is_node_enabled(child)) {
+                    rc = sr_list_add(stack, child);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
                 }
             }
         }
@@ -6218,14 +6215,11 @@ dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modu
 
         sr_list_rm_at(stack, stack->count - 1);
 
-        if ((LYS_CONTAINER | LYS_LIST) & iter->nodetype) {
-
-            LY_TREE_FOR(iter->child, child)
-            {
-                if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & child->nodetype) && dm_is_node_enabled(child)) {
-                    rc = sr_list_add(stack, child);
-                    CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
-                }
+        child = NULL;
+        while ((child = (struct lys_node *)lys_getnext(child, iter, NULL, 0))) {
+            if (dm_is_node_enabled(child)) {
+                rc = sr_list_add(stack, child);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
             }
         }
     }
