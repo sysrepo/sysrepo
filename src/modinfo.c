@@ -986,7 +986,7 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *s
     /* validate */
     flags = LYD_OPT_CONFIG | LYD_OPT_WHENAUTODEL | LYD_OPT_VAL_DIFF;
     if (lyd_validate_modules(&mod_info->data, valid_mods, valid_mod_count, flags, &diff)) {
-        sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         SR_ERRINFO_VALID(&err_info);
         goto cleanup;
     }
@@ -1335,6 +1335,9 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
             /* exact move position will not be known */
             op_enum = "merge";
             break;
+        default:
+            SR_ERRINFO_INT(&err_info);
+            goto cleanup;
         }
         next = lyd_new_leaf(root, NULL, "operation", op_enum);
         if (!next) {

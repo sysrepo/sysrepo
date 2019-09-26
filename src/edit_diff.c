@@ -1622,7 +1622,7 @@ static sr_error_info_t *
 sr_diff_op(const struct lyd_node *diff_node, enum edit_op *op, const char **key_or_value)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_attr *attr;
+    struct lyd_attr *attr = NULL;
     const struct lyd_node *diff_parent;
     const char *attr_name;
 
@@ -2065,7 +2065,7 @@ sr_ly_diff_merge_deleted_update_r(struct lyd_node *first_diff)
 {
     struct lyd_node *next, *iter;
     int own_oper;
-    const char *op, *new_op;
+    const char *op, *new_op = "";
     sr_error_info_t *err_info = NULL;
 
     /* update operations of all the siblings */

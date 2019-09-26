@@ -2716,7 +2716,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
     if (i < mod_info.mod_count) {
         /* not full DS lock */
         *is_locked = 0;
-    } else {
+    } else if (mod_info.mod_count) {
         /* the module or all modules is DS locked by a single SR session */
         *is_locked = 1;
         if (id) {
