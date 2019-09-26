@@ -108,6 +108,7 @@ ac_module_info_free_cb(void *item)
     ac_module_info_t *info = (ac_module_info_t *) item;
     if (NULL != info) {
         free((void*)info->module_name);
+        free((void*)info->xpath);
     }
     free(info);
 }
@@ -267,10 +268,15 @@ ac_check_module_node_permissions(ac_session_t *session, const char *module_name,
                 free(module_info);
                 return rc;
             }
+            if (NULL != node_xpath) {
+                module_info->xpath = strdup(node_xpath);
+            }
         }
         rc = sr_btree_insert(session->module_info_btree, module_info);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Cannot insert new entry into binary tree for module access control info.");
+            free((void *)module_info->module_name);
+            free((void *)module_info->xpath);
             free(module_info);
             return SR_ERR_INTERNAL;
         }
