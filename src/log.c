@@ -155,10 +155,10 @@ sr_log_msg(int plugin, sr_log_level_t ll, const char *msg, const char *path)
  * @param[in] err_code Error code.
  * @param[in] xpath Error XPath.
  * @param[in] format Error message format.
- * @param[in] vargs Error message variable arguments.
+ * @param[in] vargs Optional error message variable arguments.
  */
 static void
-sr_errinfo_add(sr_error_info_t **err_info, sr_error_t err_code, const char *xpath, const char *format, va_list vargs)
+sr_errinfo_add(sr_error_info_t **err_info, sr_error_t err_code, const char *xpath, const char *format, va_list *vargs)
 {
     void *mem;
 
@@ -179,7 +179,7 @@ sr_errinfo_add(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
     (*err_info)->err = mem;
 
     if (vargs) {
-        if (vasprintf(&(*err_info)->err[(*err_info)->err_count].message, format, vargs) == -1) {
+        if (vasprintf(&(*err_info)->err[(*err_info)->err_count].message, format, *vargs) == -1) {
             return;
         }
     } else {
@@ -208,7 +208,7 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
     int idx;
 
     va_start(vargs, format);
-    sr_errinfo_add(err_info, err_code, xpath, format, vargs);
+    sr_errinfo_add(err_info, err_code, xpath, format, &vargs);
     va_end(vargs);
 
     /* print it */
