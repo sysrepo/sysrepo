@@ -131,7 +131,13 @@ if(NOT SR_HAVE_EACCESS)
 endif()
 check_include_file("stdatomic.h" SR_HAVE_STDATOMIC)
 check_struct_has_member(pthread_mutex_t __align pthread.h SR_MUTEX_HAS_ALIGN LANGUAGE C)
+if(NOT SR_MUTEX_HAS_ALIGN)
+    set(SR_MUTEX_HAS_ALIGN 0)
+endif()
 check_struct_has_member(pthread_cond_t __align pthread.h SR_COND_HAS_ALIGN LANGUAGE C)
+if(NOT SR_COND_HAS_ALIGN)
+    set(SR_COND_HAS_ALIGN 0)
+endif()
 
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)

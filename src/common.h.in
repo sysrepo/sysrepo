@@ -72,14 +72,14 @@
 #if @SR_MUTEX_HAS_ALIGN@
 # define SR_MUTEX_ALIGN_CHECK(mutex) ((uintptr_t)mutex % sizeof mutex->__align)
 #else
-# define SR_MUTEX_ALIGN_CHECK(mutex) 0
+# define SR_MUTEX_ALIGN_CHECK(mutex) ((uintptr_t)mutex % 2)
 #endif
 
 /** macro for cond align check */
 #if @SR_COND_HAS_ALIGN@
 # define SR_COND_ALIGN_CHECK(cond) ((uintptr_t)cond % sizeof cond->__align)
 #else
-# define SR_COND_ALIGN_CHECK(cond) 0
+# define SR_COND_ALIGN_CHECK(cond) ((uintptr_t)cond % 2)
 #endif
 
 /** macro for checking datastore type */
