@@ -1307,8 +1307,8 @@ sr_lydmods_ctx_load_module(const struct lyd_node *sr_mod, struct ly_ctx *ly_ctx,
     assert(mod_name);
 
     /* the module is not supposed to be loaded yet, but is in case of LY internal modules and dependency modules */
-    ly_mod = ly_ctx_get_module(ly_ctx, mod_name, NULL, 1);
-    if (!ly_mod) {
+    ly_mod = ly_ctx_get_module(ly_ctx, mod_name, revision, 1);
+    if (!ly_mod || !ly_mod->implemented) {
         /* load the module */
         ly_mod = ly_ctx_load_module(ly_ctx, mod_name, revision);
     }
