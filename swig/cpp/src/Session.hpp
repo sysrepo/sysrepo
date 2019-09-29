@@ -157,32 +157,31 @@ private:
 class Callback
 {
 public:
-    Callback();
-    virtual ~Callback();
+    virtual ~Callback() = default;
 
     /** Wrapper for [sr_module_change_cb](@ref sr_module_change_cb) callback.*/
-    virtual int module_change(S_Session session, const char *module_name, sr_notif_event_t event, void *private_ctx) {return SR_ERR_OK;};
+    virtual int module_change(S_Session session, const char *module_name, sr_notif_event_t event, void *private_ctx);
     /** Wrapper for [sr_subtree_change_cb](@ref sr_subtree_change_cb) callback.*/
-    virtual int subtree_change(S_Session session, const char *xpath, sr_notif_event_t event, void *private_ctx) {return SR_ERR_OK;};
+    virtual int subtree_change(S_Session session, const char *xpath, sr_notif_event_t event, void *private_ctx);
     /** Wrapper for [sr_module_install_cb](@ref sr_module_install_cb) callback.*/
-    virtual void module_install(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx) {return;};
+    virtual void module_install(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx);
     /** Wrapper for [sr_feature_enable_cb](@ref sr_feature_enable_cb) callback.*/
-    virtual void feature_enable(const char *module_name, const char *feature_name, bool enabled, void *private_ctx) {return;};
+    virtual void feature_enable(const char *module_name, const char *feature_name, bool enabled, void *private_ctx);
     /** Wrapper for [sr_rpc_cb](@ref sr_rpc_cb) callback.*/
-    virtual int rpc(const char *xpath, const S_Vals input, S_Vals_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int rpc(const char *xpath, const S_Vals input, S_Vals_Holder output, void *private_ctx);
     /** Wrapper for [sr_action_cb](@ref sr_action_cb) callback.*/
-    virtual int action(const char *xpath, const S_Vals input, S_Vals_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int action(const char *xpath, const S_Vals input, S_Vals_Holder output, void *private_ctx);
     /** Wrapper for [sr_rpc_tree_cb](@ref sr_rpc_tree_cb) callback.*/
-    virtual int rpc_tree(const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int rpc_tree(const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx);
     /** Wrapper for [sr_action_tree_cb](@ref sr_action_tree_cb) callback.*/
-    virtual int action_tree(const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx) {return SR_ERR_OK;};
+    virtual int action_tree(const char *xpath, const S_Trees input, S_Trees_Holder output, void *private_ctx);
     /** Wrapper for [sr_dp_get_items_cb](@ref sr_dp_get_items_cb) callback.*/
-    virtual int dp_get_items(const char *xpath, S_Vals_Holder vals, uint64_t request_id, const char *original_xpath, void *private_ctx) {return SR_ERR_OK;};
+    virtual int dp_get_items(const char *xpath, S_Vals_Holder vals, uint64_t request_id, const char *original_xpath, void *private_ctx);
     /** Wrapper for [sr_event_notif_cb](@ref sr_event_notif_cb) callback.*/
-    virtual void event_notif(const sr_ev_notif_type_t notif_type, const char *xpath, S_Vals vals, time_t timestamp, void *private_ctx) {return;};
+    virtual void event_notif(const sr_ev_notif_type_t notif_type, const char *xpath, S_Vals vals, time_t timestamp, void *private_ctx);
     /** Wrapper for [sr_event_notif_tree_cb](@ref sr_event_notif_tree_cb) callback.*/
-    virtual void event_notif_tree(const sr_ev_notif_type_t notif_type, const char *xpath, S_Trees trees, time_t timestamp, void *private_ctx) {return;};
-    Callback *get() {return this;};
+    virtual void event_notif_tree(const sr_ev_notif_type_t notif_type, const char *xpath, S_Trees trees, time_t timestamp, void *private_ctx);
+    Callback *get();
 
     std::map<const char *, void*> private_ctx;
 };

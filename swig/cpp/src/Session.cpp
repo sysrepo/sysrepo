@@ -446,8 +446,74 @@ Subscribe::~Subscribe()
     }
 }
 
-Callback::Callback() = default;
-Callback::~Callback() = default;
+int Callback::module_change(S_Session /* session */,
+                            const char * /* module_name */,
+                            sr_notif_event_t /* event */,
+                            void * /* private_ctx */) {
+  return SR_ERR_OK;
+}
+
+int Callback::subtree_change(S_Session /* session */, const char * /* xpath */,
+                             sr_notif_event_t /* event */,
+                             void * /* private_ctx */) {
+  return SR_ERR_OK;
+}
+
+void Callback::module_install(const char * /* module_name */,
+                             const char * /* revision */,
+                             sr_module_state_t /* state */,
+                             void * /* private_ctx */) {
+  return;
+}
+
+void Callback::feature_enable(const char * /* module_name */,
+                             const char * /* feature_name */,
+                             bool /* enabled */, void * /* private_ctx */) {
+  return;
+}
+
+int Callback::rpc(const char * /* xpath */, const S_Vals /* input */,
+                  S_Vals_Holder /* output */, void * /* private_ctx */) {
+  return SR_ERR_OK;
+}
+
+int Callback::action(const char * /* xpath */, const S_Vals /* input */,
+                     S_Vals_Holder /* output */, void * /* private_ctx */) {
+  return SR_ERR_OK;
+}
+
+int Callback::rpc_tree(const char * /* xpath */, const S_Trees /* input */,
+                       S_Trees_Holder /* output */, void * /* private_ctx */) {
+  return SR_ERR_OK;
+}
+
+int Callback::action_tree(const char * /* xpath */, const S_Trees /* input */,
+                          S_Trees_Holder /* output */,
+                          void * /* private_ctx */) {
+  return SR_ERR_OK;
+}
+
+int Callback::dp_get_items(const char * /* xpath */, S_Vals_Holder /* vals */,
+                           uint64_t /* request_id */,
+                           const char * /* original_xpath */,
+                           void * /* private_ctx */) {
+  return SR_ERR_OK;
+}
+
+void Callback::event_notif(const sr_ev_notif_type_t /* notif_type */,
+                           const char * /* xpath */, S_Vals /* vals */,
+                           time_t /* timestamp */, void * /* private_ctx */) {
+  return;
+}
+
+void Callback::event_notif_tree(const sr_ev_notif_type_t /* notif_type */,
+                                const char * /* xpath */, S_Trees /* trees */,
+                                time_t /* timestamp */,
+                                void * /* private_ctx */) {
+  return;
+}
+
+Callback *Callback::get() { return this; }
 
 static int module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx) {
     S_Session sess(std::make_shared<Session>(session));
