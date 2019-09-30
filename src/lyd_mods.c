@@ -1486,6 +1486,9 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         ly_mod = (struct lys_module *)set->set.g[idx];
         mod_data = sr_module_data_unlink(&new_data, ly_mod);
         err_info = sr_module_config_data_set(ly_mod->name, SR_DS_STARTUP, mod_data);
+        if (!err_info) {
+            err_info = sr_module_config_data_set(ly_mod->name, SR_DS_RUNNING, mod_data);
+        }
         lyd_free_withsiblings(mod_data);
         if (err_info) {
             goto cleanup;

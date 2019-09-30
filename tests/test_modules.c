@@ -702,6 +702,8 @@ static void
 test_empty_invalid(void **state)
 {
     struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess;
+    struct lyd_node *tree;
     const char data[] = "<cont xmlns=\"mand\"><l1/></cont>";
     int ret;
     uint32_t conn_count;
@@ -743,7 +745,27 @@ test_empty_invalid(void **state)
     "</module>"
     );
 
+    /* check startup data */
+    ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_data(sess, "/mandatory:*", 0, &tree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(tree->schema->name, "cont");
+    assert_string_equal(tree->child->schema->name, "l1");
+    assert_null(tree->next);
+
+    /* check running data */
+    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
+    lyd_free_withsiblings(tree);
+    ret = sr_get_data(sess, "/mandatory:*", 0, &tree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(tree->schema->name, "cont");
+    assert_string_equal(tree->child->schema->name, "l1");
+    assert_null(tree->next);
+
     /* cleanup */
+    lyd_free_withsiblings(tree);
+    sr_session_stop(sess);
     ret = sr_remove_module(st->conn, "mandatory");
     assert_int_equal(ret, SR_ERR_OK);
 }
