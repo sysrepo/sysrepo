@@ -2185,7 +2185,7 @@ sr_cp_file2shm(const char *to, const char *from, mode_t perm)
     }
 
     /* open "to" SHM */
-    fd_to = shm_open(to, O_WRONLY | O_CREAT, perm);
+    fd_to = shm_open(to, O_WRONLY | O_TRUNC | O_CREAT, perm);
     if (fd_to < 0) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" SHM failed (%s).", to, strerror(errno));
         goto cleanup;
@@ -3223,14 +3223,23 @@ retry_open:
     } else {
         fd = shm_open(path, O_RDONLY, 0);
     }
-    if (fd == -1) {
-        if ((ds == SR_DS_CANDIDATE) && (errno == ENOENT)) {
+    if ((fd == -1) && (errno == ENOENT)) {
+        if (ds == SR_DS_CANDIDATE) {
             /* no candidate exists, just use running */
             ds = SR_DS_RUNNING;
             free(path);
             path = NULL;
             goto retry_open;
         }
+
+        /* no file = no data, nothing to do */
+        if (ds == SR_DS_STARTUP) {
+            SR_LOG_WRN("Failed to open \"%s\" (%s), it should exist.", path, strerror(errno));
+        }
+        free(path);
+        return NULL;
+    }
+    if (fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
         goto error;
     }
