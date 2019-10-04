@@ -2097,6 +2097,10 @@ dm_copy_errors(dm_session_t *session, sr_mem_ctx_t *sr_mem, char **error_msg, ch
 bool
 dm_is_node_enabled(struct lys_node* node)
 {
+    if (node->nodetype & (LYS_GROUPING | LYS_USES | LYS_CHOICE | LYS_CASE)) {
+        return false;
+    }
+
     dm_node_state_t state = dm_get_node_state(node);
     return DM_NODE_ENABLED == state || DM_NODE_ENABLED_WITH_CHILDREN == state;
 }
@@ -2104,6 +2108,10 @@ dm_is_node_enabled(struct lys_node* node)
 bool
 dm_is_node_enabled_with_children(struct lys_node* node)
 {
+    if (node->nodetype & (LYS_GROUPING | LYS_USES | LYS_CHOICE | LYS_CASE)) {
+        return false;
+    }
+
     return DM_NODE_ENABLED_WITH_CHILDREN == dm_get_node_state(node);
 }
 
@@ -2113,16 +2121,10 @@ dm_is_enabled_check_recursively(struct lys_node *node)
     if (dm_is_node_enabled(node)) {
         return true;
     }
-    node = node->parent;
-    while (NULL != node) {
-        if (NULL == node->parent && LYS_AUGMENT == node->nodetype) {
-            node = ((struct lys_node_augment *) node)->target;
-            continue;
-        }
+    for (node = lys_parent(node); node; node = lys_parent(node)) {
         if (dm_is_node_enabled_with_children(node)) {
             return true;
         }
-        node = node->parent;
     }
     return false;
 }
@@ -5929,19 +5931,18 @@ dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, dm_schema_info_t 
     CHECK_NULL_ARG3(ctx, module_name, res);
     int rc = SR_ERR_OK;
     dm_schema_info_t *schema_info = NULL;
+    const struct lys_node *node = NULL;
 
     rc = dm_get_module_and_lock(ctx, module_name, &schema_info);
     CHECK_RC_MSG_RETURN(rc, "Get module failed");
 
     *res = false;
-    struct lys_node *node = schema_info->module->data;
 
-    while (NULL != node) {
-        if (dm_is_enabled_check_recursively(node)) {
+    while ((node = lys_getnext(node, NULL, schema_info->module, 0))) {
+        if (dm_is_enabled_check_recursively((struct lys_node *)node)) {
             *res = true;
             break;
         }
-        node = node->next;
     }
 
     if (NULL != schema) {
