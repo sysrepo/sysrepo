@@ -877,7 +877,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
     if (ly_mod && ly_mod->implemented) {
         /* it is currently in the context, try to parse it again to check revisions */
-        ly_mod = lys_parse_path(tmp_ly_ctx, schema_path, format);
+        ly_mod = sr_parse_module(tmp_ly_ctx, schema_path, format, search_dir);
         if (!ly_mod) {
             sr_errinfo_new_ly_first(&err_info, tmp_ly_ctx);
             sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" is already in sysrepo.", mod_name);
