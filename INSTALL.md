@@ -9,7 +9,7 @@
 - [Google Protocol Buffers](https://github.com/google/protobuf)
 - [protobuf-c](https://github.com/protobuf-c/protobuf-c)
 - [libev](http://software.schmorp.de/pkg/libev.html)
-- [libredblack](http://libredblack.sourceforge.net/) or [GNU libavl](http://adtinfo.org/) (either of these two)
+- [libredblack](http://libredblack.sourceforge.net/) or [libavl](https://packages.debian.org/source/buster/libavl) (either of these two)
 
 #### (Optional) Tools for running tests and building documentation:
 - [CMocka](https://cmocka.org/)

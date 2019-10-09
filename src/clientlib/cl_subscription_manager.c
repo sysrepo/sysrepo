@@ -1009,7 +1009,8 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
             if (subscription->replaying) {
                 break;
             } else {
-                usleep(SR_REPLAYING_FLAG_TIMEOUT_MS * 1000);
+                struct timespec r = { 0, SR_REPLAYING_FLAG_TIMEOUT_MS * 1000 * 1000};
+                nanosleep(&r, NULL);
             }
             ++retries;
         }
