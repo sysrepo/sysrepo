@@ -366,7 +366,9 @@ add_custom_target(uninstall_with_repo "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH
     COMMAND rm -rf ${REPOSITORY_LOC})
 
 if(GEN_LANGUAGE_BINDINGS)
-    cmake_policy(SET CMP0078 OLD)
+    if(POLICY CMP0078)
+        cmake_policy(SET CMP0078 OLD)
+    endif()
     add_subdirectory(swig)
 endif()
 
