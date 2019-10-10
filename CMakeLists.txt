@@ -153,6 +153,11 @@ else(USE_AVL_LIB)
     endif(REDBLACK_FOUND)
 endif(USE_AVL_LIB)
 
+# CMAKE_REQUIRED_LIBRARIES policy
+if(POLICY CMP0075)
+    cmake_policy(SET CMP0075 OLD)
+endif()
+
 # check for non-portable functions and headers
 set(CMAKE_REQUIRED_LIBRARIES pthread)
 include(CheckFunctionExists)
@@ -366,9 +371,14 @@ add_custom_target(uninstall_with_repo "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH
     COMMAND rm -rf ${REPOSITORY_LOC})
 
 if(GEN_LANGUAGE_BINDINGS)
+    # UseSWIG policies
     if(POLICY CMP0078)
         cmake_policy(SET CMP0078 OLD)
     endif()
+    if(POLICY CMP0086)
+        cmake_policy(SET CMP0086 OLD)
+    endif()
+
     add_subdirectory(swig)
 endif()
 
