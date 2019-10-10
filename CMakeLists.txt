@@ -357,7 +357,7 @@ if(WITH_SYSTEMD)
         ${PROJECT_SOURCE_DIR}/deploy/systemd/sysrepod.service
         ${PROJECT_SOURCE_DIR}/deploy/systemd/sysrepo-plugind.service
     )
-    install(DIRECTORY ${PROJECT_SOURCE_DIR}/deploy/systemd/ DESTINATION "/lib/systemd/system"
+    install(DIRECTORY ${PROJECT_SOURCE_DIR}/deploy/systemd/ DESTINATION "lib/systemd/system"
         FILES_MATCHING PATTERN "*.service")
 endif()
 
