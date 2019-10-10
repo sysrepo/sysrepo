@@ -217,6 +217,9 @@ else()
     message(FATAL_ERROR "Unknown file format \"${FILE_FORMAT_EXT}\", must be json, xml, or lyb.")
 endif()
 
+set(SYSTEMD_UNIT_DIR "lib/systemd/system/" CACHE STRING
+    "Path to the systemd service directory.")
+
 # timeouts
 set(REQUEST_TIMEOUT 15 CACHE STRING
     "Timeout (in seconds) for Sysrepo API requests. Set to 0 for no timeout.")
@@ -357,7 +360,8 @@ if(WITH_SYSTEMD)
         ${PROJECT_SOURCE_DIR}/deploy/systemd/sysrepod.service
         ${PROJECT_SOURCE_DIR}/deploy/systemd/sysrepo-plugind.service
     )
-    install(DIRECTORY ${PROJECT_SOURCE_DIR}/deploy/systemd/ DESTINATION "/lib/systemd/system"
+    install(DIRECTORY ${PROJECT_SOURCE_DIR}/deploy/systemd/
+        DESTINATION "${SYSTEMD_UNIT_DIR}"
         FILES_MATCHING PATTERN "*.service")
 endif()
 
