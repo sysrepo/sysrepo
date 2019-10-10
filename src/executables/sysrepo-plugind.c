@@ -195,13 +195,12 @@ static int
 sr_pd_load_plugins(sr_pd_ctx_t *ctx)
 {
     DIR *dir;
-    struct dirent entry, *result;
+    struct dirent *entry = NULL;
     char *env_str = NULL;
     char plugins_dir[PATH_MAX - 256] = { 0, };
     char plugin_filename[PATH_MAX + 1] = { 0, };
     sr_pd_plugin_ctx_t *tmp = NULL;
     bool init_retry_needed = false;
-    int ret = 0;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(ctx);
@@ -222,15 +221,15 @@ sr_pd_load_plugins(sr_pd_ctx_t *ctx)
         return SR_ERR_INVAL_ARG;
     }
     do {
-        ret = readdir_r(dir, &entry, &result);
-        if (0 != ret) {
+        entry = readdir(dir);
+        if (NULL == entry) {
             SR_LOG_ERR("Error by reading plugin directory: %s.", sr_strerror_safe(errno));
             break;
         }
-        if ((NULL != result) && (DT_DIR != entry.d_type)
-                && (0 != strcmp(entry.d_name, ".")) && (0 != strcmp(entry.d_name, ".."))) {
-            SR_LOG_DBG("Loading plugin from file '%s'.", entry.d_name);
-            snprintf(plugin_filename, PATH_MAX, "%s/%s", plugins_dir, entry.d_name);
+        if ((DT_DIR != entry->d_type)
+                && (0 != strcmp(entry->d_name, ".")) && (0 != strcmp(entry->d_name, ".."))) {
+            SR_LOG_DBG("Loading plugin from file '%s'.", entry->d_name);
+            snprintf(plugin_filename, PATH_MAX, "%s/%s", plugins_dir, entry->d_name);
 
             /* realloc plugins array */
             tmp = realloc(ctx->plugins, sizeof(*ctx->plugins) * (ctx->plugins_cnt + 1));
@@ -254,7 +253,7 @@ sr_pd_load_plugins(sr_pd_ctx_t *ctx)
             }
             ctx->plugins_cnt += 1;
         }
-    } while (NULL != result);
+    } while (NULL != entry);
     closedir(dir);
 
     if (init_retry_needed) {

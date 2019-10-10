@@ -595,8 +595,8 @@ static int
 np_get_all_notification_files(np_ctx_t *np_ctx, time_t time_from, time_t time_to, sr_list_t *file_list)
 {
     DIR *dir = { 0, };
-    struct dirent entry = { 0, }, *result = NULL;
-    int ret = 0, rc = SR_ERR_OK;
+    struct dirent *entry = NULL;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(np_ctx, file_list);
 
@@ -612,23 +612,24 @@ np_get_all_notification_files(np_ctx_t *np_ctx, time_t time_from, time_t time_to
         SR_LOG_ERR("Error by opening directory '%s': %s.", SR_NOTIF_DATA_SEARCH_DIR, sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
+
     /* read files in the directory */
     do {
-        ret = readdir_r(dir, &entry, &result);
-        if (0 != ret) {
+        entry = readdir(dir);
+        if (NULL == entry) {
             SR_LOG_ERR("Error by reading directory: %s.", sr_strerror_safe(errno));
             break;
         }
-        if ((NULL != result) && (0 != strcmp(entry.d_name, ".")) && (0 != strcmp(entry.d_name, ".."))) {
+        if ((0 != strcmp(entry->d_name, ".")) && (0 != strcmp(entry->d_name, ".."))) {
             /* for each directory */
-            SR_LOG_DBG("Listing notification directory '%s'.", entry.d_name);
-            rc = np_get_notification_files(np_ctx, entry.d_name, time_from, time_to, file_list);
+            SR_LOG_DBG("Listing notification directory '%s'.", entry->d_name);
+            rc = np_get_notification_files(np_ctx, entry->d_name, time_from, time_to, file_list);
             if (SR_ERR_OK != rc) {
                 SR_LOG_WRN("Error by retrieving notification files from '%s' directory: %s.",
-                        entry.d_name, sr_strerror(rc));
+                        entry->d_name, sr_strerror(rc));
             }
         }
-    } while (NULL != result);
+    } while (NULL != entry);
     closedir(dir);
 
     return SR_ERR_OK;
