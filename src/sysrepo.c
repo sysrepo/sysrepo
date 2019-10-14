@@ -599,14 +599,17 @@ sr_get_error(sr_session_ctx_t *session, const sr_error_info_t **error_info)
 }
 
 API int
-sr_set_error(sr_session_ctx_t *session, const char *message, const char *path)
+sr_set_error(sr_session_ctx_t *session, const char *path, const char *format, ...)
 {
     sr_error_info_t *err_info = NULL;
+    va_list vargs;
 
     SR_CHECK_ARG_APIRET(!session || ((session->ev != SR_SUB_EV_CHANGE) && (session->ev != SR_SUB_EV_UPDATE)
-            && (session->ev != SR_SUB_EV_OPER) && (session->ev != SR_SUB_EV_RPC)) || !message, session, err_info);
+            && (session->ev != SR_SUB_EV_OPER) && (session->ev != SR_SUB_EV_RPC)) || !format, session, err_info);
 
-    sr_errinfo_new(&err_info, SR_ERR_OK, path, message);
+    va_start(vargs, format);
+    sr_errinfo_add(&err_info, SR_ERR_OK, path, format, &vargs);
+    va_end(vargs);
 
     /* set the error and return its return code (SR_ERR_OK) */
     return sr_api_ret(session, err_info);

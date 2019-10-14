@@ -72,6 +72,17 @@ sr_error_t sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info);
 void sr_log_msg(int plugin, sr_log_level_t ll, const char *msg, const char *path);
 
 /**
+ * @brief Add a new error into error_info.
+ *
+ * @param[in,out] err_info Existing error_info.
+ * @param[in] err_code Error code.
+ * @param[in] xpath Error XPath.
+ * @param[in] format Error message format.
+ * @param[in] vargs Optional error message variable arguments.
+ */
+void sr_errinfo_add(sr_error_info_t **err_info, sr_error_t err_code, const char *xpath, const char *format, va_list *vargs);
+
+/**
  * @brief Log the error and add the error into an error info structure.
  *
  * @param[in,out] err_info Exisiting error info.

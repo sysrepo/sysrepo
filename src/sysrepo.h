@@ -336,17 +336,18 @@ int sr_get_error(sr_session_ctx_t *session, const sr_error_info_t **error_info);
 /**
  * @brief Sets detailed error information into provided session. Used to notify
  * the client library about errors that occurred in the application code.
+ * Does not print the message.
  *
  * @note Intended for change, RPC/action, or operational callbacks to be used
  * on the provided session.
  *
  * @param[in] session Session provided in a callback.
- * @param[in] message Human-readable error message.
- * @param[in] path Path of the node where the error has occurred. NULL value
- * is also accepted.
+ * @param[in] path Optional path of the node where the error has occurred.
+ * @param[in] format Human-readable format of the error message.
+ * @param[in] ... Format parameters.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_set_error(sr_session_ctx_t *session, const char *message, const char *path);
+int sr_set_error(sr_session_ctx_t *session, const char *path, const char *format, ...);
 
 /**
  * @brief Returns the assigned session ID of the sysrepo session.
