@@ -1438,7 +1438,7 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
 
     /* try to load it into the new updated context */
     ly_errno = 0;
-    new_data = lyd_parse_mem((struct ly_ctx *)new_ctx, data_json, LYD_JSON, LYD_OPT_CONFIG | LYD_OPT_TRUSTED);
+    new_data = lyd_parse_mem((struct ly_ctx *)new_ctx, data_json, LYD_JSON, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
     if (ly_errno) {
         /* it failed, some of the scheduled changes are not compatible with the stored data, abort them all */
         sr_log_wrn_ly((struct ly_ctx *)new_ctx);
