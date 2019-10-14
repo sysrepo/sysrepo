@@ -2515,6 +2515,8 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
     sr_error_info_t *err_info = NULL;
     char *ptr;
     const struct lyd_node_leaf_list *leaf;
+    struct lyd_node_anydata *any;
+    struct lyd_node *tree;
 
     sr_val->xpath = lyd_path(node);
     SR_CHECK_MEM_GOTO(!sr_val->xpath, err_info, error);
@@ -2525,6 +2527,10 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
     case LYS_LEAF:
     case LYS_LEAFLIST:
         leaf = (const struct lyd_node_leaf_list *)node;
+        while (leaf->value_type == LY_TYPE_LEAFREF) {
+            /* find final leafref target */
+            leaf = (const struct lyd_node_leaf_list *)leaf->value.leafref;
+        }
         switch (leaf->value_type) {
         case LY_TYPE_BINARY:
             sr_val->type = SR_BINARY_T;
@@ -2624,12 +2630,50 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
         sr_val->type = SR_NOTIFICATION_T;
         break;
     case LYS_ANYXML:
-        sr_val->type = SR_ANYXML_T;
-        /* TODO sr_val->data.anyxml_val = */
-        break;
     case LYS_ANYDATA:
-        sr_val->type = SR_ANYDATA_T;
-        /* TODO sr_val->data.anydata_val = */
+        any = (struct lyd_node_anydata *)node;
+        ptr = NULL;
+
+        switch (any->value_type) {
+        case LYD_ANYDATA_CONSTSTRING:
+        case LYD_ANYDATA_JSON:
+        case LYD_ANYDATA_SXML:
+            if (any->value.str) {
+                ptr = strdup(any->value.str);
+                SR_CHECK_MEM_RET(!ptr, err_info);
+            }
+            break;
+        case LYD_ANYDATA_XML:
+            lyxml_print_mem(&ptr, any->value.xml, LYXML_PRINT_FORMAT);
+            break;
+        case LYD_ANYDATA_LYB:
+            /* try to convert into a data tree */
+            tree = lyd_parse_mem(node->schema->module->ctx, any->value.mem, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT
+                                 | LYD_OPT_TRUSTED, NULL);
+            if (!tree) {
+                sr_errinfo_new_ly(&err_info, node->schema->module->ctx);
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Failed to convert LYB anyxml/anydata into XML.");
+                return err_info;
+            }
+            free(any->value.mem);
+            any->value_type = LYD_ANYDATA_DATATREE;
+            any->value.tree = tree;
+            /* fallthrough */
+        case LYD_ANYDATA_DATATREE:
+            lyd_print_mem(&ptr, any->value.tree, LYD_XML, LYP_FORMAT | LYP_WITHSIBLINGS);
+            break;
+        default:
+            SR_ERRINFO_INT(&err_info);
+            return err_info;
+        }
+
+        if (node->schema->nodetype == LYS_ANYXML) {
+            sr_val->type = SR_ANYXML_T;
+            sr_val->data.anyxml_val = ptr;
+        } else {
+            sr_val->type = SR_ANYDATA_T;
+            sr_val->data.anydata_val = ptr;
+        }
         break;
     default:
         SR_ERRINFO_INT(&err_info);
