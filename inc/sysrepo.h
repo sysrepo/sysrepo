@@ -1207,7 +1207,9 @@ typedef enum sr_notif_event_e {
                         application to the state before the commit. Any returned errors are just logged and ignored. */
     SR_EV_ENABLED, /**< Occurs just after the subscription. Subscriber gets notified about configuration that was copied
                         from startup to running. This allows to reuse the callback for applying changes made in running to
-                        reflect the changes when the configuration is copied from startup to running during subscription process */
+                        reflect the changes when the configuration is copied from startup to running during subscription process.
+                        Note that this occurs only for the first subscriber for the whole module changes but for every
+                        subscriber for some module subtree changes. */
 } sr_notif_event_t;
 
 /**
