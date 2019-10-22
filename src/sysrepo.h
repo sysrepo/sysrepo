@@ -191,14 +191,19 @@ typedef enum sr_datastore_e {
 } sr_datastore_t;
 
 /**
+ * @brief A single, detailed error message. Used in sr_error_info_s
+ */
+typedef struct sr_error_info_msg_s {
+  char *message;   /**< Error message. */
+  char *xpath;     /**< XPath to the node where the error has been discovered. */
+} sr_error_info_msg_t;
+
+/**
  * @brief Detailed sysrepo session error information.
  */
 typedef struct sr_error_info_s {
     sr_error_t err_code; /**< Error code. */
-    struct {
-        char *message;   /**< Error message. */
-        char *xpath;     /**< XPath to the node where the error has been discovered. */
-    } *err;              /**< Array of all generated errors. */
+    sr_error_info_msg_t *err; /**< Array of all generated errors. */
     size_t err_count;    /**< Error message count. */
 } sr_error_info_t;
 
