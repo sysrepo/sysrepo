@@ -27,9 +27,6 @@ if(GEN_PYTHON_BINDINGS AND SWIG_FOUND)
     else()
         set(GEN_PYTHON3_TESTS 1 CACHE BOOL "Enable Python3 tests.")
     endif()
-    else()
-        message(WARNING "Sysrepo supports Python 3.x")
-    endif()
 endif()
 
 project(Sysrepo-cpp)
@@ -83,6 +80,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libSysrepo-cpp.pc" DESTINATION "${CMA
 if(BUILD_CPP_EXAMPLES)
     add_subdirectory(cpp/examples)
 endif()
+
 # Python language byndings generation
 if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND (${GEN_PYTHON_VERSION} STREQUAL "2" OR ${GEN_PYTHON_VERSION} STREQUAL "3"))
     add_subdirectory(python)
