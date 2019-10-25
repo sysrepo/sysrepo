@@ -10,7 +10,7 @@
 
 %{
     extern "C" {
-        #include "../inc/sysrepo.h"
+        #include "sysrepo.h"
     }
 
 %}
@@ -20,7 +20,7 @@
 
 %inline %{
 #include <unistd.h>
-#include "../inc/sysrepo.h"
+#include "sysrepo.h"
 #include <signal.h>
 #include <vector>
 #include <memory>
@@ -38,7 +38,6 @@ sigint_handler(int signum)
 {
     exit_application = 1;
 }
-
 
 static void global_loop() {
     /* loop until ctrl-c is pressed / SIGINT is received */
@@ -93,7 +92,7 @@ public:
         }
     }
 
-        int rpc_cb(
+    int rpc_cb(
         sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt, \
         sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, PyObject *private_data) {
         PyObject *arglist;
@@ -272,7 +271,7 @@ public:
         return 0;
     }
 
-    PyObject *private_ctx;
+    PyObject *private_data;
 
 private:
     PyObject *_callback;
@@ -319,7 +318,6 @@ static int g_oper_get_items_cb(sr_session_ctx_t *session, const char *module_nam
     Wrap_cb *ctx = (Wrap_cb *) private_data;
     return ctx->oper_get_items_cb(session, module_name, path, request_xpath, request_id, parent, ctx->private_data);
 }
-
 
 %}
 
@@ -434,7 +432,6 @@ static int g_oper_get_items_cb(sr_session_ctx_t *session, const char *module_nam
             throw std::runtime_error(sr_strerror(ret));
         } 
     }
-
     void oper_get_items_subscribe(const char *module_name, const char *path, PyObject *callback, \
                                   PyObject *private_data = nullptr, sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = nullptr;
@@ -455,8 +452,8 @@ static int g_oper_get_items_cb(sr_session_ctx_t *session, const char *module_nam
 
     }
 
-    void additional_cleanup(void *private_ctx) {
-        delete static_cast<Wrap_cb*>(private_ctx);
+    void additional_cleanup(void *private_data) {
+        delete static_cast<Wrap_cb*>(private_data);
     }
 };
 
