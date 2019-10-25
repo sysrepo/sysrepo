@@ -133,31 +133,35 @@ public:
         }
      }
 
-    int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
-                         sr_node_t **output, size_t *output_cnt, PyObject *private_ctx) {
+    int rpc_tree_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event, \
+        uint32_t request_id, struct lyd_node *output, PyObject *private_data) {
         PyObject *arglist;
 #if defined(SWIG_PYTHON_THREADS)
         SWIG_Python_Thread_Block safety;
 #endif
 
-        sysrepo::Trees *in_vals =(sysrepo::Trees *)new sysrepo::Trees(input, input_cnt, nullptr);
-        sysrepo::Trees_Holder *out_vals =(sysrepo::Trees_Holder *)new sysrepo::Trees_Holder(output, output_cnt);
-        std::shared_ptr<sysrepo::Trees> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Trees>(in_vals) : 0;
-        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Trees_t, SWIG_POINTER_DISOWN);
+        sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
+        std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
 
-        std::shared_ptr<sysrepo::Trees_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<sysrepo::Trees_Holder>(out_vals) : 0;
-        PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Trees_Holder_t, SWIG_POINTER_DISOWN);
+        libyang::Data_Node *in_tree =(libyang::Data_Node *)new libyang::Data_Node(const_cast<struct lyd_node *>(input));
+        libyang::Data_Node *out_tree =(libyang::Data_Node *)new libyang::Data_Node(const_cast<struct lyd_node *>(output));
 
-        arglist = Py_BuildValue("(sOOO)", xpath, in, out, private_ctx);
+        std::shared_ptr<libyang::Data_Node> *shared_in_tree = in_tree ? new std::shared_ptr<libyang::Data_Node>(in_tree) : 0;
+        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_tree), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_DISOWN);
+
+        std::shared_ptr<libyang::Data_Node> *shared_out_tree = out_tree ? new std::shared_ptr<libyang::Data_Node>(out_tree) : 0;
+        PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_tree), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_DISOWN);
+        arglist = Py_BuildValue("(sOOO)",s,op_path, in, event, request_id, out, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
-            in_vals->~Trees();
-            out_vals->~Trees_Holder();
+            in_tree->~Data_Node();
+            out_tree->~Data_Node();
             throw std::runtime_error("Python callback rpc_tree_cb failed.\n");
         } else {
-            in_vals->~Trees();
-            out_vals->~Trees_Holder();
+            in_tree->~Data_Node();
+            out_tree->~Data_Node();
             int ret = SR_ERR_OK;
             if (result && PyInt_Check(result)) {
                 ret = PyInt_AsLong(result);
