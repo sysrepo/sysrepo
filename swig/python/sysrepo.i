@@ -93,12 +93,17 @@ public:
         }
     }
 
-    int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
-               size_t *output_cnt, PyObject *private_ctx) {
+        int rpc_cb(
+        sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt, \
+        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, PyObject *private_data) {
         PyObject *arglist;
 #if defined(SWIG_PYTHON_THREADS)
         SWIG_Python_Thread_Block safety;
 #endif
+
+        sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
+        std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
 
         sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(input, input_cnt, nullptr);
         sysrepo::Vals_Holder *out_vals =(sysrepo::Vals_Holder *)new sysrepo::Vals_Holder(output, output_cnt);
@@ -109,7 +114,7 @@ public:
         std::shared_ptr<sysrepo::Vals_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<sysrepo::Vals_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_Holder_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOOO)", xpath, in, out, private_ctx);
+        arglist = Py_BuildValue("(sOOO)",s, op_path, in,event,request_id, out, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
