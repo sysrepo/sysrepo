@@ -133,41 +133,6 @@ public:
         }
      }
 
-    int action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
-               size_t *output_cnt, PyObject *private_ctx) {
-        PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
-
-        sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(input, input_cnt, nullptr);
-        sysrepo::Vals_Holder *out_vals =(sysrepo::Vals_Holder *)new sysrepo::Vals_Holder(output, output_cnt);
-
-        std::shared_ptr<sysrepo::Vals> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Vals>(in_vals) : 0;
-        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_t, SWIG_POINTER_DISOWN);
-
-        std::shared_ptr<sysrepo::Vals_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<sysrepo::Vals_Holder>(out_vals) : 0;
-        PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_Holder_t, SWIG_POINTER_DISOWN);
-
-        arglist = Py_BuildValue("(sOOO)", xpath, in, out, private_ctx);
-        PyObject *result = PyEval_CallObject(_callback, arglist);
-        Py_DECREF(arglist);
-        if (result == nullptr) {
-            in_vals->~Vals();
-            out_vals->~Vals_Holder();
-            throw std::runtime_error("Python callback action_cb failed.\n");
-        } else {
-            in_vals->~Vals();
-            out_vals->~Vals_Holder();
-            int ret = SR_ERR_OK;
-            if (result && PyInt_Check(result)) {
-                ret = PyInt_AsLong(result);
-            }
-            Py_DECREF(result);
-            return ret;
-        }
-     }
-
     int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
                          sr_node_t **output, size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
