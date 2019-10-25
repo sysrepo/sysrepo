@@ -93,62 +93,6 @@ public:
         }
     }
 
-    int subtree_change(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
-                       PyObject *private_ctx) {
-        PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
-
-        sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
-        std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
-        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
-
-        arglist = Py_BuildValue("(OsiO)", s, xpath, event, private_ctx);
-        PyObject *result = PyEval_CallObject(_callback, arglist);
-        Py_DECREF(arglist);
-        if (result == nullptr) {
-            sess->~Session();
-            throw std::runtime_error("Python callback subtree_change failed.\n");
-        } else {
-            sess->~Session();
-            int ret = SR_ERR_OK;
-            if (result && PyInt_Check(result)) {
-                ret = PyInt_AsLong(result);
-            }
-            Py_DECREF(result);
-            return ret;
-        }
-    }
-
-    void module_install(const char *module_name, const char *revision, sr_module_state_t state, PyObject *private_ctx) {
-        PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
-        arglist = Py_BuildValue("(ssOO)", module_name, revision, state, private_ctx);
-        PyObject *result = PyEval_CallObject(_callback, arglist);
-        Py_DECREF(arglist);
-        if (result == nullptr)
-            throw std::runtime_error("Python callback module_install failed.\n");
-        else
-            Py_DECREF(result);
-    }
-
-    void feature_enable(const char *module_name, const char *feature_name, bool enabled, PyObject *private_ctx) {
-        PyObject *arglist;
-#if defined(SWIG_PYTHON_THREADS)
-        SWIG_Python_Thread_Block safety;
-#endif
-        arglist = Py_BuildValue("(ssOO)", module_name, feature_name, enabled ? Py_True: Py_False, private_ctx);
-        PyObject *result = PyEval_CallObject(_callback, arglist);
-        Py_DECREF(arglist);
-        if (result == nullptr)
-            throw std::runtime_error("Python feature_enable failed.\n");
-        else
-            Py_DECREF(result);
-    }
-
     int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
                size_t *output_cnt, PyObject *private_ctx) {
         PyObject *arglist;
