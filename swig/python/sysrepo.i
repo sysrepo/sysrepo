@@ -224,6 +224,54 @@ public:
         }
     }
 
+    int oper_get_items_cb(sr_session_ctx_t *session, const char *module_name, const char *path, \
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+    {
+        PyObject *arglist;
+#if defined(SWIG_PYTHON_THREADS)
+        SWIG_Python_Thread_Block safety;
+#endif
+
+        
+        sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
+        std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
+        if (*parent) {
+            libyang::Data_Node *tree =(libyang::Data_Node *)new libyang::Data_Node(const_cast<struct lyd_node *>(*parent));
+            
+            std::shared_ptr<libyang::Data_Node> *shared_tree = tree ? new std::shared_ptr<libyang::Data_Node>(tree) : 0;
+            PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_tree), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_DISOWN);
+
+            arglist = Py_BuildValue("(sOlO)", s, module_name, path, request_xpath, request_id, in, private_data);
+            PyObject *result = PyEval_CallObject(_callback, arglist);
+            Py_DECREF(arglist);
+            if (result == nullptr) {
+                tree->~Data_Node();
+                throw std::runtime_error("Python callback oper_get_items_cb failed.\n");
+            } else {
+                tree->~Data_Node();
+                Py_DECREF(result);
+            }
+        } else {
+            libyang::Data_Node *tree =(libyang::Data_Node *)new libyang::Data_Node(nullptr);
+            
+            std::shared_ptr<libyang::Data_Node> *shared_tree = tree ? new std::shared_ptr<libyang::Data_Node>(tree) : 0;
+            PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_tree), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_DISOWN);
+
+            arglist = Py_BuildValue("(sOlO)", s, module_name, path, request_xpath, request_id, in, private_data);
+            PyObject *result = PyEval_CallObject(_callback, arglist);
+            Py_DECREF(arglist);
+            if (result == nullptr) {
+                tree->~Data_Node();
+                throw std::runtime_error("Python callback oper_get_items_cb failed.\n");
+            } else {
+                tree->~Data_Node();
+                Py_DECREF(result);
+            }
+        }
+        return 0;
+    }
+
     PyObject *private_ctx;
 
 private:
