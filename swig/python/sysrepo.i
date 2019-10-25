@@ -325,22 +325,24 @@ static int g_oper_get_items_cb(sr_session_ctx_t *session, const char *module_nam
 
 %extend sysrepo::Subscribe {
 
-    void module_change_subscribe(const char *module_name, PyObject *callback, PyObject *private_ctx = nullptr, \
+    void module_change_subscribe(const char *module_name, PyObject *callback, const char *xpath, \
+                                 PyObject *private_data = nullptr, \
                                  uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
 
         self->wrap_cb_l.push_back(class_ctx);
-        if (private_ctx) {
-            class_ctx->private_ctx = private_ctx;
+        if (private_data) {
+            class_ctx->private_data = private_data;
         } else {
             Py_INCREF(Py_None);
-            class_ctx->private_ctx = Py_None;
+            class_ctx->private_data = Py_None;
         }
 
-        int ret = sr_module_change_subscribe(self->swig_sess(), module_name, g_module_change_subscribe_cb, \
-                                             class_ctx, priority, opts, self->swig_sub());
+        int ret = sr_module_change_subscribe(self->swig_sess(), module_name, xpath,\
+                                             g_module_change_subscribe_cb, class_ctx, priority, \
+                                             opts, self->swig_sub());
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
         }
