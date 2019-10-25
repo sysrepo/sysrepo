@@ -52,6 +52,57 @@
 %ignore Data::Data(sr_data_t, sr_type_t);
 %ignore Data::Data(sr_data_t);
 
+%shared_ptr(libyang::Value);
+%newobject Value::enm;
+%newobject Value::ident;
+%newobject Value::instance;
+%newobject Value::leafref;
+
+%shared_ptr(libyang::Data_Node);
+%newobject Data_Node::schema;
+%newobject Data_Node::attr;
+%newobject Data_Node::next;
+%newobject Data_Node::prev;
+%newobject Data_Node::parent;
+%newobject Data_Node::child;
+%newobject Data_Node::path;
+%newobject Data_Node::qualifed_path;
+%newobject Data_Node::dup;
+%newobject Data_Node::dup_withsiblings;
+%newobject Data_Node::dup_to_ctx;
+%newobject Data_Node::find_path;
+%newobject Data_Node::find_instance;
+%ignore    Data_Node::swig_node;
+%ignore    Data_Node::swig_deleter;
+%newobject Data_Node::diff;
+%newobject Data_Node::new_path;
+%newobject Data_Node::node_module;
+%newobject Data_Node::print_mem;
+%newobject Data_Node::C_lyd_node;
+
+%shared_ptr(libyang::Data_Node_Leaf_List);
+%newobject Data_Node_Leaf_List::value;
+%newobject Data_Node_Leaf_List::schema;
+%newobject Data_Node_Leaf_List::attr;
+%newobject Data_Node_Leaf_List::next;
+%newobject Data_Node_Leaf_List::prev;
+%newobject Data_Node_Leaf_List::parent;
+%newobject Data_Node_Leaf_List::child;
+%newobject Data_Node_Leaf_List::path;
+%newobject Data_Node_Leaf_List::qualifed_path;
+%newobject Data_Node_Leaf_List::dup;
+%newobject Data_Node_Leaf_List::dup_to_ctx;
+%newobject Data_Node_Leaf_List::find_path;
+%newobject Data_Node_Leaf_List::find_instance;
+%ignore    Data_Node_Leaf_List::swig_node;
+%ignore    Data_Node_Leaf_List::swig_deleter;
+%newobject Data_Node_Leaf_List::diff;
+%newobject Data_Node_Leaf_List::new_path;
+%newobject Data_Node_Leaf_List::node_module;
+%newobject Data_Node_Leaf_List::print_mem;
+%newobject Data_Node_Leaf_List::type;
+%newobject Data_Node_Leaf_List::C_lyd_node;;
+
 %shared_ptr(sysrepo::Val);
 %ignore Val::Val(sr_val_t *, S_Deleter);
 %ignore Val::Val(sr_val_t *);
@@ -163,7 +214,6 @@
 #include "Connection.hpp"
 #include "Session.hpp"
 #include "Struct.hpp"
-#include "Tree.hpp"
 #include "Xpath.hpp"
 %}
 
@@ -171,5 +221,4 @@
 %include "Connection.hpp"
 %include "Session.hpp"
 %include "Struct.hpp"
-%include "Tree.hpp"
 %include "Xpath.hpp"
