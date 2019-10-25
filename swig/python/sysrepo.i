@@ -198,24 +198,28 @@ public:
         }
     }
 
-    void event_notif_tree(const sr_ev_notif_type_t, const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, PyObject *private_ctx) {
+    void event_notif_tree(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, \
+        const struct lyd_node *notif, time_t timestamp, PyObject *private_data) {
         PyObject *arglist;
 #if defined(SWIG_PYTHON_THREADS)
         SWIG_Python_Thread_Block safety;
 #endif
+        sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
+        std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
 
-        sysrepo::Trees *in_vals =(sysrepo::Trees *)new sysrepo::Trees(trees, tree_cnt, nullptr);
-        std::shared_ptr<sysrepo::Trees> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Trees>(in_vals) : 0;
-        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Trees_t, SWIG_POINTER_DISOWN);
+        libyang::Data_Node *node =(libyang::Data_Node *)new libyang::Data_Node(const_cast<struct lyd_node *>(notif));
+        std::shared_ptr<libyang::Data_Node> *shared_node = node ? new std::shared_ptr<libyang::Data_Node>(node) : 0;
+        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_node), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOlO)", xpath, in, (long)timestamp, private_ctx);
+        arglist = Py_BuildValue("(sOlO)", s, notif_type, in, (long)timestamp, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
-            in_vals->~Trees();
+            node->~Data_Node();
             throw std::runtime_error("Python callback event_notif_tree failed.\n");
         } else {
-            in_vals->~Trees();
+            node->~Data_Node();
             Py_DECREF(result);
         }
     }
