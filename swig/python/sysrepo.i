@@ -171,17 +171,22 @@ public:
         }
     }
 
-    void event_notif(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, PyObject *private_ctx) {
+    void event_notif(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *path, \
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, PyObject *private_data) {
         PyObject *arglist;
 #if defined(SWIG_PYTHON_THREADS)
         SWIG_Python_Thread_Block safety;
 #endif
 
+        sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
+        std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
+
         sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(values, values_cnt, nullptr);
         std::shared_ptr<sysrepo::Vals> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOlO)", xpath, in, (long)timestamp, private_ctx);
+        arglist = Py_BuildValue("(sOlO)", s, notif_type, path, in, (long)timestamp, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
