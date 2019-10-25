@@ -65,8 +65,8 @@ public:
             Py_XDECREF(_callback);
     }
 
-    int module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, \
-                                 PyObject *private_ctx) {
+    int module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event, \
+            uint32_t request_id, PyObject *private_data) {
         PyObject *arglist;
 #if defined(SWIG_PYTHON_THREADS)
         SWIG_Python_Thread_Block safety;
@@ -76,7 +76,7 @@ public:
         std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
         PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(OsiO)", s, module_name, event, private_ctx);
+        arglist = Py_BuildValue("(OsiO)", s, module_name, event, request_id, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
