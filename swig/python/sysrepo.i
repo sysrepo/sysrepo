@@ -278,76 +278,46 @@ private:
     PyObject *_callback;
 };
 
-static int g_module_change_subscribe_cb(sr_session_ctx_t *session, const char *module_name,\
-                                        sr_notif_event_t event, void *private_ctx)
+static int g_module_change_subscribe_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, \
+                                        sr_event_t event, uint32_t request_id, void *private_data)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->module_change_subscribe(session, module_name, event, ctx->private_ctx);
+    Wrap_cb *ctx = (Wrap_cb *) private_data;
+    return ctx->module_change_subscribe(session, module_name, xpath, event, request_id, ctx->private_data);
 }
 
-static int g_subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
-                               void *private_ctx)
+static int g_rpc_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt, \
+        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->subtree_change(session, xpath, event, ctx->private_ctx);
+    Wrap_cb *ctx = (Wrap_cb *) private_data;
+    return ctx->rpc_cb(session, op_path, input, input_cnt, event, request_id, output, output_cnt, ctx->private_data);
 }
 
-static void g_module_install_cb(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx)
+static int g_rpc_tree_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, \
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->module_install(module_name, revision, state, ctx->private_ctx);
+    Wrap_cb *ctx = (Wrap_cb *) private_data;
+    return ctx->rpc_tree_cb(session, op_path, input, event, request_id, output, ctx->private_data);
 }
 
-static void g_feature_enable_cb(const char *module_name, const char *feature_name, bool enabled, void *private_ctx)
+static void g_event_notif_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *path, \
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->feature_enable(module_name, feature_name, enabled, ctx->private_ctx);
+    Wrap_cb *ctx = (Wrap_cb *) private_data;
+    ctx->event_notif(session, notif_type, path, values, values_cnt, timestamp, ctx->private_data);
 }
 
-static int g_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
-                     size_t *output_cnt, void *private_ctx)
+static void g_event_notif_tree_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, \
+        const struct lyd_node *notif, time_t timestamp, void *private_data)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->rpc_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
+    Wrap_cb *ctx = (Wrap_cb *) private_data;
+    ctx->event_notif_tree(session, notif_type, notif, timestamp, ctx->private_data);
 }
 
-static int g_action_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
-                     size_t *output_cnt, void *private_ctx)
+static int g_oper_get_items_cb(sr_session_ctx_t *session, const char *module_name, const char *path, \
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->action_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
-}
-
-static int g_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
-                         sr_node_t **output, size_t *output_cnt, void *private_ctx)
-{
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->rpc_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
-}
-
-static int g_action_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
-                         sr_node_t **output, size_t *output_cnt, void *private_ctx)
-{
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->action_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
-}
-
-static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, void *private_ctx)
-{
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    return ctx->dp_get_items(xpath, values, values_cnt, request_id, original_xpath, ctx->private_ctx);
-}
-
-static void g_event_notif_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_ctx)
-{
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->event_notif(notif_type, xpath, values, values_cnt, timestamp, ctx->private_ctx);
-}
-
-static void g_event_notif_tree_cb(const sr_ev_notif_type_t notif_type, const char *xpath, const sr_node_t *trees, const size_t tree_cnt, time_t timestamp, void *private_ctx)
-{
-    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->event_notif_tree(notif_type, xpath, trees, tree_cnt, timestamp, ctx->private_ctx);
+    Wrap_cb *ctx = (Wrap_cb *) private_data;
+    return ctx->oper_get_items_cb(session, module_name, path, request_xpath, request_id, parent, ctx->private_data);
 }
 
 
