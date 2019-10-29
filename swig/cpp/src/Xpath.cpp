@@ -23,9 +23,7 @@
 #include "Sysrepo.hpp"
 #include "Xpath.hpp"
 
-extern "C" {
-#include "sysrepo/xpath.h"
-}
+#include "utils/xpath.h"
 
 namespace sysrepo {
 

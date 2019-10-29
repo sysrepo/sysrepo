@@ -29,9 +29,7 @@
 #include "Sysrepo.hpp"
 #include "Connection.hpp"
 
-extern "C" {
 #include "sysrepo.h"
-}
 
 namespace sysrepo {
 

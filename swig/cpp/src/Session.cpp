@@ -34,9 +34,7 @@
 #include "Connection.hpp"
 #include "Session.hpp"
 
-extern "C" {
 #include "sysrepo.h"
-}
 
 namespace sysrepo {
 

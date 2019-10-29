@@ -29,10 +29,8 @@
 #include "Internal.hpp"
 #include <libyang/Tree_Data.hpp>
 
-extern "C" {
 #include "sysrepo.h"
-#include "sysrepo/values.h"
-}
+#include "utils/values.h"
 
 namespace sysrepo {
 

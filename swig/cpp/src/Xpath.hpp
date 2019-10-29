@@ -25,9 +25,7 @@
 
 #include <iostream>
 
-extern "C" {
-#include "sysrepo/xpath.h"
-}
+#include "utils/xpath.h"
 
 namespace sysrepo {
 

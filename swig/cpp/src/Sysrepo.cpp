@@ -26,9 +26,7 @@
 #include "Sysrepo.hpp"
 #include "Struct.hpp"
 
-extern "C" {
 #include "sysrepo.h"
-}
 
 namespace sysrepo {
 

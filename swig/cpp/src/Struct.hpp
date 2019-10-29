@@ -30,9 +30,7 @@
 #include "Internal.hpp"
 #include <libyang/Tree_Data.hpp>
 
-extern "C" {
 #include "sysrepo.h"
-}
 
 namespace sysrepo {
 

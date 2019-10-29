@@ -29,9 +29,7 @@
 
 #include "Internal.hpp"
 
-extern "C" {
 #include "sysrepo.h"
-}
 
 namespace sysrepo {
 
