@@ -469,7 +469,7 @@ perf_get_ietf_intefaces_test(void **state, int op_num, int *items)
     for (int i = 0; i<op_num; i++){
         count = 0;
         /* existing leaf */
-        rc = sr_get_data(session, "/ietf-interfaces:interfaces/*", 0, &data);
+        rc = sr_get_data(session, "/ietf-interfaces:interfaces/*", 0, 0, 0, &data);
         assert_int_equal(SR_ERR_OK, rc);
         count += get_nodes_cnt(data);
         lyd_free_withsiblings(data);
@@ -561,7 +561,7 @@ perf_get_subtrees_test(void **state, int op_num, int *items)
     for (int i = 0; i<op_num; i++){
         count = 0;
         /* existing leaf */
-        rc = sr_get_data(session, "/example-module:container/list/leaf", 0, &trees);
+        rc = sr_get_data(session, "/example-module:container/list/leaf", 0, 0, 0, &trees);
         assert_int_equal(SR_ERR_OK, rc);
         /* skip 2 keys */
         assert_string_equal(trees->child->child->next->next->schema->name, "leaf");
@@ -592,7 +592,7 @@ perf_get_ietf_intefaces_tree_test(void **state, int op_num, int *items)
 
     /* perform a get-subtrees request */
     for (int i = 0; i<op_num; i++){
-        rc = sr_get_data(session, "/ietf-interfaces:interfaces/.", 0, &trees);
+        rc = sr_get_data(session, "/ietf-interfaces:interfaces/.", 0, 0, 0, &trees);
         assert_int_equal(rc, SR_ERR_OK);
         if (0 == i) {
             total_cnt = get_nodes_cnt(trees);

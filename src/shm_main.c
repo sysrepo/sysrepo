@@ -113,7 +113,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
     sr_mod_t *shm_mod;
     off_t *features, cur_off;
     sr_mod_op_dep_t *op_deps;
-    sr_mod_conf_sub_t *conf_subs;
+    sr_mod_change_sub_t *change_subs;
     sr_mod_oper_sub_t *oper_subs;
     sr_rpc_t *shm_rpc;
     sr_rpc_sub_t *rpc_subs;
@@ -121,6 +121,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
     sr_conn_state_t *conn_s;
     struct shm_item *items;
     size_t i, j, item_count, printed;
+    sr_datastore_t ds;
     int msg_len = 0;
     char *msg;
 
@@ -273,48 +274,27 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
             }
         }
 
-        if (shm_mod->conf_sub[0].sub_count) {
-            /* add startup conf subscriptions */
-            items = sr_realloc(items, (item_count + 1) * sizeof *items);
-            items[item_count].start = shm_mod->conf_sub[0].subs;
-            items[item_count].size = shm_mod->conf_sub[0].sub_count * sizeof *conf_subs;
-            asprintf(&(items[item_count].name), "startup conf subs (%u, mod \"%s\")", shm_mod->conf_sub[0].sub_count,
-                    ext_shm_addr + shm_mod->name);
-            ++item_count;
+        for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+            if (shm_mod->change_sub[ds].sub_count) {
+                /* add change subscriptions */
+                items = sr_realloc(items, (item_count + 1) * sizeof *items);
+                items[item_count].start = shm_mod->change_sub[ds].subs;
+                items[item_count].size = shm_mod->change_sub[ds].sub_count * sizeof *change_subs;
+                asprintf(&(items[item_count].name), "%s change subs (%u, mod \"%s\")", sr_ds2str(ds),
+                        shm_mod->change_sub[ds].sub_count, ext_shm_addr + shm_mod->name);
+                ++item_count;
 
-            /* add xpaths */
-            conf_subs = (sr_mod_conf_sub_t *)(ext_shm_addr + shm_mod->conf_sub[0].subs);
-            for (i = 0; i < shm_mod->conf_sub[0].sub_count; ++i) {
-                if (conf_subs[i].xpath) {
-                    items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                    items[item_count].start = conf_subs[i].xpath;
-                    items[item_count].size = sr_shmlen(ext_shm_addr + conf_subs[i].xpath);
-                    asprintf(&(items[item_count].name), "startup conf sub xpath (\"%s\", mod \"%s\")",
-                            ext_shm_addr + conf_subs[i].xpath, ext_shm_addr + shm_mod->name);
-                    ++item_count;
-                }
-            }
-        }
-
-        if (shm_mod->conf_sub[1].sub_count) {
-            /* add running conf subscriptions */
-            items = sr_realloc(items, (item_count + 1) * sizeof *items);
-            items[item_count].start = shm_mod->conf_sub[1].subs;
-            items[item_count].size = shm_mod->conf_sub[1].sub_count * sizeof *conf_subs;
-            asprintf(&(items[item_count].name), "running conf subs (%u, mod \"%s\")", shm_mod->conf_sub[1].sub_count,
-                    ext_shm_addr + shm_mod->name);
-            ++item_count;
-
-            /* add xpaths */
-            conf_subs = (sr_mod_conf_sub_t *)(ext_shm_addr + shm_mod->conf_sub[1].subs);
-            for (i = 0; i < shm_mod->conf_sub[1].sub_count; ++i) {
-                if (conf_subs[i].xpath) {
-                    items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                    items[item_count].start = conf_subs[i].xpath;
-                    items[item_count].size = sr_shmlen(ext_shm_addr + conf_subs[i].xpath);
-                    asprintf(&(items[item_count].name), "running conf sub xpath (\"%s\", mod \"%s\")",
-                            ext_shm_addr + conf_subs[i].xpath, ext_shm_addr + shm_mod->name);
-                    ++item_count;
+                /* add xpaths */
+                change_subs = (sr_mod_change_sub_t *)(ext_shm_addr + shm_mod->change_sub[ds].subs);
+                for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
+                    if (change_subs[i].xpath) {
+                        items = sr_realloc(items, (item_count + 1) * sizeof *items);
+                        items[item_count].start = change_subs[i].xpath;
+                        items[item_count].size = sr_shmlen(ext_shm_addr + change_subs[i].xpath);
+                        asprintf(&(items[item_count].name), "%s change sub xpath (\"%s\", mod \"%s\")", sr_ds2str(ds),
+                                ext_shm_addr + change_subs[i].xpath, ext_shm_addr + shm_mod->name);
+                        ++item_count;
+                    }
                 }
             }
         }
@@ -572,10 +552,10 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
                     old_op_deps[i].out_dep_count, ext_buf, &ext_buf_cur);
         }
 
-        /* copy configuration subscriptions */
-        for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {
-            shm_mod->conf_sub[i].subs = sr_shmmain_defrag_copy_array_with_string(shm_ext->addr, shm_mod->conf_sub[i].subs,
-                    sizeof(sr_mod_conf_sub_t), shm_mod->conf_sub[i].sub_count, ext_buf, &ext_buf_cur);
+        /* copy change subscriptions */
+        for (i = 0; i < SR_DS_COUNT; ++i) {
+            shm_mod->change_sub[i].subs = sr_shmmain_defrag_copy_array_with_string(shm_ext->addr, shm_mod->change_sub[i].subs,
+                    sizeof(sr_mod_change_sub_t), shm_mod->change_sub[i].sub_count, ext_buf, &ext_buf_cur);
         }
 
         /* copy operational subscriptions */
@@ -908,7 +888,7 @@ sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
 }
 
 sr_error_info_t *
-sr_shmmain_state_recover(sr_shm_t *shm_main, sr_shm_t *shm_ext)
+sr_shmmain_state_recover(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     sr_conn_state_t *conn_s;
@@ -918,43 +898,48 @@ sr_shmmain_state_recover(sr_shm_t *shm_main, sr_shm_t *shm_ext)
     uint32_t i, j, k, *evpipes;
     int last_removed;
 
-    main_shm = (sr_main_shm_t *)shm_main->addr;
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
-    conn_s = (sr_conn_state_t *)(shm_ext->addr + main_shm->conn_state.conns);
+    conn_s = (sr_conn_state_t *)(conn->ext_shm.addr + main_shm->conn_state.conns);
     i = 0;
     while (i < main_shm->conn_state.conn_count) {
         if (!sr_process_exists(conn_s[i].pid)) {
             SR_LOG_WRN("Cleaning subscriptions after a non-existent sysrepo client with PID %ld.", (long)conn_s[i].pid);
 
             /* go through all the modules and their subscriptions and delete any matching (stale) ones */
-            evpipes = (uint32_t *)(shm_ext->addr + conn_s[i].evpipes);
+            evpipes = (uint32_t *)(conn->ext_shm.addr + conn_s[i].evpipes);
             for (j = 0; j < conn_s[i].evpipe_count; ++j) {
-                SR_SHM_MOD_FOR(shm_main->addr, shm_main->size, shm_mod) {
-                    for (k = 0; k < SR_WRITABLE_DS_COUNT; ++k) {
-                        tmp_err = sr_shmmod_conf_subscription_del(shm_ext->addr, shm_mod, NULL, k, 0, 0, evpipes[j], 1, NULL);
-                        if (tmp_err) {
+                SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
+                    for (k = 0; k < SR_DS_COUNT; ++k) {
+                        if ((tmp_err = sr_shmmod_change_subscription_del(conn->ext_shm.addr, shm_mod, NULL, k, 0, 0,
+                                evpipes[j], 1, NULL))) {
                             sr_errinfo_merge(&err_info, tmp_err);
                         }
+                        if (k == SR_DS_RUNNING) {
+                            /* technically, operational datastore changed */
+                            if ((tmp_err = sr_module_update_oper_diff(conn, conn->ext_shm.addr + shm_mod->name))) {
+                                sr_errinfo_merge(&err_info, tmp_err);
+                            }
+                        }
                     }
-                    if ((tmp_err = sr_shmmod_oper_subscription_del(shm_ext->addr, shm_mod, NULL, evpipes[j], 1))) {
+                    if ((tmp_err = sr_shmmod_oper_subscription_del(conn->ext_shm.addr, shm_mod, NULL, evpipes[j], 1))) {
                         sr_errinfo_merge(&err_info, tmp_err);
                     }
-                    if ((tmp_err = sr_shmmod_notif_subscription_del(shm_ext->addr, shm_mod, evpipes[j], 1, NULL))) {
+                    if ((tmp_err = sr_shmmod_notif_subscription_del(conn->ext_shm.addr, shm_mod, evpipes[j], 1, NULL))) {
                         sr_errinfo_merge(&err_info, tmp_err);
                     }
                 }
 
-                shm_rpc = (sr_rpc_t *)(shm_ext->addr + main_shm->rpc_subs);
+                shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + main_shm->rpc_subs);
                 for (k = 0; k < main_shm->rpc_sub_count; ++k) {
-                    tmp_err = sr_shmmain_rpc_subscription_del(shm_ext->addr, &shm_rpc[k], NULL, 0, evpipes[j], 1, &last_removed);
+                    tmp_err = sr_shmmain_rpc_subscription_del(conn->ext_shm.addr, &shm_rpc[k], NULL, 0, evpipes[j], 1, &last_removed);
                     if (tmp_err) {
                         sr_errinfo_merge(&err_info, tmp_err);
                     }
 
                     if (last_removed) {
                         /* remove the parent RPC subscription structure */
-                        tmp_err = sr_shmmain_del_rpc(main_shm, shm_ext->addr, NULL, shm_rpc[k].op_path);
-                        if (tmp_err) {
+                        if ((tmp_err = sr_shmmain_del_rpc(main_shm, conn->ext_shm.addr, NULL, shm_rpc[k].op_path))) {
                             sr_errinfo_merge(&err_info, tmp_err);
                         }
                     }
@@ -962,7 +947,12 @@ sr_shmmain_state_recover(sr_shm_t *shm_main, sr_shm_t *shm_ext)
             }
 
             /* remove this connection from state */
-            sr_shmmain_state_del_conn(main_shm, shm_ext->addr, conn_s[i].conn_ctx, conn_s[i].pid);
+            sr_shmmain_state_del_conn(main_shm, conn->ext_shm.addr, conn_s[i].conn_ctx, conn_s[i].pid);
+
+            /* remove any stored operational data of this connection */
+            if ((tmp_err = sr_shmmod_oper_stored_del_conn(conn, conn_s[i].conn_ctx, conn_s[i].pid))) {
+                sr_errinfo_merge(&err_info, tmp_err);
+            }
         } else {
             ++i;
         }
@@ -988,7 +978,7 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
     sr_rpc_t *shm_rpc;
     sr_rpc_sub_t *rpc_subs;
     sr_mod_t *shm_mod;
-    sr_mod_conf_sub_t *conf_subs;
+    sr_mod_change_sub_t *change_subs;
     sr_mod_oper_sub_t *oper_subs;
     sr_conn_state_t *conn_s;
 
@@ -1018,15 +1008,15 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
 
     /* existing module subscriptions */
     SR_SHM_MOD_FOR(shm_main->addr, shm_main->size, shm_mod) {
-        /* configuration subscriptions */
-        for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {
-            conf_subs = (sr_mod_conf_sub_t *)(ext_shm_addr + shm_mod->conf_sub[i].subs);
-            for (j = 0; j < shm_mod->conf_sub[i].sub_count; ++j) {
-                if (conf_subs[j].xpath) {
-                    shm_size += sr_shmlen(ext_shm_addr + conf_subs[j].xpath);
+        /* change subscriptions */
+        for (i = 0; i < SR_DS_COUNT; ++i) {
+            change_subs = (sr_mod_change_sub_t *)(ext_shm_addr + shm_mod->change_sub[i].subs);
+            for (j = 0; j < shm_mod->change_sub[i].sub_count; ++j) {
+                if (change_subs[j].xpath) {
+                    shm_size += sr_shmlen(ext_shm_addr + change_subs[j].xpath);
                 }
             }
-            shm_size += shm_mod->conf_sub[i].sub_count * sizeof *conf_subs;
+            shm_size += shm_mod->change_sub[i].sub_count * sizeof *change_subs;
         }
 
         /* oper subscriptions */
@@ -1267,7 +1257,7 @@ sr_shmmain_add_modules(char *ext_shm_addr, struct lyd_node *first_sr_mod, sr_mod
     LY_TREE_FOR(first_sr_mod, first_sr_mod) {
         /* set module structure */
         memset(first_shm_mod, 0, sizeof *first_shm_mod);
-        for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {
+        for (i = 0; i < SR_DS_COUNT; ++i) {
             if ((err_info = sr_rwlock_init(&first_shm_mod->data_lock_info[i].lock, 1))) {
                 return err_info;
             }

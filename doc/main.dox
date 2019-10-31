@@ -35,7 +35,7 @@ plugins and then all managed by one process.
 - Sysrepo is __only a library__ so there is no stand-alone process
 - all data are always __separated by YANG schemas__ which has many consequences such as allowing concurrent work
   with different schemas
-- __fixed YANG schema set__ that can only be added to during Sysrepo operation (more in @ref schema)
+- __fixed YANG schema set__ that cannot be modified during Sysrepo operation (more in @ref schema)
 - __shared memory__ is used for almost all IPC
 - almost __no CPU time wasted__ in the library (no active waiting or periodic checks)
 - fully customizable __event handling__ from periodic checks or using `poll(2)`/`select(2)` to automatic thread
@@ -63,8 +63,8 @@ available for creating/modifying/printing.
 also uses XPath but for this purpose almost any valid expression can be used. If an exlusive
 access to certain data is required, @ref lock is available.
 
-The most common and useful kind of @ref subs are @ref conf_subs "Configuration Subscriptions", which allow applications
-to perform actions based on specific configuration data changes using callbacks. This way Sysrepo acts as a smarter
+The most common and useful kind of @ref subs are @ref change_subs "Change Subscriptions", which allow applications
+to perform actions based on specific data changes using callbacks. This way Sysrepo acts as a smarter
 configuration file. In addition, @ref rpc_subs "RPC/Action" and @ref notif_subs "Notification Subscriptions" are
 supported so that a specifc RPC can be executed and other Sysrepo clients can be notified about various generated
 events, respectively. It is also possible to expose some state data using @ref oper_subs "Operational Subscriptions"
@@ -75,8 +75,7 @@ be fully supported with all of its properties.
 
 Datastores mostly follow the architecture defined by Network Management Datastore Architecture (NMDA @ref rfcs "RFC").
 Specifically, _startup_, _running_, _candidate_, and _operational_ datastores are implemented in full compliance
-to the definitions. There is one additional datastore _state_ mostly for convencience because it does not have any
-special functionality. Following is a brief description and purpose of each datastore.
+to the definitions. Following is a brief description and purpose of each datastore.
 
 _Startup_ datastore is the only persistent datastore. It includes the configuration of devices at time of their boot.
 This configuration is copied into _running_ when the first Sysrepo connection (shared memory) is created after
@@ -98,8 +97,32 @@ _running_ with some possible differences. If there are any defined, it also incl
 some configuration data omitted/modified. It all depends on the subscriptions, only subscribed _running_ data
 (Sysrepo synonym for in-use) can appear in _operational_ datastore.
 
-_State_ datastore is only the state data from _operational_ datastore. That means it is not affected by _running_
-subscriptions. It is supported mainly to allow virtual pre-NMDA datastores.
+Sysrepo also supports NMDA __origin__ attribute that can only appear in _operational_ datastore. It is added
+automatically to all operational data; nodes that do not have their own inherit origin from their parents. However,
+whenever an application is providing/modifying operational data (more in @ref state_data), it can set a specific
+origin that will be stored.
+
+# State Data @anchor state_data
+
+These data are found in the _operational_ datastore. Applications can provide them in 2 ways, **pull** or **push**.
+
+If employing the pull method, the operational data are always retrieved when they are needed so they are guaranteed
+to be up-to-date. An application can subscribe to providing these data using an @ref oper_subs "operational subscription".
+This method is suitable for data that change often such as some counters or statistics.
+
+As for the second push method, its main principle is that the state data need to be set only when they change. Otherwise
+they are stored and reused whenever needed without any interaction with the provider client. These data are set
+@ref edit_data "normally" but they are owned by the client. As soon as the client @ref conn_sess "disconnects", the
+data are considered to no longer be in-use and are deleted. This method is suitable for data that do not change
+often or not at all such network interface state or basic information about the system.
+
+These methods can be combined and provided data can overlap. Later push data overwrite older stored push data and
+pull data always overwrite push data.
+
+Note that these data are always appended to in-use _running_ data. That means, for instance, that no state data
+can exist if their configuration parent does not exist. A consequence of this is that whenever in-use "running"
+data change, the stored _operational_ changes (push method) are also adjusted and any invalid data (one without parents)
+are removed.
 
 # Threading Model @anchor threads
 

@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <setjmp.h>
 #include <stdarg.h>
+#include <stdlib.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -135,13 +136,13 @@ test_edit_item(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* should also work for leaf-lists */
-    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "15", 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "15", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "16", 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "16", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "15", 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "15", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:cont/ll2[.='16']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/ll2[.='16']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/test:cont/ll2[.='16']", 0);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
@@ -174,7 +175,7 @@ test_delete(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* delete a leaf without exact value */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "16", 0);
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "16", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -222,10 +223,10 @@ test_create1(void **state)
     int ret;
 
     /* one-by-one create */
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", NULL, SR_EDIT_STRICT);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", NULL, NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
-            "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -254,7 +255,7 @@ test_create1(void **state)
 
     /* create with non-existing parents */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
-            "iana-if-type:ethernetCsmacd", SR_EDIT_NON_RECURSIVE);
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_NON_RECURSIVE);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
@@ -274,7 +275,7 @@ test_create2(void **state)
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
-            "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
@@ -284,7 +285,7 @@ test_create2(void **state)
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth68']", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
-            "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -329,34 +330,34 @@ test_move1(void **state)
     int ret;
 
     /* create top-level testing data */
-    ret = sr_set_item_str(st->sess, "/test:l1[k='key1']/v", "1", 0);
+    ret = sr_set_item_str(st->sess, "/test:l1[k='key1']/v", "1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:l1[k='key2']/v", "2", 0);
+    ret = sr_set_item_str(st->sess, "/test:l1[k='key2']/v", "2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:l1[k='key3']/v", "3", 0);
+    ret = sr_set_item_str(st->sess, "/test:l1[k='key3']/v", "3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:ll1", "-1", 0);
+    ret = sr_set_item_str(st->sess, "/test:ll1", "-1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:ll1", "-2", 0);
+    ret = sr_set_item_str(st->sess, "/test:ll1", "-2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:ll1", "-3", 0);
+    ret = sr_set_item_str(st->sess, "/test:ll1", "-3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform some move operations */
-    ret = sr_move_item(st->sess, "/test:l1[k='key3']", SR_MOVE_FIRST, NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:l1[k='key3']", SR_MOVE_FIRST, NULL, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:l1[k='key1']", SR_MOVE_AFTER, "[k='key2']", NULL);
+    ret = sr_move_item(st->sess, "/test:l1[k='key1']", SR_MOVE_AFTER, "[k='key2']", NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:ll1[.='-3']", SR_MOVE_FIRST, NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:ll1[.='-3']", SR_MOVE_FIRST, NULL, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:ll1[.='-1']", SR_MOVE_AFTER, NULL, "-2");
+    ret = sr_move_item(st->sess, "/test:ll1[.='-1']", SR_MOVE_AFTER, NULL, "-2", NULL);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_data(st->sess, "/test:*", 0, &data);
+    ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* should be in reversed order (relative only to the same schema node instances) */
@@ -408,34 +409,34 @@ test_move1(void **state)
     lyd_free_withsiblings(data);
 
     /* create nested testing data */
-    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key1']/v", "1", 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key1']/v", "1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key2']/v", "2", 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key2']/v", "2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key3']/v", "3", 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key3']/v", "3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "-1", 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "-1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "-2", 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "-2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "-3", 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/ll2", "-3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform some move operations */
-    ret = sr_move_item(st->sess, "/test:cont/l2[k='key1']", SR_MOVE_LAST, NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='key1']", SR_MOVE_LAST, NULL, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:cont/l2[k='key3']", SR_MOVE_BEFORE, "[k='key2']", NULL);
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='key3']", SR_MOVE_BEFORE, "[k='key2']", NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:cont/ll2[.='-1']", SR_MOVE_LAST, NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:cont/ll2[.='-1']", SR_MOVE_LAST, NULL, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:cont/ll2[.='-3']", SR_MOVE_BEFORE, NULL, "-2");
+    ret = sr_move_item(st->sess, "/test:cont/ll2[.='-3']", SR_MOVE_BEFORE, NULL, "-2", NULL);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_data(st->sess, "/test:cont", 0, &data);
+    ret = sr_get_data(st->sess, "/test:cont", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* should be in reversed order (relative only to the same schema node instances) */
@@ -468,6 +469,7 @@ main(void)
         cmocka_unit_test_teardown(test_move1, clear_test),
     };
 
+    setenv("CMOCKA_TEST_ABORT", "1", 1);
     sr_log_stderr(SR_LL_INF);
     return cmocka_run_group_tests(tests, setup_f, teardown_f);
 }

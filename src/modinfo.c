@@ -153,33 +153,43 @@ sr_error_info_t *
 sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *mod_diff;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
+    int change;
 
     assert(!mod_info->data_cached);
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
-            mod_diff = NULL;
-
             /* apply relevant edit changes */
-            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, create_diff ? &mod_diff : NULL))) {
-                lyd_free_withsiblings(mod_diff);
+            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, create_diff ? &mod_info->diff : NULL, &change))) {
                 return err_info;
             }
 
-            if (mod_diff) {
+            if (change) {
                 /* there is a diff for this module */
                 mod->state |= MOD_INFO_CHANGED;
+            }
+        }
+    }
 
-                /* merge all diffs into one */
-                if (!mod_info->diff) {
-                    mod_info->diff = mod_diff;
-                } else {
-                    sr_ly_link(mod_info->diff, mod_diff);
-                }
+    return NULL;
+}
+
+sr_error_info_t *
+sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_node *orig_diff)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_mod_s *mod;
+    uint32_t i;
+
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        if (mod->state & MOD_INFO_REQ) {
+            /* merge relevant diff part */
+            if ((err_info = sr_diff_mod_merge(mod_info->diff, mod_info->conn, mod->ly_mod, &orig_diff, NULL))) {
+                return err_info;
             }
         }
     }
@@ -297,64 +307,7 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
 }
 
 /**
- * @brief Trim all configuration-only subtrees (keep only state data or configuration data with state data descendants).
- *
- * @param[in,out] data Data to trim.
- */
-static void
-sr_oper_data_trim_config_r(struct lyd_node **data)
-{
-    struct lyd_node *next, *elem, *child;
-    uint32_t i;
-
-    LY_TREE_FOR_SAFE(*data, next, elem) {
-        if (elem->schema->flags & LYS_CONFIG_R) {
-            /* state node */
-            continue;
-        }
-
-        if (elem->schema->nodetype == LYS_LIST) {
-            /* find first non-key child */
-            child = elem->child;
-            for (i = 0; i < ((struct lys_node_list *)elem->schema)->keys_size; ++i) {
-                child = child->next;
-            }
-
-            /* remove all configuration descendants */
-            sr_oper_data_trim_config_r(&child);
-
-            /* check there are no children left except for keys */
-            child = elem->child;
-            for (i = 0; i < ((struct lys_node_list *)elem->schema)->keys_size; ++i) {
-                child = child->next;
-            }
-
-            if (!child) {
-                /* free the node */
-                if ((*data == elem) && !(*data)->parent) {
-                    *data = (*data)->next;
-                }
-                lyd_free(elem);
-            }
-        } else {
-            if (elem->schema->nodetype == LYS_CONTAINER) {
-                /* remove all configuration descendants */
-                sr_oper_data_trim_config_r(&elem->child);
-            }
-
-            if ((elem->schema->nodetype != LYS_CONTAINER) || !elem->child) {
-                /* free the node */
-                if ((*data == elem) && !(*data)->parent) {
-                    *data = (*data)->next;
-                }
-                lyd_free(elem);
-            }
-        }
-    }
-}
-
-/**
- * @brief Append specific operational data retrieved from a subscriber to a data tree.
+ * @brief Get specific operational data from a subscriber.
  *
  * @param[in] ly_mod libyang module of the data.
  * @param[in] xpath XPath of the provided data.
@@ -363,17 +316,19 @@ sr_oper_data_trim_config_r(struct lyd_node **data)
  * @param[in] evpipe_num Subscriber event pipe number.
  * @param[in] parent Data parent required for the subscription, NULL if top-level.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[in,out] data Data tree with appended operational data.
+ * @param[out] data Data tree with appended operational data.
  * @param[out] cb_error_info Callback error info returned by the client, if any.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, const char *request_xpath, sr_sid_t sid,
-        uint32_t evpipe_num, const struct lyd_node *parent, uint32_t timeout_ms, struct lyd_node **data,
+sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const char *request_xpath, sr_sid_t sid,
+        uint32_t evpipe_num, const struct lyd_node *parent, uint32_t timeout_ms, struct lyd_node **oper_data,
         sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *oper_data = NULL, *parent_dup = NULL;
+    struct lyd_node *parent_dup = NULL;
+
+    *oper_data = NULL;
 
     if (parent) {
         /* duplicate parent so that it is a stand-alone subtree */
@@ -390,54 +345,40 @@ sr_xpath_oper_data_append(const struct lys_module *ly_mod, const char *xpath, co
     }
 
     /* get data from client */
-    err_info = sr_shmsub_oper_notify(ly_mod, xpath, request_xpath, parent_dup, sid, evpipe_num, timeout_ms, &oper_data,
+    err_info = sr_shmsub_oper_notify(ly_mod, xpath, request_xpath, parent_dup, sid, evpipe_num, timeout_ms, oper_data,
             cb_error_info);
     lyd_free_withsiblings(parent_dup);
-    if (err_info) {
-        return err_info;
-    }
-
-    /* merge into full data tree */
-    if (oper_data) {
+    if (!err_info && *oper_data) {
         /* add default state data so that parents exist and we ask for descendants
          * that can exist (it should not fail with TRUSTED flag, we do not care even if it does) */
-        lyd_validate_modules(&oper_data, &ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
-
-        if (!*data) {
-            *data = oper_data;
-        } else if (lyd_merge(*data, oper_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
-            lyd_free_withsiblings(oper_data);
-            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-            return err_info;
-        }
+        lyd_validate_modules(oper_data, &ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
     }
 
-    return NULL;
+    return err_info;
 }
 
 /**
  * @brief Remove configuration data that will be provided by a client.
  *
  * @param[in] xpath XPath of the provided data to be removed.
- * @param[in] parent Parent of the operational data.
- * @param[in,out] data Whole data tree to be adjusted in case top-level nodes are removed.
+ * @param[in,out] data Full data tree to remove from.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_xpath_oper_data_remove(const char *xpath, struct lyd_node *parent, struct lyd_node **data)
+sr_xpath_oper_data_remove(const char *xpath, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *del_set;
     uint16_t i;
 
-    if (!parent) {
+    if (!*data) {
         /* no data so nothing to remove */
         return NULL;
     }
 
-    del_set = lyd_find_path(parent, xpath);
+    del_set = lyd_find_path(*data, xpath);
     if (!del_set) {
-        sr_errinfo_new_ly(&err_info, lyd_node_module(parent)->ctx);
+        sr_errinfo_new_ly(&err_info, lyd_node_module(*data)->ctx);
         return err_info;
     }
     for (i = 0; i < del_set->number; ++i) {
@@ -453,41 +394,180 @@ sr_xpath_oper_data_remove(const char *xpath, struct lyd_node *parent, struct lyd
 }
 
 /**
- * @brief Update (replace or append) operational data for a specific module.
+ * @brief Trim all configuration/state nodes/origin from the data based on options.
  *
- * @param[in] mod Mod info module to process.
+ * @param[in,out] data Data to trim.
+ * @param[in] sibling First sibling of the current data to trim.
+ * @param[in] opts Get oper data options.
+ */
+static void
+sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_oper_options_t opts)
+{
+    struct lyd_node *next, *elem;
+    struct lyd_attr *attr;
+
+    if (!(opts & (SR_OPER_NO_STATE | SR_OPER_NO_CONFIG)) && (opts & SR_OPER_WITH_ORIGIN)) {
+        /* nothing to trim */
+        return;
+    }
+
+    LY_TREE_FOR_SAFE(sibling, next, elem) {
+        if (elem->schema->flags & LYS_CONFIG_R) {
+            /* state subtree */
+            if (opts & SR_OPER_NO_STATE) {
+                /* free it whole */
+                if (*data == elem) {
+                    *data = (*data)->next;
+                }
+                lyd_free(elem);
+                continue;
+            }
+
+            if (opts & SR_OPER_WITH_ORIGIN) {
+                /* no need to go into state children */
+                continue;
+            }
+        }
+
+        /* trim all our children */
+        sr_oper_data_trim_r(data, sr_lyd_child(elem), opts);
+
+        if ((elem->schema->flags & LYS_CONFIG_W) && (opts & SR_OPER_NO_CONFIG) && !sr_lyd_child(elem)) {
+            /* config-only subtree (config node with no children) */
+            if (*data == elem) {
+                *data = (*data)->next;
+            }
+            lyd_free(elem);
+            continue;
+        }
+
+        if (!(opts & SR_OPER_WITH_ORIGIN)) {
+            /* trim origin */
+            LY_TREE_FOR(elem->attr, attr) {
+                if (!strcmp(attr->name, "origin") && !strcmp(attr->annotation->module->name, "ietf-origin")) {
+                    lyd_free_attr(elem->schema->module->ctx, elem, attr, 0);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * @brief Append operational data for a specific XPath.
+ *
+ * @param[in] shm_msub SHM subscription.
+ * @param[in] ly_mod Module of the data to get.
+ * @param[in] sub_xpath Subscription XPath.
+ * @param[in] request_xpath XPath of the specific data request.
+ * @param[in] oper_parent Operational parent of the data to retrieve. NULL for top-level.
  * @param[in] sid Sysrepo session ID.
- * @param[in] ds Datastore of the data.
- * @param[in] request_xpath XPath of the data request.
- * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
+ * @param[in] opts Get oper data options.
  * @param[in,out] data Operational data tree.
  * @param[out] cb_error_info Callback error info returned by the client, if any.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_datastore_t ds, const char *request_xpath,
-        char *ext_shm_addr, uint32_t timeout_ms, struct lyd_node **data, sr_error_info_t **cb_error_info)
+sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *ly_mod, const char *sub_xpath,
+        const char *request_xpath, struct lyd_node *oper_parent, sr_sid_t sid, uint32_t timeout_ms,
+        sr_get_oper_options_t opts, struct lyd_node **data, sr_error_info_t **cb_error_info)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *oper_data;
+
+    /* get oper data from the client */
+    if ((err_info = sr_xpath_oper_data_get(ly_mod, sub_xpath, request_xpath, sid, shm_msub->evpipe_num,
+            oper_parent, timeout_ms, &oper_data, cb_error_info))) {
+        return err_info;
+    }
+
+    /* trim them based on the options */
+    sr_oper_data_trim_r(&oper_data, oper_data, opts);
+
+    /* merge into one data tree */
+    if (!*data) {
+        *data = oper_data;
+    } else if (oper_data && lyd_merge(*data, oper_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+        lyd_free_withsiblings(oper_data);
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        return err_info;
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Update (replace or append) operational data for a specific module.
+ *
+ * @param[in] mod Mod info module to process.
+ * @param[in] sid Sysrepo session ID.
+ * @param[in] request_xpath XPath of the data request.
+ * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds.
+ * @param[in] opts Get oper data options.
+ * @param[in,out] data Operational data tree.
+ * @param[out] cb_error_info Callback error info returned by the client, if any.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const char *request_xpath, char *ext_shm_addr,
+        uint32_t timeout_ms, sr_get_oper_options_t opts, struct lyd_node **data, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_sub_t *shm_msub;
-    const char *xpath;
-    char *parent_xpath, *last_node_xpath;
+    const char *sub_xpath;
+    char *parent_xpath;
     uint16_t i, j;
     struct ly_set *set;
+    struct lyd_node *diff = NULL;
 
-    assert(!IS_WRITABLE_DS(ds) && timeout_ms);
+    if (!(opts & SR_OPER_NO_STORED)) {
+        /* apply stored operational diff */
+        if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, &diff))) {
+            return err_info;
+        }
+        err_info = sr_diff_mod_apply(diff, mod->ly_mod, opts & SR_OPER_WITH_ORIGIN, data);
+        lyd_free_withsiblings(diff);
+        if (err_info) {
+            return err_info;
+        }
 
-    /* add possible default state data nodes */
-    lyd_validate_modules(data, &mod->ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
+        if (!*data) {
+            /* add possible default state data nodes */
+            lyd_validate_modules(data, &mod->ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
+        }
+    }
+
+    if (opts & SR_OPER_NO_SUBS) {
+        /* do not get data from subscribers */
+        return NULL;
+    }
+
+    assert(sid && timeout_ms && cb_error_info);
 
     /* XPaths are ordered based on depth */
     for (i = 0; i < mod->shm_mod->oper_sub_count; ++i) {
         shm_msub = &((sr_mod_oper_sub_t *)(ext_shm_addr + mod->shm_mod->oper_subs))[i];
-        xpath = ext_shm_addr + shm_msub->xpath;
+        sub_xpath = ext_shm_addr + shm_msub->xpath;
+
+        if ((shm_msub->sub_type == SR_OPER_SUB_CONFIG) && (opts & SR_OPER_NO_CONFIG)) {
+            /* useless to retrieve configuration data */
+            continue;
+        } else if ((shm_msub->sub_type == SR_OPER_SUB_STATE) && (opts & SR_OPER_NO_STATE)) {
+            /* useless to retrieve state data */
+            continue;
+        }
+
+        if ((shm_msub->sub_type == SR_OPER_SUB_CONFIG) || (shm_msub->sub_type == SR_OPER_SUB_MIXED)) {
+            /* remove any present data */
+            if ((err_info = sr_xpath_oper_data_remove(sub_xpath, data))) {
+                goto error;
+            }
+        }
 
         /* trim the last node to get the parent */
-        if ((err_info = sr_xpath_trim_last_node(xpath, &parent_xpath, &last_node_xpath))) {
+        if ((err_info = sr_xpath_trim_last_node(sub_xpath, &parent_xpath))) {
             return err_info;
         }
 
@@ -512,46 +592,21 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_datas
 
             /* nested data */
             for (j = 0; j < set->number; ++j) {
-                if (((ds == SR_DS_OPERATIONAL) && (shm_msub->sub_type == SR_OPER_SUB_CONFIG))
-                            || (shm_msub->sub_type == SR_OPER_SUB_MIXED)) {
-                    /* remove any currently present configuration nodes */
-                    if ((err_info = sr_xpath_oper_data_remove(last_node_xpath, set->set.d[j], data))) {
-                        goto error;
-                    }
-                }
-
-                if ((ds != SR_DS_STATE) || ((shm_msub->sub_type == SR_OPER_SUB_MIXED)
-                            || (shm_msub->sub_type == SR_OPER_SUB_STATE))) {
-                    /* replace them with the ones retrieved from a client */
-                    if ((err_info = sr_xpath_oper_data_append(mod->ly_mod, xpath, request_xpath, sid, shm_msub->evpipe_num,
-                                set->set.d[j], timeout_ms, data, cb_error_info))) {
-                        goto error;
-                    }
+                if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, set->set.d[j],
+                        *sid, timeout_ms, opts, data, cb_error_info))) {
+                    goto error;
                 }
             }
 
 next_iter:
             /* cleanup for next iteration */
             free(parent_xpath);
-            free(last_node_xpath);
             ly_set_free(set);
         } else {
             /* top-level data */
-            if (((ds == SR_DS_OPERATIONAL) && (shm_msub->sub_type == SR_OPER_SUB_CONFIG))
-                        || (shm_msub->sub_type == SR_OPER_SUB_MIXED)) {
-                /* remove any currently present configuration nodes */
-                if ((err_info = sr_xpath_oper_data_remove(xpath, *data, data))) {
-                    return err_info;
-                }
-            }
-
-            if ((ds != SR_DS_STATE) || ((shm_msub->sub_type == SR_OPER_SUB_MIXED)
-                        || (shm_msub->sub_type == SR_OPER_SUB_STATE))) {
-                /* replace them with the ones retrieved from a client */
-                if ((err_info = sr_xpath_oper_data_append(mod->ly_mod, xpath, request_xpath, sid, shm_msub->evpipe_num,
-                            NULL, timeout_ms, data, cb_error_info))) {
-                    return err_info;
-                }
+            if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, NULL, *sid,
+                    timeout_ms, opts, data, cb_error_info))) {
+                goto error;
             }
         }
     }
@@ -560,7 +615,6 @@ next_iter:
 
 error:
     free(parent_xpath);
-    free(last_node_xpath);
     ly_set_free(set);
     return err_info;
 }
@@ -571,28 +625,32 @@ error:
  * @param[in] data Configuration data.
  * @param[in] ext_shm_addr Main SHM address.
  * @param[in] mod Mod info module to process.
+ * @param[in] opts Get oper data options.
  * @param[out] enabled_mod_data Enabled operational data of the module.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr, struct sr_mod_info_mod_s *mod,
-        struct lyd_node **enabled_mod_data)
+        sr_get_oper_options_t opts, struct lyd_node **enabled_mod_data)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_conf_sub_t *shm_confsubs;
+    sr_mod_change_sub_t *shm_changesubs;
+    struct lyd_node *root, *elem, *next;
     uint16_t i, xp_i;
     char **xpaths;
+    const char *origin;
 
     *enabled_mod_data = NULL;
 
-    if (!data) {
+    if (!data || (opts & SR_OPER_NO_CONFIG)) {
+        /* no data is enabled */
         return NULL;
     }
 
     /* first try to find a subscription for the whole module */
-    shm_confsubs = (sr_mod_conf_sub_t *)(ext_shm_addr + mod->shm_mod->conf_sub[SR_DS_RUNNING].subs);
-    for (i = 0; i < mod->shm_mod->conf_sub[SR_DS_RUNNING].sub_count; ++i) {
-        if (!shm_confsubs[i].xpath && !(shm_confsubs[i].opts & SR_SUBSCR_PASSIVE)) {
+    shm_changesubs = (sr_mod_change_sub_t *)(ext_shm_addr + mod->shm_mod->change_sub[SR_DS_RUNNING].subs);
+    for (i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
+        if (!shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
             /* the whole module is enabled */
             if ((err_info = sr_module_data_dup(data, mod->ly_mod, enabled_mod_data))) {
                 return err_info;
@@ -603,12 +661,12 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
 
     /* collect all enabled subtress in the form of xpaths */
     xpaths = NULL;
-    for (i = 0, xp_i = 0; i < mod->shm_mod->conf_sub[SR_DS_RUNNING].sub_count; ++i) {
-        if (shm_confsubs[i].xpath && !(shm_confsubs[i].opts & SR_SUBSCR_PASSIVE)) {
+    for (i = 0, xp_i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
+        if (shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
             xpaths = sr_realloc(xpaths, (xp_i + 1) * sizeof *xpaths);
             SR_CHECK_MEM_RET(!xpaths, err_info);
 
-            xpaths[xp_i] = ext_shm_addr + shm_confsubs[i].xpath;
+            xpaths[xp_i] = ext_shm_addr + shm_changesubs[i].xpath;
             ++xp_i;
         }
     }
@@ -620,26 +678,52 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
         return err_info;
     }
 
-    /* add any accessible non-presence containers */
-    if ((err_info = sr_ly_module_data_add_np_cont(enabled_mod_data, mod->ly_mod))) {
+    /* add top-level NP containers */
+    if ((err_info = sr_lyd_add_np_cont(enabled_mod_data, NULL, mod->ly_mod, NULL))) {
         return err_info;
+    }
+
+    LY_TREE_FOR(*enabled_mod_data, root) {
+        if (opts & SR_OPER_WITH_ORIGIN) {
+            /* add origin of all top-level nodes */
+            origin = (root->schema->flags & LYS_CONFIG_W) ? SR_CONFIG_ORIGIN : SR_OPER_ORIGIN;
+            if ((err_info = sr_edit_diff_set_origin(root, origin, 1))) {
+                return err_info;
+            }
+        }
+
+        LY_TREE_DFS_BEGIN(root, next, elem) {
+            /* add nested NP containers */
+            if ((err_info = sr_lyd_add_np_cont(NULL, elem, NULL, elem->schema))) {
+                return err_info;
+            }
+
+            if (opts & SR_OPER_WITH_ORIGIN) {
+                /* add origin of default nodes */
+                if ((elem->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && elem->dflt) {
+                    if ((err_info = sr_edit_diff_set_origin(elem, "default", 1))) {
+                        return err_info;
+                    }
+                }
+            }
+            LY_TREE_DFS_END(root, next, elem);
+        }
     }
 
     return NULL;
 }
 
 /**
- * @brief Update cached module data (if required).
+ * @brief Update cached running module data (if required).
  *
  * @param[in] mod_cache Module cache.
  * @param[in] mod Mod info module to process.
- * @param[in] ds Datastore.
  * @param[in] upd_mod_data Optional current (updated) module data to store in cache.
  * @param[in] read_locked Whether the cache is READ locked.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_modcache_module_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
+sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_mod_s *mod,
         struct lyd_node **upd_mod_data, int read_locked)
 {
     sr_error_info_t *err_info = NULL;
@@ -704,7 +788,7 @@ sr_modcache_module_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_m
             *upd_mod_data = NULL;
         } else {
             /* we need to load current data from persistent storage */
-            if ((err_info = sr_module_config_data_append(mod->ly_mod, ds, &mod_cache->data))) {
+            if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_RUNNING, &mod_cache->data))) {
                 return err_info;
             }
         }
@@ -729,37 +813,40 @@ sr_modcache_module_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_m
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] mod Mod info module to process.
+ * @param[in] load_diff Whether to load stored operational diff of the module.
  * @param[in] sid Sysrepo session ID.
  * @param[in] request_xpath XPath of the data request.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
+ * @param[in] opts Get oper data options.
  * @param[out] cb_error_info Callback error info returned by operational subscribers, if any.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod, sr_sid_t *sid,
-        const char *request_xpath, uint32_t timeout_ms, sr_error_info_t **cb_error_info)
+        const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
+    sr_conn_ctx_t *conn = mod_info->conn;
     struct sr_mod_cache_s *mod_cache = NULL;
     struct lyd_node *mod_data;
+    sr_datastore_t conf_ds;
 
-    if (((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds == SR_DS_STATE) || (mod_info->ds == SR_DS_OPERATIONAL))
-            && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING)) {
+    if (((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds == SR_DS_OPERATIONAL)) && (conn->opts & SR_CONN_CACHE_RUNNING)) {
         /* we are caching, so in all cases load the module into cache if not yet there */
-        mod_cache = &mod_info->conn->mod_cache;
-        if ((err_info = sr_modcache_module_update(mod_cache, mod, mod_info->ds, NULL, mod_info->data_cached))) {
+        mod_cache = &conn->mod_cache;
+        if ((err_info = sr_modcache_module_running_update(mod_cache, mod, NULL, mod_info->data_cached))) {
             return err_info;
         }
     }
 
     if (!mod_info->data_cached) {
         if (mod_cache) {
-            assert((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds == SR_DS_STATE) || (mod_info->ds == SR_DS_OPERATIONAL));
+            assert((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds == SR_DS_OPERATIONAL));
 
             /* we are caching, copy module data from the cache and link it */
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* copy only enabled module data */
-                if ((err_info = sr_module_oper_data_dup_enabled(mod_cache->data, mod_info->conn->ext_shm.addr, mod,
+                if ((err_info = sr_module_oper_data_dup_enabled(mod_cache->data, conn->ext_shm.addr, mod, opts,
                             &mod_data))) {
                     return err_info;
                 }
@@ -776,13 +863,18 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             }
         } else {
             /* get current persistent data */
-            if ((err_info = sr_module_config_data_append(mod->ly_mod, mod_info->ds, &mod_info->data))) {
+            if (mod_info->ds == SR_DS_OPERATIONAL) {
+                conf_ds = SR_DS_RUNNING;
+            } else {
+                conf_ds = mod_info->ds;
+            }
+            if ((err_info = sr_module_file_data_append(mod->ly_mod, conf_ds, &mod_info->data))) {
                 return err_info;
             }
 
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* keep only enabled module data */
-                if ((err_info = sr_module_oper_data_dup_enabled(mod_info->data, mod_info->conn->ext_shm.addr, mod,
+                if ((err_info = sr_module_oper_data_dup_enabled(mod_info->data, conn->ext_shm.addr, mod, opts,
                             &mod_data))) {
                     return err_info;
                 }
@@ -795,20 +887,15 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             }
         }
 
-        if (!IS_WRITABLE_DS(mod_info->ds)) {
+        if (mod_info->ds == SR_DS_OPERATIONAL) {
             /* append any operational data provided by clients */
-            if ((err_info = sr_module_oper_data_update(mod, *sid, mod_info->ds, request_xpath, mod_info->conn->ext_shm.addr,
-                        timeout_ms, &mod_info->data, cb_error_info))) {
+            if ((err_info = sr_module_oper_data_update(mod, sid, request_xpath, conn->ext_shm.addr,
+                        timeout_ms, opts, &mod_info->data, cb_error_info))) {
                 return err_info;
-            }
-
-            if (mod_info->ds == SR_DS_STATE) {
-                /* remove any configuration data */
-                sr_oper_data_trim_config_r(&mod_info->data);
             }
         }
     } else {
-        assert(mod_cache && IS_WRITABLE_DS(mod_info->ds));
+        assert(mod_cache && SR_IS_CONVENTIONAL_DS(mod_info->ds));
 
         /* just use cached data */
         mod_info->data = mod_cache->data;
@@ -825,7 +912,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
  * @param[in] shm_dep_count SHM dependency count.
  * @param[in] sid Sysrepo session ID.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[out] cb_error_info Callback error info returned by data-rpovide subscribers, if any.
+ * @param[out] cb_error_info Callback error info returned by oper subscribers, if any.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -910,7 +997,7 @@ sr_modinfo_add_instid_deps_data(struct sr_mod_info_s *mod_info, sr_mod_data_dep_
 
         /* add this module data if not already there */
         if ((j < mod_info->mod_count) && (err_info = sr_modinfo_module_data_load(mod_info, &mod_info->mods[j], sid,
-                    NULL, timeout_ms, cb_error_info))) {
+                    NULL, timeout_ms, 0, cb_error_info))) {
             goto cleanup;
         }
     }
@@ -923,18 +1010,53 @@ cleanup:
     return err_info;
 }
 
+static sr_error_info_t *
+sr_modinfo_ly_val_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_difflist *val_diff)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    uint32_t i, j;
+    int change;
+
+    assert(val_diff);
+
+    for (i = 0; val_diff->type[i] != LYD_DIFF_END; ++i) {
+        if ((err_info = sr_ly_val_diff_merge(&mod_info->diff, val_diff->type[i], val_diff->first[i],
+                val_diff->second[i], mod_info->conn->ly_ctx, &change))) {
+            return err_info;
+        }
+
+        /* additional modules can be modified */
+        if (change) {
+            if (val_diff->type[i] == LYD_DIFF_CREATED) {
+                ly_mod = lyd_node_module(val_diff->second[i]);
+            } else {
+                ly_mod = lyd_node_module(val_diff->first[i]);
+            }
+            for (j = 0; j < mod_info->mod_count; ++j) {
+                if (ly_mod == mod_info->mods[j].ly_mod) {
+                    mod_info->mods[j].state |= MOD_INFO_CHANGED;
+                    break;
+                }
+            }
+            assert(j < mod_info->mod_count);
+        }
+    }
+
+    return NULL;
+}
+
 sr_error_info_t *
 sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *sid, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *iter;
     struct sr_mod_info_mod_s *mod;
     struct lyd_difflist *diff = NULL;
     const struct lys_module **valid_mods = NULL;
     uint32_t i, j, valid_mod_count = 0;
     int flags;
 
-    assert(IS_WRITABLE_DS(mod_info->ds) || (sid && cb_error_info));
+    assert(SR_IS_CONVENTIONAL_DS(mod_info->ds) || (sid && cb_error_info));
     assert(!mod_info->data_cached);
 
     for (i = 0; i < mod_info->mod_count; ++i) {
@@ -993,27 +1115,60 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *s
 
     if (finish_diff) {
         /* merge the changes made by the validation into our diff */
-        if ((err_info = sr_ly_val_diff_merge(&mod_info->diff, mod_info->conn->ly_ctx, diff, &mod_info->dflt_change))) {
+        if ((err_info = sr_modinfo_ly_val_diff_merge(mod_info, diff))) {
             goto cleanup;
         }
     }
 
-    /* additional modules can be modified */
-    if (diff->type[0] != LYD_DIFF_END) {
-        for (iter = mod_info->diff; iter; iter = iter->next) {
-            /* keep just the last node from one module */
-            while (iter->next && (lyd_node_module(iter) == lyd_node_module(iter->next))) {
-                iter = iter->next;
-            }
+    /* success */
 
-            for (i = 0; i < mod_info->mod_count; ++i) {
-                mod = &mod_info->mods[i];
-                if (lyd_node_module(iter) == mod->ly_mod) {
-                    mod->state |= MOD_INFO_CHANGED;
-                    break;
-                }
-            }
-            assert(i < mod_info->mod_count);
+cleanup:
+    lyd_free_val_diff(diff);
+    free(valid_mods);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_mod_s *mod;
+    struct lyd_difflist *diff = NULL;
+    const struct lys_module **valid_mods = NULL;
+    uint32_t i, valid_mod_count = 0;
+    int flags;
+
+    assert(!mod_info->data_cached);
+
+    /* create an array of all the modules that will be processed */
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        switch (mod->state & MOD_INFO_TYPE_MASK) {
+        case MOD_INFO_REQ:
+            /* this module will be validated */
+            valid_mods = sr_realloc(valid_mods, (valid_mod_count + 1) * sizeof *valid_mods);
+            SR_CHECK_MEM_GOTO(!valid_mods, err_info, cleanup);
+            valid_mods[valid_mod_count] = mod->ly_mod;
+            ++valid_mod_count;
+            break;
+        case MOD_INFO_INV_DEP:
+        case MOD_INFO_DEP:
+            /* this module will not be validated */
+            break;
+        default:
+            SR_CHECK_INT_GOTO(0, err_info, cleanup);
+        }
+    }
+
+    /* just add default values, the validation can fail */
+    flags = (mod_info->ds == SR_DS_OPERATIONAL ? LYD_OPT_DATA : LYD_OPT_CONFIG) | LYD_OPT_TRUSTED | LYD_OPT_WHENAUTODEL
+            | LYD_OPT_VAL_DIFF;
+    lyd_validate_modules(&mod_info->data, valid_mods, valid_mod_count, flags, &diff);
+
+    if (finish_diff) {
+        /* merge the changes made by the validation into our diff */
+        if ((err_info = sr_modinfo_ly_val_diff_merge(mod_info, diff))) {
+            goto cleanup;
         }
     }
 
@@ -1100,15 +1255,14 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache, sr_sid_t *sid, const char *request_xpath,
-        uint32_t timeout_ms, sr_error_info_t **cb_error_info)
+sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache, sr_sid_t *sid,
+        const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
 
     assert(!mod_info->data);
-    assert(IS_WRITABLE_DS(mod_info->ds) || (sid && cb_error_info));
 
     if (cache && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) && (mod_info->ds == SR_DS_RUNNING)) {
         /* CACHE READ LOCK */
@@ -1124,7 +1278,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & mod_type) {
-            if ((err_info = sr_modinfo_module_data_load(mod_info, mod, sid, request_xpath, timeout_ms, cb_error_info))) {
+            if ((err_info = sr_modinfo_module_data_load(mod_info, mod, sid, request_xpath, timeout_ms, opts, cb_error_info))) {
                 /* if cached, we keep both cache lock and flag, so it is fine */
                 return err_info;
             }
@@ -1146,7 +1300,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        if ((mod->state & MOD_INFO_REQ) && IS_WRITABLE_DS(session->ds)) {
+        if (mod->state & MOD_INFO_REQ) {
             edit = NULL;
             diff = NULL;
 
@@ -1186,10 +1340,10 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
 
             /* apply any currently handled changes (diff) or additional performed ones (edit) to get
              * the session-specific data tree */
-            if ((err_info = sr_diff_mod_apply(diff, mod->ly_mod, &mod_info->data))) {
+            if ((err_info = sr_diff_mod_apply(diff, mod->ly_mod, session->ds == SR_DS_OPERATIONAL ? 1 : 0, &mod_info->data))) {
                 goto cleanup;
             }
-            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, NULL))) {
+            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, NULL, NULL))) {
                 goto cleanup;
             }
         }
@@ -1231,6 +1385,11 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     sr_change_oper_t op;
 
     assert(mod_info->diff);
+
+    if ((mod_info->ds == SR_DS_CANDIDATE) || (mod_info->ds == SR_DS_OPERATIONAL)) {
+        /* not supported */
+        return NULL;
+    }
 
     /* remember when the notification was generated */
     notif_ts = time(NULL);
@@ -1363,7 +1522,7 @@ cleanup:
     if (err_info) {
         /* write this only if the notification failed to be created/sent */
         sr_errinfo_new(&err_info, err_info->err_code, NULL, "Failed to generate netconf-config-change notification, "
-                "but configuration changes were applied.");
+                "but changes were applied.");
     }
     if (tmp_err_info) {
         sr_errinfo_merge(&err_info, tmp_err_info);
@@ -1376,41 +1535,77 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL, *tmp_err_info = NULL;
     struct sr_mod_info_mod_s *mod;
-    struct lyd_node *mod_data;
+    struct lyd_node *mod_data, *diff = NULL;
     uint32_t i;
+    int change;
 
     assert(!mod_info->data_cached);
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_CHANGED) {
-            /* separate data of this module */
-            mod_data = sr_module_data_unlink(&mod_info->data, mod->ly_mod);
-
-            /* store the new data */
-            if ((tmp_err_info = sr_module_config_data_set(mod->ly_mod->name, mod_info->ds, mod_data))) {
-                goto cleanup;
-            }
-
-            /* update module data version */
-            ++mod->shm_mod->ver;
-
-            if ((mod_info->conn->opts & SR_CONN_CACHE_RUNNING) && (mod_info->ds == SR_DS_RUNNING)) {
-                /* we are caching so update cache with these data
-                 * HACK data are simply removed from mod_info because they are no longer needed anyway (in current use-cases!) */
-                tmp_err_info = sr_modcache_module_update(&mod_info->conn->mod_cache, mod, mod_info->ds, &mod_data, 0);
-                if (tmp_err_info) {
-                    /* always store all changed modules, if possible */
-                    sr_errinfo_merge(&err_info, tmp_err_info);
-                    tmp_err_info = NULL;
+            if (mod_info->ds == SR_DS_OPERATIONAL) {
+                /* load current diff and merge it with the new diff */
+                if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, &diff))) {
+                    goto cleanup;
                 }
-            }
+                if ((err_info = sr_diff_mod_merge(mod_info->diff, mod_info->conn, mod->ly_mod, &diff, &change))) {
+                    goto cleanup;
+                }
 
-            /* connect them back */
-            if (mod_info->data) {
-                sr_ly_link(mod_info->data, mod_data);
+                /* store the new diff */
+                if (change && (err_info = sr_module_file_data_set(mod->ly_mod->name, mod_info->ds, diff))) {
+                    goto cleanup;
+                }
+                lyd_free_withsiblings(diff);
+                diff = NULL;
             } else {
-                mod_info->data = mod_data;
+                /* separate data of this module */
+                mod_data = sr_module_data_unlink(&mod_info->data, mod->ly_mod);
+
+                /* store the new data */
+                if ((err_info = sr_module_file_data_set(mod->ly_mod->name, mod_info->ds, mod_data))) {
+                    goto cleanup;
+                }
+
+                if (mod_info->ds == SR_DS_RUNNING) {
+                    /* update module running data version */
+                    ++mod->shm_mod->ver;
+
+                    if (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) {
+                        /* we are caching so update cache with these data,
+                         * HACK data are simply removed from mod_info because they are no longer
+                         * needed anyway (in current use-cases!) */
+                        tmp_err_info = sr_modcache_module_running_update(&mod_info->conn->mod_cache, mod, &mod_data, 0);
+                        if (tmp_err_info) {
+                            /* always store all changed modules, if possible */
+                            sr_errinfo_merge(&err_info, tmp_err_info);
+                            tmp_err_info = NULL;
+                        }
+                    }
+                }
+
+                /* connect them back */
+                if (mod_info->data) {
+                    sr_ly_link(mod_info->data, mod_data);
+                } else {
+                    mod_info->data = mod_data;
+                }
+
+                if (mod_info->ds == SR_DS_RUNNING) {
+                    /* update diffs of stored operational data, if any */
+                    if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, &diff))) {
+                        goto cleanup;
+                    }
+                    if ((err_info = sr_diff_mod_update(&diff, mod->ly_mod, mod_data))) {
+                        goto cleanup;
+                    }
+                    if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff))) {
+                        goto cleanup;
+                    }
+                    lyd_free_withsiblings(diff);
+                    diff = NULL;
+                }
             }
         }
     }
@@ -1419,6 +1614,7 @@ cleanup:
     if (tmp_err_info) {
         sr_errinfo_merge(&err_info, tmp_err_info);
     }
+    lyd_free_withsiblings(diff);
     return err_info;
 
 }

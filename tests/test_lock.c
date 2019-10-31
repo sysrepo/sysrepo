@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <setjmp.h>
 #include <string.h>
+#include <stdlib.h>
 #include <stdarg.h>
 
 #include <cmocka.h>
@@ -203,6 +204,7 @@ main(void)
         cmocka_unit_test(test_session_stop_unlock),
     };
 
+    setenv("CMOCKA_TEST_ABORT", "1", 1);
     sr_log_stderr(SR_LL_INF);
     return cmocka_run_group_tests(tests, setup, teardown);
 }

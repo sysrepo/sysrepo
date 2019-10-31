@@ -41,11 +41,11 @@
 #include <pthread.h>
 
 sr_error_info_t *
-sr_sub_conf_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, sr_module_change_cb conf_cb,
+sr_sub_change_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, sr_module_change_cb change_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
-    struct modsub_conf_s *conf_sub = NULL;
+    struct modsub_change_s *change_sub = NULL;
     uint32_t i;
     void *mem[4] = {NULL};
 
@@ -55,56 +55,56 @@ sr_sub_conf_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath,
     }
 
     /* try to find this module subscription SHM mapping, it may already exist */
-    for (i = 0; i < subs->conf_sub_count; ++i) {
-        if (!strcmp(mod_name, subs->conf_subs[i].module_name) && (subs->conf_subs[i].ds == sess->ds)) {
+    for (i = 0; i < subs->change_sub_count; ++i) {
+        if (!strcmp(mod_name, subs->change_subs[i].module_name) && (subs->change_subs[i].ds == sess->ds)) {
             break;
         }
     }
 
-    if (i == subs->conf_sub_count) {
-        mem[0] = realloc(subs->conf_subs, (subs->conf_sub_count + 1) * sizeof *subs->conf_subs);
+    if (i == subs->change_sub_count) {
+        mem[0] = realloc(subs->change_subs, (subs->change_sub_count + 1) * sizeof *subs->change_subs);
         SR_CHECK_MEM_GOTO(!mem[0], err_info, error_unlock);
-        subs->conf_subs = mem[0];
+        subs->change_subs = mem[0];
 
-        conf_sub = &subs->conf_subs[i];
-        memset(conf_sub, 0, sizeof *conf_sub);
-        conf_sub->sub_shm.fd = -1;
+        change_sub = &subs->change_subs[i];
+        memset(change_sub, 0, sizeof *change_sub);
+        change_sub->sub_shm.fd = -1;
 
         /* set attributes */
         mem[1] = strdup(mod_name);
         SR_CHECK_MEM_GOTO(!mem[1], err_info, error_unlock);
-        conf_sub->module_name = mem[1];
-        conf_sub->ds = sess->ds;
+        change_sub->module_name = mem[1];
+        change_sub->ds = sess->ds;
 
         /* create/open shared memory and map it */
-        if ((err_info = sr_shmsub_open_map(mod_name, sr_ds2str(sess->ds), -1, &conf_sub->sub_shm, sizeof(sr_multi_sub_shm_t)))) {
+        if ((err_info = sr_shmsub_open_map(mod_name, sr_ds2str(sess->ds), -1, &change_sub->sub_shm, sizeof(sr_multi_sub_shm_t)))) {
             goto error_unlock;
         }
 
         /* make the subscription visible only after everything succeeds */
-        ++subs->conf_sub_count;
+        ++subs->change_sub_count;
     } else {
-        conf_sub = &subs->conf_subs[i];
+        change_sub = &subs->change_subs[i];
     }
 
     /* add another XPath into module-specific subscriptions */
-    mem[2] = realloc(conf_sub->subs, (conf_sub->sub_count + 1) * sizeof *conf_sub->subs);
+    mem[2] = realloc(change_sub->subs, (change_sub->sub_count + 1) * sizeof *change_sub->subs);
     SR_CHECK_MEM_GOTO(!mem[2], err_info, error_unlock);
-    conf_sub->subs = mem[2];
-    memset(conf_sub->subs + conf_sub->sub_count, 0, sizeof *conf_sub->subs);
+    change_sub->subs = mem[2];
+    memset(change_sub->subs + change_sub->sub_count, 0, sizeof *change_sub->subs);
 
     if (xpath) {
         mem[3] = strdup(xpath);
         SR_CHECK_MEM_RET(!mem[3], err_info);
-        conf_sub->subs[conf_sub->sub_count].xpath = mem[3];
+        change_sub->subs[change_sub->sub_count].xpath = mem[3];
     }
-    conf_sub->subs[conf_sub->sub_count].priority = priority;
-    conf_sub->subs[conf_sub->sub_count].opts = sub_opts;
-    conf_sub->subs[conf_sub->sub_count].cb = conf_cb;
-    conf_sub->subs[conf_sub->sub_count].private_data = private_data;
-    conf_sub->subs[conf_sub->sub_count].sess = sess;
+    change_sub->subs[change_sub->sub_count].priority = priority;
+    change_sub->subs[change_sub->sub_count].opts = sub_opts;
+    change_sub->subs[change_sub->sub_count].cb = change_cb;
+    change_sub->subs[change_sub->sub_count].private_data = private_data;
+    change_sub->subs[change_sub->sub_count].sess = sess;
 
-    ++conf_sub->sub_count;
+    ++change_sub->sub_count;
 
     /* SUBS UNLOCK */
     sr_munlock(&subs->subs_lock);
@@ -117,22 +117,22 @@ error_unlock:
     for (i = 0; i < 4; ++i) {
         free(mem[i]);
     }
-    if (conf_sub) {
-        sr_shm_clear(&conf_sub->sub_shm);
+    if (change_sub) {
+        sr_shm_clear(&change_sub->sub_shm);
     }
     if (mem[1]) {
-        --subs->conf_sub_count;
+        --subs->change_sub_count;
     }
     return err_info;
 }
 
 void
-sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb conf_cb,
+sr_sub_change_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb change_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
-    struct modsub_conf_s *conf_sub;
+    struct modsub_change_s *change_sub;
 
     /* SUBS LOCK */
     if ((err_info = sr_mlock(&subs->subs_lock, SR_SUB_EVENT_LOOP_TIMEOUT * 1000, __func__))) {
@@ -140,44 +140,44 @@ sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_m
         return;
     }
 
-    for (i = 0; i < subs->conf_sub_count; ++i) {
-        conf_sub = &subs->conf_subs[i];
+    for (i = 0; i < subs->change_sub_count; ++i) {
+        change_sub = &subs->change_subs[i];
 
-        if ((conf_sub->ds != ds) || strcmp(mod_name, conf_sub->module_name)) {
+        if ((change_sub->ds != ds) || strcmp(mod_name, change_sub->module_name)) {
             continue;
         }
 
-        for (j = 0; j < conf_sub->sub_count; ++j) {
-            if ((!xpath && conf_sub->subs[j].xpath) || (xpath && !conf_sub->subs[j].xpath)
-                    || (xpath && conf_sub->subs[j].xpath && strcmp(conf_sub->subs[j].xpath, xpath))) {
+        for (j = 0; j < change_sub->sub_count; ++j) {
+            if ((!xpath && change_sub->subs[j].xpath) || (xpath && !change_sub->subs[j].xpath)
+                    || (xpath && change_sub->subs[j].xpath && strcmp(change_sub->subs[j].xpath, xpath))) {
                 continue;
             }
-            if ((conf_sub->subs[j].priority != priority) || (conf_sub->subs[j].opts != sub_opts)
-                    || (conf_sub->subs[j].cb != conf_cb) || (conf_sub->subs[j].private_data != private_data)) {
+            if ((change_sub->subs[j].priority != priority) || (change_sub->subs[j].opts != sub_opts)
+                    || (change_sub->subs[j].cb != change_cb) || (change_sub->subs[j].private_data != private_data)) {
                 continue;
             }
 
             /* found our subscription, replace it with the last */
-            free(conf_sub->subs[j].xpath);
-            if (j < conf_sub->sub_count - 1) {
-                memcpy(&conf_sub->subs[j], &conf_sub->subs[conf_sub->sub_count - 1], sizeof *conf_sub->subs);
+            free(change_sub->subs[j].xpath);
+            if (j < change_sub->sub_count - 1) {
+                memcpy(&change_sub->subs[j], &change_sub->subs[change_sub->sub_count - 1], sizeof *change_sub->subs);
             }
-            --conf_sub->sub_count;
+            --change_sub->sub_count;
 
-            if (!conf_sub->sub_count) {
+            if (!change_sub->sub_count) {
                 /* no other subscriptions for this module, replace it with the last */
-                free(conf_sub->module_name);
-                free(conf_sub->subs);
-                sr_shm_clear(&conf_sub->sub_shm);
-                if (i < subs->conf_sub_count - 1) {
-                    memcpy(conf_sub, &subs->conf_subs[subs->conf_sub_count - 1], sizeof *conf_sub);
+                free(change_sub->module_name);
+                free(change_sub->subs);
+                sr_shm_clear(&change_sub->sub_shm);
+                if (i < subs->change_sub_count - 1) {
+                    memcpy(change_sub, &subs->change_subs[subs->change_sub_count - 1], sizeof *change_sub);
                 }
-                --subs->conf_sub_count;
+                --subs->change_sub_count;
 
-                if (!subs->conf_sub_count) {
-                    /* no other configuration subscriptions */
-                    free(subs->conf_subs);
-                    subs->conf_subs = NULL;
+                if (!subs->change_sub_count) {
+                    /* no other change subscriptions */
+                    free(subs->change_subs);
+                    subs->change_subs = NULL;
                 }
             }
 
@@ -252,7 +252,7 @@ sr_sub_oper_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath,
     oper_sub->subs[oper_sub->sub_count].sess = sess;
 
     /* create specific SHM and map it */
-    if ((err_info = sr_shmsub_open_map(mod_name, "state", sr_str_hash(xpath), &oper_sub->subs[oper_sub->sub_count].sub_shm,
+    if ((err_info = sr_shmsub_open_map(mod_name, "oper", sr_str_hash(xpath), &oper_sub->subs[oper_sub->sub_count].sub_shm,
             sizeof(sr_sub_shm_t)))) {
         goto error_unlock;
     }
@@ -661,16 +661,16 @@ int
 sr_subs_session_count(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs)
 {
     uint32_t count = 0, i, j;
-    struct modsub_conf_s *conf_subs;
+    struct modsub_change_s *change_subs;
     struct modsub_oper_s *oper_subs;
     struct modsub_notif_s *notif_sub;
     struct opsub_rpc_s *rpc_sub;
 
-    /* configuration subscriptions */
-    for (i = 0; i < subs->conf_sub_count; ++i) {
-        conf_subs = &subs->conf_subs[i];
-        for (j = 0; j < conf_subs->sub_count; ++j) {
-            if (conf_subs->subs[j].sess == sess) {
+    /* change subscriptions */
+    for (i = 0; i < subs->change_sub_count; ++i) {
+        change_subs = &subs->change_subs[i];
+        for (j = 0; j < change_subs->sub_count; ++j) {
+            if (change_subs->subs[j].sess == sess) {
                 ++count;
             }
         }
@@ -716,7 +716,7 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs)
     char *mod_name, *path;
     uint32_t i, j;
     int last_removed;
-    struct modsub_conf_s *conf_subs;
+    struct modsub_change_s *change_subs;
     struct modsub_oper_s *oper_sub;
     struct modsub_notif_s *notif_sub;
     struct opsub_rpc_s *rpc_sub;
@@ -731,25 +731,33 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs)
         return err_info;
     }
 
-conf_subs_del:
-    /* configuration subscriptions */
-    for (i = 0; i < subs->conf_sub_count; ++i) {
-        conf_subs = &subs->conf_subs[i];
+change_subs_del:
+    /* change subscriptions */
+    for (i = 0; i < subs->change_sub_count; ++i) {
+        change_subs = &subs->change_subs[i];
 
         /* find module */
-        shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, ext_shm->addr, conf_subs->module_name, 0);
+        shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, ext_shm->addr, change_subs->module_name, 0);
         SR_CHECK_INT_RET(!shm_mod, err_info);
-        for (j = 0; j < conf_subs->sub_count; ++j) {
-            if (conf_subs->subs[j].sess == sess) {
+        for (j = 0; j < change_subs->sub_count; ++j) {
+            if (change_subs->subs[j].sess == sess) {
                 /* remove the subscription from the main SHM */
-                if ((err_info = sr_shmmod_conf_subscription_del(ext_shm->addr, shm_mod, conf_subs->subs[j].xpath,
-                            conf_subs->ds, conf_subs->subs[j].priority, conf_subs->subs[j].opts, subs->evpipe_num, 0, &last_removed))) {
+                if ((err_info = sr_shmmod_change_subscription_del(ext_shm->addr, shm_mod, change_subs->subs[j].xpath,
+                        change_subs->ds, change_subs->subs[j].priority, change_subs->subs[j].opts, subs->evpipe_num, 0,
+                        &last_removed))) {
                     return err_info;
+                }
+
+                if (change_subs->ds == SR_DS_RUNNING) {
+                    /* technically, operational data changed */
+                    if ((err_info = sr_module_update_oper_diff(sess->conn, change_subs->module_name))) {
+                        return err_info;
+                    }
                 }
 
                 if (last_removed) {
                     /* delete the SHM file itself so that there is no leftover event */
-                    if ((err_info = sr_path_sub_shm(conf_subs->module_name, sr_ds2str(conf_subs->ds), -1, 0, &path))) {
+                    if ((err_info = sr_path_sub_shm(change_subs->module_name, sr_ds2str(change_subs->ds), -1, 0, &path))) {
                         return err_info;
                     }
                     if (shm_unlink(path) == -1) {
@@ -759,11 +767,11 @@ conf_subs_del:
                 }
 
                 /* remove the subscription from the subscription structure */
-                sr_sub_conf_del(conf_subs->module_name, conf_subs->subs[j].xpath, conf_subs->ds, conf_subs->subs[j].cb,
-                        conf_subs->subs[j].private_data, conf_subs->subs[j].priority, conf_subs->subs[j].opts, subs);
+                sr_sub_change_del(change_subs->module_name, change_subs->subs[j].xpath, change_subs->ds, change_subs->subs[j].cb,
+                        change_subs->subs[j].private_data, change_subs->subs[j].priority, change_subs->subs[j].opts, subs);
 
                 /* restart loops */
-                goto conf_subs_del;
+                goto change_subs_del;
             }
         }
     }
@@ -780,12 +788,12 @@ oper_subs_del:
             if (oper_sub->subs[j].sess == sess) {
                 /* remove the subscriptions from the main SHM */
                 if ((err_info = sr_shmmod_oper_subscription_del(ext_shm->addr, shm_mod, oper_sub->subs[j].xpath,
-                            subs->evpipe_num, 0))) {
+                        subs->evpipe_num, 0))) {
                     return err_info;
                 }
 
                 /* delete the SHM file itself so that there is no leftover event */
-                if ((err_info = sr_path_sub_shm(oper_sub->module_name, "state", sr_str_hash(oper_sub->subs[j].xpath), 0, &path))) {
+                if ((err_info = sr_path_sub_shm(oper_sub->module_name, "oper", sr_str_hash(oper_sub->subs[j].xpath), 0, &path))) {
                     return err_info;
                 }
                 if (shm_unlink(path) == -1) {
@@ -814,7 +822,7 @@ notif_subs_del:
             if (notif_sub->subs[j].sess == sess) {
                 /* remove the subscriptions from the main SHM */
                 if ((err_info = sr_shmmod_notif_subscription_del(ext_shm->addr, shm_mod, subs->evpipe_num, 0,
-                            &last_removed))) {
+                        &last_removed))) {
                     return err_info;
                 }
 
@@ -896,18 +904,18 @@ sr_subs_del_all(sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
-    struct modsub_conf_s *conf_subs;
+    struct modsub_change_s *change_subs;
     struct modsub_oper_s *oper_subs;
     struct modsub_notif_s *notif_sub;
     struct opsub_rpc_s *rpc_sub;
 
 subs_del:
-    /* configuration subscriptions */
-    for (i = 0; i < subs->conf_sub_count; ++i) {
-        conf_subs = &subs->conf_subs[i];
-        for (j = 0; j < conf_subs->sub_count; ++j) {
+    /* change subscriptions */
+    for (i = 0; i < subs->change_sub_count; ++i) {
+        change_subs = &subs->change_subs[i];
+        for (j = 0; j < change_subs->sub_count; ++j) {
             /* remove all subscriptions in subs from the session */
-            if ((err_info = sr_subs_session_del(conf_subs->subs[j].sess, subs))) {
+            if ((err_info = sr_subs_session_del(change_subs->subs[j].sess, subs))) {
                 return err_info;
             }
             goto subs_del;
@@ -1118,7 +1126,7 @@ sr_clear_sess(sr_session_ctx_t *tmp_sess)
     uint16_t i;
 
     sr_errinfo_free(&tmp_sess->err_info);
-    for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {
+    for (i = 0; i < SR_DS_COUNT; ++i) {
         lyd_free_withsiblings(tmp_sess->dt[i].edit);
         tmp_sess->dt[i].edit = NULL;
         lyd_free_withsiblings(tmp_sess->dt[i].diff);
@@ -1300,7 +1308,7 @@ sr_create_data_files(const struct lys_module *ly_mod)
     }
 
     /* print them into a file */
-    if ((err_info = sr_module_config_data_set(ly_mod->name, SR_DS_STARTUP, root))) {
+    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, root))) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
         goto cleanup;
     }
@@ -1312,7 +1320,7 @@ sr_create_data_files(const struct lys_module *ly_mod)
         goto cleanup;
     }
 
-    if ((err_info = sr_module_config_data_set(ly_mod->name, SR_DS_RUNNING, root))) {
+    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, root))) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
         goto cleanup;
     }
@@ -1373,7 +1381,7 @@ sr_path_ds_shm(const char *mod_name, sr_datastore_t ds, int abs_path, char **pat
     sr_error_info_t *err_info = NULL;
     int ret;
 
-    assert((ds == SR_DS_RUNNING) || (ds == SR_DS_CANDIDATE));
+    assert((ds == SR_DS_RUNNING) || (ds == SR_DS_CANDIDATE) || (ds == SR_DS_OPERATIONAL));
 
     ret = asprintf(path, "%s/sr_%s.%s", abs_path ? SR_SHM_DIR : "", mod_name, sr_ds2str(ds));
     if (ret == -1) {
@@ -2340,8 +2348,6 @@ sr_ds2str(sr_datastore_t ds)
         return "candidate";
     case SR_DS_OPERATIONAL:
         return "operational";
-    case SR_DS_STATE:
-        return "state";
     }
 
     return NULL;
@@ -2517,6 +2523,7 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
     const struct lyd_node_leaf_list *leaf;
     struct lyd_node_anydata *any;
     struct lyd_node *tree;
+    const char *origin;
 
     sr_val->xpath = lyd_path(node);
     SR_CHECK_MEM_GOTO(!sr_val->xpath, err_info, error);
@@ -2680,6 +2687,12 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
         return err_info;
     }
 
+    /* origin */
+    sr_edit_diff_get_origin(node, &origin, NULL);
+    if (origin) {
+        sr_val->origin = strdup(origin);
+    }
+
     return NULL;
 
 error:
@@ -2806,6 +2819,60 @@ sr_ly_link(struct lyd_node *first, struct lyd_node *sibling)
     sibling->prev = first->prev;
     first->prev->next = sibling;
     first->prev = last;
+}
+
+sr_error_info_t *
+sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *trg_parent)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lyd_node *src_child;
+    struct lyd_node *trg_child;
+    uint16_t i;
+
+    if (!depth || (src_parent->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA))) {
+        return NULL;
+    }
+
+    /* skip keys, they are already duplicated */
+    src_child = src_parent->child;
+    if (src_parent->schema->nodetype == LYS_LIST) {
+        for (i = 0; i < ((struct lys_node_list *)src_parent->schema)->keys_size; ++i) {
+            src_child = src_child->next;
+        }
+    }
+    while (src_child) {
+        trg_child = lyd_dup(src_child, LYD_DUP_OPT_WITH_KEYS | LYD_DUP_OPT_WITH_WHEN);
+        if (!trg_child) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(src_parent)->ctx);
+            return err_info;
+        }
+
+        if (lyd_insert(trg_parent, trg_child)) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(src_parent)->ctx);
+            SR_ERRINFO_INT(&err_info);
+            return NULL;
+        }
+        if ((err_info = sr_lyd_dup(src_child, depth - 1, trg_child))) {
+            return err_info;
+        }
+
+        src_child = src_child->next;
+    }
+
+    return NULL;
+}
+
+struct lyd_node *
+sr_lyd_child(const struct lyd_node *node)
+{
+    if (!node) {
+        return NULL;
+    }
+
+    if (node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) {
+        return NULL;
+    }
+    return node->child;
 }
 
 sr_error_info_t *
@@ -2947,68 +3014,45 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_ly_module_data_add_np_cont(struct lyd_node **data, const struct lys_module *ly_mod)
+sr_lyd_add_np_cont(struct lyd_node **data, struct lyd_node *parent, const struct lys_module *ly_mod,
+        const struct lys_node *sparent)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_node *last;
-    struct lyd_node *iter, *elem, *next, *root;
+    struct lyd_node *iter;
 
-    /* add top-level NP containers */
-    for (last = lys_getnext(NULL, NULL, ly_mod, 0); last; last = lys_getnext(last, NULL, ly_mod, 0)) {
+    assert((data || parent) && (ly_mod || sparent));
+
+    if (!ly_mod) {
+        ly_mod = lys_node_module(sparent);
+    }
+
+    for (last = lys_getnext(NULL, sparent, ly_mod, 0); last; last = lys_getnext(last, sparent, ly_mod, 0)) {
         if ((last->nodetype == LYS_CONTAINER) && !((struct lys_node_container *)last)->presence) {
             /* check that it exists in the data */
-            LY_TREE_FOR(*data, iter) {
+            LY_TREE_FOR(parent ? sr_lyd_child(parent) : *data, iter) {
                 if (iter->schema == last) {
                     break;
                 }
             }
             if (!iter) {
                 /* it does not, add it */
-                iter = lyd_new(NULL, ly_mod, last->name);
+                iter = lyd_new(parent, ly_mod, last->name);
                 if (!iter) {
                     sr_errinfo_new_ly(&err_info, ly_mod->ctx);
                     return err_info;
                 }
                 iter->dflt = 1;
-                if (!*data) {
-                    *data = iter;
-                } else if (lyd_insert_sibling(data, iter)) {
-                    lyd_free(iter);
-                    sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-                    return err_info;
-                }
-            }
-        }
-    }
-
-    /* add nested NP containers */
-    LY_TREE_FOR(*data, root) {
-        if (lyd_node_module(root) != ly_mod) {
-            continue;
-        }
-
-        LY_TREE_DFS_BEGIN(root, next, elem) {
-            for (last = lys_getnext(NULL, elem->schema, NULL, 0); last; last = lys_getnext(last, elem->schema, NULL, 0)) {
-                if ((last->nodetype == LYS_CONTAINER) && !((struct lys_node_container *)last)->presence) {
-                    /* check that it exists in the data (it must be a node with children) */
-                    assert(!(elem->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)));
-                    LY_TREE_FOR(elem->child, iter) {
-                        if (iter->schema == last) {
-                            break;
-                        }
-                    }
-                    if (!iter) {
-                        /* it does not, add it */
-                        iter = lyd_new(elem, NULL, last->name);
-                        if (!iter) {
-                            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-                            return err_info;
-                        }
-                        iter->dflt = 1;
+                if (!parent) {
+                    if (!*data) {
+                        *data = iter;
+                    } else if (lyd_insert_sibling(data, iter)) {
+                        lyd_free(iter);
+                        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+                        return err_info;
                     }
                 }
             }
-            LY_TREE_DFS_END(root, next, elem);
         }
     }
 
@@ -3025,6 +3069,217 @@ sr_ly_is_userord(const struct lyd_node *node)
     }
 
     return 0;
+}
+
+sr_error_info_t *
+sr_lyd_anydata_equal(const struct lyd_node *any1, const struct lyd_node *any2, int *equal)
+{
+    sr_error_info_t *err_info = NULL;
+    char *val1 = NULL, *val2 = NULL;
+
+    if ((err_info = sr_ly_anydata_value_str(any1, &val1))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_ly_anydata_value_str(any2, &val2))) {
+        goto cleanup;
+    }
+
+    /* simply compare string values */
+    if (!strcmp(val1, val2)) {
+        *equal = 1;
+    } else {
+        *equal = 0;
+    }
+
+cleanup:
+    free(val1);
+    free(val2);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_lyd_anydata_copy(struct lyd_node *trg, const struct lyd_node *src)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node_anydata *t;
+    const struct lyd_node_anydata *s;
+    struct ly_ctx *ly_ctx;
+    int len;
+
+    assert(trg->schema->nodetype & src->schema->nodetype & LYS_ANYDATA);
+    t = (struct lyd_node_anydata *)trg;
+    s = (const struct lyd_node_anydata *)src;
+    ly_ctx = t->schema->module->ctx;
+
+    /* free trg */
+    switch (t->value_type) {
+    case LYD_ANYDATA_CONSTSTRING:
+    case LYD_ANYDATA_SXML:
+    case LYD_ANYDATA_JSON:
+        lydict_remove(ly_ctx, t->value.str);
+        break;
+    case LYD_ANYDATA_DATATREE:
+        lyd_free_withsiblings(t->value.tree);
+        break;
+    case LYD_ANYDATA_XML:
+        lyxml_free_withsiblings(ly_ctx, t->value.xml);
+        break;
+    case LYD_ANYDATA_LYB:
+        free(t->value.mem);
+        break;
+    case LYD_ANYDATA_STRING:
+    case LYD_ANYDATA_SXMLD:
+    case LYD_ANYDATA_JSOND:
+    case LYD_ANYDATA_LYBD:
+        /* dynamic strings are used only as input parameters */
+        SR_ERRINFO_INT(&err_info);
+        return err_info;
+    }
+    t->value.str = NULL;
+
+    /* copy src */
+    t->value_type = s->value_type;
+    switch (s->value_type) {
+    case LYD_ANYDATA_CONSTSTRING:
+    case LYD_ANYDATA_SXML:
+    case LYD_ANYDATA_JSON:
+        t->value.str = lydict_insert(ly_ctx, s->value.str, 0);
+        break;
+    case LYD_ANYDATA_DATATREE:
+        t->value.tree = lyd_dup_withsiblings(s->value.tree, LYD_DUP_OPT_RECURSIVE);
+        if (!t->value.tree) {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            return err_info;
+        }
+        break;
+    case LYD_ANYDATA_XML:
+        t->value.xml = lyxml_dup(ly_ctx, s->value.xml);
+        if (!t->value.tree) {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            return err_info;
+        }
+        break;
+    case LYD_ANYDATA_LYB:
+        len = lyd_lyb_data_length(s->value.mem);
+        t->value.mem = malloc(len);
+        if (!t->value.mem) {
+            SR_ERRINFO_MEM(&err_info);
+            return err_info;
+        }
+        memcpy(t->value.mem, s->value.mem, len);
+        break;
+    case LYD_ANYDATA_STRING:
+    case LYD_ANYDATA_SXMLD:
+    case LYD_ANYDATA_JSOND:
+    case LYD_ANYDATA_LYBD:
+        /* dynamic strings are used only as input parameters */
+        SR_ERRINFO_INT(&err_info);
+        return err_info;
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_ly_anydata_value_str(const struct lyd_node *any, char **value_str)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lyd_node_anydata *a;
+    struct lyd_node *tree = NULL;
+    struct lyxml_elem *xml = NULL;
+    const char *str = NULL;
+    int dynamic;
+
+    assert(any->schema->nodetype & LYS_ANYDATA);
+
+    a = (const struct lyd_node_anydata *)any;
+    if (!a->value.str) {
+        /* there is no value in the union */
+        return NULL;
+    }
+
+    *value_str = NULL;
+
+    switch (a->value_type) {
+    case LYD_ANYDATA_LYB:
+        /* parse into a data tree */
+        ly_errno = 0;
+        tree = lyd_parse_mem(a->schema->module->ctx, a->value.mem, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT | LYD_OPT_TRUSTED, NULL);
+        if (ly_errno) {
+            sr_errinfo_new_ly(&err_info, a->schema->module->ctx);
+            return err_info;
+        }
+        dynamic = 1;
+        break;
+    case LYD_ANYDATA_DATATREE:
+        tree = a->value.tree;
+        dynamic = 0;
+        break;
+    case LYD_ANYDATA_SXML:
+        /* parse into XML */
+        xml = lyxml_parse_mem(a->schema->module->ctx, a->value.str, LYXML_PARSE_MULTIROOT);
+        if (!xml) {
+            sr_errinfo_new_ly(&err_info, a->schema->module->ctx);
+            return err_info;
+        }
+        dynamic = 1;
+        break;
+    case LYD_ANYDATA_XML:
+        xml = a->value.xml;
+        dynamic = 0;
+        break;
+    case LYD_ANYDATA_JSON:
+        /* simply use this JSON even though it can easily get mixed with XML */
+        str = a->value.str;
+        dynamic = 0;
+        break;
+    case LYD_ANYDATA_CONSTSTRING:
+        str = a->value.str;
+        dynamic = 0;
+        break;
+    case LYD_ANYDATA_STRING:
+    case LYD_ANYDATA_SXMLD:
+    case LYD_ANYDATA_JSOND:
+    case LYD_ANYDATA_LYBD:
+        /* dynamic strings are used only as input parameters */
+        SR_ERRINFO_INT(&err_info);
+        return err_info;
+    }
+
+    if (tree) {
+        /* print into a string */
+        if (lyd_print_mem(value_str, tree, LYD_XML, LYP_WITHSIBLINGS)) {
+            sr_errinfo_new_ly(&err_info, a->schema->module->ctx);
+            goto cleanup;
+        }
+    } else if (xml) {
+        /* print into a string */
+        if (lyxml_print_mem(value_str, xml, LYXML_PRINT_SIBLINGS) < 1) {
+            sr_errinfo_new_ly(&err_info, a->schema->module->ctx);
+            goto cleanup;
+        }
+    } else {
+        assert(str);
+        if (dynamic) {
+            *value_str = (char *)str;
+        } else {
+            *value_str = strdup(str);
+            if (!*value_str) {
+                SR_ERRINFO_MEM(&err_info);
+                goto cleanup;
+            }
+        }
+    }
+
+    /* success */
+
+cleanup:
+    if (dynamic) {
+        lyd_free_withsiblings(tree);
+        lyxml_free(a->schema->module->ctx, xml);
+        free((char *)str);
+    }
+    return err_info;
 }
 
 /*
@@ -3051,7 +3306,7 @@ sr_str_hash(const char *str)
 }
 
 sr_error_info_t *
-sr_xpath_trim_last_node(const char *xpath, char **trim_xpath, char **last_node_xpath)
+sr_xpath_trim_last_node(const char *xpath, char **trim_xpath)
 {
     sr_error_info_t *err_info = NULL;
     const char *ptr;
@@ -3059,8 +3314,6 @@ sr_xpath_trim_last_node(const char *xpath, char **trim_xpath, char **last_node_x
     int skipping;
 
     *trim_xpath = NULL;
-    *last_node_xpath = NULL;
-
     assert(xpath[0] == '/');
 
     skipping = 0;
@@ -3082,13 +3335,10 @@ sr_xpath_trim_last_node(const char *xpath, char **trim_xpath, char **last_node_x
 
     *trim_xpath = strndup(xpath, ptr - xpath);
     SR_CHECK_MEM_GOTO(!*trim_xpath, err_info, error);
-    *last_node_xpath = strdup(ptr + 1);
-    SR_CHECK_MEM_GOTO(!*last_node_xpath, err_info, error);
     return NULL;
 
 error:
     free(*trim_xpath);
-    free(*last_node_xpath);
     return err_info;
 }
 
@@ -3201,6 +3451,16 @@ sr_ly_find_last_parent(struct lyd_node **parent, int nodetype)
     return err_info;
 }
 
+uint16_t
+sr_ly_list_key_count(const struct lyd_node *node)
+{
+    if (!node || (node->schema->nodetype != LYS_LIST)) {
+        return 0;
+    }
+
+    return ((struct lys_node_list *)node->schema)->keys_size;
+}
+
 struct lyd_node *
 sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 {
@@ -3235,27 +3495,19 @@ sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 }
 
 sr_error_info_t *
-sr_module_config_data_append(const struct lys_module *ly_mod, sr_datastore_t ds, struct lyd_node **data)
+sr_module_file_data_append(const struct lys_module *ly_mod, sr_datastore_t ds, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data = NULL;
     char *path = NULL;
-    int fd = -1;
+    int fd = -1, flags;
 
 retry_open:
     /* prepare correct file path */
-    switch (ds) {
-    case SR_DS_STARTUP:
+    if (ds ==  SR_DS_STARTUP) {
         err_info = sr_path_startup_file(ly_mod->name, &path);
-        break;
-    case SR_DS_CANDIDATE:
-        err_info = sr_path_ds_shm(ly_mod->name, SR_DS_CANDIDATE, 0, &path);
-        break;
-    case SR_DS_OPERATIONAL:
-    case SR_DS_STATE:
-    case SR_DS_RUNNING:
-        err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, 0, &path);
-        break;
+    } else {
+        err_info = sr_path_ds_shm(ly_mod->name, ds, 0, &path);
     }
     if (err_info) {
         goto error;
@@ -3267,38 +3519,44 @@ retry_open:
     } else {
         fd = shm_open(path, O_RDONLY, 0);
     }
-    if ((fd == -1) && (errno == ENOENT)) {
-        if (ds == SR_DS_CANDIDATE) {
-            /* no candidate exists, just use running */
-            ds = SR_DS_RUNNING;
+    if (fd == -1) {
+        if (errno == ENOENT) {
+            if (ds == SR_DS_CANDIDATE) {
+                /* no candidate exists, just use running */
+                ds = SR_DS_RUNNING;
+                free(path);
+                path = NULL;
+                goto retry_open;
+            }
+
+            /* no file = no data, nothing to do */
+            if (ds == SR_DS_STARTUP) {
+                SR_LOG_WRN("Failed to open \"%s\" (%s), it should exist.", path, strerror(errno));
+            }
             free(path);
-            path = NULL;
-            goto retry_open;
+            return NULL;
         }
 
-        /* no file = no data, nothing to do */
-        if (ds == SR_DS_STARTUP) {
-            SR_LOG_WRN("Failed to open \"%s\" (%s), it should exist.", path, strerror(errno));
-        }
-        free(path);
-        return NULL;
-    }
-    if (fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
         goto error;
     }
 
     /* load the data */
     ly_errno = 0;
-    mod_data = lyd_parse_fd(ly_mod->ctx, fd, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS);
+    if (ds == SR_DS_OPERATIONAL) {
+        flags = LYD_OPT_EDIT | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS;
+    } else {
+        flags = LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS;
+    }
+    mod_data = lyd_parse_fd(ly_mod->ctx, fd, LYD_LYB, flags);
     if (ly_errno) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         goto error;
     }
 
-    if (*data) {
+    if (*data && mod_data) {
         sr_ly_link(*data, mod_data);
-    } else {
+    } else if (mod_data) {
         *data = mod_data;
     }
     close(fd);
@@ -3315,7 +3573,7 @@ error:
 }
 
 sr_error_info_t *
-sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data)
+sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data)
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
@@ -3328,12 +3586,8 @@ sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_no
         break;
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
-        err_info = sr_path_ds_shm(mod_name, ds, 0, &path);
-        break;
     case SR_DS_OPERATIONAL:
-    case SR_DS_STATE:
-        /* forbidden */
-        SR_ERRINFO_INT(&err_info);
+        err_info = sr_path_ds_shm(mod_name, ds, 0, &path);
         break;
     }
     if (err_info) {
@@ -3363,5 +3617,56 @@ cleanup:
         close(fd);
     }
     free(path);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    struct sr_mod_info_s mod_info;
+    sr_sid_t sid;
+    struct lyd_node *diff = NULL;
+
+    memset(&mod_info, 0, sizeof mod_info);
+    memset(&sid, 0, sizeof sid);
+
+    /* get the module */
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
+    SR_CHECK_INT_RET(!ly_mod, err_info);
+
+    if ((err_info = sr_shmmod_collect_modules(conn, ly_mod, SR_DS_OPERATIONAL, 0, &mod_info))) {
+        return err_info;
+    }
+
+    /* MODULES READ LOCK */
+    if ((err_info = sr_shmmod_modinfo_rdlock(&mod_info, 0, sid))) {
+        return err_info;
+    }
+
+    /* load the module enabled running data */
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, NULL, NULL, 0,
+            SR_OPER_NO_STORED | SR_OPER_NO_SUBS, NULL))) {
+        goto cleanup;
+    }
+
+    /* update diff */
+    if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_OPERATIONAL, &diff))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_diff_mod_update(&diff, ly_mod, mod_info.data))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff))) {
+        goto cleanup;
+    }
+
+cleanup:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info, 0);
+
+    lyd_free_withsiblings(diff);
+    sr_modinfo_free(&mod_info);
     return err_info;
 }

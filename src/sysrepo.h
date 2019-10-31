@@ -187,7 +187,6 @@ typedef enum sr_datastore_e {
     SR_DS_RUNNING = 1,     /**< Contains current configuration data. */
     SR_DS_CANDIDATE = 2,   /**< Contains prepared configuration data that do not affect actual configuration. */
     SR_DS_OPERATIONAL = 3, /**< Contains currently used configuration (may differ from configuration data) and state data. */
-    SR_DS_STATE = 4,       /**< Contains only current state data. */
 } sr_datastore_t;
 
 /**
@@ -245,9 +244,10 @@ int sr_connection_count(uint32_t *conn_count);
 /**
  * @brief Try to recover (clean up) any stale connections of clients that no longer exist.
  *
+ * @param[in] conn Connection acquired with ::sr_connect call.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_connection_recover(void);
+int sr_connection_recover(sr_conn_ctx_t *conn);
 
 /**
  * @brief Get the libyang context used by a connection. Can be used in an application for working with data
@@ -638,9 +638,7 @@ typedef union sr_data_u {
  * @brief Structure that contains value of an data element stored in the sysrepo datastore.
  */
 typedef struct sr_val_s {
-    /**
-     * XPath identifier of the data element
-     */
+    /** XPath identifier of the data element. */
     char *xpath;
 
     /** Type of an element. */
@@ -654,10 +652,33 @@ typedef struct sr_val_s {
      */
     bool dflt;
 
+    /** Origin of the value. */
+    char *origin;
+
     /** Data of an element (if applicable), properly set according to the type. */
     sr_data_t data;
 
 } sr_val_t;
+
+/**
+ * @brief Flags used to override default data get behaviour on ::SR_DS_OPERATIONAL by ::sr_get_data call.
+ */
+typedef enum sr_get_oper_flag_e {
+    SR_OPER_DEFAULT = 0,             /**< No special behaviour. */
+    SR_OPER_NO_STATE = 1,            /**< Return only configuration data. */
+    SR_OPER_NO_CONFIG = 2,           /**< Return only state data. If there are some state subtrees with configuration
+                                          parents, these are also returned. */
+    SR_OPER_NO_SUBS = 4,             /**< Return only stored operational data (push), do not call subscriber callbacks (pull). */
+    SR_OPER_NO_STORED = 8,           /**< Do not merge with stored operational data (push). */
+    SR_OPER_WITH_ORIGIN = 16,        /**< Return data with their [origin attributes](@ref datastores). Nodes without
+                                          one inherit the origin from parents. */
+} sr_get_oper_flag_t;
+
+/**
+ * @brief Options overriding default get handling by ::sr_get_data call,
+ * it is supposed to be bitwise OR-ed value of any ::sr_get_oper_flag_t flags.
+ */
+typedef uint32_t sr_get_oper_options_t;
 
 /**
  * @brief Retrieves a single data element selected by the provided path. If multiple
@@ -736,11 +757,15 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout
  *
  * @param[in] session Session to use.
  * @param[in] xpath XPath selecting root nodes of subtrees to be retrieved.
+ * @param[in] max_depth Maximum depth of the selected subtrees. 0 is unlimited, 1 will not return any
+ * descendant nodes. If a list should be returned, its keys are always returned as well.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
+ * @param[in] opts Options overriding default get behaviour.
  * @param[out] data Connected top-level trees with all the selected data (allocated by the function, freed by the caller).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, struct lyd_node **data);
+int sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, uint32_t timeout_ms,
+        const sr_get_oper_options_t opts, struct lyd_node **data);
 
 /**
  * @brief Frees ::sr_val_t structure and all memory allocated within it.
@@ -827,10 +852,12 @@ int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *val
  * @param[in] session Session to use.
  * @param[in] path Path identifier of the data element to be set.
  * @param[in] value String representation of the value to be set.
+ * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits.
  * @param[in] opts Same as for ::sr_set_item.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts);
+int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, const char *origin,
+        const sr_edit_options_t opts);
 
 /**
  * @brief Deletes the nodes matching the specified xpath. The accepted values are the same as for
@@ -859,19 +886,21 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
  * @param[in] position Requested move direction.
  * @param[in] list_keys Predicate identifying the relative list instance (example input "[key1='val1'][key2='val2']...").
  * @param[in] leaflist_value Value of the relative leaf-list instance (example input "val1").
- * to determine relative position, used only if position argument is SR_MOVE_BEFORE or SR_MOVE_AFTER.
+ * to determine relative position, used only if position argument is ::SR_MOVE_BEFORE or ::SR_MOVE_AFTER.
+ * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
-        const char *leaflist_value);
+        const char *leaflist_value, const char *origin);
 
 /**
  * @brief Provide a prepared edit data tree to be applied. Similar semantics to
- * NETCONF \<edit-config\> content.
+ * [NETCONF \<edit-config\>](https://tools.ietf.org/html/rfc6241#section-7.2) content.
  *
  * @param[in] session Session to use.
  * @param[in] edit Edit content.
  * @param[in] default_operation Default operation for nodes without operation on themselves or any parent.
+ * Possible values are `merge`, `replace`, or `none` (see [NETCONF RFC](https://tools.ietf.org/html/rfc6241#page-39)).
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char *default_operation);
@@ -915,16 +944,14 @@ int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
 int sr_discard_changes(sr_session_ctx_t *session);
 
 /**
- * @brief Replace a configuration datastore with the contents of
- * a data tree. If the module is specified, limits the operation only to the specified module. If
- * it is not specified, the operation is performed on all modules.
+ * @brief Replace a datastore with the contents of a data tree. If the module is specified, limit
+ * the operation only to the specified module. If it is not specified, the operation is performed on all modules.
  *
  * Required WRITE access.
  *
  * @param[in] session Session to use.
  * @param[in] module_name If specified, limits the replace operation only to this module.
- * @param[in] src_config Source configuration to replace the datastore one. Is ALWAYS spent
- * and cannot be used by the application!
+ * @param[in] src_config Source data to replace the datastore. Is ALWAYS spent and cannot be used by the application!
  * @param[in] trg_datastore Target datastore.
  * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
@@ -933,13 +960,13 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
         sr_datastore_t trg_datastore, uint32_t timeout_ms);
 
 /**
- * @brief Replaces a configuration datastore with the contents of
- * another configuration datastore. If the module is specified, limits
+ * @brief Replaces a conventional datastore with the contents of
+ * another conventional datastore. If the module is specified, limits
  * the operation only to the specified module. If it is not specified,
  * the operation is performed on all modules.
  *
  * @note Note that copying from _candidate_ to _running_ or vice versa causes
- * the _candidate_ datastore to revert to original behavior or mirroring _running_ datastore (@ref datastores).
+ * the _candidate_ datastore to revert to original behavior of mirroring _running_ datastore (@ref datastores).
  *
  * Required WRITE access.
  *
@@ -1146,11 +1173,11 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
 /** @} subs */
 
 ////////////////////////////////////////////////////////////////////////////////
-// Configuration Subscriptions API
+// Change Subscriptions API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @defgroup conf_subs_api Configuration Data Subscription API
+ * @defgroup change_subs_api Change Data Subscription API
  * @{
  */
 
@@ -1200,8 +1227,8 @@ typedef enum sr_change_oper_e {
 typedef struct sr_change_iter_s sr_change_iter_t;
 
 /**
- * @brief Callback to be called by the event of changing any running datastore
- * content within the specified module. Subscribe to it by ::sr_module_change_subscribe call.
+ * @brief Callback to be called on the event of changing datastore content of the specified module.
+ * Subscribe to it by ::sr_module_change_subscribe call.
  *
  * @note Callback is allowed to modify modules but MUST not modify subscriptions on ::SR_EV_CHANGE event.
  * It would result in a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
@@ -1601,7 +1628,8 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
  * @param[in] request_xpath XPath as requested by a client. Can be NULL.
  * @param[in] request_id Request ID unique for the specific \p module_name.
  * @param[in,out] parent Pointer to an existing parent of the requested nodes. Is NULL for top-level nodes.
- * Called is supposed to append the requested nodes to this data subtree.
+ * Caller is supposed to append the requested nodes to this data subtree and return either the original parent
+ * or a top-level node.
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_oper_get_items_subscribe call.
  * @return Error code (::SR_ERR_OK on success).
  */

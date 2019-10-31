@@ -292,7 +292,7 @@ main(int argc, char** argv)
     struct srpd_plugin_s *plugins = NULL;
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
-    sr_log_level_t log_level = 0;
+    sr_log_level_t log_level = SR_LL_ERR;
     int plugin_count, i, r, rc = EXIT_FAILURE, opt, debug = 0;
     struct option options[] = {
         {"help",      no_argument,       NULL, 'h'},

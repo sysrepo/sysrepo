@@ -78,6 +78,7 @@ static const int DS_RUNNING = SR_DS_RUNNING;
 static const int EDIT_DEFAULT = SR_EDIT_DEFAULT;
 static const int CONN_DEFAULT = SR_CONN_DEFAULT;
 static const int SUBSCR_DEFAULT = SR_SUBSCR_DEFAULT;
+static const int OPER_DEFAULT = SR_OPER_DEFAULT;
 
 #ifdef SWIG
 // https://github.com/swig/swig/issues/1158
@@ -86,8 +87,6 @@ void throw_exception (int error);
 void throw_exception [[noreturn]] (int error);
 #endif
 
-/** Wrapper for [sr_connection_recover](@ref sr_connection_recover) */
-void connection_recover();
 /** Wrapper for [sr_get_repo_path](@ref sr_get_repo_path) */
 const char *get_repo_path();
 

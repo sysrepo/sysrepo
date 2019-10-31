@@ -87,17 +87,19 @@ public:
     /** Wrapper for [sr_get_subtree](@ref sr_get_subtree) */
     libyang::S_Data_Node get_subtree(const char *path, uint32_t timeout_ms = 0);
     /** Wrapper for [sr_get_data](@ref sr_get_data) */
-    libyang::S_Data_Node get_data(const char *xpath, uint32_t timeout_ms = 0);
+    libyang::S_Data_Node get_data(const char *xpath, uint32_t max_depth = 0, uint32_t timeout_ms = 0, \
+            const sr_get_oper_options_t opts = OPER_DEFAULT);
 
     /** Wrapper for [sr_set_item](@ref sr_set_item) */
     void set_item(const char *path, S_Val value = nullptr, const sr_edit_options_t opts = EDIT_DEFAULT);
     /** Wrapper for [sr_set_item_str](@ref sr_set_item_str) */
-    void set_item_str(const char *path, const char *value, const sr_edit_options_t opts = EDIT_DEFAULT);
+    void set_item_str(const char *path, const char *value, const char *origin = nullptr, \
+            const sr_edit_options_t opts = EDIT_DEFAULT);
     /** Wrapper for [sr_delete_item](@ref sr_delete_item) */
     void delete_item(const char *path, const sr_edit_options_t opts = EDIT_DEFAULT);
     /** Wrapper for [sr_move_item](@ref sr_move_item) */
     void move_item(const char *path, const sr_move_position_t position, const char *list_keys = nullptr, \
-            const char *leaflist_value = nullptr);
+            const char *leaflist_value = nullptr, const char *origin = nullptr);
     /** Wrapper for [sr_edit_batch](@ref sr_edit_batch) */
     void edit_batch(const libyang::S_Data_Node edit, const char *default_operation);
     /** Wrapper for [sr_validate](@ref sr_validate) */

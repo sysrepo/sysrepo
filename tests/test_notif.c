@@ -313,11 +313,11 @@ test_simple(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation */
-    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "l1-val", 0);
+    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "l1-val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops-ref:l2", "l2-val", 0);
+    ret = sr_set_item_str(st->sess, "/ops-ref:l2", "l2-val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -494,7 +494,7 @@ test_replay_simple(void **state)
     st->cb_called = 0;
 
     /* set some data needed for validation */
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -733,7 +733,7 @@ test_no_replay(void **state)
     st->cb_called = 0;
 
     /* set some data needed for validation */
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -910,7 +910,7 @@ test_notif_config_change(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* repeatedly set some data and check the notification */
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -919,15 +919,15 @@ test_notif_config_change(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(st->cb_called, 1);
 
-    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "val", 0);
+    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops-ref:l2", "other-val", 0);
+    ret = sr_set_item_str(st->sess, "/ops-ref:l2", "other-val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "52", 0);
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "52", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='one']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='one']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='two']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='two']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -936,9 +936,9 @@ test_notif_config_change(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(st->cb_called, 2);
 
-    ret = sr_move_item(st->sess, "/test:cont/l2[k='one']", SR_MOVE_AFTER, "[k='two']", NULL);
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='one']", SR_MOVE_AFTER, "[k='two']", NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "val2", 0);
+    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -976,6 +976,7 @@ main(void)
         cmocka_unit_test_teardown(test_notif_config_change, clear_ops),
     };
 
+    setenv("CMOCKA_TEST_ABORT", "1", 1);
     sr_log_stderr(SR_LL_INF);
     return cmocka_run_group_tests(tests, setup, teardown);
 }

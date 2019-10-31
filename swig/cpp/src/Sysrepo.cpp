@@ -30,16 +30,6 @@
 
 namespace sysrepo {
 
-void connection_recover()
-{
-    int ret;
-
-    ret = sr_connection_recover();
-    if (ret != SR_ERR_OK) {
-        throw_exception(ret);
-    }
-}
-
 const char *get_repo_path()
 {
     return sr_get_repo_path();

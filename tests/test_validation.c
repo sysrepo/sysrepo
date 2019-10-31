@@ -24,6 +24,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <setjmp.h>
+#include <stdlib.h>
 #include <stdarg.h>
 
 #include <cmocka.h>
@@ -116,22 +117,22 @@ test_leafref(void **state)
     int ret;
 
     /* create valid data */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "10", 0);
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "10", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/refs:lref", "10", 0);
+    ret = sr_set_item_str(st->sess, "/refs:lref", "10", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* cause leafref not to point at a node (2x) */
-    ret = sr_set_item_str(st->sess, "/refs:lref", "8", 0);
+    ret = sr_set_item_str(st->sess, "/refs:lref", "8", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_validate(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "8", 0);
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "8", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_validate(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
@@ -139,7 +140,7 @@ test_leafref(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check final datastore contents */
-    ret = sr_get_data(st->sess, "/test:* | /refs:*", 0, &data);
+    ret = sr_get_data(st->sess, "/test:* | /refs:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_string_equal(data->schema->name, "lref");
@@ -158,59 +159,59 @@ test_instid(void **state)
     int ret;
 
     /* inst-id target does not exist */
-    ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:l", 0);
+    ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:l", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     /* create the target */
-    ret = sr_set_item_str(st->sess, "/refs:l", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/refs:l", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* point to a leaf-list */
-    ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:ll[.='z']", 0);
+    ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:ll[.='z']", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
-    ret = sr_set_item_str(st->sess, "/refs:ll", "y", 0);
+    ret = sr_set_item_str(st->sess, "/refs:ll", "y", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/refs:ll", "z", 0);
+    ret = sr_set_item_str(st->sess, "/refs:ll", "z", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* point to a list */
-    ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:lll[refs:key='1']", 0);
+    ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:lll[refs:key='1']", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
-    ret = sr_set_item_str(st->sess, "/refs:lll[key='1']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/refs:lll[key='1']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* foreign leaf */
-    ret = sr_set_item_str(st->sess, "/refs:inst-id", "/test:test-leaf", 0);
+    ret = sr_set_item_str(st->sess, "/refs:inst-id", "/test:test-leaf", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "5", 0);
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "5", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* default inst-id */
-    ret = sr_set_item_str(st->sess, "/refs:cont", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/refs:cont", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
-    ret = sr_set_item_str(st->sess, "/test:ll1", "-3000", 0);
+    ret = sr_set_item_str(st->sess, "/test:ll1", "-3000", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -224,6 +225,7 @@ main(void)
         cmocka_unit_test_teardown(test_instid, clear_test_refs),
     };
 
+    setenv("CMOCKA_TEST_ABORT", "1", 1);
     sr_log_stderr(SR_LL_INF);
     return cmocka_run_group_tests(tests, setup_f, teardown_f);
 }

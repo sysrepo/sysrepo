@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <setjmp.h>
 #include <string.h>
+#include <stdlib.h>
 #include <stdarg.h>
 
 #include <cmocka.h>
@@ -149,7 +150,7 @@ rpc_fail_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node 
     free(str1);
 
     /* error */
-    sr_set_error(session, "RPC FAIL", NULL);
+    sr_set_error(session, NULL, "RPC FAIL");
     return SR_ERR_SYS;
 }
 
@@ -289,9 +290,9 @@ test_rpc(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation */
-    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "l1-val", 0);
+    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "l1-val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops-ref:l2", "l2-val", 0);
+    ret = sr_set_item_str(st->sess, "/ops-ref:l2", "l2-val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -443,9 +444,9 @@ test_action(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops:cont/l12", "l12-val", 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/l12", "l12-val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -563,15 +564,15 @@ test_action_pred(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='zero']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='zero']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='one']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='one']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='two']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='two']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='three']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='three']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -674,15 +675,15 @@ test_multi(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='zero']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='zero']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='one']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='one']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='two']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='two']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='three']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='three']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1092,6 +1093,7 @@ main(void)
         cmocka_unit_test(test_unlocked),
     };
 
+    setenv("CMOCKA_TEST_ABORT", "1", 1);
     sr_log_stderr(SR_LL_INF);
     return cmocka_run_group_tests(tests, setup, teardown);
 }

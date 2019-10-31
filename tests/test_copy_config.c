@@ -28,6 +28,7 @@
 #include <setjmp.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stdlib.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -462,9 +463,9 @@ subscribe_empty_thread(void *arg)
     ret = sr_session_switch_ds(sess, SR_DS_STARTUP);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", 0);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", 0);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -692,11 +693,11 @@ copy_simple_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform some startup changes */
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description", "some-eth1-desc", 0);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description", "some-eth1-desc", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:sonet", 0);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:sonet", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled", "false", 0);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled", "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -780,9 +781,9 @@ subscribe_simple_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set the same running and startup data */
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", 0);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", 0);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -790,9 +791,9 @@ subscribe_simple_thread(void *arg)
     ret = sr_session_switch_ds(sess, SR_DS_STARTUP);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", 0);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", 0);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -917,9 +918,9 @@ copy_userord_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform some startup changes */
-    ret = sr_move_item(sess, "/test:l1[k='a']", SR_MOVE_AFTER, "[k='b']", NULL);
+    ret = sr_move_item(sess, "/test:l1[k='a']", SR_MOVE_AFTER, "[k='b']", NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(sess, "/test:cont/ll2[.='1']", SR_MOVE_AFTER, NULL, "2");
+    ret = sr_move_item(sess, "/test:cont/ll2[.='1']", SR_MOVE_AFTER, NULL, "2", NULL);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -929,7 +930,7 @@ copy_userord_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/test:*", 0, &data);
+    ret = sr_get_data(sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     node = data;
@@ -967,9 +968,9 @@ copy_userord_thread(void *arg)
     lyd_free_withsiblings(data);
 
     /* perform some startup changes (no actual changes) */
-    ret = sr_move_item(sess, "/test:ll1[.='1']", SR_MOVE_BEFORE, NULL, "2");
+    ret = sr_move_item(sess, "/test:ll1[.='1']", SR_MOVE_BEFORE, NULL, "2", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(sess, "/test:cont/l2[k='a']", SR_MOVE_BEFORE, "[k='b']", NULL);
+    ret = sr_move_item(sess, "/test:cont/l2[k='a']", SR_MOVE_BEFORE, "[k='b']", NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -979,7 +980,7 @@ copy_userord_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree (should be the same) */
-    ret = sr_get_data(sess, "/test:*", 0, &data);
+    ret = sr_get_data(sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     node = data;
@@ -1035,22 +1036,22 @@ subscribe_userord_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set the same running and startup data */
-    ret = sr_set_item_str(sess, "/test:l1[k='a']/v", "1", 0);
+    ret = sr_set_item_str(sess, "/test:l1[k='a']/v", "1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/test:ll1[.='1']", NULL, 0);
+    ret = sr_set_item_str(sess, "/test:ll1[.='1']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/test:l1[k='b']/v", "2", 0);
+    ret = sr_set_item_str(sess, "/test:l1[k='b']/v", "2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/test:ll1[.='2']", NULL, 0);
+    ret = sr_set_item_str(sess, "/test:ll1[.='2']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_set_item_str(sess, "/test:cont/l2[k='a']/v", "1", 0);
+    ret = sr_set_item_str(sess, "/test:cont/l2[k='a']/v", "1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/test:cont/ll2[.='1']", NULL, 0);
+    ret = sr_set_item_str(sess, "/test:cont/ll2[.='1']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/test:cont/l2[k='b']/v", "2", 0);
+    ret = sr_set_item_str(sess, "/test:cont/l2[k='b']/v", "2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/test:cont/ll2[.='2']", NULL, 0);
+    ret = sr_set_item_str(sess, "/test:cont/ll2[.='2']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_apply_changes(sess, 0);
@@ -1222,7 +1223,7 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/enabled");
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/type");
 
         sr_free_val(new_val);
 
@@ -1233,7 +1234,7 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/type");
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/enabled");
 
         sr_free_val(new_val);
 
@@ -1327,7 +1328,7 @@ replace_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, &node);
+    ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, 0, 0, &node);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, node, LYD_XML, LYP_WITHSIBLINGS);
@@ -1371,7 +1372,7 @@ replace_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/test:*", 0, &node);
+    ret = sr_get_data(sess, "/test:*", 0, 0, 0, &node);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_string_equal(node->schema->name, "l1");
@@ -1411,9 +1412,9 @@ subscribe_replace_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some running ietf-interfaces data */
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", 0);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", 0);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1423,17 +1424,17 @@ subscribe_replace_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some running test data */
-    ret = sr_set_item_str(sess, "/test:l1[k='a']", NULL, 0);
+    ret = sr_set_item_str(sess, "/test:l1[k='a']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/test:l1[k='b']", NULL, 0);
+    ret = sr_set_item_str(sess, "/test:l1[k='b']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/test:l1[k='c']", NULL, 0);
+    ret = sr_set_item_str(sess, "/test:l1[k='c']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/test:cont/ll2[.='1']", NULL, 0);
+    ret = sr_set_item_str(sess, "/test:cont/ll2[.='1']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/test:cont/ll2[.='2']", NULL, 0);
+    ret = sr_set_item_str(sess, "/test:cont/ll2[.='2']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/test:cont/ll2[.='3']", NULL, 0);
+    ret = sr_set_item_str(sess, "/test:cont/ll2[.='3']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1483,6 +1484,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_replace, setup_f, teardown_f),
     };
 
+    setenv("CMOCKA_TEST_ABORT", "1", 1);
     sr_log_stderr(SR_LL_INF);
     return cmocka_run_group_tests(tests, setup, teardown);
 }

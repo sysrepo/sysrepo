@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <setjmp.h>
 #include <stdarg.h>
+#include <stdlib.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -114,14 +115,14 @@ test_candidate(void **state)
     int ret;
 
     /* empty datastore */
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(data->dflt, 1);
     lyd_free_withsiblings(data);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(data->dflt, 1);
     lyd_free_withsiblings(data);
@@ -130,21 +131,21 @@ test_candidate(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
-            "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(data->dflt, 0);
     lyd_free_withsiblings(data);
 
     /* modify candidate */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth32']/type",
-            "iana-if-type:ethernetCsmacd", SR_EDIT_STRICT);
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -153,7 +154,7 @@ test_candidate(void **state)
 
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);
@@ -170,7 +171,7 @@ test_candidate(void **state)
 
     ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);
@@ -195,7 +196,7 @@ test_candidate(void **state)
 
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, &data);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);
@@ -223,6 +224,7 @@ main(void)
         cmocka_unit_test_teardown(test_candidate, clear_interfaces),
     };
 
+    setenv("CMOCKA_TEST_ABORT", "1", 1);
     sr_log_stderr(SR_LL_INF);
     return cmocka_run_group_tests(tests, setup_f, teardown_f);
 }

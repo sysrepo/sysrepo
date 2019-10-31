@@ -285,14 +285,14 @@ sr_shmsub_multi_notify_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t r
 }
 
 /**
- * @brief Whether an event is valid (interesting) for a configuration subscription.
+ * @brief Whether an event is valid (interesting) for a change subscription.
  *
  * @param[in] ev Event.
  * @param[in] sub_opts Subscription options.
  * @return 0 if not, non-zero is it is.
  */
 static int
-sr_shmsub_conf_is_valid(sr_sub_event_t ev, sr_subscr_options_t sub_opts)
+sr_shmsub_change_is_valid(sr_sub_event_t ev, sr_subscr_options_t sub_opts)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -321,7 +321,7 @@ sr_shmsub_conf_is_valid(sr_sub_event_t ev, sr_subscr_options_t sub_opts)
 }
 
 /**
- * @brief Learn whether there is a subscription for a configuration event.
+ * @brief Learn whether there is a subscription for a change event.
  *
  * @param[in] ext_shm_addr Main SHM mapping address.
  * @param[in] mod Mod info module to use.
@@ -331,17 +331,17 @@ sr_shmsub_conf_is_valid(sr_sub_event_t ev, sr_subscr_options_t sub_opts)
  * @return 0 if not, non-zero if there is.
  */
 static int
-sr_shmsub_conf_notify_has_subscription(char *ext_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
+sr_shmsub_change_notify_has_subscription(char *ext_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
         sr_sub_event_t ev, uint32_t *max_priority_p)
 {
     int has_sub = 0;
     uint32_t i;
-    sr_mod_conf_sub_t *shm_msub;
+    sr_mod_change_sub_t *shm_msub;
 
-    shm_msub = (sr_mod_conf_sub_t *)(ext_shm_addr + mod->shm_mod->conf_sub[ds].subs);
+    shm_msub = (sr_mod_change_sub_t *)(ext_shm_addr + mod->shm_mod->change_sub[ds].subs);
     *max_priority_p = 0;
-    for (i = 0; i < mod->shm_mod->conf_sub[ds].sub_count; ++i) {
-        if (!sr_shmsub_conf_is_valid(ev, shm_msub[i].opts)) {
+    for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; ++i) {
+        if (!sr_shmsub_change_is_valid(ev, shm_msub[i].opts)) {
             continue;
         }
 
@@ -356,29 +356,29 @@ sr_shmsub_conf_notify_has_subscription(char *ext_shm_addr, struct sr_mod_info_mo
 }
 
 /**
- * @brief Learn the priority of the next valid subscriber for a configuration event.
+ * @brief Learn the priority of the next valid subscriber for a change event.
  *
  * @param[in] ext_shm_addr Main SHM mapping address.
  * @param[in] mod Mod info module to use.
  * @param[in] ds Datastore.
- * @param[in] ev Configuration event.
+ * @param[in] ev Change event.
  * @param[in] last_priority Last priorty of a subscriber.
  * @param[out] next_priorty_p Next priorty of a subsciber(s).
  * @param[out] sub_count_p Number of subscribers with this priority.
  * @param[out] opts_p Optional options of all subscribers with this priority.
  */
 static void
-sr_shmsub_conf_notify_next_subscription(char *ext_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
+sr_shmsub_change_notify_next_subscription(char *ext_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
         sr_sub_event_t ev, uint32_t last_priority, uint32_t *next_priority_p, uint32_t *sub_count_p, int *opts_p)
 {
     uint32_t i;
-    sr_mod_conf_sub_t *shm_msub;
+    sr_mod_change_sub_t *shm_msub;
     int opts = 0;
 
-    shm_msub = (sr_mod_conf_sub_t *)(ext_shm_addr + mod->shm_mod->conf_sub[ds].subs);
+    shm_msub = (sr_mod_change_sub_t *)(ext_shm_addr + mod->shm_mod->change_sub[ds].subs);
     *sub_count_p = 0;
-    for (i = 0; i < mod->shm_mod->conf_sub[ds].sub_count; ++i) {
-        if (!sr_shmsub_conf_is_valid(ev, shm_msub[i].opts)) {
+    for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; ++i) {
+        if (!sr_shmsub_change_is_valid(ev, shm_msub[i].opts)) {
             continue;
         }
 
@@ -447,26 +447,26 @@ cleanup:
 }
 
 /**
- * @brief Write into configuration subscribers event pipe to notify them there is a new event.
+ * @brief Write into change subscribers event pipe to notify them there is a new event.
  *
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] mod Mod info module to use.
  * @param[in] ds Datastore.
- * @param[in] ev Configuration event.
+ * @param[in] ev Change event.
  * @param[in] priority Priority of the subscribers with new event.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_conf_notify_evpipe(char *ext_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds, sr_sub_event_t ev,
+sr_shmsub_change_notify_evpipe(char *ext_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds, sr_sub_event_t ev,
         uint32_t priority)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    sr_mod_conf_sub_t *shm_msub;
+    sr_mod_change_sub_t *shm_msub;
 
-    shm_msub = (sr_mod_conf_sub_t *)(ext_shm_addr + mod->shm_mod->conf_sub[ds].subs);
-    for (i = 0; i < mod->shm_mod->conf_sub[ds].sub_count; ++i) {
-        if (!sr_shmsub_conf_is_valid(ev, shm_msub[i].opts)) {
+    shm_msub = (sr_mod_change_sub_t *)(ext_shm_addr + mod->shm_mod->change_sub[ds].subs);
+    for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; ++i) {
+        if (!sr_shmsub_change_is_valid(ev, shm_msub[i].opts)) {
             continue;
         }
 
@@ -482,7 +482,7 @@ sr_shmsub_conf_notify_evpipe(char *ext_shm_addr, struct sr_mod_info_mod_s *mod, 
 }
 
 sr_error_info_t *
-sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms, struct lyd_node **update_edit,
+sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms, struct lyd_node **update_edit,
         sr_error_info_t **cb_err_info)
 {
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -506,7 +506,7 @@ sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint3
         }
 
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
-        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
                 &cur_priority)) {
             continue;
         }
@@ -526,7 +526,7 @@ sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint3
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_conf_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
+        sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
                 cur_priority + 1, &cur_priority, &subscriber_count, NULL);
 
         do {
@@ -550,7 +550,7 @@ sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint3
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
 
             /* notify using event pipe and wait until all the subscribers have processed the event */
-            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
                     SR_SUB_EV_UPDATE, cur_priority))) {
                 goto cleanup;
             }
@@ -605,7 +605,7 @@ sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint3
             }
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_conf_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
+            sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
                     cur_priority, &cur_priority, &subscriber_count, NULL);
         } while (subscriber_count);
 
@@ -625,7 +625,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_conf_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev)
+sr_shmsub_change_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev)
 {
     sr_error_info_t *err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -647,7 +647,7 @@ sr_shmsub_conf_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev)
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
-        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, ev, &cur_priority)) {
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, ev, &cur_priority)) {
             /* it is still possible that the subscription unsubscribed already */
 
             /* SUB WRITE LOCK */
@@ -672,7 +672,7 @@ sr_shmsub_conf_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev)
         }
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_conf_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, ev,
+        sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, ev,
                 cur_priority + 1, &cur_priority, &subscriber_count, NULL);
 
         do {
@@ -707,7 +707,7 @@ clear_event:
             sr_rwunlock(&multi_sub_shm->lock, 1, __func__);
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_conf_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, ev,
+            sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, ev,
                     cur_priority, &cur_priority, &subscriber_count, NULL);
         } while (subscriber_count);
 
@@ -725,7 +725,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms, sr_error_info_t **cb_err_info)
+sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -746,12 +746,14 @@ sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint3
         }
 
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
-        if (!sr_shmsub_conf_notify_has_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
+        if (!sr_shmsub_change_notify_has_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
                     &cur_priority)) {
-            if (!sr_shmsub_conf_notify_has_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_DONE,
+            if (!sr_shmsub_change_notify_has_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_DONE,
                     &cur_priority)) {
-                SR_LOG_INF("There are no subscribers for changes of the module \"%s\" in %s DS.",
-                        mod->ly_mod->name, sr_ds2str(mod_info->ds));
+                if (mod_info->ds == SR_DS_RUNNING) {
+                    SR_LOG_INF("There are no subscribers for changes of the module \"%s\" in %s DS.",
+                            mod->ly_mod->name, sr_ds2str(mod_info->ds));
+                }
             }
             continue;
         }
@@ -775,7 +777,7 @@ sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint3
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_conf_notify_next_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
+        sr_shmsub_change_notify_next_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
                 cur_priority + 1, &cur_priority, &subscriber_count, &opts);
 
         do {
@@ -811,7 +813,7 @@ sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint3
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
 
             /* notify using event pipe and wait until all the subscribers have processed the event */
-            if ((err_info = sr_shmsub_conf_notify_evpipe(ext_shm_addr, mod, mod_info->ds,
+            if ((err_info = sr_shmsub_change_notify_evpipe(ext_shm_addr, mod, mod_info->ds,
                     SR_SUB_EV_CHANGE, cur_priority))) {
                 goto cleanup;
             }
@@ -833,7 +835,7 @@ sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint3
             }
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_conf_notify_next_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
+            sr_shmsub_change_notify_next_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
                     cur_priority, &cur_priority, &subscriber_count, &opts);
         } while (subscriber_count);
 
@@ -863,7 +865,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
+sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 {
     sr_error_info_t *err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -879,7 +881,7 @@ sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             continue;
         }
 
-        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
                 &cur_priority)) {
             /* no subscriptions interested in this event */
             continue;
@@ -904,7 +906,7 @@ sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_conf_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
+        sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
                 cur_priority + 1, &cur_priority, &subscriber_count, NULL);
 
         do {
@@ -927,7 +929,7 @@ sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
 
             /* notify using event pipe and do not wait for subscribers */
-            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
                     SR_SUB_EV_DONE, cur_priority))) {
                 goto cleanup;
             }
@@ -936,7 +938,7 @@ sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             sr_rwunlock(&multi_sub_shm->lock, 1, __func__);
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_conf_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
+            sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
                     cur_priority, &cur_priority, &subscriber_count, NULL);
         } while (subscriber_count);
 
@@ -950,7 +952,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid)
+sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 {
     sr_error_info_t *err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -974,7 +976,7 @@ sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid)
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
-        if (!sr_shmsub_conf_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
                 &cur_priority)) {
             /* no subscriptions interested in this event, but we still want to clear the event */
 clear_shm:
@@ -1033,7 +1035,7 @@ clear_shm:
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
         ++cur_priority;
         do {
-            sr_shmsub_conf_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
+            sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
                     cur_priority, &cur_priority, &subscriber_count, NULL);
             if (last_subscr && (err_priority == cur_priority)) {
                 /* do not notify subscribers that did not process the previous event */
@@ -1064,7 +1066,7 @@ clear_shm:
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
 
             /* notify using event pipe and do not wait for subscribers */
-            if ((err_info = sr_shmsub_conf_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
                     SR_SUB_EV_ABORT, cur_priority))) {
                 goto cleanup_wrunlock;
             }
@@ -1117,7 +1119,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
     parent_lyb_len = lyd_lyb_data_length(parent_lyb);
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(ly_mod->name, "state", sr_str_hash(xpath), &shm_sub, sizeof *sub_shm))) {
+    if ((err_info = sr_shmsub_open_map(ly_mod->name, "oper", sr_str_hash(xpath), &shm_sub, sizeof *sub_shm))) {
         goto cleanup;
     }
     sub_shm = (sr_sub_shm_t *)shm_sub.addr;
@@ -1674,17 +1676,17 @@ cleanup:
  */
 
 /**
- * @brief Prepare temporary callback session for a configuration event callback.
+ * @brief Prepare temporary callback session for a change event callback.
  *
- * @param[in] conf_subs Module configuration subscriptions.
- * @param[in] conf_sub Configuration subscription.
+ * @param[in] change_subs Module change subscriptions.
+ * @param[in] change_sub Change subscription.
  * @param[in] conn Connection to use.
  * @param[in] diff Diff from the event.
  * @param[in,out] tmp_sess Temporary callback session.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_conf_listen_prepare_sess(struct modsub_conf_s *conf_subs, struct modsub_confsub_s *conf_sub,
+sr_shmsub_change_listen_prepare_sess(struct modsub_change_s *change_subs, struct modsub_changesub_s *change_sub,
         sr_conn_ctx_t *conn, struct lyd_node *diff, sr_session_ctx_t *tmp_sess)
 {
     sr_error_info_t *err_info = NULL;
@@ -1692,14 +1694,14 @@ sr_shmsub_conf_listen_prepare_sess(struct modsub_conf_s *conf_subs, struct modsu
     assert(diff);
 
     tmp_sess->conn = conn;
-    tmp_sess->ds = conf_subs->ds;
-    tmp_sess->ev = ((sr_multi_sub_shm_t *)conf_subs->sub_shm.addr)->event;
-    tmp_sess->sid = ((sr_multi_sub_shm_t *)conf_subs->sub_shm.addr)->sid;
+    tmp_sess->ds = change_subs->ds;
+    tmp_sess->ev = ((sr_multi_sub_shm_t *)change_subs->sub_shm.addr)->event;
+    tmp_sess->sid = ((sr_multi_sub_shm_t *)change_subs->sub_shm.addr)->sid;
     lyd_free_withsiblings(tmp_sess->dt[tmp_sess->ds].diff);
 
     /* duplicate (filtered) diff */
-    if (conf_sub->xpath) {
-        if ((err_info = sr_ly_data_dup_xpath_select(diff, &conf_sub->xpath, 1, &tmp_sess->dt[tmp_sess->ds].diff))) {
+    if (change_sub->xpath) {
+        if ((err_info = sr_ly_data_dup_xpath_select(diff, &change_sub->xpath, 1, &tmp_sess->dt[tmp_sess->ds].diff))) {
             return err_info;
         }
     } else {
@@ -1717,11 +1719,11 @@ sr_shmsub_conf_listen_prepare_sess(struct modsub_conf_s *conf_subs, struct modsu
  * @brief Whether there is a new event for the subscription.
  *
  * @param[in] multi_sub_shm Multi subscription SHM.
- * @param[in] sub Confugration subscription.
+ * @param[in] sub Change subscription.
  * @return 0 if not, non-zero if there is.
  */
 static int
-sr_shmsub_conf_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct modsub_confsub_s *sub)
+sr_shmsub_change_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct modsub_changesub_s *sub)
 {
     /* not a listener event */
     if (!SR_IS_LISTEN_EVENT(multi_sub_shm->event)) {
@@ -1744,7 +1746,7 @@ sr_shmsub_conf_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct mod
     }
 
     /* subscription options and event */
-    if (!sr_shmsub_conf_is_valid(multi_sub_shm->event, sub->opts)) {
+    if (!sr_shmsub_change_is_valid(multi_sub_shm->event, sub->opts)) {
         return 0;
     }
 
@@ -1864,7 +1866,7 @@ sr_shmsub_prepare_error(sr_error_t err_code, sr_session_ctx_t *tmp_sess, char **
 }
 
 sr_error_info_t *
-sr_shmsub_conf_listen_process_module_events(struct modsub_conf_s *conf_subs, sr_conn_ctx_t *conn)
+sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_subs, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, data_len = 0, valid_subscr_count, request_id;
@@ -1872,43 +1874,43 @@ sr_shmsub_conf_listen_process_module_events(struct modsub_conf_s *conf_subs, sr_
     int ret;
     struct lyd_node *diff = NULL;
     sr_error_t err_code = SR_ERR_OK;
-    struct modsub_confsub_s *conf_sub;
+    struct modsub_changesub_s *change_sub;
     sr_multi_sub_shm_t *multi_sub_shm;
     sr_session_ctx_t tmp_sess;
     sr_sub_event_t event;
 
     memset(&tmp_sess, 0, sizeof tmp_sess);
-    multi_sub_shm = (sr_multi_sub_shm_t *)conf_subs->sub_shm.addr;
+    multi_sub_shm = (sr_multi_sub_shm_t *)change_subs->sub_shm.addr;
 
     /* SUB READ LOCK */
     if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, 0, __func__))) {
         goto cleanup;
     }
 
-    for (i = 0; i < conf_subs->sub_count; ++i) {
-        if (sr_shmsub_conf_listen_is_new_event(multi_sub_shm, &conf_subs->subs[i])) {
+    for (i = 0; i < change_subs->sub_count; ++i) {
+        if (sr_shmsub_change_listen_is_new_event(multi_sub_shm, &change_subs->subs[i])) {
             break;
         }
     }
     /* no new module event */
-    if (i == conf_subs->sub_count) {
+    if (i == change_subs->sub_count) {
         goto cleanup_rdunlock;
     }
 
-    conf_sub = &conf_subs->subs[i];
+    change_sub = &change_subs->subs[i];
 
     /* remap SHM */
-    if ((err_info = sr_shm_remap(&conf_subs->sub_shm, 0))) {
+    if ((err_info = sr_shm_remap(&change_subs->sub_shm, 0))) {
         goto cleanup_rdunlock;
     }
-    multi_sub_shm = (sr_multi_sub_shm_t *)conf_subs->sub_shm.addr;
+    multi_sub_shm = (sr_multi_sub_shm_t *)change_subs->sub_shm.addr;
 
     /* parse event diff */
-    diff = lyd_parse_mem(conn->ly_ctx, conf_subs->sub_shm.addr + sizeof *multi_sub_shm, LYD_LYB, LYD_OPT_EDIT | LYD_OPT_STRICT);
+    diff = lyd_parse_mem(conn->ly_ctx, change_subs->sub_shm.addr + sizeof *multi_sub_shm, LYD_LYB, LYD_OPT_EDIT | LYD_OPT_STRICT);
     SR_CHECK_INT_GOTO(!diff, err_info, cleanup_rdunlock);
 
     /* process event */
-    SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (remaining %u subscribers).", conf_subs->module_name,
+    SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (remaining %u subscribers).", change_subs->module_name,
             sr_ev2str(multi_sub_shm->event), multi_sub_shm->request_id, multi_sub_shm->priority, multi_sub_shm->subscriber_count);
     event = multi_sub_shm->event;
     request_id = multi_sub_shm->request_id;
@@ -1916,9 +1918,9 @@ sr_shmsub_conf_listen_process_module_events(struct modsub_conf_s *conf_subs, sr_
     /* process individual subscriptions (starting at the last found subscription, it was valid) */
     valid_subscr_count = 0;
     goto process_event;
-    for (; i < conf_subs->sub_count; ++i) {
-        conf_sub = &conf_subs->subs[i];
-        if (!sr_shmsub_conf_listen_is_new_event(multi_sub_shm, conf_sub)) {
+    for (; i < change_subs->sub_count; ++i) {
+        change_sub = &change_subs->subs[i];
+        if (!sr_shmsub_change_listen_is_new_event(multi_sub_shm, change_sub)) {
             continue;
         }
 
@@ -1927,15 +1929,15 @@ process_event:
         sr_rwunlock(&multi_sub_shm->lock, 0, __func__);
 
         /* prepare callback session */
-        if ((err_info = sr_shmsub_conf_listen_prepare_sess(conf_subs, conf_sub, conn, diff, &tmp_sess))) {
+        if ((err_info = sr_shmsub_change_listen_prepare_sess(change_subs, change_sub, conn, diff, &tmp_sess))) {
             goto cleanup;
         }
 
         ret = 0;
         /* whole diff may have been filtered out */
         if (tmp_sess.dt[tmp_sess.ds].diff) {
-            ret = conf_sub->cb(&tmp_sess, conf_subs->module_name, conf_sub->xpath, sr_ev2api(event), request_id,
-                    conf_sub->private_data);
+            ret = change_sub->cb(&tmp_sess, change_subs->module_name, change_sub->xpath, sr_ev2api(event), request_id,
+                    change_sub->private_data);
         }
 
         /* SUB READ LOCK */
@@ -1955,8 +1957,8 @@ process_event:
                 err_code = ret;
                 if (event == SR_SUB_EV_CHANGE) {
                     /* remember request ID and "abort" event so that we do not process it */
-                    conf_sub->request_id = multi_sub_shm->request_id;
-                    conf_sub->event = SR_SUB_EV_ABORT;
+                    change_sub->request_id = multi_sub_shm->request_id;
+                    change_sub->event = SR_SUB_EV_ABORT;
                 }
                 break;
             }
@@ -1966,8 +1968,8 @@ process_event:
         ++valid_subscr_count;
 
         /* remember request ID and event so that we do not process it again */
-        conf_sub->request_id = multi_sub_shm->request_id;
-        conf_sub->event = multi_sub_shm->event;
+        change_sub->request_id = multi_sub_shm->request_id;
+        change_sub->event = multi_sub_shm->event;
     }
 
     /*
@@ -1977,7 +1979,7 @@ process_event:
     case SR_SUB_EV_UPDATE:
         if (err_code == SR_ERR_OK) {
             /* we may have an updated edit (empty is fine), print it into LYB */
-            if (lyd_print_mem(&data, tmp_sess.dt[conf_subs->ds].edit, LYD_LYB, LYP_WITHSIBLINGS)) {
+            if (lyd_print_mem(&data, tmp_sess.dt[change_subs->ds].edit, LYD_LYB, LYP_WITHSIBLINGS)) {
                 sr_errinfo_new_ly(&err_info, conn->ly_ctx);
                 goto cleanup_rdunlock;
             }
@@ -1998,10 +2000,10 @@ process_event:
 
     if (data_len) {
         /* remap SHM having the lock */
-        if ((err_info = sr_shm_remap(&conf_subs->sub_shm, sizeof *multi_sub_shm + data_len))) {
+        if ((err_info = sr_shm_remap(&change_subs->sub_shm, sizeof *multi_sub_shm + data_len))) {
             goto cleanup_rdunlock;
         }
-        multi_sub_shm = (sr_multi_sub_shm_t *)conf_subs->sub_shm.addr;
+        multi_sub_shm = (sr_multi_sub_shm_t *)change_subs->sub_shm.addr;
     }
 
     /* SUB READ UNLOCK */
@@ -2080,9 +2082,10 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
     sr_error_info_t *err_info = NULL;
     uint32_t i, data_len = 0, request_id;
     char *data = NULL, *request_xpath = NULL;
+    const char *origin;
     sr_error_t err_code = SR_ERR_OK;
     struct modsub_opersub_s *oper_sub;
-    struct lyd_node *parent = NULL;
+    struct lyd_node *parent = NULL, *orig_parent, *node;
     sr_sub_shm_t *sub_shm;
     sr_session_ctx_t tmp_sess;
 
@@ -2138,11 +2141,21 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         SR_LOG_INF("Processing \"operational\" \"%s\" event with ID %u.", oper_subs->module_name, request_id);
 
         /* call callback */
+        orig_parent = parent;
         err_code = oper_sub->cb(&tmp_sess, oper_subs->module_name, oper_sub->xpath, request_xpath[0] ? request_xpath : NULL,
                 request_id, &parent, oper_sub->private_data);
 
         /* go again to the top-level root for printing */
         if (parent) {
+            /* set origin if none */
+            LY_TREE_FOR(orig_parent ? sr_lyd_child(parent) : parent, node) {
+                sr_edit_diff_get_origin(node, &origin, NULL);
+                if ((!origin || !strcmp(origin, SR_CONFIG_ORIGIN))
+                        && (err_info = sr_edit_diff_set_origin(node, SR_OPER_ORIGIN, 0))) {
+                    goto error;
+                }
+            }
+
             while (parent->parent) {
                 parent = parent->parent;
             }

@@ -183,11 +183,11 @@ libyang::S_Data_Node Session::get_subtree(const char *path, uint32_t timeout_ms)
     throw_exception(ret);
 }
 
-libyang::S_Data_Node Session::get_data(const char *xpath, uint32_t timeout_ms)
+libyang::S_Data_Node Session::get_data(const char *xpath, uint32_t max_depth, uint32_t timeout_ms, const sr_get_oper_options_t opts)
 {
     struct lyd_node *data;
 
-    int ret = sr_get_data(_sess, xpath, timeout_ms, &data);
+    int ret = sr_get_data(_sess, xpath, max_depth, timeout_ms, opts, &data);
     if (SR_ERR_OK == ret) {
         return std::make_shared<libyang::Data_Node>(data, std::make_shared<libyang::Deleter>(data));
     }
@@ -207,9 +207,9 @@ void Session::set_item(const char *path, S_Val value, const sr_edit_options_t op
     }
 }
 
-void Session::set_item_str(const char *path, const char *value, const sr_edit_options_t opts)
+void Session::set_item_str(const char *path, const char *value, const char *origin, const sr_edit_options_t opts)
 {
-    int ret = sr_set_item_str(_sess, path, value, opts);
+    int ret = sr_set_item_str(_sess, path, value, origin, opts);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
@@ -223,9 +223,10 @@ void Session::delete_item(const char *path, const sr_edit_options_t opts)
     }
 }
 
-void Session::move_item(const char *path, const sr_move_position_t position, const char *list_keys, const char *leaflist_value)
+void Session::move_item(const char *path, const sr_move_position_t position, const char *list_keys, \
+        const char *leaflist_value, const char *origin)
 {
-    int ret = sr_move_item(_sess, path, position, list_keys, leaflist_value);
+    int ret = sr_move_item(_sess, path, position, list_keys, leaflist_value, origin);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }

@@ -84,14 +84,14 @@ typedef struct sr_mod_op_dep_s {
 } sr_mod_op_dep_t;
 
 /**
- * @brief Ext SHM module configuration subscriptions.
+ * @brief Ext SHM module change subscriptions.
  */
-typedef struct sr_mod_conf_sub_s {
+typedef struct sr_mod_change_sub_s {
     off_t xpath;                /**< XPath of the subscription. */
     uint32_t priority;          /**< Subscription priority. */
     int opts;                   /**< Subscription options. */
     uint32_t evpipe_num;        /**< Event pipe number. */
-} sr_mod_conf_sub_t;
+} sr_mod_change_sub_t;
 
 /**
  * @brief Ext SHM module operational subscription type.
@@ -133,7 +133,7 @@ struct sr_mod_s {
         uint8_t ds_locked;      /**< Whether module data are datastore locked (NETCONF locks). */
         sr_sid_t sid;           /**< Session ID of the locking session (user is always NULL). */
         time_t ds_ts;           /**< Timestamp of the datastore lock. */
-    } data_lock_info[SR_WRITABLE_DS_COUNT]; /**< Module data lock information for each datastore. */
+    } data_lock_info[SR_DS_COUNT]; /**< Module data lock information for each datastore. */
     sr_rwlock_t replay_lock;    /**< Process-shared lock for accessing stored notifications for replay. */
     uint32_t ver;               /**< Module data version (non-zero). */
 
@@ -151,9 +151,9 @@ struct sr_mod_s {
     uint16_t op_dep_count;      /**< Number of operation dependencies. */
 
     struct {
-        off_t subs;             /**< Array of configuration subscriptions. */
-        uint16_t sub_count;     /**< Number of configuration subscriptions. */
-    } conf_sub[SR_WRITABLE_DS_COUNT];   /**< Configuration subscriptions for each datastore. */
+        off_t subs;             /**< Array of change subscriptions. */
+        uint16_t sub_count;     /**< Number of change subscriptions. */
+    } change_sub[SR_DS_COUNT];  /**< Change subscriptions for each datastore. */
 
     off_t oper_subs;            /**< Array of operational subscriptions. */
     uint16_t oper_sub_count;    /**< Number of operational subscriptions. */
@@ -262,7 +262,7 @@ typedef struct sr_multi_sub_shm_s {
     uint32_t subscriber_count;  /**< Number of subscribers to process this event. */
 } sr_multi_sub_shm_t;
 /*
- * config data subscription SHM (multi)
+ * change data subscription SHM (multi)
  *
  * FOR SUBSCRIBERS
  * followed by:
@@ -405,11 +405,10 @@ void sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
  * @brief Recover (properly unsubscribe and close) all connections whose process no longer exists.
  * Main SHM lock is expected to be held.
  *
- * @param[in] shm_main Main SHM.
- * @param[in] shm_ext Ext SHM.
+ * @param[in] conn Connection to use.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_state_recover(sr_shm_t *shm_main, sr_shm_t *shm_ext);
+sr_error_info_t *sr_shmmain_state_recover(sr_conn_ctx_t *conn);
 
 /**
  * @brief Initialize libyang context with only the internal sysrepo module.
@@ -664,7 +663,7 @@ void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable);
 void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
 
 /**
- * @brief Add main SHM module configuration subscription.
+ * @brief Add main SHM module change subscription.
  * May remap ext SHM!
  *
  * @param[in] shm_ext Ext SHM.
@@ -676,11 +675,11 @@ void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_conf_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath,
+sr_error_info_t *sr_shmmod_change_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath,
         sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
- * @brief Remove main SHM module configuration subscription.
+ * @brief Remove main SHM module change subscription.
  *
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] shm_mod SHM module.
@@ -690,10 +689,10 @@ sr_error_info_t *sr_shmmod_conf_subscription_add(sr_shm_t *shm_ext, sr_mod_t *sh
  * @param[in] sub_opts Subscription options.
  * @param[in] evpipe_num Subscription event pipe number.
  * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
- * @param[out] last_removed Whether this is the last module configuration subscription that was removed.
+ * @param[out] last_removed Whether this is the last module change subscription that was removed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_conf_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath,
+sr_error_info_t *sr_shmmod_change_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath,
         sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num, int all_evpipe, int *last_removed);
 
 /**
@@ -747,6 +746,16 @@ sr_error_info_t *sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *s
 sr_error_info_t *sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num,
         int all_evpipe, int *last_removed);
 
+/**
+ * @brief Remove all stored operational data of a connection.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] del_conn Connection whose data to remove.
+ * @param[in] del_pid PID of \p del_conn.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid_t del_pid);
+
 /*
  * Subscription SHM functions.
  */
@@ -773,57 +782,57 @@ sr_error_info_t *sr_shmsub_open_map(const char *name, const char *suffix1, int64
 sr_error_info_t *sr_shmsub_notify_evpipe(uint32_t evpipe_num);
 
 /**
- * @brief Notify about (generate) a configuration update event.
+ * @brief Notify about (generate) a change "update" event.
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] sid Originator sysrepo session ID.
- * @param[in] timeout_ms Configuration callback timeout in milliseconds.
+ * @param[in] timeout_ms Change callback timeout in milliseconds.
  * @param[out] update_edit Updated edit from subscribers, if any.
  * @param[out] cb_err_info Callback error information generated by a subscriber, if any.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_conf_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms,
+sr_error_info_t *sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms,
         struct lyd_node **update_edit, sr_error_info_t **cb_err_info);
 
 /**
- * @brief Clear a configuration event.
+ * @brief Clear a change event.
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] ev Event to clear.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_conf_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev);
+sr_error_info_t *sr_shmsub_change_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev);
 
 /**
- * @brief Notify about (generate) a configuration change event.
+ * @brief Notify about (generate) a change "change" event.
  * Main SHM lock(0,0,0) must be held and this function may temporarily unlock it!
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] sid Originator sysrepo session ID.
- * @param[in] timeout_ms Configuration callback timeout in milliseconds.
+ * @param[in] timeout_ms Change callback timeout in milliseconds.
  * @param[out] cb_err_info Callback error information generated by a subscriber, if any.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_conf_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms,
+sr_error_info_t *sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms,
         sr_error_info_t **cb_err_info);
 
 /**
- * @brief Notify about (generate) a configuration done event.
+ * @brief Notify about (generate) a change "done" event.
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] sid Originator sysrepo session ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_conf_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid);
+sr_error_info_t *sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid);
 
 /**
- * @brief Notify about (generate) a configuration abort event.
+ * @brief Notify about (generate) a change "abort" event.
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] sid Originator sysrepo session ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_conf_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid);
+sr_error_info_t *sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid);
 
 /**
  * @brief Notify about (generate) an operational event.
@@ -887,13 +896,13 @@ sr_error_info_t *sr_shmsub_notif_notify(const struct lyd_node *notif, time_t not
         uint32_t *notif_sub_evpipe_nums, uint32_t notif_sub_count);
 
 /**
- * @brief Process all module configuration events, if any.
+ * @brief Process all module change events, if any.
  *
- * @param[in] conf_subs Module configuration subscriptions.
+ * @param[in] change_subs Module change subscriptions.
  * @param[in] conn Connection to use.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_conf_listen_process_module_events(struct modsub_conf_s *conf_subs, sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_subs, sr_conn_ctx_t *conn);
 
 /**
  * @brief Process all module operational events, if any.
