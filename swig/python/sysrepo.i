@@ -75,7 +75,7 @@ public:
         std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
         PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(OsiO)", s, module_name, event, request_id, private_data);
+        arglist = Py_BuildValue("(OsiiO)", s, module_name, event, request_id, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
@@ -113,16 +113,18 @@ public:
         std::shared_ptr<sysrepo::Vals_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<sysrepo::Vals_Holder>(out_vals) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_Holder_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOOO)",s, op_path, in,event,request_id, out, private_data);
+        arglist = Py_BuildValue("(OsOiiOO)",s, op_path, in,event,request_id, out, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
             in_vals->~Vals();
             out_vals->~Vals_Holder();
+            sess->~Session();
             throw std::runtime_error("Python callback rpc_cb failed.\n");
         } else {
             in_vals->~Vals();
             out_vals->~Vals_Holder();
+            sess->~Session();
             int ret = SR_ERR_OK;
             if (result && PyInt_Check(result)) {
                 ret = PyInt_AsLong(result);
@@ -151,16 +153,18 @@ public:
 
         std::shared_ptr<libyang::Data_Node> *shared_out_tree = out_tree ? new std::shared_ptr<libyang::Data_Node>(out_tree) : 0;
         PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_tree), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_DISOWN);
-        arglist = Py_BuildValue("(sOOO)",s,op_path, in, event, request_id, out, private_data);
+        arglist = Py_BuildValue("(OsOiiOO)",s,op_path, in, event, request_id, out, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
             in_tree->~Data_Node();
             out_tree->~Data_Node();
+            sess->~Session();
             throw std::runtime_error("Python callback rpc_tree_cb failed.\n");
         } else {
             in_tree->~Data_Node();
             out_tree->~Data_Node();
+            sess->~Session();
             int ret = SR_ERR_OK;
             if (result && PyInt_Check(result)) {
                 ret = PyInt_AsLong(result);
@@ -185,14 +189,16 @@ public:
         std::shared_ptr<sysrepo::Vals> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOlO)", s, notif_type, path, in, (long)timestamp, private_data);
+        arglist = Py_BuildValue("(OisOlO)", s, notif_type, path, in, (long)timestamp, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
             in_vals->~Vals();
+            sess->~Session();
             throw std::runtime_error("Python callback event_notif failed.\n");
         } else {
             in_vals->~Vals();
+            sess->~Session();
             Py_DECREF(result);
         }
     }
@@ -211,14 +217,16 @@ public:
         std::shared_ptr<libyang::Data_Node> *shared_node = node ? new std::shared_ptr<libyang::Data_Node>(node) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_node), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(sOlO)", s, notif_type, in, (long)timestamp, private_data);
+        arglist = Py_BuildValue("(OiOlO)", s, notif_type, in, (long)timestamp, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
             node->~Data_Node();
+            sess->~Session();
             throw std::runtime_error("Python callback event_notif_tree failed.\n");
         } else {
             node->~Data_Node();
+            sess->~Session();
             Py_DECREF(result);
         }
     }
@@ -247,9 +255,11 @@ public:
             Py_DECREF(arglist);
             if (result == nullptr) {
                 tree->~Data_Node();
+                sess->~Session();
                 throw std::runtime_error("Python callback oper_get_items_cb failed.\n");
             } else {
                 tree->~Data_Node();
+                sess->~Session();
                 int ret = SR_ERR_OK;
                 if (result && PyInt_Check(result)) {
                 ret = PyInt_AsLong(result);
@@ -268,12 +278,14 @@ public:
             Py_DECREF(arglist);
             if (result == nullptr) {
                 tree->~Data_Node();
+                sess->~Session();
                 throw std::runtime_error("Python callback oper_get_items_cb failed.\n");
             } else {
                 if (tree) {
                     *parent = lyd_dup(tree->swig_node(), LYD_DUP_OPT_RECURSIVE);
                 }
                 tree->~Data_Node();
+                sess->~Session();
                 int ret = SR_ERR_OK;
 
                 if (result && PyInt_Check(result)) {
