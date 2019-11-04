@@ -75,7 +75,7 @@ public:
         std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
         PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
 
-        arglist = Py_BuildValue("(OsiiO)", s, module_name, event, request_id, private_data);
+        arglist = Py_BuildValue("(OssiiO)", s, module_name, xpath, event, request_id, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == nullptr) {
