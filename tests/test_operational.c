@@ -962,7 +962,7 @@ test_xpath_check(void **state)
 
     /* subscribe as state data provider */
     ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", xpath_check_oper_cb,
-            st, SR_SUBSCR_CTX_REUSE, &subscr);
+            st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read interfaces from operational, callback not called */
