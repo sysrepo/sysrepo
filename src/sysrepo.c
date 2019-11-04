@@ -3316,7 +3316,7 @@ sr_lyd_node2sr_val(const struct lyd_node *node, const char *llist_value_str, con
     sr_error_info_t *err_info = NULL;
     uint32_t start, end;
     sr_val_t *sr_val;
-    struct lyd_node_leaf_list *leaf;
+    const struct lyd_node_leaf_list *leaf;
     struct lys_node_list *slist;
 
     sr_val = calloc(1, sizeof *sr_val);
@@ -3406,7 +3406,12 @@ sr_lyd_node2sr_val(const struct lyd_node *node, const char *llist_value_str, con
         }
         /* fallthrough */
     case LYS_LEAF:
-        leaf = (struct lyd_node_leaf_list *)node;
+        leaf = (const struct lyd_node_leaf_list *)node;
+        while (leaf->value_type == LY_TYPE_LEAFREF) {
+            /* find final leafref target */
+            leaf = (const struct lyd_node_leaf_list *)leaf->value.leafref;
+        }
+
         if (!llist_value_str) {
             llist_value_str = leaf->value_str;
         }
