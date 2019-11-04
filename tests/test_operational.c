@@ -339,7 +339,7 @@ test_enabled_partial(void **state)
 
 /* TEST 2 */
 static int
-simple_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+simple_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
@@ -424,7 +424,7 @@ test_simple(void **state)
     free(str1);
 
     /* subscribe as state data provider */
-    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", simple_dp_cb,
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", simple_oper_cb,
             NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -466,7 +466,7 @@ test_simple(void **state)
 
 /* TEST 3 */
 static int
-fail_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+fail_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     (void)session;
@@ -500,7 +500,7 @@ test_fail(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as state data provider*/
-    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", fail_dp_cb,
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", fail_oper_cb,
             NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -516,7 +516,7 @@ test_fail(void **state)
 
 /* TEST 4 */
 static int
-config_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+config_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
@@ -565,7 +565,7 @@ test_config(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as config data provider and listen */
-    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", config_dp_cb,
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", config_oper_cb,
             NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -598,7 +598,7 @@ test_config(void **state)
 
 /* TEST 5 */
 static int
-list_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+list_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     struct lyd_node *node;
@@ -650,10 +650,10 @@ test_list(void **state)
 
     /* subscribe as 2 list instances data provider and listen */
     ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth2']",
-            list_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            list_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth3']",
-            list_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            list_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -693,7 +693,7 @@ test_list(void **state)
 
 /* TEST 6 */
 static int
-nested_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+nested_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
@@ -771,13 +771,13 @@ test_nested(void **state)
 
     /* subscribe as state data provider and listen, it should be called only 2x */
     ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth4']/phys-address",
-            nested_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            nested_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state",
-            nested_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            nested_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth2']/phys-address",
-            nested_dp_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            nested_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -829,7 +829,7 @@ test_nested(void **state)
 
 /* TEST 7 */
 static int
-mixed_dp_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+mixed_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
@@ -889,7 +889,7 @@ test_mixed(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as config data provider and listen */
-    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_dp_cb,
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_oper_cb,
             NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -932,6 +932,79 @@ test_mixed(void **state)
 }
 
 /* TEST 8 */
+static int
+xpath_check_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)module_name;
+    (void)xpath;
+    (void)request_xpath;
+    (void)request_id;
+    (void)parent;
+
+    ++st->cb_called;
+    return SR_ERR_OK;
+}
+
+static void
+test_xpath_check(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    sr_subscription_ctx_t *subscr;
+    int ret;
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe as state data provider */
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", xpath_check_oper_cb,
+            st, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read interfaces from operational, callback not called */
+    st->cb_called = 0;
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_withsiblings(data);
+    assert_int_equal(st->cb_called, 0);
+
+    /* read all from operational, callback called */
+    st->cb_called = 0;
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_withsiblings(data);
+    assert_int_equal(st->cb_called, 1);
+
+    sr_unsubscribe(subscr);
+    subscr = NULL;
+
+    /* subscribe as state data provider */
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth0']",
+            xpath_check_oper_cb, st, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read interfaces from operational, callback not called */
+    st->cb_called = 0;
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_withsiblings(data);
+    assert_int_equal(st->cb_called, 0);
+
+    /* read all from operational, callback called */
+    st->cb_called = 0;
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/type", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_withsiblings(data);
+    assert_int_equal(st->cb_called, 1);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST 9 */
 static void
 test_state_only(void **state)
 {
@@ -954,7 +1027,7 @@ test_state_only(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as config data provider and listen */
-    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_dp_cb,
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_oper_cb,
             NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -989,7 +1062,7 @@ test_state_only(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 9 */
+/* TEST 10 */
 static void
 test_config_only(void **state)
 {
@@ -1012,7 +1085,7 @@ test_config_only(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as config data provider and listen */
-    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_dp_cb,
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_oper_cb,
             NULL, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1043,7 +1116,7 @@ test_config_only(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 10 */
+/* TEST 11 */
 static void
 test_conn_owner1(void **state)
 {
@@ -1103,7 +1176,7 @@ test_conn_owner1(void **state)
     lyd_free_withsiblings(data);
 }
 
-/* TEST 11 */
+/* TEST 12 */
 static void
 test_conn_owner2(void **state)
 {
@@ -1219,7 +1292,7 @@ test_conn_owner2(void **state)
     free(str1);
 }
 
-/* TEST 12 */
+/* TEST 13 */
 static int
 oper_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -1362,7 +1435,7 @@ test_stored_state(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 13 */
+/* TEST 14 */
 static int
 dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -1466,7 +1539,7 @@ test_stored_config(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 14 */
+/* TEST 15 */
 static void
 test_stored_diff_merge_leaf(void **state)
 {
@@ -1565,7 +1638,7 @@ test_stored_diff_merge_leaf(void **state)
     free(str1);
 }
 
-/* TEST 15 */
+/* TEST 16 */
 static void
 test_stored_diff_merge_replace(void **state)
 {
@@ -1675,7 +1748,7 @@ test_stored_diff_merge_replace(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 16 */
+/* TEST 17 */
 static void
 test_stored_diff_merge_userord(void **state)
 {
@@ -1844,6 +1917,7 @@ main(void)
         cmocka_unit_test_teardown(test_list, clear_up),
         cmocka_unit_test_teardown(test_nested, clear_up),
         cmocka_unit_test_teardown(test_mixed, clear_up),
+        cmocka_unit_test_teardown(test_xpath_check, clear_up),
         cmocka_unit_test_teardown(test_state_only, clear_up),
         cmocka_unit_test_teardown(test_config_only, clear_up),
         cmocka_unit_test_teardown(test_conn_owner1, clear_up),

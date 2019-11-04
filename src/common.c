@@ -3343,7 +3343,7 @@ error:
 }
 
 char *
-sr_xpath_first_node(const char *xpath)
+sr_xpath_first_node_with_predicates(const char *xpath)
 {
     const char *ptr;
     char quote = 0;
@@ -3364,6 +3364,80 @@ sr_xpath_first_node(const char *xpath)
     }
 
     return strndup(xpath, ptr - xpath);
+}
+
+const char *
+sr_xpath_next_name(const char *xpath, const char **mod, int *mod_len, const char **name, int *len, int *double_slash,
+        int *has_predicate)
+{
+    const char *ptr;
+
+    assert(xpath && (xpath[0] == '/'));
+    *mod = NULL;
+    *mod_len = 0;
+    *name = NULL;
+    *len = 0;
+    *double_slash = 0;
+    *has_predicate = 0;
+
+    ++xpath;
+    if (xpath[0] == '/') {
+        ++xpath;
+        *double_slash = 1;
+    }
+
+    ptr = xpath;
+    while (ptr[0] && (ptr[0] != '/')) {
+        if (ptr[0] == ':') {
+            *mod = xpath;
+            *mod_len = ptr - xpath;
+            xpath = ptr + 1;
+        }
+        ++ptr;
+        if (ptr[0] == '[') {
+            *has_predicate = 1;
+            break;
+        }
+    }
+
+    *name = xpath;
+    *len = ptr - xpath;
+
+    return xpath + *len;
+}
+
+const char *
+sr_xpath_next_predicate(const char *xpath, const char **pred, int *len, int *has_predicate)
+{
+    const char *ptr;
+    char quote = 0;
+
+    assert(xpath && (xpath[0] == '['));
+
+    for (ptr = xpath + 1; ptr[0] && (quote || (ptr[0] != ']')); ++ptr) {
+        if (quote && (ptr[0] == quote)) {
+            quote = 0;
+        } else if (!quote && ((ptr[0] == '\'') || (ptr[0] == '\"'))) {
+            quote = ptr[0];
+        }
+    }
+
+    if (quote) {
+        /* invalid xpath */
+        return NULL;
+    }
+
+    if (pred) {
+        *pred = xpath + 1;
+    }
+    if (len) {
+        *len = ptr - (xpath + 1);
+    }
+    if (has_predicate) {
+        *has_predicate = (ptr[0] && (ptr[0] + 1 == '[')) ? 1 : 0;
+    }
+
+    return ptr + 1;
 }
 
 size_t

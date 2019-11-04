@@ -498,6 +498,189 @@ sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *
 }
 
 /**
+ * @brief Check whether operational data are required based on a predicate.
+ *
+ * @param[in] pred1 First predicate.
+ * @param[in] len1 First predicate length.
+ * @param[in] pred2 Second predicate.
+ * @param[in] len2 Second predicate length.
+ * @return 0 if not required, non-zero if required.
+ */
+static int
+sr_xpath_oper_data_predicate_required(const char *pred1, int len1, const char *pred2, int len2)
+{
+    char quot1, quot2;
+    const char *val1, *val2;
+
+    /* node names */
+    while (len1 && len2) {
+        if (pred1[0] != pred2[0]) {
+            /* different node names */
+            return 1;
+        }
+
+        ++pred1;
+        --len1;
+        ++pred2;
+        --len2;
+
+        if ((pred1[0] == '=') && (pred2[0] == '=')) {
+            break;
+        }
+    }
+    if (!len1 || !len2) {
+        /* not an equality expression */
+        return 1;
+    }
+
+    ++pred1;
+    --len1;
+    ++pred2;
+    --len2;
+
+    /* we expect quotes now */
+    if ((pred1[0] != '\'') && (pred1[0] != '\"')) {
+        return 1;
+    }
+    if ((pred2[0] != '\'') && (pred2[0] != '\"')) {
+        return 1;
+    }
+    quot1 = pred1[0];
+    quot2 = pred2[0];
+
+    ++pred1;
+    --len1;
+    ++pred2;
+    --len2;
+
+    /* values */
+    val1 = pred1;
+    val2 = pred2;
+    while (len1 && len2) {
+        if ((pred1[0] == quot1) && (pred2[0] == quot2)) {
+            /* same length values */
+            break;
+        }
+
+        ++pred1;
+        --len1;
+        ++pred2;
+        --len2;
+    }
+    if (!len1 || !len2) {
+        return 1;
+    }
+    if ((len1 != 1) || (len2 != 1)) {
+        /* the predicate is not finished, leave it */
+        return 1;
+    }
+
+    /* just compare values, we can decide based on that */
+    if (!strncmp(val1, val2, pred1 - val1)) {
+        /* values match, we need this data */
+        return 1;
+    }
+
+    /* values fo not match, these data would be flitered out */
+    return 0;
+}
+
+/**
+ * @brief Check whether operational data are required.
+ *
+ * @param[in] request_xpath Get request XPath.
+ * @param[in] sub_xpath Operational subscription XPath.
+ * @return 0 if not required, non-zero if required.
+ */
+static int
+sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath)
+{
+    const char *xpath1, *xpath2, *mod1, *mod2, *name1, *name2, *pred1, *pred2;
+    int wildc1, wildc2, mlen1, mlen2, len1, len2, dslash1, dslash2, has_pred1, has_pred2;
+
+    assert(sub_xpath);
+
+    if (!request_xpath) {
+        /* we do not know, say it is required */
+        return 1;
+    }
+
+    xpath1 = request_xpath;
+    xpath2 = sub_xpath;
+    do {
+        xpath1 = sr_xpath_next_name(xpath1, &mod1, &mlen1, &name1, &len1, &dslash1, &has_pred1);
+        xpath2 = sr_xpath_next_name(xpath2, &mod2, &mlen2, &name2, &len2, &dslash2, &has_pred2);
+
+        /* double-slash */
+        if ((dslash1 && !dslash2) || (!dslash1 && dslash2)) {
+            /* only one xpath includes '//', unable to check further */
+            return 1;
+        }
+        if (dslash1 && dslash2) {
+            if ((len1 == 1) && (name1[0] == '.')) {
+                /* always matches all */
+                return 1;
+            }
+            if ((len2 == 1) && (name2[0] == '.')) {
+                /* always matches all */
+                return 1;
+            }
+        }
+
+        /* wildcards */
+        if ((len1 == 1) && (name1[0] == '*')) {
+            wildc1 = 1;
+        } else {
+            wildc1 = 0;
+        }
+        if ((len2 == 1) && (name2[0] == '*')) {
+            wildc2 = 1;
+        } else {
+            wildc2 = 0;
+        }
+
+        /* module name */
+        if (mlen1 || mlen2) {
+            if ((!mlen2 && !wildc1) || (!mlen1 && !wildc2)) {
+                /* one node has no module */
+                return 0;
+            } else if ((mlen1 && mlen2) && ((mlen1 != mlen2) || strncmp(mod1, mod2, mlen1))) {
+                /* different modules */
+                return 0;
+            }
+        }
+
+        /* node name */
+        if (!wildc1 && !wildc2 && ((len1 != len2) || strncmp(name1, name2, len1))) {
+            /* different node names */
+            return 0;
+        }
+
+        while (has_pred1 && has_pred2) {
+            xpath1 = sr_xpath_next_predicate(xpath1, &pred1, &len1, &has_pred1);
+            xpath2 = sr_xpath_next_predicate(xpath2, &pred2, &len2, &has_pred2);
+
+            /* predicate */
+            if (!sr_xpath_oper_data_predicate_required(pred1, len1, pred2, len2)) {
+                /* not required based on the predicate */
+                return 0;
+            }
+        }
+
+        /* skip any leftover predicates */
+        while (has_pred1) {
+            xpath1 = sr_xpath_next_predicate(xpath1, NULL, NULL, &has_pred1);
+        }
+        while (has_pred2) {
+            xpath2 = sr_xpath_next_predicate(xpath2, NULL, NULL, &has_pred2);
+        }
+    } while (xpath1[0] && xpath2[0]);
+
+    /* whole xpath matches */
+    return 1;
+}
+
+/**
  * @brief Update (replace or append) operational data for a specific module.
  *
  * @param[in] mod Mod info module to process.
@@ -556,6 +739,9 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
             continue;
         } else if ((shm_msub->sub_type == SR_OPER_SUB_STATE) && (opts & SR_OPER_NO_STATE)) {
             /* useless to retrieve state data */
+            continue;
+        } else if (!sr_xpath_oper_data_required(request_xpath, sub_xpath)) {
+            /* useless to retrieve this data because they would be filtered out anyway */
             continue;
         }
 
