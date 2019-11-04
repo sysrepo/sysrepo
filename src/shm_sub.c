@@ -2042,8 +2042,9 @@ cleanup:
  * @param[in] data Optional data to write after the structure.
  * @param[in] data_len Additional data length.
  * @param[in] err_code Optional error code if a callback failed.
+ * @return err_info, NULL on success.
  */
-static void
+static sr_error_info_t *
 sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t data_len, sr_error_t err_code)
 {
     sr_error_info_t *err_info = NULL;
@@ -2062,9 +2063,10 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t d
         }
         break;
     default:
-        SR_ERRINFO_INT(&err_info);
-        sr_errinfo_free(&err_info);
-        break;
+        /* no longer a listener event, we could have timeouted */
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Unable to finish processing event with ID %u (timeout probably).",
+                sub_shm->request_id);
+        return err_info;
     }
 
     if (data && data_len) {
@@ -2074,6 +2076,7 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t d
 
     SR_LOG_INF("Finished processing \"%s\" event%s with ID %u.", sr_ev2str(event), err_code ? " (callback fail)" : "",
             sub_shm->request_id);
+    return NULL;
 }
 
 sr_error_info_t *
@@ -2198,7 +2201,9 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         sub_shm = (sr_sub_shm_t *)oper_sub->sub_shm.addr;
 
         /* finish event */
-        sr_shmsub_listen_write_event(sub_shm, data, data_len, err_code);
+        if ((err_info = sr_shmsub_listen_write_event(sub_shm, data, data_len, err_code))) {
+            goto error_wrunlock;
+        }
 
         /* SUB WRITE UNLOCK */
         sr_rwunlock(&sub_shm->lock, 1, __func__);
@@ -2229,6 +2234,7 @@ error:
     sr_clear_sess(&tmp_sess);
     free(data);
     lyd_free_withsiblings(parent);
+    free(request_xpath);
     return err_info;
 }
 
