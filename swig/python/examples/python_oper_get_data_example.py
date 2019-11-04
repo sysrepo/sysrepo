@@ -31,8 +31,8 @@ __license__ = "Apache 2.0"
 import sysrepo as sr
 import sys
 
-def oper_get_items_cb(session, module_name, path, request_xpath, request_id, parent, private_data):
-    print ("\nApplication will provide data of " + module_name + " module\n")
+def oper_get_items_cb1(session, module_name, path, request_xpath, request_id, parent, private_data):
+    print ("\n\n ========== CALLBACK CALLED TO PROVIDE \"" + path + "\" DATA ==========\n")
     try:
         ctx = session.get_context()
         mod = ctx.get_module(module_name)
@@ -63,6 +63,21 @@ def oper_get_items_cb(session, module_name, path, request_xpath, request_id, par
         return sr.SR_ERR_OK
     return sr.SR_ERR_OK
 
+def oper_get_items_cb2(session, module_name, path, request_xpath, request_id, parent, private_data):
+    print ("\n\n ========== CALLBACK CALLED TO PROVIDE \"" + path + "\" DATA ==========\n")
+    try:
+        ctx = session.get_context()
+        mod = ctx.get_module(module_name)
+
+        stats = sr.Data_Node(parent, mod, "statistics")
+        dis_time = sr.Data_Node(stats, mod, "discontinuity-time", "2019-01-01T00:00:00Z")
+        in_oct = sr.Data_Node(stats, mod, "in-octets", "22")
+
+    except Exception as e:
+        print (e)
+        return sr.SR_ERR_OK
+    return sr.SR_ERR_OK
+
 # Notable difference between c implementation is using exception mechanism for open handling unexpected events.
 # Here it is useful because `Conenction`, `Session` and `Subscribe` could throw an exception.
 try:
@@ -81,13 +96,19 @@ try:
     # subscribe for changes in running config */
     subscribe = sr.Subscribe(sess)
 
+    print ("\nApplication will provide data of " + module_name + " module\n")
+
     try:
-        subscribe.oper_get_items_subscribe(module_name, "/ietf-interfaces:interfaces-state", oper_get_items_cb, None, sr.SR_SUBSCR_DEFAULT)
+        subscribe.oper_get_items_subscribe(module_name, "/ietf-interfaces:interfaces-state", oper_get_items_cb1)
+        subscribe.oper_get_items_subscribe(module_name, "/ietf-interfaces:interfaces-state/interface/statistics", oper_get_items_cb2,
+                None, sr.SR_SUBSCR_CTX_REUSE);
     except Exception as e:
         print (e)
 
     sr.global_loop()
 
+    subscribe.unsubscribe()
+    
     print ("Application exit requested, exiting.\n")
 
 except Exception as e:
