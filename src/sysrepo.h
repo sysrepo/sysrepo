@@ -194,7 +194,7 @@ typedef enum sr_datastore_e {
  */
 typedef struct sr_error_info_msg_s {
   char *message;   /**< Error message. */
-  char *xpath;     /**< XPath to the node where the error has been discovered. */
+  char *xpath;     /**< [XPath](@ref paths) (or rather path) to the node where the error has been discovered. */
 } sr_error_info_msg_t;
 
 /**
@@ -347,7 +347,7 @@ int sr_get_error(sr_session_ctx_t *session, const sr_error_info_t **error_info);
  * on the provided session.
  *
  * @param[in] session Session provided in a callback.
- * @param[in] path Optional path of the node where the error has occurred.
+ * @param[in] path Optional [path](@ref paths) of the node where the error has occurred.
  * @param[in] format Human-readable format of the error message.
  * @param[in] ... Format parameters.
  * @return Error code (::SR_ERR_OK on success).
@@ -638,7 +638,7 @@ typedef union sr_data_u {
  * @brief Structure that contains value of an data element stored in the sysrepo datastore.
  */
 typedef struct sr_val_s {
-    /** XPath identifier of the data element. */
+    /** [XPath](@ref paths) (or rather path) identifier of the data element. */
     char *xpath;
 
     /** Type of an element. */
@@ -695,7 +695,7 @@ typedef uint32_t sr_get_oper_options_t;
  * larger chunks, it can work much more efficiently than multiple ::sr_get_item calls.
  *
  * @param[in] session Session to use.
- * @param[in] path Path of the data element to be retrieved.
+ * @param[in] path [Path](@ref paths) of the data element to be retrieved.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[out] value Structure containing information about requested element
  * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_val).
@@ -712,7 +712,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms
  * Required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath XPath of the data elements to be retrieved.
+ * @param[in] xpath [XPath](@ref paths) of the data elements to be retrieved.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[out] values Array of structures containing information about requested data elements
  * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_values).
@@ -733,7 +733,7 @@ int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_
  * Required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] path Path selecting the root node of the subtree to be retrieved.
+ * @param[in] path [Path](@ref paths) selecting the root node of the subtree to be retrieved.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[out] subtree Nested subtree containing all data of the requested subtree
  * (allocated by the function, it is supposed to be freed by the caller).
@@ -756,7 +756,7 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout
  * Required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath XPath selecting root nodes of subtrees to be retrieved.
+ * @param[in] xpath [XPath](@ref paths) selecting root nodes of subtrees to be retrieved.
  * @param[in] max_depth Maximum depth of the selected subtrees. 0 is unlimited, 1 will not return any
  * descendant nodes. If a list should be returned, its keys are always returned as well.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
@@ -837,7 +837,7 @@ typedef enum sr_move_position_e {
  * If both are present, value argument is ignored and xpath predicate is used.
  *
  * @param[in] session Session to use.
- * @param[in] path Path identifier of the data element to be set.
+ * @param[in] path [Path](@ref paths) identifier of the data element to be set.
  * @param[in] value Value to be set on specified xpath. xpath member of the
  * ::sr_val_t structure can be NULL. Value will be copied - can be allocated on stack.
  * @param[in] opts Options overriding default behavior of this call.
@@ -850,7 +850,7 @@ int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *val
  * is provided as string.
  *
  * @param[in] session Session to use.
- * @param[in] path Path identifier of the data element to be set.
+ * @param[in] path [Path](@ref paths) identifier of the data element to be set.
  * @param[in] value String representation of the value to be set.
  * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits.
  * @param[in] opts Same as for ::sr_set_item.
@@ -868,7 +868,7 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  * If the xpath to list does not include keys, all instances of the list are deleted.
  *
  * @param[in] session Session to use.
- * @param[in] path Path identifier of the data element to be deleted.
+ * @param[in] path [Path](@ref paths) identifier of the data element to be deleted.
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success).
  **/
@@ -882,7 +882,7 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
  * (without specifying keys of the list in question).
  *
  * @param[in] session Session to use
- * @param[in] path Path identifier of the data element to be moved.
+ * @param[in] path [Path](@ref paths) identifier of the data element to be moved.
  * @param[in] position Requested move direction.
  * @param[in] list_keys Predicate identifying the relative list instance (example input "[key1='val1'][key2='val2']...").
  * @param[in] leaflist_value Value of the relative leaf-list instance (example input "val1").
@@ -1236,7 +1236,7 @@ typedef struct sr_change_iter_s sr_change_iter_t;
  * @param[in] session Automatically-created session that can be used for obtaining changed data
  * (by ::sr_get_changes_iter call) and learn about initiator session IDs. Do not stop this session.
  * @param[in] module_name Name of the module where the change has occurred.
- * @param[in] xpath XPath used when subscribing, NULL if the whole module was subscribed to.
+ * @param[in] xpath [XPath](@ref paths) used when subscribing, NULL if the whole module was subscribed to.
  * @param[in] event Type of the callback event that has occurred.
  * @param[in] request_id Request ID unique for the specific \p module_name. Connected events
  * for one request (::SR_EV_CHANGE and ::SR_EV_DONE, for example) ahve the same request ID.
@@ -1253,7 +1253,7 @@ typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module
  *
  * @param[in] session Session to use.
  * @param[in] module_name Name of the module of interest for change notifications.
- * @param[in] xpath Optional XPath further filtering the changes that will be handled by this subscription.
+ * @param[in] xpath Optional [XPath](@ref paths) further filtering the changes that will be handled by this subscription.
  * @param[in] callback Callback to be called when the change in the datastore occurs.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
@@ -1275,7 +1275,7 @@ int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_nam
  * @see ::sr_get_change_next for iterating over the changeset using this iterator.
  *
  * @param[in] session Session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
- * @param[in] xpath XPath selecting the requested changes. Be careful, you must select all the changes,
+ * @param[in] xpath [XPath](@ref paths) selecting the requested changes. Be careful, you must select all the changes,
  * not just subtrees! To get a full change subtree "//." can be appended to the XPath.
  * @param[out] iter Iterator context that can be used to retrieve individual changes using
  * ::sr_get_change_next calls. Allocated by the function, should be freed with ::sr_free_change_iter.
@@ -1355,7 +1355,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
  *
  * @param[in] session Callback session to use.
- * @param[in] op_path Simple operation path identifying the RPC/action.
+ * @param[in] op_path Simple operation [path](@ref paths) identifying the RPC/action.
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
  * @param[in] event Type of the callback event that has occurred.
@@ -1378,7 +1378,7 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *op_path, const s
  * a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
  *
  * @param[in] session Callback session to use.
- * @param[in] op_path Simple operation path identifying the RPC/action.
+ * @param[in] op_path Simple operation [path](@ref paths) identifying the RPC/action.
  * @param[in] input Data tree of input parameters.
  * @param[in] event Type of the callback event that has occurred.
  * @param[in] request_id Request ID unique for the specific \p op_path.
@@ -1396,7 +1396,7 @@ typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, const char *op_path, co
  * Required WRITE access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath XPath identifying the RPC/action. Any predicates are allowed.
+ * @param[in] xpath [XPath](@ref paths) identifying the RPC/action. Any predicates are allowed.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
@@ -1419,7 +1419,7 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  * Required WRITE access.
  *
  * @param[in] session Session to use.
- * @param[in] xpath XPath identifying the RPC/action. Any predicates are allowed.
+ * @param[in] xpath [XPath](@ref paths) identifying the RPC/action. Any predicates are allowed.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
@@ -1439,7 +1439,7 @@ int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_t
  * Required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] path Path identifying the RPC/action.
+ * @param[in] path [Path](@ref paths) identifying the RPC/action.
  * @param[in] input Array of input parameters (array of all nodes that hold some
  * data in RPC/action input subtree - same as ::sr_get_items would return).
  * @param[in] input_cnt Number of input parameters.
@@ -1499,7 +1499,7 @@ typedef enum sr_ev_notif_type_e {
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
  * @param[in] notif_type Type of the notification.
- * @param[in] path Path identifying the event notification.
+ * @param[in] path [Path](@ref paths) identifying the event notification.
  * @param[in] values Array of all nodes that hold some data in event notification subtree.
  * @param[in] values_cnt Number of items inside the values array.
  * @param[in] timestamp Time when the notification was generated
@@ -1533,7 +1533,7 @@ typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, const sr_ev_no
  *
  * @param[in] session Session to use.
  * @param[in] module_name Name of the module whose notifications to subscribe to.
- * @param[in] xpath Optional XPath further filtering received notifications.
+ * @param[in] xpath Optional [XPath](@ref paths) further filtering received notifications.
  * @param[in] start_time Optional start time of the subscription. Used for replaying stored notifications.
  * @param[in] stop_time Optional stop time ending the notification subscription.
  * @param[in] callback Callback to be called when the event notification is delivered.
@@ -1558,7 +1558,7 @@ int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name,
  *
  * @param[in] session Session to use.
  * @param[in] module_name Name of the module whose notifications to subscribe to.
- * @param[in] xpath Optional XPath further filtering received notifications.
+ * @param[in] xpath Optional [XPath](@ref paths) further filtering received notifications.
  * @param[in] start_time Optional start time of the subscription. Used for replaying stored notifications.
  * @param[in] stop_time Optional stop time ending the notification subscription.
  * @param[in] callback Callback to be called when the event notification is delivered.
@@ -1579,7 +1579,7 @@ int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_
  * Required WRITE access. If the module does not support replay, required READ access.
  *
  * @param[in] session Session to use.
- * @param[in] path Path identifying the notification.
+ * @param[in] path [Path](@ref paths) identifying the notification.
  * @param[in] values Array of all nodes that hold some data in event notification subtree
  * (same as ::sr_get_items would return).
  * @param[in] values_cnt Number of items inside the values array.
@@ -1624,8 +1624,9 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
  * @param[in] module_name Name of the affected module.
- * @param[in] path Path identifying the subtree that is supposed to be provided, same as the one used for the subscription.
- * @param[in] request_xpath XPath as requested by a client. Can be NULL.
+ * @param[in] path [Path](@ref paths) identifying the subtree that is supposed to be provided, same as the one used
+ * for the subscription.
+ * @param[in] request_xpath [XPath](@ref paths) as requested by a client. Can be NULL.
  * @param[in] request_id Request ID unique for the specific \p module_name.
  * @param[in,out] parent Pointer to an existing parent of the requested nodes. Is NULL for top-level nodes.
  * Caller is supposed to append the requested nodes to this data subtree and return either the original parent
@@ -1643,7 +1644,7 @@ typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, const char *modul
  *
  * @param[in] session Session to use.
  * @param[in] module_name Name of the affected module.
- * @param[in] path Path identifying the subtree which the provider is able to provide. Predicates can be
+ * @param[in] path [Path](@ref paths) identifying the subtree which the provider is able to provide. Predicates can be
  * used to provide only specific instances of nodes.
  * @param[in] callback Callback to be called when the operational data for the given xpath are requested.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.

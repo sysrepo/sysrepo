@@ -154,4 +154,18 @@ Changing it is possible if the process owner is `root` but should be done only i
 by an application that delegates requests from other sources than the application itself
 (NETCONF, for example, more in @ref conn_sess).
 
+# Path and XPath @anchor paths
+
+There are _xpaths_ and _paths_ used as parameters for various Sysrepo API functions. Generally, these are
+[XPath](https://www.w3.org/TR/1999/REC-xpath-19991116/) expressions as used by YANG. Differences are
+outlined below. Note that there if often additional information about what is expected the particular
+parameter should represent.
+
+__XPath__ accepts any expression that _libyang_ does. But _libyang_ uses [JSON](https://tools.ietf.org/html/rfc7951)
+module prefixes instead of XML prefixes of the module namespaces, which means that simply module names have to be used.
+
+__Path__ is similar to _XPath_ defined above with some restrictions. It follows the JSON [instance-identifier](https://tools.ietf.org/html/rfc7951#section-6.11) format meaning modules are strictly inherited from parents unless explicitly specified.
+Additionally, it is possible to use predicates to restrict nodes and wildcards can be used instead of node
+identifiers (`*` and `.`). Do __not__ use spaces unless required (it is fine in literals enclosed in quotes).
+
 */

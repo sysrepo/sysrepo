@@ -1171,7 +1171,7 @@ size_t sr_xpath_len_no_predicates(const char *xpath);
 sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
 
 /**
- * @brief Get list key count if list.
+ * @brief Get list key count of a list.
  *
  * @param[in] node List, whose key count to get.
  * @return Key count or 0.
