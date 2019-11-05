@@ -253,7 +253,7 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
 
                     if (ret < 0) {
                         /* error */
-                        sr_errinfo_new_ly(&err_info, lyd_node_module(data_key)->ctx);
+                        sr_errinfo_new_ly(&err_info, lyd_node_module(iter)->ctx);
                         return err_info;
                     } else if (!ret) {
                         /* values actually differ */
