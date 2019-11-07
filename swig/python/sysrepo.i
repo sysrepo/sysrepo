@@ -36,13 +36,19 @@ volatile int exit_application = 0;
 static void
 sigint_handler(int signum)
 {
+    printf("sigint called\n");
     exit_application = 1;
 }
 
 static void global_loop() {
     /* loop until ctrl-c is pressed / SIGINT is received */
     signal(SIGINT, sigint_handler);
+    signal(SIGUSR1, sigint_handler);
+    signal(SIGUSR2, sigint_handler);
+    signal(SIGALRM, sigint_handler);
+    signal(SIGTERM, sigint_handler);
     while (!exit_application) {
+        printf("silled\n");
         sleep(1000);  /* or do some more useful work... */
     }
 }
@@ -73,11 +79,12 @@ public:
 
         sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
         std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
-        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_OWN);
 
         arglist = Py_BuildValue("(OssiiO)", s, module_name, xpath, event, request_id, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
+        Py_DECREF(s);
         if (result == nullptr) {
             sess->~Session();
             throw std::runtime_error("Python callback module_change_subscribe failed.\n");
@@ -102,20 +109,21 @@ public:
 
         sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
         std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
-        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_OWN);
 
         sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(input, input_cnt, nullptr);
         sysrepo::Vals_Holder *out_vals =(sysrepo::Vals_Holder *)new sysrepo::Vals_Holder(output, output_cnt);
 
         std::shared_ptr<sysrepo::Vals> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Vals>(in_vals) : 0;
-        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_t, SWIG_POINTER_DISOWN);
+        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_t, SWIG_POINTER_OWN);
 
         std::shared_ptr<sysrepo::Vals_Holder> *shared_out_vals = out_vals ? new std::shared_ptr<sysrepo::Vals_Holder>(out_vals) : 0;
-        PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_Holder_t, SWIG_POINTER_DISOWN);
+        PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_Holder_t, SWIG_POINTER_OWN);
 
         arglist = Py_BuildValue("(OsOiiOO)",s, op_path, in,event,request_id, out, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
+        Py_DECREF(s);
         if (result == nullptr) {
             in_vals->~Vals();
             out_vals->~Vals_Holder();
@@ -143,19 +151,20 @@ public:
 
         sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
         std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
-        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_OWN);
 
         libyang::Data_Node *in_tree =(libyang::Data_Node *)new libyang::Data_Node(const_cast<struct lyd_node *>(input));
         libyang::Data_Node *out_tree =(libyang::Data_Node *)new libyang::Data_Node(const_cast<struct lyd_node *>(output));
 
         std::shared_ptr<libyang::Data_Node> *shared_in_tree = in_tree ? new std::shared_ptr<libyang::Data_Node>(in_tree) : 0;
-        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_tree), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_DISOWN);
+        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_tree), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_OWN);
 
         std::shared_ptr<libyang::Data_Node> *shared_out_tree = out_tree ? new std::shared_ptr<libyang::Data_Node>(out_tree) : 0;
-        PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_tree), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_DISOWN);
+        PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_tree), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_OWN);
         arglist = Py_BuildValue("(OsOiiOO)",s,op_path, in, event, request_id, out, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
+        Py_DECREF(s);
         if (result == nullptr) {
             in_tree->~Data_Node();
             out_tree->~Data_Node();
@@ -183,15 +192,16 @@ public:
 
         sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
         std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
-        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_OWN);
 
         sysrepo::Vals *in_vals =(sysrepo::Vals *)new sysrepo::Vals(values, values_cnt, nullptr);
         std::shared_ptr<sysrepo::Vals> *shared_in_vals = in_vals ? new std::shared_ptr<sysrepo::Vals>(in_vals) : 0;
-        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_t, SWIG_POINTER_DISOWN);
+        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_sysrepo__Vals_t, SWIG_POINTER_OWN);
 
         arglist = Py_BuildValue("(OisOlO)", s, notif_type, path, in, (long)timestamp, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
+        Py_DECREF(s);
         if (result == nullptr) {
             in_vals->~Vals();
             sess->~Session();
@@ -211,15 +221,16 @@ public:
 #endif
         sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
         std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
-        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_OWN);
 
         libyang::Data_Node *node =(libyang::Data_Node *)new libyang::Data_Node(const_cast<struct lyd_node *>(notif));
         std::shared_ptr<libyang::Data_Node> *shared_node = node ? new std::shared_ptr<libyang::Data_Node>(node) : 0;
-        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_node), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_DISOWN);
+        PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_node), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_OWN);
 
         arglist = Py_BuildValue("(OiOlO)", s, notif_type, in, (long)timestamp, private_data);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
+        Py_DECREF(s);
         if (result == nullptr) {
             node->~Data_Node();
             sess->~Session();
@@ -242,17 +253,18 @@ public:
         
         sysrepo::Session *sess = (sysrepo::Session *)new sysrepo::Session(session);
         std::shared_ptr<sysrepo::Session> *shared_sess = sess ? new std::shared_ptr<sysrepo::Session>(sess) : 0;
-        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_DISOWN);
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_sysrepo__Session_t, SWIG_POINTER_OWN);
         if (*parent) {
             libyang::Data_Node *tree =(libyang::Data_Node *)new libyang::Data_Node(const_cast<struct lyd_node *>(*parent));
             
             std::shared_ptr<libyang::Data_Node> *shared_tree = new std::shared_ptr<libyang::Data_Node>(tree);
 
-            PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_tree), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_DISOWN);
+            PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_tree), SWIGTYPE_p_std__shared_ptrT_libyang__Data_Node_t, SWIG_POINTER_OWN);
 
             arglist = Py_BuildValue("(OsssiOO)", s, module_name, path, request_xpath, request_id, in, private_data);
             PyObject *result = PyEval_CallObject(_callback, arglist);
             Py_DECREF(arglist);
+            Py_DECREF(s);
             if (result == nullptr) {
                 tree->~Data_Node();
                 sess->~Session();
@@ -276,6 +288,7 @@ public:
             arglist = Py_BuildValue("(OsssiOO)", s, module_name, path, request_xpath, request_id, in, private_data);
             PyObject *result = PyEval_CallObject(_callback, arglist);
             Py_DECREF(arglist);
+            Py_DECREF(s);
             if (result == nullptr) {
                 tree->~Data_Node();
                 sess->~Session();
@@ -445,7 +458,7 @@ static const char *g_ly_module_imp_clb(const char *mod_name, const char *mod_rev
     }
 
     void event_notif_subscribe(const char *module_name, PyObject *callback, const char *xpath, \
-                               time_t start_time, time_t stop_time, PyObject *private_data = nullptr, \
+                               time_t start_time = 0, time_t stop_time = 0, PyObject *private_data = nullptr, \
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = nullptr;
         class_ctx = new Wrap_cb(callback);
@@ -462,6 +475,7 @@ static const char *g_ly_module_imp_clb(const char *mod_name, const char *mod_rev
                                            stop_time, g_event_notif_cb, class_ctx, opts, self->swig_sub());
 
         if (SR_ERR_OK != ret) {
+            printf("err\n");
             throw std::runtime_error(sr_strerror(ret));
         }
     }
