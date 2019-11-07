@@ -54,7 +54,7 @@ class SysrepoBasicTest(unittest.TestCase):
         vals = self.session.get_items("/test-module:main")
         for i in range(vals.val_cnt()):
             v = vals.val(i)
-            self.assertRegexpMatches(v.xpath(), "/test-module:main*")
+            self.assertRegex(v.xpath(), "/test-module:main*")
             print (v.to_string(),end='')
 
     # Infinite loop on 'None' values
