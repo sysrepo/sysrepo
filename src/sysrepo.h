@@ -1615,8 +1615,11 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
  * @brief Callback to be called when operational data at the selected xpath are requested.
  * Subscribe to it by ::sr_oper_get_items_subscribe call.
  *
- * Callback handler can provide any data matching the xpath but in case there are other nested subscriptions,
- * they will be called after this one.
+ * When the callback is called, the data parent is provided. Any parent children (selected by @p path)
+ * are removed and should be provided by the callback instead, if they exist. Callback handler can
+ * provide any data matching the @p path but in case there are other nested subscriptions,
+ * they will be called after this one (and when they are called, their parent children will again be removed
+ * which can result in nodes provided by the original callback being lost).
  *
  * @note Callback is allowed to modify modules but MUST not modify subscriptions. It would result in
  * a deadlock and this callback timeout.

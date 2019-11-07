@@ -35,6 +35,19 @@ const char *get_repo_path()
     return sr_get_repo_path();
 }
 
+uint32_t connection_count()
+{
+    uint32_t count;
+    int ret;
+
+    ret = sr_connection_count(&count);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+
+    return count;
+}
+
 sysrepo_exception::sysrepo_exception(const sr_error_t error_code)
     : std::runtime_error(sr_strerror(error_code))
     , m_error_code(error_code)
