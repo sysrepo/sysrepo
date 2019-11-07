@@ -41,7 +41,6 @@
 struct sr_mod_info_s {
     sr_datastore_t ds;          /**< Datastore. */
     struct lyd_node *diff;      /**< Diff with previous data. */
-    int dflt_change;            /**< Whether a value default flag was changed. */
     struct lyd_node *data;      /**< Data tree. */
     int data_cached;            /**< Whether the data are actually in cache (conn cache READ lock is held). */
     sr_conn_ctx_t *conn;        /**< Associated connection. */
@@ -89,6 +88,15 @@ sr_error_info_t *sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr);
 sr_error_info_t *sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff);
 
 /**
+ * @brief Merge sysrepo diff to mod info diff.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] orig_diff Original diff to merge into, it is spent!
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_node *orig_diff);
+
+/**
  * @brief Replace mod info data with new data.
  *
  * @param[in] mod_info Mod info to use.
@@ -111,6 +119,15 @@ sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_
         sr_error_info_t **cb_error_info);
 
 /**
+ * @brief Add default values into data for modules in mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] finish_diff Whether to update diff with possible changes of default values.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff);
+
+/**
  * @brief Validate operation using modules in mod info.
  *
  * @param[in] mod_info Mod info to use.
@@ -131,16 +148,17 @@ sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct l
  * @brief Load data for modules in mod info.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] mod_type Only module types which data should be loaded.
+ * @param[in] mod_type Types of modules whose data should only be loaded.
  * @param[in] cache Whether it makes sense to use cached data, if available.
  * @param[in] sid Sysrepo session ID.
  * @param[in] request_id XPath of the data request.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
+ * @param[in] opts Get oper data options.
  * @param[out] cb_error_info Callback error info in case an operational subscriber of required data failed.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache, sr_sid_t *sid,
-        const char *request_id, uint32_t timeout_ms, sr_error_info_t **cb_error_info);
+        const char *request_id, uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info);
 
 /**
  * @brief Filter data from mod info.
@@ -158,10 +176,10 @@ sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const cha
  * @brief Generate a netconf-config-change notification based on changes in mod info.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] sess Sysrepo session.
+ * @param[in] session Session to use.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sess);
+sr_error_info_t *sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session);
 
 /**
  * @brief Store data (persistently) from mod info.

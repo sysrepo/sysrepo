@@ -26,9 +26,7 @@
 #include <iostream>
 #include <memory>
 
-extern "C" {
 #include "sysrepo.h"
-}
 
 namespace sysrepo {
 

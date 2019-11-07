@@ -77,7 +77,7 @@ help_print(void)
         "\n"
         "Available other-options:\n"
         "  -d, --datastore <datastore>  Datastore to be operated on, \"running\" by default (\"running\", \"startup\",\n"
-        "                               \"candidate\", \"operational\", or \"state\") (import, export, edit, copy-from op).\n"
+        "                               \"candidate\", or \"operational\") (import, export, edit, copy-from op).\n"
         "  -m, --module <module-name>   Module to be operated on, otherwise it is operated on full datastore\n"
         "                               (import, export, edit, copy-from op).\n"
         "  -x, --xpath <xpath>          XPath to select (export op).\n"
@@ -85,6 +85,7 @@ help_print(void)
         "                               (\"xml\", \"json\", or \"lyb\") (import, export, edit, rpc, notification, copy-from op).\n"
         "  -l, --lock                   Lock the specified datastore for the whole operation (edit op).\n"
         "  -n, --not-strict             Silently ignore any unknown data (import, edit, rpc, notification, copy-from op).\n"
+        "  -p, --depth <number>         Limit the depth of returned subtrees, 0 so unlimited by default (export op).\n"
         "  -v, --verbosity <level>      Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
         "\n"
     );
@@ -298,7 +299,8 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
 }
 
 static int
-op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name, const char *xpath, LYD_FORMAT format)
+op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name, const char *xpath, LYD_FORMAT format,
+        uint32_t max_depth)
 {
     struct lyd_node *data;
     FILE *file = NULL;
@@ -320,12 +322,12 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     /* get subtrees */
     if (module_name) {
         asprintf(&str, "/%s:*", module_name);
-        r = sr_get_data(sess, str, 0, &data);
+        r = sr_get_data(sess, str, max_depth, 0, 0, &data);
         free(str);
     } else if (xpath) {
-        r = sr_get_data(sess, xpath, 0, &data);
+        r = sr_get_data(sess, xpath, max_depth, 0, 0, &data);
     } else {
-        r = sr_get_data(sess, "/*", 0, &data);
+        r = sr_get_data(sess, "/*", max_depth, 0, 0, &data);
     }
     if (r != SR_ERR_OK) {
         error_print(r, "Getting data failed");
@@ -389,7 +391,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
     }
 
     /* use export operation to get data to edit */
-    if (op_export(sess, tmp_file, module_name, NULL, format)) {
+    if (op_export(sess, tmp_file, module_name, NULL, format, 0)) {
         goto cleanup_unlock;
     }
 
@@ -514,7 +516,7 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
             return EXIT_FAILURE;
         }
 
-        /* replace config */
+        /* replace data */
         r = sr_replace_config(sess, module_name, data, target_ds, 0);
         if (r) {
             error_print(r, "Replace config failed");
@@ -549,8 +551,6 @@ arg_get_ds(const char *optarg, sr_datastore_t *ds)
         *ds = SR_DS_CANDIDATE;
     } else if (!strcmp(optarg, "operational")) {
         *ds = SR_DS_OPERATIONAL;
-    } else if (!strcmp(optarg, "state")) {
-        *ds = SR_DS_STATE;
     } else {
         error_print(0, "Unknown datastore \"%s\"", optarg);
         return -1;
@@ -567,8 +567,10 @@ main(int argc, char** argv)
     sr_datastore_t ds = SR_DS_RUNNING, source_ds;
     LYD_FORMAT format = LYD_UNKNOWN;
     const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL;
-    sr_log_level_t log_level = 0;
+    char *ptr;
+    sr_log_level_t log_level = SR_LL_ERR;
     int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0;
+    uint32_t max_depth = 0;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
         {"version",         no_argument,       NULL, 'V'},
@@ -584,6 +586,7 @@ main(int argc, char** argv)
         {"format",          required_argument, NULL, 'f'},
         {"lock",            no_argument,       NULL, 'l'},
         {"not-strict",      no_argument,       NULL, 'n'},
+        {"depth",           required_argument, NULL, 'p'},
         {"verbosity",       required_argument, NULL, 'v'},
         {NULL,              0,                 NULL, 0},
     };
@@ -595,7 +598,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:d:m:x:f:lnv:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:d:m:x:f:lnp:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -725,6 +728,13 @@ main(int argc, char** argv)
         case 'n':
             not_strict = 1;
             break;
+        case 'p':
+            max_depth = strtoul(optarg, &ptr, 10);
+            if (ptr[0]) {
+                error_print(0, "Invalid depth \"%s\"", optarg);
+                goto cleanup;
+            }
+            break;
         case 'v':
             if (!strcmp(optarg, "none")) {
                 log_level = SR_LL_NONE;
@@ -742,7 +752,6 @@ main(int argc, char** argv)
                 error_print(0, "Invalid verbosity \"%s\"", optarg);
                 goto cleanup;
             }
-            sr_log_stderr(log_level);
             break;
         default:
             error_print(0, "Invalid option or missing argument: -%c", optopt);
@@ -755,6 +764,9 @@ main(int argc, char** argv)
         error_print(0, "Redundant parameters (%s)", argv[optind]);
         goto cleanup;
     }
+
+    /* set logging */
+    sr_log_stderr(log_level);
 
     /* create connection */
     if ((r = sr_connect(0, &conn)) != SR_ERR_OK) {
@@ -774,7 +786,7 @@ main(int argc, char** argv)
         rc = op_import(sess, file_path, module_name, format, not_strict);
         break;
     case 'X':
-        rc = op_export(sess, file_path, module_name, xpath, format);
+        rc = op_export(sess, file_path, module_name, xpath, format, max_depth);
         break;
     case 'E':
         rc = op_edit(sess, file_path, editor, module_name, format, lock, not_strict);

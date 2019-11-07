@@ -26,21 +26,9 @@
 #include "Sysrepo.hpp"
 #include "Struct.hpp"
 
-extern "C" {
 #include "sysrepo.h"
-}
 
 namespace sysrepo {
-
-void connection_recover()
-{
-    int ret;
-
-    ret = sr_connection_recover();
-    if (ret != SR_ERR_OK) {
-        throw_exception(ret);
-    }
-}
 
 const char *get_repo_path()
 {

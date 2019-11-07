@@ -25,6 +25,7 @@
 #include <setjmp.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <ctype.h>
 
 #include <cmocka.h>
@@ -509,13 +510,13 @@ test_change_feature(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set all data */
-    ret = sr_set_item_str(sess, "/test:test-leaf", "2", 0);
+    ret = sr_set_item_str(sess, "/test:test-leaf", "2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/features:l1", "val1", 0);
+    ret = sr_set_item_str(sess, "/features:l1", "val1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/features:l2", "2", 0);
+    ret = sr_set_item_str(sess, "/features:l2", "2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/features:l3", "val3", 0);
+    ret = sr_set_item_str(sess, "/features:l3", "val3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -748,7 +749,7 @@ test_empty_invalid(void **state)
     /* check startup data */
     ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(sess, "/mandatory:*", 0, &tree);
+    ret = sr_get_data(sess, "/mandatory:*", 0, 0, 0, &tree);
     assert_int_equal(ret, SR_ERR_OK);
     assert_string_equal(tree->schema->name, "cont");
     assert_string_equal(tree->child->schema->name, "l1");
@@ -757,7 +758,7 @@ test_empty_invalid(void **state)
     /* check running data */
     ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
     lyd_free_withsiblings(tree);
-    ret = sr_get_data(sess, "/mandatory:*", 0, &tree);
+    ret = sr_get_data(sess, "/mandatory:*", 0, 0, 0, &tree);
     assert_int_equal(ret, SR_ERR_OK);
     assert_string_equal(tree->schema->name, "cont");
     assert_string_equal(tree->child->schema->name, "l1");
@@ -784,6 +785,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_empty_invalid, setup_f, teardown_f),
     };
 
+    setenv("CMOCKA_TEST_ABORT", "1", 1);
     sr_log_stderr(SR_LL_INF);
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

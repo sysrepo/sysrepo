@@ -23,6 +23,11 @@ module sysrepo {
     description
         "Sysrepo YANG datastore internal attributes and information.";
 
+    revision "2019-10-25" {
+        description
+            "Added attributes for storing operational data owners.";
+    }
+
     revision "2019-09-25" {
         description
             "Added initial startup data for newly installed modules.";
@@ -81,6 +86,18 @@ module sysrepo {
         type empty;
         description
             "Present if the node was originally a default node.";
+    }
+
+    md:annotation pid {
+        type uint32;
+        description
+            "Process with this PID is the owner of the operational data subtree.";
+    }
+
+    md:annotation conn-ptr {
+        type uint64;
+        description
+            "Connection with this address is the owner of the operational data subtree.";
     }
 
     grouping module-info-grp {

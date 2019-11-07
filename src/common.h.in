@@ -83,10 +83,10 @@
 #endif
 
 /** macro for checking datastore type */
-#define IS_WRITABLE_DS(ds) ((ds == SR_DS_STARTUP) || (ds == SR_DS_RUNNING) || (ds == SR_DS_CANDIDATE))
+#define SR_IS_CONVENTIONAL_DS(ds) ((ds == SR_DS_STARTUP) || (ds == SR_DS_RUNNING) || (ds == SR_DS_CANDIDATE))
 
-/** macro for wriatble datastore count */
-#define SR_WRITABLE_DS_COUNT 3
+/** macro for all datastore types count */
+#define SR_DS_COUNT 4
 
 /** macro for traversing main SHM modules */
 #define SR_SHM_MOD_FOR(main_shm_addr, main_shm_size, shm_mod) \
@@ -140,8 +140,8 @@
 /** timeout for locking module cache (s) */
 #define SR_MOD_CACHE_LOCK_TIMEOUT 5
 
-/** default timeout for configuration subscription callback (ms) */
-#define SR_CONF_CB_TIMEOUT 5000
+/** default timeout for change subscription callback (ms) */
+#define SR_CHANGE_CB_TIMEOUT 5000
 
 /** default timeout for operational subscription callback (ms) */
 #define SR_OPER_CB_TIMEOUT 5000
@@ -169,6 +169,12 @@
 
 /** initial length of message buffer (B) */
 #define SR_MSG_LEN_START 128
+
+/** default operational origin for operational data (push/pull) */
+#define SR_OPER_ORIGIN "unknown"
+
+/** default operational origin for enabled running data */
+#define SR_CONFIG_ORIGIN "intended"
 
 /*
  * Internal declarations + definitions
@@ -210,7 +216,7 @@ typedef struct sr_rwlock_s {
     uint16_t readers;               /**< Current read-locked users. */
 } sr_rwlock_t;
 
-struct modsub_conf_s;
+struct modsub_change_s;
 struct modsub_oper_s;
 struct opsub_rpc_s;
 struct modsub_notif_s;
@@ -272,7 +278,7 @@ struct sr_session_ctx_s {
     struct {
         struct lyd_node *edit;      /**< Prepared edit data tree. */
         struct lyd_node *diff;      /**< Diff data tree, used for module change iterator. */
-    } dt[SR_WRITABLE_DS_COUNT];     /**< Session-exclusive prepared configuration changes. */
+    } dt[SR_DS_COUNT];              /**< Session-exclusive prepared changes. */
 };
 
 /**
@@ -286,10 +292,10 @@ struct sr_subscription_ctx_s {
     pthread_t tid;                  /**< Thread ID of the handler thread. */
     pthread_mutex_t subs_lock;      /**< Session-shared lock for accessing specific subscriptions. */
 
-    struct modsub_conf_s {
+    struct modsub_change_s {
         char *module_name;          /**< Module of the subscriptions. */
         sr_datastore_t ds;          /**< Datastore of the subscriptions. */
-        struct modsub_confsub_s {
+        struct modsub_changesub_s {
             char *xpath;            /**< Subscription XPath. */
             uint32_t priority;      /**< Subscription priority. */
             sr_subscr_options_t opts;   /**< Subscription options. */
@@ -303,8 +309,8 @@ struct sr_subscription_ctx_s {
         uint32_t sub_count;         /**< Configuration change module XPath subscription count. */
 
         sr_shm_t sub_shm;           /**< Subscription SHM. */
-    } *conf_subs;                   /**< Configuration change subscriptions for each module. */
-    uint32_t conf_sub_count;        /**< Configuration change module subscription count. */
+    } *change_subs;                 /**< Change subscriptions for each module. */
+    uint32_t change_sub_count;      /**< Change module subscription count. */
 
     struct modsub_oper_s {
         char *module_name;          /**< Module of the subscriptions. */
@@ -373,38 +379,38 @@ struct sr_change_iter_s {
  */
 
 /**
- * @brief Add a configuration subscription into subscription structure.
+ * @brief Add a change subscription into a subscription structure.
  *
  * @param[in] sess Subscription session.
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
- * @param[in] conf_cb Subscription callback.
+ * @param[in] change_cb Subscription callback.
  * @param[in] private_data Subscription callback private data.
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscription options.
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_sub_conf_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, sr_module_change_cb conf_cb,
+sr_error_info_t *sr_sub_change_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, sr_module_change_cb change_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs);
 
 /**
- * @brief Delete a configuration subscription from subscription structure.
+ * @brief Delete a change subscription from a subscription structure.
  *
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
  * @param[in] ds Subscription datastore.
- * @param[in] conf_cb Subscription callback.
+ * @param[in] change_cb Subscription callback.
  * @param[in] private_data Subscription callback private data.
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscription options.
  * @param[in,out] subs Subscription structure.
  */
-void sr_sub_conf_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb conf_cb,
+void sr_sub_change_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb change_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs);
 
 /**
- * @brief Add an operational subscription into subscription structure.
+ * @brief Add an operational subscription into a subscription structure.
  *
  * @param[in] sess Subscription session.
  * @param[in] mod_name Subscription module name.
@@ -418,7 +424,7 @@ sr_error_info_t *sr_sub_oper_add(sr_session_ctx_t *sess, const char *mod_name, c
         sr_oper_get_items_cb oper_cb, void *private_data, sr_subscription_ctx_t *subs);
 
 /**
- * @brief Delete an operational subscription from subscription structure.
+ * @brief Delete an operational subscription from a subscription structure.
  *
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
@@ -427,7 +433,7 @@ sr_error_info_t *sr_sub_oper_add(sr_session_ctx_t *sess, const char *mod_name, c
 void sr_sub_oper_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *subs);
 
 /**
- * @brief Add a notification subscription into subscription structure.
+ * @brief Add a notification subscription into a subscription structure.
  *
  * @param[in] sess Subscription session.
  * @param[in] mod_name Subscription module name.
@@ -445,7 +451,7 @@ sr_error_info_t *sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, 
         sr_subscription_ctx_t *subs);
 
 /**
- * @brief Delete a notification subscription from subscription structure.
+ * @brief Delete a notification subscription from a subscription structure.
  *
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
@@ -461,7 +467,7 @@ void sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time
         sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs, int has_subs_lock);
 
 /**
- * @brief Add an RPC subscription into subscription structure.
+ * @brief Add an RPC subscription into a subscription structure.
  *
  * @param[in] sess Subscription session.
  * @param[in] op_path Subscription operation path.
@@ -477,7 +483,7 @@ sr_error_info_t *sr_sub_rpc_add(sr_session_ctx_t *sess, const char *op_path, con
         sr_rpc_tree_cb rpc_tree_cb, void *private_data, uint32_t priority, sr_subscription_ctx_t *subs);
 
 /**
- * @brief Delete an RPC subscription from subscription structure.
+ * @brief Delete an RPC subscription from a subscription structure.
  *
  * @param[in] op_path Subscription operation path.
  * @param[in] xpath Subscription XPath.
@@ -1035,12 +1041,22 @@ void sr_ly_split(struct lyd_node *sibling);
 void sr_ly_link(struct lyd_node *first, struct lyd_node *sibling);
 
 /**
- * @brief Learn whether a node is user-ordered (leaf-)list.
+ * @brief Duplicate nodes to the specified depth.
  *
- * @param[in] node (Leaf-)list instance.
- * @return 0 if not, non-zero if it is.
+ * @param[in] src_parent Source parent.
+ * @param[in] depth Depth to duplicate.
+ * @param[in,out] trg_parent Target parent to add children to.
+ * @return err_info, NULL on success.
  */
-int sr_ly_is_userord(const struct lyd_node *node);
+sr_error_info_t *sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *trg_parent);
+
+/**
+ * @brief Get pointer to data node children.
+ *
+ * @param[in] node Node to get children of.
+ * @return Node children, NULL if has none.
+ */
+struct lyd_node *sr_lyd_child(const struct lyd_node *node);
 
 /**
  * @brief Duplicate selected nodes from a data tree.
@@ -1065,13 +1081,52 @@ sr_error_info_t *sr_ly_data_dup_xpath_select(const struct lyd_node *data, char *
 sr_error_info_t *sr_ly_data_xpath_complement(struct lyd_node **data, const char *xpath);
 
 /**
- * @brief Add any accessible NP containers from the module into the data tree.
+ * @brief Add any NP containers with existing parents.
  *
- * @param[in,out] data Data tree to add containers to.
- * @param[in] ly_mod Module to add containers from.
+ * @param[in,out] data First top-level sibling when adding top-level containers.
+ * @param[in] parent Parent of any nested added containers.
+ * @param[in] ly_mod Module when adding top-level containers.
+ * @param[in] sparent Schema parent of any nested added containers.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ly_module_data_add_np_cont(struct lyd_node **data, const struct lys_module *ly_mod);
+sr_error_info_t *sr_lyd_add_np_cont(struct lyd_node **data, struct lyd_node *parent, const struct lys_module *ly_mod,
+        const struct lys_node *sparent);
+
+/**
+ * @brief Learn whether a node is user-ordered (leaf-)list.
+ *
+ * @param[in] node (Leaf-)list instance.
+ * @return 0 if not, non-zero if it is.
+ */
+int sr_ly_is_userord(const struct lyd_node *node);
+
+/**
+ * @brief Learn whether 2 anydata/anyxml nodes are equal or not.
+ *
+ * @param[in] any1 First anydata/anyxml node.
+ * @param[in] any2 Second anydata/anyxml node.
+ * @param[out] equal 1 if equal, 0 otherwise.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_anydata_equal(const struct lyd_node *any1, const struct lyd_node *any2, int *equal);
+
+/**
+ * @brief Copy anydata/anyxml value from src to trg.
+ *
+ * @param[in] trg Target to copy to.
+ * @param[in] src Source to copy from.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_anydata_copy(struct lyd_node *trg, const struct lyd_node *src);
+
+/**
+ * @brief Get string value of an anydata/anyxml node.
+ *
+ * @param[in] any Anydata/anyxml to get the value from.
+ * @param[out] value_str String value.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ly_anydata_value_str(const struct lyd_node *any, char **value_str);
 
 /**
  * @brief Get a hash of a string value.
@@ -1086,18 +1141,43 @@ uint32_t sr_str_hash(const char *str);
  *
  * @param[in] xpath Full XPath.
  * @param[out] trim_xpath XPath without the last node (and its predicates, if any).
- * @param[out] last_node_xpath Relative XPath of the last node.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_xpath_trim_last_node(const char *xpath, char **trim_xpath, char **last_node_xpath);
+sr_error_info_t *sr_xpath_trim_last_node(const char *xpath, char **trim_xpath);
 
 /**
- * @brief Get the first node from an XPath.
+ * @brief Get the first node (with predicates if any) from an XPath.
  *
  * @param[in] xpath Full XPath.
  * @return First XPath node path.
  */
-char *sr_xpath_first_node(const char *xpath);
+char *sr_xpath_first_node_with_predicates(const char *xpath);
+
+/**
+ * @brief Get pointers to the next node name in an XPath.
+ *
+ * @param[in] xpath Current position in the XPath (`/` expected at the beginning).
+ * @param[out] mod Module name, if any.
+ * @param[out] mod_len Moduel name length.
+ * @param[out] name Node name.
+ * @param[out] len Node name length,
+ * @param[out] double_slash Whether the node starts with '//'.
+ * @param[out] has_predicate Whether a predicate follows.
+ * @return Pointer to the next XPath part (node name or predicate).
+ */
+const char *sr_xpath_next_name(const char *xpath, const char **mod, int *mod_len, const char **name, int *len,
+        int *double_slash, int *has_predicate);
+
+/**
+ * @brief Get pointers to the next predicate in an XPath.
+ *
+ * @param[in] xpath Current position in the XPath (`[` expected at the beginning).
+ * @param[out] pred Predicate content.
+ * @param[out] len Predicate content length,
+ * @param[out] has_predicate Whether another predicate follows.
+ * @return Pointer to the next XPath part (node name or predicate).
+ */
+const char *sr_xpath_next_predicate(const char *xpath, const char **pred, int *len, int *has_predicate);
 
 /**
  * @brief Learn length of an XPath withtout any predicates.
@@ -1117,6 +1197,14 @@ size_t sr_xpath_len_no_predicates(const char *xpath);
 sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
 
 /**
+ * @brief Get list key count of a list.
+ *
+ * @param[in] node List, whose key count to get.
+ * @return Key count or 0.
+ */
+uint16_t sr_ly_list_key_count(const struct lyd_node *node);
+
+/**
  * @brief Unlink data of a specific module from a data tree.
  *
  * @param[in,out] data Data tree.
@@ -1126,23 +1214,32 @@ sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
 struct lyd_node *sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod);
 
 /**
- * @brief Append configuration data for a specific module.
+ * @brief Append data loaded from a file/SHM for a specific module.
  *
  * @param[in] ly_mod Module to process.
  * @param[in] ds Datastore.
  * @param[in,out] data Data tree to append to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_module_config_data_append(const struct lys_module *ly_mod, sr_datastore_t ds, struct lyd_node **data);
+sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, sr_datastore_t ds, struct lyd_node **data);
 
 /**
- * @brief Set persistent configuration data for a specific module.
+ * @brief Set (replace) data in file/SHM for a specific module.
  *
  * @param[in] mod_name Module name.
  * @param[in] ds Target datastore
- * @param[in] mod_data Module configuration data.
+ * @param[in] mod_data Module data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_module_config_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data);
+sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data);
+
+/**
+ * @brief Update sysrepo stored operational diff of a module.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_name Module name.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name);
 
 #endif

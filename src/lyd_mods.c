@@ -36,6 +36,7 @@
 #include "../modules/ietf_netconf_yang.h"
 #include "../modules/ietf_netconf_with_defaults_yang.h"
 #include "../modules/ietf_netconf_notifications_yang.h"
+#include "../modules/ietf_origin_yang.h"
 
 static sr_error_info_t *sr_lydmods_rebuild_data_deps(struct lyd_node *sr_mod, const struct lys_module *ly_mod);
 
@@ -785,7 +786,6 @@ sr_lydmods_add_data_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root, 
         free(dep_mods);
 
         /* LY_TREE_DFS_END */
-        /* child exception for leafs, leaflists and anyxml without children */
         if (elem->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) {
             next = NULL;
         } else {
@@ -960,6 +960,16 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
 
     /* install ietf-netconf-notifications */
     if (!(ly_mod = lys_parse_mem(ly_ctx, ietf_netconf_notifications_yang, LYS_YANG))) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        goto error;
+    }
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod))) {
+        goto error;
+    }
+    SR_LOG_INF("Sysrepo internal module \"%s\" was installed.", ly_mod->name);
+
+    /* install ietf-origin */
+    if (!(ly_mod = lys_parse_mem(ly_ctx, ietf_origin_yang, LYS_YANG))) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto error;
     }
@@ -1418,7 +1428,7 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         }
 
         /* append startup data */
-        if ((err_info = sr_module_config_data_append(ly_mod, SR_DS_STARTUP, &old_data))) {
+        if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_STARTUP, &old_data))) {
             goto cleanup;
         }
 
@@ -1485,9 +1495,9 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     for (idx = 0; idx < set->number; ++idx) {
         ly_mod = (struct lys_module *)set->set.g[idx];
         mod_data = sr_module_data_unlink(&new_data, ly_mod);
-        err_info = sr_module_config_data_set(ly_mod->name, SR_DS_STARTUP, mod_data);
+        err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, mod_data);
         if (!err_info) {
-            err_info = sr_module_config_data_set(ly_mod->name, SR_DS_RUNNING, mod_data);
+            err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, mod_data);
         }
         lyd_free_withsiblings(mod_data);
         if (err_info) {

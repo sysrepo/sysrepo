@@ -378,7 +378,7 @@ main(int argc, char** argv)
     const char *file_path = NULL, *search_dir = NULL, *module_name = NULL, *owner = NULL, *group = NULL;
     char **features = NULL, **dis_features = NULL, *ptr;
     mode_t perms = -1;
-    sr_log_level_t log_level = 0;
+    sr_log_level_t log_level = SR_LL_ERR;
     int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1;
     uint32_t conn_count;
     struct option options[] = {
@@ -532,7 +532,6 @@ main(int argc, char** argv)
                 error_print(0, "Invalid verbosity \"%s\"", optarg);
                 goto cleanup;
             }
-            sr_log_stderr(log_level);
             break;
         default:
             error_print(0, "Invalid option or missing argument: -%c", optopt);
@@ -545,6 +544,9 @@ main(int argc, char** argv)
         error_print(0, "Redundant parameters (%s)", argv[optind]);
         goto cleanup;
     }
+
+    /* set logging */
+    sr_log_stderr(log_level);
 
     if (operation != 'C') {
         /* create connection */

@@ -56,7 +56,7 @@ main(int argc, char **argv)
     }
 
     /* set the value */
-    rc = sr_set_item_str(session, xpath, value, 0);
+    rc = sr_set_item_str(session, xpath, value, NULL, 0);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }

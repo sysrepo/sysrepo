@@ -196,7 +196,7 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t d
     for (i = 0; i < set->number; ++i) {
         /* skip uninteresting nodes */
         if ((set->set.s[i]->nodetype & (LYS_RPC | LYS_NOTIF))
-                || ((set->set.s[i]->flags & LYS_CONFIG_R) && IS_WRITABLE_DS(ds))) {
+                || ((set->set.s[i]->flags & LYS_CONFIG_R) && SR_IS_CONVENTIONAL_DS(ds))) {
             continue;
         }
 
@@ -346,7 +346,6 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_
         ds = mod_info->ds;
         break;
     case SR_DS_OPERATIONAL:
-    case SR_DS_STATE:
         /* will use running DS */
         ds = SR_DS_RUNNING;
         break;
@@ -402,7 +401,6 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
         ds = mod_info->ds;
         break;
     case SR_DS_OPERATIONAL:
-    case SR_DS_STATE:
         /* will use running DS */
         ds = SR_DS_RUNNING;
         break;
@@ -449,7 +447,6 @@ sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable)
         ds = mod_info->ds;
         break;
     case SR_DS_OPERATIONAL:
-    case SR_DS_STATE:
         /* will use running DS */
         ds = SR_DS_RUNNING;
         break;
@@ -487,7 +484,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
     uint32_t i;
 
     SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
-        for (i = 0; i < SR_WRITABLE_DS_COUNT; ++i) {
+        for (i = 0; i < SR_DS_COUNT; ++i) {
             shm_lock = &shm_mod->data_lock_info[i];
             if (shm_lock->sid.sr == sid.sr) {
                 if (shm_lock->write_locked) {
@@ -514,19 +511,17 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
 }
 
 sr_error_info_t *
-sr_shmmod_conf_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
+sr_shmmod_change_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
         uint32_t priority, int sub_opts, uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
-    off_t xpath_off, conf_subs_off;
-    sr_mod_conf_sub_t *shm_sub;
+    off_t xpath_off, change_subs_off;
+    sr_mod_change_sub_t *shm_sub;
     uint32_t new_ext_size;
 
-    assert((ds == SR_DS_RUNNING) || (ds == SR_DS_STARTUP));
-
     /* moving all existing subscriptions (if any) and adding a new one */
-    conf_subs_off = shm_ext->size;
-    xpath_off = conf_subs_off + (shm_mod->conf_sub[ds].sub_count + 1) * sizeof *shm_sub;
+    change_subs_off = shm_ext->size;
+    xpath_off = change_subs_off + (shm_mod->change_sub[ds].sub_count + 1) * sizeof *shm_sub;
     new_ext_size = xpath_off + (xpath ? sr_shmlen(xpath) : 0);
 
     /* remap ext SHM */
@@ -535,17 +530,17 @@ sr_shmmod_conf_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
     }
 
     /* add wasted memory */
-    *((size_t *)shm_ext->addr) += shm_mod->conf_sub[ds].sub_count * sizeof *shm_sub;
+    *((size_t *)shm_ext->addr) += shm_mod->change_sub[ds].sub_count * sizeof *shm_sub;
 
     /* move subscriptions */
-    memcpy(shm_ext->addr + conf_subs_off, shm_ext->addr + shm_mod->conf_sub[ds].subs,
-            shm_mod->conf_sub[ds].sub_count * sizeof *shm_sub);
-    shm_mod->conf_sub[ds].subs = conf_subs_off;
+    memcpy(shm_ext->addr + change_subs_off, shm_ext->addr + shm_mod->change_sub[ds].subs,
+            shm_mod->change_sub[ds].sub_count * sizeof *shm_sub);
+    shm_mod->change_sub[ds].subs = change_subs_off;
 
     /* fill new subscription */
-    shm_sub = (sr_mod_conf_sub_t *)(shm_ext->addr + shm_mod->conf_sub[ds].subs);
-    shm_sub += shm_mod->conf_sub[ds].sub_count;
-    ++shm_mod->conf_sub[ds].sub_count;
+    shm_sub = (sr_mod_change_sub_t *)(shm_ext->addr + shm_mod->change_sub[ds].subs);
+    shm_sub += shm_mod->change_sub[ds].sub_count;
+    ++shm_mod->change_sub[ds].sub_count;
 
     if (xpath) {
         strcpy(shm_ext->addr + xpath_off, xpath);
@@ -561,11 +556,11 @@ sr_shmmod_conf_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
 }
 
 sr_error_info_t *
-sr_shmmod_conf_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
+sr_shmmod_change_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
         uint32_t priority, int sub_opts, uint32_t evpipe_num, int all_evpipe, int *last_removed)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_conf_sub_t *shm_sub;
+    sr_mod_change_sub_t *shm_sub;
     uint16_t i;
 
     if (last_removed) {
@@ -573,8 +568,8 @@ sr_shmmod_conf_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const cha
     }
 
     /* find the subscription(s) */
-    shm_sub = (sr_mod_conf_sub_t *)(ext_shm_addr + shm_mod->conf_sub[ds].subs);
-    for (i = 0; i < shm_mod->conf_sub[ds].sub_count; ++i) {
+    shm_sub = (sr_mod_change_sub_t *)(ext_shm_addr + shm_mod->change_sub[ds].subs);
+    for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
 continue_loop:
         if (all_evpipe) {
             if (shm_sub[i].evpipe_num == evpipe_num) {
@@ -587,25 +582,25 @@ continue_loop:
             }
         }
     }
-    if (all_evpipe && (i == shm_mod->conf_sub[ds].sub_count)) {
+    if (all_evpipe && (i == shm_mod->change_sub[ds].sub_count)) {
         /* all matching subscriptions removed */
         return NULL;
     }
-    SR_CHECK_INT_RET(i == shm_mod->conf_sub[ds].sub_count, err_info);
+    SR_CHECK_INT_RET(i == shm_mod->change_sub[ds].sub_count, err_info);
 
     /* add wasted memory */
     *((size_t *)ext_shm_addr) += sizeof *shm_sub + (shm_sub[i].xpath ? sr_shmlen(ext_shm_addr + shm_sub[i].xpath) : 0);
 
-    --shm_mod->conf_sub[ds].sub_count;
-    if (!shm_mod->conf_sub[ds].sub_count) {
+    --shm_mod->change_sub[ds].sub_count;
+    if (!shm_mod->change_sub[ds].sub_count) {
         /* the only subscription removed */
-        shm_mod->conf_sub[ds].subs = 0;
+        shm_mod->change_sub[ds].subs = 0;
         if (last_removed) {
             *last_removed = 1;
         }
-    } else if (i < shm_mod->conf_sub[ds].sub_count) {
+    } else if (i < shm_mod->change_sub[ds].sub_count) {
         /* replace the deleted subscription with the last one */
-        memcpy(&shm_sub[i], &shm_sub[shm_mod->conf_sub[ds].sub_count], sizeof *shm_sub);
+        memcpy(&shm_sub[i], &shm_sub[shm_mod->change_sub[ds].sub_count], sizeof *shm_sub);
     }
 
     if (all_evpipe) {
@@ -811,4 +806,38 @@ continue_loop:
     }
 
     return NULL;
+}
+
+sr_error_info_t *
+sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid_t del_pid)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    sr_mod_t *shm_mod;
+    struct lyd_node *diff = NULL;
+
+    SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
+        ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->ext_shm.addr + shm_mod->name, NULL, 1);
+        SR_CHECK_INT_RET(!ly_mod, err_info);
+
+        /* trim diff of the module */
+        if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_OPERATIONAL, &diff))) {
+            goto cleanup;
+        }
+
+        if (diff) {
+            if ((err_info = sr_diff_del_conn(&diff, del_conn, del_pid))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff))) {
+                goto cleanup;
+            }
+            lyd_free_withsiblings(diff);
+            diff = NULL;
+        }
+    }
+
+cleanup:
+    lyd_free_withsiblings(diff);
+    return err_info;
 }
