@@ -70,7 +70,7 @@ class SysrepoBasicTest(unittest.TestCase):
         xpath = "/example-module:container/list[key1='abc'][key2='def']/leaf"
         v = sr.Val("Hey hou", sr.SR_STRING_T)
         self.session.set_item(xpath, v)
-
+        self.session.apply_changes()
         new_value = self.session.get_item(xpath)
         self.assertEqual(new_value.type(), sr.SR_STRING_T)
         self.assertEqual(new_value.data().get_string(), v.data().get_string())
