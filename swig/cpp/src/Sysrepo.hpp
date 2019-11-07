@@ -89,6 +89,8 @@ void throw_exception [[noreturn]] (int error);
 
 /** Wrapper for [sr_get_repo_path](@ref sr_get_repo_path) */
 const char *get_repo_path();
+/** Wrapper for [sr_connection_count](@ref sr_connection_count) */
+uint32_t connection_count();
 
 /**
  * @brief Class for wrapping sr_error_t.
