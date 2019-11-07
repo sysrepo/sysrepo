@@ -226,50 +226,5 @@ def delete_all_items(session):
         session.delete_item(values.val(i).xpath())
         session.apply_changes()
 
-    # session.delete_item(XP_TEST_MODULE_ENUM)
-    # session.delete_item(XP_TEST_MODULE_RAW)
-    # session.delete_item(XP_TEST_MODULE_BITS)
-    # session.delete_item(XP_TEST_MODULE_BOOL)
-    # session.delete_item(XP_TEST_MODULE_DEC64)
-    # session.delete_item(XP_TEST_MODULE_EMPTY)
-    # session.delete_item(XP_TEST_MODULE_IDREF)
-    # session.delete_item(XP_TEST_MODULE_STRING)
-    # session.delete_item(XP_TEST_MODULE_INT8)
-    # session.delete_item(XP_TEST_MODULE_INT16)
-    # session.delete_item(XP_TEST_MODULE_INT32)
-    # session.delete_item(XP_TEST_MODULE_INT64)
-    # session.delete_item(XP_TEST_MODULE_UINT8)
-    # session.delete_item(XP_TEST_MODULE_UINT16)
-    # session.delete_item(XP_TEST_MODULE_UINT32)
-    # session.delete_item(XP_TEST_MODULE_UINT64)
-
-    # for num in [1, 2, 42]:
-    #     session.delete_item("/test-module:main/numbers[.='" + str(num) + "']")
-
-    # session.delete_item("/test-module:list[key='k1']")
-    # session.delete_item("/test-module:list[key='k1']/id_ref")
-    # session.delete_item("/test-module:list[key='k1']/wireless")
-    # session.delete_item("/test-module:list[key='k2']")
-    # session.delete_item("/test-module:list[key='k2']/id_ref")
-    # session.delete_item("/test-module:user[name='A']")
-    # session.delete_item("/test-module:user[name='B']")
-    # session.delete_item("/test-module:user[name='C']")
-
-    # session.delete_item("/ietf-interfaces:interfaces/interface[name='eth0']/description")
-    # session.delete_item("/ietf-interfaces:interfaces/interface[name='eth0']/enabled")
-    # session.delete_item("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']")
-    # session.delete_item("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled")
-    # session.delete_item("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu")
-    # session.delete_item("/ietf-interfaces:interfaces/interface[name='eth1']/description")
-    # session.delete_item("/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/enabled")
-    # session.delete_item("/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/mtu")
-    # session.delete_item("/ietf-interfaces:interfaces/interface[name='gigaeth0']/description")
-    # session.delete_item("/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled")
-
-    # session.delete_item("/example-module:container/list[key1='key1'][key2='key2']/leaf")
-
-    # session.apply_changes()
-
-
 if __name__ == "__main__":
     create_test_module()
