@@ -23,6 +23,7 @@ endif()
 swig_link_libraries(${PYTHON_SWIG_BINDING} ${PYTHON_LIBRARIES} Sysrepo-cpp)
 
 file(COPY "examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
+file(COPY "tests" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
 execute_process(COMMAND
     ${PYTHON_EXECUTABLE} -c
@@ -55,7 +56,8 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS)
     ADD_PYTHON_TEST(LockingTest)
     ADD_PYTHON_TEST(CommitTest)
     ADD_PYTHON_TEST(MoveTest)
-    # ADD_PYTHON_TEST(SubscriptionTest)
+    ADD_PYTHON_TEST(SubscriptionTest)
+    ADD_PYTHON_TEST(SubscriptionTestApp)
     # ADD_PYTHON_TEST(NotificationTest) # note: needs notifications_test_app to work
 
     add_custom_command(TARGET ${SWIG_MODULE_${PYTHON_SWIG_BINDING}_REAL_NAME} POST_BUILD
