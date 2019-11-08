@@ -102,6 +102,33 @@ cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
 }
 
 static void
+test_install_module(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+    uint32_t conn_count;
+
+    /* install test-module */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/test-module.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* module should fail to be installed because its dependency is not implemented */
+    ret = sr_remove_module(st->conn, "test-module");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "test-module");
+    assert_int_equal(ret, SR_ERR_EXISTS);
+}
+
+static void
 test_data_deps(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -775,6 +802,7 @@ int
 main(void)
 {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test_setup_teardown(test_install_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_data_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_op_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_inv_deps, setup_f, teardown_f),
