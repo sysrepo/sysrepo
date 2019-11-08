@@ -1064,11 +1064,12 @@ sr_lydmods_moddep_check_type(const struct lys_type *type, const struct lys_node 
  * @brief Check data dependencies of a module.
  *
  * @param[in] ly_mod Libyang module to check.
+ * @param[in] sr_mods Sysrepo module data.
  * @param[out] fail Whether any dependant module was not implemented.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_check_data_deps(const struct lys_module *ly_mod, int *fail)
+sr_lydmods_check_data_deps(const struct lys_module *ly_mod, const struct lyd_node *sr_mods, int *fail)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_module **dep_mods = NULL;
@@ -1078,6 +1079,8 @@ sr_lydmods_check_data_deps(const struct lys_module *ly_mod, int *fail)
     struct lys_when *when;
     struct lys_restr *musts;
     uint8_t i, must_size;
+    char *xpath;
+    struct ly_set *set;
 
     LY_TREE_FOR(ly_mod->data, root) {
         for (elem = next = root; elem; elem = next) {
@@ -1202,8 +1205,24 @@ sr_lydmods_check_data_deps(const struct lys_module *ly_mod, int *fail)
     /* check all the dependency modules */
     for (i = 0; i < dep_mod_count; ++i) {
         if (!dep_mods[i]->implemented) {
-            SR_LOG_WRN("Module \"%s\" depends on module \"%s\", which is not implemented.", ly_mod->name, dep_mods[i]->name);
-            *fail = 1;
+            /* maybe it is scheduled to be installed? */
+            if (asprintf(&xpath, "installed-module[name='%s']", dep_mods[i]->name) == -1) {
+                SR_ERRINFO_MEM(&err_info);
+                goto cleanup;
+            }
+            set = lyd_find_path(sr_mods, xpath);
+            free(xpath);
+            if (!set) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mods)->ctx);
+                goto cleanup;
+            }
+            assert(set->number < 2);
+
+            if (!set->number) {
+                SR_LOG_WRN("Module \"%s\" depends on module \"%s\", which is not implemented.", ly_mod->name, dep_mods[i]->name);
+                *fail = 1;
+            }
+            ly_set_free(set);
         }
     }
 
@@ -1262,7 +1281,7 @@ sr_lydmods_sched_ctx_install_modules(const struct lyd_node *sr_mods, struct ly_c
         }
 
         /* check that all the dependant modules are implemented */
-        if ((err_info = sr_lydmods_check_data_deps(ly_mod, fail)) || *fail) {
+        if ((err_info = sr_lydmods_check_data_deps(ly_mod, sr_mods, fail)) || *fail) {
             goto cleanup;
         }
 
@@ -1332,7 +1351,7 @@ sr_lydmods_sched_ctx_update_modules(const struct lyd_node *sr_mods, struct ly_ct
         feat_set = NULL;
 
         /* check that all the dependant modules are implemented */
-        if ((err_info = sr_lydmods_check_data_deps(ly_mod, fail)) || *fail) {
+        if ((err_info = sr_lydmods_check_data_deps(ly_mod, sr_mods, fail)) || *fail) {
             goto cleanup;
         }
 
@@ -1418,7 +1437,7 @@ sr_lydmods_sched_ctx_change_features(const struct lyd_node *sr_mods, struct ly_c
         set = NULL;
 
         /* check that all the dependant modules are implemented */
-        if ((err_info = sr_lydmods_check_data_deps(ly_mod, fail)) || *fail) {
+        if ((err_info = sr_lydmods_check_data_deps(ly_mod, sr_mods, fail)) || *fail) {
             goto cleanup;
         }
 
