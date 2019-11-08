@@ -1036,6 +1036,9 @@ state_only_oper_cb(sr_session_ctx_t *session, const char *module_name, const cha
     node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='one']/z", "-0.2500", 0, 0);
     assert_non_null(node);
 
+    node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='two']", NULL, 0, 0);
+    assert_non_null(node);
+
     return SR_ERR_OK;
 }
 
