@@ -1200,7 +1200,8 @@ static sr_error_info_t *
 sr_modinfo_ly_val_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_difflist *val_diff)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
+    struct lyd_node *node;
+    struct lys_node *snode;
     uint32_t i, j;
     int change;
 
@@ -1215,12 +1216,15 @@ sr_modinfo_ly_val_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_difflist
         /* additional modules can be modified */
         if (change) {
             if (val_diff->type[i] == LYD_DIFF_CREATED) {
-                ly_mod = lyd_node_module(val_diff->second[i]);
+                node = val_diff->second[i];
             } else {
-                ly_mod = lyd_node_module(val_diff->first[i]);
+                node = val_diff->first[i];
             }
+
+            /* get the module that actually owns the data (handle augments) */
+            for (snode = node->schema; lys_parent(snode); snode = lys_parent(snode));
             for (j = 0; j < mod_info->mod_count; ++j) {
-                if (ly_mod == mod_info->mods[j].ly_mod) {
+                if (lys_node_module(snode) == mod_info->mods[j].ly_mod) {
                     mod_info->mods[j].state |= MOD_INFO_CHANGED;
                     break;
                 }

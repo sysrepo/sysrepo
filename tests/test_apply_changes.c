@@ -63,6 +63,9 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-ip.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
@@ -93,6 +96,7 @@ teardown(void **state)
     sr_remove_module(st->conn, "when2");
     sr_remove_module(st->conn, "when1");
     sr_remove_module(st->conn, "iana-if-type");
+    sr_remove_module(st->conn, "ietf-ip");
     sr_remove_module(st->conn, "ietf-interfaces");
     sr_remove_module(st->conn, "test");
 
@@ -188,8 +192,60 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
 
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(prev_val);
+        assert_string_equal(node->schema->name, "ipv4");
+
+        /* 5th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "address");
+
+        /* 6th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "ip");
+        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "192.168.2.100");
+
+        /* 7th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "prefix-length");
+        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "24");
+
+        /* 8th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(prev_val);
         assert_string_equal(node->schema->name, "enabled");
-        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "true");
+        assert_int_equal(node->dflt, 1);
+
+        /* 9th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "forwarding");
+        assert_int_equal(node->dflt, 1);
+
+        /* 10th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "enabled");
+        assert_int_equal(node->dflt, 1);
 
         /* no more changes */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
@@ -214,6 +270,14 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
                 "<name>eth52</name>"
                 "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
                 "<enabled ncwd:default=\"true\">true</enabled>"
+                "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
+                    "<enabled ncwd:default=\"true\">true</enabled>"
+                    "<forwarding ncwd:default=\"true\">false</forwarding>"
+                    "<address>"
+                        "<ip>192.168.2.100</ip>"
+                        "<prefix-length>24</prefix-length>"
+                    "</address>"
+                "</ipv4>"
             "</interface>"
         "</interfaces>";
 
@@ -264,8 +328,60 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
 
         assert_int_equal(op, SR_OP_DELETED);
         assert_null(prev_val);
+        assert_string_equal(node->schema->name, "ipv4");
+
+        /* 5th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "address");
+
+        /* 6th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "ip");
+        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "192.168.2.100");
+
+        /* 7th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "prefix-length");
+        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "24");
+
+        /* 8th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_null(prev_val);
         assert_string_equal(node->schema->name, "enabled");
-        assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "true");
+        assert_int_equal(node->dflt, 1);
+
+        /* 9th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "forwarding");
+        assert_int_equal(node->dflt, 1);
+
+        /* 10th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "enabled");
+        assert_int_equal(node->dflt, 1);
 
         /* no more changes */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
@@ -312,6 +428,9 @@ apply_change_done_thread(void *arg)
 
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+            "/prefix-length", "24", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for subscription before applying changes */
     pthread_barrier_wait(&st->barrier);
@@ -333,6 +452,12 @@ apply_change_done_thread(void *arg)
         "<interface>"
             "<name>eth52</name>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
+                "<address>"
+                    "<ip>192.168.2.100</ip>"
+                    "<prefix-length>24</prefix-length>"
+                "</address>"
+            "</ipv4>"
         "</interface>"
     "</interfaces>";
 
