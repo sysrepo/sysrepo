@@ -2074,8 +2074,10 @@ cleanup:
     if (*fail) {
         SR_LOG_WRNMSG("Failed to apply some changes, leaving all changes scheduled.");
         *change = 0;
-    } else {
+    } else if (*change) {
         SR_LOG_INFMSG("Scheduled changes applied.");
+    } else {
+        SR_LOG_INFMSG("No scheduled changes.");
     }
     return err_info;
 }
