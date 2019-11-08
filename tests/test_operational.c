@@ -69,6 +69,9 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/mixed-config.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -93,6 +96,7 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "mixed-config");
     sr_remove_module(st->conn, "ietf-interfaces");
     sr_remove_module(st->conn, "iana-if-type");
     sr_remove_module(st->conn, "test");
@@ -1005,6 +1009,36 @@ test_xpath_check(void **state)
 }
 
 /* TEST 9 */
+static int
+state_only_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *node;
+
+    (void)request_id;
+    (void)private_data;
+
+    ly_ctx = sr_get_context(sr_session_get_connection(session));
+
+    assert_string_equal(request_xpath, "/mixed-config:*");
+    assert_string_equal(module_name, "mixed-config");
+    assert_string_equal(xpath, "/mixed-config:test-state");
+    assert_non_null(parent);
+    assert_null(*parent);
+
+    *parent = lyd_new_path(NULL, ly_ctx, "/mixed-config:test-state/test-case[name='one']/result", "101", 0, 0);
+    assert_non_null(*parent);
+    node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='one']/x", "0.5000", 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='one']/y", "-0.5000", 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='one']/z", "-0.2500", 0, 0);
+    assert_non_null(node);
+
+    return SR_ERR_OK;
+}
+
 static void
 test_state_only(void **state)
 {
@@ -1015,27 +1049,16 @@ test_state_only(void **state)
     const char *str2;
     int ret;
 
-    /* set some configuration data */
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
-            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* subscribe to all configuration data just to enable them */
-    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", enabled_change_cb, NULL, 0, 0, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-
     /* subscribe as config data provider and listen */
-    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_oper_cb,
-            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_oper_get_items_subscribe(st->sess, "mixed-config", "/mixed-config:test-state", state_only_oper_cb,
+            NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all state-only data */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
@@ -1044,17 +1067,15 @@ test_state_only(void **state)
     lyd_free_withsiblings(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"unknown\">"
-        "<interface>"
-            "<name>eth11</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>down</oper-status>"
-            "<statistics>"
-                "<discontinuity-time>2000-01-01T00:00:00Z</discontinuity-time>"
-            "</statistics>"
-        "</interface>"
-    "</interfaces-state>";
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"unknown\">"
+        "<test-case>"
+            "<name>one</name>"
+            "<result>101</result>"
+            "<x>0.5</x>"
+            "<y>-0.5</y>"
+            "<z>-0.25</z>"
+        "</test-case>"
+    "</test-state>";
 
     assert_string_equal(str1, str2);
     free(str1);

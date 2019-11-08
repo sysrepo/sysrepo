@@ -667,7 +667,7 @@ typedef enum sr_get_oper_flag_e {
     SR_OPER_DEFAULT = 0,             /**< No special behaviour. */
     SR_OPER_NO_STATE = 1,            /**< Return only configuration data. */
     SR_OPER_NO_CONFIG = 2,           /**< Return only state data. If there are some state subtrees with configuration
-                                          parents, these are also returned. */
+                                          parents, these are also returned (with keys if lists). */
     SR_OPER_NO_SUBS = 4,             /**< Return only stored operational data (push), do not call subscriber callbacks (pull). */
     SR_OPER_NO_STORED = 8,           /**< Do not merge with stored operational data (push). */
     SR_OPER_WITH_ORIGIN = 16,        /**< Return data with their [origin attributes](@ref datastores). Nodes without

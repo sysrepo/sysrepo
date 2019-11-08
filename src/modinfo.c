@@ -412,6 +412,11 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
     }
 
     LY_TREE_FOR_SAFE(sibling, next, elem) {
+        /* skip list keys */
+        if ((elem->schema->nodetype == LYS_LEAF) && lys_is_key((struct lys_node_leaf *)elem->schema, NULL)) {
+            continue;
+        }
+
         if (elem->schema->flags & LYS_CONFIG_R) {
             /* state subtree */
             if (opts & SR_OPER_NO_STATE) {
