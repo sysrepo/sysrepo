@@ -1702,7 +1702,6 @@ sr_edit_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
             /* we do not operate with any datastore data or diff anymore */
             err_info = sr_edit_apply_r(NULL, NULL, child, op, NULL, NULL, flags, change);
         } else {
-            assert(diff_parent);
             err_info = sr_edit_apply_r(&match->child, match, child, op, diff_parent, diff_root, flags, change);
         }
         if (err_info) {
