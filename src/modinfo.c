@@ -412,11 +412,7 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
     }
 
     LY_TREE_FOR_SAFE(sibling, next, elem) {
-        /* skip list keys */
-        if ((elem->schema->nodetype == LYS_LEAF) && lys_is_key((struct lys_node_leaf *)elem->schema, NULL)) {
-            continue;
-        }
-
+        assert((elem->schema->nodetype != LYS_LEAF) || !lys_is_key((struct lys_node_leaf *)elem->schema, NULL));
         if (elem->schema->flags & LYS_CONFIG_R) {
             /* state subtree */
             if (opts & SR_OPER_NO_STATE) {
@@ -435,9 +431,9 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
         }
 
         /* trim all our children */
-        sr_oper_data_trim_r(data, sr_lyd_child(elem), opts);
+        sr_oper_data_trim_r(data, sr_lyd_child(elem, 1), opts);
 
-        if ((elem->schema->flags & LYS_CONFIG_W) && (opts & SR_OPER_NO_CONFIG) && !sr_lyd_child(elem)) {
+        if ((elem->schema->flags & LYS_CONFIG_W) && (opts & SR_OPER_NO_CONFIG) && !sr_lyd_child(elem, 1)) {
             /* config-only subtree (config node with no children) */
             if (*data == elem) {
                 *data = (*data)->next;
