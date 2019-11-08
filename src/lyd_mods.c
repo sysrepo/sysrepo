@@ -272,8 +272,8 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
     /* all newly implemented modules will be added also from imports */
     for (i = 0; i < ly_mod->imp_size; ++i) {
         if (ly_mod->imp[i].module->implemented) {
-            /* check the module was not added yet */
-            if (asprintf(&xpath, "module[name='%s']", ly_mod->imp[i].module->name) == -1) {
+            /* check the module was not added or will not be added later */
+            if (asprintf(&xpath, "*[name='%s']", ly_mod->imp[i].module->name) == -1) {
                 SR_ERRINFO_MEM(&err_info);
                 return err_info;
             }
@@ -284,7 +284,7 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
                 return err_info;
             } else if (set->number) {
                 ly_set_free(set);
-                /* module has already been added */
+                /* module has already been added/will be added separately */
                 continue;
             }
             ly_set_free(set);
