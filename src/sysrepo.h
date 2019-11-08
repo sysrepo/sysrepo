@@ -1230,7 +1230,7 @@ typedef struct sr_change_iter_s sr_change_iter_t;
  * @brief Callback to be called on the event of changing datastore content of the specified module.
  * Subscribe to it by ::sr_module_change_subscribe call.
  *
- * @note Callback is allowed to modify modules but MUST not modify subscriptions on ::SR_EV_CHANGE event.
+ * @note Callback is allowed to modify installed YANG modules but MUST not modify subscriptions on ::SR_EV_CHANGE event.
  * It would result in a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
  *
  * @param[in] session Automatically-created session that can be used for obtaining changed data
@@ -1351,7 +1351,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @brief Callback to be called for RPC or action specified by xpath.
  * Subscribe to it by ::sr_rpc_subscribe call.
  *
- * @note Callback is allowed to modify modules but MUST not modify subscriptions. It would result in
+ * @note Callback is allowed to modify installed YANG modules but MUST not modify subscriptions. It would result in
  * a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
  *
  * @param[in] session Callback session to use.
@@ -1374,7 +1374,7 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *op_path, const s
  * This operates with libyang trees rather than with sysrepo values,
  * use it with ::sr_rpc_subscribe_tree and ::sr_rpc_send_tree.
  *
- * @note Callback is allowed to modify modules but MUST not modify subscriptions. It would result in
+ * @note Callback is allowed to modify installed YANG modules but MUST not modify subscriptions. It would result in
  * a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
  *
  * @param[in] session Callback session to use.
@@ -1494,7 +1494,7 @@ typedef enum sr_ev_notif_type_e {
  * @brief Callback to be called for notifications.
  * Subscribe to it by ::sr_event_notif_subscribe call.
  *
- * @note Callback is allowed to modify modules and subscriptions.
+ * @note Callback is allowed to modify installed YANG modules and subscriptions.
  *
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
@@ -1514,7 +1514,7 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_t
  * This callback variant operates with libyang trees rather than with sysrepo values,
  * use it with ::sr_event_notif_subscribe_tree and ::sr_event_notif_send_tree.
  *
- * @note Callback is allowed to modify modules and subscriptions.
+ * @note Callback is allowed to modify installed YANG modules and subscriptions.
  *
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
  * Do not stop this session.
@@ -1621,7 +1621,7 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
  * they will be called after this one (and when they are called, their parent children will again be removed
  * which can result in nodes provided by the original callback being lost).
  *
- * @note Callback is allowed to modify modules but MUST not modify subscriptions. It would result in
+ * @note Callback is allowed to modify installed YANG modules but MUST not modify subscriptions. It would result in
  * a deadlock and this callback timeout.
  *
  * @param[in] session Automatically-created session that can be used for learning about initiator session IDs.
