@@ -1016,12 +1016,12 @@ state_only_oper_cb(sr_session_ctx_t *session, const char *module_name, const cha
     const struct ly_ctx *ly_ctx;
     struct lyd_node *node;
 
+    (void)request_xpath;
     (void)request_id;
     (void)private_data;
 
     ly_ctx = sr_get_context(sr_session_get_connection(session));
 
-    assert_string_equal(request_xpath, "/mixed-config:*");
     assert_string_equal(module_name, "mixed-config");
     assert_string_equal(xpath, "/mixed-config:test-state");
     assert_non_null(parent);
@@ -1061,7 +1061,7 @@ test_state_only(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
+    ret = sr_get_data(st->sess, "/*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);

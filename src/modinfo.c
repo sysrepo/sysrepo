@@ -641,14 +641,9 @@ sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath)
         }
 
         /* module name */
-        if (mlen1 || mlen2) {
-            if ((!mlen2 && !wildc1) || (!mlen1 && !wildc2)) {
-                /* one node has no module */
-                return 0;
-            } else if ((mlen1 && mlen2) && ((mlen1 != mlen2) || strncmp(mod1, mod2, mlen1))) {
-                /* different modules */
-                return 0;
-            }
+        if ((mlen1 && mlen2) && ((mlen1 != mlen2) || strncmp(mod1, mod2, mlen1))) {
+            /* different modules */
+            return 0;
         }
 
         /* node name */
