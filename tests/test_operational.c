@@ -1020,24 +1020,48 @@ state_only_oper_cb(sr_session_ctx_t *session, const char *module_name, const cha
     (void)request_id;
     (void)private_data;
 
+    assert_string_equal(module_name, "mixed-config");
+
     ly_ctx = sr_get_context(sr_session_get_connection(session));
 
-    assert_string_equal(module_name, "mixed-config");
-    assert_string_equal(xpath, "/mixed-config:test-state");
-    assert_non_null(parent);
-    assert_null(*parent);
+    if (!strcmp(xpath, "/mixed-config:test-state")) {
+        assert_non_null(parent);
+        assert_null(*parent);
 
-    *parent = lyd_new_path(NULL, ly_ctx, "/mixed-config:test-state/test-case[name='one']/result", "101", 0, 0);
-    assert_non_null(*parent);
-    node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='one']/x", "0.5000", 0, 0);
-    assert_non_null(node);
-    node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='one']/y", "-0.5000", 0, 0);
-    assert_non_null(node);
-    node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='one']/z", "-0.2500", 0, 0);
-    assert_non_null(node);
+        *parent = lyd_new_path(NULL, ly_ctx, "/mixed-config:test-state/test-case[name='one']/result", "101", 0, 0);
+        assert_non_null(*parent);
+        node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='one']/x", "0.5000", 0, 0);
+        assert_non_null(node);
+        node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='one']/y", "-0.5000", 0, 0);
+        assert_non_null(node);
+        node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='one']/z", "-0.2500", 0, 0);
+        assert_non_null(node);
 
-    node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='two']", NULL, 0, 0);
-    assert_non_null(node);
+        node = lyd_new_path(*parent, NULL, "/mixed-config:test-state/test-case[name='two']", NULL, 0, 0);
+        assert_non_null(node);
+    } else if (!strcmp(xpath, "/mixed-config:test-state/test-case/result")) {
+        assert_non_null(parent);
+        assert_non_null(*parent);
+
+        node = lyd_new_path(*parent, NULL, "result", "100", 0, 0);
+        assert_non_null(node);
+    } else {
+        fail();
+    }
+
+    return SR_ERR_OK;
+}
+
+static int
+dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
 
     return SR_ERR_OK;
 }
@@ -1052,7 +1076,7 @@ test_state_only(void **state)
     const char *str2;
     int ret;
 
-    /* subscribe as config data provider and listen */
+    /* subscribe as mixed data provider and listen */
     ret = sr_oper_get_items_subscribe(st->sess, "mixed-config", "/mixed-config:test-state", state_only_oper_cb,
             NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1077,6 +1101,49 @@ test_state_only(void **state)
             "<x>0.5</x>"
             "<y>-0.5</y>"
             "<z>-0.25</z>"
+        "</test-case>"
+    "</test-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    sr_unsubscribe(subscr);
+
+    /* set some configuration data */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='three']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to all configuration data just to enable them */
+    ret = sr_module_change_subscribe(st->sess, "mixed-config", "/mixed-config:test-state", dummy_change_cb, NULL,
+            0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe as nested state data provider and listen */
+    ret = sr_oper_get_items_subscribe(st->sess, "mixed-config", "/mixed-config:test-state/test-case/result", state_only_oper_cb,
+            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all state-only data */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(st->sess, "/*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<test-case>"
+            "<name>three</name>"
+            "<result or:origin=\"unknown\">100</result>"
         "</test-case>"
     "</test-state>";
 
@@ -1460,20 +1527,6 @@ test_stored_state(void **state)
 }
 
 /* TEST 14 */
-static int
-dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
-{
-    (void)session;
-    (void)module_name;
-    (void)xpath;
-    (void)event;
-    (void)request_id;
-    (void)private_data;
-
-    return SR_ERR_OK;
-}
-
 static void
 test_stored_config(void **state)
 {

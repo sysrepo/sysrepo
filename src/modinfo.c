@@ -824,7 +824,7 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
 
     *enabled_mod_data = NULL;
 
-    if (!data || (opts & SR_OPER_NO_CONFIG)) {
+    if (!data) {
         /* no data is enabled */
         return NULL;
     }
