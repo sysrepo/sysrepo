@@ -1,0 +1,34 @@
+module mixed-config {
+    namespace "urn:sysrepo:mixed-config";
+    prefix mc;
+    container test-state {
+        list test-case {
+            key "name";
+            leaf name {
+                type string;
+            }
+            leaf result {
+                type uint32;
+                config false;
+            }
+            leaf x {
+                type decimal64 {
+                    fraction-digits 4;
+                }
+                config false;
+            }
+            leaf y {
+                type decimal64 {
+                    fraction-digits 4;
+                }
+                config false;
+            }
+            leaf z {
+                type decimal64 {
+                    fraction-digits 4;
+                }
+                config false;
+            }
+        }
+    }
+}

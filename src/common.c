@@ -2863,8 +2863,12 @@ sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *t
 }
 
 struct lyd_node *
-sr_lyd_child(const struct lyd_node *node)
+sr_lyd_child(const struct lyd_node *node, int skip_keys)
 {
+    struct lyd_node *child;
+    struct lys_node_list *slist;
+    int i;
+
     if (!node) {
         return NULL;
     }
@@ -2872,7 +2876,18 @@ sr_lyd_child(const struct lyd_node *node)
     if (node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) {
         return NULL;
     }
-    return node->child;
+
+    child = node->child;
+
+    if (skip_keys && (node->schema->nodetype == LYS_LIST)) {
+        slist = (struct lys_node_list *)node->schema;
+        for (i = 0; child && (i < slist->keys_size); ++i) {
+            assert(child->schema == (struct lys_node *)slist->keys[i]);
+            child = child->next;
+        }
+    }
+
+    return child;
 }
 
 sr_error_info_t *
@@ -3030,7 +3045,7 @@ sr_lyd_add_np_cont(struct lyd_node **data, struct lyd_node *parent, const struct
     for (last = lys_getnext(NULL, sparent, ly_mod, 0); last; last = lys_getnext(last, sparent, ly_mod, 0)) {
         if ((last->nodetype == LYS_CONTAINER) && !((struct lys_node_container *)last)->presence) {
             /* check that it exists in the data */
-            LY_TREE_FOR(parent ? sr_lyd_child(parent) : *data, iter) {
+            LY_TREE_FOR(parent ? sr_lyd_child(parent, 1) : *data, iter) {
                 if (iter->schema == last) {
                     break;
                 }
@@ -3523,16 +3538,6 @@ sr_ly_find_last_parent(struct lyd_node **parent, int nodetype)
     /* should be unreachable */
     SR_ERRINFO_INT(&err_info);
     return err_info;
-}
-
-uint16_t
-sr_ly_list_key_count(const struct lyd_node *node)
-{
-    if (!node || (node->schema->nodetype != LYS_LIST)) {
-        return 0;
-    }
-
-    return ((struct lys_node_list *)node->schema)->keys_size;
 }
 
 struct lyd_node *

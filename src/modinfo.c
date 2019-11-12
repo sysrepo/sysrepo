@@ -412,6 +412,7 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
     }
 
     LY_TREE_FOR_SAFE(sibling, next, elem) {
+        assert((elem->schema->nodetype != LYS_LEAF) || !lys_is_key((struct lys_node_leaf *)elem->schema, NULL));
         if (elem->schema->flags & LYS_CONFIG_R) {
             /* state subtree */
             if (opts & SR_OPER_NO_STATE) {
@@ -430,9 +431,9 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
         }
 
         /* trim all our children */
-        sr_oper_data_trim_r(data, sr_lyd_child(elem), opts);
+        sr_oper_data_trim_r(data, sr_lyd_child(elem, 1), opts);
 
-        if ((elem->schema->flags & LYS_CONFIG_W) && (opts & SR_OPER_NO_CONFIG) && !sr_lyd_child(elem)) {
+        if ((elem->schema->flags & LYS_CONFIG_W) && (opts & SR_OPER_NO_CONFIG) && !sr_lyd_child(elem, 1)) {
             /* config-only subtree (config node with no children) */
             if (*data == elem) {
                 *data = (*data)->next;
@@ -640,14 +641,9 @@ sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath)
         }
 
         /* module name */
-        if (mlen1 || mlen2) {
-            if ((!mlen2 && !wildc1) || (!mlen1 && !wildc2)) {
-                /* one node has no module */
-                return 0;
-            } else if ((mlen1 && mlen2) && ((mlen1 != mlen2) || strncmp(mod1, mod2, mlen1))) {
-                /* different modules */
-                return 0;
-            }
+        if ((mlen1 && mlen2) && ((mlen1 != mlen2) || strncmp(mod1, mod2, mlen1))) {
+            /* different modules */
+            return 0;
         }
 
         /* node name */
@@ -828,7 +824,7 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
 
     *enabled_mod_data = NULL;
 
-    if (!data || (opts & SR_OPER_NO_CONFIG)) {
+    if (!data) {
         /* no data is enabled */
         return NULL;
     }
@@ -1200,7 +1196,8 @@ static sr_error_info_t *
 sr_modinfo_ly_val_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_difflist *val_diff)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
+    struct lyd_node *node;
+    struct lys_node *snode;
     uint32_t i, j;
     int change;
 
@@ -1215,12 +1212,15 @@ sr_modinfo_ly_val_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_difflist
         /* additional modules can be modified */
         if (change) {
             if (val_diff->type[i] == LYD_DIFF_CREATED) {
-                ly_mod = lyd_node_module(val_diff->second[i]);
+                node = val_diff->second[i];
             } else {
-                ly_mod = lyd_node_module(val_diff->first[i]);
+                node = val_diff->first[i];
             }
+
+            /* get the module that actually owns the data (handle augments) */
+            for (snode = node->schema; lys_parent(snode); snode = lys_parent(snode));
             for (j = 0; j < mod_info->mod_count; ++j) {
-                if (ly_mod == mod_info->mods[j].ly_mod) {
+                if (lys_node_module(snode) == mod_info->mods[j].ly_mod) {
                     mod_info->mods[j].state |= MOD_INFO_CHANGED;
                     break;
                 }

@@ -45,9 +45,9 @@
 struct list_item {
     char *name;
     char *revision;
-    int implemented;
+    const char *impl_flag;
     int replay;
-    int changed;
+    const char *change_flag;
     int feat_changes;
     char *owner;
     mode_t perms;
@@ -161,6 +161,7 @@ srctl_list_collect_import(const struct lys_module *ly_mod, struct list_item **li
 
     /* init */
     memset(cur_item, 0, sizeof *cur_item);
+    cur_item->impl_flag = "i";
     cur_item->owner = strdup("");
     cur_item->submodules = strdup("");
     cur_item->features = strdup("");
@@ -195,7 +196,8 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
 
         /* init */
         memset(cur_item, 0, sizeof *cur_item);
-        cur_item->implemented = 1;
+        cur_item->impl_flag = "";
+        cur_item->change_flag = "";
         cur_item->submodules = strdup("");
         cur_item->features = strdup("");
 
@@ -210,9 +212,9 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
             } else if (!strcmp(child->schema->name, "replay-support")) {
                 cur_item->replay = 1;
             } else if (!strcmp(child->schema->name, "removed")) {
-                cur_item->changed = 1;
+                cur_item->change_flag = "R";
             } else if (!strcmp(child->schema->name, "updated-yang")) {
-                cur_item->changed = 2;
+                cur_item->change_flag = "U";
             } else if (!strcmp(child->schema->name, "enabled-feature")) {
                 str = ((struct lyd_node_leaf_list *)child)->value_str;
                 cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + 1 + strlen(str) + 1);
@@ -225,31 +227,39 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
             }
         }
 
-        /* get owner and permissions */
-        if ((ret = sr_get_module_access(conn, cur_item->name, &owner, &group, &cur_item->perms)) != SR_ERR_OK) {
-            return ret;
-        }
-        cur_item->owner = malloc(strlen(owner) + 1 + strlen(group) + 1);
-        sprintf(cur_item->owner, "%s:%s", owner, group);
-        free(owner);
-        free(group);
+        if (!strcmp(module->schema->name, "module")) {
+            cur_item->impl_flag = "I";
 
-        /* learn submodules */
-        ly_mod = ly_ctx_get_module(ly_ctx, cur_item->name, cur_item->revision, 1);
-        if (!ly_mod) {
-            return SR_ERR_INTERNAL;
-        }
-        for (i = 0; i < ly_mod->inc_size; ++i) {
-            str = ly_mod->inc[i].submodule->name;
-            cur_item->submodules = realloc(cur_item->submodules, strlen(cur_item->submodules) + 1 + strlen(str) + 1);
-            if (i) {
-                strcat(cur_item->submodules, " ");
+            /* get owner and permissions */
+            if ((ret = sr_get_module_access(conn, cur_item->name, &owner, &group, &cur_item->perms)) != SR_ERR_OK) {
+                return ret;
             }
-            strcat(cur_item->submodules, str);
-        }
+            cur_item->owner = malloc(strlen(owner) + 1 + strlen(group) + 1);
+            sprintf(cur_item->owner, "%s:%s", owner, group);
+            free(owner);
+            free(group);
 
-        /* set empty revision if no specified */
-        if (!cur_item->revision) {
+            /* learn submodules */
+            ly_mod = ly_ctx_get_module(ly_ctx, cur_item->name, cur_item->revision, 1);
+            if (!ly_mod) {
+                return SR_ERR_INTERNAL;
+            }
+            for (i = 0; i < ly_mod->inc_size; ++i) {
+                str = ly_mod->inc[i].submodule->name;
+                cur_item->submodules = realloc(cur_item->submodules, strlen(cur_item->submodules) + 1 + strlen(str) + 1);
+                if (i) {
+                    strcat(cur_item->submodules, " ");
+                }
+                strcat(cur_item->submodules, str);
+            }
+
+            /* set empty revision if no specified */
+            if (!cur_item->revision) {
+                cur_item->revision = strdup("");
+            }
+        } else {
+            cur_item->change_flag = "N";
+            cur_item->owner = strdup("");
             cur_item->revision = strdup("");
         }
 
@@ -343,9 +353,9 @@ srctl_list(sr_conn_ctx_t *conn)
 
     /* print modules */
     for (i = 0; i < list_count; ++i) {
-        sprintf(flags_str, "%s%s%s%s", list[i].implemented ? "I" : "i", list[i].replay ? "R" : " ",
-                (list[i].changed == 1) ? "X" : (list[i].changed == 2 ? "U" : " "), list[i].feat_changes ? "F" : "");
-        if (list[i].implemented) {
+        sprintf(flags_str, "%s%s%s%s", list[i].impl_flag, list[i].replay ? "R" : " ", list[i].change_flag,
+                list[i].feat_changes ? "F" : "");
+        if (!strcmp(list[i].impl_flag, "I")) {
             sprintf(perm_str, "%03o", list[i].perms);
         } else {
             perm_str[0] = '\0';
@@ -356,7 +366,7 @@ srctl_list(sr_conn_ctx_t *conn)
     }
 
     /* print flag legend */
-    printf("\nFlags meaning: I - Installed/i - Imported; R - Replay support; X - Removed/U - Updated; F - Feature changes\n\n");
+    printf("\nFlags meaning: I - Installed/i - Imported; R - Replay support; N - New/X - Removed/U - Updated; F - Feature changes\n\n");
 
 cleanup:
     lyd_free_withsiblings(data);

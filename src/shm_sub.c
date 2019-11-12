@@ -2151,7 +2151,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         /* go again to the top-level root for printing */
         if (parent) {
             /* set origin if none */
-            LY_TREE_FOR(orig_parent ? sr_lyd_child(parent) : parent, node) {
+            LY_TREE_FOR(orig_parent ? sr_lyd_child(parent, 1) : parent, node) {
                 sr_edit_diff_get_origin(node, &origin, NULL);
                 if ((!origin || !strcmp(origin, SR_CONFIG_ORIGIN))
                         && (err_info = sr_edit_diff_set_origin(node, SR_OPER_ORIGIN, 0))) {

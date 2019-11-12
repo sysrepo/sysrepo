@@ -1054,9 +1054,10 @@ sr_error_info_t *sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, s
  * @brief Get pointer to data node children.
  *
  * @param[in] node Node to get children of.
+ * @param[in] skip_keys Whether to return first non-key child in case of lists.
  * @return Node children, NULL if has none.
  */
-struct lyd_node *sr_lyd_child(const struct lyd_node *node);
+struct lyd_node *sr_lyd_child(const struct lyd_node *node, int skip_keys);
 
 /**
  * @brief Duplicate selected nodes from a data tree.
@@ -1195,14 +1196,6 @@ size_t sr_xpath_len_no_predicates(const char *xpath);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
-
-/**
- * @brief Get list key count of a list.
- *
- * @param[in] node List, whose key count to get.
- * @return Key count or 0.
- */
-uint16_t sr_ly_list_key_count(const struct lyd_node *node);
 
 /**
  * @brief Unlink data of a specific module from a data tree.
