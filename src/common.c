@@ -2891,7 +2891,7 @@ sr_lyd_child(const struct lyd_node *node, int skip_keys)
 }
 
 sr_error_info_t *
-sr_ly_data_dup_xpath_select(const struct lyd_node *data, char **xpaths, uint16_t xp_count, struct lyd_node **new_data)
+sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count, struct lyd_node **new_data)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *root;
@@ -2961,7 +2961,7 @@ error:
 }
 
 sr_error_info_t *
-sr_ly_data_xpath_complement(struct lyd_node **data, const char *xpath)
+sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *ctx;

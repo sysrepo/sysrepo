@@ -696,7 +696,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_sub_t *shm_msub;
     const char *sub_xpath;
-    char *parent_xpath;
+    char *parent_xpath = NULL;
     uint16_t i, j;
     struct ly_set *set;
     struct lyd_node *diff = NULL;
@@ -743,7 +743,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
 
         if ((shm_msub->sub_type == SR_OPER_SUB_CONFIG) || (shm_msub->sub_type == SR_OPER_SUB_MIXED)) {
             /* remove any present data */
-            if ((err_info = sr_xpath_oper_data_remove(sub_xpath, data))) {
+            if ((err_info = sr_lyd_xpath_complement(data, sub_xpath))) {
                 goto error;
             }
         }
@@ -854,7 +854,7 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
     }
 
     /* duplicate only enabled subtrees */
-    err_info = sr_ly_data_dup_xpath_select(data, xpaths, xp_i, enabled_mod_data);
+    err_info = sr_lyd_xpath_dup(data, xpaths, xp_i, enabled_mod_data);
     free(xpaths);
     if (err_info) {
         return err_info;

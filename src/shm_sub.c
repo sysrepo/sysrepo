@@ -1701,7 +1701,7 @@ sr_shmsub_change_listen_prepare_sess(struct modsub_change_s *change_subs, struct
 
     /* duplicate (filtered) diff */
     if (change_sub->xpath) {
-        if ((err_info = sr_ly_data_dup_xpath_select(diff, &change_sub->xpath, 1, &tmp_sess->dt[tmp_sess->ds].diff))) {
+        if ((err_info = sr_lyd_xpath_dup(diff, &change_sub->xpath, 1, &tmp_sess->dt[tmp_sess->ds].diff))) {
             return err_info;
         }
     } else {
