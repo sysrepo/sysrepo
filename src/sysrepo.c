@@ -37,6 +37,9 @@
 
 #include <libyang/libyang.h>
 
+static sr_error_info_t *_sr_session_stop(sr_session_ctx_t *session);
+static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription);
+
 /**
  * @brief Allocate a new connection structure.
  *
@@ -263,33 +266,33 @@ cleanup:
 API int
 sr_disconnect(sr_conn_ctx_t *conn)
 {
-    sr_error_info_t *err_info = NULL;
-    int ret = SR_ERR_OK, rc;
+    sr_error_info_t *err_info = NULL, *lock_err = NULL, *tmp_err;
+    uint32_t i;
 
     if (!conn) {
-        return ret;
+        return sr_api_ret(NULL, NULL);
+    }
+
+    /* SHM LOCK */
+    lock_err = sr_shmmain_lock_remap(conn, 1, 1, 0);
+    sr_errinfo_merge(&err_info, lock_err);
+
+    /* stop all subscriptions */
+    for (i = 0; i < conn->session_count; ++i) {
+        while (conn->sessions[i]->subscription_count && conn->sessions[i]->subscriptions[0]) {
+            tmp_err = _sr_unsubscribe(conn->sessions[i]->subscriptions[0]);
+            sr_errinfo_merge(&err_info, tmp_err);
+        }
     }
 
     /* stop all the sessions */
     while (conn->session_count) {
-        /* API function */
-        rc = sr_session_stop(conn->sessions[0]);
-        if (rc != SR_ERR_OK) {
-            ret = rc;
-        }
+        tmp_err = _sr_session_stop(conn->sessions[0]);
+        sr_errinfo_merge(&err_info, tmp_err);
     }
 
-    /* SHM LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, 1, 1, 0))) {
-        ret = err_info->err_code;
-        sr_errinfo_free(&err_info);
-    } else {
-        /* remove from state */
-        sr_shmmain_state_del_conn((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
-
-        /* SHM UNLOCK */
-        sr_shmmain_unlock(conn, 1, 1, 0);
-    }
+    /* remove from state */
+    sr_shmmain_state_del_conn((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
 
     /* free cache */
     if (conn->opts & SR_CONN_CACHE_RUNNING) {
@@ -299,15 +302,18 @@ sr_disconnect(sr_conn_ctx_t *conn)
     }
 
     /* free any stored operational data */
-    if ((err_info = sr_shmmod_oper_stored_del_conn(conn, conn, getpid()))) {
-        ret = err_info->err_code;
-        sr_errinfo_free(&err_info);
+    tmp_err = sr_shmmod_oper_stored_del_conn(conn, conn, getpid());
+    sr_errinfo_merge(&err_info, tmp_err);
+
+    if (!lock_err) {
+        /* SHM UNLOCK */
+        sr_shmmain_unlock(conn, 1, 1, 0);
     }
 
     /* free attributes */
     sr_conn_free(conn);
 
-    return ret;
+    return sr_api_ret(NULL, err_info);
 }
 
 API int
@@ -478,41 +484,31 @@ error:
     return sr_api_ret(NULL, err_info);
 }
 
-API int
-sr_session_stop(sr_session_ctx_t *session)
+/**
+ * @brief Unlocked stop (free) a session.
+ *
+ * @param[in] session Session to stop.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+_sr_session_stop(sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     uint32_t i;
 
-    if (!session) {
-        return sr_api_ret(NULL, NULL);
-    }
-
     /* remove ourselves from conn sessions */
     tmp_err = sr_ptr_del(&session->conn->ptr_lock, (void ***)&session->conn->sessions, &session->conn->session_count, session);
-    if (tmp_err) {
-        /* continue */
-        sr_errinfo_merge(&err_info, tmp_err);
-    }
+    sr_errinfo_merge(&err_info, tmp_err);
 
-    /* SHM LOCK */
-    if ((tmp_err = sr_shmmain_lock_remap(session->conn, 1, 0, 0))) {
-        /* continue */
-        sr_errinfo_merge(&err_info, tmp_err);
-    } else {
-        /* release any held locks */
-        sr_shmmod_release_locks(session->conn, session->sid);
+    /* release any held locks */
+    sr_shmmod_release_locks(session->conn, session->sid);
 
-        /* stop all subscriptions of this session */
-        while (session->subscription_count) {
-            if ((tmp_err = sr_subs_session_del(session, session->subscriptions[0]))) {
-                /* continue */
-                sr_errinfo_merge(&err_info, tmp_err);
-            }
+    /* stop all subscriptions of this session */
+    while (session->subscription_count) {
+        if ((tmp_err = sr_subs_session_del(session, session->subscriptions[0]))) {
+            /* continue */
+            sr_errinfo_merge(&err_info, tmp_err);
         }
-
-        /* SHM UNLOCK */
-        sr_shmmain_unlock(session->conn, 1, 0, 0);
     }
 
     /* free attributes */
@@ -523,6 +519,34 @@ sr_session_stop(sr_session_ctx_t *session)
     sr_errinfo_free(&session->err_info);
     pthread_mutex_destroy(&session->ptr_lock);
     free(session);
+
+    return err_info;
+}
+
+API int
+sr_session_stop(sr_session_ctx_t *session)
+{
+    sr_error_info_t *err_info = NULL, *lock_err = NULL, *tmp_err;
+    sr_conn_ctx_t *conn;
+
+    if (!session) {
+        return sr_api_ret(NULL, NULL);
+    }
+
+    conn = session->conn;
+
+    /* SHM LOCK */
+    lock_err = sr_shmmain_lock_remap(conn, 1, 0, 0);
+    sr_errinfo_merge(&err_info, lock_err);
+
+    tmp_err = _sr_session_stop(session);
+    sr_errinfo_merge(&err_info, tmp_err);
+
+    /* SHM UNLOCK */
+    if (!lock_err) {
+        sr_shmmain_unlock(conn, 1, 0, 0);
+    }
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -2879,7 +2903,7 @@ cleanup_unlock:
 }
 
 /**
- * @brief Unsubscribe (free) a subscription (main SHM and remap lock is expected to be held).
+ * @brief Unlocked unsubscribe (free) a subscription.
  *
  * @param[in] subscription Subscription to free.
  * @return err_info, NULL on success.

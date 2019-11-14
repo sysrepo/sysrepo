@@ -226,7 +226,7 @@ int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
  * Cleans up and frees connection context allocated by ::sr_connect. All sessions and subscriptions
  * started within the connection will be automatically stopped and cleaned up too.
  *
- * @note Connection can no longer be used even on error.
+ * @note Connection and all its associated sessions and subscriptions can no longer be used even on error.
  *
  * @param[in] conn Connection acquired with ::sr_connect call.
  * @return Error code (::SR_ERR_OK on success).
@@ -299,9 +299,11 @@ int sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_ses
 /**
  * @brief Stops current session and releases resources tied to the session.
  *
- * Also releases any locks held and frees subscriptions created by this session.
+ * Also releases any locks held and frees subscriptions created (only) by this session.
  *
- * @note Session can no longer be used even on error.
+ * @note Session can no longer be used even on error. Subscriptions, even
+ * if they no longer handle any events are **never** freed and should be manually
+ * freed using ::sr_unsubscribe.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @return Error code (::SR_ERR_OK on success).
