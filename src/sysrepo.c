@@ -2203,7 +2203,7 @@ cleanup_shm_unlock:
     /* SHM UNLOCK */
     sr_shmmain_unlock(session->conn, 0, 0, 0);
 
-    if (!err_info) {
+    if (!err_info && !cb_err_info) {
         /* free applied edit */
         lyd_free_withsiblings(session->dt[session->ds].edit);
         session->dt[session->ds].edit = NULL;

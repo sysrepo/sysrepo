@@ -924,6 +924,9 @@ int sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms);
 /**
  * @brief Apply changes made in the current session.
  *
+ * @note In case the changes could not be applied successfully for any reason,
+ * they remain intact in the session.
+ *
  * @note Note that in case that you are changing the _running_ datastore, you also
  * need to copy the config to _startup_ to make the changes persistent.
  *

@@ -883,6 +883,9 @@ apply_update_fail_thread(void *arg)
     assert_string_equal(err_info->err[0].message, "Custom user callback error.");
     assert_string_equal(err_info->err[0].xpath, "/path/to/a/node");
 
+    ret = sr_discard_changes(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
     /* check current data tree */
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1197,6 +1200,9 @@ apply_change_fail_thread(void *arg)
     assert_string_equal(err_info->err[0].message, "Operation not supported");
     assert_null(err_info->err[0].xpath);
 
+    ret = sr_discard_changes(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
     /* check current data tree */
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1215,6 +1221,9 @@ apply_change_fail_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+
+    ret = sr_discard_changes(sess);
+    assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
