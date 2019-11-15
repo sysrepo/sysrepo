@@ -1524,7 +1524,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, dm_schema_info
 
     ac_set_user_identity(dm_ctx->ac_ctx, dm_session_ctx->user_credentials);
 
-    int fd = open(data_filename, O_RDWR);
+    int fd = open(data_filename, O_RDONLY);
 
     ac_unset_user_identity(dm_ctx->ac_ctx, dm_session_ctx->user_credentials);
 
