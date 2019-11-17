@@ -90,7 +90,28 @@ they can also be used to provide _configuration_ data nodes. In that case they s
 configuration that is actually in-use by the managed device. Much more details and explanations can be found
 in the NMDA @ref rfcs "RFC".
 
-Just like configuration and RPC subscription, operational subscription callback can return ::SR_ERR_CALLBACK_SHELVE.
+Operational callback is not called unless its data are required so keep these rules in mind:
+
+- if the parent of the provided data does not exist, neither can its descendants;
+
+  _Example_: If you subscribed for providing `/mod:config-container/config-list/state-leaf`, your callback
+  would be called for every existing instance of `/mod:config-container/config-list`, not at all if there was none.
+
+- in case there are nested subscriptions, the deeper ones are called last so their parents can be created;
+
+  _Example_: If you subscribed to `/mod:config-container/config-list` and `/mod:config-container/config-list/state-leaf`,
+  the former callback would be called before the latter, so whatever _list_ instances were created in that first
+  call, only for those would then the _leaf_ value be retrieved.
+
+- if a filter is used that does not select the data provided by a callback, this callback is _usually_ not called.
+  This redundancy check is performed only textually so it will never cover all the cases.
+
+  _Example_: If you subscribed to `/mod:config-container/config-list[key="val"]` and then `/mod:config-container/state-list/\asterisk`
+  was requested, your callback __would not__ be called. __Neither would__ it be called when `/mod:config-container/config-list[key="val2"]`
+  was requested. However, if `/mod:config-container/config-list/key[.="val2"]` was used as the filter (even though there is
+  no reason to use such a path), the callback __would__ be called and the returned data filtered out later.
+
+Finally, just like configuration and RPC subscription, operational subscription callback can return ::SR_ERR_CALLBACK_SHELVE.
 
 @ref oper_subs_api
 
