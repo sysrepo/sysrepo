@@ -51,6 +51,10 @@ directly even if Sysrepo thread is handling this subscription, but there is like
 For each of these events, the changes are retrieved using an iterator, which can be created several times
 and optionally with only selected changes.
 
+It is important to be aware of:
+
+- by subscribing to changes of _running_ data, they are considered in-use and also appear in _operational_ datastore.
+
 @ref change_subs_api
 
 ## RPC/Action Subscriptions @anchor rpc_subs
@@ -92,7 +96,8 @@ in the NMDA @ref rfcs "RFC".
 
 Operational callback is not called unless its data are required so keep these rules in mind:
 
-- if the parent of the provided data does not exist, neither can its descendants;
+- if the parent of the provided data does not exist, neither can its descendants, see @ref state_data "State Data"
+  for details about data existence;
 
   _Example_: If you subscribed for providing `/mod:config-container/config-list/state-leaf`, your callback
   would be called for every existing instance of `/mod:config-container/config-list`, not at all if there was none.

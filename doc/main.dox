@@ -99,12 +99,13 @@ some configuration data omitted/modified. It all depends on the subscriptions, o
 
 Sysrepo also supports NMDA __origin__ attribute that can only appear in _operational_ datastore. It is added
 automatically to all operational data; nodes that do not have their own inherit origin from their parents. However,
-whenever an application is providing/modifying operational data (more in @ref state_data), it can set a specific
+whenever an application is providing/modifying operational data (more in @ref state_data "State Data"), it can set a specific
 origin that will be stored.
 
 # State Data @anchor state_data
 
-These data are found in the _operational_ datastore. Applications can provide them in 2 ways, **pull** or **push**.
+These data are found in the _operational_ datastore and the following information applies to **all operational data**,
+which can include configuration as well. Applications can provide them in 2 ways, **pull** or **push**.
 
 If employing the pull method, the operational data are always retrieved when they are needed so they are guaranteed
 to be up-to-date. An application can subscribe to providing these data using an @ref oper_subs "operational subscription".
@@ -114,13 +115,13 @@ As for the second push method, its main principle is that the state data need to
 they are stored and reused whenever needed without any interaction with the provider client. These data are set
 @ref edit_data "normally" but they are owned by the client. As soon as the client @ref conn_sess "disconnects", the
 data are considered to no longer be in-use and are deleted. This method is suitable for data that do not change
-often or not at all such network interface state or basic information about the system.
+often or not at all such as network interface state or basic information about the system.
 
 These methods can be combined and provided data can overlap. Later push data overwrite older stored push data and
 pull data always overwrite push data.
 
 Note that these data are always appended to in-use _running_ data. That means, for instance, that no state data
-can exist if their configuration parent does not exist. A consequence of this is that whenever in-use "running"
+can exist if their configuration parent does not exist. A consequence of this is that whenever in-use _running_
 data change, the stored _operational_ changes (push method) are also adjusted and any invalid data (one without parents)
 are removed.
 
