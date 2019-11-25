@@ -179,8 +179,8 @@ typedef enum sr_conn_flag_e {
 typedef uint32_t sr_conn_options_t;
 
 /**
- * @brief @ref datastores "Datastores" that sysrepo supports. To make changes permanent in
- * a datastore ::sr_apply_changes must be issued.
+ * @brief [Datastores](@ref datastores) that sysrepo supports. To change which datastore a session operates on,
+ * use ::sr_session_switch_ds.
  */
 typedef enum sr_datastore_e {
     SR_DS_STARTUP = 0,     /**< Contains configuration data that will be loaded when a device starts. */
@@ -251,7 +251,7 @@ int sr_connection_recover(sr_conn_ctx_t *conn);
 
 /**
  * @brief Get the _libyang_ context used by a connection. Can be used in an application for working with data
- * and schemas. Do NOT change this context!
+ * and schemas. Do **NOT** change this context!
  *
  * @param[in] conn Connection to use.
  * @return Const libyang context.
@@ -261,8 +261,7 @@ const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
 /**
  * @brief Callback to be called before applying a diff. Set it using ::sr_set_diff_check_callback.
  *
- * @param[in] session Session that can be used for obtaining changed data (by ::sr_get_changes_iter call),
- * learn about initiator session IDs, or return detailed errors. Do not stop this session.
+ * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] diff Diff to be applied.
  * @return Error code (::SR_ERR_OK on success).
  */
@@ -332,7 +331,7 @@ sr_datastore_t sr_session_get_ds(sr_session_ctx_t *session);
  * @brief Retrieve information about the error that has occurred
  * during the last operation executed within provided session.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[out] error_info Detailed error information. Be aware that
  * returned pointer may change by the next API call executed within the provided
  * session. Do not free or modify returned values.
@@ -348,7 +347,7 @@ int sr_get_error(sr_session_ctx_t *session, const sr_error_info_t **error_info);
  * @note Intended for change, RPC/action, or operational callbacks to be used
  * on the provided session.
  *
- * @param[in] session Session provided in a callback.
+ * @param[in] session Implicit session provided in a callback.
  * @param[in] path Optional [path](@ref paths) of the node where the error has occurred.
  * @param[in] format Human-readable format of the error message.
  * @param[in] ... Format parameters.
@@ -359,7 +358,7 @@ int sr_set_error(sr_session_ctx_t *session, const char *path, const char *format
 /**
  * @brief Return the assigned session ID of the sysrepo session.
  *
- * @param [in] session Session to use.
+ * @param [in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @return sysrepo SID or 0 in case of error.
  */
 uint32_t sr_session_get_id(sr_session_ctx_t *session);
@@ -369,7 +368,7 @@ uint32_t sr_session_get_id(sr_session_ctx_t *session);
  * callbacks handling operations initiated by this session will be able to
  * read this ID from the session provided.
  *
- * @param[in] session Session to change.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to change.
  * @param[in] nc_sid NETCONF session ID of a NETCONF session running on top of this session.
  */
 void sr_session_set_nc_id(sr_session_ctx_t *session, uint32_t nc_sid);
@@ -379,7 +378,7 @@ void sr_session_set_nc_id(sr_session_ctx_t *session, uint32_t nc_sid);
  * the value set by ::sr_session_set_nc_id or of the initiating session when used
  * in an application callback.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @return Session NETCONF SID.
  */
 uint32_t sr_session_get_nc_id(sr_session_ctx_t *session);
@@ -389,7 +388,7 @@ uint32_t sr_session_get_nc_id(sr_session_ctx_t *session);
  *
  * Required ROOT access.
  *
- * @param[in] session Session to change.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to change.
  * @param[in] user System user.
  * @return Error code (::SR_ERR_OK on success).
  */
@@ -400,7 +399,7 @@ int sr_session_set_user(sr_session_ctx_t *session, const char *user);
  *
  * Required ROOT access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @return Session user.
  */
 const char *sr_session_get_user(sr_session_ctx_t *session);
@@ -408,7 +407,7 @@ const char *sr_session_get_user(sr_session_ctx_t *session);
 /**
  * @brief Get the connection the session was created on.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @return Sysrepo connection.
  */
 sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
@@ -696,7 +695,7 @@ typedef uint32_t sr_get_oper_options_t;
  * of data from the datastore. Since it retrieves the data from datastore in
  * larger chunks, it can work much more efficiently than multiple ::sr_get_item calls.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) of the data element to be retrieved.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[out] value Requested node, allocated dynamically (free using ::sr_free_val).
@@ -714,7 +713,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms
  *
  * Required READ access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) of the data elements to be retrieved.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[out] values Array of requested nodes, allocated dynamically (free using ::sr_free_values).
@@ -734,7 +733,7 @@ int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_
  *
  * Required READ access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) selecting the root node of the subtree to be retrieved.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[out] subtree Requested subtree, allocated dynamically.
@@ -757,7 +756,7 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout
  *
  * Required READ access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) selecting root nodes of subtrees to be retrieved.
  * @param[in] max_depth Maximum depth of the selected subtrees. 0 is unlimited, 1 will not return any
  * descendant nodes. If a list should be returned, its keys are always returned as well.
@@ -825,7 +824,8 @@ typedef enum sr_move_position_e {
 } sr_move_position_t;
 
 /**
- * @brief Set (create) the value of a leaf, leaf-list, list, or presence container.
+ * @brief Prepare to set (create) the value of a leaf, leaf-list, list, or presence container.
+ * These changes are applied only after calling ::sr_apply_changes.
  * Data are represented as ::sr_val_t structures.
  *
  * With default options it recursively creates all missing nodes (containers and
@@ -839,7 +839,7 @@ typedef enum sr_move_position_e {
  * A value of leaf-list can be specified either by predicate in xpath or by value argument.
  * If both are present, value argument is ignored and xpath predicate is used.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be set.
  * @param[in] value Value to be set. `xpath` member of the ::sr_val_t structure can be NULL.
  * @param[in] opts Options overriding default behavior of this call.
@@ -848,12 +848,13 @@ typedef enum sr_move_position_e {
 int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts);
 
 /**
- * @brief Set (create) the value of a leaf, leaf-list, list, or presence container.
+ * @brief Prepare to set (create) the value of a leaf, leaf-list, list, or presence container.
+ * These changes are applied only after calling ::sr_apply_changes.
  * Data are represented as pairs of a path and string value.
  *
  * Function provides the same functionality as ::sr_set_item.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be set.
  * @param[in] value String representation of the value to be set.
  * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits.
@@ -864,14 +865,14 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
         const sr_edit_options_t opts);
 
 /**
- * @brief Delete the nodes matching the specified xpath. The accepted values are the same as for
- * ::sr_set_item_str.
+ * @brief Prepare to selete the nodes matching the specified xpath. These changes are applied only
+ * after calling ::sr_apply_changes. The accepted values are the same as for ::sr_set_item_str.
  *
  * If ::SR_EDIT_STRICT flag is set the specified node must must exist in the datastore.
  * If the xpath includes the list keys, the specified list instance is deleted.
  * If the xpath to list does not include keys, all instances of the list are deleted.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be deleted.
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success).
@@ -879,14 +880,15 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
 int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts);
 
 /**
- * @brief Move the instance of an user-ordered list or leaf-list to the specified position.
+ * @brief Prepare to move the instance of an user-ordered list or leaf-list to the specified position.
+ * These changes are applied only after calling ::sr_apply_changes.
  *
  * Item can be move to the first or last position or positioned relatively to its sibling.
  *
  * @note To determine current order, you can issue a ::sr_get_items call
  * (without specifying keys of particular list).
  *
- * @param[in] session Session to use
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use
  * @param[in] path [Path](@ref paths) identifier of the data element to be moved.
  * @param[in] position Requested move direction.
  * @param[in] list_keys Predicate identifying the relative list instance (example input `[key1="val1"][key2="val2"]...`).
@@ -899,11 +901,12 @@ int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_posi
         const char *leaflist_value, const char *origin);
 
 /**
- * @brief Provide a prepared edit data tree to be applied. Similar semantics to
- * [NETCONF \<edit-config\>](https://tools.ietf.org/html/rfc6241#section-7.2) content.
+ * @brief Provide a prepared edit data tree to be applied.
+ * These changes are applied only after calling ::sr_apply_changes.
  *
- * @param[in] session Session to use.
- * @param[in] edit Edit content.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] edit Edit content, similar semantics to
+ * [NETCONF \<edit-config\>](https://tools.ietf.org/html/rfc6241#section-7.2) content.
  * @param[in] default_operation Default operation for nodes without operation on themselves or any parent.
  * Possible values are `merge`, `replace`, or `none` (see [NETCONF RFC](https://tools.ietf.org/html/rfc6241#page-39)).
  * @return Error code (::SR_ERR_OK on success).
@@ -911,14 +914,14 @@ int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_posi
 int sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char *default_operation);
 
 /**
- * @brief Perform the validation of changes made in the current session, but do not
+ * @brief Perform the validation a datastore and any changes made in the current session, but do not
  * apply nor discard them.
  *
  * Provides only YANG validation, apply-changes **subscribers will not be notified** in this case.
  *
  * @see Use ::sr_get_error to retrieve error information if the operation returned an error.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
@@ -937,16 +940,16 @@ int sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms);
  *
  * Required WRITE access.
  *
- * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to apply changes of.
  * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
 
 /**
- * @brief Discard non-applied changes made in the current session.
+ * @brief Discard prepared changes made in the current session.
  *
- * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to discard changes from.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_discard_changes(sr_session_ctx_t *session);
@@ -957,7 +960,7 @@ int sr_discard_changes(sr_session_ctx_t *session);
  *
  * Required WRITE access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name If specified, limits the replace operation only to this module.
  * @param[in] src_config Source data to replace the datastore. Is ALWAYS spent and cannot be used by the application!
  * @param[in] trg_datastore Target datastore.
@@ -978,7 +981,7 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
  *
  * Required WRITE access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Optional module name that limits the copy operation only to this module.
  * @param[in] src_datastore Source datastore.
  * @param[in] trg_datastore Target datastore.
@@ -1010,7 +1013,7 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datast
  *
  * Required READ access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Optional name of the module to be locked.
  * @return Error code (::SR_ERR_OK on success).
  */
@@ -1021,7 +1024,7 @@ int sr_lock(sr_session_ctx_t *session, const char *module_name);
  *
  * Required READ access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Optional name of the module to be unlocked.
  * @return Error code (::SR_ERR_OK on success).
  */
@@ -1240,8 +1243,8 @@ typedef struct sr_change_iter_s sr_change_iter_t;
  * @note Callback is allowed to modify installed YANG modules but MUST not modify subscriptions on ::SR_EV_CHANGE event.
  * It would result in a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
  *
- * @param[in] session Session with information about the changed data (retrieved by ::sr_get_changes_iter)
- * the event originator session IDs. Do not stop this session.
+ * @param[in] session Implicit session (do not stop) with information about the changed data (retrieved by
+ * ::sr_get_changes_iter) the event originator session IDs.
  * @param[in] module_name Name of the module where the change has occurred.
  * @param[in] xpath [XPath](@ref paths) used when subscribing, NULL if the whole module was subscribed to.
  * @param[in] event Type of the callback event that has occurred.
@@ -1258,7 +1261,7 @@ typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module
  *
  * Required WRITE access. If ::SR_SUBSCR_PASSIVE is set, required READ access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Name of the module of interest for change notifications.
  * @param[in] xpath Optional [XPath](@ref paths) further filtering the changes that will be handled by this subscription.
  * @param[in] callback Callback to be called when the change in the datastore occurs.
@@ -1281,7 +1284,7 @@ int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_nam
  *
  * @see ::sr_get_change_next for iterating over the changeset using this iterator.
  *
- * @param[in] session Session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
+ * @param[in] session Implicit session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
  * @param[in] xpath [XPath](@ref paths) selecting the requested changes. Be careful, you must select all the changes,
  * not just subtrees! To get a full change subtree `//.` can be appended to the XPath.
  * @param[out] iter Iterator context that can be used to retrieve individual changes using
@@ -1299,7 +1302,7 @@ int sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_
  * old value is NULL it was moved to the first position. The same applies for operation ::SR_OP_CREATED
  * if the created instance was a user-ordered (leaf-)list.
  *
- * @param[in] session Session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
+ * @param[in] session Implicit session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
  * @param[in,out] iter Iterator acquired with ::sr_get_changes_iter call.
  * @param[out] operation Type of the operation made on the returned item.
  * @param[out] old_value Old value of the item (the value before the change).
@@ -1324,7 +1327,7 @@ int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_cha
  * ::SR_OP_MOVED - \p node is the moved (leaf-)list instance, for user-ordered lists either \p prev_value (leaf-list) or
  * \p prev_list (list) is set to the preceding instance unless the node is the first, when they are set to "" (empty string).
  *
- * @param[in] session Session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
+ * @param[in] session Implicit session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
  * @param[in,out] iter Iterator acquired with ::sr_get_changes_iter call.
  * @param[out] operation Type of the operation made on the returned item.
  * @param[out] node Affected data node always with all parents, depends on the operation.
@@ -1360,7 +1363,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @note Callback is allowed to modify installed YANG modules but MUST not modify subscriptions. It would result in
  * a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
  *
- * @param[in] session Session with information about event originator session IDs. Do not stop this session.
+ * @param[in] session Implicit session (do not stop) with information about event originator session IDs.
  * @param[in] op_path Simple operation [path](@ref paths) identifying the RPC/action.
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
@@ -1381,7 +1384,7 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *op_path, const s
  * @note Callback is allowed to modify installed YANG modules but MUST not modify subscriptions. It would result in
  * a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
  *
- * @param[in] session Session with information about the event originator session IDs. Do not stop this session.
+ * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] op_path Simple operation [path](@ref paths) identifying the RPC/action.
  * @param[in] input Data tree of input parameters.
  * @param[in] event Type of the callback event that has occurred.
@@ -1399,7 +1402,7 @@ typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, const char *op_path, co
  *
  * Required WRITE access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) identifying the RPC/action. Any predicates are allowed.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
@@ -1419,7 +1422,7 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  *
  * Required WRITE access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) identifying the RPC/action. Any predicates are allowed.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
@@ -1441,7 +1444,7 @@ int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_t
  *
  * @note RPC/action must be valid in (is validated against) the [operational datastore](@ref oper_ds) context.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifying the RPC/action.
  * @param[in] input Array of input parameters (array of all nodes that hold some
  * data in RPC/action input subtree - same as ::sr_get_items would return).
@@ -1463,7 +1466,7 @@ int sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *inp
  *
  * @note RPC/action must be valid in (is validated against) the [operational datastore](@ref oper_ds) context.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] input Input data tree.
  * @param[in] timeout_ms RPC/action callback timeout in milliseconds. If 0, default is used.
  * @param[out] output Output data tree. Will be allocated by sysrepo and should be freed by the caller.
@@ -1499,7 +1502,7 @@ typedef enum sr_ev_notif_type_e {
  *
  * @note Callback is allowed to modify installed YANG modules and subscriptions.
  *
- * @param[in] session Session with information about the event originator session IDs. Do not stop this session.
+ * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] notif_type Type of the notification.
  * @param[in] path [Path](@ref paths) identifying the event notification.
  * @param[in] values Array of all nodes that hold some data in event notification subtree.
@@ -1516,7 +1519,7 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_t
  *
  * @note Callback is allowed to modify installed YANG modules and subscriptions.
  *
- * @param[in] session Session with information about the event originator session IDs. Do not stop this session.
+ * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] notif_type Type of the notification.
  * @param[in] notif Notification data tree.
  * @param[in] timestamp Time when the notification was generated
@@ -1530,7 +1533,7 @@ typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, const sr_ev_no
  *
  * Required WRITE access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Name of the module whose notifications to subscribe to.
  * @param[in] xpath Optional [XPath](@ref paths) further filtering received notifications.
  * @param[in] start_time Optional start time of the subscription. Used for replaying stored notifications.
@@ -1552,7 +1555,7 @@ int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name,
  *
  * Required WRITE access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Name of the module whose notifications to subscribe to.
  * @param[in] xpath Optional [XPath](@ref paths) further filtering received notifications.
  * @param[in] start_time Optional start time of the subscription. Used for replaying stored notifications.
@@ -1576,7 +1579,7 @@ int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_
  *
  * @note Notification must be valid in (is validated against) the [operational datastore](@ref oper_ds) context.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifying the notification.
  * @param[in] values Array of all nodes that hold some data in event notification subtree
  * (same as ::sr_get_items would return).
@@ -1592,7 +1595,7 @@ int sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_va
  *
  * @note Notification must be valid in (is validated against) the [operational datastore](@ref oper_ds) context.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] notif Notification data tree to send.
  * @return Error code (::SR_ERR_OK on success).
  */
@@ -1622,7 +1625,7 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
  * @note Callback is allowed to modify installed YANG modules but MUST not modify subscriptions. It would result in
  * a deadlock and this callback timeout.
  *
- * @param[in] session Session with information about the event originator session IDs. Do not stop this session.
+ * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] module_name Name of the affected module.
  * @param[in] path [Path](@ref paths) identifying the subtree that is supposed to be provided, same as the one used
  * for the subscription.
@@ -1642,7 +1645,7 @@ typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, const char *modul
  *
  * Required WRITE access.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Name of the affected module.
  * @param[in] path [Path](@ref paths) identifying the subtree which the provider is able to provide. Predicates can be
  * used to provide only specific instances of nodes.
