@@ -186,7 +186,7 @@ typedef enum sr_datastore_e {
     SR_DS_STARTUP = 0,     /**< Contains configuration data that will be loaded when a device starts. */
     SR_DS_RUNNING = 1,     /**< Contains current configuration data. */
     SR_DS_CANDIDATE = 2,   /**< Contains prepared configuration data that do not affect actual configuration. */
-    SR_DS_OPERATIONAL = 3, /**< Contains currently used configuration (see @ref oper_ds "Operational Datastore"). */
+    SR_DS_OPERATIONAL = 3, /**< Contains currently used configuration (see [operational datastore](@ref oper_ds)). */
 } sr_datastore_t;
 
 /**
@@ -654,7 +654,7 @@ typedef struct sr_val_s {
      */
     bool dflt;
 
-    /** @ref oper_ds "Origin" of the value. */
+    /** [Origin](@ref oper_ds) of the value. */
     char *origin;
 
     /** Data of an element (if applicable), properly set according to the type. */
@@ -1439,7 +1439,7 @@ int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_t
  *
  * Required READ access.
  *
- * @note RPC/action must be valid in (is validated against) the @ref oper_ds "operational datastore" context.
+ * @note RPC/action must be valid in (is validated against) the [operational datastore](@ref oper_ds) context.
  *
  * @param[in] session Session to use.
  * @param[in] path [Path](@ref paths) identifying the RPC/action.
@@ -1461,7 +1461,7 @@ int sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *inp
  *
  * Required READ access.
  *
- * @note RPC/action must be valid in (is validated against) the @ref oper_ds "operational datastore" context.
+ * @note RPC/action must be valid in (is validated against) the [operational datastore](@ref oper_ds) context.
  *
  * @param[in] session Session to use.
  * @param[in] input Input data tree.
@@ -1574,7 +1574,7 @@ int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_
  *
  * Required WRITE access. If the module does not support replay, required READ access.
  *
- * @note Notification must be valid in (is validated against) the @ref oper_ds "operational datastore" context.
+ * @note Notification must be valid in (is validated against) the [operational datastore](@ref oper_ds) context.
  *
  * @param[in] session Session to use.
  * @param[in] path [Path](@ref paths) identifying the notification.
@@ -1590,7 +1590,7 @@ int sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_va
  *
  * Required WRITE access. If the module does not support replay, required READ access.
  *
- * @note Notification must be valid in (is validated against) the @ref oper_ds "operational datastore" context.
+ * @note Notification must be valid in (is validated against) the [operational datastore](@ref oper_ds) context.
  *
  * @param[in] session Session to use.
  * @param[in] notif Notification data tree to send.
