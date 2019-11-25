@@ -1630,6 +1630,9 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         }
         ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
+
+        /* remove leftover event pipes */
+        sr_remove_evpipes();
     }
 
     if (created) {

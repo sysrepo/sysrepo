@@ -710,6 +710,11 @@ sr_error_info_t *sr_path_notif_file(const char *mod_name, time_t from_ts, time_t
 sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path);
 
 /**
+ * @brief Remove any leftover event pipes after crashed subscriptions.
+ */
+void sr_remove_evpipes(void);
+
+/**
  * @brief Get the UID of a user or vice versa.
  *
  * @param[in,out] uid UID.

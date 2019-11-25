@@ -35,6 +35,7 @@
 #include <signal.h>
 #include <pwd.h>
 #include <grp.h>
+#include <dirent.h>
 #include <inttypes.h>
 #include <time.h>
 #include <assert.h>
@@ -1515,6 +1516,40 @@ sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path)
         SR_ERRINFO_MEM(&err_info);
     }
     return err_info;
+}
+
+void
+sr_remove_evpipes(void)
+{
+    sr_error_info_t *err_info = NULL;
+    DIR *dir;
+    struct dirent *ent;
+    char *path;
+
+    dir = opendir(sr_get_repo_path());
+    if (!dir) {
+        SR_ERRINFO_SYSERRNO(&err_info, "opendir");
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    while ((ent = readdir(dir))) {
+        if (!strncmp(ent->d_name, "sr_evpipe", 9)) {
+            SR_LOG_WRN("Removing event pipe \"%s\" after a crashed subscription.", ent->d_name);
+
+            if (asprintf(&path, "%s/%s", sr_get_repo_path(), ent->d_name) == -1) {
+                SR_ERRINFO_MEM(&err_info);
+                sr_errinfo_free(&err_info);
+                return;
+            }
+
+            if (unlink(path) == -1) {
+                SR_ERRINFO_SYSERRNO(&err_info, "unlink");
+                sr_errinfo_free(&err_info);
+            }
+            free(path);
+        }
+    }
 }
 
 sr_error_info_t *
