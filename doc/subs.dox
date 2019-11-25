@@ -10,7 +10,7 @@ the flag ::SR_SUBSCR_NO_THREAD needs to be used so that the thread is not create
 the subscription exists and events can occur but they are not being handled so they can time out, for example, unless
 processed manually. That can be achieved by a function that processes all pending events on a subscription.
 ::sr_process_events() can either be called periodically or only when there are actual events. This can be learnt by
-the subscription event pipe (::sr_get_event_pipe()) being ready for reading.
+the [subscription event pipe](@ref ::sr_get_event_pipe) being ready for reading.
 
 @ref subs_api
 
@@ -37,7 +37,7 @@ the current configuration at the time of subscribing. This event is normally fol
 _change_ event. However, _enabled_ event is generated even if the current configuration is empty (so there will be no
 changes available in the callback)!
 
-When subscribing to _operational_ datastore changes, only @ref state_data "push" changes are acknowledged and callbacks
+When subscribing to _operational_ datastore changes, only [push](@ref oper_data) changes are acknowledged and callbacks
 called. Pull subscriptions are ignored.
 
 On the events _update_ and _change_, the callback can return a special ::SR_ERR_CALLBACK_SHELVE value. This causes
@@ -51,9 +51,7 @@ directly even if Sysrepo thread is handling this subscription, but there is like
 For each of these events, the changes are retrieved using an iterator, which can be created several times
 and optionally with only selected changes.
 
-It is important to be aware of:
-
-- by subscribing to changes of _running_ data, they are considered in-use and also appear in _operational_ datastore.
+It is important to be aware of the effect of subscribing to _running_ data on [operational datastore](@ref oper_ds).
 
 @ref change_subs_api
 
@@ -76,10 +74,10 @@ RPC subscriptions can also return ::SR_ERR_CALLBACK_SHELVE on _rpc_ event.
 ## Notification Subscriptions @anchor notif_subs
 
 Notifications are supported by specific subscriptions that allow them to be sent and received. Sent notification are
-also stored for possible future replay if the particular module was configued that way (mentioned in @ref schema).
+also stored for possible future replay if the particular module was configued that way (mentioned in [schemas](@ref schema)).
 
 When subscribing to notifications, there are several options that can be specified and which follow the definitions
-from NETCONF Notifications @ref rfcs "RFC". Normally, all notifications are _real-time_. If replay is requested,
+from [NETCONF Notifications RFC](@ref rfcs). Normally, all notifications are _real-time_. If replay is requested,
 these are _replay_ notifications. If a replay finished and the subscription changes into a standard one,
 _replay complete_ notification is delivered. Lastly, once the subscription should be terminated because its stop
 time was reached, _stop_ is received before removing the subscription.
@@ -92,11 +90,11 @@ Operational subscriptions allow providing data that are requested by clients. Co
 to read the current state of a device, for example, and then return them as _state_ data nodes. However,
 they can also be used to provide _configuration_ data nodes. In that case they should return only the
 configuration that is actually in-use by the managed device. Much more details and explanations can be found
-in the NMDA @ref rfcs "RFC".
+in the [NMDA RFC](@ref rfcs).
 
 Operational callback is not called unless its data are required so keep these rules in mind:
 
-- if the parent of the provided data does not exist, neither can its descendants, see @ref state_data "State Data"
+- if the parent of the provided data does not exist, neither can its descendants, see [operational data](@ref oper_data)
   for details about data existence;
 
   _Example_: If you subscribed for providing `/mod:config-container/config-list/state-leaf`, your callback

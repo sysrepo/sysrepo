@@ -2,13 +2,13 @@
 @page example Plugin Example
 
 This page includes a guide on how to write a simple YANG module and then get Sysrepo to handle its data either
-as a @ref sysrepo_plugind plugin or a stand-alone daemon. It is best to have at least a basic understanding
+as a [plugin](@ref sysrepo_plugind) or a stand-alone daemon. It is best to have at least a [basic understanding](@ref about)
 of Sysrepo before continuing.
 
 # Simple YANG module @anchor yang_module
 
-For any device you want to manage with Sysrepo you will need a @ref rfcs "YANG" module of the device. The language
-is quite rich and allows for description of almost any system. As an example, an __oven__ will be fully managed by Sysrepo.
+For any device you want to manage with Sysrepo you will need a [YANG](@ref rfcs) module of the device. The language
+is quite rich and allows for description of almost any system. As an example, an **oven** will be fully managed by Sysrepo.
 All basic parts of YANG will be covered, namely configuration data, state data, RPCs, and notifications.
 
 To simplify things, our oven is a cheap model that has only a switch for turning it on and off and a slider to set
@@ -100,7 +100,7 @@ module oven {
 
 # Oven Plugin @anchor oven_plugin
 
-Here it will be step-by-step explained how to write a proper @ref sysrepo_plugind "plugin" that will manage the oven.
+Here it will be step-by-step explained how to write a proper [plugin](@ref sysrepo_plugind) that will manage the oven.
 All code snippets are taken from the actual implementation.
 
 @ref plugin_api
@@ -280,11 +280,11 @@ is stored in `examples` but it is not installed automatically. Before installing
 best to go carefully through the source code. It is just a small well-documented file so it should not take long and
 one should understand the implemented `oven` functionality. Also, most of the information covered in the sections
 above is just basic and detailed descriptions of all these mechanisms can be found in other subpages in the parent
-@ref dev_guide page.
+[developer guide](@ref dev_guide) page.
 
 Before being concerned with this particular plugin, Sysrepo must be properly built and installed. Having done that,
-you must install first the model, then the plugin. For installing the model, you can use @ref sysrepoctl.
-Then, you must put the shared library `liboven.so` into @ref plugins_path "Plugins Path".
+you must install first the model, then the plugin. For installing the model, you can use [sysrepoctl](@ref sysrepoctl).
+Then, you must put the shared library `liboven.so` into [plugins path](@ref plugins_path).
 
 After that you should be ready to start `sysrepo-plugind`, which should load the plugin. If you enable debug
 messages, you should see that the `oven` plugin was successfully initialized.
@@ -297,7 +297,7 @@ described in the YANG model and how would one expect an oven to behave. Here is 
         notif_subscribe_example oven
 
 2.  Prepare food to be inserted into the oven once it reaches a temperature, which will be configured later. The oven
-    is turned off by default. In NETCONF terms, you execute the `insert-food` RPC. You can do that using @ref sysrepocfg
+    is turned off by default. In NETCONF terms, you execute the `insert-food` RPC. You can do that using [sysrepocfg](@ref sysrepocfg)
 
         sysrepocfg --rpc=vim
 
@@ -340,7 +340,7 @@ described in the YANG model and how would one expect an oven to behave. Here is 
 # Oven Daemon
 
 If you want your device to have a stand-alone daemon that will run as a separate process not using
-@ref sysrepo_plugind then you do not need to develop a plugin. Having a separate daemon actually has only
+[sysrepo-plugind](@ref sysrepo_plugind) then you do not need to develop a plugin. Having a separate daemon actually has only
 a few differences that have been mentioned in the previous sentence.
 
 As for the code itself, no specific functions are required as the code will not be compiled into a shared library but
@@ -350,8 +350,8 @@ whole code.
 All that is needed is a `main()` function that will call `sr_plugin_init_cb()` at the beginning and
 `sr_plugin_cleanup_cb()` before terminating. In addition, these functions need a Sysrepo session. To create
 one we first need a connection. So, a connection is created with ::sr_connect() and if successful,
-a session created with ::sr_session_start(). Now, it is possible to call the __init__ function and on daemon termination
-to properly cleanup by both calling the __cleanup__ function and freeing the session and connection. Additionally, before
+a session created with ::sr_session_start(). Now, it is possible to call the **init** function and on daemon termination
+to properly cleanup by both calling the **cleanup** function and freeing the session and connection. Additionally, before
 being able to compile such an application, the printing macros would have to be changed as there will no longer be
 a master daemon that would handle printing messages. After these changes, the `oven` daemon should be ready.
 
