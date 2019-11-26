@@ -63,6 +63,8 @@ public:
     void session_switch_ds(sr_datastore_t ds);
     /** Wrapper for [sr_session_get_ds](@ref sr_session_get_ds) */
     sr_datastore_t session_get_ds();
+    /** Wrapper for [sr_session_notif_buffer](@ref sr_session_notif_buffer) */
+    void session_notif_buffer();
     /** Wrapper for [sr_get_error](@ref sr_get_error) */
     S_Errors get_error();
     /** Wrapper for [sr_set_error](@ref sr_set_error) */

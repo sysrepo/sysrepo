@@ -87,6 +87,14 @@ sr_datastore_t Session::session_get_ds()
     return sr_session_get_ds(_sess);
 }
 
+void Session::session_notif_buffer()
+{
+    int ret = sr_session_notif_buffer(_sess);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
+
 S_Errors Session::get_error()
 {
     S_Errors errors(new Errors());
