@@ -162,6 +162,7 @@ srctl_list_collect_import(const struct lys_module *ly_mod, struct list_item **li
     /* init */
     memset(cur_item, 0, sizeof *cur_item);
     cur_item->impl_flag = "i";
+    cur_item->change_flag = "";
     cur_item->owner = strdup("");
     cur_item->submodules = strdup("");
     cur_item->features = strdup("");

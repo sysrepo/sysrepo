@@ -35,6 +35,7 @@
 #include <signal.h>
 #include <pwd.h>
 #include <grp.h>
+#include <dirent.h>
 #include <inttypes.h>
 #include <time.h>
 #include <assert.h>
@@ -1517,6 +1518,40 @@ sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path)
     return err_info;
 }
 
+void
+sr_remove_evpipes(void)
+{
+    sr_error_info_t *err_info = NULL;
+    DIR *dir;
+    struct dirent *ent;
+    char *path;
+
+    dir = opendir(sr_get_repo_path());
+    if (!dir) {
+        SR_ERRINFO_SYSERRNO(&err_info, "opendir");
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    while ((ent = readdir(dir))) {
+        if (!strncmp(ent->d_name, "sr_evpipe", 9)) {
+            SR_LOG_WRN("Removing event pipe \"%s\" after a crashed subscription.", ent->d_name);
+
+            if (asprintf(&path, "%s/%s", sr_get_repo_path(), ent->d_name) == -1) {
+                SR_ERRINFO_MEM(&err_info);
+                sr_errinfo_free(&err_info);
+                return;
+            }
+
+            if (unlink(path) == -1) {
+                SR_ERRINFO_SYSERRNO(&err_info, "unlink");
+                sr_errinfo_free(&err_info);
+            }
+            free(path);
+        }
+    }
+}
+
 sr_error_info_t *
 sr_get_pwd(uid_t *uid, char **user)
 {
@@ -2891,7 +2926,7 @@ sr_lyd_child(const struct lyd_node *node, int skip_keys)
 }
 
 sr_error_info_t *
-sr_ly_data_dup_xpath_select(const struct lyd_node *data, char **xpaths, uint16_t xp_count, struct lyd_node **new_data)
+sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count, struct lyd_node **new_data)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *root;
@@ -2961,7 +2996,7 @@ error:
 }
 
 sr_error_info_t *
-sr_ly_data_xpath_complement(struct lyd_node **data, const char *xpath)
+sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *ctx;

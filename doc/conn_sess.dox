@@ -1,36 +1,36 @@
 /**
 @page conn_sess Connection and Session
 
-To start working with Sysrepo, a __connection__ must be created first. Generally, one application (process) should create
+To start working with Sysrepo, a **connection** must be created first. Generally, one application (process) should create
 only one connection because there should be no reason to create several although it is allowed and Sysrepo will
-work correctly in both cases. Connection stores the main shared memory mapping and a corresponding _libyang_ __context__
+work correctly in both cases. Connection stores the main shared memory mapping and a corresponding _libyang_ **context**
 among other things. This context can also be used in the application for learning about Sysrepo schemas or when
 working with data to save some resources but it can never be modified!
 
-Then, an arbitrary number of __sessions__ can be created. Most importantly, the @ref threads "Threading Model"
+Then, an arbitrary number of **sessions** can be created. Most importantly, the [threading model](@ref threads)
 needs to be considered. Other than that there are no inherent restrictions in Sysrepo and
 because every session requires only little resources, having many of them should not cause any problems.
 
-Every session always has a __datastore__ selected that can be changed anytime. All API calls using this session will
-operate on this datastore. If a session works with _running_ datastore and __caching__ was enabled on the connection
+Every session always has a **datastore** selected that can be changed anytime. All API calls using this session will
+operate on this datastore. If a session works with _running_ datastore and **caching** was enabled on the connection
 that was used to create this session, then data are not loaded every time from Sysrepo but rather duplicated from
 the cache. This can significantly improve performance or some operations and the cache is advised to always be used
 unless the application has strict requirements to keep its memory footprint small.
 
-After every API call with session as a parameter, the __error__ in the session is updated and if no error occured,
-it is cleared. In addition to standard @ref log, these errors can also be printed in any desired way to postpone
+After every API call with session as a parameter, the **error** in the session is updated and if no error occured,
+it is cleared. In addition to standard [logging](@ref log), these errors can also be printed in any desired way to postpone
 the output, for example.
 
-Also, every session has a __unique ID__ among all Sysrepo sessions. This is useful when an operation fails because of
+Also, every session has a **unique ID** among all Sysrepo sessions. This is useful when an operation fails because of
 another session (locked module, for instance). In addition, it is possible to learn what session initiated an event
 that is being processed in a subscription callback. In this case there is even an information about the NETCONF
 session (its ID) if the originator application stored it into the Sysrepo session.
 
-Next, session __user__ can be changed to an arbitrary one present on the system. This is useful for applications that serve
-only as an (remote) interface to Sysrepo. However, as this allows for complete @ref access_control "Access Control"
+Next, session **user** can be changed to an arbitrary one present on the system. This is useful for applications that serve
+only as an (remote) interface to Sysrepo. However, as this allows for a complete [access control](@ref access_control)
 bypass, only `root` is allowed to do this.
 
-Finally, when __closing__ a connection, all sessions and subscriptions made on this connection are automatically freed
+Finally, when **closing** a connection, all sessions and subscriptions made on this connection are automatically freed
 as well.
 
 @ref conn_sess_api

@@ -307,6 +307,188 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
 }
 
 /**
+ * @brief Check whether operational data are required based on a predicate.
+ *
+ * @param[in] pred1 First predicate.
+ * @param[in] len1 First predicate length.
+ * @param[in] pred2 Second predicate.
+ * @param[in] len2 Second predicate length.
+ * @return 0 if not required, non-zero if required.
+ */
+static int
+sr_xpath_oper_data_predicate_required(const char *pred1, int len1, const char *pred2, int len2)
+{
+    char quot1, quot2;
+    const char *val1, *val2;
+
+    /* node names */
+    while (len1 && len2) {
+        if (pred1[0] != pred2[0]) {
+            /* different node names */
+            return 1;
+        }
+
+        ++pred1;
+        --len1;
+        ++pred2;
+        --len2;
+
+        if ((pred1[0] == '=') && (pred2[0] == '=')) {
+            break;
+        }
+    }
+    if (!len1 || !len2) {
+        /* not an equality expression */
+        return 1;
+    }
+
+    ++pred1;
+    --len1;
+    ++pred2;
+    --len2;
+
+    /* we expect quotes now */
+    if ((pred1[0] != '\'') && (pred1[0] != '\"')) {
+        return 1;
+    }
+    if ((pred2[0] != '\'') && (pred2[0] != '\"')) {
+        return 1;
+    }
+    quot1 = pred1[0];
+    quot2 = pred2[0];
+
+    ++pred1;
+    --len1;
+    ++pred2;
+    --len2;
+
+    /* values */
+    val1 = pred1;
+    while (len1) {
+        if (pred1[0] == quot1) {
+            break;
+        }
+
+        ++pred1;
+        --len1;
+    }
+
+    val2 = pred2;
+    while (len2) {
+        if (pred2[0] == quot2) {
+            break;
+        }
+
+        ++pred2;
+        --len2;
+    }
+
+    if ((len1 != 1) || (len2 != 1)) {
+        /* the predicate is not finished, leave it */
+        return 1;
+    }
+
+    /* just compare values, we can decide based on that */
+    if (!strncmp(val1, val2, (pred1 - val1 > pred2 - val2) ? pred1 - val1 : pred2 - val2)) {
+        /* values match, we need this data */
+        return 1;
+    }
+
+    /* values fo not match, these data would be flitered out */
+    return 0;
+}
+
+/**
+ * @brief Check whether operational data are required.
+ *
+ * @param[in] request_xpath Get request XPath.
+ * @param[in] sub_xpath Operational subscription XPath.
+ * @return 0 if not required, non-zero if required.
+ */
+static int
+sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath)
+{
+    const char *xpath1, *xpath2, *mod1, *mod2, *name1, *name2, *pred1, *pred2;
+    int wildc1, wildc2, mlen1, mlen2, len1, len2, dslash1, dslash2, has_pred1, has_pred2;
+
+    assert(sub_xpath);
+
+    if (!request_xpath) {
+        /* we do not know, say it is required */
+        return 1;
+    }
+
+    xpath1 = request_xpath;
+    xpath2 = sub_xpath;
+    do {
+        xpath1 = sr_xpath_next_name(xpath1, &mod1, &mlen1, &name1, &len1, &dslash1, &has_pred1);
+        xpath2 = sr_xpath_next_name(xpath2, &mod2, &mlen2, &name2, &len2, &dslash2, &has_pred2);
+
+        /* double-slash */
+        if ((dslash1 && !dslash2) || (!dslash1 && dslash2)) {
+            /* only one xpath includes '//', unable to check further */
+            return 1;
+        }
+        if (dslash1 && dslash2) {
+            if ((len1 == 1) && (name1[0] == '.')) {
+                /* always matches all */
+                return 1;
+            }
+            if ((len2 == 1) && (name2[0] == '.')) {
+                /* always matches all */
+                return 1;
+            }
+        }
+
+        /* wildcards */
+        if ((len1 == 1) && (name1[0] == '*')) {
+            wildc1 = 1;
+        } else {
+            wildc1 = 0;
+        }
+        if ((len2 == 1) && (name2[0] == '*')) {
+            wildc2 = 1;
+        } else {
+            wildc2 = 0;
+        }
+
+        /* module name */
+        if ((mlen1 && mlen2) && ((mlen1 != mlen2) || strncmp(mod1, mod2, mlen1))) {
+            /* different modules */
+            return 0;
+        }
+
+        /* node name */
+        if (!wildc1 && !wildc2 && ((len1 != len2) || strncmp(name1, name2, len1))) {
+            /* different node names */
+            return 0;
+        }
+
+        while (has_pred1 && has_pred2) {
+            xpath1 = sr_xpath_next_predicate(xpath1, &pred1, &len1, &has_pred1);
+            xpath2 = sr_xpath_next_predicate(xpath2, &pred2, &len2, &has_pred2);
+
+            /* predicate */
+            if (!sr_xpath_oper_data_predicate_required(pred1, len1, pred2, len2)) {
+                /* not required based on the predicate */
+                return 0;
+            }
+        }
+
+        /* skip any leftover predicates */
+        while (has_pred1) {
+            xpath1 = sr_xpath_next_predicate(xpath1, NULL, NULL, &has_pred1);
+        }
+        while (has_pred2) {
+            xpath2 = sr_xpath_next_predicate(xpath2, NULL, NULL, &has_pred2);
+        }
+    } while (xpath1[0] && xpath2[0]);
+
+    /* whole xpath matches */
+    return 1;
+}
+
+/**
  * @brief Get specific operational data from a subscriber.
  *
  * @param[in] ly_mod libyang module of the data.
@@ -326,71 +508,49 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
         sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *parent_dup = NULL;
+    struct lyd_node *parent_dup = NULL, *last_parent;
+    char *parent_path = NULL;
 
     *oper_data = NULL;
 
     if (parent) {
         /* duplicate parent so that it is a stand-alone subtree */
-        parent_dup = lyd_dup(parent, LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_WITH_KEYS);
-        if (!parent_dup) {
+        last_parent = lyd_dup(parent, LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_WITH_KEYS);
+        if (!last_parent) {
             sr_errinfo_new_ly(&err_info, ly_mod->ctx);
             return err_info;
         }
 
         /* go top-level */
-        while (parent_dup->parent) {
-            parent_dup = parent_dup->parent;
+        for (parent_dup = last_parent; parent_dup->parent; parent_dup = parent_dup->parent);
+
+        if (request_xpath) {
+            /* check whether the parent would not be filtered out */
+            parent_path = lyd_path(last_parent);
+            SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
+
+            if (!sr_xpath_oper_data_required(request_xpath, parent_path)) {
+                goto cleanup;
+            }
         }
     }
 
     /* get data from client */
-    err_info = sr_shmsub_oper_notify(ly_mod, xpath, request_xpath, parent_dup, sid, evpipe_num, timeout_ms, oper_data,
-            cb_error_info);
-    lyd_free_withsiblings(parent_dup);
-    if (!err_info && *oper_data) {
+    if ((err_info = sr_shmsub_oper_notify(ly_mod, xpath, request_xpath, parent_dup, sid, evpipe_num, timeout_ms,
+            oper_data, cb_error_info))) {
+        goto cleanup;
+    }
+
+    if (*oper_data) {
         /* add default state data so that parents exist and we ask for descendants
          * that can exist (it should not fail with TRUSTED flag, we do not care even if it does) */
         lyd_validate_modules(oper_data, &ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
     }
 
+cleanup:
+    lyd_free_withsiblings(parent_dup);
+    free(parent_path);
     return err_info;
-}
-
-/**
- * @brief Remove configuration data that will be provided by a client.
- *
- * @param[in] xpath XPath of the provided data to be removed.
- * @param[in,out] data Full data tree to remove from.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_xpath_oper_data_remove(const char *xpath, struct lyd_node **data)
-{
-    sr_error_info_t *err_info = NULL;
-    struct ly_set *del_set;
-    uint16_t i;
-
-    if (!*data) {
-        /* no data so nothing to remove */
-        return NULL;
-    }
-
-    del_set = lyd_find_path(*data, xpath);
-    if (!del_set) {
-        sr_errinfo_new_ly(&err_info, lyd_node_module(*data)->ctx);
-        return err_info;
-    }
-    for (i = 0; i < del_set->number; ++i) {
-        if (*data == del_set->set.d[i]) {
-            /* removing first top-level node, do not lose the rest of data */
-            *data = (*data)->next;
-        }
-        lyd_free(del_set->set.d[i]);
-    }
-    ly_set_free(del_set);
-
-    return NULL;
 }
 
 /**
@@ -499,184 +659,6 @@ sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *
 }
 
 /**
- * @brief Check whether operational data are required based on a predicate.
- *
- * @param[in] pred1 First predicate.
- * @param[in] len1 First predicate length.
- * @param[in] pred2 Second predicate.
- * @param[in] len2 Second predicate length.
- * @return 0 if not required, non-zero if required.
- */
-static int
-sr_xpath_oper_data_predicate_required(const char *pred1, int len1, const char *pred2, int len2)
-{
-    char quot1, quot2;
-    const char *val1, *val2;
-
-    /* node names */
-    while (len1 && len2) {
-        if (pred1[0] != pred2[0]) {
-            /* different node names */
-            return 1;
-        }
-
-        ++pred1;
-        --len1;
-        ++pred2;
-        --len2;
-
-        if ((pred1[0] == '=') && (pred2[0] == '=')) {
-            break;
-        }
-    }
-    if (!len1 || !len2) {
-        /* not an equality expression */
-        return 1;
-    }
-
-    ++pred1;
-    --len1;
-    ++pred2;
-    --len2;
-
-    /* we expect quotes now */
-    if ((pred1[0] != '\'') && (pred1[0] != '\"')) {
-        return 1;
-    }
-    if ((pred2[0] != '\'') && (pred2[0] != '\"')) {
-        return 1;
-    }
-    quot1 = pred1[0];
-    quot2 = pred2[0];
-
-    ++pred1;
-    --len1;
-    ++pred2;
-    --len2;
-
-    /* values */
-    val1 = pred1;
-    val2 = pred2;
-    while (len1 && len2) {
-        if ((pred1[0] == quot1) && (pred2[0] == quot2)) {
-            /* same length values */
-            break;
-        }
-
-        ++pred1;
-        --len1;
-        ++pred2;
-        --len2;
-    }
-    if (!len1 || !len2) {
-        return 1;
-    }
-    if ((len1 != 1) || (len2 != 1)) {
-        /* the predicate is not finished, leave it */
-        return 1;
-    }
-
-    /* just compare values, we can decide based on that */
-    if (!strncmp(val1, val2, pred1 - val1)) {
-        /* values match, we need this data */
-        return 1;
-    }
-
-    /* values fo not match, these data would be flitered out */
-    return 0;
-}
-
-/**
- * @brief Check whether operational data are required.
- *
- * @param[in] request_xpath Get request XPath.
- * @param[in] sub_xpath Operational subscription XPath.
- * @return 0 if not required, non-zero if required.
- */
-static int
-sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath)
-{
-    const char *xpath1, *xpath2, *mod1, *mod2, *name1, *name2, *pred1, *pred2;
-    int wildc1, wildc2, mlen1, mlen2, len1, len2, dslash1, dslash2, has_pred1, has_pred2;
-
-    assert(sub_xpath);
-
-    if (!request_xpath) {
-        /* we do not know, say it is required */
-        return 1;
-    }
-
-    xpath1 = request_xpath;
-    xpath2 = sub_xpath;
-    do {
-        xpath1 = sr_xpath_next_name(xpath1, &mod1, &mlen1, &name1, &len1, &dslash1, &has_pred1);
-        xpath2 = sr_xpath_next_name(xpath2, &mod2, &mlen2, &name2, &len2, &dslash2, &has_pred2);
-
-        /* double-slash */
-        if ((dslash1 && !dslash2) || (!dslash1 && dslash2)) {
-            /* only one xpath includes '//', unable to check further */
-            return 1;
-        }
-        if (dslash1 && dslash2) {
-            if ((len1 == 1) && (name1[0] == '.')) {
-                /* always matches all */
-                return 1;
-            }
-            if ((len2 == 1) && (name2[0] == '.')) {
-                /* always matches all */
-                return 1;
-            }
-        }
-
-        /* wildcards */
-        if ((len1 == 1) && (name1[0] == '*')) {
-            wildc1 = 1;
-        } else {
-            wildc1 = 0;
-        }
-        if ((len2 == 1) && (name2[0] == '*')) {
-            wildc2 = 1;
-        } else {
-            wildc2 = 0;
-        }
-
-        /* module name */
-        if ((mlen1 && mlen2) && ((mlen1 != mlen2) || strncmp(mod1, mod2, mlen1))) {
-            /* different modules */
-            return 0;
-        }
-
-        /* node name */
-        if (!wildc1 && !wildc2 && ((len1 != len2) || strncmp(name1, name2, len1))) {
-            /* different node names */
-            return 0;
-        }
-
-        while (has_pred1 && has_pred2) {
-            xpath1 = sr_xpath_next_predicate(xpath1, &pred1, &len1, &has_pred1);
-            xpath2 = sr_xpath_next_predicate(xpath2, &pred2, &len2, &has_pred2);
-
-            /* predicate */
-            if (!sr_xpath_oper_data_predicate_required(pred1, len1, pred2, len2)) {
-                /* not required based on the predicate */
-                return 0;
-            }
-        }
-
-        /* skip any leftover predicates */
-        while (has_pred1) {
-            xpath1 = sr_xpath_next_predicate(xpath1, NULL, NULL, &has_pred1);
-        }
-        while (has_pred2) {
-            xpath2 = sr_xpath_next_predicate(xpath2, NULL, NULL, &has_pred2);
-        }
-    } while (xpath1[0] && xpath2[0]);
-
-    /* whole xpath matches */
-    return 1;
-}
-
-/**
  * @brief Update (replace or append) operational data for a specific module.
  *
  * @param[in] mod Mod info module to process.
@@ -696,7 +678,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_sub_t *shm_msub;
     const char *sub_xpath;
-    char *parent_xpath;
+    char *parent_xpath = NULL;
     uint16_t i, j;
     struct ly_set *set;
     struct lyd_node *diff = NULL;
@@ -743,7 +725,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
 
         if ((shm_msub->sub_type == SR_OPER_SUB_CONFIG) || (shm_msub->sub_type == SR_OPER_SUB_MIXED)) {
             /* remove any present data */
-            if ((err_info = sr_xpath_oper_data_remove(sub_xpath, data))) {
+            if ((err_info = sr_lyd_xpath_complement(data, sub_xpath))) {
                 goto error;
             }
         }
@@ -854,7 +836,7 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
     }
 
     /* duplicate only enabled subtrees */
-    err_info = sr_ly_data_dup_xpath_select(data, xpaths, xp_i, enabled_mod_data);
+    err_info = sr_lyd_xpath_dup(data, xpaths, xp_i, enabled_mod_data);
     free(xpaths);
     if (err_info) {
         return err_info;

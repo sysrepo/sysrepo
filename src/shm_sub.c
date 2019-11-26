@@ -1701,7 +1701,7 @@ sr_shmsub_change_listen_prepare_sess(struct modsub_change_s *change_subs, struct
 
     /* duplicate (filtered) diff */
     if (change_sub->xpath) {
-        if ((err_info = sr_ly_data_dup_xpath_select(diff, &change_sub->xpath, 1, &tmp_sess->dt[tmp_sess->ds].diff))) {
+        if ((err_info = sr_lyd_xpath_dup(diff, &change_sub->xpath, 1, &tmp_sess->dt[tmp_sess->ds].diff))) {
             return err_info;
         }
     } else {
@@ -1794,7 +1794,7 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
             break;
         default:
             /* no longer a listener event, we could have timeouted */
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Unable to finish processing event with ID %u priority %u "
+            sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Unable to finish processing event with ID %u priority %u "
                     "(timeout probably).", multi_sub_shm->request_id, multi_sub_shm->priority);
             return err_info;
         }
@@ -2064,7 +2064,7 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t d
         break;
     default:
         /* no longer a listener event, we could have timeouted */
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Unable to finish processing event with ID %u (timeout probably).",
+        sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Unable to finish processing event with ID %u (timeout probably).",
                 sub_shm->request_id);
         return err_info;
     }
@@ -2839,7 +2839,9 @@ sr_shmsub_listen_thread(void *arg)
 
     while (ATOMIC_LOAD_RELAXED(subs->thread_running)) {
         /* process the new event (or subscription stop time has elapsed) */
-        if (sr_process_events(subs, NULL, &stop_time_in) != SR_ERR_OK) {
+        ret = sr_process_events(subs, NULL, &stop_time_in);
+        if ((ret != SR_ERR_OK) && (ret != SR_ERR_TIME_OUT)) {
+            /* continue on time out */
             goto error;
         }
 
@@ -2863,7 +2865,7 @@ wait_for_event:
             SR_ERRINFO_SYSERRNO(&err_info, "select");
             sr_errinfo_free(&err_info);
             goto error;
-        } else if ((!ret || (errno == EINTR)) && !stop_time_in) {
+        } else if ((!ret || ((ret == -1) && (errno == EINTR))) && !stop_time_in) {
             /* timeout/signal received, retry */
             goto wait_for_event;
         }

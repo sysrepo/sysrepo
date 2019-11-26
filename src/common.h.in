@@ -710,6 +710,11 @@ sr_error_info_t *sr_path_notif_file(const char *mod_name, time_t from_ts, time_t
 sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path);
 
 /**
+ * @brief Remove any leftover event pipes after crashed subscriptions.
+ */
+void sr_remove_evpipes(void);
+
+/**
  * @brief Get the UID of a user or vice versa.
  *
  * @param[in,out] uid UID.
@@ -1069,17 +1074,17 @@ struct lyd_node *sr_lyd_child(const struct lyd_node *node, int skip_keys);
  * @param[out] new_data Duplicated selected nodes.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ly_data_dup_xpath_select(const struct lyd_node *data, char **xpaths, uint16_t xp_count,
+sr_error_info_t *sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count,
         struct lyd_node **new_data);
 
 /**
- * @brief Remove all nodes selected by XPath. (currently unused function)
+ * @brief Remove all nodes selected by XPath.
  *
  * @param[in,out] data Data to filter.
  * @param[in] xpath XPath selecting the nodes that will be freed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ly_data_xpath_complement(struct lyd_node **data, const char *xpath);
+sr_error_info_t *sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath);
 
 /**
  * @brief Add any NP containers with existing parents.

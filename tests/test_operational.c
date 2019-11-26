@@ -1013,12 +1013,12 @@ static int
 state_only_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
+    struct state *st = (struct state *)private_data;
     const struct ly_ctx *ly_ctx;
     struct lyd_node *node;
 
     (void)request_xpath;
     (void)request_id;
-    (void)private_data;
 
     assert_string_equal(module_name, "mixed-config");
 
@@ -1049,6 +1049,7 @@ state_only_oper_cb(sr_session_ctx_t *session, const char *module_name, const cha
         fail();
     }
 
+    ++st->cb_called;
     return SR_ERR_OK;
 }
 
@@ -1078,15 +1079,17 @@ test_state_only(void **state)
 
     /* subscribe as mixed data provider and listen */
     ret = sr_oper_get_items_subscribe(st->sess, "mixed-config", "/mixed-config:test-state", state_only_oper_cb,
-            NULL, 0, &subscr);
+            st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all state-only data */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
+    st->cb_called = 0;
     ret = sr_get_data(st->sess, "/*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(st->cb_called, 1);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
@@ -1124,15 +1127,17 @@ test_state_only(void **state)
 
     /* subscribe as nested state data provider and listen */
     ret = sr_oper_get_items_subscribe(st->sess, "mixed-config", "/mixed-config:test-state/test-case/result", state_only_oper_cb,
-            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            st, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all state-only data */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
+    st->cb_called = 0;
     ret = sr_get_data(st->sess, "/*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(st->cb_called, 1);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
@@ -1143,6 +1148,42 @@ test_state_only(void **state)
     "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
         "<test-case>"
             "<name>three</name>"
+            "<result or:origin=\"unknown\">100</result>"
+        "</test-case>"
+    "</test-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* set some more configuration data */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='four']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='five']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read some state data (callback should not be called for a filtered-out parent) */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    st->cb_called = 0;
+    ret = sr_get_data(st->sess, "/mixed-config:test-state/test-case[name='four']", 0, 0,
+            SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(st->cb_called, 1);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<test-case>"
+            "<name>four</name>"
             "<result or:origin=\"unknown\">100</result>"
         "</test-case>"
     "</test-state>";

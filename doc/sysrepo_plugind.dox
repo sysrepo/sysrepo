@@ -2,8 +2,8 @@
 @page sysrepo_plugind sysrepo-plugind
 
 This application is a simple daemon that groups all available Sysrepo plugins into a single process. What is a plugin
-from an abstract perspective is explained on the @ref about "introductory" page. This daemon loads plugins
-from __plugins path__ directory and supports a few options, `--verbosity` for logging and `--debug` to not go into
+from an abstract perspective is explained on the [introductory](@ref about) page. This daemon loads plugins
+from **plugins path** directory and supports a few options, `--verbosity` for logging and `--debug` to not go into
 daemon mode and keep printing all messages to `stderr`.
 
 ## Sysrepo Plugin
@@ -12,7 +12,7 @@ Plugin is a shared object that must expose 2 functions, `sr_plugin_init_cb()` an
 called on _sysrepo-plugind_ start and end, respectively. The initialization function must perform all the run-time
 tasks because no other function will be called by the daemon. It usually involves creating various subscriptions
 that then handle events on their own. Cleanup usually stops these subscriptions. There is also a working detailed
-@ref oven_plugin "plugin example".
+[plusing example](@ref oven_plugin).
 
 @ref plugin_api
 

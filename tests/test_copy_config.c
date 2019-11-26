@@ -1106,186 +1106,179 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
     int ret;
 
     assert_null(xpath);
+
+    /* event is non-deterministic because we are not waiting for DONE of the first module */
+    (void)event;
     (void)request_id;
 
     switch (st->cb_called) {
     case 0:
     case 1:
-        assert_string_equal(module_name, "ietf-interfaces");
-        if (st->cb_called == 0) {
-            assert_int_equal(event, SR_EV_CHANGE);
-        } else {
-            assert_int_equal(event, SR_EV_DONE);
-        }
-
-        /* get changes iter */
-        ret = sr_get_changes_iter(session, "/ietf-interfaces:*//.", &iter);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_MODIFIED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled");
-        assert_int_equal(old_val->data.bool_val, true);
-        assert_int_equal(old_val->dflt, 1);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled");
-        assert_int_equal(new_val->data.bool_val, true);
-        assert_int_equal(new_val->dflt, 0);
-
-        sr_free_val(old_val);
-        sr_free_val(new_val);
-
-        /* 2nd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/description");
-
-        sr_free_val(new_val);
-
-        /* 3rd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']");
-        assert_null(new_val);
-
-        sr_free_val(old_val);
-
-        /* 4th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/name");
-        assert_null(new_val);
-
-        sr_free_val(old_val);
-
-        /* 5th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/type");
-        assert_null(new_val);
-
-        sr_free_val(old_val);
-
-        /* 6th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled");
-        assert_null(new_val);
-
-        sr_free_val(old_val);
-
-        /* 7th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']");
-
-        sr_free_val(new_val);
-
-        /* 8th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/name");
-
-        sr_free_val(new_val);
-
-        /* 9th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/type");
-
-        sr_free_val(new_val);
-
-        /* 10th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/enabled");
-
-        sr_free_val(new_val);
-
-        /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_NOT_FOUND);
-
-        sr_free_change_iter(iter);
-        break;
     case 2:
     case 3:
-        assert_string_equal(module_name, "test");
-        if (st->cb_called == 2) {
-            assert_int_equal(event, SR_EV_CHANGE);
+        if (!strcmp(module_name, "ietf-interfaces")) {
+            /* get changes iter */
+            ret = sr_get_changes_iter(session, "/ietf-interfaces:*//.", &iter);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            /* 1st change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_MODIFIED);
+            assert_non_null(old_val);
+            assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled");
+            assert_int_equal(old_val->data.bool_val, true);
+            assert_int_equal(old_val->dflt, 1);
+            assert_non_null(new_val);
+            assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled");
+            assert_int_equal(new_val->data.bool_val, true);
+            assert_int_equal(new_val->dflt, 0);
+
+            sr_free_val(old_val);
+            sr_free_val(new_val);
+
+            /* 2nd change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_CREATED);
+            assert_null(old_val);
+            assert_non_null(new_val);
+            assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/description");
+
+            sr_free_val(new_val);
+
+            /* 3rd change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_DELETED);
+            assert_non_null(old_val);
+            assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']");
+            assert_null(new_val);
+
+            sr_free_val(old_val);
+
+            /* 4th change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_DELETED);
+            assert_non_null(old_val);
+            assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/name");
+            assert_null(new_val);
+
+            sr_free_val(old_val);
+
+            /* 5th change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_DELETED);
+            assert_non_null(old_val);
+            assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/type");
+            assert_null(new_val);
+
+            sr_free_val(old_val);
+
+            /* 6th change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_DELETED);
+            assert_non_null(old_val);
+            assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled");
+            assert_null(new_val);
+
+            sr_free_val(old_val);
+
+            /* 7th change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_CREATED);
+            assert_null(old_val);
+            assert_non_null(new_val);
+            assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']");
+
+            sr_free_val(new_val);
+
+            /* 8th change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_CREATED);
+            assert_null(old_val);
+            assert_non_null(new_val);
+            assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/name");
+
+            sr_free_val(new_val);
+
+            /* 9th change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_CREATED);
+            assert_null(old_val);
+            assert_non_null(new_val);
+            assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/type");
+
+            sr_free_val(new_val);
+
+            /* 10th change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_CREATED);
+            assert_null(old_val);
+            assert_non_null(new_val);
+            assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/enabled");
+
+            sr_free_val(new_val);
+
+            /* no more changes */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+            sr_free_change_iter(iter);
+        } else if (!strcmp(module_name, "test")) {
+            /* get changes iter */
+            ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            /* 1st change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_MOVED);
+            assert_null(old_val);
+            assert_non_null(new_val);
+            assert_string_equal(new_val->xpath, "/test:l1[k='c']");
+
+            sr_free_val(new_val);
+
+            /* 2nd change */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            assert_int_equal(op, SR_OP_MOVED);
+            assert_non_null(old_val);
+            assert_non_null(new_val);
+            assert_string_equal(old_val->xpath, "/test:cont/ll2[.='2']");
+            assert_string_equal(new_val->xpath, "/test:cont/ll2[.='1']");
+
+            sr_free_val(old_val);
+            sr_free_val(new_val);
+
+            /* no more changes */
+            ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+            assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+            sr_free_change_iter(iter);
         } else {
-            assert_int_equal(event, SR_EV_DONE);
+            fail();
         }
-
-        /* get changes iter */
-        ret = sr_get_changes_iter(session, "/test:*//.", &iter);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_MOVED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/test:l1[k='c']");
-
-        sr_free_val(new_val);
-
-        /* 2nd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_MOVED);
-        assert_non_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(old_val->xpath, "/test:cont/ll2[.='2']");
-        assert_string_equal(new_val->xpath, "/test:cont/ll2[.='1']");
-
-        sr_free_val(old_val);
-        sr_free_val(new_val);
-
-        /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_NOT_FOUND);
-
-        sr_free_change_iter(iter);
         break;
     default:
         fail();

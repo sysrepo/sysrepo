@@ -199,7 +199,8 @@ libyang::S_Data_Node Connection::get_module_info()
         throw_exception(ret);
     }
 
-    return std::make_shared<libyang::Data_Node>(info);
+    libyang::S_Deleter new_deleter = std::make_shared<libyang::Deleter>(info);
+    return std::make_shared<libyang::Data_Node>(info, new_deleter);
 }
 
 std::tuple<int, uint32_t, uint32_t, time_t> Connection::get_lock(sr_datastore_t datastore, const char *module_name)

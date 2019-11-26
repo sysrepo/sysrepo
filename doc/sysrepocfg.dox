@@ -1,7 +1,7 @@
 /**
 @page sysrepocfg sysrepocfg
 
-This binary allows to work with __configuration__ in many ways such as _importing_, _exporting_, _editing_, and
+This binary allows to work with **configuration** in many ways such as _importing_, _exporting_, _editing_, and
 replacing (_copying-from_ a file or datastore) it. It is also possible to send an _rpc_/action or a _notification_.
 
 All operations are executed on a `--datastore` (default `running`, `startup`, or `operational`) or only a particular
