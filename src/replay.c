@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/uio.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <dirent.h>
@@ -34,31 +35,49 @@
 #include <assert.h>
 
 /**
- * @brief Wrapper for write().
+ * @brief Wrapper for writev().
  *
  * @param[in] fd File desriptor.
- * @param[in] buf Buffer to write.
- * @param[in] count Number of bytes to write.
+ * @param[in] iov Buffer vectors to write.
+ * @param[in] iovcnt Number of vector buffers.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_write(int fd, const void *buf, size_t count)
+sr_writev(int fd, struct iovec *iov, int iovcnt)
 {
     sr_error_info_t *err_info = NULL;
     ssize_t ret;
     size_t written;
 
-    written = 0;
     do {
         errno = 0;
-        ret = write(fd, ((const char *)buf) + written, count - written);
-        if ((ret == -1) || ((ret < (signed)(count - written)) && errno && (errno != EINTR))) {
-            SR_ERRINFO_SYSERRNO(&err_info, "write");
+        ret = writev(fd, iov, iovcnt);
+        if (errno == EINTR) {
+            /* it is fine */
+            ret = 0;
+        } else if (errno) {
+            SR_ERRINFO_SYSERRNO(&err_info, "writev");
             return err_info;
         }
+        assert(ret > -1);
+        written = ret;
 
-        written += ret;
-    } while (written < count);
+        /* skip what was written */
+        do {
+            written -= iov[0].iov_len;
+            ++iov;
+            --iovcnt;
+        } while (iovcnt && (written >= iov[0].iov_len));
+
+        /* a vector was written only partially */
+        if (written) {
+            assert(iovcnt);
+            assert(iov[0].iov_len > written);
+
+            iov[0].iov_base = ((char *)iov[0].iov_base) + written;
+            iov[0].iov_len -= written;
+        }
+    } while (iovcnt);
 
     return NULL;
 }
@@ -242,42 +261,41 @@ cleanup:
 }
 
 /**
- * @brief Write timestamp and notification into a file.
+ * @brief Write notification into fd using vector IO.
  *
- * @param[in] notif_fd Notification file destriptor.
  * @param[in] notif_lyb Notification in LYB format.
  * @param[in] notif_lyb_len Length of notification in LYB format.
  * @param[in] notif_ts Notification timestamp.
- * @param[in] notif_name Notification schema name, for logging.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_replay_write_ts_notif(int notif_fd, const char *notif_lyb, uint32_t notif_lyb_len, time_t notif_ts, const char *notif_name)
+sr_writev_notif(int fd, const char *notif_lyb, uint32_t notif_lyb_len, time_t notif_ts)
 {
     sr_error_info_t *err_info = NULL;
+    struct iovec iov[3];
 
     /* timestamp */
-    if ((err_info = sr_write(notif_fd, &notif_ts, sizeof notif_ts))) {
-        return err_info;
-    }
+    iov[0].iov_base = &notif_ts;
+    iov[0].iov_len = sizeof notif_ts;
 
     /* notification length */
-    if ((err_info = sr_write(notif_fd, &notif_lyb_len, sizeof notif_lyb_len))) {
-        return err_info;
-    }
+    iov[1].iov_base = &notif_lyb_len;
+    iov[1].iov_len = sizeof notif_lyb_len;
 
     /* notification */
-    if ((err_info = sr_write(notif_fd, notif_lyb, notif_lyb_len))) {
+    iov[2].iov_base = (void *)notif_lyb;
+    iov[2].iov_len = notif_lyb_len;
+
+    /* write the vector */
+    if ((err_info = sr_writev(fd, iov, 3))) {
         return err_info;
     }
 
     /* fsync */
-    if (fsync(notif_fd) == -1) {
+    if (fsync(fd) == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "fsync");
         return err_info;
     }
-
-    SR_LOG_INF("Notification \"%s\" stored for replay.", notif_name);
 
     return NULL;
 }
@@ -330,41 +348,22 @@ cleanup:
     return err_info;
 }
 
-sr_error_info_t *
-sr_replay_store(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_ts)
+/**
+ * @brief Store the notification into a replay file.
+ *
+ * @param[in] ly_mod Notification module.
+ * @param[in] shm_mod Notification SHM module.
+ * @param[in] notif_lyb Notification in LYB format, is spent!
+ * @param[in] notif_ts Notification timestamp.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_notif_write(const struct lys_module *ly_mod, sr_mod_t *shm_mod, char *notif_lyb, time_t notif_ts)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_t *shm_mod;
-    char *notif_lyb = NULL;
     time_t from_ts, to_ts;
     size_t file_size;
     int notif_lyb_len, fd = -1;
-    const struct lys_module *ly_mod;
-    struct lyd_node *notif_op;
-
-    assert(notif && !notif->parent);
-
-    ly_mod = lyd_node_module(notif);
-    notif_op = (struct lyd_node *)notif;
-    if ((err_info = sr_ly_find_last_parent(&notif_op, LYS_NOTIF))) {
-        goto cleanup;
-    }
-    SR_CHECK_INT_GOTO(notif_op->schema->nodetype != LYS_NOTIF, err_info, cleanup);
-
-    /* find SHM mod for replay lock and check if replay is even supported */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, ly_mod->name, 0);
-    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
-
-    if (!(shm_mod->flags & SR_MOD_REPLAY_SUPPORT)) {
-        /* nothing to do */
-        goto cleanup;
-    }
-
-    /* convert notification into LYB */
-    if (lyd_print_mem(&notif_lyb, notif, LYD_LYB, LYP_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        goto cleanup;
-    }
 
     /* learn its length */
     notif_lyb_len = lyd_lyb_data_length(notif_lyb);
@@ -393,7 +392,7 @@ sr_replay_store(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_
 
         if (file_size + sizeof notif_ts + sizeof notif_lyb_len + notif_lyb_len <= SR_EV_NOTIF_FILE_MAX_SIZE * 1024) {
             /* add the notification into the file if there is still space */
-            if ((err_info = sr_replay_write_ts_notif(fd, notif_lyb, notif_lyb_len, notif_ts, notif_op->schema->name))) {
+            if ((err_info = sr_writev_notif(fd, notif_lyb, notif_lyb_len, notif_ts))) {
                 goto cleanup_unlock;
             }
 
@@ -416,8 +415,8 @@ sr_replay_store(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_
         goto cleanup_unlock;
     }
 
-    /* store the notification */
-    if ((err_info = sr_replay_write_ts_notif(fd, notif_lyb, notif_lyb_len, notif_ts, notif_op->schema->name))) {
+    /* write the notification */
+    if ((err_info = sr_writev_notif(fd, notif_lyb, notif_lyb_len, notif_ts))) {
         goto cleanup_unlock;
     }
 
@@ -432,6 +431,188 @@ cleanup:
     }
     free(notif_lyb);
     return err_info;
+}
+
+/**
+ * @brief Store the notification into the notification buffer.
+ *
+ * @param[in] notif_buf Notification buffer.
+ * @param[in] ly_mod Notification module.
+ * @param[in] notif_lyb Notification in LYB format, is spent!
+ * @param[in] notif_ts Notification timestamp.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_notif_buf_store(struct sr_sess_notif_buf *notif_buf, const struct lys_module *ly_mod, char *notif_lyb, time_t notif_ts)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_sess_notif_buf_node *node = NULL;
+    struct timespec timeout_ts;
+    int ret;
+
+    sr_time_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
+
+    /* create a new node while we do not have any lock */
+    node = malloc(sizeof *node);
+    SR_CHECK_MEM_GOTO(!node, err_info, error);
+    node->notif_lyb = notif_lyb;
+    node->notif_ts = notif_ts;
+    node->notif_mod = ly_mod;
+    node->next = NULL;
+
+    /* MUTEX LOCK */
+    ret = pthread_mutex_timedlock(&notif_buf->lock.mutex, &timeout_ts);
+    if (ret) {
+        SR_ERRINFO_LOCK(&err_info, __func__, ret);
+        goto error;
+    }
+
+    /* store new notification */
+    if (notif_buf->last) {
+        assert(notif_buf->first);
+        notif_buf->last->next = node;
+        notif_buf->last = node;
+    } else {
+        assert(!notif_buf->first);
+        notif_buf->first = node;
+        notif_buf->last = node;
+    }
+
+    /* broadcast condition */
+    ret = pthread_cond_broadcast(&notif_buf->lock.cond);
+    if (ret) {
+        /* continue */
+        SR_ERRINFO_COND(&err_info, __func__, ret);
+        sr_errinfo_free(&err_info);
+    }
+
+    /* MUTEX UNLOCK */
+    pthread_mutex_unlock(&notif_buf->lock.mutex);
+
+    return NULL;
+
+error:
+    free(notif_lyb);
+    free(node);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, time_t notif_ts)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+    char *notif_lyb;
+    const struct lys_module *ly_mod;
+    struct lyd_node *notif_op;
+
+    assert(notif && !notif->parent);
+
+    ly_mod = lyd_node_module(notif);
+    notif_op = (struct lyd_node *)notif;
+    if ((err_info = sr_ly_find_last_parent(&notif_op, LYS_NOTIF))) {
+        return err_info;
+    }
+    SR_CHECK_INT_RET(notif_op->schema->nodetype != LYS_NOTIF, err_info);
+
+    /* find SHM mod for replay lock and check if replay is even supported */
+    shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, sess->conn->ext_shm.addr, ly_mod->name, 0);
+    SR_CHECK_INT_RET(!shm_mod, err_info);
+
+    if (!(shm_mod->flags & SR_MOD_REPLAY_SUPPORT)) {
+        /* nothing to do */
+        return NULL;
+    }
+
+    /* convert notification into LYB */
+    if (lyd_print_mem(&notif_lyb, notif, LYD_LYB, LYP_WITHSIBLINGS)) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        return err_info;
+    }
+
+    /* notif_lyb is always spent! */
+    if (sess->notif_buf.tid) {
+        /* store the notification in the buffer */
+        if ((err_info = sr_notif_buf_store(&sess->notif_buf, ly_mod, notif_lyb, notif_ts))) {
+            return err_info;
+        }
+        SR_LOG_INF("Notification \"%s\" buffered to be stored for replay.", notif_op->schema->name);
+    } else {
+        /* write the notification to a replay file */
+        if ((err_info = sr_notif_write(ly_mod, shm_mod, notif_lyb, notif_ts))) {
+            return err_info;
+        }
+        SR_LOG_INF("Notification \"%s\" stored for replay.", notif_op->schema->name);
+    }
+
+    return NULL;
+}
+
+void *
+sr_notif_buf_thread(void *arg)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_session_ctx_t *sess = (sr_session_ctx_t *)arg;
+    sr_mod_t *shm_mod;
+    struct sr_sess_notif_buf_node *first, *prev;
+    struct timespec timeout_ts;
+    int ret;
+
+    sr_time_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
+
+    while (ATOMIC_LOAD_RELAXED(sess->notif_buf.thread_running) || sess->notif_buf.first) {
+        /* MUTEX LOCK */
+        ret = pthread_mutex_timedlock(&sess->notif_buf.lock.mutex, &timeout_ts);
+        if (ret) {
+            SR_ERRINFO_LOCK(&err_info, __func__, ret);
+            break;
+        }
+
+        /* write lock, wait for notifications */
+        ret = 0;
+        while (!ret && ATOMIC_LOAD_RELAXED(sess->notif_buf.thread_running) && !sess->notif_buf.first) {
+            /* COND WAIT */
+            ret = pthread_cond_wait(&sess->notif_buf.lock.cond, &sess->notif_buf.lock.mutex);
+        }
+        if (ret) {
+            /* MUTEX UNLOCK */
+            pthread_mutex_unlock(&sess->notif_buf.lock.mutex);
+
+            SR_ERRINFO_COND(&err_info, __func__, ret);
+            break;
+        }
+
+        /* remember and clear the buffer */
+        first = sess->notif_buf.first;
+        sess->notif_buf.first = NULL;
+        sess->notif_buf.last = NULL;
+
+        /* MUTEX UNLOCK */
+        pthread_mutex_unlock(&sess->notif_buf.lock.mutex);
+
+        while (first) {
+            /* find SHM mod */
+            shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, sess->conn->ext_shm.addr, first->notif_mod->name, 0);
+            if (!shm_mod) {
+                SR_ERRINFO_INT(&err_info);
+                break;
+            }
+
+            /* store the notification, continue normally on error (notif_lyb is spent!) */
+            err_info = sr_notif_write(first->notif_mod, shm_mod, first->notif_lyb, first->notif_ts);
+            sr_errinfo_free(&err_info);
+
+            /* next iter */
+            prev = first;
+            first = first->next;
+
+            /* free prev */
+            free(prev);
+        }
+    }
+
+    sr_errinfo_free(&err_info);
+    return NULL;
 }
 
 /**

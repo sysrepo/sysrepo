@@ -303,6 +303,9 @@ test_op_deps(void **state)
                 "</inst-id>"
             "</in>"
         "</op-deps>"
+        "<op-deps>"
+            "<xpath xmlns:o=\"urn:ops\">/o:notif4</xpath>"
+        "</op-deps>"
     "</module>"
     );
 }
