@@ -23,6 +23,11 @@ module sysrepo {
     description
         "Sysrepo YANG datastore internal attributes and information.";
 
+    revision "2019-11-26" {
+        description
+            "startup-data renamed to data; it is used for running datastore as well.";
+    }
+
     revision "2019-10-25" {
         description
             "Added attributes for storing operational data owners.";
@@ -260,10 +265,10 @@ module sysrepo {
                     "Content is the whole new YANG module.";
             }
 
-            leaf startup-data {
+            leaf data {
                 type string;
                 description
-                    "Initial startup data to be set for the module, in JSON format.";
+                    "Initial startup and running data to be set for the module, in JSON format.";
             }
         }
     }

@@ -447,14 +447,14 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
         int feat_count);
 
 /**
- * @brief Set newly installed module startup data. It is necessary in case empty data are not valid
+ * @brief Set newly installed module startup and running data. It is necessary in case empty data are not valid
  * for the particular schema (module).
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to set startup data.
- * @param[in] data Startup data to set. Must be NULL if \p data_path is set.
- * @param[in] data_path Data file with startup data to set. Must be NULL if \p data is set.
- * @param[in] format Format of the startup data/file.
+ * @param[in] data Data to set. Must be NULL if \p data_path is set.
+ * @param[in] data_path Data file with the data to set. Must be NULL if \p data is set.
+ * @param[in] format Format of the data/file.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char *data, const char *data_path,
