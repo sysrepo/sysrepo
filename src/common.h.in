@@ -45,7 +45,7 @@
 /** use access() if eaccess() is not available (it may adversely affect access control, however) */
 #cmakedefine SR_HAVE_EACCESS
 #ifndef SR_HAVE_EACCESS
-#   define eaccess access
+# define eaccess access
 #endif
 
 /** atomic variables */
@@ -130,6 +130,9 @@
 
 /** timeout for locking subscriptions lock, used when modifying subscriptions (ms) */
 #define SR_SUB_SUBS_LOCK_TIMEOUT 100
+
+/** timeout for locking notification buffer lock, used when adding/removing notifications (ms) */
+#define SR_NOTIF_BUF_LOCK_TIMEOUT 100
 
 /** timeout for locking main SHM and subscription SHM; maximum time an API call (sr_apply_changes()) is expected to take (s) */
 #define SR_MAIN_LOCK_TIMEOUT 15
@@ -279,6 +282,20 @@ struct sr_session_ctx_s {
         struct lyd_node *edit;      /**< Prepared edit data tree. */
         struct lyd_node *diff;      /**< Diff data tree, used for module change iterator. */
     } dt[SR_DS_COUNT];              /**< Session-exclusive prepared changes. */
+
+    struct sr_sess_notif_buf {
+        ATOMIC_T thread_running;    /**< Flag whether the notification buffering thread of this session is running. */
+        pthread_t tid;              /**< Thread ID of the thread. */
+        sr_rwlock_t lock;           /**< Lock for accessing thread_running and the notification buffer
+                                         (READ-lock is not used). */
+        struct sr_sess_notif_buf_node {
+            char *notif_lyb;        /**< Buffered notification to be stored in LYB format. */
+            time_t notif_ts;        /**< Buffered notification timestamp. */
+            const struct lys_module *notif_mod; /**< Buffered notification modules. */
+            struct sr_sess_notif_buf_node *next;    /**< Next stored notification buffer node. */
+        } *first;                   /**< First stored notification buffer node. */
+        struct sr_sess_notif_buf_node *last;    /**< Last stored notification buffer node. */
+    } notif_buf;                    /**< Notification buffering attributes. */
 };
 
 /**
@@ -288,7 +305,7 @@ struct sr_subscription_ctx_s {
     sr_conn_ctx_t *conn;            /**< Connection of the subscription. */
     uint32_t evpipe_num;            /**< Event pipe number of this subscription structure. */
     int evpipe;                     /**< Event pipe opened for reading. */
-    ATOMIC_T thread_running;        /**< Flag whether a thread handling this subscription is running. */
+    ATOMIC_T thread_running;        /**< Flag whether the thread handling this subscription is running. */
     pthread_t tid;                  /**< Thread ID of the handler thread. */
     pthread_mutex_t subs_lock;      /**< Session-shared lock for accessing specific subscriptions. */
 

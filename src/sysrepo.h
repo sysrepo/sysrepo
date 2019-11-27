@@ -310,6 +310,19 @@ int sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_ses
 int sr_session_stop(sr_session_ctx_t *session);
 
 /**
+ * @brief Use notification buffering for the session.
+ *
+ * When a notification is sent using this session for
+ * a module that supports replay (notification should be stored),
+ * the notification function does not wait until it is stored
+ * but delegates this work to a special thread and returns.
+ *
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) whose notifications will be buffered.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_session_notif_buffer(sr_session_ctx_t *session);
+
+/**
  * @brief Change datastore which the session operates on. All subsequent
  * calls will be issued on the chosen datastore.
  *
@@ -447,14 +460,14 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
         int feat_count);
 
 /**
- * @brief Set newly installed module startup data. It is necessary in case empty data are not valid
+ * @brief Set newly installed module startup and running data. It is necessary in case empty data are not valid
  * for the particular schema (module).
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to set startup data.
- * @param[in] data Startup data to set. Must be NULL if \p data_path is set.
- * @param[in] data_path Data file with startup data to set. Must be NULL if \p data is set.
- * @param[in] format Format of the startup data/file.
+ * @param[in] data Data to set. Must be NULL if \p data_path is set.
+ * @param[in] data_path Data file with the data to set. Must be NULL if \p data is set.
+ * @param[in] format Format of the data/file.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char *data, const char *data_path,
@@ -1573,7 +1586,9 @@ int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
- * @brief Send a notification. Data are represented as ::sr_val_t structures.
+ * @brief Send a notification. Data are represented as ::sr_val_t structures. In case there are
+ * particularly many notifications send on a session (100 notif/s or more) and all of them
+ * are stored for replay, consider using ::sr_session_notif_buffer().
  *
  * Required WRITE access. If the module does not support replay, required READ access.
  *
@@ -1589,7 +1604,9 @@ int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_
 int sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt);
 
 /**
- * @brief Send a notification. Data are represented as _libyang_ subtrees.
+ * @brief Send a notification. Data are represented as _libyang_ subtrees. In case there are
+ * particularly many notifications send on a session (100 notif/s or more) and all of them
+ * are stored for replay, consider using ::sr_session_notif_buffer().
  *
  * Required WRITE access. If the module does not support replay, required READ access.
  *

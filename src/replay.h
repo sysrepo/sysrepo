@@ -47,12 +47,20 @@ sr_error_info_t *sr_replay_find_file(const char *mod_name, time_t from_ts, time_
 /**
  * @brief Store a notification for replay.
  *
- * @param[in] conn Connection to use.
+ * @param[in] sess Session to use.
  * @param[in] notif Notification to store.
  * @param[in] notif_ts Notification timestamp to store.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_replay_store(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_ts);
+sr_error_info_t *sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, time_t notif_ts);
+
+/**
+ * @brief Notification buffer thread.
+ *
+ * @param[in] arg Pointer to the session.
+ * @return Always NULL.
+ */
+void *sr_notif_buf_thread(void *arg);
 
 /**
  * @brief Replay valid notifications.

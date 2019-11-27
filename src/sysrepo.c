@@ -472,6 +472,9 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session
     if ((err_info = sr_mutex_init(&(*session)->ptr_lock, 0))) {
         goto error;
     }
+    if ((err_info = sr_rwlock_init(&(*session)->notif_buf.lock, 0))) {
+        goto error;
+    }
 
     SR_LOG_INF("Session %u (user \"%s\") created.", (*session)->sid.sr, (*session)->sid.user);
 
@@ -495,6 +498,7 @@ _sr_session_stop(sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     uint32_t i;
+    int ret;
 
     /* remove ourselves from conn sessions */
     tmp_err = sr_ptr_del(&session->conn->ptr_lock, (void ***)&session->conn->sessions, &session->conn->session_count, session);
@@ -511,6 +515,26 @@ _sr_session_stop(sr_session_ctx_t *session)
         }
     }
 
+    /* stop notification buffering thread */
+    if (session->notif_buf.tid) {
+        /* signal the thread */
+        ATOMIC_STORE_RELAXED(session->notif_buf.thread_running, 0);
+
+        /* wake up the thread (by fake unlocking a read lock) */
+        ++session->notif_buf.lock.readers;
+        sr_rwunlock(&session->notif_buf.lock, 0, __func__);
+
+        if (!tmp_err) {
+            /* join the thread, it will make sure all the buffered notifications are stored */
+            ret = pthread_join(session->notif_buf.tid, NULL);
+            if (ret) {
+                sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Joining the notification buffer thread failed (%s).", strerror(ret));
+            }
+            assert(!session->notif_buf.first);
+        }
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+
     /* free attributes */
     free(session->sid.user);
     for (i = 0; i < SR_DS_COUNT; ++i) {
@@ -518,6 +542,7 @@ _sr_session_stop(sr_session_ctx_t *session)
     }
     sr_errinfo_free(&session->err_info);
     pthread_mutex_destroy(&session->ptr_lock);
+    sr_rwlock_destroy(&session->notif_buf.lock);
     free(session);
 
     return err_info;
@@ -548,6 +573,31 @@ sr_session_stop(sr_session_ctx_t *session)
     }
 
     return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_session_notif_buffer(sr_session_ctx_t *session)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+
+    if (!session || session->notif_buf.tid) {
+        return sr_api_ret(NULL, NULL);
+    }
+
+    /* it could not be running */
+    ret = ATOMIC_INC_RELAXED(session->notif_buf.thread_running);
+    assert(!ret);
+
+    /* start the buffering thread */
+    ret = pthread_create(&session->notif_buf.tid, NULL, sr_notif_buf_thread, session);
+    if (ret) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Creating a new thread failed (%s).", strerror(ret));
+        ATOMIC_STORE_RELAXED(session->notif_buf.thread_running, 0);
+        return sr_api_ret(session, err_info);
+    }
+
+    return sr_api_ret(NULL, NULL);
 }
 
 API int
@@ -4484,7 +4534,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     sr_shmmod_modinfo_unlock(&mod_info, 0);
 
     /* store the notification for a replay, we continue on failure */
-    err_info = sr_replay_store(session->conn, notif, notif_ts);
+    err_info = sr_replay_store(session, notif, notif_ts);
 
     /* check that there is a subscriber */
     if ((tmp_err_info = sr_notif_find_subscriber(session->conn, lyd_node_module(notif)->name, &notif_subs, &notif_sub_count))) {

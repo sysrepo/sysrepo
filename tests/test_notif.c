@@ -963,6 +963,42 @@ test_notif_config_change(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST 7 */
+static void
+test_notif_buffer(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const struct ly_ctx *ly_ctx = sr_get_context(st->conn);
+    struct lyd_node *notif;
+    int i, ret;
+
+    /* start the notification buffering thread */
+    ret = sr_session_notif_buffer(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    notif = lyd_new_path(NULL, ly_ctx, "/ops:notif4", NULL, 0, 0);
+    assert_non_null(notif);
+
+    /* send first notification */
+    ret = sr_event_notif_send_tree(st->sess, notif);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send another */
+    ret = sr_event_notif_send_tree(st->sess, notif);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* let buffer do its work */
+    usleep(1000);
+
+    /* send 20 notifications */
+    for (i = 0; i < 20; ++i) {
+        ret = sr_event_notif_send_tree(st->sess, notif);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    lyd_free_withsiblings(notif);
+}
+
 /* MAIN */
 int
 main(void)
@@ -974,6 +1010,7 @@ main(void)
         cmocka_unit_test_setup(test_replay_interval, create_ops_notif),
         cmocka_unit_test_setup_teardown(test_no_replay, clear_ops_notif, clear_ops),
         cmocka_unit_test_teardown(test_notif_config_change, clear_ops),
+        cmocka_unit_test(test_notif_buffer),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

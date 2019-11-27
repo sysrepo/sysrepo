@@ -850,6 +850,10 @@ perf_ev_notification_test(void **state, int op_num, int *items, bool ephemeral)
     rc = sr_session_start(conn, SR_DS_RUNNING, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* enable notification buffering */
+    rc = sr_session_notif_buffer(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* subscribe for event notification */
     rc = sr_event_notif_subscribe(session, "test-module", "/test-module:link-discovered", 0, 0,
             test_event_notif_link_discovery_cb, NULL, SR_SUBSCR_DEFAULT, &subscription);

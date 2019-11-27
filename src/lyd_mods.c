@@ -1631,11 +1631,11 @@ static sr_error_info_t *
 sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx *new_ctx, int *fail)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *old_data = NULL, *new_data = NULL, *mod_data;
+    struct lyd_node *old_start_data = NULL, *new_start_data = NULL, *old_run_data = NULL, *new_run_data = NULL, *mod_data;
     struct ly_ctx *old_ctx = NULL;
     struct ly_set *set = NULL, *startup_set = NULL;
     const struct lys_module *ly_mod;
-    char *data_json = NULL;
+    char *start_data_json = NULL, *run_data_json = NULL;
     uint32_t idx;
 
     set = ly_set_new();
@@ -1649,7 +1649,7 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         goto cleanup;
     }
 
-    /* parse all the startup data using the old context (that must succeed) */
+    /* parse all the startup/running data using the old context (that must succeed) */
     idx = 0;
     while ((ly_mod = ly_ctx_get_module_iter(old_ctx, &idx))) {
         if (!ly_mod->implemented) {
@@ -1658,7 +1658,12 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         }
 
         /* append startup data */
-        if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_STARTUP, &old_data))) {
+        if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_STARTUP, &old_start_data))) {
+            goto cleanup;
+        }
+
+        /* append running data */
+        if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_RUNNING, &old_run_data))) {
             goto cleanup;
         }
 
@@ -1671,14 +1676,23 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     }
 
     /* print the data of all the modules into JSON */
-    if (lyd_print_mem(&data_json, old_data, LYD_JSON, LYP_WITHSIBLINGS)) {
+    if (lyd_print_mem(&start_data_json, old_start_data, LYD_JSON, LYP_WITHSIBLINGS)) {
+        sr_errinfo_new_ly(&err_info, old_ctx);
+        goto cleanup;
+    }
+    if (lyd_print_mem(&run_data_json, old_run_data, LYD_JSON, LYP_WITHSIBLINGS)) {
         sr_errinfo_new_ly(&err_info, old_ctx);
         goto cleanup;
     }
 
     /* try to load it into the new updated context */
     ly_errno = 0;
-    new_data = lyd_parse_mem((struct ly_ctx *)new_ctx, data_json, LYD_JSON, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
+    new_start_data = lyd_parse_mem((struct ly_ctx *)new_ctx, start_data_json, LYD_JSON,
+            LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
+    if (!ly_errno) {
+        new_run_data = lyd_parse_mem((struct ly_ctx *)new_ctx, run_data_json, LYD_JSON,
+            LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
+    }
     if (ly_errno) {
         /* it failed, some of the scheduled changes are not compatible with the stored data, abort them all */
         sr_log_wrn_ly((struct ly_ctx *)new_ctx);
@@ -1687,7 +1701,7 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     }
 
     /* check that any startup data can be loaded and are valid */
-    startup_set = lyd_find_path(sr_mods, "installed-module/startup-data");
+    startup_set = lyd_find_path(sr_mods, "installed-module/data");
     if (!startup_set) {
         sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mods)->ctx);
         goto cleanup;
@@ -1705,17 +1719,25 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         /* remember this module */
         ly_set_add(set, (void *)lyd_node_module(mod_data), LY_SET_OPT_USEASLIST);
 
-        /* link to the new data */
-        if (!new_data) {
-            new_data = mod_data;
-        } else if (lyd_merge(new_data, mod_data, LYD_OPT_EXPLICIT | LYD_OPT_DESTRUCT)) {
+        /* link to the new startup/running data */
+        if (!new_start_data) {
+            new_start_data = lyd_dup_withsiblings(mod_data, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_WHEN);
+            SR_CHECK_MEM_GOTO(!new_start_data, err_info, cleanup);
+        } else if (lyd_merge(new_start_data, mod_data, LYD_OPT_EXPLICIT)) {
+            sr_errinfo_new_ly(&err_info, (struct ly_ctx *)new_ctx);
+            goto cleanup;
+        }
+        if (!new_run_data) {
+            new_run_data = mod_data;
+        } else if (lyd_merge(new_run_data, mod_data, LYD_OPT_EXPLICIT | LYD_OPT_DESTRUCT)) {
             sr_errinfo_new_ly(&err_info, (struct ly_ctx *)new_ctx);
             goto cleanup;
         }
     }
 
-    /* fully validate complete startup datastore */
-    if (lyd_validate(&new_data, LYD_OPT_CONFIG, (void *)new_ctx)) {
+    /* fully validate complete startup and running datastore */
+    if (lyd_validate(&new_start_data, LYD_OPT_CONFIG, (void *)new_ctx) ||
+            lyd_validate(&new_run_data, LYD_OPT_CONFIG, (void *)new_ctx)) {
         sr_log_wrn_ly((struct ly_ctx *)new_ctx);
         *fail = 1;
         goto cleanup;
@@ -1724,15 +1746,22 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     /* print all modules data with the updated module context and free them, no longer needed */
     for (idx = 0; idx < set->number; ++idx) {
         ly_mod = (struct lys_module *)set->set.g[idx];
-        mod_data = sr_module_data_unlink(&new_data, ly_mod);
-        err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, mod_data);
-        if (!err_info) {
-            err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, mod_data);
-        }
-        lyd_free_withsiblings(mod_data);
-        if (err_info) {
+
+        /* startup data */
+        mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
+        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, mod_data))) {
+            lyd_free_withsiblings(mod_data);
             goto cleanup;
         }
+        lyd_free_withsiblings(mod_data);
+
+        /* running data */
+        mod_data = sr_module_data_unlink(&new_run_data, ly_mod);
+        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, mod_data))) {
+            lyd_free_withsiblings(mod_data);
+            goto cleanup;
+        }
+        lyd_free_withsiblings(mod_data);
     }
 
     /* success */
@@ -1740,9 +1769,12 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
 cleanup:
     ly_set_free(set);
     ly_set_free(startup_set);
-    lyd_free_withsiblings(old_data);
-    lyd_free_withsiblings(new_data);
-    free(data_json);
+    lyd_free_withsiblings(old_start_data);
+    lyd_free_withsiblings(new_start_data);
+    lyd_free_withsiblings(old_run_data);
+    lyd_free_withsiblings(new_run_data);
+    free(start_data_json);
+    free(run_data_json);
     ly_ctx_destroy(old_ctx, NULL);
     return err_info;
 }
@@ -2256,7 +2288,7 @@ sr_lydmods_deferred_add_module_data(struct lyd_node *sr_mods, const char *module
 
     /* remove any previously set data */
     LY_TREE_FOR(set->set.d[0]->child, node) {
-        if (!strcmp(node->schema->name, "startup-data")) {
+        if (!strcmp(node->schema->name, "data")) {
             lyd_free(node);
             break;
         }
@@ -2269,7 +2301,7 @@ sr_lydmods_deferred_add_module_data(struct lyd_node *sr_mods, const char *module
     }
 
     /* add into module */
-    if (!lyd_new_leaf(set->set.d[0], NULL, "startup-data", data_json)) {
+    if (!lyd_new_leaf(set->set.d[0], NULL, "data", data_json)) {
         goto cleanup;
     }
 
