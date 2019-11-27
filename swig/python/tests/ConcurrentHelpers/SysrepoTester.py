@@ -42,7 +42,12 @@ class SysrepoTester(Tester):
 
     def stopSession(self):
         self.session.session_stop()
-        
+        self.session = None
+
+    def startSession(self):
+        self.tc.assertNotEqual(self.sr, None)
+        self.tc.assertEqual(self.session, None)
+        self.session = sr.Session(self.sr, self.ds)
 
     def lockStep(self):
         self.session.lock()
@@ -82,7 +87,7 @@ class SysrepoTester(Tester):
     def getItemsFailStep(self, xpath):
         with self.tc.assertRaisesRegex(RuntimeError, ".* found"):
             vs = self.session.get_items(xpath)
-            if vs is None: 
+            if vs is None:
                 raise (RuntimeError(".* found"))
 
     def deleteItemStep(self, xpath):
@@ -95,16 +100,17 @@ class SysrepoTester(Tester):
         with self.tc.assertRaises(RuntimeError):
             self.session.set_item(xpath, value)
 
-    def refreshStep(self):
-        self.session.refresh()
-
     def waitTimeoutStep(self, timeout):
         sleep(timeout)
 
-    def getSchemaToFileStep(self, file_name):
-        content = self.sr.get_module_info()
-        with open(file_name, 'w') as f:
-            f.write(content.print_mem(sr.LYD_XML, 0))
+    def getSchemaToFileStep(self, file_location, file_name):
+        file_read = open("/etc/sysrepo/yang/" + file_name, "r")
+        file_write = open(file_location + file_name, "w")
+
+        file_write.write(file_read.read())
+
+        file_write.close()
+        file_read.close()        
 
     def uninstallModuleStep(self, module_name):
         rc = self.sr.remove_module(module_name)
@@ -112,4 +118,4 @@ class SysrepoTester(Tester):
 
     def uninstallModuleFailStep(self, module_name):
         rc = self.sr.remove_module(module_name)
-        self.tc.assertNotEquals(rc, None)
+        self.tc.assertNotEqual(rc, None)
