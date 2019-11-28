@@ -156,7 +156,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
             items[item_count].start = conn_s[i].evpipes;
             items[item_count].size = conn_s[i].evpipe_count * sizeof(uint32_t);
-            asprintf(&(items[item_count].name), "evpipes (%u, conn 0x%p)", conn_s[i].evpipe_count, (void *)conn_s[i].conn_ctx);
+            asprintf(&(items[item_count].name), "evpipes (%u, conn %p)", conn_s[i].evpipe_count, (void *)conn_s[i].conn_ctx);
             ++item_count;
         }
     }
