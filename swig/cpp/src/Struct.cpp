@@ -555,14 +555,7 @@ Tree_Change::Tree_Change() {
     _prev_dflt = false;
 }
 libyang::S_Data_Node Tree_Change::node() {
-    struct lyd_node *tree;
-
-    tree = lyd_dup(_node, LYD_DUP_OPT_WITH_KEYS);
-    if (!tree) {
-        throw_exception(SR_ERR_NOMEM);
-    }
-
-    return std::make_shared<libyang::Data_Node>(tree);
+    return std::make_shared<libyang::Data_Node>(const_cast<struct lyd_node *>(_node));
 }
 Tree_Change::~Tree_Change() {}
 
