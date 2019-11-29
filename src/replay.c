@@ -370,7 +370,7 @@ sr_notif_write(const struct lys_module *ly_mod, sr_mod_t *shm_mod, char *notif_l
     SR_CHECK_INT_GOTO(notif_lyb_len == -1, err_info, cleanup);
 
     /* REPLAY WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->replay_lock, SR_MOD_LOCK_TIMEOUT, 1, __func__))) {
+    if ((err_info = sr_rwlock(&shm_mod->replay_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
     }
 
@@ -424,7 +424,7 @@ sr_notif_write(const struct lys_module *ly_mod, sr_mod_t *shm_mod, char *notif_l
 
 cleanup_unlock:
     /* REPLAY WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->replay_lock, 1, __func__);
+    sr_rwunlock(&shm_mod->replay_lock, SR_LOCK_WRITE, __func__);
 cleanup:
     if (fd > -1) {
         close(fd);

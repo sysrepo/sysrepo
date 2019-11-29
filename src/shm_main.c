@@ -785,6 +785,22 @@ sr_shmmain_state_del_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_c
     }
 }
 
+sr_conn_state_t *
+sr_shmmain_state_find_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid)
+{
+    sr_conn_state_t *conn_s;
+    uint32_t i;
+
+    conn_s = (sr_conn_state_t *)(ext_shm_addr + main_shm->conn_state.conns);
+    for (i = 0; i < main_shm->conn_state.conn_count; ++i) {
+        if ((conn == conn_s[i].conn_ctx) && (pid == conn_s[i].pid)) {
+            return &conn_s[i];
+        }
+    }
+
+    return NULL;
+}
+
 sr_error_info_t *
 sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
 {
@@ -792,20 +808,13 @@ sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
     sr_main_shm_t *main_shm;
     off_t evpipes_off;
     sr_conn_state_t *conn_s;
-    uint32_t i, new_ext_size;
-    pid_t pid;
+    uint32_t new_ext_size;
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
     /* find the connection */
-    pid = getpid();
-    conn_s = (sr_conn_state_t *)(conn->ext_shm.addr + main_shm->conn_state.conns);
-    for (i = 0; i < main_shm->conn_state.conn_count; ++i) {
-        if ((conn == conn_s[i].conn_ctx) && (pid == conn_s[i].pid)) {
-            break;
-        }
-    }
-    if (i == main_shm->conn_state.conn_count) {
+    conn_s = sr_shmmain_state_find_conn(main_shm, conn->ext_shm.addr, conn, getpid());
+    if (!conn_s) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL,
                 "Connection not found in internal state (perhaps fork() was used and PID has changed).");
         return err_info;
@@ -813,25 +822,28 @@ sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
 
     /* moving existing evpipes */
     evpipes_off = conn->ext_shm.size;
-    new_ext_size = evpipes_off + (conn_s[i].evpipe_count + 1) * sizeof evpipe_num;
+    new_ext_size = evpipes_off + (conn_s->evpipe_count + 1) * sizeof evpipe_num;
 
     /* remap ext SHM */
     if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size))) {
         return err_info;
     }
-    conn_s = (sr_conn_state_t *)(conn->ext_shm.addr + main_shm->conn_state.conns);
+
+    /* find the connection again, could have moved */
+    conn_s = sr_shmmain_state_find_conn(main_shm, conn->ext_shm.addr, conn, getpid());
+    assert(conn_s);
 
     /* add wasted memory */
-    *((size_t *)conn->ext_shm.addr) += conn_s[i].evpipe_count * sizeof evpipe_num;
+    *((size_t *)conn->ext_shm.addr) += conn_s->evpipe_count * sizeof evpipe_num;
 
     /* move the evpipes */
-    memcpy(conn->ext_shm.addr + evpipes_off, conn->ext_shm.addr + conn_s[i].evpipes,
-            conn_s[i].evpipe_count * sizeof evpipe_num);
-    conn_s[i].evpipes = evpipes_off;
+    memcpy(conn->ext_shm.addr + evpipes_off, conn->ext_shm.addr + conn_s->evpipes,
+            conn_s->evpipe_count * sizeof evpipe_num);
+    conn_s->evpipes = evpipes_off;
 
     /* add new evpipe */
-    ((uint32_t *)(conn->ext_shm.addr + conn_s[i].evpipes))[conn_s[i].evpipe_count] = evpipe_num;
-    ++conn_s[i].evpipe_count;
+    ((uint32_t *)(conn->ext_shm.addr + conn_s->evpipes))[conn_s->evpipe_count] = evpipe_num;
+    ++conn_s->evpipe_count;
 
     return NULL;
 }
@@ -842,33 +854,26 @@ sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
     sr_conn_state_t *conn_s;
-    uint32_t i, j, *evpipes;
-    pid_t pid;
+    uint32_t i, *evpipes;
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
     /* find the connection */
-    pid = getpid();
-    conn_s = (sr_conn_state_t *)(conn->ext_shm.addr + main_shm->conn_state.conns);
-    for (i = 0; i < main_shm->conn_state.conn_count; ++i) {
-        if ((conn == conn_s[i].conn_ctx) && (pid == conn_s[i].pid)) {
-            break;
-        }
-    }
-    if (i == main_shm->conn_state.conn_count) {
+    conn_s = sr_shmmain_state_find_conn(main_shm, conn->ext_shm.addr, conn, getpid());
+    if (!conn_s) {
         SR_ERRINFO_INT(&err_info);
         sr_errinfo_free(&err_info);
         return;
     }
 
     /* find the evpipe */
-    evpipes = (uint32_t *)(conn->ext_shm.addr + conn_s[i].evpipes);
-    for (j = 0; j < conn_s[i].evpipe_count; ++j) {
-        if (evpipes[j] == evpipe_num) {
+    evpipes = (uint32_t *)(conn->ext_shm.addr + conn_s->evpipes);
+    for (i = 0; i < conn_s->evpipe_count; ++i) {
+        if (evpipes[i] == evpipe_num) {
             break;
         }
     }
-    if (j == conn_s[i].evpipe_count) {
+    if (i == conn_s->evpipe_count) {
         SR_ERRINFO_INT(&err_info);
         sr_errinfo_free(&err_info);
         return;
@@ -877,13 +882,13 @@ sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
     /* add wasted memory */
     *((size_t *)conn->ext_shm.addr) += sizeof evpipe_num;
 
-    --conn_s[i].evpipe_count;
-    if (!conn_s[i].evpipe_count) {
+    --conn_s->evpipe_count;
+    if (!conn_s->evpipe_count) {
         /* the only evpipe removed */
-        conn_s[i].evpipes = 0;
-    } else if (j < conn_s[i].evpipe_count) {
+        conn_s->evpipes = 0;
+    } else if (i < conn_s->evpipe_count) {
         /* replace the deleted evpipe with the last one */
-        evpipes[j] = evpipes[conn_s[i].evpipe_count];
+        evpipes[i] = evpipes[conn_s->evpipe_count];
     }
 }
 
@@ -1710,19 +1715,24 @@ sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_
 }
 
 sr_error_info_t *
-sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap, int lydmods)
+sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
+    sr_conn_state_t *conn_s;
+
+    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_NOSTATE));
 
     /* REMAP READ/WRITE LOCK */
-    if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, remap, __func__))) {
+    if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000,
+            remap ? SR_LOCK_WRITE : SR_LOCK_READ, __func__))) {
         return err_info;
     }
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
     /* MAIN SHM READ/WRITE LOCK */
-    if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, wr, __func__))) {
+    if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000,
+            mode == SR_LOCK_WRITE_NOSTATE ? SR_LOCK_WRITE : mode, __func__))) {
         goto error_remap_unlock;
     }
 
@@ -1740,28 +1750,73 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap, int lydmods)
         goto error_remap_shm_unlock;
     }
 
+    if (mode != SR_LOCK_WRITE_NOSTATE) {
+        /* store information about the held lock */
+        conn_s = sr_shmmain_state_find_conn(main_shm, conn->ext_shm.addr, conn, getpid());
+        SR_CHECK_INT_GOTO(!conn_s, err_info, error_remap_shm_lydmods_unlock);
+
+        if (mode == SR_LOCK_READ) {
+            /* recursive read locks are supported */
+            assert(((conn_s->lock.main == SR_LOCK_NONE) && !conn_s->lock.main_rcount)
+                || ((conn_s->lock.main == SR_LOCK_READ) && conn_s->lock.main_rcount));
+            conn_s->lock.main = mode;
+            ++conn_s->lock.main_rcount;
+        } else {
+            assert(conn_s->lock.main == SR_LOCK_NONE);
+            conn_s->lock.main = mode;
+        }
+    }
+
     return NULL;
 
+error_remap_shm_lydmods_unlock:
+    if (lydmods) {
+        /* LYDMODS UNLOCK */
+        sr_munlock(&main_shm->lydmods_lock);
+    }
 error_remap_shm_unlock:
-    sr_rwunlock(&main_shm->lock, wr, __func__);
+    sr_rwunlock(&main_shm->lock, mode == SR_LOCK_WRITE_NOSTATE ? SR_LOCK_WRITE : mode, __func__);
 error_remap_unlock:
-    sr_rwunlock(&conn->ext_remap_lock, remap, __func__);
+    sr_rwunlock(&conn->ext_remap_lock, remap ? SR_LOCK_WRITE : SR_LOCK_READ, __func__);
     return err_info;
 }
 
 void
-sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap, int lydmods)
+sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods)
 {
+    sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
+    sr_conn_state_t *conn_s;
+
+    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_NOSTATE));
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
     assert(main_shm);
 
+    if (mode != SR_LOCK_WRITE_NOSTATE) {
+        /* update information about the held lock */
+        conn_s = sr_shmmain_state_find_conn(main_shm, conn->ext_shm.addr, conn, getpid());
+        if (!conn_s) {
+            SR_ERRINFO_INT(&err_info);
+            sr_errinfo_free(&err_info);
+        } else if (mode == SR_LOCK_READ) {
+            /* handle recursive read locks */
+            assert(conn_s->lock.main == mode);
+            --conn_s->lock.main_rcount;
+            if (!conn_s->lock.main_rcount) {
+                conn_s->lock.main = SR_LOCK_NONE;
+            }
+        } else {
+            assert(conn_s->lock.main == mode);
+            conn_s->lock.main = SR_LOCK_NONE;
+        }
+    }
+
     /* MAIN SHM UNLOCK */
-    sr_rwunlock(&main_shm->lock, wr, __func__);
+    sr_rwunlock(&main_shm->lock, mode == SR_LOCK_WRITE_NOSTATE ? SR_LOCK_WRITE : mode, __func__);
 
     /* REMAP UNLOCK */
-    sr_rwunlock(&conn->ext_remap_lock, remap, __func__);
+    sr_rwunlock(&conn->ext_remap_lock, remap ? SR_LOCK_WRITE : SR_LOCK_READ, __func__);
 
     if (lydmods) {
         /* LYDMODS UNLOCK */

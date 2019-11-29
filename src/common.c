@@ -2118,13 +2118,14 @@ sr_rwlock_destroy(sr_rwlock_t *rwlock)
 }
 
 sr_error_info_t *
-sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, int wr, const char *func)
+sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
     int ret;
 
     assert(timeout_ms > 0);
+    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
 
     sr_time_get(&timeout_ts, timeout_ms);
 
@@ -2135,7 +2136,7 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, int wr, const char *func)
         return err_info;
     }
 
-    if (wr) {
+    if (mode == SR_LOCK_WRITE) {
         /* write lock */
         ret = 0;
         while (!ret && rwlock->readers) {
@@ -2162,13 +2163,15 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, int wr, const char *func)
 }
 
 void
-sr_rwunlock(sr_rwlock_t *rwlock, int wr, const char *func)
+sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
     int ret;
 
-    if (!wr) {
+    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
+
+    if (mode == SR_LOCK_READ) {
         sr_time_get(&timeout_ts, SR_RWLOCK_READ_TIMEOUT);
 
         /* MUTEX LOCK */
@@ -2188,7 +2191,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, int wr, const char *func)
     }
 
     /* we are unlocking a write lock, there can be no readers */
-    assert(!wr || !rwlock->readers);
+    assert((mode == SR_LOCK_READ) || !rwlock->readers);
 
     if (!rwlock->readers) {
         /* broadcast on condition */

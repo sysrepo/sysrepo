@@ -182,11 +182,27 @@ typedef struct sr_rpc_s {
 } sr_rpc_t;
 
 /**
+ * @brief Lock mode.
+ */
+typedef enum sr_lock_mode_e {
+    SR_LOCK_NONE = 0,           /**< Not locked. */
+    SR_LOCK_READ,               /**< Read lock. */
+    SR_LOCK_WRITE,              /**< Write lock. */
+    SR_LOCK_WRITE_NOSTATE,      /**< Write lock without information in connection state (used only when the connection
+                                     state itself will be created/deleted). */
+} sr_lock_mode_t;
+
+/**
  * @brief Ext SHM connection state.
  */
 typedef struct sr_conn_state_s {
     sr_conn_ctx_t *conn_ctx;    /**< Connection, process-specific pointer, do not access! */
     pid_t pid;                  /**< PID of process that created this connection. */
+    struct {
+        sr_lock_mode_t main;    /**< Held main lock mode. */
+        uint16_t main_rcount;   /**< Number of recursive READ locks held. */
+    } lock;                     /**< Held locks information. */
+
     off_t evpipes;              /**< Array of event pipes of subscriptions on this connection. */
     uint32_t evpipe_count;      /**< Event pipe count. */
 } sr_conn_state_t;
@@ -383,6 +399,18 @@ sr_error_info_t *sr_shmmain_state_add_conn(sr_conn_ctx_t *conn);
 void sr_shmmain_state_del_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
 
 /**
+ * @brief Find a connection in main SHM state.
+ * Main SHM lock is expected to be held.
+ *
+ * @param[in] main_shm Main SHM structure.
+ * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] conn Connection context to find.
+ * @param[in] pid Connection PID to find.
+ * @return Matching connection state, NULL if not found.
+ */
+sr_conn_state_t *sr_shmmain_state_find_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
+
+/**
  * @brief Add an event pipe into main SHM state.
  * Main SHM lock is expected to be held.
  *
@@ -484,25 +512,26 @@ sr_mod_t *sr_shmmain_find_module(sr_shm_t *shm_main, char *ext_shm_addr, const c
 sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_path, off_t op_path_off);
 
 /**
- * @brief Lock main SHM and its mapping and remap it if needed (it was changed).
+ * @brief Lock main/ext SHM and its mapping and remap it if needed (it was changed). Also, store information
+ * about held locks into SHM.
  *
  * @param[in] conn Connection to use.
- * @param[in] wr Whether to WRITE or READ lock main SHM.
- * @param[in] remap Whether to WRITE (main SHM may be remapped) or READ (just protect from remapping) remap lock.
+ * @param[in] mode Whether to WRITE or READ lock main SHM.
+ * @param[in] remap Whether to WRITE (ext SHM may be remapped) or READ (just protect from remapping) remap lock.
  * @param[in] lydmods Whether to lydmods LOCK.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, int wr, int remap, int lydmods);
+sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods);
 
 /**
- * @brief Unlock main SHM.
+ * @brief Unlock main SHM and update information about held locks in SHM.
  *
  * @param[in] conn Connection to use.
- * @param[in] wr Whether to WRITE or READ unlock main SHM.
+ * @param[in] mode Whether to WRITE or READ unlock main SHM.
  * @param[in] remap Whether to WRITE or READ remap unlock.
  * @param[in] lydmods Whether to lydmods UNLOCK.
  */
-void sr_shmmain_unlock(sr_conn_ctx_t *conn, int wr, int remap, int lydmods);
+void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods);
 
 /**
  * @brief Add main SHM RPC/action subscription.
