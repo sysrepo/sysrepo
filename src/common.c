@@ -1522,15 +1522,14 @@ void
 sr_remove_evpipes(void)
 {
     sr_error_info_t *err_info = NULL;
-    DIR *dir;
+    DIR *dir = NULL;
     struct dirent *ent;
     char *path;
 
     dir = opendir(sr_get_repo_path());
     if (!dir) {
         SR_ERRINFO_SYSERRNO(&err_info, "opendir");
-        sr_errinfo_free(&err_info);
-        return;
+        goto cleanup;
     }
 
     while ((ent = readdir(dir))) {
@@ -1539,17 +1538,20 @@ sr_remove_evpipes(void)
 
             if (asprintf(&path, "%s/%s", sr_get_repo_path(), ent->d_name) == -1) {
                 SR_ERRINFO_MEM(&err_info);
-                sr_errinfo_free(&err_info);
-                return;
+                goto cleanup;
             }
 
             if (unlink(path) == -1) {
+                /* continue */
                 SR_ERRINFO_SYSERRNO(&err_info, "unlink");
-                sr_errinfo_free(&err_info);
             }
             free(path);
         }
     }
+
+cleanup:
+    closedir(dir);
+    sr_errinfo_free(&err_info);
 }
 
 sr_error_info_t *
