@@ -2162,6 +2162,58 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *
     return NULL;
 }
 
+sr_error_info_t *
+sr_rwlock_with_recovery(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_conn_ctx_t *conn, const char *func)
+{
+    sr_error_info_t *err_info = NULL;
+    struct timespec timeout_ts;
+    int ret;
+
+    assert(timeout_ms > 0);
+    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
+
+    sr_time_get(&timeout_ts, timeout_ms);
+
+    /* MUTEX LOCK */
+    ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
+    if (ret) {
+        SR_ERRINFO_LOCK(&err_info, func, ret);
+        return err_info;
+    }
+
+    if (rwlock->readers) {
+        /* check that all connections still exist */
+        if ((err_info = sr_shmmain_state_recover(conn))) {
+            sr_errinfo_free(&err_info);
+        }
+    }
+
+    if (mode == SR_LOCK_WRITE) {
+        /* write lock */
+        ret = 0;
+        while (!ret && rwlock->readers) {
+            /* COND WAIT */
+            ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
+        }
+
+        if (ret) {
+            /* MUTEX UNLOCK */
+            pthread_mutex_unlock(&rwlock->mutex);
+
+            SR_ERRINFO_COND(&err_info, func, ret);
+            return err_info;
+        }
+    } else {
+        /* read lock */
+        ++rwlock->readers;
+
+        /* MUTEX UNLOCK */
+        pthread_mutex_unlock(&rwlock->mutex);
+    }
+
+    return NULL;
+}
+
 void
 sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
 {
@@ -3753,6 +3805,15 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
     SR_CHECK_INT_RET(!ly_mod, err_info);
 
+    /* load the stored diff */
+    if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_OPERATIONAL, &diff))) {
+        return err_info;
+    }
+    if (!diff) {
+        /* no stored diff */
+        return NULL;
+    }
+
     if ((err_info = sr_shmmod_collect_modules(conn, ly_mod, SR_DS_OPERATIONAL, 0, &mod_info))) {
         return err_info;
     }
@@ -3769,9 +3830,6 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     }
 
     /* update diff */
-    if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_OPERATIONAL, &diff))) {
-        goto cleanup;
-    }
     if ((err_info = sr_diff_mod_update(&diff, ly_mod, mod_info.data))) {
         goto cleanup;
     }

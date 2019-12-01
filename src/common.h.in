@@ -887,6 +887,19 @@ void sr_rwlock_destroy(sr_rwlock_t *rwlock);
 sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func);
 
 /**
+ * @brief Lock a sysrepo RW lock and in case there are any readers, try to recover state.
+ *
+ * @param[in] rwlock RW lock to lock.
+ * @param[in] timeout_ms Timeout in ms for locking.
+ * @param[in] mode Whether to write-lock or read-lock.
+ * @param[in] conn Connection to use for recovering.
+ * @param[in] func Name of the calling function for logging.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_rwlock_with_recovery(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_conn_ctx_t *conn,
+        const char *func);
+
+/**
  * @brief Unlock a sysrepo RW lock.
  *
  * @param[in] rwlock RW lock to unlock.

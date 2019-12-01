@@ -909,7 +909,20 @@ sr_shmmain_state_recover(sr_conn_ctx_t *conn)
     i = 0;
     while (i < main_shm->conn_state.conn_count) {
         if (!sr_process_exists(conn_s[i].pid)) {
-            SR_LOG_WRN("Cleaning subscriptions after a non-existent sysrepo client with PID %ld.", (long)conn_s[i].pid);
+            SR_LOG_WRN("Cleaning up after a non-existent sysrepo client with PID %ld.", (long)conn_s[i].pid);
+
+            /* recover any held locks */
+            switch (conn_s[i].lock.main) {
+            case SR_LOCK_READ:
+                /* remove all read locks */
+                assert(conn_s[i].lock.main_rcount && (main_shm->lock.readers >= conn_s[i].lock.main_rcount));
+                main_shm->lock.readers -= conn_s[i].lock.main_rcount;
+                break;
+            default:
+                /* not supported */
+                SR_ERRINFO_INT(&err_info);
+                break;
+            }
 
             /* go through all the modules and their subscriptions and delete any matching (stale) ones */
             evpipes = (uint32_t *)(conn->ext_shm.addr + conn_s[i].evpipes);
@@ -1571,7 +1584,7 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
      * Dependencies of old modules are rebuild because of possible
      * 1) new inverse dependencies when new modules depend on the old ones;
      * 2) new dependencies in the old modules in case they were added by foreign augments in the new modules.
-     * Checking these cases would probably be more costly than just always rebuilding all dependnecies.
+     * Checking these cases would probably be more costly than just always rebuilding all dependencies.
      */
 
     /* remove all dependencies of all modules from SHM */
@@ -1731,8 +1744,8 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int l
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
     /* MAIN SHM READ/WRITE LOCK */
-    if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000,
-            mode == SR_LOCK_WRITE_NOSTATE ? SR_LOCK_WRITE : mode, __func__))) {
+    if ((err_info = sr_rwlock_with_recovery(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000,
+            mode == SR_LOCK_WRITE_NOSTATE ? SR_LOCK_WRITE : mode, conn, __func__))) {
         goto error_remap_unlock;
     }
 

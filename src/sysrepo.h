@@ -244,6 +244,9 @@ int sr_connection_count(uint32_t *conn_count);
 /**
  * @brief Try to recover (clean up) any stale connections of clients that no longer exist.
  *
+ * @note It should not even be needed to call this function manually because it
+ * is automatically called for almost every API call.
+ *
  * @param[in] conn Connection acquired with ::sr_connect call.
  * @return Error code (::SR_ERR_OK on success).
  */
