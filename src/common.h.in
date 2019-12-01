@@ -88,9 +88,12 @@
 /** macro for all datastore types count */
 #define SR_DS_COUNT 4
 
+/** macro for getting the first SHM module */
+#define SR_FIRST_SHM_MOD(main_shm_addr) ((sr_mod_t *)(main_shm_addr + sizeof(sr_main_shm_t)))
+
 /** macro for traversing main SHM modules */
 #define SR_SHM_MOD_FOR(main_shm_addr, main_shm_size, shm_mod) \
-    for (shm_mod = (sr_mod_t *)(main_shm_addr + sizeof(sr_main_shm_t)); (char *)shm_mod != main_shm_addr + main_shm_size; ++shm_mod)
+    for (shm_mod = SR_FIRST_SHM_MOD(main_shm_addr); (char *)shm_mod != main_shm_addr + main_shm_size; ++shm_mod)
 
 /** macro for learning main SHM index of a SHM module */
 #define SR_SHM_MOD_IDX(shm_mod, main_shm) (((((char *)(shm_mod)) - (main_shm).addr) - sizeof(sr_main_shm_t)) / sizeof(sr_mod_t))

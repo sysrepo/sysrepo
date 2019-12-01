@@ -151,10 +151,10 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
 
     conn_s = (sr_conn_state_t *)(ext_shm_addr + main_shm->conn_state.conns);
     for (i = 0; i < main_shm->conn_state.conn_count; ++i) {
-        /* add connection mods lock */
+        /* add connection mod locks */
         items = sr_realloc(items, (item_count + 1) * sizeof *items);
-        items[item_count].start = conn_s[i].lock.mods_rcount;
-        items[item_count].size = SR_SHM_SIZE(main_shm->mod_count * sizeof(uint8_t[3]));
+        items[item_count].start = conn_s[i].mod_locks;
+        items[item_count].size = SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_state_lock_t[3]));
         asprintf(&(items[item_count].name), "conn mods lock (%u, conn %p)", main_shm->mod_count, (void *)conn_s[i].conn_ctx);
         ++item_count;
 
@@ -509,7 +509,7 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
     char *ext_buf, *ext_buf_cur, *mod_name;
     sr_conn_state_t *conn_s;
     sr_main_shm_t *main_shm;
-    uint8_t (*mods_lock)[3];
+    sr_conn_state_lock_t (*mod_locks)[3];
     uint32_t *evpipes;
     uint16_t i;
 
@@ -580,8 +580,8 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
     conn_s = (sr_conn_state_t *)(ext_buf + main_shm->conn_state.conns);
     for (i = 0; i < main_shm->conn_state.conn_count; ++i) {
         /* copy mods lock */
-        mods_lock = (uint8_t (*)[3])(shm_ext->addr + conn_s[i].lock.mods_rcount);
-        conn_s[i].lock.mods_rcount = sr_shmcpy(ext_buf, mods_lock, SR_SHM_SIZE(main_shm->mod_count * sizeof *mods_lock), &ext_buf_cur);
+        mod_locks = (sr_conn_state_lock_t (*)[3])(shm_ext->addr + conn_s[i].mod_locks);
+        conn_s[i].mod_locks = sr_shmcpy(ext_buf, mod_locks, SR_SHM_SIZE(main_shm->mod_count * sizeof *mod_locks), &ext_buf_cur);
 
         /* copy evpipes */
         evpipes = (uint32_t *)(shm_ext->addr + conn_s[i].evpipes);
@@ -725,7 +725,7 @@ sr_shmmain_state_add_conn(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
-    off_t conn_state_off, mods_lock_off;
+    off_t conn_state_off, mod_locks_off;
     sr_conn_state_t *conn_s;
     uint32_t new_ext_size;
 
@@ -733,8 +733,8 @@ sr_shmmain_state_add_conn(sr_conn_ctx_t *conn)
 
     /* moving existing state, remember offsets */
     conn_state_off = conn->ext_shm.size;
-    mods_lock_off = conn_state_off + (main_shm->conn_state.conn_count + 1) * sizeof *conn_s;
-    new_ext_size = mods_lock_off + SR_SHM_SIZE(main_shm->mod_count * sizeof(uint8_t[3]));
+    mod_locks_off = conn_state_off + (main_shm->conn_state.conn_count + 1) * sizeof *conn_s;
+    new_ext_size = mod_locks_off + SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_state_lock_t[3]));
 
     /* remap ext SHM */
     if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size))) {
@@ -755,8 +755,8 @@ sr_shmmain_state_add_conn(sr_conn_ctx_t *conn)
     ++main_shm->conn_state.conn_count;
 
     /* add cleared mods lock array */
-    conn_s->lock.mods_rcount = mods_lock_off;
-    memset(conn->ext_shm.addr + conn_s->lock.mods_rcount, 0, main_shm->mod_count * sizeof(uint8_t[3]));
+    conn_s->mod_locks = mod_locks_off;
+    memset(conn->ext_shm.addr + conn_s->mod_locks, 0, main_shm->mod_count * sizeof(sr_conn_state_lock_t[3]));
 
     /* fill attributes */
     conn_s->conn_ctx = conn;
@@ -917,9 +917,14 @@ sr_shmmain_state_recover(sr_conn_ctx_t *conn)
     sr_rpc_t *shm_rpc;
     sr_main_shm_t *main_shm;
     uint32_t i, j, k, *evpipes;
-    int last_removed;
+    sr_conn_state_lock_t (*mod_locks)[3];
+    struct sr_mod_lock_s *shm_lock;
+    struct timespec timeout_ts;
+    char *path;
+    int last_removed, ret;
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+    sr_time_get(&timeout_ts, SR_MOD_LOCK_TIMEOUT * 1000);
 
     conn_s = (sr_conn_state_t *)(conn->ext_shm.addr + main_shm->conn_state.conns);
     i = 0;
@@ -927,17 +932,47 @@ sr_shmmain_state_recover(sr_conn_ctx_t *conn)
         if (!sr_process_exists(conn_s[i].pid)) {
             SR_LOG_WRN("Cleaning up after a non-existent sysrepo client with PID %ld.", (long)conn_s[i].pid);
 
-            /* recover any held locks */
-            switch (conn_s[i].lock.main) {
+            /* recover held main SHM locks */
+            switch (conn_s[i].main_lock.mode) {
             case SR_LOCK_READ:
                 /* remove all read locks */
-                assert(conn_s[i].lock.main_rcount && (main_shm->lock.readers >= conn_s[i].lock.main_rcount));
-                main_shm->lock.readers -= conn_s[i].lock.main_rcount;
+                assert(conn_s[i].main_lock.rcount && (main_shm->lock.readers >= conn_s[i].main_lock.rcount));
+                main_shm->lock.readers -= conn_s[i].main_lock.rcount;
                 break;
             default:
                 /* not supported */
                 SR_ERRINFO_INT(&err_info);
                 break;
+            }
+
+            /* recover held module locks */
+            mod_locks = (sr_conn_state_lock_t (*)[3])(conn->ext_shm.addr + conn_s[i].mod_locks);
+            shm_mod = SR_FIRST_SHM_MOD(conn->main_shm.addr);
+            for (j = 0; j < main_shm->mod_count; ++j) {
+                for (k = 0; k < 3; ++k) {
+                    if ((mod_locks[j][k].mode == SR_LOCK_READ) || (mod_locks[j][k].mode == SR_LOCK_WRITE)) {
+                        shm_lock = &shm_mod[j].data_lock_info[k];
+
+                        /* SHM MOD MUTEX LOCK */
+                        ret = pthread_mutex_timedlock(&shm_lock->lock.mutex, &timeout_ts);
+                        if (ret) {
+                            SR_ERRINFO_LOCK(&err_info, __func__, ret);
+                        } else {
+                            /* unlock all read locks */
+                            assert(shm_lock->lock.readers >= mod_locks[j][k].rcount);
+                            shm_lock->lock.readers -= mod_locks[j][k].rcount;
+
+                            /* unlock fake write lock */
+                            if (mod_locks[j][k].mode == SR_LOCK_WRITE) {
+                                assert(shm_lock->write_locked);
+                                shm_lock->write_locked = 0;
+                            }
+
+                            /* SHM MOD MUTEX UNLOCK */
+                            pthread_mutex_unlock(&shm_lock->lock.mutex);
+                        }
+                    }
+                }
             }
 
             /* go through all the modules and their subscriptions and delete any matching (stale) ones */
@@ -946,7 +981,7 @@ sr_shmmain_state_recover(sr_conn_ctx_t *conn)
                 SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
                     for (k = 0; k < SR_DS_COUNT; ++k) {
                         if ((tmp_err = sr_shmmod_change_subscription_del(conn->ext_shm.addr, shm_mod, NULL, k, 0, 0,
-                                evpipes[j], 1, NULL))) {
+                                evpipes[j], 1, &last_removed))) {
                             sr_errinfo_merge(&err_info, tmp_err);
                         }
                         if (k == SR_DS_RUNNING) {
@@ -955,12 +990,36 @@ sr_shmmain_state_recover(sr_conn_ctx_t *conn)
                                 sr_errinfo_merge(&err_info, tmp_err);
                             }
                         }
+                        if (last_removed) {
+                            /* delete the SHM file itself so that there is no leftover event */
+                            tmp_err = sr_path_sub_shm(conn->ext_shm.addr + shm_mod->name, sr_ds2str(k), -1, 0, &path);
+                            if (tmp_err) {
+                                sr_errinfo_merge(&err_info, tmp_err);
+                            } else {
+                                if (shm_unlink(path) == -1) {
+                                    SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
+                                }
+                                free(path);
+                            }
+                        }
                     }
                     if ((tmp_err = sr_shmmod_oper_subscription_del(conn->ext_shm.addr, shm_mod, NULL, evpipes[j], 1))) {
                         sr_errinfo_merge(&err_info, tmp_err);
                     }
-                    if ((tmp_err = sr_shmmod_notif_subscription_del(conn->ext_shm.addr, shm_mod, evpipes[j], 1, NULL))) {
+                    if ((tmp_err = sr_shmmod_notif_subscription_del(conn->ext_shm.addr, shm_mod, evpipes[j], 1, &last_removed))) {
                         sr_errinfo_merge(&err_info, tmp_err);
+                    }
+                    if (last_removed) {
+                        /* delete the SHM file itself so that there is no leftover event */
+                        tmp_err = sr_path_sub_shm(conn->ext_shm.addr + shm_mod->name, "notif", -1, 0, &path);
+                        if (tmp_err) {
+                            sr_errinfo_merge(&err_info, tmp_err);
+                        } else {
+                            if (shm_unlink(path) == -1) {
+                                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
+                            }
+                            free(path);
+                        }
                     }
                 }
 
@@ -972,6 +1031,18 @@ sr_shmmain_state_recover(sr_conn_ctx_t *conn)
                     }
 
                     if (last_removed) {
+                        /* delete the SHM file itself so that there is no leftover event */
+                        tmp_err = sr_path_sub_shm(conn->ext_shm.addr + shm_mod->name, "rpc",
+                                sr_str_hash(conn->ext_shm.addr + shm_rpc[k].op_path), 0, &path);
+                        if (tmp_err) {
+                            sr_errinfo_merge(&err_info, tmp_err);
+                        } else {
+                            if (shm_unlink(path) == -1) {
+                                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
+                            }
+                            free(path);
+                        }
+
                         /* remove the parent RPC subscription structure */
                         if ((tmp_err = sr_shmmain_del_rpc(main_shm, conn->ext_shm.addr, NULL, shm_rpc[k].op_path))) {
                             sr_errinfo_merge(&err_info, tmp_err);
@@ -1611,7 +1682,7 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
      */
 
     /* remove all dependencies of all modules from SHM */
-    sr_shmmain_del_modules_deps(&conn->main_shm, conn->ext_shm.addr, (sr_mod_t *)(conn->main_shm.addr + sizeof(sr_main_shm_t)));
+    sr_shmmain_del_modules_deps(&conn->main_shm, conn->ext_shm.addr, SR_FIRST_SHM_MOD(conn->main_shm.addr));
 
     /* enlarge ext SHM to account for the newly wasted memory */
     if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size + *wasted_ext))) {
@@ -1621,7 +1692,7 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
 
     /* add all dependencies for all modules in SHM */
     if ((err_info = sr_shmmain_add_modules_deps(&conn->main_shm, conn->ext_shm.addr, sr_mod->parent->child,
-                (sr_mod_t *)(conn->main_shm.addr + sizeof(sr_main_shm_t)), &ext_end))) {
+                SR_FIRST_SHM_MOD(conn->main_shm.addr), &ext_end))) {
         return err_info;
     }
 
@@ -1793,13 +1864,13 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int l
 
         if (mode == SR_LOCK_READ) {
             /* recursive read locks are supported */
-            assert(((conn_s->lock.main == SR_LOCK_NONE) && !conn_s->lock.main_rcount)
-                || ((conn_s->lock.main == SR_LOCK_READ) && conn_s->lock.main_rcount));
-            conn_s->lock.main = mode;
-            ++conn_s->lock.main_rcount;
+            assert(((conn_s->main_lock.mode == SR_LOCK_NONE) && !conn_s->main_lock.rcount)
+                || ((conn_s->main_lock.mode == SR_LOCK_READ) && conn_s->main_lock.rcount));
+            conn_s->main_lock.mode = mode;
+            ++conn_s->main_lock.rcount;
         } else {
-            assert(conn_s->lock.main == SR_LOCK_NONE);
-            conn_s->lock.main = mode;
+            assert(conn_s->main_lock.mode == SR_LOCK_NONE);
+            conn_s->main_lock.mode = mode;
         }
     }
 
@@ -1837,14 +1908,14 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmo
             sr_errinfo_free(&err_info);
         } else if (mode == SR_LOCK_READ) {
             /* handle recursive read locks */
-            assert(conn_s->lock.main == mode);
-            --conn_s->lock.main_rcount;
-            if (!conn_s->lock.main_rcount) {
-                conn_s->lock.main = SR_LOCK_NONE;
+            assert(conn_s->main_lock.mode == mode);
+            --conn_s->main_lock.rcount;
+            if (!conn_s->main_lock.rcount) {
+                conn_s->main_lock.mode = SR_LOCK_NONE;
             }
         } else {
-            assert(conn_s->lock.main == mode);
-            conn_s->lock.main = SR_LOCK_NONE;
+            assert(conn_s->main_lock.mode == mode);
+            conn_s->main_lock.mode = SR_LOCK_NONE;
         }
     }
 

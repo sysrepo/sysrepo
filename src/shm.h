@@ -193,16 +193,22 @@ typedef enum sr_lock_mode_e {
 } sr_lock_mode_t;
 
 /**
+ * @brief Ext SHM connection state held lock.
+ */
+typedef struct sr_conn_state_lock_s {
+    sr_lock_mode_t mode;    /**< Held lock mode. */
+    uint8_t rcount;         /**< Number of recursive READ locks held. */
+} sr_conn_state_lock_t;
+
+/**
  * @brief Ext SHM connection state.
  */
 typedef struct sr_conn_state_s {
     sr_conn_ctx_t *conn_ctx;    /**< Connection, process-specific pointer, do not access! */
     pid_t pid;                  /**< PID of process that created this connection. */
-    struct {
-        sr_lock_mode_t main;    /**< Held main lock mode. */
-        uint16_t main_rcount;   /**< Number of recursive READ locks held. */
-        off_t mods_rcount;      /**< Array (uint8_t[3]) of recursive READ locks held on DS of SHM module with this index. */
-    } lock;                     /**< Held locks information. */
+
+    sr_conn_state_lock_t main_lock; /**< Held main SHM lock. */
+    off_t mod_locks;            /**< Held SHM module locks, points to (sr_conn_state_lock_t (*)[3]). */
 
     off_t evpipes;              /**< Array of event pipes of subscriptions on this connection. */
     uint32_t evpipe_count;      /**< Event pipe count. */
