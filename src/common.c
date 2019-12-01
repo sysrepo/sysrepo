@@ -1954,22 +1954,16 @@ sr_shmstrcpy(char *shm_addr, const char *str, char **shm_end)
 
     strcpy(*shm_end, str);
     ret = *shm_end - shm_addr;
-    *shm_end += sr_shmlen(str);
+    *shm_end += sr_strshmlen(str);
 
     return ret;
 }
 
-int
-sr_shmlen(const char *str)
+size_t
+sr_strshmlen(const char *str)
 {
-    int len;
-
-    len = strlen(str) + 1;
-
     /* align */
-    len += ((~len) + 1) & (SR_SHM_STR_ALIGN - 1);
-
-    return len;
+    return SR_SHM_SIZE(strlen(str) + 1);
 }
 
 sr_error_info_t *

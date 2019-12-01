@@ -72,7 +72,7 @@ sr_shmmain_print_data_deps(char *ext_shm_addr, sr_mod_data_dep_t *data_deps, uin
                 /* add xpath */
                 *items = sr_realloc(*items, (*item_count + 1) * sizeof **items);
                 (*items)[*item_count].start = data_deps[i].xpath;
-                (*items)[*item_count].size = sr_shmlen(ext_shm_addr + data_deps[i].xpath);
+                (*items)[*item_count].size = sr_strshmlen(ext_shm_addr + data_deps[i].xpath);
                 asprintf(&((*items)[*item_count].name), "%s xpath (\"%s\", mod \"%s\")", data_dep_name,
                         ext_shm_addr + data_deps[i].xpath, mod_name);
                 ++(*item_count);
@@ -174,7 +174,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
             /* add op_path */
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
             items[item_count].start = shm_rpc[i].op_path;
-            items[item_count].size = sr_shmlen(ext_shm_addr + shm_rpc[i].op_path);
+            items[item_count].size = sr_strshmlen(ext_shm_addr + shm_rpc[i].op_path);
             asprintf(&(items[item_count].name), "rpc op_path (\"%s\")", ext_shm_addr + shm_rpc[i].op_path);
             ++item_count;
 
@@ -192,7 +192,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
                     /* add RPC subscription XPath */
                     items = sr_realloc(items, (item_count + 1) * sizeof *items);
                     items[item_count].start = rpc_subs[j].xpath;
-                    items[item_count].size = sr_shmlen(ext_shm_addr + rpc_subs[j].xpath);
+                    items[item_count].size = sr_strshmlen(ext_shm_addr + rpc_subs[j].xpath);
                     asprintf(&(items[item_count].name), "rpc sub xpath (\"%s\", op_path \"%s\")",
                             ext_shm_addr + rpc_subs[j].xpath, ext_shm_addr + shm_rpc[i].op_path);
                     ++item_count;
@@ -205,7 +205,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
         /* add module name */
         items = sr_realloc(items, (item_count + 1) * sizeof *items);
         items[item_count].start = shm_mod->name;
-        items[item_count].size = sr_shmlen(ext_shm_addr + shm_mod->name);
+        items[item_count].size = sr_strshmlen(ext_shm_addr + shm_mod->name);
         asprintf(&(items[item_count].name), "module name (\"%s\")", ext_shm_addr + shm_mod->name);
         ++item_count;
 
@@ -223,7 +223,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
             for (i = 0; i < shm_mod->feat_count; ++i) {
                 items = sr_realloc(items, (item_count + 1) * sizeof *items);
                 items[item_count].start = features[i];
-                items[item_count].size = sr_shmlen(ext_shm_addr + features[i]);
+                items[item_count].size = sr_strshmlen(ext_shm_addr + features[i]);
                 asprintf(&(items[item_count].name), "feature name (\"%s\", mod \"%s\")", ext_shm_addr + features[i],
                         ext_shm_addr + shm_mod->name);
                 ++item_count;
@@ -259,7 +259,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
                 /* add xpath */
                 items = sr_realloc(items, (item_count + 1) * sizeof *items);
                 items[item_count].start = op_deps[i].xpath;
-                items[item_count].size = sr_shmlen(ext_shm_addr + op_deps[i].xpath);
+                items[item_count].size = sr_strshmlen(ext_shm_addr + op_deps[i].xpath);
                 asprintf(&(items[item_count].name), "op dep xpath (\"%s\", mod \"%s\")", ext_shm_addr + op_deps[i].xpath,
                         ext_shm_addr + shm_mod->name);
                 ++item_count;
@@ -290,7 +290,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
                     if (change_subs[i].xpath) {
                         items = sr_realloc(items, (item_count + 1) * sizeof *items);
                         items[item_count].start = change_subs[i].xpath;
-                        items[item_count].size = sr_shmlen(ext_shm_addr + change_subs[i].xpath);
+                        items[item_count].size = sr_strshmlen(ext_shm_addr + change_subs[i].xpath);
                         asprintf(&(items[item_count].name), "%s change sub xpath (\"%s\", mod \"%s\")", sr_ds2str(ds),
                                 ext_shm_addr + change_subs[i].xpath, ext_shm_addr + shm_mod->name);
                         ++item_count;
@@ -313,7 +313,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
             for (i = 0; i < shm_mod->oper_sub_count; ++i) {
                 items = sr_realloc(items, (item_count + 1) * sizeof *items);
                 items[item_count].start = oper_subs[i].xpath;
-                items[item_count].size = sr_shmlen(ext_shm_addr + oper_subs[i].xpath);
+                items[item_count].size = sr_strshmlen(ext_shm_addr + oper_subs[i].xpath);
                 asprintf(&(items[item_count].name), "oper sub xpath (\"%s\", mod \"%s\")",
                         ext_shm_addr + oper_subs[i].xpath, ext_shm_addr + shm_mod->name);
                 ++item_count;
@@ -465,7 +465,6 @@ sr_shmmain_defrag_copy_array_with_string(char *ext_shm_addr, off_t array, size_t
         char **ext_buf_cur)
 {
     off_t ret, *item;
-    size_t len;
     uint16_t i;
 
     if (!array && !count) {
@@ -483,8 +482,7 @@ sr_shmmain_defrag_copy_array_with_string(char *ext_shm_addr, off_t array, size_t
     /* copy string for each item */
     for (i = 0; i < count; ++i) {
         if (*item) {
-            len = sr_shmlen(ext_shm_addr + *item);
-            *item = sr_shmcpy(ext_buf, ext_shm_addr + *item, len, ext_buf_cur);
+            *item = sr_shmcpy(ext_buf, ext_shm_addr + *item, sr_strshmlen(ext_shm_addr + *item), ext_buf_cur);
         }
 
         /* next item */
@@ -1013,12 +1011,12 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
     shm_rpc = (sr_rpc_t *)(ext_shm_addr + main_shm->rpc_subs);
     for (i = 0; i < main_shm->rpc_sub_count; ++i) {
         assert(shm_rpc[i].op_path);
-        shm_size += sr_shmlen(ext_shm_addr + shm_rpc[i].op_path);
+        shm_size += sr_strshmlen(ext_shm_addr + shm_rpc[i].op_path);
 
         rpc_subs = (sr_rpc_sub_t *)(ext_shm_addr + shm_rpc[i].subs);
         for (j = 0; j < shm_rpc[i].sub_count; ++j) {
             assert(rpc_subs[j].xpath);
-            shm_size += sr_shmlen(ext_shm_addr + rpc_subs[j].xpath);
+            shm_size += sr_strshmlen(ext_shm_addr + rpc_subs[j].xpath);
         }
         shm_size += shm_rpc[i].sub_count * sizeof *rpc_subs;
     }
@@ -1031,7 +1029,7 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
             change_subs = (sr_mod_change_sub_t *)(ext_shm_addr + shm_mod->change_sub[i].subs);
             for (j = 0; j < shm_mod->change_sub[i].sub_count; ++j) {
                 if (change_subs[j].xpath) {
-                    shm_size += sr_shmlen(ext_shm_addr + change_subs[j].xpath);
+                    shm_size += sr_strshmlen(ext_shm_addr + change_subs[j].xpath);
                 }
             }
             shm_size += shm_mod->change_sub[i].sub_count * sizeof *change_subs;
@@ -1041,7 +1039,7 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
         oper_subs = (sr_mod_oper_sub_t *)(ext_shm_addr + shm_mod->oper_subs);
         for (i = 0; i < shm_mod->oper_sub_count; ++i) {
             assert(oper_subs[i].xpath);
-            shm_size += sr_shmlen(ext_shm_addr + oper_subs[i].xpath);
+            shm_size += sr_strshmlen(ext_shm_addr + oper_subs[i].xpath);
         }
         shm_size += shm_mod->oper_subs * sizeof *oper_subs;
 
@@ -1070,12 +1068,12 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
         LY_TREE_FOR(sr_mod->child, sr_child) {
             if (!strcmp(sr_child->schema->name, "name")) {
                 /* a string */
-                shm_size += sr_shmlen(((struct lyd_node_leaf_list *)sr_child)->value_str);
+                shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_child)->value_str);
             } else if (!strcmp(sr_child->schema->name, "enabled-feature")) {
                 /* another feature */
                 shm_size += sizeof(off_t);
                 /* a string */
-                shm_size += sr_shmlen(((struct lyd_node_leaf_list *)sr_child)->value_str);
+                shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_child)->value_str);
             } else if (!strcmp(sr_child->schema->name, "data-deps")) {
                 LY_TREE_FOR(sr_child->child, sr_dep) {
                     /* another data dependency */
@@ -1086,7 +1084,7 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
                         LY_TREE_FOR(sr_dep->child, sr_instid) {
                             if (!strcmp(sr_instid->schema->name, "xpath")) {
                                 /* a string */
-                                shm_size += sr_shmlen(((struct lyd_node_leaf_list *)sr_instid)->value_str);
+                                shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_instid)->value_str);
                             }
                         }
                     }
@@ -1101,7 +1099,7 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
                 LY_TREE_FOR(sr_child->child, sr_op_dep) {
                     if (!strcmp(sr_op_dep->schema->name, "xpath")) {
                         /* operation xpath (a string) */
-                        shm_size += sr_shmlen(((struct lyd_node_leaf_list *)sr_op_dep)->value_str);
+                        shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_op_dep)->value_str);
                     } else if (!strcmp(sr_op_dep->schema->name, "in") || !strcmp(sr_op_dep->schema->name, "out")) {
                         LY_TREE_FOR(sr_op_dep->child, sr_dep) {
                             /* another data dependency */
@@ -1111,7 +1109,7 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
                                 LY_TREE_FOR(sr_dep->child, sr_instid) {
                                     if (!strcmp(sr_instid->schema->name, "xpath")) {
                                         /* a string */
-                                        shm_size += sr_shmlen(((struct lyd_node_leaf_list *)sr_instid)->value_str);
+                                        shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_instid)->value_str);
                                     }
                                 }
                             }
@@ -1487,7 +1485,7 @@ sr_shmmain_del_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, sr_mod_t *fi
         for (i = 0; i < first_shm_mod->data_dep_count; ++i) {
             /* add wasted for xpath */
             if (shm_data_deps[i].xpath) {
-                *ext_wasted += sr_shmlen(ext_shm_addr + shm_data_deps[i].xpath);
+                *ext_wasted += sr_strshmlen(ext_shm_addr + shm_data_deps[i].xpath);
             }
         }
 
@@ -1505,14 +1503,14 @@ sr_shmmain_del_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, sr_mod_t *fi
         for (i = 0; i < first_shm_mod->op_dep_count; ++i) {
             if (shm_op_deps[i].xpath) {
                 /* add wasted for xpath */
-                *ext_wasted += sr_shmlen(ext_shm_addr + shm_op_deps[i].xpath);
+                *ext_wasted += sr_strshmlen(ext_shm_addr + shm_op_deps[i].xpath);
             }
 
             shm_op_data_deps = (sr_mod_data_dep_t *)(ext_shm_addr + shm_op_deps[i].in_deps);
             for (j = 0; j < shm_op_deps[i].in_dep_count; ++j) {
                 if (shm_op_data_deps[j].xpath) {
                     /* add wasted for xpath */
-                    *ext_wasted += sr_shmlen(ext_shm_addr + shm_op_data_deps[j].xpath);
+                    *ext_wasted += sr_strshmlen(ext_shm_addr + shm_op_data_deps[j].xpath);
                 }
             }
 
@@ -1523,7 +1521,7 @@ sr_shmmain_del_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, sr_mod_t *fi
             for (j = 0; j < shm_op_deps[i].out_dep_count; ++j) {
                 if (shm_op_data_deps[j].xpath) {
                     /* add wasted for xpath */
-                    *ext_wasted += sr_shmlen(ext_shm_addr + shm_op_data_deps[j].xpath);
+                    *ext_wasted += sr_strshmlen(ext_shm_addr + shm_op_data_deps[j].xpath);
                 }
             }
 
@@ -1854,7 +1852,7 @@ sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rpc_off, const char
     /* moving all existing subscriptions (if any) and adding a new one */
     subs_off = shm_ext->size;
     xpath_off = subs_off + (shm_rpc->sub_count + 1) * sizeof *shm_sub;
-    new_ext_size = xpath_off + sr_shmlen(xpath);
+    new_ext_size = xpath_off + sr_strshmlen(xpath);
 
     /* remap ext SHM */
     if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
@@ -1913,7 +1911,7 @@ continue_loop:
     SR_CHECK_INT_RET(i == shm_rpc->sub_count, err_info);
 
     /* add wasted memory */
-    *((size_t *)ext_shm_addr) += sizeof *shm_sub + sr_shmlen(ext_shm_addr + shm_sub[i].xpath);
+    *((size_t *)ext_shm_addr) += sizeof *shm_sub + sr_strshmlen(ext_shm_addr + shm_sub[i].xpath);
 
     --shm_rpc->sub_count;
     if (!shm_rpc->sub_count) {
@@ -1958,7 +1956,7 @@ sr_shmmain_add_rpc(sr_conn_ctx_t *conn, const char *op_path, sr_rpc_t **shm_rpc_
     /* moving all existing RPCs (if any) and adding a new one */
     rpc_subs_off = conn->ext_shm.size;
     op_path_off = rpc_subs_off + (main_shm->rpc_sub_count + 1) * sizeof *shm_rpc;
-    new_ext_size = op_path_off + sr_shmlen(op_path);
+    new_ext_size = op_path_off + sr_strshmlen(op_path);
 
     /* remap ext SHM, update pointers */
     if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size))) {
@@ -2005,7 +2003,7 @@ sr_shmmain_del_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_p
     shm_rpc = (sr_rpc_t *)(ext_shm_addr + main_shm->rpc_subs);
 
     /* add wasted memory */
-    *((size_t *)ext_shm_addr) += sizeof *shm_rpc + sr_shmlen(ext_shm_addr + shm_rpc[i].op_path);
+    *((size_t *)ext_shm_addr) += sizeof *shm_rpc + sr_strshmlen(ext_shm_addr + shm_rpc[i].op_path);
 
     --main_shm->rpc_sub_count;
     if (!main_shm->rpc_sub_count) {
