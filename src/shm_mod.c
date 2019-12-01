@@ -25,6 +25,8 @@
 #include <string.h>
 #include <time.h>
 #include <assert.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <libyang/libyang.h>
 
@@ -330,6 +332,41 @@ sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
     return NULL;
 }
 
+/**
+ * @brief Update information about held module read locks in SHM for the connection state.
+ *
+ * @param[in] conn Connection and its state to update.
+ * @param[in] shm_mod READ-locked SHM module.
+ * @param[in] ds Datastore.
+ * @param[in] lock Whether to lock or unlock.
+ */
+static void
+sr_shmmod_conn_state_rlock(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, int lock)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t shm_mod_idx;
+    uint8_t (*mods_lock)[3];
+    sr_conn_state_t *conn_s;
+
+    conn_s = sr_shmmain_state_find_conn((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
+    if (!conn_s) {
+        SR_ERRINFO_INT(&err_info);
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    mods_lock = (uint8_t (*)[3])(conn->ext_shm.addr + conn_s->lock.mods_rcount);
+    shm_mod_idx = SR_SHM_MOD_IDX(shm_mod, conn->main_shm);
+    if (lock) {
+        /* lock */
+        ++mods_lock[shm_mod_idx][ds];
+    } else {
+        /* unlock */
+        assert(mods_lock[shm_mod_idx][ds]);
+        --mods_lock[shm_mod_idx][ds];
+    }
+}
+
 sr_error_info_t *
 sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_t sid)
 {
@@ -379,6 +416,9 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_
             }
         }
 
+        /* remember this read lock in SHM */
+        sr_shmmod_conn_state_rlock(mod_info->conn, mod->shm_mod, ds, 1);
+
         /* set the flag for unlocking (it is always READ locked now) */
         mod->state |= MOD_INFO_RLOCK;
     }
@@ -418,6 +458,9 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 
             /* MOD READ UNLOCK */
             sr_rwunlock(&shm_lock->lock, SR_LOCK_READ, __func__);
+
+            /* update this read lock in SHM */
+            sr_shmmod_conn_state_rlock(mod_info->conn, mod->shm_mod, ds, 0);
 
             /* remove flag for correct error recovery */
             mod->state &= ~MOD_INFO_RLOCK;
@@ -472,6 +515,9 @@ sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable)
         } else if (mod->state & MOD_INFO_RLOCK) {
             /* MOD READ UNLOCK */
             sr_rwunlock(&shm_lock->lock, SR_LOCK_READ, __func__);
+
+            /* update this read lock in SHM */
+            sr_shmmod_conn_state_rlock(mod_info->conn, mod->shm_mod, ds, 0);
         }
     }
 }

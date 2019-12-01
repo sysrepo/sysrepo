@@ -151,6 +151,13 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
 
     conn_s = (sr_conn_state_t *)(ext_shm_addr + main_shm->conn_state.conns);
     for (i = 0; i < main_shm->conn_state.conn_count; ++i) {
+        /* add connection mods lock */
+        items = sr_realloc(items, (item_count + 1) * sizeof *items);
+        items[item_count].start = conn_s[i].lock.mods_rcount;
+        items[item_count].size = SR_SHM_SIZE(main_shm->mod_count * sizeof(uint8_t[3]));
+        asprintf(&(items[item_count].name), "conn mods lock (%u, conn %p)", main_shm->mod_count, (void *)conn_s[i].conn_ctx);
+        ++item_count;
+
         if (conn_s[i].evpipes) {
             /* add connection evpipes */
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
@@ -502,6 +509,7 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
     char *ext_buf, *ext_buf_cur, *mod_name;
     sr_conn_state_t *conn_s;
     sr_main_shm_t *main_shm;
+    uint8_t (*mods_lock)[3];
     uint32_t *evpipes;
     uint16_t i;
 
@@ -571,7 +579,11 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
 
     conn_s = (sr_conn_state_t *)(ext_buf + main_shm->conn_state.conns);
     for (i = 0; i < main_shm->conn_state.conn_count; ++i) {
-        /* copy evpipes for each connection */
+        /* copy mods lock */
+        mods_lock = (uint8_t (*)[3])(shm_ext->addr + conn_s[i].lock.mods_rcount);
+        conn_s[i].lock.mods_rcount = sr_shmcpy(ext_buf, mods_lock, SR_SHM_SIZE(main_shm->mod_count * sizeof *mods_lock), &ext_buf_cur);
+
+        /* copy evpipes */
         evpipes = (uint32_t *)(shm_ext->addr + conn_s[i].evpipes);
         conn_s[i].evpipes = sr_shmcpy(ext_buf, evpipes, conn_s[i].evpipe_count * sizeof *evpipes, &ext_buf_cur);
     }
@@ -713,15 +725,16 @@ sr_shmmain_state_add_conn(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
-    off_t conn_state_off;
+    off_t conn_state_off, mods_lock_off;
     sr_conn_state_t *conn_s;
     uint32_t new_ext_size;
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
-    /* moving existing state */
+    /* moving existing state, remember offsets */
     conn_state_off = conn->ext_shm.size;
-    new_ext_size = conn_state_off + (main_shm->conn_state.conn_count + 1) * sizeof *conn_s;
+    mods_lock_off = conn_state_off + (main_shm->conn_state.conn_count + 1) * sizeof *conn_s;
+    new_ext_size = mods_lock_off + SR_SHM_SIZE(main_shm->mod_count * sizeof(uint8_t[3]));
 
     /* remap ext SHM */
     if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size))) {
@@ -740,6 +753,10 @@ sr_shmmain_state_add_conn(sr_conn_ctx_t *conn)
     conn_s = (sr_conn_state_t *)(conn->ext_shm.addr + main_shm->conn_state.conns);
     conn_s += main_shm->conn_state.conn_count;
     ++main_shm->conn_state.conn_count;
+
+    /* add cleared mods lock array */
+    conn_s->lock.mods_rcount = mods_lock_off;
+    memset(conn->ext_shm.addr + conn_s->lock.mods_rcount, 0, main_shm->mod_count * sizeof(uint8_t[3]));
 
     /* fill attributes */
     conn_s->conn_ctx = conn;
@@ -770,8 +787,9 @@ sr_shmmain_state_del_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_c
         return;
     }
 
-    /* add wasted memory for evpipes and connection itself */
-    *((size_t *)ext_shm_addr) += (conn_s[i].evpipe_count * sizeof(uint32_t)) + sizeof *conn_s;
+    /* add wasted memory for mods lock, evpipes, and connection itself */
+    *((size_t *)ext_shm_addr) += SR_SHM_SIZE(main_shm->mod_count * sizeof(uint8_t[3]))
+            + (conn_s[i].evpipe_count * sizeof(uint32_t)) + sizeof *conn_s;
 
     --main_shm->conn_state.conn_count;
     if (!main_shm->conn_state.conn_count) {
@@ -1003,6 +1021,7 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
     /* connection state */
     conn_s = (sr_conn_state_t *)(ext_shm_addr + main_shm->conn_state.conns);
     for (i = 0; i < main_shm->conn_state.conn_count; ++i) {
+        shm_size += SR_SHM_SIZE(main_shm->mod_count * sizeof(uint8_t[3]));
         shm_size += conn_s[i].evpipe_count * sizeof(uint32_t);
         shm_size += sizeof *conn_s;
     }

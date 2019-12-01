@@ -201,6 +201,7 @@ typedef struct sr_conn_state_s {
     struct {
         sr_lock_mode_t main;    /**< Held main lock mode. */
         uint16_t main_rcount;   /**< Number of recursive READ locks held. */
+        off_t mods_rcount;      /**< Array (uint8_t[3]) of recursive READ locks held on DS of SHM module with this index. */
     } lock;                     /**< Held locks information. */
 
     off_t evpipes;              /**< Array of event pipes of subscriptions on this connection. */

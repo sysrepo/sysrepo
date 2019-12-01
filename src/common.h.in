@@ -92,6 +92,9 @@
 #define SR_SHM_MOD_FOR(main_shm_addr, main_shm_size, shm_mod) \
     for (shm_mod = (sr_mod_t *)(main_shm_addr + sizeof(sr_main_shm_t)); (char *)shm_mod != main_shm_addr + main_shm_size; ++shm_mod)
 
+/** macro for learning main SHM index of a SHM module */
+#define SR_SHM_MOD_IDX(shm_mod, main_shm) (((((char *)(shm_mod)) - (main_shm).addr) - sizeof(sr_main_shm_t)) / sizeof(sr_mod_t))
+
 /* macro for getting aligned SHM size */
 #define SR_SHM_SIZE(size) ((size) + ((~(size) + 1) & (SR_SHM_MEM_ALIGN - 1)))
 
