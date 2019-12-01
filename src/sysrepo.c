@@ -251,6 +251,8 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         if ((err_info = sr_shm_remap(&conn->main_shm, sizeof(sr_main_shm_t)))) {
             goto cleanup_unlock;
         }
+        main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+        main_shm->mod_count = 0;
 
         /* clear ext SHM (there can be no connections and no modules) */
         if ((err_info = sr_shm_remap(&conn->ext_shm, sizeof(size_t)))) {

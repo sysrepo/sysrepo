@@ -213,6 +213,7 @@ typedef struct sr_conn_state_s {
 typedef struct sr_main_shm_s {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing main and ext SHM. */
     pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
+    uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
 
     off_t rpc_subs;             /**< Array of RPC/action subscriptions. */
     uint16_t rpc_sub_count;     /**< Number of RPC/action subscriptions. */

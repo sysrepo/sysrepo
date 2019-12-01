@@ -1545,6 +1545,7 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
     sr_error_info_t *err_info = NULL;
     struct lyd_node *next;
     sr_mod_t *shm_mod;
+    sr_main_shm_t *main_shm;
     off_t main_end, ext_end;
     size_t *wasted_ext, new_ext_size, new_mod_count;
 
@@ -1577,6 +1578,11 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
                 &ext_end))) {
         return err_info;
     }
+
+    /* add the new modules number */
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+    main_shm->mod_count += new_mod_count;
+    assert(main_shm->mod_count == (conn->main_shm.size - sizeof *main_shm) / sizeof *shm_mod);
 
     /*
      * Dependencies of old modules are rebuild because of possible
