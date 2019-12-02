@@ -22,9 +22,6 @@ else()
 endif()
 swig_link_libraries(${PYTHON_SWIG_BINDING} ${PYTHON_LIBRARIES} Sysrepo-cpp)
 
-file(COPY "examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
-file(COPY "tests" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
-
 execute_process(COMMAND
     ${PYTHON_EXECUTABLE} -c
     "from distutils.sysconfig import get_python_lib; print(get_python_lib())"
