@@ -924,8 +924,7 @@ sr_shmmain_state_recover(sr_conn_ctx_t *conn)
     sr_conn_state_lock_t (*mod_locks)[3];
     struct sr_mod_lock_s *shm_lock;
     struct timespec timeout_ts;
-    char *path;
-    int last_removed, ret;
+    int ret;
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
     sr_time_get(&timeout_ts, SR_MOD_LOCK_TIMEOUT * 1000);
@@ -984,73 +983,22 @@ sr_shmmain_state_recover(sr_conn_ctx_t *conn)
             for (j = 0; j < conn_s[i].evpipe_count; ++j) {
                 SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
                     for (k = 0; k < SR_DS_COUNT; ++k) {
-                        if ((tmp_err = sr_shmmod_change_subscription_del(conn->ext_shm.addr, shm_mod, NULL, k, 0, 0,
-                                evpipes[j], 1, &last_removed))) {
+                        if ((tmp_err = sr_shmmod_change_subscription_stop(conn, shm_mod, NULL, k, 0, 0, evpipes[j], 1))) {
                             sr_errinfo_merge(&err_info, tmp_err);
                         }
-                        if (k == SR_DS_RUNNING) {
-                            /* technically, operational datastore changed */
-                            if ((tmp_err = sr_module_update_oper_diff(conn, conn->ext_shm.addr + shm_mod->name))) {
-                                sr_errinfo_merge(&err_info, tmp_err);
-                            }
-                        }
-                        if (last_removed) {
-                            /* delete the SHM file itself so that there is no leftover event */
-                            tmp_err = sr_path_sub_shm(conn->ext_shm.addr + shm_mod->name, sr_ds2str(k), -1, 0, &path);
-                            if (tmp_err) {
-                                sr_errinfo_merge(&err_info, tmp_err);
-                            } else {
-                                if (shm_unlink(path) == -1) {
-                                    SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-                                }
-                                free(path);
-                            }
-                        }
                     }
-                    if ((tmp_err = sr_shmmod_oper_subscription_del(conn->ext_shm.addr, shm_mod, NULL, evpipes[j], 1))) {
+                    if ((tmp_err = sr_shmmod_oper_subscription_stop(conn->ext_shm.addr, shm_mod, NULL, evpipes[j], 1))) {
                         sr_errinfo_merge(&err_info, tmp_err);
                     }
-                    if ((tmp_err = sr_shmmod_notif_subscription_del(conn->ext_shm.addr, shm_mod, evpipes[j], 1, &last_removed))) {
+                    if ((tmp_err = sr_shmmod_notif_subscription_stop(conn->ext_shm.addr, shm_mod, evpipes[j], 1))) {
                         sr_errinfo_merge(&err_info, tmp_err);
-                    }
-                    if (last_removed) {
-                        /* delete the SHM file itself so that there is no leftover event */
-                        tmp_err = sr_path_sub_shm(conn->ext_shm.addr + shm_mod->name, "notif", -1, 0, &path);
-                        if (tmp_err) {
-                            sr_errinfo_merge(&err_info, tmp_err);
-                        } else {
-                            if (shm_unlink(path) == -1) {
-                                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-                            }
-                            free(path);
-                        }
                     }
                 }
 
                 shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + main_shm->rpc_subs);
                 for (k = 0; k < main_shm->rpc_sub_count; ++k) {
-                    tmp_err = sr_shmmain_rpc_subscription_del(conn->ext_shm.addr, &shm_rpc[k], NULL, 0, evpipes[j], 1, &last_removed);
-                    if (tmp_err) {
+                    if ((tmp_err = sr_shmmain_rpc_subscription_stop(conn, &shm_rpc[k], NULL, 0, evpipes[j], 1))) {
                         sr_errinfo_merge(&err_info, tmp_err);
-                    }
-
-                    if (last_removed) {
-                        /* delete the SHM file itself so that there is no leftover event */
-                        tmp_err = sr_path_sub_shm(conn->ext_shm.addr + shm_mod->name, "rpc",
-                                sr_str_hash(conn->ext_shm.addr + shm_rpc[k].op_path), 0, &path);
-                        if (tmp_err) {
-                            sr_errinfo_merge(&err_info, tmp_err);
-                        } else {
-                            if (shm_unlink(path) == -1) {
-                                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-                            }
-                            free(path);
-                        }
-
-                        /* remove the parent RPC subscription structure */
-                        if ((tmp_err = sr_shmmain_del_rpc(main_shm, conn->ext_shm.addr, NULL, shm_rpc[k].op_path))) {
-                            sr_errinfo_merge(&err_info, tmp_err);
-                        }
                     }
                 }
             }
@@ -1981,11 +1929,10 @@ sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rpc_off, const char
     return NULL;
 }
 
-sr_error_info_t *
+int
 sr_shmmain_rpc_subscription_del(char *ext_shm_addr, sr_rpc_t *shm_rpc, const char *xpath, uint32_t priority,
-        uint32_t evpipe_num, int all_evpipe, int *last_removed)
+        uint32_t evpipe_num, int only_evpipe, int *last_removed)
 {
-    sr_error_info_t *err_info = NULL;
     sr_rpc_sub_t *shm_sub;
     uint16_t i;
 
@@ -1996,8 +1943,7 @@ sr_shmmain_rpc_subscription_del(char *ext_shm_addr, sr_rpc_t *shm_rpc, const cha
     /* find the subscription */
     shm_sub = (sr_rpc_sub_t *)(ext_shm_addr + shm_rpc->subs);
     for (i = 0; i < shm_rpc->sub_count; ++i) {
-continue_loop:
-        if (all_evpipe) {
+        if (only_evpipe) {
             if (shm_sub[i].evpipe_num == evpipe_num) {
                 break;
             }
@@ -2005,10 +1951,10 @@ continue_loop:
             break;
         }
     }
-    if (all_evpipe && (i == shm_rpc->sub_count)) {
-        return NULL;
+    if (i == shm_rpc->sub_count) {
+        /* no matching subscription found */
+        return 1;
     }
-    SR_CHECK_INT_RET(i == shm_rpc->sub_count, err_info);
 
     /* add wasted memory */
     *((size_t *)ext_shm_addr) += sizeof *shm_sub + sr_strshmlen(ext_shm_addr + shm_sub[i].xpath);
@@ -2025,11 +1971,54 @@ continue_loop:
         memcpy(&shm_sub[i], &shm_sub[shm_rpc->sub_count], sizeof *shm_sub);
     }
 
-    if (all_evpipe) {
-        goto continue_loop;
-    }
+    return 0;
+}
 
-    return NULL;
+sr_error_info_t *
+sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath, uint32_t priority,
+        uint32_t evpipe_num, int all_evpipe)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *op_path;
+    char *mod_name, *path;
+    int last_removed;
+
+    op_path = conn->ext_shm.addr + shm_rpc->op_path;
+
+    do {
+        /* remove the subscription from the main SHM */
+        if (sr_shmmain_rpc_subscription_del(conn->ext_shm.addr, shm_rpc, xpath, priority, evpipe_num, all_evpipe,
+                &last_removed)) {
+            if (!all_evpipe) {
+                SR_ERRINFO_INT(&err_info);
+            }
+            break;
+        }
+
+        if (last_removed) {
+            /* get module name */
+            mod_name = sr_get_first_ns(op_path);
+
+            /* delete the SHM file itself so that there is no leftover event */
+            err_info = sr_path_sub_shm(mod_name, "rpc", sr_str_hash(op_path), 0, &path);
+            free(mod_name);
+            if (err_info) {
+                break;
+            }
+            if (shm_unlink(path) == -1) {
+                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
+            }
+            free(path);
+
+            /* delete also RPC */
+            if ((err_info = sr_shmmain_del_rpc((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, NULL,
+                    shm_rpc->op_path))) {
+                break;
+            }
+        }
+    } while (all_evpipe);
+
+    return err_info;
 }
 
 sr_error_info_t *

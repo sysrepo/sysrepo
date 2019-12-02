@@ -714,9 +714,7 @@ sr_error_info_t *
 sr_subs_session_del(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
-    char *mod_name, *path;
     uint32_t i, j;
-    int last_removed;
     struct modsub_change_s *change_subs;
     struct modsub_oper_s *oper_sub;
     struct modsub_notif_s *notif_sub;
@@ -742,29 +740,10 @@ change_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < change_subs->sub_count; ++j) {
             if (change_subs->subs[j].sess == sess) {
-                /* remove the subscription from the main SHM */
-                if ((err_info = sr_shmmod_change_subscription_del(ext_shm->addr, shm_mod, change_subs->subs[j].xpath,
-                        change_subs->ds, change_subs->subs[j].priority, change_subs->subs[j].opts, subs->evpipe_num, 0,
-                        &last_removed))) {
+                /* properly remove the subscription from ext SHM */
+                if ((err_info = sr_shmmod_change_subscription_stop(sess->conn, shm_mod, change_subs->subs[j].xpath,
+                        change_subs->ds, change_subs->subs[j].priority, change_subs->subs[j].opts, subs->evpipe_num, 0))) {
                     return err_info;
-                }
-
-                if (change_subs->ds == SR_DS_RUNNING) {
-                    /* technically, operational data changed */
-                    if ((err_info = sr_module_update_oper_diff(sess->conn, change_subs->module_name))) {
-                        return err_info;
-                    }
-                }
-
-                if (last_removed) {
-                    /* delete the SHM file itself so that there is no leftover event */
-                    if ((err_info = sr_path_sub_shm(change_subs->module_name, sr_ds2str(change_subs->ds), -1, 0, &path))) {
-                        return err_info;
-                    }
-                    if (shm_unlink(path) == -1) {
-                        SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-                    }
-                    free(path);
                 }
 
                 /* remove the subscription from the subscription structure */
@@ -787,20 +766,11 @@ oper_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < oper_sub->sub_count; ++j) {
             if (oper_sub->subs[j].sess == sess) {
-                /* remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmmod_oper_subscription_del(ext_shm->addr, shm_mod, oper_sub->subs[j].xpath,
+                /* properly remove the subscriptions from the main SHM */
+                if ((err_info = sr_shmmod_oper_subscription_stop(ext_shm->addr, shm_mod, oper_sub->subs[j].xpath,
                         subs->evpipe_num, 0))) {
                     return err_info;
                 }
-
-                /* delete the SHM file itself so that there is no leftover event */
-                if ((err_info = sr_path_sub_shm(oper_sub->module_name, "oper", sr_str_hash(oper_sub->subs[j].xpath), 0, &path))) {
-                    return err_info;
-                }
-                if (shm_unlink(path) == -1) {
-                    SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-                }
-                free(path);
 
                 /* remove the subscription from the subscription structure */
                 sr_sub_oper_del(oper_sub->module_name, oper_sub->subs[j].xpath, subs);
@@ -821,21 +791,9 @@ notif_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < notif_sub->sub_count; ++j) {
             if (notif_sub->subs[j].sess == sess) {
-                /* remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmmod_notif_subscription_del(ext_shm->addr, shm_mod, subs->evpipe_num, 0,
-                        &last_removed))) {
+                /* properly remove the subscriptions from the main SHM */
+                if ((err_info = sr_shmmod_notif_subscription_stop(ext_shm->addr, shm_mod, subs->evpipe_num, 0))) {
                     return err_info;
-                }
-
-                if (last_removed) {
-                    /* delete the SHM file itself so that there is no leftover event */
-                    if ((err_info = sr_path_sub_shm(notif_sub->module_name, "notif", -1, 0, &path))) {
-                        return err_info;
-                    }
-                    if (shm_unlink(path) == -1) {
-                        SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-                    }
-                    free(path);
                 }
 
                 /* remove the subscription from the subscription structure */
@@ -859,32 +817,10 @@ rpc_subs_del:
         SR_CHECK_INT_RET(!shm_rpc, err_info);
         for (j = 0; j < rpc_sub->sub_count; ++j) {
             if (rpc_sub->subs[j].sess == sess) {
-                /* remove the subscription from the main SHM */
-                if ((err_info = sr_shmmain_rpc_subscription_del(ext_shm->addr, shm_rpc, rpc_sub->subs[j].xpath,
-                            rpc_sub->subs[j].priority, subs->evpipe_num, 0, &last_removed))) {
+                /* properly remove the subscription from the main SHM */
+                if ((err_info = sr_shmmain_rpc_subscription_stop(sess->conn, shm_rpc, rpc_sub->subs[j].xpath,
+                        rpc_sub->subs[j].priority, subs->evpipe_num, 0))) {
                     return err_info;
-                }
-
-                if (last_removed) {
-                    /* get module name */
-                    mod_name = sr_get_first_ns(rpc_sub->op_path);
-
-                    /* delete the SHM file itself so that there is no leftover event */
-                    err_info = sr_path_sub_shm(mod_name, "rpc", sr_str_hash(rpc_sub->op_path), 0, &path);
-                    free(mod_name);
-                    if (err_info) {
-                        return err_info;
-                    }
-                    if (shm_unlink(path) == -1) {
-                        SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-                    }
-                    free(path);
-
-                    /* delete also RPC */
-                    err_info = sr_shmmain_del_rpc((sr_main_shm_t *)sess->conn->main_shm.addr, ext_shm->addr, rpc_sub->op_path, 0);
-                    if (err_info) {
-                        return err_info;
-                    }
                 }
 
                 /* remove the subscription from the subscription structure */

@@ -636,11 +636,10 @@ sr_shmmod_change_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const ch
     return NULL;
 }
 
-sr_error_info_t *
+int
 sr_shmmod_change_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
-        uint32_t priority, int sub_opts, uint32_t evpipe_num, int all_evpipe, int *last_removed)
+        uint32_t priority, int sub_opts, uint32_t evpipe_num, int only_evpipe, int *last_removed)
 {
-    sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *shm_sub;
     uint16_t i;
 
@@ -651,8 +650,7 @@ sr_shmmod_change_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const c
     /* find the subscription(s) */
     shm_sub = (sr_mod_change_sub_t *)(ext_shm_addr + shm_mod->change_sub[ds].subs);
     for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
-continue_loop:
-        if (all_evpipe) {
+        if (only_evpipe) {
             if (shm_sub[i].evpipe_num == evpipe_num) {
                 break;
             }
@@ -663,11 +661,10 @@ continue_loop:
             }
         }
     }
-    if (all_evpipe && (i == shm_mod->change_sub[ds].sub_count)) {
-        /* all matching subscriptions removed */
-        return NULL;
+    if (i == shm_mod->change_sub[ds].sub_count) {
+        /* subscription not found */
+        return 1;
     }
-    SR_CHECK_INT_RET(i == shm_mod->change_sub[ds].sub_count, err_info);
 
     /* add wasted memory */
     *((size_t *)ext_shm_addr) += sizeof *shm_sub + (shm_sub[i].xpath ? sr_strshmlen(ext_shm_addr + shm_sub[i].xpath) : 0);
@@ -684,11 +681,51 @@ continue_loop:
         memcpy(&shm_sub[i], &shm_sub[shm_mod->change_sub[ds].sub_count], sizeof *shm_sub);
     }
 
-    if (all_evpipe) {
-        goto continue_loop;
-    }
+    return 0;
+}
 
-    return NULL;
+sr_error_info_t *
+sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
+        uint32_t priority, int sub_opts, uint32_t evpipe_num, int all_evpipe)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *mod_name;
+    char *path;
+    int last_removed;
+
+    mod_name = conn->ext_shm.addr + shm_mod->name;
+
+    do {
+        /* remove the subscription from the main SHM */
+        if (sr_shmmod_change_subscription_del(conn->ext_shm.addr, shm_mod, xpath, ds, priority, sub_opts, evpipe_num,
+                all_evpipe, &last_removed)) {
+            if (!all_evpipe) {
+                /* error in this case */
+                SR_ERRINFO_INT(&err_info);
+            }
+            break;
+        }
+
+        if (ds == SR_DS_RUNNING) {
+            /* technically, operational data changed */
+            if ((err_info = sr_module_update_oper_diff(conn, mod_name))) {
+                break;
+            }
+        }
+
+        if (last_removed) {
+            /* delete the SHM file itself so that there is no leftover event */
+            if ((err_info = sr_path_sub_shm(mod_name, sr_ds2str(ds), -1, 0, &path))) {
+                break;
+            }
+            if (shm_unlink(path) == -1) {
+                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
+            }
+            free(path);
+        }
+    } while (all_evpipe);
+
+    return err_info;;
 }
 
 sr_error_info_t *
@@ -761,19 +798,17 @@ sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
     return NULL;
 }
 
-sr_error_info_t *
+int
 sr_shmmod_oper_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
-        int all_evpipe)
+        int only_evpipe, const char **xpath_p)
 {
-    sr_error_info_t *err_info = NULL;
     sr_mod_oper_sub_t *shm_sub;
     uint16_t i;
 
     /* find the subscription */
     shm_sub = (sr_mod_oper_sub_t *)(ext_shm_addr + shm_mod->oper_subs);
     for (i = 0; i < shm_mod->oper_sub_count; ++i) {
-continue_loop:
-        if (all_evpipe) {
+        if (only_evpipe) {
             if (shm_sub[i].evpipe_num == evpipe_num) {
                 break;
             }
@@ -781,10 +816,14 @@ continue_loop:
             break;
         }
     }
-    if (all_evpipe && (i == shm_mod->oper_sub_count)) {
-        return NULL;
+    if (i == shm_mod->oper_sub_count) {
+        /* no matching subscription found */
+        return 1;
     }
-    SR_CHECK_INT_RET(i == shm_mod->oper_sub_count, err_info);
+
+    if (xpath_p) {
+        *xpath_p = ext_shm_addr + shm_sub[i].xpath;
+    }
 
     /* add wasted memory */
     *((size_t *)ext_shm_addr) += sizeof *shm_sub + sr_strshmlen(ext_shm_addr + shm_sub[i].xpath);
@@ -800,11 +839,39 @@ continue_loop:
         }
     }
 
-    if (all_evpipe) {
-        goto continue_loop;
-    }
+    return 0;
+}
 
-    return NULL;
+sr_error_info_t *
+sr_shmmod_oper_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
+        int all_evpipe)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *mod_name;
+    char *path;
+
+    mod_name = ext_shm_addr + shm_mod->name;
+
+    do {
+        /* remove the subscriptions from the main SHM */
+        if (sr_shmmod_oper_subscription_del(ext_shm_addr, shm_mod, xpath, evpipe_num, all_evpipe, &xpath)) {
+            if (!all_evpipe) {
+                SR_ERRINFO_INT(&err_info);
+            }
+            break;
+        }
+
+        /* delete the SHM file itself so that there is no leftover event */
+        if ((err_info = sr_path_sub_shm(mod_name, "oper", sr_str_hash(xpath), 0, &path))) {
+            break;
+        }
+        if (shm_unlink(path) == -1) {
+            SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
+        }
+        free(path);
+    } while (all_evpipe);
+
+    return err_info;
 }
 
 sr_error_info_t *
@@ -842,11 +909,9 @@ sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t 
     return NULL;
 }
 
-sr_error_info_t *
-sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num, int all_evpipe,
-        int *last_removed)
+int
+sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num, int *last_removed)
 {
-    sr_error_info_t *err_info = NULL;
     sr_mod_notif_sub_t *shm_sub;
     uint16_t i;
 
@@ -857,15 +922,14 @@ sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t
     /* find the subscription */
     shm_sub = (sr_mod_notif_sub_t *)(ext_shm_addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
-continue_loop:
         if (shm_sub[i].evpipe_num == evpipe_num) {
             break;
         }
     }
-    if (all_evpipe && (i == shm_mod->notif_sub_count)) {
-        return NULL;
+    if (i == shm_mod->notif_sub_count) {
+        /* no matching subscription found */
+        return 1;
     }
-    SR_CHECK_INT_RET(i == shm_mod->notif_sub_count, err_info);
 
     /* add wasted memory */
     *((size_t *)ext_shm_addr) += sizeof *shm_sub;
@@ -882,11 +946,41 @@ continue_loop:
         memcpy(&shm_sub[i], &shm_sub[shm_mod->notif_sub_count], sizeof *shm_sub);
     }
 
-    if (all_evpipe) {
-        goto continue_loop;
-    }
+    return 0;
+}
 
-    return NULL;
+sr_error_info_t *
+sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num, int all_evpipe)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *mod_name;
+    char *path;
+    int last_removed;
+
+    mod_name = ext_shm_addr + shm_mod->name;
+
+    do {
+        /* remove the subscriptions from the main SHM */
+        if (sr_shmmod_notif_subscription_del(ext_shm_addr, shm_mod, evpipe_num, &last_removed)) {
+            if (!all_evpipe) {
+                SR_ERRINFO_INT(&err_info);
+            }
+            break;
+        }
+
+        if (last_removed) {
+            /* delete the SHM file itself so that there is no leftover event */
+            if ((err_info = sr_path_sub_shm(mod_name, "notif", -1, 0, &path))) {
+                break;
+            }
+            if (shm_unlink(path) == -1) {
+                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
+            }
+            free(path);
+        }
+    } while (all_evpipe);
+
+    return err_info;
 }
 
 sr_error_info_t *

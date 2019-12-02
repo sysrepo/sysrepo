@@ -2762,9 +2762,9 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_su
             SR_CHECK_INT_RET(!shm_mod, err_info);
 
             /* remove the subscription from main SHM */
-            if ((tmp_err = sr_shmmod_notif_subscription_del(subs->conn->ext_shm.addr, shm_mod, subs->evpipe_num, 0, NULL))) {
+            if (sr_shmmod_notif_subscription_del(subs->conn->ext_shm.addr, shm_mod, subs->evpipe_num, NULL)) {
                 /* continue */
-                sr_errinfo_merge(&err_info, tmp_err);
+                SR_ERRINFO_INT(&err_info);
             }
 
             if (notif_subs->sub_count == 1) {

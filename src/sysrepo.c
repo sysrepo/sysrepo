@@ -4372,7 +4372,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const struct lys_module *ly
 
 error_unlock_unsub_unmod:
     if (!start_time) {
-        sr_shmmod_notif_subscription_del(conn->ext_shm.addr, shm_mod, (*subscription)->evpipe_num, 0, NULL);
+        sr_shmmod_notif_subscription_del(conn->ext_shm.addr, shm_mod, (*subscription)->evpipe_num, NULL);
     }
 
 error_unlock_unsub:
@@ -4755,7 +4755,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     goto cleanup_unlock;
 
 error_unlock_unsub_unmod:
-    sr_shmmod_oper_subscription_del(conn->ext_shm.addr, shm_mod, path, (*subscription)->evpipe_num, 0);
+    sr_shmmod_oper_subscription_del(conn->ext_shm.addr, shm_mod, path, (*subscription)->evpipe_num, 0, NULL);
 
 error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {

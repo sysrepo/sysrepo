@@ -564,12 +564,27 @@ sr_error_info_t *sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rp
  * @param[in] xpath Subscription XPath.
  * @param[in] priority Subscription priority.
  * @param[in] evpipe_num Subscription event pipe number.
- * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
+ * @param[in] only_evpipe Whether to match only on \p evpipe_num.
  * @param[out] last_removed Whether this is the last RPC subscription that was removed.
+ * @return 0 if removed, 1 if no matching found.
+ */
+int sr_shmmain_rpc_subscription_del(char *ext_shm_addr, sr_rpc_t *shm_rpc, const char *xpath, uint32_t priority,
+        uint32_t evpipe_num, int only_evpipe, int *last_removed);
+
+/**
+ * @brief Remove main SHM module RPC/action subscription and do a proper cleanup.
+ * Calls ::sr_shmmain_rpc_subscription_del(), is a higher level wrapper.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_rpc SHM RPC.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] priority Subscription priority.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_rpc_subscription_del(char *ext_shm_addr, sr_rpc_t *shm_rpc, const char *xpath,
-        uint32_t priority, uint32_t evpipe_num, int all_evpipe, int *last_removed);
+sr_error_info_t *sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
+        uint32_t priority, uint32_t evpipe_num, int all_evpipe);
 
 /**
  * @brief Add an RPC/action into main SHM.
@@ -725,12 +740,29 @@ sr_error_info_t *sr_shmmod_change_subscription_add(sr_shm_t *shm_ext, sr_mod_t *
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscription options.
  * @param[in] evpipe_num Subscription event pipe number.
- * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
+ * @param[in] only_evpipe Whether to match only on \p evpipe_num.
  * @param[out] last_removed Whether this is the last module change subscription that was removed.
+ * @return 0 if removed, 1 if no matching found.
+ */
+int sr_shmmod_change_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
+        uint32_t priority, int sub_opts, uint32_t evpipe_num, int only_evpipe, int *last_removed);
+
+/**
+ * @brief Remove main SHM module change subscription and do a proper cleanup.
+ * Calls ::sr_shmmod_change_subscription_del(), is a higher level wrapper.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] ds Datastore.
+ * @param[in] priority Subscription priority.
+ * @param[in] sub_opts Subscription options.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_change_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath,
-        sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num, int all_evpipe, int *last_removed);
+sr_error_info_t *sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
+        sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num, int all_evpipe);
 
 /**
  * @brief Add main SHM module operational subscription.
@@ -753,10 +785,25 @@ sr_error_info_t *sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *sh
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] only_evpipe Whether to match only on \p evpipe_num.
+ * @param[out] xpath_p Optionally return the xpath of the removed subscription.
+ * @return 0 if removed, 1 if no matching found.
+ */
+int sr_shmmod_oper_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
+        int only_evpipe, const char **xpath_p);
+
+/**
+ * @brief Remove main SHM module operational subscription and do a proper cleanup.
+ * Calls ::sr_shmmod_oper_subscription_del(), is a higher level wrapper.
+ *
+ * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] shm_mod SHM module.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] evpipe_num Subscription event pipe number.
  * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_oper_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath,
+sr_error_info_t *sr_shmmod_oper_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath,
         uint32_t evpipe_num, int all_evpipe);
 
 /**
@@ -776,12 +823,23 @@ sr_error_info_t *sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *s
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] shm_mod SHM module.
  * @param[in] evpipe_num Subscription event pipe number.
- * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
  * @param[out] last_removed Whether this is the last module notification subscription that was removed.
+ * @return 0 if removed, 1 if no matching found.
+ */
+int sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num, int *last_removed);
+
+/**
+ * @brief Remove main SHM module notification subscription and do a proper cleanup.
+ * Calls ::sr_shmmod_notif_subscription_del(), is a higher level wrapper.
+ *
+ * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] shm_mod SHM module.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num,
-        int all_evpipe, int *last_removed);
+sr_error_info_t *sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num,
+        int all_evpipe);
 
 /**
  * @brief Remove all stored operational data of a connection.
