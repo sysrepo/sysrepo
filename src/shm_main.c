@@ -162,7 +162,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
             /* add connection evpipes */
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
             items[item_count].start = conn_s[i].evpipes;
-            items[item_count].size = conn_s[i].evpipe_count * sizeof(uint32_t);
+            items[item_count].size = SR_SHM_SIZE(conn_s[i].evpipe_count * sizeof(uint32_t));
             asprintf(&(items[item_count].name), "evpipes (%u, conn %p)", conn_s[i].evpipe_count, (void *)conn_s[i].conn_ctx);
             ++item_count;
         }
@@ -585,7 +585,7 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
 
         /* copy evpipes */
         evpipes = (uint32_t *)(shm_ext->addr + conn_s[i].evpipes);
-        conn_s[i].evpipes = sr_shmcpy(ext_buf, evpipes, conn_s[i].evpipe_count * sizeof *evpipes, &ext_buf_cur);
+        conn_s[i].evpipes = sr_shmcpy(ext_buf, evpipes, SR_SHM_SIZE(conn_s[i].evpipe_count * sizeof *evpipes), &ext_buf_cur);
     }
 
     /* 4) copy RPCs and their subscriptions */
@@ -836,26 +836,29 @@ sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
         return err_info;
     }
 
-    /* moving existing evpipes */
-    evpipes_off = conn->ext_shm.size;
-    new_ext_size = evpipes_off + (conn_s->evpipe_count + 1) * sizeof evpipe_num;
+    /* we may not even need to resize ext SHM because of the alignment */
+    if (SR_SHM_SIZE((conn_s->evpipe_count + 1) * sizeof evpipe_num) > SR_SHM_SIZE(conn_s->evpipe_count * sizeof evpipe_num)) {
+        /* moving existing evpipes */
+        evpipes_off = conn->ext_shm.size;
+        new_ext_size = evpipes_off + SR_SHM_SIZE((conn_s->evpipe_count + 1) * sizeof evpipe_num);
 
-    /* remap ext SHM */
-    if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size))) {
-        return err_info;
+        /* remap ext SHM */
+        if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size))) {
+            return err_info;
+        }
+
+        /* find the connection again, could have moved */
+        conn_s = sr_shmmain_state_find_conn(main_shm, conn->ext_shm.addr, conn, getpid());
+        assert(conn_s);
+
+        /* add wasted memory */
+        *((size_t *)conn->ext_shm.addr) += SR_SHM_SIZE(conn_s->evpipe_count * sizeof evpipe_num);
+
+        /* move the evpipes */
+        memcpy(conn->ext_shm.addr + evpipes_off, conn->ext_shm.addr + conn_s->evpipes,
+                conn_s->evpipe_count * sizeof evpipe_num);
+        conn_s->evpipes = evpipes_off;
     }
-
-    /* find the connection again, could have moved */
-    conn_s = sr_shmmain_state_find_conn(main_shm, conn->ext_shm.addr, conn, getpid());
-    assert(conn_s);
-
-    /* add wasted memory */
-    *((size_t *)conn->ext_shm.addr) += conn_s->evpipe_count * sizeof evpipe_num;
-
-    /* move the evpipes */
-    memcpy(conn->ext_shm.addr + evpipes_off, conn->ext_shm.addr + conn_s->evpipes,
-            conn_s->evpipe_count * sizeof evpipe_num);
-    conn_s->evpipes = evpipes_off;
 
     /* add new evpipe */
     ((uint32_t *)(conn->ext_shm.addr + conn_s->evpipes))[conn_s->evpipe_count] = evpipe_num;
@@ -895,8 +898,9 @@ sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
         return;
     }
 
-    /* add wasted memory */
-    *((size_t *)conn->ext_shm.addr) += sizeof evpipe_num;
+    /* add wasted memory keeping alignment in mind */
+    *((size_t *)conn->ext_shm.addr) += SR_SHM_SIZE(conn_s->evpipe_count * sizeof evpipe_num)
+            - SR_SHM_SIZE((conn_s->evpipe_count - 1) * sizeof evpipe_num);
 
     --conn_s->evpipe_count;
     if (!conn_s->evpipe_count) {
@@ -1093,7 +1097,7 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
     conn_s = (sr_conn_state_t *)(ext_shm_addr + main_shm->conn_state.conns);
     for (i = 0; i < main_shm->conn_state.conn_count; ++i) {
         shm_size += SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_state_lock_t[3]));
-        shm_size += conn_s[i].evpipe_count * sizeof(uint32_t);
+        shm_size += SR_SHM_SIZE(conn_s[i].evpipe_count * sizeof(uint32_t));
         shm_size += sizeof *conn_s;
     }
 
