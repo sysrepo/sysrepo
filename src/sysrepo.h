@@ -1287,7 +1287,7 @@ typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
  * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in in case that ::SR_SUBSCR_CTX_REUSE option is specified.
+ * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
