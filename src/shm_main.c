@@ -788,7 +788,7 @@ sr_shmmain_state_del_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_c
     }
 
     /* add wasted memory for mods lock, evpipes, and connection itself */
-    *((size_t *)ext_shm_addr) += SR_SHM_SIZE(main_shm->mod_count * sizeof(uint8_t[3]))
+    *((size_t *)ext_shm_addr) += SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_state_lock_t[3]))
             + (conn_s[i].evpipe_count * sizeof(uint32_t)) + sizeof *conn_s;
 
     --main_shm->conn_state.conn_count;
@@ -1092,7 +1092,7 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
     /* connection state */
     conn_s = (sr_conn_state_t *)(ext_shm_addr + main_shm->conn_state.conns);
     for (i = 0; i < main_shm->conn_state.conn_count; ++i) {
-        shm_size += SR_SHM_SIZE(main_shm->mod_count * sizeof(uint8_t[3]));
+        shm_size += SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_state_lock_t[3]));
         shm_size += conn_s[i].evpipe_count * sizeof(uint32_t);
         shm_size += sizeof *conn_s;
     }
