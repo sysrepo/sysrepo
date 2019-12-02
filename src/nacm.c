@@ -988,7 +988,7 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
     int rc = SR_ERR_OK;
     uid_t uid;
     const char *username = NULL;
-    char *module_name = NULL;
+    char *module_name = NULL, *action_data_path;
     char **ext_groups = NULL;
     size_t ext_group_cnt = 0;
     nacm_group_t **nacm_ext_groups = NULL;
@@ -1117,8 +1117,12 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
                 /* this rule is for different access operation */
                 continue;
             }
-            if (NACM_RULE_RPC != nacm_rule->type && NACM_RULE_NOTSET != nacm_rule->type) {
+            if (LYS_RPC == sch_node->nodetype && NACM_RULE_RPC != nacm_rule->type && NACM_RULE_NOTSET != nacm_rule->type) {
                 /* this rule is not defined for RPC message validation */
+                continue;
+            }
+            if (LYS_ACTION == sch_node->nodetype && NACM_RULE_DATA != nacm_rule->type && NACM_RULE_NOTSET != nacm_rule->type) {
+                /* this rule is not defined for action message validation */
                 continue;
             }
             if (0 != strcmp("*", nacm_rule->module) &&
@@ -1132,6 +1136,15 @@ nacm_check_rpc(nacm_ctx_t *nacm_ctx, const ac_ucred_t *user_credentials, const c
                     /* this rule doesn't apply to this specific RPC */
                     continue;
                 }
+            } else if (NACM_RULE_DATA == nacm_rule->type) {
+                action_data_path = lys_data_path(sch_node);
+                if (0 != strcmp("/", nacm_rule->data.rpc_name) &&
+                    0 != strcmp(action_data_path, nacm_rule->data.rpc_name)) {
+                    /* this rule doesn't apply to this specific action */
+                    free(action_data_path);
+                    continue;
+                }
+                free(action_data_path);
             }
             /* step 8: the rule matches! */
             action = nacm_rule->action;
