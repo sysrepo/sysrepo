@@ -749,20 +749,19 @@ sr_shmmain_state_add_conn(sr_conn_ctx_t *conn)
             main_shm->conn_state.conn_count * sizeof *conn_s);
     main_shm->conn_state.conns = conn_state_off;
 
-    /* add new connection */
+    /* add new clear connection state */
     conn_s = (sr_conn_state_t *)(conn->ext_shm.addr + main_shm->conn_state.conns);
     conn_s += main_shm->conn_state.conn_count;
+    memset(conn_s, 0, sizeof *conn_s);
     ++main_shm->conn_state.conn_count;
 
-    /* add cleared mods lock array */
-    conn_s->mod_locks = mod_locks_off;
-    memset(conn->ext_shm.addr + conn_s->mod_locks, 0, main_shm->mod_count * sizeof(sr_conn_state_lock_t[3]));
+    /* clear mods lock array */
+    memset(conn->ext_shm.addr + mod_locks_off, 0, main_shm->mod_count * sizeof(sr_conn_state_lock_t[3]));
 
-    /* fill attributes */
+    /* fill the attributes */
     conn_s->conn_ctx = conn;
     conn_s->pid = getpid();
-    conn_s->evpipes = 0;
-    conn_s->evpipe_count = 0;
+    conn_s->mod_locks = mod_locks_off;
 
     return NULL;
 }
