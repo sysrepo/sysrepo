@@ -48,7 +48,6 @@ static void global_loop() {
     signal(SIGALRM, sigint_handler);
     signal(SIGTERM, sigint_handler);
     while (!exit_application) {
-        printf("silled\n");
         sleep(1000);  /* or do some more useful work... */
     }
 }
