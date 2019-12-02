@@ -1325,6 +1325,18 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
         goto cleanup_unlock;
     }
 
+    /* get startup file path */
+    if ((err_info = sr_path_startup_file(module_name, &path))) {
+        goto cleanup_unlock;
+    }
+
+    /* update startup file permissions and owner */
+    err_info = sr_chmodown(path, owner, group, perm);
+    free(path);
+    if (err_info) {
+        goto cleanup_unlock;
+    }
+
     /* get running SHM file path */
     if ((err_info = sr_path_ds_shm(module_name, SR_DS_RUNNING, 1, &path))) {
         goto cleanup_unlock;
@@ -1337,12 +1349,12 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
         goto cleanup_unlock;
     }
 
-    /* get startup file path */
-    if ((err_info = sr_path_startup_file(module_name, &path))) {
+    /* get operational SHM file path */
+    if ((err_info = sr_path_ds_shm(module_name, SR_DS_OPERATIONAL, 1, &path))) {
         goto cleanup_unlock;
     }
 
-    /* update startup file permissions and owner */
+    /* update operational file permissions and owner */
     err_info = sr_chmodown(path, owner, group, perm);
     free(path);
     if (err_info) {
