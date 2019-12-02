@@ -82,6 +82,6 @@ if(BUILD_CPP_EXAMPLES)
 endif()
 
 # Python language byndings generation
-if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND (${GEN_PYTHON_VERSION} STREQUAL "2" OR ${GEN_PYTHON_VERSION} STREQUAL "3"))
+if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
     add_subdirectory(python)
 endif()
