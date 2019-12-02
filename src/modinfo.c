@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/mman.h>
 
 #include <libyang/libyang.h>
@@ -1705,9 +1706,16 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *mod_data, *diff = NULL;
     uint32_t i;
-    int change;
+    int change, create_flags;
 
     assert(!mod_info->data_cached);
+
+    /* candidate file may need to be created */
+    if (mod_info->ds == SR_DS_CANDIDATE) {
+        create_flags = O_CREAT;
+    } else {
+        create_flags = 0;
+    }
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -1722,7 +1730,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 }
 
                 /* store the new diff */
-                if (change && (err_info = sr_module_file_data_set(mod->ly_mod->name, mod_info->ds, diff))) {
+                if (change && (err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
                     goto cleanup;
                 }
                 lyd_free_withsiblings(diff);
@@ -1732,7 +1740,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 mod_data = sr_module_data_unlink(&mod_info->data, mod->ly_mod);
 
                 /* store the new data */
-                if ((err_info = sr_module_file_data_set(mod->ly_mod->name, mod_info->ds, mod_data))) {
+                if ((err_info = sr_module_file_data_set(mod->ly_mod->name, mod_info->ds, create_flags, mod_data))) {
                     goto cleanup;
                 }
 
@@ -1768,7 +1776,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                     if ((err_info = sr_diff_mod_update(&diff, mod->ly_mod, mod_data))) {
                         goto cleanup;
                     }
-                    if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff))) {
+                    if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
                         goto cleanup;
                     }
                     lyd_free_withsiblings(diff);

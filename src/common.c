@@ -1232,33 +1232,58 @@ sr_create_data_files(const struct lys_module *ly_mod)
         goto cleanup;
     }
 
-    if (!access(path, F_OK)) {
-        /* already exists */
+    /* if startup does not exists neither can running, otherwise both must exist */
+    errno = 0;
+    if (access(path, F_OK) && (errno == ENOENT)) {
+        /* get default values */
+        if (lyd_validate_modules(&root, &ly_mod, 1, LYD_OPT_CONFIG)) {
+            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+            SR_ERRINFO_VALID(&err_info);
+            goto cleanup;
+        }
+
+        /* print them into a file if it does not exist */
+        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, O_CREAT | O_EXCL, root))) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
+            goto cleanup;
+        }
+
+        /* repeat for running DS */
+        free(path);
+        path = NULL;
+        if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, 1, &path))) {
+            goto cleanup;
+        }
+
+        if (!access(path, F_OK)) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" already exists.", path);
+            goto cleanup;
+        }
+
+        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, O_CREAT | O_EXCL, root))) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
+            goto cleanup;
+        }
+    } else if (errno) {
+        SR_ERRINFO_SYSERRNO(&err_info, "access");
         goto cleanup;
     }
 
-    /* get default values */
-    if (lyd_validate_modules(&root, &ly_mod, 1, LYD_OPT_CONFIG)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        SR_ERRINFO_VALID(&err_info);
-        goto cleanup;
-    }
-
-    /* print them into a file */
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, root))) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
-        goto cleanup;
-    }
-
-    /* repeat for running DS */
+    /* repeat for operational DS but set empty data */
     free(path);
     path = NULL;
-    if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, 1, &path))) {
+    if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_OPERATIONAL, 1, &path))) {
         goto cleanup;
     }
 
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, root))) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
+    errno = 0;
+    if (access(path, F_OK) && (errno == ENOENT)) {
+        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, O_CREAT | O_EXCL, NULL))) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
+            goto cleanup;
+        }
+    } else if (errno) {
+        SR_ERRINFO_SYSERRNO(&err_info, "access");
         goto cleanup;
     }
 
@@ -3621,21 +3646,12 @@ retry_open:
         fd = shm_open(path, O_RDONLY, 0);
     }
     if (fd == -1) {
-        if (errno == ENOENT) {
-            if (ds == SR_DS_CANDIDATE) {
-                /* no candidate exists, just use running */
-                ds = SR_DS_RUNNING;
-                free(path);
-                path = NULL;
-                goto retry_open;
-            }
-
-            /* no file = no data, nothing to do */
-            if (ds == SR_DS_STARTUP) {
-                SR_LOG_WRN("Failed to open \"%s\" (%s), it should exist.", path, strerror(errno));
-            }
+        if ((errno == ENOENT) && (ds == SR_DS_CANDIDATE)) {
+            /* no candidate exists, just use running */
+            ds = SR_DS_RUNNING;
             free(path);
-            return NULL;
+            path = NULL;
+            goto retry_open;
         }
 
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
@@ -3674,7 +3690,7 @@ error:
 }
 
 sr_error_info_t *
-sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data)
+sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, int create_flags, struct lyd_node *mod_data)
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
@@ -3697,9 +3713,9 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
 
     /* open */
     if (ds == SR_DS_STARTUP) {
-        fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, SR_FILE_PERM);
+        fd = open(path, O_WRONLY | O_TRUNC | create_flags, SR_FILE_PERM);
     } else {
-        fd = shm_open(path, O_WRONLY | O_CREAT | O_TRUNC, SR_FILE_PERM);
+        fd = shm_open(path, O_WRONLY | O_TRUNC | create_flags, SR_FILE_PERM);
     }
     if (fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
@@ -3765,7 +3781,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     if ((err_info = sr_diff_mod_update(&diff, ly_mod, mod_info.data))) {
         goto cleanup;
     }
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff))) {
+    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
         goto cleanup;
     }
 

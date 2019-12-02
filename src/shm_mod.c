@@ -1007,7 +1007,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
             if ((err_info = sr_diff_del_conn(&diff, del_conn, del_pid))) {
                 goto cleanup;
             }
-            if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff))) {
+            if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
                 goto cleanup;
             }
             lyd_free_withsiblings(diff);

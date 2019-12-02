@@ -634,7 +634,7 @@ sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
 sr_error_info_t *sr_remove_data_files(const char *mod_name);
 
 /**
- * @brief Create startup and running data file for a module.
+ * @brief Create startup, running, and operational data files for a module.
  *
  * @param[in] ly_mod Module to create data files for.
  * @return err_info, NULL on success.
@@ -1265,10 +1265,13 @@ sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, sr_
  *
  * @param[in] mod_name Module name.
  * @param[in] ds Target datastore
+ * @param[in] create_flags Additional flags that will be used for opening the file,
+ * any of O_CREATE and O_EXCL are expected.
  * @param[in] mod_data Module data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data);
+sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, int create_flags,
+        struct lyd_node *mod_data);
 
 /**
  * @brief Update sysrepo stored operational diff of a module.
