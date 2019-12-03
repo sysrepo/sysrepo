@@ -845,9 +845,9 @@ common_nacm_config(test_nacm_cfg_t *nacm_config)
     add_nacm_rule(nacm_config, "acl2", "allow-enabling-interfaces", "ietf-interfaces", NACM_RULE_DATA,
             "/ietf-interfaces:interfaces/interface/enabled", "update", "permit", "Allow to enable interface");
     /*  -> acl3: */
-    /*    -> RPC: */
-    add_nacm_rule(nacm_config, "acl3", "permit-unload", "test-module", NACM_RULE_RPC,
-            "unload", "exec", "permit", "Permit action unload");
+    /*    -> action: */
+    add_nacm_rule(nacm_config, "acl3", "permit-unload", "test-module", NACM_RULE_DATA,
+            "/test-module:kernel-modules/kernel-module/unload", "exec", "permit", "Permit action unload");
     /*    -> notification: */
     add_nacm_rule(nacm_config, "acl3", "permit-status-change", "test-module", NACM_RULE_NOTIF,
             "status-change", "*", "permit", "Permit notification 'status-change'.");
