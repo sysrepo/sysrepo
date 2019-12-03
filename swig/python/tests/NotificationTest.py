@@ -35,7 +35,6 @@ class NotificationTester(SysrepoTester):
             os.unlink(self.filename)
 
     def subscribeStep(self, module_name, xpath):
-        print("subscribe\n")
         self.filename = "notifications_test_" + str(randint(0, 9999))
         self.process = subprocess.Popen(
             ['python3','NotificationTestApp.py', module_name, xpath, self.filename])
@@ -44,12 +43,10 @@ class NotificationTester(SysrepoTester):
         time.sleep(0.1)
 
     def cancelSubscriptionStep(self):
-        print("cancel\n")
         os.kill(self.process.pid, signal.SIGINT)
         self.process.wait()
 
     def checkNotificationStep(self, expected):
-        print("check notif\n")
         try:
             with open(self.filename, "r") as f:
                 self.notifications = []
@@ -67,11 +64,9 @@ class NotificationTester(SysrepoTester):
             print(e)
 
     def checkNoNotificationArrived(self):
-        print("no notif\n")
         self.tc.assertFalse(os.path.isfile(self.filename))
 
     def deleteNotifications(self):
-        print("delete notif\n")
         if os.path.isfile(self.filename):
             os.unlink(self.filename)
 
@@ -92,16 +87,6 @@ class NotificationTest(unittest.TestCase):
         subscriber3 = NotificationTester("Subscriber3")
 
         tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
-        subscriber2.add_step(subscriber2.waitStep)
-        subscriber3.add_step(subscriber3.waitStep)
-
-        tester.add_step(tester.restartConnection)
-        subscriber.add_step(subscriber.waitStep)
-        subscriber2.add_step(subscriber2.waitStep)
-        subscriber3.add_step(subscriber3.waitStep)
-
-        tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep,
                             "ietf-interfaces", "/ietf-interfaces:interfaces")
         subscriber2.add_step(subscriber2.waitStep)
@@ -114,7 +99,7 @@ class NotificationTest(unittest.TestCase):
                              "ietf-interfaces", "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address")
         subscriber3.add_step(subscriber3.waitStep)
 
-        tester.add_step(tester.deleteItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/type")
+        tester.add_step(tester.deleteItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']")
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
@@ -231,16 +216,6 @@ class NotificationTest(unittest.TestCase):
         subscriber3 = NotificationTester("Subscriber3")
 
         tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
-        subscriber2.add_step(subscriber2.waitStep)
-        subscriber3.add_step(subscriber3.waitStep)
-
-        tester.add_step(tester.restartConnection)
-        subscriber.add_step(subscriber.waitStep)
-        subscriber2.add_step(subscriber2.waitStep)
-        subscriber3.add_step(subscriber3.waitStep)
-
-        tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep, "ietf-interfaces",
                             "/ietf-interfaces:interfaces")
         subscriber2.add_step(subscriber2.waitStep)
@@ -261,6 +236,11 @@ class NotificationTest(unittest.TestCase):
 
         tester.add_step(
             tester.setItemStep, "/example-module:container/list[key1='abc'][key2='def']/leaf", sr.Val("new value", sr.SR_STRING_T))
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        tester.add_step(tester.commitStep)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
@@ -317,18 +297,6 @@ class NotificationTest(unittest.TestCase):
         subscriber3 = NotificationTester("Subscriber3")
         subscriber4 = NotificationTester("Subscriber4")
 
-        tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
-        subscriber2.add_step(subscriber2.waitStep)
-        subscriber3.add_step(subscriber3.waitStep)
-        subscriber4.add_step(subscriber4.waitStep)
-
-        tester.add_step(tester.restartConnection)
-        subscriber.add_step(subscriber.waitStep)
-        subscriber2.add_step(subscriber2.waitStep)
-        subscriber3.add_step(subscriber3.waitStep)
-        subscriber4.add_step(subscriber4.waitStep)
-
         # subscribe synchronously
 
         tester.add_step(tester.waitStep)
@@ -360,7 +328,7 @@ class NotificationTest(unittest.TestCase):
                              "/ietf-interfaces:interfaces")
 
         tester.add_step(tester.deleteItemStep,
-                        "/ietf-interfaces:interfaces/interface[name='eth0']/type")
+                        "/ietf-interfaces:interfaces/interface[name='eth0']")
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
@@ -421,12 +389,6 @@ class NotificationTest(unittest.TestCase):
         subscriber = NotificationTester("Subscriber")
 
         tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
-
-        tester.add_step(tester.restartConnection)
-        subscriber.add_step(subscriber.waitStep)
-
-        tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep, "ietf-interfaces",
                             "/ietf-interfaces:interfaces")
 
@@ -436,27 +398,18 @@ class NotificationTest(unittest.TestCase):
             tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/type", sr.Val("iana-if-type:ethernetCsmacd", sr.SR_IDENTITYREF_T))
         subscriber.add_step(subscriber.waitStep)
 
-        tester.add_step(tester.commitStep)
-        subscriber.add_step(subscriber.waitStep)
-
         tester.add_step(
-            tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", sr.Val(True, sr.SR_BOOL_T))
+            tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", sr.Val(False, sr.SR_BOOL_T))
         subscriber.add_step(subscriber.waitStep)
 
         tester.add_step(tester.commitStep)
         subscriber.add_step(subscriber.waitStep)
-
-        tester.add_step(tester.waitTimeoutStep, 1)
-        subscriber.add_step(subscriber.waitStep)
-
+        
         tester.add_step(tester.deleteItemStep,
                         "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled")
         subscriber.add_step(subscriber.waitStep)
 
         tester.add_step(tester.commitStep)
-        subscriber.add_step(subscriber.waitStep)
-
-        tester.add_step(tester.waitTimeoutStep, 1)
         subscriber.add_step(subscriber.waitStep)
 
         tester.add_step(tester.waitStep)
@@ -481,22 +434,11 @@ class NotificationTest(unittest.TestCase):
         subscriber = NotificationTester("Subscriber")
 
         tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
-
-        tester.add_step(tester.restartConnection)
-        subscriber.add_step(subscriber.waitStep)
-
-        tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep, "ietf-interfaces",
                             "/ietf-interfaces:interfaces")
 
-        tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
-
-        tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitStep)
-
-        tester.add_step(tester.waitStep)
+        tester.add_step(
+            tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/type", sr.Val("iana-if-type:ethernetCsmacd", sr.SR_IDENTITYREF_T))
         subscriber.add_step(subscriber.waitStep)
 
         tester.add_step(
@@ -504,9 +446,6 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.waitStep)
 
         tester.add_step(tester.commitStep)
-        subscriber.add_step(subscriber.waitStep)
-
-        tester.add_step(tester.waitTimeoutStep, 0.4)
         subscriber.add_step(subscriber.waitStep)
 
         tester.add_step(tester.waitStep)
