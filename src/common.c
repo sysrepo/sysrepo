@@ -714,9 +714,7 @@ sr_error_info_t *
 sr_subs_session_del(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
-    char *mod_name, *path;
     uint32_t i, j;
-    int last_removed;
     struct modsub_change_s *change_subs;
     struct modsub_oper_s *oper_sub;
     struct modsub_notif_s *notif_sub;
@@ -742,29 +740,10 @@ change_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < change_subs->sub_count; ++j) {
             if (change_subs->subs[j].sess == sess) {
-                /* remove the subscription from the main SHM */
-                if ((err_info = sr_shmmod_change_subscription_del(ext_shm->addr, shm_mod, change_subs->subs[j].xpath,
-                        change_subs->ds, change_subs->subs[j].priority, change_subs->subs[j].opts, subs->evpipe_num, 0,
-                        &last_removed))) {
+                /* properly remove the subscription from ext SHM */
+                if ((err_info = sr_shmmod_change_subscription_stop(sess->conn, shm_mod, change_subs->subs[j].xpath,
+                        change_subs->ds, change_subs->subs[j].priority, change_subs->subs[j].opts, subs->evpipe_num, 0))) {
                     return err_info;
-                }
-
-                if (change_subs->ds == SR_DS_RUNNING) {
-                    /* technically, operational data changed */
-                    if ((err_info = sr_module_update_oper_diff(sess->conn, change_subs->module_name))) {
-                        return err_info;
-                    }
-                }
-
-                if (last_removed) {
-                    /* delete the SHM file itself so that there is no leftover event */
-                    if ((err_info = sr_path_sub_shm(change_subs->module_name, sr_ds2str(change_subs->ds), -1, 0, &path))) {
-                        return err_info;
-                    }
-                    if (shm_unlink(path) == -1) {
-                        SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-                    }
-                    free(path);
                 }
 
                 /* remove the subscription from the subscription structure */
@@ -787,20 +766,11 @@ oper_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < oper_sub->sub_count; ++j) {
             if (oper_sub->subs[j].sess == sess) {
-                /* remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmmod_oper_subscription_del(ext_shm->addr, shm_mod, oper_sub->subs[j].xpath,
+                /* properly remove the subscriptions from the main SHM */
+                if ((err_info = sr_shmmod_oper_subscription_stop(ext_shm->addr, shm_mod, oper_sub->subs[j].xpath,
                         subs->evpipe_num, 0))) {
                     return err_info;
                 }
-
-                /* delete the SHM file itself so that there is no leftover event */
-                if ((err_info = sr_path_sub_shm(oper_sub->module_name, "oper", sr_str_hash(oper_sub->subs[j].xpath), 0, &path))) {
-                    return err_info;
-                }
-                if (shm_unlink(path) == -1) {
-                    SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-                }
-                free(path);
 
                 /* remove the subscription from the subscription structure */
                 sr_sub_oper_del(oper_sub->module_name, oper_sub->subs[j].xpath, subs);
@@ -821,21 +791,9 @@ notif_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < notif_sub->sub_count; ++j) {
             if (notif_sub->subs[j].sess == sess) {
-                /* remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmmod_notif_subscription_del(ext_shm->addr, shm_mod, subs->evpipe_num, 0,
-                        &last_removed))) {
+                /* properly remove the subscriptions from the main SHM */
+                if ((err_info = sr_shmmod_notif_subscription_stop(ext_shm->addr, shm_mod, subs->evpipe_num, 0))) {
                     return err_info;
-                }
-
-                if (last_removed) {
-                    /* delete the SHM file itself so that there is no leftover event */
-                    if ((err_info = sr_path_sub_shm(notif_sub->module_name, "notif", -1, 0, &path))) {
-                        return err_info;
-                    }
-                    if (shm_unlink(path) == -1) {
-                        SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-                    }
-                    free(path);
                 }
 
                 /* remove the subscription from the subscription structure */
@@ -859,32 +817,10 @@ rpc_subs_del:
         SR_CHECK_INT_RET(!shm_rpc, err_info);
         for (j = 0; j < rpc_sub->sub_count; ++j) {
             if (rpc_sub->subs[j].sess == sess) {
-                /* remove the subscription from the main SHM */
-                if ((err_info = sr_shmmain_rpc_subscription_del(ext_shm->addr, shm_rpc, rpc_sub->subs[j].xpath,
-                            rpc_sub->subs[j].priority, subs->evpipe_num, 0, &last_removed))) {
+                /* properly remove the subscription from the main SHM */
+                if ((err_info = sr_shmmain_rpc_subscription_stop(sess->conn, shm_rpc, rpc_sub->subs[j].xpath,
+                        rpc_sub->subs[j].priority, subs->evpipe_num, 0))) {
                     return err_info;
-                }
-
-                if (last_removed) {
-                    /* get module name */
-                    mod_name = sr_get_first_ns(rpc_sub->op_path);
-
-                    /* delete the SHM file itself so that there is no leftover event */
-                    err_info = sr_path_sub_shm(mod_name, "rpc", sr_str_hash(rpc_sub->op_path), 0, &path);
-                    free(mod_name);
-                    if (err_info) {
-                        return err_info;
-                    }
-                    if (shm_unlink(path) == -1) {
-                        SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-                    }
-                    free(path);
-
-                    /* delete also RPC */
-                    err_info = sr_shmmain_del_rpc((sr_main_shm_t *)sess->conn->main_shm.addr, ext_shm->addr, rpc_sub->op_path, 0);
-                    if (err_info) {
-                        return err_info;
-                    }
                 }
 
                 /* remove the subscription from the subscription structure */
@@ -1296,33 +1232,58 @@ sr_create_data_files(const struct lys_module *ly_mod)
         goto cleanup;
     }
 
-    if (!access(path, F_OK)) {
-        /* already exists */
+    /* if startup does not exists neither can running, otherwise both must exist */
+    errno = 0;
+    if (access(path, F_OK) && (errno == ENOENT)) {
+        /* get default values */
+        if (lyd_validate_modules(&root, &ly_mod, 1, LYD_OPT_CONFIG)) {
+            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+            SR_ERRINFO_VALID(&err_info);
+            goto cleanup;
+        }
+
+        /* print them into a file if it does not exist */
+        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, O_CREAT | O_EXCL, root))) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
+            goto cleanup;
+        }
+
+        /* repeat for running DS */
+        free(path);
+        path = NULL;
+        if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, 1, &path))) {
+            goto cleanup;
+        }
+
+        if (!access(path, F_OK)) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" already exists.", path);
+            goto cleanup;
+        }
+
+        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, O_CREAT | O_EXCL, root))) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
+            goto cleanup;
+        }
+    } else if (errno) {
+        SR_ERRINFO_SYSERRNO(&err_info, "access");
         goto cleanup;
     }
 
-    /* get default values */
-    if (lyd_validate_modules(&root, &ly_mod, 1, LYD_OPT_CONFIG)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        SR_ERRINFO_VALID(&err_info);
-        goto cleanup;
-    }
-
-    /* print them into a file */
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, root))) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
-        goto cleanup;
-    }
-
-    /* repeat for running DS */
+    /* repeat for operational DS but set empty data */
     free(path);
     path = NULL;
-    if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, 1, &path))) {
+    if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_OPERATIONAL, 1, &path))) {
         goto cleanup;
     }
 
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, root))) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
+    errno = 0;
+    if (access(path, F_OK) && (errno == ENOENT)) {
+        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, O_CREAT | O_EXCL, NULL))) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
+            goto cleanup;
+        }
+    } else if (errno) {
+        SR_ERRINFO_SYSERRNO(&err_info, "access");
         goto cleanup;
     }
 
@@ -1522,15 +1483,14 @@ void
 sr_remove_evpipes(void)
 {
     sr_error_info_t *err_info = NULL;
-    DIR *dir;
+    DIR *dir = NULL;
     struct dirent *ent;
     char *path;
 
     dir = opendir(sr_get_repo_path());
     if (!dir) {
         SR_ERRINFO_SYSERRNO(&err_info, "opendir");
-        sr_errinfo_free(&err_info);
-        return;
+        goto cleanup;
     }
 
     while ((ent = readdir(dir))) {
@@ -1539,17 +1499,20 @@ sr_remove_evpipes(void)
 
             if (asprintf(&path, "%s/%s", sr_get_repo_path(), ent->d_name) == -1) {
                 SR_ERRINFO_MEM(&err_info);
-                sr_errinfo_free(&err_info);
-                return;
+                goto cleanup;
             }
 
             if (unlink(path) == -1) {
+                /* continue */
                 SR_ERRINFO_SYSERRNO(&err_info, "unlink");
-                sr_errinfo_free(&err_info);
             }
             free(path);
         }
     }
+
+cleanup:
+    closedir(dir);
+    sr_errinfo_free(&err_info);
 }
 
 sr_error_info_t *
@@ -1952,22 +1915,16 @@ sr_shmstrcpy(char *shm_addr, const char *str, char **shm_end)
 
     strcpy(*shm_end, str);
     ret = *shm_end - shm_addr;
-    *shm_end += sr_shmlen(str);
+    *shm_end += sr_strshmlen(str);
 
     return ret;
 }
 
-int
-sr_shmlen(const char *str)
+size_t
+sr_strshmlen(const char *str)
 {
-    int len;
-
-    len = strlen(str) + 1;
-
     /* align */
-    len += ((~len) + 1) & (SR_SHM_STR_ALIGN - 1);
-
-    return len;
+    return SR_SHM_SIZE(strlen(str) + 1);
 }
 
 sr_error_info_t *
@@ -2118,13 +2075,14 @@ sr_rwlock_destroy(sr_rwlock_t *rwlock)
 }
 
 sr_error_info_t *
-sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, int wr, const char *func)
+sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
     int ret;
 
     assert(timeout_ms > 0);
+    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
 
     sr_time_get(&timeout_ts, timeout_ms);
 
@@ -2135,7 +2093,59 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, int wr, const char *func)
         return err_info;
     }
 
-    if (wr) {
+    if (mode == SR_LOCK_WRITE) {
+        /* write lock */
+        ret = 0;
+        while (!ret && rwlock->readers) {
+            /* COND WAIT */
+            ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
+        }
+
+        if (ret) {
+            /* MUTEX UNLOCK */
+            pthread_mutex_unlock(&rwlock->mutex);
+
+            SR_ERRINFO_COND(&err_info, func, ret);
+            return err_info;
+        }
+    } else {
+        /* read lock */
+        ++rwlock->readers;
+
+        /* MUTEX UNLOCK */
+        pthread_mutex_unlock(&rwlock->mutex);
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_rwlock_with_recovery(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_conn_ctx_t *conn, const char *func)
+{
+    sr_error_info_t *err_info = NULL;
+    struct timespec timeout_ts;
+    int ret;
+
+    assert(timeout_ms > 0);
+    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
+
+    sr_time_get(&timeout_ts, timeout_ms);
+
+    /* MUTEX LOCK */
+    ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
+    if (ret) {
+        SR_ERRINFO_LOCK(&err_info, func, ret);
+        return err_info;
+    }
+
+    if (rwlock->readers) {
+        /* check that all connections still exist */
+        if ((err_info = sr_shmmain_state_recover(conn))) {
+            sr_errinfo_free(&err_info);
+        }
+    }
+
+    if (mode == SR_LOCK_WRITE) {
         /* write lock */
         ret = 0;
         while (!ret && rwlock->readers) {
@@ -2162,13 +2172,15 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, int wr, const char *func)
 }
 
 void
-sr_rwunlock(sr_rwlock_t *rwlock, int wr, const char *func)
+sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
     int ret;
 
-    if (!wr) {
+    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
+
+    if (mode == SR_LOCK_READ) {
         sr_time_get(&timeout_ts, SR_RWLOCK_READ_TIMEOUT);
 
         /* MUTEX LOCK */
@@ -2188,7 +2200,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, int wr, const char *func)
     }
 
     /* we are unlocking a write lock, there can be no readers */
-    assert(!wr || !rwlock->readers);
+    assert((mode == SR_LOCK_READ) || !rwlock->readers);
 
     if (!rwlock->readers) {
         /* broadcast on condition */
@@ -3634,21 +3646,12 @@ retry_open:
         fd = shm_open(path, O_RDONLY, 0);
     }
     if (fd == -1) {
-        if (errno == ENOENT) {
-            if (ds == SR_DS_CANDIDATE) {
-                /* no candidate exists, just use running */
-                ds = SR_DS_RUNNING;
-                free(path);
-                path = NULL;
-                goto retry_open;
-            }
-
-            /* no file = no data, nothing to do */
-            if (ds == SR_DS_STARTUP) {
-                SR_LOG_WRN("Failed to open \"%s\" (%s), it should exist.", path, strerror(errno));
-            }
+        if ((errno == ENOENT) && (ds == SR_DS_CANDIDATE)) {
+            /* no candidate exists, just use running */
+            ds = SR_DS_RUNNING;
             free(path);
-            return NULL;
+            path = NULL;
+            goto retry_open;
         }
 
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
@@ -3687,7 +3690,7 @@ error:
 }
 
 sr_error_info_t *
-sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data)
+sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, int create_flags, struct lyd_node *mod_data)
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
@@ -3710,9 +3713,9 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
 
     /* open */
     if (ds == SR_DS_STARTUP) {
-        fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, SR_FILE_PERM);
+        fd = open(path, O_WRONLY | O_TRUNC | create_flags, SR_FILE_PERM);
     } else {
-        fd = shm_open(path, O_WRONLY | O_CREAT | O_TRUNC, SR_FILE_PERM);
+        fd = shm_open(path, O_WRONLY | O_TRUNC | create_flags, SR_FILE_PERM);
     }
     if (fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
@@ -3750,6 +3753,15 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
     SR_CHECK_INT_RET(!ly_mod, err_info);
 
+    /* load the stored diff */
+    if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_OPERATIONAL, &diff))) {
+        return err_info;
+    }
+    if (!diff) {
+        /* no stored diff */
+        return NULL;
+    }
+
     if ((err_info = sr_shmmod_collect_modules(conn, ly_mod, SR_DS_OPERATIONAL, 0, &mod_info))) {
         return err_info;
     }
@@ -3766,13 +3778,10 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     }
 
     /* update diff */
-    if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_OPERATIONAL, &diff))) {
-        goto cleanup;
-    }
     if ((err_info = sr_diff_mod_update(&diff, ly_mod, mod_info.data))) {
         goto cleanup;
     }
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff))) {
+    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
         goto cleanup;
     }
 

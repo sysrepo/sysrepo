@@ -88,9 +88,18 @@
 /** macro for all datastore types count */
 #define SR_DS_COUNT 4
 
+/** macro for getting the first SHM module */
+#define SR_FIRST_SHM_MOD(main_shm_addr) ((sr_mod_t *)(main_shm_addr + sizeof(sr_main_shm_t)))
+
 /** macro for traversing main SHM modules */
 #define SR_SHM_MOD_FOR(main_shm_addr, main_shm_size, shm_mod) \
-    for (shm_mod = (sr_mod_t *)(main_shm_addr + sizeof(sr_main_shm_t)); (char *)shm_mod != main_shm_addr + main_shm_size; ++shm_mod)
+    for (shm_mod = SR_FIRST_SHM_MOD(main_shm_addr); (char *)shm_mod != main_shm_addr + main_shm_size; ++shm_mod)
+
+/** macro for learning main SHM index of a SHM module */
+#define SR_SHM_MOD_IDX(shm_mod, main_shm) (((((char *)(shm_mod)) - (main_shm).addr) - sizeof(sr_main_shm_t)) / sizeof(sr_mod_t))
+
+/* macro for getting aligned SHM size */
+#define SR_SHM_SIZE(size) ((size) + ((~(size) + 1) & (SR_SHM_MEM_ALIGN - 1)))
 
 /** name of sysrepo YANG module */
 #define SR_YANG_MOD "sysrepo"
@@ -113,8 +122,8 @@
 /** where SHM files are stored */
 #define SR_SHM_DIR "/dev/shm"
 
-/** all ext SHM string sizes will be aligned to this number (B) */
-#define SR_SHM_STR_ALIGN (sizeof(void *))
+/** all ext SHM item sizes will be aligned to this number (B) */
+#define SR_SHM_MEM_ALIGN (sizeof(void *))
 
 /** notification file will never exceed this size (kB) */
 #define SR_EV_NOTIF_FILE_MAX_SIZE 1024
@@ -625,7 +634,7 @@ sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
 sr_error_info_t *sr_remove_data_files(const char *mod_name);
 
 /**
- * @brief Create startup and running data file for a module.
+ * @brief Create startup, running, and operational data files for a module.
  *
  * @param[in] ly_mod Module to create data files for.
  * @return err_info, NULL on success.
@@ -831,7 +840,7 @@ off_t sr_shmstrcpy(char *shm_addr, const char *str, char **shm_end);
  * @param[in] str String to be examined.
  * @return Number of required bytes.
  */
-int sr_shmlen(const char *str);
+size_t sr_strshmlen(const char *str);
 
 /**
  * @brief Wrapper for pthread_mutex_init().
@@ -880,20 +889,33 @@ void sr_rwlock_destroy(sr_rwlock_t *rwlock);
  *
  * @param[in] rwlock RW lock to lock.
  * @param[in] timeout_ms Timeout in ms for locking.
- * @param[in] wr Whether to write-lock or read-lock.
+ * @param[in] mode Whether to write-lock or read-lock.
  * @param[in] func Name of the calling function for logging.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, int wr, const char *func);
+sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func);
+
+/**
+ * @brief Lock a sysrepo RW lock and in case there are any readers, try to recover state.
+ *
+ * @param[in] rwlock RW lock to lock.
+ * @param[in] timeout_ms Timeout in ms for locking.
+ * @param[in] mode Whether to write-lock or read-lock.
+ * @param[in] conn Connection to use for recovering.
+ * @param[in] func Name of the calling function for logging.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_rwlock_with_recovery(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_conn_ctx_t *conn,
+        const char *func);
 
 /**
  * @brief Unlock a sysrepo RW lock.
  *
  * @param[in] rwlock RW lock to unlock.
- * @param[in] wr Whether to write-unlock or read-unlock.
+ * @param[in] mode Whether to write-unlock or read-unlock.
  * @param[in] func Name of the calling function for logging.
  */
-void sr_rwunlock(sr_rwlock_t *rwlock, int wr, const char *func);
+void sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func);
 
 /**
  * @brief Wrapper to realloc() that frees memory on failure.
@@ -1243,10 +1265,13 @@ sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, sr_
  *
  * @param[in] mod_name Module name.
  * @param[in] ds Target datastore
+ * @param[in] create_flags Additional flags that will be used for opening the file,
+ * any of O_CREATE and O_EXCL are expected.
  * @param[in] mod_data Module data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data);
+sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, int create_flags,
+        struct lyd_node *mod_data);
 
 /**
  * @brief Update sysrepo stored operational diff of a module.

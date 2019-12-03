@@ -2715,7 +2715,7 @@ module_change_timeout_cb(sr_session_ctx_t *session, const char *module_name, con
         assert_int_equal(event, SR_EV_CHANGE);
 
         /* time out */
-        usleep(2000);
+        usleep(10000);
         break;
     case 1:
         assert_int_equal(event, SR_EV_CHANGE);
