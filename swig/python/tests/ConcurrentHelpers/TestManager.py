@@ -67,7 +67,6 @@ class TestManager:
             p.terminate()
 
         self.lock.acquire()
-        print("end")
         self.lock.release()
 
     def run(self, rand_sleep=True):

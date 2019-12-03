@@ -47,8 +47,6 @@ def print_change(fd, op, old_val, new_val):
             print("MOVED|" + new_val.xpath() + "|" + old_val.xpath(), file=fd, end='')
 
 
-def event_notif(sess, notif_type, path, vals, timestamp, private_data):
-    print("hi")
 # Function to be called for subscribed client of given session whenever configuration changes.
 def module_change_cb(sess, module_name, xpath, event, request_id, private_data):
 
@@ -99,7 +97,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
     settings = { 'module_name' : sys.argv[1], 'xpath' : sys.argv[2], 'filename' : sys.argv[3] }
-    print("what")
     # connect to sysrepo
     conn = sr.Connection(sr.SR_CONN_DEFAULT)
 

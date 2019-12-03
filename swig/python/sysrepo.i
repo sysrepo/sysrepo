@@ -36,7 +36,6 @@ volatile int exit_application = 0;
 static void
 sigint_handler(int signum)
 {
-    printf("sigint called\n");
     exit_application = 1;
 }
 
@@ -268,15 +267,17 @@ public:
             arglist = Py_BuildValue("(OsssiOO)", s, module_name, path, request_xpath, request_id, in, private_data);
             PyObject *result = PyEval_CallObject(_callback, arglist);
             Py_DECREF(arglist);
-            Py_DECREF(in);
-            Py_DECREF(s);
             if (result == nullptr) {
                 throw std::runtime_error("Python callback oper_get_items_cb failed.\n");
+            Py_DECREF(in);
+            Py_DECREF(s);
             } else {
                 if (tree) {
                     *parent = lyd_dup(tree->swig_node(), LYD_DUP_OPT_RECURSIVE);
                 }
                 int ret = SR_ERR_OK;
+                Py_DECREF(in);
+                Py_DECREF(s);
 
                 if (result && PyInt_Check(result)) {
                 ret = PyInt_AsLong(result);
@@ -452,7 +453,6 @@ static const char *g_ly_module_imp_clb(const char *mod_name, const char *mod_rev
                                            stop_time, g_event_notif_cb, class_ctx, opts, self->swig_sub());
 
         if (SR_ERR_OK != ret) {
-            printf("err\n");
             throw std::runtime_error(sr_strerror(ret));
         }
     }
