@@ -1,6 +1,3 @@
-[![Build Status](https://travis-ci.org/sysrepo/sysrepo.svg)](https://travis-ci.org/sysrepo/sysrepo)
-[![Coverity Scan Build Status](https://scan.coverity.com/projects/7479/badge.svg)](https://scan.coverity.com/projects/sysrepo-sysrepo)
-[![codecov.io](https://codecov.io/github/sysrepo/sysrepo/coverage.svg?branch=master)](https://codecov.io/github/sysrepo/sysrepo?branch=master)
 [![GitHub license](https://img.shields.io/badge/license-Apache%20license%202.0-blue.svg)](https://github.com/sysrepo/sysrepo/blob/master/LICENSE)
 
 ## Sysrepo
@@ -31,6 +28,15 @@ Sysrepo can be easily integrated with management agents such as [NETCONF](https:
 -	(TODO) native client libraries / plugins for other programming languages (Python, Java, ...)
 
 ## Status
+- December 2019: sysrepo version 0.7 became obsolete and is no longer developed, the version `1.x` should be used instead
+- December 2019: sysrepo [version 0.7.9](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.9) released with minor changes
+- July 2019: sysrepo [version 0.7.8](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.8) released with minor fixes
+- November 2018: sysrepo [version 0.7.7](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.7) released with minor improvements
+- October 2018: sysrepo [version 0.7.6](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.6) released with minor fixes
+- September 2018: sysrepo [version 0.7.5](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.5) released with datastore changed to use a more efficient binary format
+- June 2018: sysrepo [version 0.7.4](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.4) released with performance improvements
+- February 2018: sysrepo [version 0.7.3](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.3) released with minor improvements such as possibilty to uninstall several modules at once
+- December 2017: sysrepo [version 0.7.2](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.2) released with minor improvements
 - September 2017: sysrepo [version 0.7.1](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.1) released with many bugfixes and optimizations
 - August 2017: sysrepo [version 0.7.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.0) released with several important improvements and changes: full NACM support, (X)Paths for subscriptions unified, candidate datastore changes, `sr_commit` functionality change and many bugfixes and enhancements
 - May 2017: sysrepo [version 0.6.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.6.0) realeased with many bugfixes and improvements including event notification replay.
