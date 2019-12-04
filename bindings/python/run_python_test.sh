@@ -1,7 +1,7 @@
 #!/bin/sh
-# 
+#
 # author: Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
-# 
+#
 # Copyright 2016 Cisco Systems, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

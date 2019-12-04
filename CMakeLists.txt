@@ -20,9 +20,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
-#Language bindings
-set(GEN_LANGUAGE_BINDINGS "Enable python bindings." ON) 
-set(GEN_PYTHON_BINDINGS "Enable python bindings." ON) 
 
 # Version of the project
 # Generic version of not only the library. Major version is reserved for really big changes of the project,
@@ -80,9 +77,16 @@ if(ENABLE_COVERAGE)
     endif()
 endif()
 
-# bindings
-option(GEN_CPP_BINDINGS "Enable C++ bindings generation." OFF)
+# binding options
+option(GEN_LANGUAGE_BINDINGS "Enable library bindings for different languages." OFF)
+
+option(GEN_CPP_BINDINGS "Enable C++ bindings." ON)
 option(BUILD_CPP_EXAMPLES "Enable C++ example application compilation." ON)
+
+option(GEN_PYTHON_BINDINGS "Enable Python bindings." ON)
+option(ENABLE_PYTHON_TESTS "Enable Python tests." ON)
+
+# compilation flags
 set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_COVERAGE} -Wall -Wextra -Wpedantic -std=c99")
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
@@ -232,19 +236,6 @@ if(DOXYGEN_FOUND)
     configure_file(Doxyfile.in Doxyfile)
 endif()
 
-# bindings
-if(GEN_CPP_BINDINGS)
-    if(NOT LIBYANG_CPP_FOUND)
-        message(WARNING "libyang C++ bindings not found! Disabling C++ binding generation.")
-        set(GEN_CPP_BINDINGS OFF)
-    else()
-        add_subdirectory(swig)
-    endif()
-endif()
-if(GEN_LANGUAGE_BINDINGS)
-    add_subdirectory(swig)
-endif()
-
 # examples
 add_subdirectory(examples)
 
@@ -259,6 +250,11 @@ if(ENABLE_TESTS)
         set(ENABLE_BUILD_TESTS NO)
     endif(CMOCKA_FOUND)
 endif(ENABLE_TESTS)
+
+# bindings
+if(GEN_LANGUAGE_BINDINGS)
+    add_subdirectory(bindings)
+endif()
 
 # phony target for clearing all sysrepo data
 add_custom_target(sr_clean
