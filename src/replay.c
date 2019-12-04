@@ -137,7 +137,7 @@ sr_replay_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flag
 
     if ((flags & O_CREAT) && (flags & O_EXCL)) {
         /* creating a file, learn module permissions */
-        if ((err_info = sr_perm_get(mod_name, NULL, NULL, &perm))) {
+        if ((err_info = sr_perm_get(mod_name, SR_DS_STARTUP, NULL, NULL, &perm))) {
             goto cleanup;
         }
     }

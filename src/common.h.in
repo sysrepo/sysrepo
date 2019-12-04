@@ -634,12 +634,12 @@ sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
 sr_error_info_t *sr_remove_data_files(const char *mod_name);
 
 /**
- * @brief Create startup, running, and operational data files for a module.
+ * @brief Create startup file for a module.
  *
- * @param[in] ly_mod Module to create data files for.
+ * @param[in] ly_mod Module to create startup file for.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_create_data_files(const struct lys_module *ly_mod);
+sr_error_info_t *sr_create_startup_file(const struct lys_module *ly_mod);
 
 /**
  * @brief Create all module import files.
@@ -773,12 +773,13 @@ sr_error_info_t *sr_perm_check(const char *mod_name, int wr);
  * @brief Get mode (permissions) and/or owner and group of a module.
  *
  * @param[in] mod_name Module name.
+ * @param[in] ds Datastore file to check, for general module access permissions, startup should always be used.
  * @param[in,out] owner Module owner if not NULL.
  * @param[in,out] group Module group if not NULL.
  * @param[in,out] perm Module permissions if not NULL;
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_perm_get(const char *mod_name, char **owner, char **group, mode_t *perm);
+sr_error_info_t *sr_perm_get(const char *mod_name, sr_datastore_t ds, char **owner, char **group, mode_t *perm);
 
 /**
  * @brief Check whether a file exists.
