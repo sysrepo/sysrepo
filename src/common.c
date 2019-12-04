@@ -1107,28 +1107,28 @@ sr_store_module_file(const struct lys_module *ly_mod)
         return err_info;
     }
 
-    if (!access(path, R_OK)) {
+    if (sr_file_exists(path)) {
         /* already exists */
-        free(path);
-        return NULL;
+        goto cleanup;
     }
 
     /* print the (sub)module file */
     if (lys_print_path(path, ly_mod, LYS_YANG, NULL, 0, 0)) {
-        free(path);
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        return err_info;
+        goto cleanup;
     }
 
     /* set permissions */
     if (chmod(path, SR_YANG_PERM)) {
         SR_ERRINFO_SYSERRNO(&err_info, "chmod");
-        return err_info;
+        goto cleanup;
     }
 
     SR_LOG_INF("File \"%s\" was installed.", strrchr(path, '/') + 1);
+
+cleanup:
     free(path);
-    return NULL;
+    return err_info;
 }
 
 /**
@@ -1233,8 +1233,7 @@ sr_create_data_files(const struct lys_module *ly_mod)
     }
 
     /* if startup does not exists neither can running, otherwise both must exist */
-    errno = 0;
-    if (access(path, F_OK) && (errno == ENOENT)) {
+    if (!sr_file_exists(path)) {
         /* get default values */
         if (lyd_validate_modules(&root, &ly_mod, 1, LYD_OPT_CONFIG)) {
             sr_errinfo_new_ly(&err_info, ly_mod->ctx);
@@ -1255,7 +1254,7 @@ sr_create_data_files(const struct lys_module *ly_mod)
             goto cleanup;
         }
 
-        if (!access(path, F_OK)) {
+        if (sr_file_exists(path)) {
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" already exists.", path);
             goto cleanup;
         }
@@ -1276,15 +1275,11 @@ sr_create_data_files(const struct lys_module *ly_mod)
         goto cleanup;
     }
 
-    errno = 0;
-    if (access(path, F_OK) && (errno == ENOENT)) {
+    if (!sr_file_exists(path)) {
         if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, O_CREAT | O_EXCL, NULL))) {
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
             goto cleanup;
         }
-    } else if (errno) {
-        SR_ERRINFO_SYSERRNO(&err_info, "access");
-        goto cleanup;
     }
 
 cleanup:
@@ -1800,6 +1795,25 @@ error:
         free(*group);
     }
     return err_info;
+}
+
+int
+sr_file_exists(const char *path)
+{
+    int ret;
+
+    errno = 0;
+    ret = access(path, F_OK);
+    if ((ret == -1) && (errno != ENOENT)) {
+        SR_LOG_WRN("Failed to check existence of the file \"%s\" (%s).", path, strerror(errno));
+        return 0;
+    }
+
+    if (ret) {
+        assert(errno == ENOENT);
+        return 0;
+    }
+    return 1;
 }
 
 int
