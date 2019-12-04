@@ -29,9 +29,10 @@ if(ENABLE_PYTHON_TESTS)
     macro(ADD_PYTHON_TEST TEST_NAME)
         add_test(NAME python_${TEST_NAME}
             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_python_test.sh
+            "${CMAKE_BINARY_DIR}/src:${CMAKE_BINARY_DIR}/tests:${CMAKE_BINARY_DIR}/repository:${CMAKE_CURRENT_BINARY_DIR}/tests"
             "${CMAKE_CURRENT_BINARY_DIR}:${PROJECT_SOURCE_DIR}/swig/python3:${PYTHON_BUILD_DIR}"
             "${PYTHON_EXECUTABLE}"
-            "${CMAKE_CURRENT_BINARY_DIR}/tests/${TEST_NAME}.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST_NAME}.py"
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         )
     endmacro(ADD_PYTHON_TEST)
