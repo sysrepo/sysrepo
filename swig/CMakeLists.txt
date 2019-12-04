@@ -2,6 +2,33 @@ set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} -Wall -Wpedantic -std=c++11 -fno
 set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_CXX_FLAGS_DEBUG   "-g -O0")
 
+# language byndings check
+if(GEN_LANGUAGE_BINDINGS)
+    find_package(SWIG 3.0.12)
+    if(NOT SWIG_FOUND)
+        message(WARNING "SWIG library not found")
+    else()
+        include(${SWIG_USE_FILE})
+    endif()
+endif()
+
+# find Python package
+if(GEN_PYTHON_BINDINGS AND SWIG_FOUND)
+    message(STATUS "Python version ${GEN_PYTHON_VERSION} was selected")
+    unset(PYTHON_LIBRARY CACHE)
+    unset(PYTHON_EXECUTABLE CACHE)
+    unset(PYTHON_INCLUDE_DIR CACHE)
+    unset(PYTHON_LIBRARY_DEBUG CACHE)
+    find_package(PythonLibs 3)
+    find_package(PythonInterp)
+    if(NOT PYTHONLIBS_FOUND)
+        message(WARNING "Did not found Python version 3.x")
+        message("-- Sysrepo supports Python 3.x")
+    else()
+        set(GEN_PYTHON3_TESTS 1 CACHE BOOL "Enable Python3 tests.")
+    endif()
+endif()
+
 project(Sysrepo-cpp)
 
 # Version of the library
@@ -37,6 +64,7 @@ include_directories(${LIBYANG_CPP_INCLUDE_DIRS})
 target_link_libraries(Sysrepo-cpp ${LIBYANG_CPP_LIBRARIES})
 
 include_directories(${CMAKE_SOURCE_DIR})
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/cpp/src")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(Sysrepo-cpp sysrepo)
 
@@ -51,4 +79,9 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libSysrepo-cpp.pc" DESTINATION "${CMA
 # Examples
 if(BUILD_CPP_EXAMPLES)
     add_subdirectory(cpp/examples)
+endif()
+
+# Python language byndings generation
+if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
+    add_subdirectory(python)
 endif()

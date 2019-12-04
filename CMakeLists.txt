@@ -20,6 +20,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
+#Language bindings
+set(GEN_LANGUAGE_BINDINGS "Enable python bindings." ON) 
+set(GEN_PYTHON_BINDINGS "Enable python bindings." ON) 
 
 # Version of the project
 # Generic version of not only the library. Major version is reserved for really big changes of the project,
@@ -80,7 +83,6 @@ endif()
 # bindings
 option(GEN_CPP_BINDINGS "Enable C++ bindings generation." OFF)
 option(BUILD_CPP_EXAMPLES "Enable C++ example application compilation." ON)
-
 set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_COVERAGE} -Wall -Wextra -Wpedantic -std=c99")
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
@@ -238,6 +240,9 @@ if(GEN_CPP_BINDINGS)
     else()
         add_subdirectory(swig)
     endif()
+endif()
+if(GEN_LANGUAGE_BINDINGS)
+    add_subdirectory(swig)
 endif()
 
 # examples
