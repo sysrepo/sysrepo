@@ -237,7 +237,9 @@ if(DOXYGEN_FOUND)
 endif()
 
 # examples
-add_subdirectory(examples)
+if(BUILD_CPP_EXAMPLES)
+    add_subdirectory(examples)
+endif()
 
 # tests
 if(ENABLE_TESTS)
