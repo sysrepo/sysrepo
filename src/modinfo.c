@@ -555,67 +555,6 @@ cleanup:
 }
 
 /**
- * @brief Trim all configuration/state nodes/origin from the data based on options.
- *
- * @param[in,out] data Data to trim.
- * @param[in] sibling First sibling of the current data to trim.
- * @param[in] opts Get oper data options.
- */
-static void
-sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_oper_options_t opts)
-{
-    struct lyd_node *next, *elem;
-    struct lyd_attr *attr;
-
-    if (!(opts & (SR_OPER_NO_STATE | SR_OPER_NO_CONFIG)) && (opts & SR_OPER_WITH_ORIGIN)) {
-        /* nothing to trim */
-        return;
-    }
-
-    LY_TREE_FOR_SAFE(sibling, next, elem) {
-        assert((elem->schema->nodetype != LYS_LEAF) || !lys_is_key((struct lys_node_leaf *)elem->schema, NULL));
-        if (elem->schema->flags & LYS_CONFIG_R) {
-            /* state subtree */
-            if (opts & SR_OPER_NO_STATE) {
-                /* free it whole */
-                if (*data == elem) {
-                    *data = (*data)->next;
-                }
-                lyd_free(elem);
-                continue;
-            }
-
-            if (opts & SR_OPER_WITH_ORIGIN) {
-                /* no need to go into state children */
-                continue;
-            }
-        }
-
-        /* trim all our children */
-        sr_oper_data_trim_r(data, sr_lyd_child(elem, 1), opts);
-
-        if ((elem->schema->flags & LYS_CONFIG_W) && (opts & SR_OPER_NO_CONFIG) && !sr_lyd_child(elem, 1)) {
-            /* config-only subtree (config node with no children) */
-            if (*data == elem) {
-                *data = (*data)->next;
-            }
-            lyd_free(elem);
-            continue;
-        }
-
-        if (!(opts & SR_OPER_WITH_ORIGIN)) {
-            /* trim origin */
-            LY_TREE_FOR(elem->attr, attr) {
-                if (!strcmp(attr->name, "origin") && !strcmp(attr->annotation->module->name, "ietf-origin")) {
-                    lyd_free_attr(elem->schema->module->ctx, elem, attr, 0);
-                    break;
-                }
-            }
-        }
-    }
-}
-
-/**
  * @brief Append operational data for a specific XPath.
  *
  * @param[in] shm_msub SHM subscription.
@@ -625,7 +564,6 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
  * @param[in] oper_parent Operational parent of the data to retrieve. NULL for top-level.
  * @param[in] sid Sysrepo session ID.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[in] opts Get oper data options.
  * @param[in,out] data Operational data tree.
  * @param[out] cb_error_info Callback error info returned by the client, if any.
  * @return err_info, NULL on success.
@@ -633,7 +571,7 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
 static sr_error_info_t *
 sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *ly_mod, const char *sub_xpath,
         const char *request_xpath, struct lyd_node *oper_parent, sr_sid_t sid, uint32_t timeout_ms,
-        sr_get_oper_options_t opts, struct lyd_node **data, sr_error_info_t **cb_error_info)
+        struct lyd_node **data, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *oper_data;
@@ -643,9 +581,6 @@ sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *
             oper_parent, timeout_ms, &oper_data, cb_error_info))) {
         return err_info;
     }
-
-    /* trim them based on the options */
-    sr_oper_data_trim_r(&oper_data, oper_data, opts);
 
     /* merge into one data tree */
     if (!*data) {
@@ -758,7 +693,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
             /* nested data */
             for (j = 0; j < set->number; ++j) {
                 if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, set->set.d[j],
-                        *sid, timeout_ms, opts, data, cb_error_info))) {
+                        *sid, timeout_ms, data, cb_error_info))) {
                     goto error;
                 }
             }
@@ -770,7 +705,7 @@ next_iter:
         } else {
             /* top-level data */
             if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, NULL, *sid,
-                    timeout_ms, opts, data, cb_error_info))) {
+                    timeout_ms, data, cb_error_info))) {
                 goto error;
             }
         }
@@ -974,6 +909,67 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
 }
 
 /**
+ * @brief Trim all configuration/state nodes/origin from the data based on options.
+ *
+ * @param[in,out] data Data to trim.
+ * @param[in] sibling First sibling of the current data to trim.
+ * @param[in] opts Get oper data options.
+ */
+static void
+sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_oper_options_t opts)
+{
+    struct lyd_node *next, *elem;
+    struct lyd_attr *attr;
+
+    if (!(opts & (SR_OPER_NO_STATE | SR_OPER_NO_CONFIG)) && (opts & SR_OPER_WITH_ORIGIN)) {
+        /* nothing to trim */
+        return;
+    }
+
+    LY_TREE_FOR_SAFE(sibling, next, elem) {
+        assert((elem->schema->nodetype != LYS_LEAF) || !lys_is_key((struct lys_node_leaf *)elem->schema, NULL));
+        if (elem->schema->flags & LYS_CONFIG_R) {
+            /* state subtree */
+            if (opts & SR_OPER_NO_STATE) {
+                /* free it whole */
+                if (*data == elem) {
+                    *data = (*data)->next;
+                }
+                lyd_free(elem);
+                continue;
+            }
+
+            if (opts & SR_OPER_WITH_ORIGIN) {
+                /* no need to go into state children */
+                continue;
+            }
+        }
+
+        /* trim all our children */
+        sr_oper_data_trim_r(data, sr_lyd_child(elem, 1), opts);
+
+        if ((elem->schema->flags & LYS_CONFIG_W) && (opts & SR_OPER_NO_CONFIG) && !sr_lyd_child(elem, 1)) {
+            /* config-only subtree (config node with no children) */
+            if (*data == elem) {
+                *data = (*data)->next;
+            }
+            lyd_free(elem);
+            continue;
+        }
+
+        if (!(opts & SR_OPER_WITH_ORIGIN)) {
+            /* trim origin */
+            LY_TREE_FOR(elem->attr, attr) {
+                if (!strcmp(attr->name, "origin") && !strcmp(attr->annotation->module->name, "ietf-origin")) {
+                    lyd_free_attr(elem->schema->module->ctx, elem, attr, 0);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/**
  * @brief Load module data of a specific module.
  *
  * @param[in] mod_info Mod info to use.
@@ -1058,6 +1054,9 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
                         timeout_ms, opts, &mod_info->data, cb_error_info))) {
                 return err_info;
             }
+
+            /* trim any data according to options (they could not be trimmed before oper subscriptions) */
+            sr_oper_data_trim_r(&mod_info->data, mod_info->data, opts);
         }
     } else {
         assert(mod_cache && SR_IS_CONVENTIONAL_DS(mod_info->ds));
