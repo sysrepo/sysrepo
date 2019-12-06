@@ -237,7 +237,10 @@ if(DOXYGEN_FOUND)
 endif()
 
 # examples
-add_subdirectory(examples)
+option(BUILD_EXAMPLES "Build examples." ON)
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
 
 # tests
 if(ENABLE_TESTS)
