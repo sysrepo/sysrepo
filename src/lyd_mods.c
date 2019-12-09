@@ -1000,8 +1000,8 @@ sr_lydmods_parse(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
         goto cleanup;
     }
 
-    /* load sysrepo data */
-    sr_mods = lyd_parse_path(ly_ctx, path, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT);
+    /* load sysrepo data even if the stored data used an older revision of the sysrepo module */
+    sr_mods = lyd_parse_path(ly_ctx, path, LYD_LYB, LYD_OPT_DATA | LYD_OPT_LYB_MOD_UPDATE | LYD_OPT_STRICT);
     if (!sr_mods) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto cleanup;
