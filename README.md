@@ -8,12 +8,22 @@ Applications can use sysrepo to store their configuration modeled by provided YA
 
 Sysrepo can be easily integrated with management agents such as [NETCONF](https://tools.ietf.org/html/rfc6241) or [RESTCONF](https://tools.ietf.org/html/rfc8040) servers, using the same client library API that applications use to access their configuration. As of now, sysrepo is integrated with the [Netopeer 2 NETCONF server](https://github.com/CESNET/Netopeer2). This means that applications that use sysrepo to store their configuration can automatically benefit from the ability to being controlled via NETCONF.
 
+## Branches
+
+The project uses 2 main branches `master` and `devel`. Other branches should not be cloned. In `master` there are files of the
+last official *release*. Any latest improvements and changes, which were tested at least briefly are found in `devel`. On every
+new *release*, `devel` is merged into `master`.
+
+This means that when only stable official releases are to be used, either `master` can be used or specific *releases* downloaded.
+If all the latest bugfixes should be applied, `devel` branch is the  one to be used. Note that whenever **a new issue is created**
+and it occurs on the `master` branch, the **first response will likely be** to use `devel` before any further provided support.
+
 ## Migration from Sysrepo version 0.7.x or older
 
-This Sysrepo is a complete rewrite of these older versions. We tried to keep the API as similar as possible but there were
-some smaller or even bigger changes (mostly for the sake of efficiency). All these changes should be mentioned in `CHANGES`
-text file. It is also best to look at least briefly at the documentation where you will find information about major
-design changes (most importantly, no `sysrepod`).
+This Sysrepo is a complete rewrite of these older versions. Latest version of the `0.7` version is found in the `legacy` branch.
+We tried to keep the API as similar as possible but there were some smaller or even bigger changes (mostly for the sake
+of efficiency). All these changes should be mentioned in `CHANGES` text file. It is also best to look at least briefly
+at the documentation where you will find information about major design changes (most importantly, no `sysrepod`).
 
 ## Provided Features
 

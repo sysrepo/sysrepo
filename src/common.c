@@ -1107,28 +1107,28 @@ sr_store_module_file(const struct lys_module *ly_mod)
         return err_info;
     }
 
-    if (!access(path, R_OK)) {
+    if (sr_file_exists(path)) {
         /* already exists */
-        free(path);
-        return NULL;
+        goto cleanup;
     }
 
     /* print the (sub)module file */
     if (lys_print_path(path, ly_mod, LYS_YANG, NULL, 0, 0)) {
-        free(path);
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        return err_info;
+        goto cleanup;
     }
 
     /* set permissions */
     if (chmod(path, SR_YANG_PERM)) {
         SR_ERRINFO_SYSERRNO(&err_info, "chmod");
-        return err_info;
+        goto cleanup;
     }
 
     SR_LOG_INF("File \"%s\" was installed.", strrchr(path, '/') + 1);
+
+cleanup:
     free(path);
-    return NULL;
+    return err_info;
 }
 
 /**
@@ -1209,6 +1209,14 @@ sr_remove_data_files(const char *mod_name)
     }
     free(path);
 
+    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_OPERATIONAL, 0, &path))) {
+        return err_info;
+    }
+    if ((shm_unlink(path) == -1) && (errno != ENOENT)) {
+        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+    }
+    free(path);
+
     if ((err_info = sr_path_ds_shm(mod_name, SR_DS_CANDIDATE, 0, &path))) {
         return err_info;
     }
@@ -1221,69 +1229,30 @@ sr_remove_data_files(const char *mod_name)
 }
 
 sr_error_info_t *
-sr_create_data_files(const struct lys_module *ly_mod)
+sr_create_startup_file(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *root = NULL;
     char *path = NULL;
 
-    /* get startup file path */
+    /* check whether the files does not exist (valid when the module was just updated) */
     if ((err_info = sr_path_startup_file(ly_mod->name, &path))) {
         goto cleanup;
     }
-
-    /* if startup does not exists neither can running, otherwise both must exist */
-    errno = 0;
-    if (access(path, F_OK) && (errno == ENOENT)) {
-        /* get default values */
-        if (lyd_validate_modules(&root, &ly_mod, 1, LYD_OPT_CONFIG)) {
-            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-            SR_ERRINFO_VALID(&err_info);
-            goto cleanup;
-        }
-
-        /* print them into a file if it does not exist */
-        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, O_CREAT | O_EXCL, root))) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
-            goto cleanup;
-        }
-
-        /* repeat for running DS */
-        free(path);
-        path = NULL;
-        if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, 1, &path))) {
-            goto cleanup;
-        }
-
-        if (!access(path, F_OK)) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" already exists.", path);
-            goto cleanup;
-        }
-
-        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, O_CREAT | O_EXCL, root))) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
-            goto cleanup;
-        }
-    } else if (errno) {
-        SR_ERRINFO_SYSERRNO(&err_info, "access");
+    if (sr_file_exists(path)) {
         goto cleanup;
     }
 
-    /* repeat for operational DS but set empty data */
-    free(path);
-    path = NULL;
-    if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_OPERATIONAL, 1, &path))) {
+    /* get default values */
+    if (lyd_validate_modules(&root, &ly_mod, 1, LYD_OPT_CONFIG)) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        SR_ERRINFO_VALID(&err_info);
         goto cleanup;
     }
 
-    errno = 0;
-    if (access(path, F_OK) && (errno == ENOENT)) {
-        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, O_CREAT | O_EXCL, NULL))) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to write data into \"%s\".", path);
-            goto cleanup;
-        }
-    } else if (errno) {
-        SR_ERRINFO_SYSERRNO(&err_info, "access");
+    /* print them into the startup file */
+    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, O_CREAT | O_EXCL, root))) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create startup file of \"%s\".", ly_mod->name);
         goto cleanup;
     }
 
@@ -1744,7 +1713,7 @@ sr_perm_check(const char *mod_name, int wr)
 }
 
 sr_error_info_t *
-sr_perm_get(const char *mod_name, char **owner, char **group, mode_t *perm)
+sr_perm_get(const char *mod_name, sr_datastore_t ds, char **owner, char **group, mode_t *perm)
 {
     sr_error_info_t *err_info = NULL;
     struct stat st;
@@ -1758,9 +1727,14 @@ sr_perm_get(const char *mod_name, char **owner, char **group, mode_t *perm)
         *group = NULL;
     }
 
-    /* use startup file, it does not matter */
-    if ((err_info = sr_path_startup_file(mod_name, &path))) {
-        return err_info;
+    if (ds == SR_DS_STARTUP) {
+        if ((err_info = sr_path_startup_file(mod_name, &path))) {
+            return err_info;
+        }
+    } else {
+        if ((err_info = sr_path_ds_shm(mod_name, ds, 1, &path))) {
+            return err_info;
+        }
     }
 
     /* stat */
@@ -1800,6 +1774,25 @@ error:
         free(*group);
     }
     return err_info;
+}
+
+int
+sr_file_exists(const char *path)
+{
+    int ret;
+
+    errno = 0;
+    ret = access(path, F_OK);
+    if ((ret == -1) && (errno != ENOENT)) {
+        SR_LOG_WRN("Failed to check existence of the file \"%s\" (%s).", path, strerror(errno));
+        return 0;
+    }
+
+    if (ret) {
+        assert(errno == ENOENT);
+        return 0;
+    }
+    return 1;
 }
 
 int

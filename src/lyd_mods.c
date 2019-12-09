@@ -258,14 +258,14 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
     char *xpath;
     uint8_t i;
 
-    /* install the module and create its data files */
+    /* install the module and create its startup data file */
     if ((err_info = sr_lydmods_add_module_with_deps(sr_mods, ly_mod, &sr_mod))) {
         return err_info;
     }
     if ((err_info = sr_store_module_files(ly_mod))) {
         return err_info;
     }
-    if ((err_info = sr_create_data_files(ly_mod))) {
+    if ((err_info = sr_create_startup_file(ly_mod))) {
         return err_info;
     }
 
@@ -1635,8 +1635,9 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     struct ly_ctx *old_ctx = NULL;
     struct ly_set *set = NULL, *startup_set = NULL;
     const struct lys_module *ly_mod;
-    char *start_data_json = NULL, *run_data_json = NULL;
+    char *start_data_json = NULL, *run_data_json = NULL, *path;
     uint32_t idx;
+    int exists;
 
     set = ly_set_new();
     SR_CHECK_MEM_GOTO(!set, err_info, cleanup);
@@ -1662,9 +1663,18 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
             goto cleanup;
         }
 
-        /* append running data */
-        if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_RUNNING, &old_run_data))) {
+        /* check that running data file exists */
+        if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, 1, &path))) {
             goto cleanup;
+        }
+        exists = sr_file_exists(path);
+        free(path);
+
+        if (exists) {
+            /* append running data */
+            if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_RUNNING, &old_run_data))) {
+                goto cleanup;
+            }
         }
 
         /* remember this module from the new context */

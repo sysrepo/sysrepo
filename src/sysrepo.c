@@ -265,11 +265,14 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         if ((err_info = sr_shmmain_add(conn, sr_mods->child))) {
             goto cleanup_unlock;
         }
-    }
 
-    if (created) {
         /* copy full datastore from <startup> to <running> */
-        if ((err_info = sr_shmmain_files_startup2running(conn))) {
+        if ((err_info = sr_shmmain_files_startup2running(conn, created))) {
+            goto cleanup_unlock;
+        }
+
+        /* check data file existence and owner/permissions of all installed modules */
+        if ((err_info = sr_shmmain_check_data_files(conn))) {
             goto cleanup_unlock;
         }
     }
@@ -1409,7 +1412,7 @@ sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner,
     }
 
     /* learn owner and permissions */
-    if ((err_info = sr_perm_get(module_name, owner, group, perm))) {
+    if ((err_info = sr_perm_get(module_name, SR_DS_STARTUP, owner, group, perm))) {
         goto cleanup_unlock;
     }
 

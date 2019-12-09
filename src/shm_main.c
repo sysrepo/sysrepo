@@ -1186,17 +1186,26 @@ sr_shmmain_ly_ctx_init(struct ly_ctx **ly_ctx)
 }
 
 sr_error_info_t *
-sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
+sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod = NULL;
     char *startup_path, *running_path;
+    const char *mod_name;
 
     SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
-        if ((err_info = sr_path_ds_shm(conn->ext_shm.addr + shm_mod->name, SR_DS_RUNNING, 0, &running_path))) {
+        mod_name = conn->ext_shm.addr + shm_mod->name;
+        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 0, &running_path))) {
             goto error;
         }
-        if ((err_info = sr_path_startup_file(conn->ext_shm.addr + shm_mod->name, &startup_path))) {
+
+        if (!replace && sr_file_exists(running_path)) {
+            /* there are some running data, keep them */
+            free(running_path);
+            continue;
+        }
+
+        if ((err_info = sr_path_startup_file(mod_name, &startup_path))) {
             free(running_path);
             goto error;
         }
@@ -1208,11 +1217,13 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
         }
     }
 
-    SR_LOG_INFMSG("Datastore copied from <startup> to <running>.");
+    if (replace) {
+        SR_LOG_INFMSG("Datastore copied from <startup> to <running>.");
+    }
     return NULL;
 
 error:
-    sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Copying datastore from <startup> to <running> failed.");
+    sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Copying module \"%s\" data from <startup> to <running> failed.", mod_name);
     return err_info;
 }
 
@@ -2125,4 +2136,123 @@ sr_shmmain_update_replay_support(sr_shm_t *shm_main, char *ext_shm_addr, const c
     }
 
     return NULL;
+}
+
+sr_error_info_t *
+sr_shmmain_check_data_files(sr_conn_ctx_t *conn)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+    const char *mod_name;
+    char *owner, *cur_owner, *group, *cur_group, *path;
+    mode_t perm, cur_perm;
+    int exists;
+
+    SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
+        mod_name = conn->ext_shm.addr + shm_mod->name;
+
+        /* this must succeed for every (sysrepo) user */
+        if ((err_info = sr_perm_get(mod_name, SR_DS_STARTUP, &owner, &group, &perm))) {
+            return err_info;
+        }
+
+        /*
+         * running file, it must exist
+         */
+        if ((err_info = sr_perm_get(mod_name, SR_DS_RUNNING, &cur_owner, &cur_group, &cur_perm))) {
+            goto error;
+        }
+
+        /* learn changes */
+        if (!strcmp(owner, cur_owner)) {
+            free(cur_owner);
+            cur_owner = NULL;
+        } else {
+            free(cur_owner);
+            cur_owner = owner;
+        }
+        if (!strcmp(group, cur_group)) {
+            free(cur_group);
+            cur_group = NULL;
+        } else {
+            free(cur_group);
+            cur_group = group;
+        }
+        if (perm == cur_perm) {
+            cur_perm = 0;
+        } else {
+            cur_perm = perm;
+        }
+
+        if (cur_owner || cur_group || cur_perm) {
+            /* set correct values on the file */
+            if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 1, &path))) {
+                goto error;
+            }
+            err_info = sr_chmodown(path, cur_owner, cur_group, cur_perm);
+            free(path);
+            if (err_info) {
+                goto error;
+            }
+        }
+
+        /*
+         * operational file, may not exist
+         */
+        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_OPERATIONAL, 1, &path))) {
+            goto error;
+        }
+        exists = sr_file_exists(path);
+        free(path);
+        if (!exists && (err_info = sr_module_file_data_set(mod_name, SR_DS_OPERATIONAL, O_CREAT | O_EXCL, NULL))) {
+            goto error;
+        }
+
+        if ((err_info = sr_perm_get(mod_name, SR_DS_OPERATIONAL, &cur_owner, &cur_group, &cur_perm))) {
+            goto error;
+        }
+
+        /* learn changes */
+        if (!strcmp(owner, cur_owner)) {
+            free(cur_owner);
+            cur_owner = NULL;
+        } else {
+            free(cur_owner);
+            cur_owner = owner;
+        }
+        if (!strcmp(group, cur_group)) {
+            free(cur_group);
+            cur_group = NULL;
+        } else {
+            free(cur_group);
+            cur_group = group;
+        }
+        if (perm == cur_perm) {
+            cur_perm = 0;
+        } else {
+            cur_perm = perm;
+        }
+
+        if (cur_owner || cur_group || cur_perm) {
+            /* set correct values on the file */
+            if ((err_info = sr_path_ds_shm(mod_name, SR_DS_OPERATIONAL, 1, &path))) {
+                goto error;
+            }
+            err_info = sr_chmodown(path, cur_owner, cur_group, cur_perm);
+            free(path);
+            if (err_info) {
+                goto error;
+            }
+        }
+
+        free(owner);
+        free(group);
+    }
+
+    return NULL;
+
+error:
+    free(owner);
+    free(group);
+    return err_info;
 }

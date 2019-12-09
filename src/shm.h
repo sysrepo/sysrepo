@@ -458,9 +458,11 @@ sr_error_info_t *sr_shmmain_ly_ctx_init(struct ly_ctx **ly_ctx);
  * @brief Copy startup files into running files.
  *
  * @param[in] conn Connection to use.
+ * @param[in] replace Whether replace any existing running data (standard copy-config) or copy data
+ * only for modules that do not have any running data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_files_startup2running(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace);
 
 /**
  * @brief Remap main SHM and add modules and their inverse dependencies into it.
@@ -620,6 +622,16 @@ sr_error_info_t *sr_shmmain_del_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr,
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmain_update_replay_support(sr_shm_t *shm_main, char *ext_shm_addr, const char *mod_name, int replay_support);
+
+/**
+ * @brief Check data file existence and owner/permissions of all the modules in main SHM.
+ * Startup file must always exist, owner/permissions are read from it.
+ * For running and operational, create them if they do not exist, then change their owner/permissions.
+ *
+ * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_check_data_files(sr_conn_ctx_t *conn);
 
 /*
  * Main SHM module functions
