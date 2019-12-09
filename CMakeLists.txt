@@ -47,6 +47,7 @@ else()
     option(ENABLE_TESTS "Build tests" OFF)
     option(ENABLE_VALGRIND_TESTS "Build tests with valgrind" OFF)
 endif()
+option(BUILD_EXAMPLES "Build examples." ON)
 option(ENABLE_COVERAGE "Build code coverage report from tests" OFF)
 
 if(ENABLE_COVERAGE)
@@ -237,7 +238,9 @@ if(DOXYGEN_FOUND)
 endif()
 
 # examples
-add_subdirectory(examples)
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
 
 # tests
 if(ENABLE_TESTS)
