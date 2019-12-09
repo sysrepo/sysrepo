@@ -1,7 +1,7 @@
 set(PYTHON_SWIG_BINDING sysrepo)
 include_directories(${PYTHON_INCLUDE_PATH})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-include_directories(../../src/)
+include_directories(../cpp/src/)
 set(CMAKE_SWIG_FLAGS "-c++")
 set(CMAKE_SWIG_FLAGS "-I${PROJECT_SOURCE_DIR}")
 set(CMAKE_SWIG_FLAGS "-threads")
