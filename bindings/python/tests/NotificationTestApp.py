@@ -117,10 +117,11 @@ if __name__ == "__main__":
             print ("Retrying to subscribe...", file=sys.stderr) 
             sleep(10.0/10e6)
             continue
-        break;
+        break
 
     sr.global_loop()
-
     subscribe.unsubscribe()
+    sess.session_stop()
+    conn = None
 
     print("Application exit requested, exiting.")

@@ -28,7 +28,7 @@ class SysrepoModuleTester(SysrepoTester):
     sysrepoctl = "sysrepoctl"
 
     def installModuleStep(self, schema_path, schema_dir=None, features=[]):
-        rc = self.sr.install_module(schema_path, schema_dir, features)
+        rc = self.sr.install_module(schema_path, "/tmp/", features)
         self.tc.assertEqual(rc, None)
 
     def uninstallModuleFailStep(self, module_name):
@@ -43,18 +43,24 @@ class SysrepoModuleTester(SysrepoTester):
 class SchemasManagementTest(unittest.TestCase):
 
     @classmethod
-    def setUpClass(self):
-        TestModule.create_test_module()
+    def setUp(self):
+       print("create")
+       TestModule.create_test_module()
+
+    def tearDown(self):
+        print("remove")
+        TestModule.remove_test_module()
 
     def test_ModuleLoading(self):
          """Schemas are loaded on demand. Try to send multiple requests targeting the same model
          simultaneously. All of the should receive correct data.
          """
          tm = TestManager()
-         tester1 = SysrepoTester("First", sr.SR_DS_STARTUP, False)
-         tester2 = SysrepoTester("Second", sr.SR_DS_STARTUP, False)
-         tester3 = SysrepoTester("Third", sr.SR_DS_STARTUP, False)
-         tester4 = SysrepoTester("Fourth", sr.SR_DS_STARTUP, False)
+         tester1 = SysrepoTester("First", sr.SR_DS_STARTUP)
+         tester2 = SysrepoTester("Second", sr.SR_DS_STARTUP)
+         tester3 = SysrepoTester("Third", sr.SR_DS_STARTUP)
+         tester4 = SysrepoTester("Fourth", sr.SR_DS_STARTUP)
+
          tester1.add_step(tester1.getItemsStepExpectedCount,
                           "/test-module:main/*", 19)
          tester2.add_step(tester2.getItemsStepExpectedCount,
@@ -63,6 +69,17 @@ class SchemasManagementTest(unittest.TestCase):
                           "/test-module:main/*", 19)
          tester4.add_step(tester4.getItemsStepExpectedCount,
                           "/test-module:main/*", 19)
+                          
+         tester1.add_step(tester1.stopSession)
+         tester2.add_step(tester2.stopSession)
+         tester3.add_step(tester3.stopSession)
+         tester4.add_step(tester4.stopSession)
+
+         tester1.add_step(tester1.disconnect)
+         tester2.add_step(tester2.disconnect)
+         tester3.add_step(tester3.disconnect)
+         tester4.add_step(tester4.disconnect)
+
          tm.add_tester(tester1)
          tm.add_tester(tester2)
          tm.add_tester(tester3)
@@ -80,43 +97,50 @@ class SchemasManagementTest(unittest.TestCase):
         tester3 = SysrepoTester("Third", sr.SR_DS_STARTUP)
         admin = SysrepoModuleTester()
 
-        tester3.add_step(tester3.getItemsStepExpectedCount, "/test-module:main/*", 19)
-        tester3.add_step(tester3.setItemStep, "/test-module:main/string", sr.Val("abcd", sr.SR_STRING_T))
+        tester1.add_step(tester1.getItemsStepExpectedCount, "/test-module:main/*", 19)
+        tester2.add_step(tester2.setItemStep, "/test-module:main/string", sr.Val("abcd", sr.SR_STRING_T))
         tester3.add_step(tester3.waitStep)
+        tester1.add_step(tester1.waitStep)
         admin.add_step(admin.waitStep)
 
         tester1.add_step(tester1.commitStep)
         tester2.add_step(tester2.commitStep)
-        tester3.add_step(tester3.commitStep)
-        admin.add_step(admin.waitStep)
-
-        tester1.add_step(tester1.waitStep)
-        tester2.add_step(tester2.waitStep)
-        tester3.add_step(tester3.lockModelStep, "test-module")
+        tester3.add_step(tester3.waitStep)
         admin.add_step(admin.waitStep)
 
         admin.add_step(admin.stopSession)
         tester1.add_step(tester1.stopSession)
         tester2.add_step(tester2.stopSession)
+        tester3.add_step(tester3.waitStep)
 
-        tester3.add_step(tester3.uninstallModuleFailStep, "test-module")
+        admin.add_step(admin.disconnect)
+        tester1.add_step(tester1.disconnect)
+        tester2.add_step(tester2.disconnect)
+        tester3.add_step(tester3.waitStep)
 
         # export schema to file before uninstall and release lock
         admin.add_step(admin.waitStep)
         tester3.add_step(tester3.getSchemaToFileStep, file_location, test_module_file)
-        tester3.add_step(tester3.getSchemaToFileStep, file_location, referenced_data_file)
-        tester3.add_step(tester3.unlockModelStep, "test-module")
 
-        #uninstall succeed
+        admin.add_step(admin.waitStep)
+        tester3.add_step(tester3.getSchemaToFileStep, file_location, referenced_data_file)
+
+        admin.add_step(admin.waitStep)
+        tester3.add_step(tester3.stopSession)
+
+        # #uninstall succeed
         tester3.add_step(tester3.uninstallModuleStep, "test-module")
-        tester3.add_step(tester3.waitStep)
+        admin.add_step(admin.waitStep)
+
+        admin.add_step(admin.waitStep)
+        tester3.add_step(tester3.disconnect)
 
         admin.add_step(admin.restartConnection)
-        tester3.add_step(tester3.restartConnection)
+        tester3.add_step(tester3.restartConnection )
 
-        #module is uninstalled
+        # #module is uninstalled
         admin.add_step(admin.waitStep)
-        tester3.add_step(tester3.setItemStep, "/test-module:main/string", sr.Val("abcd", sr.SR_STRING_T))
+        tester3.add_step(tester3.setItemFailStep, "/test-module:main/string", sr.Val("abcd", sr.SR_STRING_T))
 
         tester3.add_step(tester3.commitStep)
         admin.add_step(admin.waitStep)
@@ -125,9 +149,24 @@ class SchemasManagementTest(unittest.TestCase):
         admin.add_step(admin.installModuleStep, file_location + test_module_file)
         tester3.add_step(tester3.waitStep)
 
+        admin.add_step(admin.stopSession)
+        tester3.add_step(tester3.stopSession)
+
+        admin.add_step(admin.disconnect)
+        tester3.add_step(tester3.disconnect)
+
+        admin.add_step(admin.restartConnection)
+        tester3.add_step(tester3.restartConnection)
+
         #request work again
+        admin.add_step(admin.waitStep)
         tester3.add_step(tester3.setItemStep, "/test-module:main/string", sr.Val("abcd", sr.SR_STRING_T))
 
+        admin.add_step(admin.stopSession)
+        tester3.add_step(tester3.stopSession)
+        
+        admin.add_step(admin.disconnect)
+        tester3.add_step(tester3.disconnect)
 
         tm.add_tester(tester1)
         tm.add_tester(tester2)

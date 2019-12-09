@@ -17,6 +17,7 @@ __license__ = "Apache 2.0"
 # limitations under the License.
 
 import sysrepo as sr
+import os
 
 XP_TEST_MODULE_ENUM = "/test-module:main/enum"
 XP_TEST_MODULE_ENUM_VALUE = "maybe"
@@ -65,11 +66,29 @@ XP_TEST_MODULE_UINT32_VALUE_T = 32
 XP_TEST_MODULE_UINT64 = "/test-module:main/ui64"
 XP_TEST_MODULE_UINT64_VALUE_T = 64
 
+def remove_test_module():
+    connection = sr.Connection(sr.SR_CONN_DEFAULT)
+
+    try:
+        connection.remove_module("test-module")
+    except Exception as e:
+        print (e)
+    connection = None
+
 def create_test_module():
+
+    connection = sr.Connection(sr.SR_CONN_DEFAULT)
+    try:
+        connection.install_module(os.environ['TESTS_DIR']+"/files/test-module.yang",os.environ['TESTS_DIR']+"/files", [])
+    except Exception as e:
+        print (e)
+
+    connection = None
+
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
     session = sr.Session(connection, sr.SR_DS_STARTUP)
 
-    delete_all_items(session)
+    delete_all_items_test(session)
 
     v = sr.Val(XP_TEST_MODULE_ENUM_VALUE, sr.SR_ENUM_T)
     session.set_item(XP_TEST_MODULE_ENUM, v)
@@ -140,21 +159,47 @@ def create_test_module():
     session.set_item("/test-module:list[key='k2']/id_ref", v)
 
     session.apply_changes()
+    session.session_stop()
 
-def create_example_module():
+    connection=None
+
+def remove_example_module():
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
 
+    try:
+        connection.remove_module("example-module")
+    except Exception as e:
+        print (e)
+
+    connection=None
+
+def create_example_module():
+
+
+    connection = sr.Connection(sr.SR_CONN_DEFAULT)
+    try:
+        connection.install_module(os.environ['TESTS_DIR']+"/files/example-module.yang",os.environ['TESTS_DIR']+"/files", [])
+    except Exception as e:
+        print (e)
+
+    connection=None
+
+    connection = sr.Connection(sr.SR_CONN_DEFAULT)
     session = sr.Session(connection, sr.SR_DS_STARTUP)
-    delete_all_items(session)
+
+    delete_all_items_example(session)
     v = sr.Val("Leaf value", sr.SR_STRING_T)
     session.set_item("/example-module:container/list[key1='key1'][key2='key2']/leaf", v)
     session.apply_changes()
+    session.session_stop()
+
+    connection=None
 
 def create_ietf_interfaces():
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
 
     session = sr.Session(connection, sr.SR_DS_STARTUP)
-    delete_all_items(session)
+    delete_all_items_ietf(session)
 
     v = sr.Val("iana-if-type:ethernetCsmacd", sr.SR_IDENTITYREF_T)
     session.set_item("/ietf-interfaces:interfaces/interface[name='eth0']/type", v)
@@ -196,8 +241,11 @@ def create_ietf_interfaces():
     session.set_item("/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled", v)
 
     session.apply_changes()
+    session.session_stop()
 
-def delete_all_items(session):
+    connection=None
+
+def delete_all_items_test(session):
 
     values = session.get_items("/test-module:*//*")
 
@@ -208,14 +256,7 @@ def delete_all_items(session):
         session.delete_item(values.val(i).xpath())
         session.apply_changes()
 
-    values = session.get_items("/ietf-interfaces:*//*")
-
-    if values == None:
-        return
-
-    for i in range(values.val_cnt()):
-        session.delete_item(values.val(i).xpath())
-        session.apply_changes()
+def delete_all_items_example(session):
 
     values = session.get_items("/example-module:*//*")
 
@@ -226,5 +267,18 @@ def delete_all_items(session):
         session.delete_item(values.val(i).xpath())
         session.apply_changes()
 
+def delete_all_items_ietf(session):
+
+    values = session.get_items("/ietf-interfaces:*//*")
+
+    if values == None:
+        return
+
+    for i in range(values.val_cnt()):
+        session.delete_item(values.val(i).xpath())
+        session.apply_changes()
+
 if __name__ == "__main__":
-    create_test_module()
+  remove_example_module()
+  create_example_module()
+  remove_example_module()

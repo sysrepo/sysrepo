@@ -30,6 +30,12 @@ class SysrepoBasicTest(unittest.TestCase):
     def setUp(self):
         TestModule.create_test_module()
         self.session = sr.Session(self.conn, sr.SR_DS_STARTUP)
+        self.conn= sr.Connection(sr.SR_CONN_DEFAULT)
+
+    def tearDown(self):
+        TestModule.remove_test_module()
+        self.session.session_stop()
+        conn=None
 
     # No point in test?
     # def test_connection(self):
@@ -117,10 +123,8 @@ class SysrepoBasicTest(unittest.TestCase):
 
     def test_commit_empty(self):
         TestModule.create_test_module()
-        connection = sr.Connection(sr.SR_CONN_DEFAULT)
-        session = sr.Session(self.conn, sr.SR_DS_STARTUP)
         v_old = self.session.get_item("/test-module:main/string")
-        TestModule.delete_all_items(self.session)
+        TestModule.delete_all_items_test(self.session)
         self.session.apply_changes()
         #test random leaf that was deleted
         v_none = self.session.get_item("/test-module:main/string")

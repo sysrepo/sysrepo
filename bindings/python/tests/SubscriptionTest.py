@@ -82,6 +82,12 @@ class SubscriptionTest(unittest.TestCase):
         reader.add_step(reader.getOperationalData, "/ietf-interfaces:interfaces-state/interface[name='eth100']", [])
         subscriber.add_step(subscriber.waitStep)
 
+        reader.add_step(reader.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+
+        reader.add_step(reader.disconnect)
+        subscriber.add_step(subscriber.disconnect)
+
         tm.add_tester(reader)
         tm.add_tester(subscriber)
         tm.run()
@@ -109,6 +115,12 @@ class SubscriptionTest(unittest.TestCase):
 
         reader.add_step(reader.getOperationalData, "/ietf-interfaces:interfaces-state/interface[name='eth100']", [])
         subscriber.add_step(subscriber.waitStep)
+        
+        reader.add_step(reader.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+
+        reader.add_step(reader.disconnect)
+        subscriber.add_step(subscriber.disconnect)
 
         tm.add_tester(reader)
         tm.add_tester(subscriber)

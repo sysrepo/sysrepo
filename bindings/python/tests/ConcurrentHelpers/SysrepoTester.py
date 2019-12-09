@@ -40,6 +40,9 @@ class SysrepoTester(Tester):
             raise r
         self.session = sr.Session(self.sr, self.ds)
 
+    def disconnect(self):
+        self.sr=None
+
     def stopSession(self):
         self.session.session_stop()
         self.session = None

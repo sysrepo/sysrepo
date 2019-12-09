@@ -76,12 +76,16 @@ class NotificationTest(unittest.TestCase):
     @classmethod
     def setUpClass(self):
         TestModule.create_ietf_interfaces()
+        TestModule.remove_example_module()
         TestModule.create_example_module()
 
+    def tearDown(self):
+        TestModule.remove_example_module()
+        
     def test_notify_delete(self):
         tm = TestManager()
 
-        tester = SysrepoTester("Tester", sr.SR_DS_RUNNING, False)
+        tester = SysrepoTester("Tester", sr.SR_DS_RUNNING)
         subscriber = NotificationTester("Subscriber")
         subscriber2 = NotificationTester("Subscriber2")
         subscriber3 = NotificationTester("Subscriber3")
@@ -109,7 +113,7 @@ class NotificationTest(unittest.TestCase):
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
 
-        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitTimeoutStep, 0.4)
         subscriber.add_step(subscriber.waitTimeoutStep, 0.4)
         subscriber2.add_step(subscriber2.waitTimeoutStep, 0.4)
         subscriber3.add_step(subscriber3.waitTimeoutStep, 0.4)
@@ -139,6 +143,21 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.cancelSubscriptionStep)
         subscriber2.add_step(subscriber2.cancelSubscriptionStep)
         subscriber3.add_step(subscriber3.cancelSubscriptionStep)
+
+        tester.add_step(tester.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+        subscriber2.add_step(subscriber2.stopSession)
+        subscriber3.add_step(subscriber3.stopSession)
+
+        tester.add_step(tester.disconnect)
+        subscriber.add_step(subscriber.disconnect)
+        subscriber2.add_step(subscriber2.disconnect)
+        subscriber3.add_step(subscriber3.disconnect)
+
+        tester.add_step(tester.waitTimeoutStep, 1)
+        subscriber.add_step(subscriber.waitTimeoutStep, 1)
+        subscriber2.add_step(subscriber2.waitTimeoutStep, 1)
+        subscriber3.add_step(subscriber3.waitTimeoutStep, 1)
 
         tm.add_tester(tester)
         tm.add_tester(subscriber)
@@ -200,6 +219,16 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.cancelSubscriptionStep)
         subscriber2.add_step(subscriber2.cancelSubscriptionStep)
         subscriber3.add_step(subscriber3.cancelSubscriptionStep)
+
+        tester.add_step(tester.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+        subscriber2.add_step(subscriber2.stopSession)
+        subscriber3.add_step(subscriber3.stopSession)
+
+        tester.add_step(tester.disconnect)
+        subscriber.add_step(subscriber.disconnect)
+        subscriber2.add_step(subscriber2.disconnect)
+        subscriber3.add_step(subscriber3.disconnect)
 
         tm.add_tester(tester)
         tm.add_tester(subscriber)
@@ -277,6 +306,16 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.cancelSubscriptionStep)
         subscriber2.add_step(subscriber2.cancelSubscriptionStep)
         subscriber3.add_step(subscriber3.cancelSubscriptionStep)
+
+        tester.add_step(tester.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+        subscriber2.add_step(subscriber2.stopSession)
+        subscriber3.add_step(subscriber3.stopSession)
+
+        tester.add_step(tester.disconnect)
+        subscriber.add_step(subscriber.disconnect)
+        subscriber2.add_step(subscriber2.disconnect)
+        subscriber3.add_step(subscriber3.disconnect)
 
         tm.add_tester(tester)
         tm.add_tester(subscriber)
@@ -374,6 +413,18 @@ class NotificationTest(unittest.TestCase):
         subscriber3.add_step(subscriber3.cancelSubscriptionStep)
         subscriber4.add_step(subscriber4.cancelSubscriptionStep)
 
+        tester.add_step(tester.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+        subscriber2.add_step(subscriber2.stopSession)
+        subscriber3.add_step(subscriber3.stopSession)
+        subscriber4.add_step(subscriber4.stopSession)
+
+        tester.add_step(tester.disconnect)
+        subscriber.add_step(subscriber.disconnect)
+        subscriber2.add_step(subscriber2.disconnect)
+        subscriber3.add_step(subscriber3.disconnect)
+        subscriber4.add_step(subscriber4.disconnect)
+
         tm.add_tester(tester)
         tm.add_tester(subscriber)
         tm.add_tester(subscriber2)
@@ -420,6 +471,13 @@ class NotificationTest(unittest.TestCase):
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.cancelSubscriptionStep)
 
+
+        tester.add_step(tester.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+
+        tester.add_step(tester.disconnect)
+        subscriber.add_step(subscriber.disconnect)
+
         tm.add_tester(tester)
         tm.add_tester(subscriber)
 
@@ -455,6 +513,13 @@ class NotificationTest(unittest.TestCase):
 
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.cancelSubscriptionStep)
+
+
+        tester.add_step(tester.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+
+        tester.add_step(tester.disconnect)
+        subscriber.add_step(subscriber.disconnect)
 
         tm.add_tester(tester)
         tm.add_tester(subscriber)
