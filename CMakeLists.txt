@@ -20,9 +20,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
-#Language bindings
-set(GEN_LANGUAGE_BINDINGS "Enable python bindings." ON)
-set(GEN_PYTHON_BINDINGS "Enable python bindings." ON)
 
 # Version of the project
 # Generic version of not only the library. Major version is reserved for really big changes of the project,

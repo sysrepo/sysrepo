@@ -1,17 +1,11 @@
 set(PYTHON_SWIG_BINDING sysrepo)
 include_directories(${PYTHON_INCLUDE_PATH})
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-include_directories(../cpp/src/)
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../cpp/src")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../src")
 set(CMAKE_SWIG_FLAGS "-c++")
 set(CMAKE_SWIG_FLAGS "-I${PROJECT_SOURCE_DIR}")
 set(CMAKE_SWIG_FLAGS "-threads")
 set(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR})
-set(PYTHON_SWIG_MIN_VERSION "3.0.5")
-
-find_package(SWIG ${PYTHON_SWIG_MIN_VERSION})
-if (NOT SWIG_FOUND)
-  message(WARNING "Minimum SWIG version for Python is ${PYTHON_SWIG_MIN_VERSION}. Tests won't be generated.")
-endif()
 
 set_source_files_properties(${PYTHON_SWIG_BINDING}.i PROPERTIES CPLUSPLUS ON)
 
@@ -27,6 +21,21 @@ execute_process(COMMAND
     "from distutils.sysconfig import get_python_lib; print(get_python_lib())"
 OUTPUT_VARIABLE PYTHON_MODULE_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-install( FILES "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING}.so" DESTINATION ${PYTHON_MODULE_PATH} )
-install( FILES "${CMAKE_CURRENT_BINARY_DIR}/${PYTHON_SWIG_BINDING}.py" DESTINATION ${PYTHON_MODULE_PATH} )
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING}.so" DESTINATION ${PYTHON_MODULE_PATH})
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PYTHON_SWIG_BINDING}.py" DESTINATION ${PYTHON_MODULE_PATH})
 
+# tests
+if(ENABLE_PYTHON_TESTS)
+    macro(ADD_PYTHON_TEST TEST_NAME)
+        add_test(NAME python_${TEST_NAME}
+            COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_python_test.sh
+            "${CMAKE_BINARY_DIR}/src:${CMAKE_BINARY_DIR}/tests:${CMAKE_BINARY_DIR}/repository:${CMAKE_CURRENT_BINARY_DIR}/tests"
+            "${CMAKE_CURRENT_BINARY_DIR}:${PROJECT_SOURCE_DIR}/swig/python3:${PYTHON_BUILD_DIR}"
+            "${PYTHON_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST_NAME}.py"
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+    endmacro(ADD_PYTHON_TEST)
+
+    ADD_PYTHON_TEST(SysrepoBasicTest)
+endif()

@@ -37,7 +37,6 @@ include_directories(${LIBYANG_CPP_INCLUDE_DIRS})
 target_link_libraries(Sysrepo-cpp ${LIBYANG_CPP_LIBRARIES})
 
 include_directories(${CMAKE_SOURCE_DIR})
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/cpp/src")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../src")
 target_link_libraries(Sysrepo-cpp sysrepo)
@@ -53,9 +52,4 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libSysrepo-cpp.pc" DESTINATION "${CMA
 # Examples
 if(BUILD_CPP_EXAMPLES)
     add_subdirectory(examples)
-endif()
-
-# Python language byndings generation
-if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
-    add_subdirectory(python)
 endif()
