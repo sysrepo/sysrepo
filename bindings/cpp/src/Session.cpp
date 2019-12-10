@@ -108,7 +108,7 @@ S_Errors Session::get_error()
 
 void Session::set_error(const char *message, const char *path)
 {
-    int ret = sr_set_error(_sess, message, path);
+    int ret = sr_set_error(_sess, path, message);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
