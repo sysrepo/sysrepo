@@ -24,6 +24,7 @@
 #include <sys/select.h>
 #include <sys/mman.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
@@ -37,6 +38,7 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
     sr_error_info_t *err_info = NULL;
     char *path;
     int created;
+    mode_t um;
     sr_sub_shm_t *sub_shm;
 
     assert(name && suffix1);
@@ -51,7 +53,12 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
         return err_info;
     }
     created = 1;
+
+    /* set umask so that the correct permissions are really set */
+    um = umask(00000);
+
     shm->fd = shm_open(path, O_RDWR | O_CREAT | O_EXCL, SR_SUB_SHM_PERM);
+    umask(um);
     if ((shm->fd == -1) && (errno == EEXIST)) {
         created = 0;
         shm->fd = shm_open(path, O_RDWR, SR_SUB_SHM_PERM);

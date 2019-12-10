@@ -2224,6 +2224,7 @@ sr_cp_file2shm(const char *to, const char *from, mode_t perm)
     int fd_to = -1, fd_from = -1;
     char * out_ptr, buf[4096];
     ssize_t nread, nwritten;
+    mode_t um;
 
     /* open "from" file */
     fd_from = open(from, O_RDONLY);
@@ -2232,8 +2233,12 @@ sr_cp_file2shm(const char *to, const char *from, mode_t perm)
         goto cleanup;
     }
 
+    /* set umask so that the correct permissions are really set */
+    um = umask(00000);
+
     /* open "to" SHM */
     fd_to = shm_open(to, O_WRONLY | O_TRUNC | O_CREAT, perm);
+    umask(um);
     if (fd_to < 0) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" SHM failed (%s).", to, strerror(errno));
         goto cleanup;
@@ -3688,6 +3693,7 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, int create_flag
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
     int fd = -1;
+    mode_t um;
 
     /* learn path */
     switch (ds) {
@@ -3704,12 +3710,16 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, int create_flag
         goto cleanup;
     }
 
+    /* set umask so that the correct permissions are really set if the file is created */
+    um = umask(00000);
+
     /* open */
     if (ds == SR_DS_STARTUP) {
         fd = open(path, O_WRONLY | O_TRUNC | create_flags, SR_FILE_PERM);
     } else {
         fd = shm_open(path, O_WRONLY | O_TRUNC | create_flags, SR_FILE_PERM);
     }
+    umask(um);
     if (fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
         goto cleanup;
