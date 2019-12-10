@@ -44,11 +44,9 @@ class SchemasManagementTest(unittest.TestCase):
 
     @classmethod
     def setUp(self):
-       print("create")
        TestModule.create_test_module()
 
     def tearDown(self):
-        print("remove")
         TestModule.remove_test_module()
 
     def test_ModuleLoading(self):
@@ -87,8 +85,8 @@ class SchemasManagementTest(unittest.TestCase):
          tm.run()
 
     def test_module_uninstall(self):
-        test_module_file = "test-module.yang"  # used to reinstall 'test-module' after uninstall
-        referenced_data_file = "referenced-data.yang" # 'test-module' depends on 'referenced-data'
+        test_module_file = "test-module.yang" 
+        referenced_data_file = "referenced-data.yang"
         file_location = "/tmp/"
         tm = TestManager()
 
@@ -118,7 +116,6 @@ class SchemasManagementTest(unittest.TestCase):
         tester2.add_step(tester2.disconnect)
         tester3.add_step(tester3.waitStep)
 
-        # export schema to file before uninstall and release lock
         admin.add_step(admin.waitStep)
         tester3.add_step(tester3.getSchemaToFileStep, file_location, test_module_file)
 
@@ -128,7 +125,6 @@ class SchemasManagementTest(unittest.TestCase):
         admin.add_step(admin.waitStep)
         tester3.add_step(tester3.stopSession)
 
-        # #uninstall succeed
         tester3.add_step(tester3.uninstallModuleStep, "test-module")
         admin.add_step(admin.waitStep)
 
@@ -138,14 +134,12 @@ class SchemasManagementTest(unittest.TestCase):
         admin.add_step(admin.restartConnection)
         tester3.add_step(tester3.restartConnection )
 
-        # #module is uninstalled
         admin.add_step(admin.waitStep)
         tester3.add_step(tester3.setItemFailStep, "/test-module:main/string", sr.Val("abcd", sr.SR_STRING_T))
 
         tester3.add_step(tester3.commitStep)
         admin.add_step(admin.waitStep)
 
-        #install module back
         admin.add_step(admin.installModuleStep, file_location + test_module_file)
         tester3.add_step(tester3.waitStep)
 
@@ -158,7 +152,6 @@ class SchemasManagementTest(unittest.TestCase):
         admin.add_step(admin.restartConnection)
         tester3.add_step(tester3.restartConnection)
 
-        #request work again
         admin.add_step(admin.waitStep)
         tester3.add_step(tester3.setItemStep, "/test-module:main/string", sr.Val("abcd", sr.SR_STRING_T))
 

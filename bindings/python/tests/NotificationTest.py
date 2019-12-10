@@ -74,7 +74,7 @@ class NotificationTester(SysrepoTester):
 class NotificationTest(unittest.TestCase):
 
     @classmethod
-    def setUpClass(self):
+    def setUp(self):
         TestModule.create_ietf_interfaces()
         TestModule.remove_example_module()
         TestModule.create_example_module()
@@ -336,8 +336,6 @@ class NotificationTest(unittest.TestCase):
         subscriber3 = NotificationTester("Subscriber3")
         subscriber4 = NotificationTester("Subscriber4")
 
-        # subscribe synchronously
-
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep, "ietf-interfaces",
                             "/ietf-interfaces:interfaces")
@@ -433,7 +431,6 @@ class NotificationTest(unittest.TestCase):
         tm.run()
 
     def test_delete_default_node(self):
-        TestModule.create_ietf_interfaces()
         tm = TestManager()
 
         tester = SysrepoTester("Tester", sr.SR_DS_RUNNING, False)
@@ -442,8 +439,6 @@ class NotificationTest(unittest.TestCase):
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep, "ietf-interfaces",
                             "/ietf-interfaces:interfaces")
-
-        # set to non default value
 
         tester.add_step(
             tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/type", sr.Val("iana-if-type:ethernetCsmacd", sr.SR_IDENTITYREF_T))
@@ -464,7 +459,6 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.waitStep)
 
         tester.add_step(tester.waitStep)
-        # deleted value -> default according to the YANG
         subscriber.add_step(subscriber.checkNotificationStep, [
                             ["MODIFIED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/forwarding"]])
 
@@ -484,8 +478,6 @@ class NotificationTest(unittest.TestCase):
         tm.run()
 
     def test_change_default_node(self):
-
-        TestModule.create_ietf_interfaces()
         tm = TestManager()
 
         tester = SysrepoTester("Tester", sr.SR_DS_RUNNING, False)
@@ -507,7 +499,6 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.waitStep)
 
         tester.add_step(tester.waitStep)
-        # setting a leaf with default value -> MODIFIED
         subscriber.add_step(subscriber.checkNotificationStep, [
                             ["MODIFIED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/forwarding"]])
 

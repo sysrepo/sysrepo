@@ -279,6 +279,6 @@ def delete_all_items_ietf(session):
         session.apply_changes()
 
 if __name__ == "__main__":
-  remove_example_module()
-  create_example_module()
-  remove_example_module()
+    remove_test_module()
+    create_test_module()
+    remove_test_module()

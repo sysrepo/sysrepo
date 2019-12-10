@@ -30,6 +30,7 @@ __license__ = "Apache 2.0"
 
 import sysrepo as sr
 import sys
+import gc
 
 def oper_get_items_cb1(session, module_name, path, request_xpath, request_id, parent, private_data):
     print ("\n\n ========== CALLBACK CALLED TO PROVIDE \"" + path + "\" DATA ==========\n")
@@ -98,17 +99,19 @@ try:
 
     print ("\nApplication will provide data of " + module_name + " module\n")
 
-    try:
-        subscribe.oper_get_items_subscribe(module_name, "/ietf-interfaces:interfaces-state", oper_get_items_cb1)
-        subscribe.oper_get_items_subscribe(module_name, "/ietf-interfaces:interfaces-state/interface/statistics", oper_get_items_cb2,
-                None, sr.SR_SUBSCR_CTX_REUSE);
-    except Exception as e:
-        print (e)
+    #try:
+    subscribe.oper_get_items_subscribe(module_name, "/ietf-interfaces:interfaces-state", oper_get_items_cb1)
+    #except Exception as e:
+    #    print (e)
 
     sr.global_loop()
 
     subscribe.unsubscribe()
-    
+
+    sess.session_stop()
+
+    conn=None
+
     print ("Application exit requested, exiting.\n")
 
 except Exception as e:

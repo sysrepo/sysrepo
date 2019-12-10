@@ -25,6 +25,7 @@ class SysrepoBasicTest(unittest.TestCase):
     @classmethod
     def setUpClass(self):
         TestModule.create_test_module()
+        TestModule.create_example_module()
         self.conn= sr.Connection(sr.SR_CONN_DEFAULT)
 
     def setUp(self):
@@ -34,22 +35,16 @@ class SysrepoBasicTest(unittest.TestCase):
 
     def tearDown(self):
         TestModule.remove_test_module()
+        TestModule.remove_example_module()
         self.session.session_stop()
         conn=None
 
-    # No point in test?
-    # def test_connection(self):
-    #     with self.assertRaises(RuntimeError):
-    #         broken = sr.Connection('Reuqire daemon', 1)
-
     def test_logg_stderr(self):
-        # sr.Connection.set_stderr(sr.SR_LL_DBG)
         log = sr.Logs()
         log.set_stderr(sr.SR_LL_NONE)
 
     def test_get_item(self):
         item = self.session.get_item("/test-module:main/i32")
-        print (item.to_string(),end='')
         self.assertEqual(item.xpath(), "/test-module:main/i32")
         self.assertEqual(item.type(), sr.SR_INT32_T)
 
@@ -61,16 +56,6 @@ class SysrepoBasicTest(unittest.TestCase):
         for i in range(vals.val_cnt()):
             v = vals.val(i)
             self.assertRegex(v.xpath(), "/test-module:main*")
-            print (v.to_string(),end='')
-
-    # Infinite loop on 'None' values
-    # Not supported right now
-    # def test_get_items_iter(self):
-    #     it = self.session.get_items_iter("/test-module:main//*")
-    #     while True:
-    #         val = self.session.get_item_next(it)
-    #         if val is None: break
-    #         self.assertRegexpMatches(val.xpath(), "/test-module:main*")
 
     def test_set_item(self):
         xpath = "/example-module:container/list[key1='abc'][key2='def']/leaf"
