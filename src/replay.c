@@ -131,7 +131,7 @@ sr_replay_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flag
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
-    mode_t perm = SR_FILE_PERM;
+    mode_t perm = SR_FILE_PERM, um;
 
     *notif_fd = -1;
 
@@ -146,7 +146,11 @@ sr_replay_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flag
         goto cleanup;
     }
 
+    /* set umask so that the correct permissions are really set */
+    um = umask(00000);
+
     *notif_fd = open(path, flags, perm);
+    umask(um);
     if (*notif_fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open file \"%s\" (%s).", path, strerror(errno));
         goto cleanup;
