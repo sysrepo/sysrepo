@@ -24,10 +24,10 @@ class MoveTest(unittest.TestCase):
 
     @classmethod
     def tearDown(self):
-        TestModule.remove_example_module()
+        TestModule.remove_test_module()
 
     def setUp(self):
-        TestModule.create_example_module()
+        TestModule.create_test_module()
         conn = sr.Connection(sr.SR_CONN_DEFAULT)
         session = sr.Session(conn, sr.SR_DS_STARTUP)
         session.delete_item("/test-module:user[name='A']")
