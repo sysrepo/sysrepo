@@ -75,6 +75,7 @@ sr_lydmods_print(struct lyd_node **sr_mods)
     sr_error_info_t *err_info = NULL;
     const struct lys_module *sr_ly_mod;
     char *path;
+    mode_t um;
 
     assert(sr_mods && *sr_mods && !strcmp((*sr_mods)->schema->module->name, SR_YANG_MOD));
 
@@ -92,15 +93,17 @@ sr_lydmods_print(struct lyd_node **sr_mods)
         return err_info;
     }
 
+    /* set umask so that the correct permissions are set in case this file does not exist */
+    um = umask(00000);
+
     /* store the data tree */
     if (lyd_print_path(path, *sr_mods, LYD_LYB, LYP_WITHSIBLINGS)) {
-        free(path);
         sr_errinfo_new_ly(&err_info, sr_ly_mod->ctx);
-        return err_info;
     }
+    umask(um);
     free(path);
 
-    return NULL;
+    return err_info;
 }
 
 /**
