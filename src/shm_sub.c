@@ -492,11 +492,11 @@ sr_error_info_t *
 sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms, struct lyd_node **update_edit,
         sr_error_info_t **cb_err_info)
 {
-    sr_multi_sub_shm_t *multi_sub_shm;
-    struct sr_mod_info_mod_s *mod;
-    struct lyd_node *edit;
-    uint32_t i, cur_priority, subscriber_count, diff_lyb_len;
     sr_error_info_t *err_info = NULL;
+    sr_multi_sub_shm_t *multi_sub_shm;
+    struct sr_mod_info_mod_s *mod = NULL;
+    struct lyd_node *edit;
+    uint32_t cur_priority, subscriber_count, diff_lyb_len;
     char *diff_lyb = NULL;
     struct ly_ctx *ly_ctx;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
@@ -505,13 +505,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
     *update_edit = NULL;
     ly_ctx = lyd_node_module(mod_info->diff)->ctx;
 
-    for (i = 0; i < mod_info->mod_count; ++i) {
-        mod = &mod_info->mods[i];
-        if (!(mod->state & MOD_INFO_CHANGED)) {
-            /* no changes for this module */
-            continue;
-        }
-
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
         if (!sr_shmsub_change_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
                 &cur_priority)) {
@@ -636,17 +630,11 @@ sr_shmsub_change_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev)
 {
     sr_error_info_t *err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
-    struct sr_mod_info_mod_s *mod;
-    uint32_t i, cur_priority, subscriber_count;
+    struct sr_mod_info_mod_s *mod = NULL;
+    uint32_t cur_priority, subscriber_count;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
 
-    for (i = 0; i < mod_info->mod_count; ++i) {
-        mod = &mod_info->mods[i];
-        if (!(mod->state & MOD_INFO_CHANGED)) {
-            /* no changes for this module */
-            continue;
-        }
-
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
         /* open sub SHM and map it */
         if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub, sizeof *multi_sub_shm))) {
             goto cleanup;
@@ -736,8 +724,8 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
 {
     sr_error_info_t *err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
-    struct sr_mod_info_mod_s *mod;
-    uint32_t i, cur_priority, subscriber_count, diff_lyb_len;
+    struct sr_mod_info_mod_s *mod = NULL;
+    uint32_t cur_priority, subscriber_count, diff_lyb_len;
     char *diff_lyb = NULL, *ext_shm_addr, *ext_shm_buf = NULL;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
     int opts;
@@ -745,13 +733,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
     /* use our ext SHM mapping by default */
     ext_shm_addr = mod_info->conn->ext_shm.addr;
 
-    for (i = 0; i < mod_info->mod_count; ++i) {
-        mod = &mod_info->mods[i];
-        if (!(mod->state & MOD_INFO_CHANGED)) {
-            /* no changes for this module */
-            continue;
-        }
-
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
         if (!sr_shmsub_change_notify_has_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
                     &cur_priority)) {
@@ -764,8 +746,6 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             }
             continue;
         }
-
-        assert(mod_info->diff);
 
         /* prepare the diff to write into subscription SHM */
         if (!diff_lyb) {
@@ -876,25 +856,17 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
 {
     sr_error_info_t *err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
-    struct sr_mod_info_mod_s *mod;
-    uint32_t i, cur_priority, subscriber_count, diff_lyb_len;
+    struct sr_mod_info_mod_s *mod = NULL;
+    uint32_t cur_priority, subscriber_count, diff_lyb_len;
     char *diff_lyb = NULL;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
 
-    for (i = 0; i < mod_info->mod_count; ++i) {
-        mod = &mod_info->mods[i];
-        if (!(mod->state & MOD_INFO_CHANGED)) {
-            /* no changes for this module */
-            continue;
-        }
-
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
         if (!sr_shmsub_change_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
                 &cur_priority)) {
             /* no subscriptions interested in this event */
             continue;
         }
-
-        assert(mod_info->diff);
 
         /* prepare the diff to write into subscription SHM */
         if (!diff_lyb) {
@@ -964,19 +936,13 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t si
     sr_error_info_t *err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
     struct lyd_node *abort_diff;
-    struct sr_mod_info_mod_s *mod;
-    uint32_t i, cur_priority, err_priority, subscriber_count, err_subscriber_count, diff_lyb_len;
+    struct sr_mod_info_mod_s *mod = NULL;
+    uint32_t cur_priority, err_priority, subscriber_count, err_subscriber_count, diff_lyb_len;
     char *diff_lyb = NULL;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
     int first_iter, last_subscr = 0;
 
-    for (i = 0; i < mod_info->mod_count; ++i) {
-        mod = &mod_info->mods[i];
-        if (!(mod->state & MOD_INFO_CHANGED)) {
-            /* no changes for this module */
-            continue;
-        }
-
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
         /* open sub SHM and map it */
         if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub, sizeof *multi_sub_shm))) {
             goto cleanup;

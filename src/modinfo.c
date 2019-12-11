@@ -150,28 +150,60 @@ sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr)
     return NULL;
 }
 
+struct sr_mod_info_mod_s *
+sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, struct sr_mod_info_s *mod_info, const struct lyd_node *data)
+{
+    struct sr_mod_info_mod_s *mod = NULL;
+    const struct lyd_node *node;
+    uint32_t i;
+
+    assert(data);
+
+    if (!last) {
+        node = data;
+    } else {
+        /* find the last diff node */
+        for (node = data; lyd_node_module(node) != last->ly_mod; node = node->next);
+
+        /* skip all diff nodes from this module */
+        for (; node && (lyd_node_module(node) == last->ly_mod); node = node->next);
+    }
+
+    if (node) {
+        /* find mod of this diff node */
+        for (i = 0; i < mod_info->mod_count; ++i) {
+            if (mod_info->mods[i].ly_mod == lyd_node_module(node)) {
+                mod = &mod_info->mods[i];
+                break;
+            }
+        }
+
+        assert(mod);
+    }
+
+    return mod;
+}
+
 sr_error_info_t *
 sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff)
 {
     sr_error_info_t *err_info = NULL;
-    struct sr_mod_info_mod_s *mod;
-    uint32_t i;
+    struct sr_mod_info_mod_s *mod = NULL;
     int change;
 
     assert(!mod_info->data_cached);
 
-    for (i = 0; i < mod_info->mod_count; ++i) {
-        mod = &mod_info->mods[i];
-        if (mod->state & MOD_INFO_REQ) {
-            /* apply relevant edit changes */
-            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, create_diff ? &mod_info->diff : NULL, &change))) {
-                return err_info;
-            }
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, edit))) {
+        assert(mod->state & MOD_INFO_REQ);
 
-            if (change) {
-                /* there is a diff for this module */
-                mod->state |= MOD_INFO_CHANGED;
-            }
+        /* apply relevant edit changes */
+        if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, create_diff ? &mod_info->diff : NULL, &change))) {
+            return err_info;
+        }
+
+        if (change) {
+            /* there is a diff for this module */
+            mod->state |= MOD_INFO_CHANGED;
         }
     }
 
