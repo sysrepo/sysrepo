@@ -66,9 +66,77 @@ XP_TEST_MODULE_UINT32_VALUE_T = 32
 XP_TEST_MODULE_UINT64 = "/test-module:main/ui64"
 XP_TEST_MODULE_UINT64_VALUE_T = 64
 
+def remove_ietf_ip_module():
+    connection = sr.Connection(sr.SR_CONN_DEFAULT)
+    #try:
+    connection.remove_module("ietf-ip")
+    #except Exception as e:
+    #    print (e)
+    connection = None
+
+def create_ietf_ip_module():
+    connection = sr.Connection(sr.SR_CONN_DEFAULT)
+    #try:
+    connection.install_module(os.environ['TESTS_DIR']+"/files/ietf-ip.yang",os.environ['TESTS_DIR']+"/files", ["ipv4-non-contiguous-netmasks"])
+    #except Exception as e:
+    #    print (e)
+
+    connection = None
+
+def remove_iana_if_type_module():
+    connection = sr.Connection(sr.SR_CONN_DEFAULT)
+    #try:
+    connection.remove_module("iana-if-type")
+    #except Exception as e:
+    #    print (e)
+    connection = None
+
+def create_iana_if_type_module():
+    connection = sr.Connection(sr.SR_CONN_DEFAULT)
+    #try:
+    connection.install_module(os.environ['TESTS_DIR']+"/files/iana-if-type.yang",os.environ['TESTS_DIR']+"/files", [])
+    #except Exception as e:
+    #    print (e)
+
+    connection = None
+
+def remove_ietf_interfaces_module():
+    connection = sr.Connection(sr.SR_CONN_DEFAULT)
+    #try:
+    connection.remove_module("ietf-interfaces")
+    #except Exception as e:
+    #    print (e)
+    connection = None
+
+def create_ietf_interfaces_module():
+    connection = sr.Connection(sr.SR_CONN_DEFAULT)
+    #try:
+    connection.install_module(os.environ['TESTS_DIR']+"/files/ietf-interfaces.yang",os.environ['TESTS_DIR']+"/files", [])
+    #except Exception as e:
+    #    print (e)
+
+    connection = None
+
+
+def remove_referenced_data_module():
+    connection = sr.Connection(sr.SR_CONN_DEFAULT)
+    try:
+        connection.remove_module("referenced-data")
+    except Exception as e:
+        print (e)
+    connection = None
+
+def create_referenced_data_module():
+    connection = sr.Connection(sr.SR_CONN_DEFAULT)
+    try:
+        connection.install_module(os.environ['TESTS_DIR']+"/files/referenced-data.yang",os.environ['TESTS_DIR']+"/files", [])
+    except Exception as e:
+        print (e)
+
+    connection = None
+
 def remove_test_module():
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
-
     try:
         connection.remove_module("test-module")
     except Exception as e:
@@ -76,7 +144,6 @@ def remove_test_module():
     connection = None
 
 def create_test_module():
-
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
     try:
         connection.install_module(os.environ['TESTS_DIR']+"/files/test-module.yang",os.environ['TESTS_DIR']+"/files", [])
@@ -174,8 +241,6 @@ def remove_example_module():
     connection=None
 
 def create_example_module():
-
-
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
     try:
         connection.install_module(os.environ['TESTS_DIR']+"/files/example-module.yang",os.environ['TESTS_DIR']+"/files", [])
@@ -279,6 +344,7 @@ def delete_all_items_ietf(session):
         session.apply_changes()
 
 if __name__ == "__main__":
-    remove_test_module()
+    create_referenced_data_module()
     create_test_module()
     remove_test_module()
+    remove_referenced_data_module()

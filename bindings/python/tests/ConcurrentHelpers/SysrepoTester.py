@@ -106,15 +106,6 @@ class SysrepoTester(Tester):
     def waitTimeoutStep(self, timeout):
         sleep(timeout)
 
-    def getSchemaToFileStep(self, file_location, file_name):
-        file_read = open("/etc/sysrepo/yang/" + file_name, "r")
-        file_write = open(file_location + file_name, "w")
-
-        file_write.write(file_read.read())
-
-        file_write.close()
-        file_read.close()        
-
     def uninstallModuleStep(self, module_name):
         rc = self.sr.remove_module(module_name)
         self.tc.assertEqual(rc, None)

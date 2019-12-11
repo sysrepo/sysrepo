@@ -25,8 +25,10 @@ class MoveTest(unittest.TestCase):
     @classmethod
     def tearDown(self):
         TestModule.remove_test_module()
+        TestModule.remove_referenced_data_module()
 
     def setUp(self):
+        TestModule.create_referenced_data_module()
         TestModule.create_test_module()
         conn = sr.Connection(sr.SR_CONN_DEFAULT)
         session = sr.Session(conn, sr.SR_DS_STARTUP)
@@ -82,7 +84,7 @@ class MoveTest(unittest.TestCase):
         self.session.session_stop()
 
         conn=None
-            
+
 
     def test_move_last_first(self):
         conn = sr.Connection(sr.SR_CONN_DEFAULT)

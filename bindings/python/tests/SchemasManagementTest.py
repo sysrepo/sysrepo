@@ -27,8 +27,8 @@ import sysrepo
 class SysrepoModuleTester(SysrepoTester):
     sysrepoctl = "sysrepoctl"
 
-    def installModuleStep(self, schema_path, schema_dir=None, features=[]):
-        rc = self.sr.install_module(schema_path, "/tmp/", features)
+    def installModuleStep(self, schema_path):
+        rc = self.sr.install_module(os.environ['TESTS_DIR']+"/files/" + schema_path, os.environ['TESTS_DIR']+"/files", [])
         self.tc.assertEqual(rc, None)
 
     def uninstallModuleFailStep(self, module_name):
@@ -44,10 +44,12 @@ class SchemasManagementTest(unittest.TestCase):
 
     @classmethod
     def setUp(self):
+       TestModule.create_referenced_data_module()
        TestModule.create_test_module()
 
     def tearDown(self):
         TestModule.remove_test_module()
+        TestModule.remove_referenced_data_module()
 
     def test_ModuleLoading(self):
          """Schemas are loaded on demand. Try to send multiple requests targeting the same model
@@ -67,7 +69,7 @@ class SchemasManagementTest(unittest.TestCase):
                           "/test-module:main/*", 19)
          tester4.add_step(tester4.getItemsStepExpectedCount,
                           "/test-module:main/*", 19)
-                          
+
          tester1.add_step(tester1.stopSession)
          tester2.add_step(tester2.stopSession)
          tester3.add_step(tester3.stopSession)
@@ -85,7 +87,7 @@ class SchemasManagementTest(unittest.TestCase):
          tm.run()
 
     def test_module_uninstall(self):
-        test_module_file = "test-module.yang" 
+        test_module_file = "test-module.yang"
         referenced_data_file = "referenced-data.yang"
         file_location = "/tmp/"
         tm = TestManager()
@@ -117,12 +119,6 @@ class SchemasManagementTest(unittest.TestCase):
         tester3.add_step(tester3.waitStep)
 
         admin.add_step(admin.waitStep)
-        tester3.add_step(tester3.getSchemaToFileStep, file_location, test_module_file)
-
-        admin.add_step(admin.waitStep)
-        tester3.add_step(tester3.getSchemaToFileStep, file_location, referenced_data_file)
-
-        admin.add_step(admin.waitStep)
         tester3.add_step(tester3.stopSession)
 
         tester3.add_step(tester3.uninstallModuleStep, "test-module")
@@ -140,7 +136,7 @@ class SchemasManagementTest(unittest.TestCase):
         tester3.add_step(tester3.commitStep)
         admin.add_step(admin.waitStep)
 
-        admin.add_step(admin.installModuleStep, file_location + test_module_file)
+        admin.add_step(admin.installModuleStep, test_module_file)
         tester3.add_step(tester3.waitStep)
 
         admin.add_step(admin.stopSession)
@@ -157,7 +153,7 @@ class SchemasManagementTest(unittest.TestCase):
 
         admin.add_step(admin.stopSession)
         tester3.add_step(tester3.stopSession)
-        
+
         admin.add_step(admin.disconnect)
         tester3.add_step(tester3.disconnect)
 

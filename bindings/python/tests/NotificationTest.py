@@ -75,13 +75,19 @@ class NotificationTest(unittest.TestCase):
 
     @classmethod
     def setUp(self):
+        TestModule.create_ietf_interfaces_module()
+        TestModule.create_iana_if_type_module()
+        TestModule.create_ietf_ip_module()
         TestModule.create_ietf_interfaces()
         TestModule.remove_example_module()
         TestModule.create_example_module()
 
     def tearDown(self):
         TestModule.remove_example_module()
-        
+        TestModule.remove_ietf_ip_module()
+        TestModule.remove_iana_if_type_module()
+        TestModule.remove_ietf_interfaces_module()
+
     def test_notify_delete(self):
         tm = TestManager()
 
@@ -450,7 +456,7 @@ class NotificationTest(unittest.TestCase):
 
         tester.add_step(tester.commitStep)
         subscriber.add_step(subscriber.waitStep)
-        
+
         tester.add_step(tester.deleteItemStep,
                         "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled")
         subscriber.add_step(subscriber.waitStep)

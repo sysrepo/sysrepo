@@ -43,10 +43,12 @@ class CommitTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(self):
+        TestModule.create_referenced_data_module()
         TestModule.create_test_module()
 
     def tearDown(self):
         TestModule.remove_test_module()
+        TestModule.remove_referenced_data_module()
 
     def test_CommitAndDsLock(self):
         tm = TestManager()

@@ -24,6 +24,7 @@ class SysrepoBasicTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(self):
+        TestModule.create_referenced_data_module()
         TestModule.create_test_module()
         TestModule.create_example_module()
         self.conn= sr.Connection(sr.SR_CONN_DEFAULT)
@@ -34,8 +35,9 @@ class SysrepoBasicTest(unittest.TestCase):
         self.conn= sr.Connection(sr.SR_CONN_DEFAULT)
 
     def tearDown(self):
-        TestModule.remove_test_module()
         TestModule.remove_example_module()
+        TestModule.remove_test_module()
+        TestModule.remove_referenced_data_module()
         self.session.session_stop()
         conn=None
 
@@ -76,7 +78,7 @@ class SysrepoBasicTest(unittest.TestCase):
             self.session.set_item(l+'/full-name', v)
         self.session.apply_changes()
         items = self.session.get_items("/test-module:user")
-        
+
         self.assertEqual(len(lists), items.val_cnt())
         for l in lists:
             self.session.delete_item(l)
@@ -88,7 +90,7 @@ class SysrepoBasicTest(unittest.TestCase):
         for l in lists:
             v = sr.Val(None, sr.SR_LIST_T)
             self.session.set_item(l, v)
-        
+
         self.session.apply_changes()
         items = self.session.get_items("/test-module:user")
         for i in range(0, len(lists)):
