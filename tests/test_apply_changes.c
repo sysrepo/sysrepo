@@ -1181,9 +1181,9 @@ apply_change_fail_thread(void *arg)
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_move_item(sess, "/test:l1[k='key1']", SR_MOVE_AFTER, "[k='key2']", NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for subscription before applying changes */
@@ -2823,6 +2823,142 @@ test_change_timeout(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST 10 */
+static int
+module_change_order_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)xpath;
+    (void)request_id;
+
+    switch (st->cb_called) {
+    case 0:
+    case 5:
+        assert_string_equal(module_name, "test");
+        assert_int_equal(event, SR_EV_CHANGE);
+        break;
+    case 1:
+    case 4:
+        assert_string_equal(module_name, "ietf-interfaces");
+        assert_int_equal(event, SR_EV_CHANGE);
+        break;
+    case 2:
+    case 3:
+    case 6:
+    case 7:
+        /* we cannot rely on any order for DONE event */
+        assert_int_equal(event, SR_EV_DONE);
+        break;
+    default:
+        fail();
+    }
+
+    ++st->cb_called;
+    return SR_ERR_OK;
+}
+
+static void *
+apply_change_order_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* edit will be created in this order */
+    ret = sr_set_item_str(sess, "/test:l1[k='one']/v", "30", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform the change */
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    pthread_barrier_wait(&st->barrier);
+
+    /* create edit in different order */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:l1[k='two']/v", "30", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* perform the second change */
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_change_order_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int count, ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* make subscription to 2 different modules */
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_change_order_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_change_order_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscription was created */
+    pthread_barrier_wait(&st->barrier);
+
+    count = 0;
+    while ((st->cb_called < 4) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 4);
+
+    /* wait for the other thread to try first time */
+    pthread_barrier_wait(&st->barrier);
+
+    count = 0;
+    while ((st->cb_called < 8) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 8);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_change_order(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_change_order_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_change_order_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
 /* MAIN */
 int
 main(void)
@@ -2837,6 +2973,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_done_xpath, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_unlocked, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_timeout, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

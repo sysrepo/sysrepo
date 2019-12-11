@@ -919,15 +919,15 @@ test_notif_config_change(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(st->cb_called, 1);
 
-    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "val", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops-ref:l2", "other-val", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:test-leaf", "52", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='one']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='two']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "val", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops-ref:l2", "other-val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);

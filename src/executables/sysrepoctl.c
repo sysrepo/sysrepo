@@ -73,8 +73,8 @@ help_print(void)
         "  sysrepoctl <operation-option> [other-options]\n"
         "\n"
         "Available operation-options:\n"
-        "  -h, --help           Prints usage help.\n"
-        "  -V, --version        Prints only information about sysrepo version.\n"
+        "  -h, --help           Print usage help.\n"
+        "  -V, --version        Print only information about sysrepo version.\n"
         "  -l, --list           List YANG modules in sysrepo.\n"
         "  -i, --install <path> Install the specified schema into sysrepo. Can be in either YANG or YIN format.\n"
         "  -u, --uninstall <module>[,<module2>,<module3> ...]\n"
@@ -83,7 +83,8 @@ help_print(void)
         "                       Change access rights, features, or replay support of the specified module.\n"
         "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
         "  -C, --connection-count\n"
-        "                       Prints the number of sysrepo connections to STDOUT.\n"
+        "                       Print the number of sysrepo connections to STDOUT.\n"
+        "  -R, --recover        Check current connections state and clean any non-existing ones.\n"
         "\n"
         "Available other-options:\n"
         "  -s, --search-dir <dir-path>\n"
@@ -401,6 +402,7 @@ main(int argc, char** argv)
         {"change",          required_argument, NULL, 'c'},
         {"update",          required_argument, NULL, 'U'},
         {"connection-count",no_argument,       NULL, 'C'},
+        {"recover",         no_argument,       NULL, 'R'},
         {"search-dir",      required_argument, NULL, 's'},
         {"enable-feature",  required_argument, NULL, 'e'},
         {"disable-feature", required_argument, NULL, 'd'},
@@ -419,7 +421,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:Cs:e:d:r:o:g:p:v:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:CRs:e:d:r:o:g:p:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -475,6 +477,13 @@ main(int argc, char** argv)
                 goto cleanup;
             }
             operation = 'C';
+            break;
+        case 'R':
+            if (operation) {
+                error_print(0, "Operation already specified");
+                goto cleanup;
+            }
+            operation = 'R';
             break;
         case 's':
             if (search_dir) {
@@ -650,6 +659,14 @@ main(int argc, char** argv)
             goto cleanup;
         }
         fprintf(stdout, "%u\n", conn_count);
+        rc = EXIT_SUCCESS;
+        break;
+    case 'R':
+        /* recover */
+        if ((r = sr_connection_recover(conn)) != SR_ERR_OK) {
+            error_print(r, "Failed to recover stale connections");
+            goto cleanup;
+        }
         rc = EXIT_SUCCESS;
         break;
     case 0:

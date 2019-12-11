@@ -78,7 +78,18 @@ sr_error_info_t *sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *
 sr_error_info_t *sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr);
 
 /**
- * @brief Apply sysrepo edit on mod info data.
+ * @brief Get next mod_info mod in the order they are present in the data.
+ *
+ * @param[in] last Last returned mod_info mod, NULL on first call.
+ * @param[in] mod_info mod_info structure to use.
+ * @param[in] data Data to determine the order.
+ * @return Next mod_info mod, NULL if last was returned.
+ */
+struct sr_mod_info_mod_s *sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, struct sr_mod_info_s *mod_info,
+        const struct lyd_node *data);
+
+/**
+ * @brief Apply sysrepo edit on mod info data, in the same order.
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] edit Sysrepo edit to apply.
