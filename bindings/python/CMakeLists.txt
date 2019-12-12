@@ -28,13 +28,10 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PYTHON_SWIG_BINDING}.py" DESTINATIO
 if(ENABLE_PYTHON_TESTS)
     macro(ADD_PYTHON_TEST TEST_NAME)
         add_test(NAME python_${TEST_NAME}
-            COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_python_test.sh
-            "${CMAKE_BINARY_DIR}/src:${CMAKE_BINARY_DIR}/tests:${CMAKE_BINARY_DIR}/repository:${CMAKE_CURRENT_BINARY_DIR}/tests"
-            "${CMAKE_CURRENT_BINARY_DIR}:${PROJECT_SOURCE_DIR}/swig/python3:${PYTHON_BUILD_DIR}"
-            "${PYTHON_EXECUTABLE}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST_NAME}.py"
-            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            COMMAND ${PYTHON_EXECUTABLE} ${TEST_NAME}.py
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests
         )
+        set_tests_properties(python_${TEST_NAME} PROPERTIES ENVIRONMENT TESTS_DIR=${PROJECT_SOURCE_DIR}/tests)
     endmacro(ADD_PYTHON_TEST)
 
     ADD_PYTHON_TEST(SysrepoBasicTest)
