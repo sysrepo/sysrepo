@@ -321,26 +321,38 @@ sr_lydmods_add_op_deps(struct lyd_node *sr_mod, struct lys_node *op_root)
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_op_deps, *ly_cur_deps;
     struct lys_node *op_child;
-    char *data_path;
+    struct ly_set *set = NULL;
+    char *data_path = NULL, *xpath = NULL;
     struct ly_ctx *ly_ctx = lys_node_module(op_root)->ctx;
 
     assert(op_root->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF));
 
+    data_path = lys_data_path(op_root);
+    SR_CHECK_MEM_GOTO(!data_path, err_info, cleanup);
+    if (asprintf(&xpath, "op-deps[xpath='%s']", data_path) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+
+    set = lyd_find_path(sr_mod, xpath);
+    SR_CHECK_INT_GOTO(!set, err_info, cleanup);
+    if (set->number == 1) {
+        /* already exists */
+        goto cleanup;
+    }
+    assert(!set->number);
+
     sr_op_deps = lyd_new(sr_mod, NULL, "op-deps");
     if (!sr_op_deps) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
-        return err_info;
+        goto cleanup;
     }
 
     /* operation dep xpath */
-    data_path = lys_data_path(op_root);
-    SR_CHECK_MEM_RET(!data_path, err_info);
     if (!lyd_new_leaf(sr_op_deps, NULL, "xpath", data_path)) {
-        free(data_path);
         sr_errinfo_new_ly(&err_info, ly_ctx);
-        return err_info;
+        goto cleanup;
     }
-    free(data_path);
 
     /* collect dependencies of nested data and put them into correct containers */
     switch (op_root->nodetype) {
@@ -348,15 +360,17 @@ sr_lydmods_add_op_deps(struct lyd_node *sr_mod, struct lys_node *op_root)
         ly_cur_deps = lyd_new(sr_op_deps, NULL, "in");
         if (!ly_cur_deps) {
             sr_errinfo_new_ly(&err_info, ly_ctx);
-            return err_info;
+            goto cleanup;
         }
 
-        err_info = sr_lydmods_add_data_deps_r(sr_mod, op_root, ly_cur_deps);
+        if ((err_info = sr_lydmods_add_data_deps_r(sr_mod, op_root, ly_cur_deps))) {
+            goto cleanup;
+        }
         break;
     case LYS_RPC:
     case LYS_ACTION:
         LY_TREE_FOR(op_root->child, op_child) {
-            SR_CHECK_INT_RET(!(op_child->nodetype & (LYS_INPUT | LYS_OUTPUT)), err_info);
+            SR_CHECK_INT_GOTO(!(op_child->nodetype & (LYS_INPUT | LYS_OUTPUT)), err_info, cleanup);
 
             if (op_child->nodetype == LYS_INPUT) {
                 ly_cur_deps = lyd_new(sr_op_deps, NULL, "in");
@@ -365,17 +379,23 @@ sr_lydmods_add_op_deps(struct lyd_node *sr_mod, struct lys_node *op_root)
             }
             if (!ly_cur_deps) {
                 sr_errinfo_new_ly(&err_info, ly_ctx);
-                return err_info;
+                goto cleanup;
             }
 
-            err_info = sr_lydmods_add_data_deps_r(sr_mod, op_child, ly_cur_deps);
+            if ((err_info = sr_lydmods_add_data_deps_r(sr_mod, op_child, ly_cur_deps))) {
+                goto cleanup;
+            }
         }
         break;
     default:
         SR_ERRINFO_INT(&err_info);
-        return err_info;
+        goto cleanup;
     }
 
+cleanup:
+    ly_set_free(set);
+    free(data_path);
+    free(xpath);
     return err_info;
 }
 
