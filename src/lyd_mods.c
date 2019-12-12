@@ -458,7 +458,7 @@ sr_lydmods_moddep_add(struct lyd_node *sr_deps, sr_mod_dep_type_t dep_type, cons
 
         /* create xpath of the node */
         data_path = lys_data_path(node);
-        if (!data_path || (asprintf(&expr, "inst-id[.='%s']", data_path) == -1)) {
+        if (!data_path || (asprintf(&expr, "inst-id[xpath='%s']", data_path) == -1)) {
             SR_ERRINFO_MEM(&err_info);
             goto cleanup;
         }
