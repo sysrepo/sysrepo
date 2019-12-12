@@ -55,16 +55,17 @@ class SubscriptionTester(SysrepoTester):
 class SubscriptionTest(unittest.TestCase):
 
     @classmethod
-    def setUpClass(self):
+    def setUp(self):
         TestModule.create_ietf_interfaces_module()
         TestModule.create_iana_if_type_module()
         TestModule.create_ietf_ip_module()
         TestModule.create_ietf_interfaces()
 
     def tearDown(self):
-        TestModule.remove_example_module()
-        TestModule.remove_ietf_ip_module()
+        TestModule.remove_ietf_interfaces_module()
         TestModule.remove_iana_if_type_module()
+        TestModule.remove_ietf_ip_module()
+
 
     def test_SubscribeUnsubscribe(self):
         tm = TestManager()

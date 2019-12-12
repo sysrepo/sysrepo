@@ -42,7 +42,7 @@ class CommitTester(SysrepoTester):
 class CommitTest(unittest.TestCase):
 
     @classmethod
-    def setUpClass(self):
+    def setUp(self):
         TestModule.create_referenced_data_module()
         TestModule.create_test_module()
 

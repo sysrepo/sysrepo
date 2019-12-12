@@ -84,9 +84,9 @@ class NotificationTest(unittest.TestCase):
 
     def tearDown(self):
         TestModule.remove_example_module()
-        TestModule.remove_ietf_ip_module()
-        TestModule.remove_iana_if_type_module()
         TestModule.remove_ietf_interfaces_module()
+        TestModule.remove_iana_if_type_module()
+        TestModule.remove_ietf_ip_module()
 
     def test_notify_delete(self):
         tm = TestManager()

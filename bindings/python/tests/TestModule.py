@@ -68,52 +68,52 @@ XP_TEST_MODULE_UINT64_VALUE_T = 64
 
 def remove_ietf_ip_module():
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
-    #try:
-    connection.remove_module("ietf-ip")
-    #except Exception as e:
-    #    print (e)
+    try:
+        connection.remove_module("ietf-ip")
+    except Exception as e:
+        print (e)
     connection = None
 
 def create_ietf_ip_module():
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
-    #try:
-    connection.install_module(os.environ['TESTS_DIR']+"/files/ietf-ip.yang",os.environ['TESTS_DIR']+"/files", ["ipv4-non-contiguous-netmasks"])
-    #except Exception as e:
-    #    print (e)
+    try:
+        connection.install_module(os.environ['TESTS_DIR']+"/files/ietf-ip.yang",os.environ['TESTS_DIR']+"/files", [])
+    except Exception as e:
+        print (e)
 
     connection = None
 
 def remove_iana_if_type_module():
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
-    #try:
-    connection.remove_module("iana-if-type")
-    #except Exception as e:
-    #    print (e)
+    try:
+        connection.remove_module("iana-if-type")
+    except Exception as e:
+        print (e)
     connection = None
 
 def create_iana_if_type_module():
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
-    #try:
-    connection.install_module(os.environ['TESTS_DIR']+"/files/iana-if-type.yang",os.environ['TESTS_DIR']+"/files", [])
-    #except Exception as e:
-    #    print (e)
+    try:
+        connection.install_module(os.environ['TESTS_DIR']+"/files/iana-if-type.yang",os.environ['TESTS_DIR']+"/files", [])
+    except Exception as e:
+        print (e)
 
     connection = None
 
 def remove_ietf_interfaces_module():
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
-    #try:
-    connection.remove_module("ietf-interfaces")
-    #except Exception as e:
-    #    print (e)
+    try:
+        connection.remove_module("ietf-interfaces")
+    except Exception as e:
+        print (e)
     connection = None
 
 def create_ietf_interfaces_module():
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
-    #try:
-    connection.install_module(os.environ['TESTS_DIR']+"/files/ietf-interfaces.yang",os.environ['TESTS_DIR']+"/files", [])
-    #except Exception as e:
-    #    print (e)
+    try:
+        connection.install_module(os.environ['TESTS_DIR']+"/files/ietf-interfaces.yang",os.environ['TESTS_DIR']+"/files", [])
+    except Exception as e:
+        print (e)
 
     connection = None
 
