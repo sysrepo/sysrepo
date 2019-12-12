@@ -281,18 +281,22 @@ sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
     sr_mod_t *shm_mod, *dep_mod;
     sr_mod_op_dep_t *shm_op_deps;
     const struct lys_module *ly_mod;
+    const struct lys_node *top;
     uint16_t i;
 
     mod_info->ds = SR_DS_OPERATIONAL;
     mod_info->conn = conn;
 
+    /* find top-level node in case of action/nested notification */
+    for (top = op->schema; lys_parent(top); top = lys_parent(top));
+
     /* find the module in SHM */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, lyd_node_module(op)->name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, lys_node_module(top)->name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* if this is a nested action/notification, we will also need this module's data */
     if (!output && lys_parent(op->schema)) {
-        if ((err_info = sr_modinfo_add_mod(shm_mod, lyd_node_module(op), MOD_INFO_REQ, 0, mod_info))) {
+        if ((err_info = sr_modinfo_add_mod(shm_mod, lys_node_module(top), MOD_INFO_REQ, 0, mod_info))) {
             return err_info;
         }
     }
