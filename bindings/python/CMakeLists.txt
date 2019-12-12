@@ -32,6 +32,7 @@ if(ENABLE_PYTHON_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests
         )
         set_tests_properties(python_${TEST_NAME} PROPERTIES ENVIRONMENT TESTS_DIR=${PROJECT_SOURCE_DIR}/tests)
+        set_tests_properties(python_${TEST_NAME} PROPERTIES ENVIRONMENT PYTHONPATH=${PYTHONPATH}:${CMAKE_CURRENT_BINARY_DIR})
     endmacro(ADD_PYTHON_TEST)
 
     ADD_PYTHON_TEST(SysrepoBasicTest)
