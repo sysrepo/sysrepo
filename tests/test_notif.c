@@ -52,6 +52,7 @@ setup(void **state)
 {
     struct state *st;
     uint32_t conn_count;
+    const char *ops_ref_feat = "feat1";
 
     st = calloc(1, sizeof *st);
     *state = st;
@@ -72,7 +73,7 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", &ops_ref_feat, 1) != SR_ERR_OK) {
         return 1;
     }
     if (sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {

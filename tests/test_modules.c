@@ -235,24 +235,76 @@ test_op_deps(void **state)
     ret = sr_set_module_replay_support(st->conn, "ops", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_remove_module(st->conn, "ops");
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_remove_module(st->conn, "ops-ref");
-    assert_int_equal(ret, SR_ERR_OK);
-
     /* check current internal data */
     cmp_int_data(st->conn, "ops-ref",
     "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>ops-ref</name>"
         "<replay-support>0000000000</replay-support>"
-        "<removed/>"
     "</module>"
     );
 
     cmp_int_data(st->conn, "ops",
     "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>ops</name>"
-        "<removed/>"
+        "<op-deps>"
+            "<xpath xmlns:o=\"urn:ops\">/o:cont/o:list1/o:cont2/o:act1</xpath>"
+            "<out>"
+                "<module>ops</module>"
+                "<inst-id>"
+                    "<xpath xmlns:o=\"urn:ops\">/o:cont/o:list1/o:cont2/o:act1/o:l8</xpath>"
+                    "<default-module>ops</default-module>"
+                "</inst-id>"
+            "</out>"
+        "</op-deps>"
+        "<op-deps>"
+            "<xpath xmlns:o=\"urn:ops\">/o:cont/o:cont3/o:notif2</xpath>"
+            "<in>"
+                "<inst-id>"
+                    "<xpath xmlns:o=\"urn:ops\">/o:cont/o:cont3/o:notif2/o:l13</xpath>"
+                "</inst-id>"
+            "</in>"
+        "</op-deps>"
+        "<op-deps>"
+            "<xpath xmlns:o=\"urn:ops\">/o:rpc1</xpath>"
+            "<in>"
+                "<module>ops-ref</module>"
+                "<inst-id>"
+                    "<xpath xmlns:o=\"urn:ops\">/o:rpc1/o:l2</xpath>"
+                    "<default-module>ops-ref</default-module>"
+                "</inst-id>"
+            "</in>"
+        "</op-deps>"
+        "<op-deps>"
+            "<xpath xmlns:o=\"urn:ops\">/o:rpc2</xpath>"
+            "<out>"
+                "<module>ops-ref</module>"
+            "</out>"
+        "</op-deps>"
+        "<op-deps>"
+            "<xpath xmlns:o=\"urn:ops\">/o:rpc3</xpath>"
+        "</op-deps>"
+        "<op-deps>"
+            "<xpath xmlns:o=\"urn:ops\">/o:notif4</xpath>"
+        "</op-deps>"
+    "</module>"
+    );
+
+    /* enable feature that should enable 2 more operations */
+    ret = sr_enable_module_feature(st->conn, "ops-ref", "feat1");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "ops",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>ops</name>"
         "<op-deps>"
             "<xpath xmlns:o=\"urn:ops\">/o:cont/o:list1/o:cont2/o:act1</xpath>"
             "<out>"
@@ -308,6 +360,12 @@ test_op_deps(void **state)
         "</op-deps>"
     "</module>"
     );
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "ops");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "ops-ref");
+    assert_int_equal(ret, SR_ERR_OK);
 }
 
 static void

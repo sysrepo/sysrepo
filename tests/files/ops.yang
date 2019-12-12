@@ -85,6 +85,7 @@ module ops {
             }
 
             action act2 {
+                if-feature or:feat1;
                 input {
                     leaf l10 {
                         type enumeration {
@@ -117,6 +118,7 @@ module ops {
     }
 
     notification notif3 {
+        if-feature or:feat1;
         list list2 {
             key "k";
             leaf k {

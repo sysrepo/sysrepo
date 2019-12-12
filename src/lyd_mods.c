@@ -1383,10 +1383,10 @@ sr_lydmods_sched_ctx_change_features(const struct lyd_node *sr_mods, struct ly_c
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mod;
-    const struct lys_module *ly_mod;
+    const struct lys_module *ly_mod, *imp_ly_mod;
     struct ly_set *set = NULL, *feat_set = NULL;
     const char *feat_name;
-    uint32_t i;
+    uint32_t i, j;
     int enable;
 
     assert(sr_mods);
@@ -1442,6 +1442,27 @@ sr_lydmods_sched_ctx_change_features(const struct lyd_node *sr_mods, struct ly_c
         /* check that all the dependant modules are implemented */
         if ((err_info = sr_lydmods_check_data_deps(ly_mod, sr_mods, fail)) || *fail) {
             goto cleanup;
+        }
+
+        /* check that all module dependencies that import this modulere are implemented */
+        i = 0;
+        while ((imp_ly_mod = ly_ctx_get_module_iter(ly_mod->ctx, &i))) {
+            if ((imp_ly_mod == ly_mod) || /*sr_is_internal_module(imp_ly_mod) ||*/ !imp_ly_mod->implemented) {
+                continue;
+            }
+
+            for (j = 0; j < imp_ly_mod->imp_size; ++j) {
+                if (imp_ly_mod->imp[j].module == ly_mod) {
+                    break;
+                }
+            }
+            if (j == imp_ly_mod->imp_size) {
+                continue;
+            }
+
+            if ((err_info = sr_lydmods_check_data_deps(imp_ly_mod, sr_mods, fail)) || *fail) {
+                goto cleanup;
+            }
         }
 
         *change = 1;
@@ -1927,12 +1948,13 @@ static sr_error_info_t *
 sr_lydmods_sched_finalize_module_change_features(struct lyd_node *sr_mod, const struct ly_ctx *new_ctx)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
+    const struct lys_module *ly_mod, *imp_ly_mod;
     const char *feat_name;
     struct lyd_node *next, *node;
-    struct ly_set *feat_set;
+    struct ly_set *set;
     int enable;
     char *xpath;
+    uint32_t i, j;
 
     assert(!strcmp(sr_mod->child->schema->name, "name"));
     ly_mod = ly_ctx_get_module(new_ctx, sr_ly_leaf_value_str(sr_mod->child), NULL, 1);
@@ -1962,22 +1984,22 @@ sr_lydmods_sched_finalize_module_change_features(struct lyd_node *sr_mod, const 
                     SR_ERRINFO_MEM(&err_info);
                     return err_info;
                 }
-                feat_set = lyd_find_path(sr_mod, xpath);
+                set = lyd_find_path(sr_mod, xpath);
                 free(xpath);
-                if (!feat_set) {
+                if (!set) {
                     sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mod)->ctx);
                     return err_info;
                 }
-                assert(feat_set->number == 1);
-                lyd_free(feat_set->set.d[0]);
-                ly_set_free(feat_set);
+                assert(set->number == 1);
+                lyd_free(set->set.d[0]);
+                ly_set_free(set);
             }
 
             SR_LOG_INF("Module \"%s\" feature \"%s\" was %s.", ly_mod->name, feat_name, enable ? "enabled" : "disabled");
         }
     }
 
-    /* rebuild (inverse) data dependencies */
+    /* rebuild (inverse) data dependencies of the module */
     if ((err_info = sr_lydmods_del_inv_data_deps(sr_mod))) {
         return err_info;
     }
@@ -1986,6 +2008,43 @@ sr_lydmods_sched_finalize_module_change_features(struct lyd_node *sr_mod, const 
     }
     if ((err_info = sr_lydmods_add_inv_data_deps(sr_mod))) {
         return err_info;
+    }
+
+    /* rebuild (inverse) data dependencies of all the direct implemented imports which could have used the feature */
+    i = 0;
+    while ((imp_ly_mod = ly_ctx_get_module_iter(ly_mod->ctx, &i))) {
+        if ((imp_ly_mod == ly_mod) || /*sr_is_internal_module(imp_ly_mod) ||*/ !imp_ly_mod->implemented) {
+            continue;
+        }
+
+        for (j = 0; j < imp_ly_mod->imp_size; ++j) {
+            if (imp_ly_mod->imp[j].module == ly_mod) {
+                break;
+            }
+        }
+        if (j == imp_ly_mod->imp_size) {
+            continue;
+        }
+
+        if (asprintf(&xpath, "module[name='%s']", imp_ly_mod->name) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            return err_info;
+        }
+        set = lyd_find_path(sr_mod->parent, xpath);
+        free(xpath);
+        assert(set->number == 1);
+        node = set->set.d[0];
+        ly_set_free(set);
+
+        if ((err_info = sr_lydmods_del_inv_data_deps(node))) {
+            return err_info;
+        }
+        if ((err_info = sr_lydmods_rebuild_data_deps(node, imp_ly_mod))) {
+            return err_info;
+        }
+        if ((err_info = sr_lydmods_add_inv_data_deps(node))) {
+            return err_info;
+        }
     }
 
     return NULL;
