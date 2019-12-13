@@ -499,8 +499,12 @@ static const char *g_ly_module_imp_clb(const char *mod_name, const char *mod_rev
 
     }
 
-    void additional_cleanup(void *private_data) {
-        delete static_cast<Wrap_cb*>(private_data);
+    void unsubscribe()
+    {
+        self->unsubscribe(); // function in Connection.cpp
+        for (unsigned int i = 0; i < self->wrap_cb_l.size(); i++) {
+            static_cast<Wrap_cb*>(self->wrap_cb_l[i])->~Wrap_cb();
+        }
     }
 };
 

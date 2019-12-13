@@ -88,8 +88,6 @@ def module_change_cb(sess, module_name, xpath, event, request_id, private_data):
 
     return sr.SR_ERR_OK
 
-# Notable difference between c implementation is using exception mechanism for open handling unexpected events.
-# Here it is useful because `Conenction`, `Session` and `Subscribe` could throw an exception.
 if __name__ == "__main__":
 
     if len(sys.argv) < 3:
@@ -110,17 +108,20 @@ if __name__ == "__main__":
     # multiple client might try to subscribe to the same model
     for i in range(3):
         try:
-            subscribe.module_change_subscribe(settings['module_name'], module_change_cb, settings['xpath'], None, 0, sr.SR_SUBSCR_DONE_ONLY)
+            subscribe.module_change_subscribe(settings['module_name'], module_change_cb, settings['xpath'], settings, 0, sr.SR_SUBSCR_DONE_ONLY)
             print("Application will watch for changes under module name " +  settings['module_name'] + "\n")
         except Exception as e:
             # Multiple clients might try to subscribe to the same model.
             print ("Retrying to subscribe...", file=sys.stderr) 
             sleep(10.0/10e6)
             continue
-        break;
+        break
 
     sr.global_loop()
-
     subscribe.unsubscribe()
+
+    sess.session_stop()
+    
+    conn = None
 
     print("Application exit requested, exiting.")

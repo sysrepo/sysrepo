@@ -28,6 +28,8 @@ class CommitTester(SysrepoTester):
         self.add_step(self.checkItemStep)
         self.add_step(self.commitStep)
         self.add_step(self.checkItemStep)
+        self.add_step(self.stopSession)
+        self.add_step(self.disconnect)
 
     def setItemStep(self):
         v = sr.Val(99, sr.SR_INT8_T)
@@ -40,8 +42,13 @@ class CommitTester(SysrepoTester):
 class CommitTest(unittest.TestCase):
 
     @classmethod
-    def setUpClass(self):
+    def setUp(self):
+        TestModule.create_referenced_data_module()
         TestModule.create_test_module()
+
+    def tearDown(self):
+        TestModule.remove_test_module()
+        TestModule.remove_referenced_data_module()
 
     def test_CommitAndDsLock(self):
         tm = TestManager()
@@ -50,6 +57,8 @@ class CommitTest(unittest.TestCase):
         first.add_step(first.lockStep)
         first.add_step(first.waitStep)
         first.add_step(first.unlockStep)
+        first.add_step(first.stopSession)
+        first.add_step(first.disconnect)
         tm.add_tester(first)
 
         tm.add_tester(CommitTester("Second"))

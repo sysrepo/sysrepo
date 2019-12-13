@@ -74,14 +74,24 @@ class NotificationTester(SysrepoTester):
 class NotificationTest(unittest.TestCase):
 
     @classmethod
-    def setUpClass(self):
+    def setUp(self):
+        TestModule.create_ietf_interfaces_module()
+        TestModule.create_iana_if_type_module()
+        TestModule.create_ietf_ip_module()
         TestModule.create_ietf_interfaces()
+        TestModule.remove_example_module()
         TestModule.create_example_module()
+
+    def tearDown(self):
+        TestModule.remove_example_module()
+        TestModule.remove_ietf_interfaces_module()
+        TestModule.remove_iana_if_type_module()
+        TestModule.remove_ietf_ip_module()
 
     def test_notify_delete(self):
         tm = TestManager()
 
-        tester = SysrepoTester("Tester", sr.SR_DS_RUNNING, False)
+        tester = SysrepoTester("Tester", sr.SR_DS_RUNNING)
         subscriber = NotificationTester("Subscriber")
         subscriber2 = NotificationTester("Subscriber2")
         subscriber3 = NotificationTester("Subscriber3")
@@ -109,7 +119,7 @@ class NotificationTest(unittest.TestCase):
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
 
-        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitTimeoutStep, 0.4)
         subscriber.add_step(subscriber.waitTimeoutStep, 0.4)
         subscriber2.add_step(subscriber2.waitTimeoutStep, 0.4)
         subscriber3.add_step(subscriber3.waitTimeoutStep, 0.4)
@@ -139,6 +149,21 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.cancelSubscriptionStep)
         subscriber2.add_step(subscriber2.cancelSubscriptionStep)
         subscriber3.add_step(subscriber3.cancelSubscriptionStep)
+
+        tester.add_step(tester.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+        subscriber2.add_step(subscriber2.stopSession)
+        subscriber3.add_step(subscriber3.stopSession)
+
+        tester.add_step(tester.disconnect)
+        subscriber.add_step(subscriber.disconnect)
+        subscriber2.add_step(subscriber2.disconnect)
+        subscriber3.add_step(subscriber3.disconnect)
+
+        tester.add_step(tester.waitTimeoutStep, 1)
+        subscriber.add_step(subscriber.waitTimeoutStep, 1)
+        subscriber2.add_step(subscriber2.waitTimeoutStep, 1)
+        subscriber3.add_step(subscriber3.waitTimeoutStep, 1)
 
         tm.add_tester(tester)
         tm.add_tester(subscriber)
@@ -200,6 +225,16 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.cancelSubscriptionStep)
         subscriber2.add_step(subscriber2.cancelSubscriptionStep)
         subscriber3.add_step(subscriber3.cancelSubscriptionStep)
+
+        tester.add_step(tester.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+        subscriber2.add_step(subscriber2.stopSession)
+        subscriber3.add_step(subscriber3.stopSession)
+
+        tester.add_step(tester.disconnect)
+        subscriber.add_step(subscriber.disconnect)
+        subscriber2.add_step(subscriber2.disconnect)
+        subscriber3.add_step(subscriber3.disconnect)
 
         tm.add_tester(tester)
         tm.add_tester(subscriber)
@@ -278,6 +313,16 @@ class NotificationTest(unittest.TestCase):
         subscriber2.add_step(subscriber2.cancelSubscriptionStep)
         subscriber3.add_step(subscriber3.cancelSubscriptionStep)
 
+        tester.add_step(tester.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+        subscriber2.add_step(subscriber2.stopSession)
+        subscriber3.add_step(subscriber3.stopSession)
+
+        tester.add_step(tester.disconnect)
+        subscriber.add_step(subscriber.disconnect)
+        subscriber2.add_step(subscriber2.disconnect)
+        subscriber3.add_step(subscriber3.disconnect)
+
         tm.add_tester(tester)
         tm.add_tester(subscriber)
         tm.add_tester(subscriber2)
@@ -296,8 +341,6 @@ class NotificationTest(unittest.TestCase):
         subscriber2 = NotificationTester("Subscriber2")
         subscriber3 = NotificationTester("Subscriber3")
         subscriber4 = NotificationTester("Subscriber4")
-
-        # subscribe synchronously
 
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep, "ietf-interfaces",
@@ -374,6 +417,18 @@ class NotificationTest(unittest.TestCase):
         subscriber3.add_step(subscriber3.cancelSubscriptionStep)
         subscriber4.add_step(subscriber4.cancelSubscriptionStep)
 
+        tester.add_step(tester.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+        subscriber2.add_step(subscriber2.stopSession)
+        subscriber3.add_step(subscriber3.stopSession)
+        subscriber4.add_step(subscriber4.stopSession)
+
+        tester.add_step(tester.disconnect)
+        subscriber.add_step(subscriber.disconnect)
+        subscriber2.add_step(subscriber2.disconnect)
+        subscriber3.add_step(subscriber3.disconnect)
+        subscriber4.add_step(subscriber4.disconnect)
+
         tm.add_tester(tester)
         tm.add_tester(subscriber)
         tm.add_tester(subscriber2)
@@ -382,7 +437,6 @@ class NotificationTest(unittest.TestCase):
         tm.run()
 
     def test_delete_default_node(self):
-        TestModule.create_ietf_interfaces()
         tm = TestManager()
 
         tester = SysrepoTester("Tester", sr.SR_DS_RUNNING, False)
@@ -391,8 +445,6 @@ class NotificationTest(unittest.TestCase):
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep, "ietf-interfaces",
                             "/ietf-interfaces:interfaces")
-
-        # set to non default value
 
         tester.add_step(
             tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/type", sr.Val("iana-if-type:ethernetCsmacd", sr.SR_IDENTITYREF_T))
@@ -404,7 +456,7 @@ class NotificationTest(unittest.TestCase):
 
         tester.add_step(tester.commitStep)
         subscriber.add_step(subscriber.waitStep)
-        
+
         tester.add_step(tester.deleteItemStep,
                         "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled")
         subscriber.add_step(subscriber.waitStep)
@@ -413,12 +465,18 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.waitStep)
 
         tester.add_step(tester.waitStep)
-        # deleted value -> default according to the YANG
         subscriber.add_step(subscriber.checkNotificationStep, [
                             ["MODIFIED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/forwarding"]])
 
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.cancelSubscriptionStep)
+
+
+        tester.add_step(tester.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+
+        tester.add_step(tester.disconnect)
+        subscriber.add_step(subscriber.disconnect)
 
         tm.add_tester(tester)
         tm.add_tester(subscriber)
@@ -426,8 +484,6 @@ class NotificationTest(unittest.TestCase):
         tm.run()
 
     def test_change_default_node(self):
-
-        TestModule.create_ietf_interfaces()
         tm = TestManager()
 
         tester = SysrepoTester("Tester", sr.SR_DS_RUNNING, False)
@@ -449,12 +505,18 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.waitStep)
 
         tester.add_step(tester.waitStep)
-        # setting a leaf with default value -> MODIFIED
         subscriber.add_step(subscriber.checkNotificationStep, [
                             ["MODIFIED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/forwarding"]])
 
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.cancelSubscriptionStep)
+
+
+        tester.add_step(tester.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+
+        tester.add_step(tester.disconnect)
+        subscriber.add_step(subscriber.disconnect)
 
         tm.add_tester(tester)
         tm.add_tester(subscriber)

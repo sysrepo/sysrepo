@@ -50,13 +50,22 @@ class SubscriptionTester(SysrepoTester):
             self.tc.assertEqual(len(expected), vals.val_cnt())
             for i in range(len(expected)):
                 self.tc.assertEqual(vals.val(i).xpath(), expected[i])
-        
+
 
 class SubscriptionTest(unittest.TestCase):
 
     @classmethod
-    def setUpClass(self):
+    def setUp(self):
+        TestModule.create_ietf_interfaces_module()
+        TestModule.create_iana_if_type_module()
+        TestModule.create_ietf_ip_module()
         TestModule.create_ietf_interfaces()
+
+    def tearDown(self):
+        TestModule.remove_ietf_interfaces_module()
+        TestModule.remove_iana_if_type_module()
+        TestModule.remove_ietf_ip_module()
+
 
     def test_SubscribeUnsubscribe(self):
         tm = TestManager()
@@ -75,12 +84,18 @@ class SubscriptionTest(unittest.TestCase):
 
         reader.add_step(reader.waitStep)
         subscriber.add_step(subscriber.cancelSubscriptionStep)
-        
+
         reader.add_step(reader.waitStep)
         subscriber.add_step(subscriber.waitTimeoutStep, 1)
 
         reader.add_step(reader.getOperationalData, "/ietf-interfaces:interfaces-state/interface[name='eth100']", [])
         subscriber.add_step(subscriber.waitStep)
+
+        reader.add_step(reader.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+
+        reader.add_step(reader.disconnect)
+        subscriber.add_step(subscriber.disconnect)
 
         tm.add_tester(reader)
         tm.add_tester(subscriber)
@@ -103,12 +118,18 @@ class SubscriptionTest(unittest.TestCase):
 
         reader.add_step(reader.waitStep)
         subscriber.add_step(subscriber.cancelSubscriptionStep)
-        
+
         reader.add_step(reader.waitStep)
         subscriber.add_step(subscriber.waitTimeoutStep, 1)
 
         reader.add_step(reader.getOperationalData, "/ietf-interfaces:interfaces-state/interface[name='eth100']", [])
         subscriber.add_step(subscriber.waitStep)
+
+        reader.add_step(reader.stopSession)
+        subscriber.add_step(subscriber.stopSession)
+
+        reader.add_step(reader.disconnect)
+        subscriber.add_step(subscriber.disconnect)
 
         tm.add_tester(reader)
         tm.add_tester(subscriber)
