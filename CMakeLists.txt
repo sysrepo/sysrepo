@@ -259,11 +259,16 @@ if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(bindings)
 endif()
 
-# phony target for clearing all sysrepo data
-add_custom_target(sr_clean
+# phony target for clearing sysrepo SHM
+add_custom_target(shm_clean
     COMMAND rm -rf /dev/shm/sr_*
     COMMAND rm -rf /dev/shm/srsub_*
+)
+
+# phony target for clearing all sysrepo data
+add_custom_target(sr_clean
     COMMAND rm -rf ${REPO_PATH}
+    DEPENDS shm_clean
 )
 
 # uninstall
