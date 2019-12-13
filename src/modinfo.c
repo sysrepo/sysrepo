@@ -1395,12 +1395,15 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_m
     assert(op->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF));
     assert((mod_info->ds == SR_DS_OPERATIONAL) && sid && cb_error_info);
 
+    /* find top-level node */
+    for (top_op = op; top_op->parent; top_op = top_op->parent);
+
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         switch (mod->state & MOD_INFO_TYPE_MASK) {
         case MOD_INFO_REQ:
             /* this is the module of the nested operation and we need to check that operation's parent data node exists */
-            assert((mod->ly_mod == lyd_node_module(op)) && lys_parent(op->schema) && op->parent);
+            assert((mod->ly_mod == lyd_node_module(top_op)) && lys_parent(op->schema) && op->parent);
             parent_xpath = lyd_path(op->parent);
             SR_CHECK_MEM_GOTO(!parent_xpath, err_info, cleanup);
 
@@ -1437,7 +1440,6 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_m
 
     /* validate */
     flags = ((op->schema->nodetype & (LYS_RPC | LYS_ACTION)) ? (output ? LYD_OPT_RPCREPLY : LYD_OPT_RPC) : LYD_OPT_NOTIF);
-    for (top_op = op; top_op->parent; top_op = top_op->parent);
     if (lyd_validate(&top_op, flags, mod_info->data)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "%s %svalidation failed.",
