@@ -31,8 +31,16 @@ if(ENABLE_PYTHON_TESTS)
             COMMAND ${PYTHON_EXECUTABLE} ${TEST_NAME}.py
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests
         )
-        set_tests_properties(python_${TEST_NAME} PROPERTIES ENVIRONMENT TESTS_DIR=${PROJECT_SOURCE_DIR}/tests)
+        set_property(TEST python_${TEST_NAME} PROPERTY ENVIRONMENT TESTS_DIR=${PROJECT_SOURCE_DIR}/tests)
+        set_property(TEST python_${TEST_NAME} APPEND PROPERTY ENVIRONMENT PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR})
     endmacro(ADD_PYTHON_TEST)
 
     ADD_PYTHON_TEST(SysrepoBasicTest)
+    ADD_PYTHON_TEST(CommitTest)
+    ADD_PYTHON_TEST(LockingTest)
+    ADD_PYTHON_TEST(MoveTest)
+    ADD_PYTHON_TEST(NotificationTest)
+    ADD_PYTHON_TEST(SchemasManagementTest)
+    ADD_PYTHON_TEST(SubscriptionTest)
+    ADD_PYTHON_TEST(TestModule)
 endif()

@@ -17,6 +17,7 @@ __license__ = "Apache 2.0"
 # limitations under the License.
 
 from ConcurrentHelpers import *
+import TestModule
 import sysrepo as sr
 
 
@@ -32,9 +33,17 @@ class User2(SysrepoTester):
         self.add_step(self.waitStep)
         self.add_step(self.lockStep)
         self.add_step(self.unlockStep)
+        self.add_step(self.stopSession)
+        self.add_step(self.disconnect)
 
 
 class LockingTest(unittest.TestCase):
+    @classmethod
+    def tearDown(self):
+        TestModule.remove_example_module()
+
+    def setUp(self):
+        TestModule.create_example_module()
 
     def test_ConcurrentDataStoreLocking(self):
         tm = TestManager()
@@ -43,6 +52,8 @@ class LockingTest(unittest.TestCase):
         first.add_step(first.lockStep)
         first.add_step(first.waitStep)
         first.add_step(first.unlockStep)
+        first.add_step(first.stopSession)
+        first.add_step(first.disconnect)
         tm.add_tester(first)
 
         tm.add_tester(User2("Second"))
@@ -65,6 +76,13 @@ class LockingTest(unittest.TestCase):
 
         second.add_step(second.lockModelStep, "example-module")
         second.add_step(second.unlockModelStep, "example-module")
+
+        first.add_step(first.stopSession)
+        second.add_step(second.stopSession)
+
+        first.add_step(first.disconnect)
+        second.add_step(second.disconnect)
+
 
         tm.add_tester(first)
         tm.add_tester(second)

@@ -80,4 +80,8 @@ if __name__ == "__main__":
 
     subscribe.unsubscribe()
 
+    sess.session_stop()
+
+    conn = None
+
     print("Application exit requested, exiting.")
