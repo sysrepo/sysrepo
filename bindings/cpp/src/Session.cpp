@@ -499,6 +499,7 @@ void Subscribe::module_change_subscribe(const char *module_name, S_Callback call
     callback->private_data["module_change"] = private_data;
     cb_list.push_back(callback);
 
+    opts |= SR_SUBSCR_CTX_REUSE;
     int ret = sr_module_change_subscribe(_sess->_sess, module_name, xpath, module_change_cb, callback->get(), priority, \
             opts, &_sub);
     if (ret != SR_ERR_OK) {
@@ -512,6 +513,7 @@ void Subscribe::rpc_subscribe(const char *xpath, S_Callback callback, void *priv
     callback->private_data["rpc"] = private_data;
     cb_list.push_back(callback);
 
+    opts |= SR_SUBSCR_CTX_REUSE;
     int ret = sr_rpc_subscribe(_sess->_sess, xpath, rpc_cb, callback->get(), priority, opts, &_sub);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
@@ -524,6 +526,7 @@ void Subscribe::rpc_subscribe_tree(const char *xpath, S_Callback callback, void 
     callback->private_data["rpc_tree"] = private_data;
     cb_list.push_back(callback);
 
+    opts |= SR_SUBSCR_CTX_REUSE;
     int ret = sr_rpc_subscribe_tree(_sess->_sess, xpath, rpc_tree_cb, callback->get(), priority, opts, &_sub);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
@@ -536,6 +539,7 @@ void Subscribe::event_notif_subscribe(const char *module_name, S_Callback callba
     callback->private_data["event_notif"] = private_data;
     cb_list.push_back(callback);
 
+    opts |= SR_SUBSCR_CTX_REUSE;
     int ret = sr_event_notif_subscribe(_sess->_sess, module_name, xpath, start_time, stop_time, event_notif_cb, \
             callback->get(), opts, &_sub);
     if (ret != SR_ERR_OK) {
@@ -549,6 +553,7 @@ void Subscribe::event_notif_subscribe_tree(const char *module_name, S_Callback c
     callback->private_data["event_notif_tree"] = private_data;
     cb_list.push_back(callback);
 
+    opts |= SR_SUBSCR_CTX_REUSE;
     int ret = sr_event_notif_subscribe_tree(_sess->_sess, module_name, xpath, start_time, stop_time, event_notif_tree_cb, \
             callback->get(), opts, &_sub);
     if (ret != SR_ERR_OK) {
@@ -562,6 +567,7 @@ void Subscribe::oper_get_items_subscribe(const char *module_name, const char *pa
     callback->private_data["oper_get_items"] = private_data;
     cb_list.push_back(callback);
 
+    opts |= SR_SUBSCR_CTX_REUSE;
     int ret = sr_oper_get_items_subscribe(_sess->_sess, module_name, path, oper_get_items_cb, callback->get(), opts, &_sub);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
