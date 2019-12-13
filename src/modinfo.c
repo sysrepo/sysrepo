@@ -751,6 +751,59 @@ error:
     return err_info;
 }
 
+static sr_error_info_t *
+sr_module_oper_data_add_state_default(struct lyd_node **data, const struct lys_module *ly_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *node, *val_node, *sibling;
+    struct lyd_difflist *val_diff;
+    struct ly_set *set;
+    uint32_t i;
+
+    if (lyd_validate_modules(data, &ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED | LYD_OPT_VAL_DIFF, &val_diff)) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        SR_ERRINFO_VALID(&err_info);
+        return err_info;
+    }
+
+    /* remove added config nodes */
+    assert(val_diff);
+    for (i = 0; val_diff->type[i] != LYD_DIFF_END; ++i) {
+        if (val_diff->type[i] == LYD_DIFF_CREATED) {
+            /* get the sibling in the data */
+            if (val_diff->first[i]) {
+                set = lyd_find_path(*data, (char *)val_diff->first[i]);
+                if (!set) {
+                    sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+                    return err_info;
+                }
+                assert(set->number == 1);
+                sibling = set->set.d[0]->child;
+                ly_set_free(set);
+            } else {
+                sibling = *data;
+            }
+
+            LY_TREE_FOR(val_diff->second[i], val_node) {
+                if (val_node->schema->flags & LYS_CONFIG_R) {
+                    continue;
+                }
+
+                /* find the created node in the data and free it */
+                LY_TREE_FOR(sibling, node) {
+                    if (node->schema == val_node->schema) {
+                        lyd_free(node);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    lyd_free_val_diff(val_diff);
+    return NULL;
+}
+
 /**
  * @brief Duplicate operational (enabled) data from configuration data tree.
  *
@@ -804,41 +857,34 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
     }
 
     /* duplicate only enabled subtrees */
-    err_info = sr_lyd_xpath_dup(data, xpaths, xp_i, enabled_mod_data);
+    err_info = sr_lyd_xpath_dup(data, xpaths, xp_i, mod->ly_mod, enabled_mod_data);
     free(xpaths);
     if (err_info) {
         return err_info;
     }
 
-    /* add top-level NP containers */
-    if ((err_info = sr_lyd_add_np_cont(enabled_mod_data, NULL, mod->ly_mod, NULL))) {
+    /* add existing (valid) state NP containers and default values */
+    if ((err_info = sr_module_oper_data_add_state_default(enabled_mod_data, mod->ly_mod))) {
         return err_info;
     }
 
-    LY_TREE_FOR(*enabled_mod_data, root) {
-        if (opts & SR_OPER_WITH_ORIGIN) {
+    if (opts & SR_OPER_WITH_ORIGIN) {
+        LY_TREE_FOR(*enabled_mod_data, root) {
             /* add origin of all top-level nodes */
             origin = (root->schema->flags & LYS_CONFIG_W) ? SR_CONFIG_ORIGIN : SR_OPER_ORIGIN;
             if ((err_info = sr_edit_diff_set_origin(root, origin, 1))) {
                 return err_info;
             }
-        }
 
-        LY_TREE_DFS_BEGIN(root, next, elem) {
-            /* add nested NP containers */
-            if ((err_info = sr_lyd_add_np_cont(NULL, elem, NULL, elem->schema))) {
-                return err_info;
-            }
-
-            if (opts & SR_OPER_WITH_ORIGIN) {
+            LY_TREE_DFS_BEGIN(root, next, elem) {
                 /* add origin of default nodes */
                 if ((elem->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && elem->dflt) {
                     if ((err_info = sr_edit_diff_set_origin(elem, "default", 1))) {
                         return err_info;
                     }
                 }
+                LY_TREE_DFS_END(root, next, elem);
             }
-            LY_TREE_DFS_END(root, next, elem);
         }
     }
 

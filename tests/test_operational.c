@@ -46,6 +46,7 @@ setup(void **state)
 {
     struct state *st;
     uint32_t conn_count;
+    const char *act_feat = "advanced-testing";
 
     st = malloc(sizeof *st);
     if (!st) {
@@ -72,6 +73,15 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/mixed-config.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/act.yang", TESTS_DIR "/files", &act_feat, 1) != SR_ERR_OK) {
+        return 1;
+    }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/act2.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/act3.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -96,6 +106,9 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "act3");
+    sr_remove_module(st->conn, "act2");
+    sr_remove_module(st->conn, "act");
     sr_remove_module(st->conn, "mixed-config");
     sr_remove_module(st->conn, "ietf-interfaces");
     sr_remove_module(st->conn, "iana-if-type");
@@ -236,6 +249,17 @@ enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char
         /* get changes iter */
         ret = sr_get_changes_iter(session, "/ietf-interfaces:*//.", &iter);
         assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces");
+
+        sr_free_val(new_val);
 
         /* no more changes */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
@@ -2024,6 +2048,38 @@ test_stored_diff_merge_userord(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST 18 */
+static void
+test_default_when(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/act:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_KEEPEMPTYCONT | LYP_WD_ALL);
+    assert_int_equal(ret, 0);
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<basics xmlns=\"urn:act\">"
+        "<subbasics>"
+            "<complex_number xmlns=\"urn:act2\"/>"
+        "</subbasics>"
+    "</basics>"
+    "<advanced xmlns=\"urn:act\"/>";
+    assert_string_equal(str1, str2);
+    free(str1);
+}
+
 int
 main(void)
 {
@@ -2045,6 +2101,7 @@ main(void)
         cmocka_unit_test_teardown(test_stored_diff_merge_leaf, clear_up),
         cmocka_unit_test_teardown(test_stored_diff_merge_replace, clear_up),
         cmocka_unit_test_teardown(test_stored_diff_merge_userord, clear_up),
+        cmocka_unit_test(test_default_when),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

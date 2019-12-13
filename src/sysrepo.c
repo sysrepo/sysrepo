@@ -3162,7 +3162,7 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
     /* select only the subscribed-to subtree */
     if (mod_info.data) {
         if (xpath) {
-            if ((err_info = sr_lyd_xpath_dup(mod_info.data, (char **)&xpath, 1, &enabled_data))) {
+            if ((err_info = sr_lyd_xpath_dup(mod_info.data, (char **)&xpath, 1, ly_mod, &enabled_data))) {
                 goto cleanup_mods_unlock;
             }
         } else {

@@ -48,7 +48,7 @@ setup(void **state)
 {
     struct state *st;
     uint32_t conn_count;
-    const char *ops_ref_feat = "feat1";
+    const char *ops_ref_feat = "feat1", *act_feat = "advanced-testing";
 
     st = calloc(1, sizeof *st);
     *state = st;
@@ -78,6 +78,15 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/act.yang", TESTS_DIR "/files", &act_feat, 1) != SR_ERR_OK) {
+        return 1;
+    }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/act2.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/act3.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -99,6 +108,9 @@ teardown(void **state)
     struct state *st = (struct state *)*state;
     int ret = 0;
 
+    ret += sr_remove_module(st->conn, "act3");
+    ret += sr_remove_module(st->conn, "act2");
+    ret += sr_remove_module(st->conn, "act");
     ret += sr_remove_module(st->conn, "ops");
     ret += sr_remove_module(st->conn, "ops-ref");
     ret += sr_remove_module(st->conn, "iana-if-type");
@@ -1080,6 +1092,79 @@ test_unlocked(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST 8 */
+static int
+action_deps_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+        uint32_t request_id, struct lyd_node *output, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)xpath;
+    (void)input;
+    (void)event;
+    (void)request_id;
+    (void)output;
+
+    ++st->cb_called;
+
+    return SR_ERR_OK;
+}
+
+static void
+test_action_deps(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    struct lyd_node *input_op, *output_op;
+    int ret;
+
+    /* subscribe */
+    ret = sr_rpc_subscribe_tree(st->sess, "/act:advanced/act3:conditional/conditional_action", action_deps_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create the action */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/act:advanced/act3:conditional/conditional_action",
+            NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+
+    /* send action, its parent does not exist so it should fail */
+    st->cb_called = 0;
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
+    assert_null(output_op);
+    assert_int_equal(st->cb_called, 0);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* create the necessary data in operational */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/act:advanced/condition", "true", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send the action again, should succeed now */
+    st->cb_called = 0;
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
+    while (output_op->parent) {
+        output_op = output_op->parent;
+    }
+    lyd_free_withsiblings(output_op);
+
+    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    while (input_op->parent) {
+        input_op = input_op->parent;
+    }
+    lyd_free_withsiblings(input_op);
+    sr_unsubscribe(subscr);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1092,6 +1177,7 @@ main(void)
         cmocka_unit_test_teardown(test_multi, clear_ops),
         cmocka_unit_test(test_multi_fail),
         cmocka_unit_test(test_unlocked),
+        cmocka_unit_test(test_action_deps),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

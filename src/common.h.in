@@ -1119,11 +1119,12 @@ struct lyd_node *sr_lyd_child(const struct lyd_node *node, int skip_keys);
  * @param[in] data Data tree to duplicate from.
  * @param[in] xpaths Array of XPaths that will select the duplicated nodes.
  * @param[in] xp_count XPath count.
+ * @param[in] cont_ly_mod If set, even non-matching NP containers from this module will be duplicated.
  * @param[out] new_data Duplicated selected nodes.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count,
-        struct lyd_node **new_data);
+        const struct lys_module *cont_ly_mod, struct lyd_node **new_data);
 
 /**
  * @brief Remove all nodes selected by XPath.
@@ -1133,18 +1134,6 @@ sr_error_info_t *sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, ui
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath);
-
-/**
- * @brief Add any NP containers with existing parents.
- *
- * @param[in,out] data First top-level sibling when adding top-level containers.
- * @param[in] parent Parent of any nested added containers.
- * @param[in] ly_mod Module when adding top-level containers.
- * @param[in] sparent Schema parent of any nested added containers.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_lyd_add_np_cont(struct lyd_node **data, struct lyd_node *parent, const struct lys_module *ly_mod,
-        const struct lys_node *sparent);
 
 /**
  * @brief Learn whether a node is user-ordered (leaf-)list.
