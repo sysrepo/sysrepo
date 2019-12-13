@@ -1085,7 +1085,7 @@ main(int argc, char **argv)
     };
 
     size_t test_count = sizeof(tests)/sizeof(*tests);
-    sr_conn_ctx_t *conn;
+    sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess;
     int rc, ret = -1, selection = -1;
     uint32_t conn_count;
