@@ -17,7 +17,7 @@ else()
 endif()
 
 # check for pthread_barrier existence
-#check_function_exists(pthread_barrier_init SR_HAVE_PTHREAD_BARRIER)
+check_function_exists(pthread_barrier_init SR_HAVE_PTHREAD_BARRIER)
 if(SR_HAVE_PTHREAD_BARRIER)
     set(test_sources "")
 else()
