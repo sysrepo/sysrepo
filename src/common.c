@@ -46,15 +46,31 @@
 int
 pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime)
 {
+    int64_t nsec_diff;
     int32_t diff;
-    int rc;
     struct timespec cur, dur;
+    int rc;
 
-    /* Try to acquire the lock and, if we fail, sleep for 5ms. */
+    /* try to acquire the lock and, if we fail, sleep for 5ms. */
     while ((rc = pthread_mutex_trylock(mutex)) == EBUSY) {
-        nc_gettimespec_real(&cur);
+        /* get real time */
+#ifdef CLOCK_REALTIME
+        clock_gettime(CLOCK_REALTIME, &cur);
+#else
+        struct timeval tv;
 
-        if ((diff = nc_difftimespec(&cur, abstime)) < 1) {
+        gettimeofday(&tv, NULL);
+        cur.tv_sec = (time_t)tv.tv_sec;
+        cur.tv_nsec = 1000L * (long)tv.tv_usec;
+#endif
+
+        /* get time diff */
+        nsec_diff = 0;
+        nsec_diff += (((int64_t)abstime->tv_sec) - ((int64_t)cur.tv_sec)) * 1000000000L;
+        nsec_diff += ((int64_t)abstime->tv_nsec) - ((int64_t)cur.tv_nsec);
+        diff = (nsec_diff ? nsec_diff / 1000000L : 0);
+
+        if (diff < 1) {
             /* timeout */
             break;
         } else if (diff < 5) {
