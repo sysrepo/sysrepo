@@ -117,12 +117,14 @@ signal_handler(int sig)
             pthread_cond_signal(&cond);
         } else {
             /* second attempt */
+            error_print(0, "Exiting without a proper cleanup");
             exit(EXIT_FAILURE);
         }
         pthread_mutex_unlock(&lock);
         break;
     default:
         /* unhandled signal */
+        error_print(0, "Exiting on receiving an unhandled signal");
         exit(EXIT_FAILURE);
     }
 }
