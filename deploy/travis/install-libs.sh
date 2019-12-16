@@ -18,6 +18,6 @@ else
     git clone -b devel https://github.com/CESNET/libyang.git
 fi
 cd libyang ; mkdir build ; cd build
-cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
+cmake -DCMAKE_BUILD_TYPE=Debug -DGEN_LANGUAGE_BINDINGS=ON -DENABLE_BUILD_TESTS=OFF ..
 make -j2 > /dev/null && sudo make install
 cd ../..

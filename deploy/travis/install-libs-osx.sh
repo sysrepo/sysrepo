@@ -1,7 +1,7 @@
 #install dependencies using homebrew
 brew update
 brew install pcre
-brew install swig4
+brew install swig@4
 
 set -e
 
@@ -29,6 +29,6 @@ else
     git clone -b devel https://github.com/CESNET/libyang.git
 fi
 cd libyang ; mkdir build ; cd build
-cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
+cmake -DCMAKE_BUILD_TYPE=Debug -DGEN_LANGUAGE_BINDINGS=ON -DENABLE_BUILD_TESTS=OFF ..
 make -j2 && sudo make install
 cd ../..
