@@ -6,6 +6,9 @@ include(CheckSymbolExists)
 include(CheckFunctionExists)
 include(CheckIncludeFile)
 include(CheckStructHasMember)
+if(POLICY CMP0075)
+    cmake_policy(SET CMP0075 NEW)
+endif()
 
 # osx specific
 set(CMAKE_MACOSX_RPATH TRUE)
