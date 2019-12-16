@@ -295,7 +295,7 @@ main(int argc, char** argv)
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
     sr_log_level_t log_level = SR_LL_ERR;
-    int plugin_count, i, r, rc = EXIT_FAILURE, opt, debug = 0;
+    int plugin_count = 0, i, r, rc = EXIT_FAILURE, opt, debug = 0;
     struct option options[] = {
         {"help",      no_argument,       NULL, 'h'},
         {"version",   no_argument,       NULL, 'V'},
