@@ -42,6 +42,9 @@
  */
 #define API __attribute__((visibility("default")))
 
+/** support for pthread_mutex_timedlock */
+#cmakedefine SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK
+
 /** use access() if eaccess() is not available (it may adversely affect access control, however) */
 #cmakedefine SR_HAVE_EACCESS
 #ifndef SR_HAVE_EACCESS

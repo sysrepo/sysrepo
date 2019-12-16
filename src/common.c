@@ -41,6 +41,40 @@
 #include <assert.h>
 #include <pthread.h>
 
+#ifndef SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK
+
+int
+pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime)
+{
+    int32_t diff;
+    int rc;
+    struct timespec cur, dur;
+
+    /* Try to acquire the lock and, if we fail, sleep for 5ms. */
+    while ((rc = pthread_mutex_trylock(mutex)) == EBUSY) {
+        nc_gettimespec_real(&cur);
+
+        if ((diff = nc_difftimespec(&cur, abstime)) < 1) {
+            /* timeout */
+            break;
+        } else if (diff < 5) {
+            /* sleep until timeout */
+            dur.tv_sec = 0;
+            dur.tv_nsec = (long)diff * 1000000;
+        } else {
+            /* sleep 5 ms */
+            dur.tv_sec = 0;
+            dur.tv_nsec = 5000000;
+        }
+
+        nanosleep(&dur, NULL);
+    }
+
+    return rc;
+}
+
+#endif
+
 sr_error_info_t *
 sr_sub_change_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, sr_module_change_cb change_cb,
         void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_subscription_ctx_t *subs)

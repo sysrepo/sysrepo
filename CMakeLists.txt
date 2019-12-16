@@ -3,6 +3,7 @@ project(sysrepo)
 set(SYSREPO_DESC "YANG-based system repository")
 include(GNUInstallDirs)
 include(CheckSymbolExists)
+include(CheckFunctionExists)
 include(CheckIncludeFile)
 include(CheckStructHasMember)
 
@@ -129,33 +130,6 @@ if(NOT PLUGINS_PATH)
 endif()
 message(STATUS "SRPD plugins path:  ${PLUGINS_PATH}")
 
-# required functions
-set(CMAKE_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS} -D_GNU_SOURCE")
-check_symbol_exists(eaccess "unistd.h" SR_HAVE_EACCESS)
-if(NOT SR_HAVE_EACCESS)
-    message(WARNING "Function eaccess() is not supported, using access() instead which may "
-        "change results of access control checks!")
-endif()
-check_include_file("stdatomic.h" SR_HAVE_STDATOMIC)
-check_struct_has_member(pthread_mutex_t __align pthread.h SR_MUTEX_HAS_ALIGN LANGUAGE C)
-if(NOT SR_MUTEX_HAS_ALIGN)
-    set(SR_MUTEX_HAS_ALIGN 0)
-endif()
-check_struct_has_member(pthread_cond_t __align pthread.h SR_COND_HAS_ALIGN LANGUAGE C)
-if(NOT SR_COND_HAS_ALIGN)
-    set(SR_COND_HAS_ALIGN 0)
-endif()
-
-# generate files
-configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)
-configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJECT_BINARY_DIR}/bin_common.h" ESCAPE_QUOTES @ONLY)
-configure_file("${PROJECT_SOURCE_DIR}/libsysrepo.pc.in" "${PROJECT_BINARY_DIR}/libsysrepo.pc" @ONLY)
-include_directories(${PROJECT_BINARY_DIR})
-include_directories("${PROJECT_SOURCE_DIR}/src")
-
-# include custom Modules
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
-
 # objects
 set(LIB_SRC
     src/sysrepo.c
@@ -187,24 +161,6 @@ set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
 add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
 set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
 
-# dependencies
-# librt (shm_open, shm_unlink, not required on OSX)
-if(NOT APPLE)
-    target_link_libraries(sysrepo rt)
-endif()
-
-# libyang
-find_package(YANG REQUIRED)
-target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
-include_directories(${LIBYANG_INCLUDE_DIRS})
-
-# pthread
-set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
-find_package(Threads REQUIRED)
-target_link_libraries(sysrepo ${CMAKE_THREAD_LIBS_INIT})
-
-set(CMAKE_REQUIRED_LIBRARIES pthread)
-
 # sysrepoctl tool
 add_executable(sysrepoctl ${SYSREPOCTL_SRC})
 target_link_libraries(sysrepoctl sysrepo ${LIBYANG_LIBRARIES})
@@ -215,7 +171,54 @@ target_link_libraries(sysrepocfg sysrepo ${LIBYANG_LIBRARIES})
 
 # sysrepo-plugind daemon
 add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC})
+
+# include custom Modules
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
+
+# dependencies
+# librt (shm_open, shm_unlink, not required on OSX)
+if(NOT APPLE)
+    target_link_libraries(sysrepo rt)
+endif()
+
+# libdl
 target_link_libraries(sysrepo-plugind sysrepo dl)
+
+# libyang
+find_package(YANG REQUIRED)
+target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
+include_directories(${LIBYANG_INCLUDE_DIRS})
+
+# pthread
+set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+find_package(Threads REQUIRED)
+target_link_libraries(sysrepo ${CMAKE_THREAD_LIBS_INIT})
+set(CMAKE_REQUIRED_LIBRARIES pthread)
+
+# required functions
+set(CMAKE_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS} -D_GNU_SOURCE")
+check_function_exists(pthread_mutex_timedlock SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK)
+check_symbol_exists(eaccess "unistd.h" SR_HAVE_EACCESS)
+if(NOT SR_HAVE_EACCESS)
+    message(WARNING "Function eaccess() is not supported, using access() instead which may "
+        "change results of access control checks!")
+endif()
+check_include_file("stdatomic.h" SR_HAVE_STDATOMIC)
+check_struct_has_member(pthread_mutex_t __align pthread.h SR_MUTEX_HAS_ALIGN LANGUAGE C)
+if(NOT SR_MUTEX_HAS_ALIGN)
+    set(SR_MUTEX_HAS_ALIGN 0)
+endif()
+check_struct_has_member(pthread_cond_t __align pthread.h SR_COND_HAS_ALIGN LANGUAGE C)
+if(NOT SR_COND_HAS_ALIGN)
+    set(SR_COND_HAS_ALIGN 0)
+endif()
+
+# generate files
+configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)
+configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJECT_BINARY_DIR}/bin_common.h" ESCAPE_QUOTES @ONLY)
+configure_file("${PROJECT_SOURCE_DIR}/libsysrepo.pc.in" "${PROJECT_BINARY_DIR}/libsysrepo.pc" @ONLY)
+include_directories(${PROJECT_BINARY_DIR})
+include_directories("${PROJECT_SOURCE_DIR}/src")
 
 # installation
 install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
