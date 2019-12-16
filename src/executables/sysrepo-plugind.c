@@ -232,7 +232,7 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
     }
 
     while ((ent = readdir(dir))) {
-        if ((ent->d_type == DT_DIR) || !strcmp(ent->d_name, ".") || !strcmp(ent->d_name, "..")) {
+        if (!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, "..")) {
             continue;
         }
 
