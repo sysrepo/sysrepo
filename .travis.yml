@@ -13,6 +13,8 @@ matrix:
             compiler: clang
         -   os: osx
             compiler: gcc
+    allow_failures:
+        -   os: osx
 
 before_install:
   - test $TRAVIS_BRANCH != coverity -o "$CC" = "clang" || exit 0
