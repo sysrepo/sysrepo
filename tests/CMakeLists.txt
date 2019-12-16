@@ -6,14 +6,33 @@ set(CMAKE_MACOSX_RPATH TRUE)
 # set TESTS_DIR to realpath
 get_filename_component(TESTS_DIR "${CMAKE_SOURCE_DIR}/tests" REALPATH)
 
+include_directories(SYSTEM ${CMOCKA_INCLUDE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+
+# get notification directory
+if(NOTIFICATION_PATH)
+    set(TESTS_NOTIF_DIR "${NOTIFICATION_PATH}")
+else()
+    set(TESTS_NOTIF_DIR "${REPO_PATH}/data/notif")
+endif()
+
+# check for pthread_barrier existence
+#check_function_exists(pthread_barrier_init SR_HAVE_PTHREAD_BARRIER)
+if(SR_HAVE_PTHREAD_BARRIER)
+    set(test_sources "")
+else()
+    set(test_sources "pthread_barrier.c")
+endif()
+
+# generate config
+configure_file("${PROJECT_SOURCE_DIR}/tests/config.h.in" "${PROJECT_BINARY_DIR}/tests/config.h" ESCAPE_QUOTES @ONLY)
+
 # lists of all the tests
 set(tests test_modules test_validation test_edit test_candidate test_operational test_lock test_apply_changes
     test_copy_config test_rpc_action test_notif)
 
-include_directories(SYSTEM ${CMOCKA_INCLUDE_DIR})
-
 foreach(test_name IN LISTS tests)
-    add_executable(${test_name} ${test_name}.c)
+    add_executable(${test_name} ${test_sources} ${test_name}.c)
 endforeach(test_name)
 
 # set common attributes of all tests
@@ -27,16 +46,6 @@ endforeach(test_name)
 set(SR_PERF measure_performance)
 add_executable(${SR_PERF} ${SR_PERF}.c)
 target_link_libraries(${SR_PERF} ${CMOCKA_LIBRARIES} sysrepo yang)
-
-# get notification directory
-if(NOTIFICATION_PATH)
-    set(TESTS_NOTIF_DIR "${NOTIFICATION_PATH}")
-else()
-    set(TESTS_NOTIF_DIR "${REPO_PATH}/data/notif")
-endif()
-
-# generate config
-configure_file("${PROJECT_SOURCE_DIR}/tests/config.h.in" "${PROJECT_BINARY_DIR}/tests/config.h" ESCAPE_QUOTES @ONLY)
 
 # valgrind tests
 find_program(VALGRIND_FOUND valgrind)

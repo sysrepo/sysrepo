@@ -1,7 +1,7 @@
 /**
- * @file config.h
+ * @file pthread_barrier.h
  * @author Michal Vasko <mvasko@cesnet.cz>
- * @brief test configuration header
+ * @brief Implementation of pthread_barrier header.
  *
  * @copyright
  * Copyright 2018 Deutsche Telekom AG.
@@ -19,15 +19,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef SRTEST_CONFIG_H_
-#define SRTEST_CONFIG_H_
+#ifndef PTHREAD_BARRIER_H
+#define PTHREAD_BARRIER_H
 
-#define TESTS_DIR "@TESTS_DIR@"
-#define TESTS_NOTIF_DIR "@TESTS_NOTIF_DIR@"
+#include <pthread.h>
 
-#cmakedefine SR_HAVE_PTHREAD_BARRIER
-#ifndef SR_HAVE_PTHREAD_BARRIER
-# include "pthread_barrier.h"
+#if !defined(PTHREAD_BARRIER_SERIAL_THREAD)
+# define PTHREAD_BARRIER_SERIAL_THREAD  (1)
 #endif
 
-#endif /* SRTEST_CONFIG_H_ */
+typedef struct {
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    unsigned int limit;
+    unsigned int count;
+    unsigned int phase;
+} pthread_barrier_t;
+
+int pthread_barrier_init(pthread_barrier_t *restrict barrier,
+             const void *restrict attr,
+             unsigned int count);
+int pthread_barrier_destroy(pthread_barrier_t *barrier);
+
+int pthread_barrier_wait(pthread_barrier_t *barrier);
+
+#endif /* PTHREAD_BARRIER_H */
