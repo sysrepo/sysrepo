@@ -188,12 +188,17 @@ add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
 set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
 
 # dependencies
-target_link_libraries(sysrepo rt)
+# librt (shm_open, shm_unlink, not required on OSX)
+if(NOT APPLE)
+    target_link_libraries(sysrepo rt)
+endif()
 
+# libyang
 find_package(YANG REQUIRED)
 target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
 include_directories(${LIBYANG_INCLUDE_DIRS})
 
+# pthread
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
 target_link_libraries(sysrepo ${CMAKE_THREAD_LIBS_INIT})
