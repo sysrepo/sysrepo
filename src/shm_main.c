@@ -2171,6 +2171,9 @@ sr_shmmain_check_data_files(sr_conn_ctx_t *conn)
             return err_info;
         }
 
+        /* keep only read/write bits */
+        perm &= 00666;
+
         /*
          * running file, it must exist
          */
