@@ -3430,7 +3430,7 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
 
             /* in case of lists we want to also skip all their keys */
             if ((*node)->schema->nodetype == LYS_LIST) {
-                *idx += ((struct lys_node_list *)*node)->keys_size;
+                *idx += ((struct lys_node_list *)(*node)->schema)->keys_size;
             }
             continue;
         } else if (attr->value_str[0] == 'c') {
