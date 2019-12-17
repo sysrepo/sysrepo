@@ -11,6 +11,15 @@ matrix:
             dist: bionic
             sudo: required
             compiler: clang
+        -   os: linux
+            arch: arm64
+            dist: bionic
+            sudo: required
+            compiler: gcc
+        -   os: linux
+            arch: ppc64le
+            sudo: required
+            compiler: gcc
         -   os: osx
             compiler: gcc
     allow_failures:
@@ -23,7 +32,8 @@ before_install:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sh deploy/travis/install-libs-osx.sh; fi
 
 script:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DGEN_LANGUAGE_BINDINGS=ON .. && make -j2; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" -a "$TRAVIS_CPU_ARCH" = "amd64" ]]; then mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DGEN_LANGUAGE_BINDINGS=ON .. && make -j2; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" -a "$TRAVIS_CPU_ARCH" != "amd64" ]]; then mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DGEN_LANGUAGE_BINDINGS=ON -DENABLE_VALGRIND_TESTS=OFF .. && make -j2; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local .. && make -j2; fi
   - ctest --output-on-failure
   - sudo make install
