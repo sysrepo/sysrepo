@@ -75,18 +75,10 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 #endif
 
 /** macro for mutex align check */
-#if @SR_MUTEX_HAS_ALIGN@
-# define SR_MUTEX_ALIGN_CHECK(mutex) ((uintptr_t)mutex % sizeof mutex->__align)
-#else
-# define SR_MUTEX_ALIGN_CHECK(mutex) ((uintptr_t)mutex % 2)
-#endif
+#define SR_MUTEX_ALIGN_CHECK(mutex) ((uintptr_t)mutex % sizeof(void *))
 
 /** macro for cond align check */
-#if @SR_COND_HAS_ALIGN@
-# define SR_COND_ALIGN_CHECK(cond) ((uintptr_t)cond % sizeof cond->__align)
-#else
-# define SR_COND_ALIGN_CHECK(cond) ((uintptr_t)cond % 2)
-#endif
+#define SR_COND_ALIGN_CHECK(cond) ((uintptr_t)cond % sizeof(void *))
 
 /** macro for checking datastore type */
 #define SR_IS_CONVENTIONAL_DS(ds) ((ds == SR_DS_STARTUP) || (ds == SR_DS_RUNNING) || (ds == SR_DS_CANDIDATE))
