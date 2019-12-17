@@ -18,6 +18,7 @@ matrix:
             compiler: gcc
         -   os: linux
             arch: ppc64le
+            dist: bionic
             sudo: required
             compiler: gcc
         -   os: osx
