@@ -5,7 +5,7 @@ libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
 Name: @PROJECT_NAME@
 Description: @SYSREPO_DESC@
 Version: @SYSREPO_VERSION@
-Requires.private: libsysrepo
+Requires.private: sysrepo
 Libs: -L${libdir} -lSysrepo-cpp
 Cflags: -I${includedir}
 
