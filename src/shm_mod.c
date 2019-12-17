@@ -997,10 +997,28 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
     const struct lys_module *ly_mod;
     sr_mod_t *shm_mod;
     struct lyd_node *diff = NULL;
+    char *path = NULL;
 
     SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
         ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->ext_shm.addr + shm_mod->name, NULL, 1);
         SR_CHECK_INT_RET(!ly_mod, err_info);
+
+        /* check we have permissions to open operational file */
+        free(path);
+        if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_OPERATIONAL, 1, &path))) {
+            goto cleanup;
+        }
+        errno = 0;
+        if (eaccess(path, R_OK) == -1) {
+            if ((errno == EACCES) || (errno == ENOENT)) {
+                /* file does not exist or we cannot access it, there cannot be any data of this connection stored anyway */
+                continue;
+            }
+
+            /* error */
+            SR_ERRINFO_SYSERRNO(&err_info, "eaccess");
+            goto cleanup;
+        }
 
         /* trim diff of the module */
         if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_OPERATIONAL, &diff))) {
@@ -1011,7 +1029,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
             if ((err_info = sr_diff_del_conn(&diff, del_conn, del_pid))) {
                 goto cleanup;
             }
-            if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
+            if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
                 goto cleanup;
             }
             lyd_free_withsiblings(diff);
@@ -1020,6 +1038,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
     }
 
 cleanup:
+    free(path);
     lyd_free_withsiblings(diff);
     return err_info;
 }

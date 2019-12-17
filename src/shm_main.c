@@ -2222,7 +2222,7 @@ sr_shmmain_check_data_files(sr_conn_ctx_t *conn)
         }
         exists = sr_file_exists(path);
         free(path);
-        if (!exists && (err_info = sr_module_file_data_set(mod_name, SR_DS_OPERATIONAL, O_CREAT | O_EXCL, NULL))) {
+        if (!exists && (err_info = sr_module_file_data_set(mod_name, SR_DS_OPERATIONAL, NULL, O_CREAT | O_EXCL, SR_FILE_PERM))) {
             goto error;
         }
 

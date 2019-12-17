@@ -1803,7 +1803,7 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
 
         /* startup data */
         mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
-        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, O_CREAT, mod_data))) {
+        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, mod_data, O_CREAT, SR_FILE_PERM))) {
             lyd_free_withsiblings(mod_data);
             goto cleanup;
         }
@@ -1811,7 +1811,7 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
 
         /* running data */
         mod_data = sr_module_data_unlink(&new_run_data, ly_mod);
-        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, O_CREAT, mod_data))) {
+        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, mod_data, O_CREAT, SR_FILE_PERM))) {
             lyd_free_withsiblings(mod_data);
             goto cleanup;
         }

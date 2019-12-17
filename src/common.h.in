@@ -185,6 +185,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** permissions of stored notifications and data files */
 #define SR_FILE_PERM 00600
 
+/** permissions of data files of internal modules */
+#define SR_INT_FILE_PERM 00666
+
 /** initial length of message buffer (B) */
 #define SR_MSG_LEN_START 128
 
@@ -1269,13 +1272,14 @@ sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, sr_
  *
  * @param[in] mod_name Module name.
  * @param[in] ds Target datastore
+ * @param[in] mod_data Module data.
  * @param[in] create_flags Additional flags that will be used for opening the file,
  * any of O_CREATE and O_EXCL are expected.
- * @param[in] mod_data Module data.
+ * @param[in] create_mode In case the file can be created, set these permissions (mode).
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, int create_flags,
-        struct lyd_node *mod_data);
+sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data,
+        int create_flags, mode_t create_mode);
 
 /**
  * @brief Update sysrepo stored operational diff of a module.
