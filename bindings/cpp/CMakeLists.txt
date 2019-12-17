@@ -46,8 +46,8 @@ install(TARGETS sysrepo-cpp DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES ${SYSREPO_HPP_SOURCES} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo-cpp)
 
 # generate and install pkg-config file
-configure_file("sysrepo-cpp.pc.in" "sysrepo-cpp.pc" @ONLY)
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/sysrepo-cpp.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+configure_file("libsysrepo-cpp.pc.in" "libsysrepo-cpp.pc" @ONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libsysrepo-cpp.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
 # Examples
 if(BUILD_CPP_EXAMPLES)
