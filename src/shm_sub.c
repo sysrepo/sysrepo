@@ -175,6 +175,14 @@ sr_shmsub_notify_finish_wrunlock(sr_sub_shm_t *sub_shm, size_t shm_struct_size, 
 
     if (ret) {
         if (ret == ETIMEDOUT) {
+            /* handle corner-case when the subscriber has just woken up and is processing this event,
+             * lock should never be held for long */
+            sr_time_get(&timeout_ts, SR_RWLOCK_READ_TIMEOUT);
+            while (sub_shm->lock.readers) {
+                /* COND WAIT */
+                pthread_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, &timeout_ts);
+            }
+
             /* event timeout */
             sub_shm->event = SR_SUB_EV_ERROR;
             sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, NULL, "Callback event processing timed out.");
