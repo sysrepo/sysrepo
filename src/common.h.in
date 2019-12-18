@@ -30,6 +30,7 @@
 #include <pthread.h>
 #include <stdarg.h>
 #include <errno.h>
+#include <time.h>
 
 #include <libyang/libyang.h>
 
