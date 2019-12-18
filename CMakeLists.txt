@@ -211,7 +211,7 @@ check_include_file("stdatomic.h" SR_HAVE_STDATOMIC)
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJECT_BINARY_DIR}/bin_common.h" ESCAPE_QUOTES @ONLY)
-configure_file("${PROJECT_SOURCE_DIR}/libsysrepo.pc.in" "${PROJECT_BINARY_DIR}/libsysrepo.pc" @ONLY)
+configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysrepo.pc" @ONLY)
 include_directories(${PROJECT_BINARY_DIR})
 include_directories("${PROJECT_SOURCE_DIR}/src")
 
@@ -222,7 +222,7 @@ install(FILES ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
 install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-install(FILES "${PROJECT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+install(FILES "${PROJECT_BINARY_DIR}/sysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
 # doxygen documentation
 find_package(Doxygen)
