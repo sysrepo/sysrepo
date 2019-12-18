@@ -34,12 +34,10 @@ set_target_properties(sysrepo-cpp PROPERTIES VERSION ${SYSREPO_CPP_SOVERSION_FUL
 
 # dependencies
 include_directories(${LIBYANG_CPP_INCLUDE_DIRS})
-target_link_libraries(sysrepo-cpp ${LIBYANG_CPP_LIBRARIES})
-
 include_directories(${CMAKE_SOURCE_DIR})
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../src")
-target_link_libraries(sysrepo-cpp sysrepo)
+target_link_libraries(sysrepo-cpp sysrepo ${LIBYANG_CPP_LIBRARIES})
 
 # install binary
 install(TARGETS sysrepo-cpp DESTINATION ${CMAKE_INSTALL_LIBDIR})
