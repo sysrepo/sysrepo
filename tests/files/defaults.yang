@@ -23,4 +23,33 @@ module defaults {
         when "/l1[k='when-true']";
         default "I exist!";
     }
+
+    list l2 {
+        key "k";
+        leaf k {
+            type string;
+        }
+
+        container c1 {
+            leaf lf1 {
+                type string;
+                default "lf1";
+            }
+
+            leaf lf2 {
+                type string;
+                default "lf2";
+            }
+
+            leaf lf3 {
+                type string;
+                default "lf3";
+            }
+
+            leaf lf4 {
+                type string;
+                default "lf4";
+            }
+        }
+    }
 }

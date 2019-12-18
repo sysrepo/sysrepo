@@ -1582,6 +1582,108 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
 
         sr_free_change_iter(iter);
         break;
+    case 8:
+    case 9:
+        if (st->cb_called == 8) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/defaults:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 0);
+        assert_string_equal(new_val->xpath, "/defaults:l2[k='key']");
+
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 0);
+        assert_string_equal(new_val->xpath, "/defaults:l2[k='key']/k");
+
+        sr_free_val(new_val);
+
+        /* 3rd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 1);
+        assert_string_equal(new_val->xpath, "/defaults:l2[k='key']/c1");
+
+        sr_free_val(new_val);
+
+        /* 4th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 1);
+        assert_string_equal(new_val->xpath, "/defaults:l2[k='key']/c1/lf1");
+
+        sr_free_val(new_val);
+
+        /* 5th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 1);
+        assert_string_equal(new_val->xpath, "/defaults:l2[k='key']/c1/lf2");
+
+        sr_free_val(new_val);
+
+        /* 6th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 1);
+        assert_string_equal(new_val->xpath, "/defaults:l2[k='key']/c1/lf3");
+
+        sr_free_val(new_val);
+
+        /* 7th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 1);
+        assert_string_equal(new_val->xpath, "/defaults:l2[k='key']/c1/lf4");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
     default:
         fail();
     }
@@ -1739,6 +1841,33 @@ apply_change_done_dflt_thread(void *arg)
 
     pthread_barrier_wait(&st->barrier);
 
+    /*
+     * perform 6th change
+     *
+     * (add another list instance and get children, all default)
+     */
+    ret = sr_set_item_str(sess, "/defaults:l2[k='key']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_data(sess, "/defaults:l2[k='key']/c1/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_string_equal(data->schema->name, "l2");
+    assert_string_equal(data->child->schema->name, "k");
+    assert_string_equal(data->child->next->schema->name, "c1");
+    assert_string_equal(data->child->next->child->schema->name, "lf1");
+    assert_string_equal(data->child->next->child->next->schema->name, "lf2");
+    assert_string_equal(data->child->next->child->next->next->schema->name, "lf3");
+    assert_string_equal(data->child->next->child->next->next->next->schema->name, "lf4");
+
+    lyd_free_withsiblings(data);
+
+    pthread_barrier_wait(&st->barrier);
+
     sr_session_stop(sess);
     return NULL;
 }
@@ -1761,11 +1890,11 @@ subscribe_change_done_dflt_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 8) && (count < 1500)) {
+    while ((st->cb_called < 10) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 8);
+    assert_int_equal(st->cb_called, 10);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
