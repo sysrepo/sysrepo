@@ -168,14 +168,15 @@ set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVER
 
 # sysrepoctl tool
 add_executable(sysrepoctl ${SYSREPOCTL_SRC})
-target_link_libraries(sysrepoctl sysrepo ${LIBYANG_LIBRARIES})
+target_link_libraries(sysrepoctl sysrepo)
 
 # sysrepocfg tool
 add_executable(sysrepocfg ${SYSREPOCFG_SRC})
-target_link_libraries(sysrepocfg sysrepo ${LIBYANG_LIBRARIES})
+target_link_libraries(sysrepocfg sysrepo)
 
 # sysrepo-plugind daemon
 add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC})
+target_link_libraries(sysrepo-plugind sysrepo dl)
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
@@ -185,9 +186,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 if(NOT APPLE)
     target_link_libraries(sysrepo rt)
 endif()
-
-# libdl
-target_link_libraries(sysrepo-plugind sysrepo dl)
 
 # libyang
 find_package(YANG REQUIRED)
