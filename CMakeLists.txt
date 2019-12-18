@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8.12)
 project(sysrepo)
-set(SYSREPO_DESC "YANG-based system repository")
+set(SYSREPO_DESC "YANG-based system repository for all-around configuration management.")
 include(GNUInstallDirs)
 include(CheckSymbolExists)
 include(CheckFunctionExists)
