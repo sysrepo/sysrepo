@@ -9,13 +9,6 @@ get_filename_component(TESTS_DIR "${CMAKE_SOURCE_DIR}/tests" REALPATH)
 include_directories(SYSTEM ${CMOCKA_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-# get notification directory
-if(NOTIFICATION_PATH)
-    set(TESTS_NOTIF_DIR "${NOTIFICATION_PATH}")
-else()
-    set(TESTS_NOTIF_DIR "${REPO_PATH}/data/notif")
-endif()
-
 # check for pthread_barrier existence
 check_function_exists(pthread_barrier_init SR_HAVE_PTHREAD_BARRIER)
 if(SR_HAVE_PTHREAD_BARRIER)
