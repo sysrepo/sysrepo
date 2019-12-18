@@ -64,14 +64,31 @@ $ make
 
 ### Documentation
 
-The library documentation can be generated directly from the source codes using
-Doxygen tool:
+The library documentation is available online ([docs](http://www.sysrepo.org/static/doc/html/)) or can be generated
+locally from the source code using Doxygen tool:
 ```
 $ make doc
 $ google-chrome ../doc/html/index.html
 ```
 
-### Useful CMake Options
+### Useful CMake sysrepo Options
+
+Generate C++ and Python3 bindings:
+```
+-DGEN_LANGUAGE_BINDINGS=ON
+```
+
+Set custom repository path:
+```
+-DREPO_PATH=/opt/sysrepo/my_repository
+```
+
+Set custom `sysrepo-plugind` plugins path:
+```
+-DPLUGINS_PATH=/opt/sysrepo-plugind/plugins
+```
+
+### Useful CMake Build Options
 
 #### Changing Compiler
 
