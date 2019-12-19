@@ -904,7 +904,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
 
             /* remap sub SHM once we have the lock, it will do anything only on the first call */
             if ((err_info = sr_shm_remap(&shm_sub, sizeof *multi_sub_shm + diff_lyb_len))) {
-                goto cleanup;
+                goto cleanup_wrunlock;
             }
             multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
@@ -918,7 +918,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
             /* notify using event pipe and do not wait for subscribers */
             if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
                     SR_SUB_EV_DONE, cur_priority))) {
-                goto cleanup;
+                goto cleanup_wrunlock;
             }
 
             /* SUB WRITE UNLOCK */
@@ -932,6 +932,12 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
         sr_shm_clear(&shm_sub);
     }
 
+    /* success */
+    goto cleanup;
+
+cleanup_wrunlock:
+    /* SUB WRITE UNLOCK */
+    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
 cleanup:
     free(diff_lyb);
     sr_shm_clear(&shm_sub);
