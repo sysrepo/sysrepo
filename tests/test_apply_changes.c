@@ -38,7 +38,7 @@
 struct state {
     sr_conn_ctx_t *conn;
     volatile int cb_called, cb_called2;
-    pthread_barrier_t barrier;
+    pthread_barrier_t barrier, barrier2;
 };
 
 static int
@@ -113,6 +113,7 @@ setup_f(void **state)
     st->cb_called = 0;
     st->cb_called2 = 0;
     pthread_barrier_init(&st->barrier, NULL, 2);
+    pthread_barrier_init(&st->barrier2, NULL, 2);
     return 0;
 }
 
@@ -122,6 +123,7 @@ teardown_f(void **state)
     struct state *st = (struct state *)*state;
 
     pthread_barrier_destroy(&st->barrier);
+    pthread_barrier_destroy(&st->barrier2);
     return 0;
 }
 
@@ -2869,7 +2871,7 @@ module_change_timeout_cb(sr_session_ctx_t *session, const char *module_name, con
         assert_int_equal(event, SR_EV_CHANGE);
 
         /* time out */
-        usleep(10000);
+        pthread_barrier_wait(&st->barrier2);
         break;
     case 1:
         assert_int_equal(event, SR_EV_CHANGE);
@@ -2908,6 +2910,7 @@ apply_change_timeout_thread(void *arg)
     /* perform the change, it will time out */
     ret = sr_apply_changes(sess, 1);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    pthread_barrier_wait(&st->barrier2);
 
     /* signal that we have tried first time */
     pthread_barrier_wait(&st->barrier);
