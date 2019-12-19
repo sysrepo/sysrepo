@@ -2907,8 +2907,8 @@ apply_change_timeout_thread(void *arg)
     /* wait for subscription before applying changes */
     pthread_barrier_wait(&st->barrier);
 
-    /* perform the change, it will time out */
-    ret = sr_apply_changes(sess, 1);
+    /* perform the change, time out butgive it some time so that the callback is at least called) */
+    ret = sr_apply_changes(sess, 10);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
     pthread_barrier_wait(&st->barrier2);
 
