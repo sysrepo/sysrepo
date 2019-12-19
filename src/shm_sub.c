@@ -954,7 +954,7 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t si
     uint32_t cur_priority, err_priority, subscriber_count, err_subscriber_count, diff_lyb_len;
     char *diff_lyb = NULL;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
-    int first_iter, last_subscr = 0;
+    int last_subscr = 0;
 
     while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
         /* open sub SHM and map it */
@@ -1018,25 +1018,18 @@ clear_shm:
             diff_lyb_len = lyd_lyb_data_length(diff_lyb);
         }
 
-        first_iter = 1;
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        ++cur_priority;
-        do {
-            sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
-                    cur_priority, &cur_priority, &subscriber_count, NULL);
-            if (last_subscr && (err_priority == cur_priority)) {
-                /* do not notify subscribers that did not process the previous event */
-                subscriber_count -= err_subscriber_count;
-                if (!subscriber_count) {
-                    if (first_iter) {
-                        goto clear_shm;
-                    } else {
-                        goto cleanup;
-                    }
-                }
+        sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
+                cur_priority + 1, &cur_priority, &subscriber_count, NULL);
+        if (last_subscr && (err_priority == cur_priority)) {
+            /* do not notify subscribers that did not process the previous event */
+            subscriber_count -= err_subscriber_count;
+            if (!subscriber_count) {
+                goto clear_shm;
             }
-            first_iter = 0;
+        }
 
+        do {
             /* SUB WRITE LOCK */
             if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, mod->ly_mod->name, SR_SUB_EV_ERROR))) {
                 goto cleanup;
@@ -1064,6 +1057,15 @@ clear_shm:
             if (last_subscr && (err_priority == cur_priority)) {
                 /* last priority subscribers handled */
                 goto cleanup;
+            }
+
+            /* find out what is the next priority and how many subscribers have it */
+            sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
+                    cur_priority, &cur_priority, &subscriber_count, NULL);
+
+            if (last_subscr && (err_priority == cur_priority)) {
+                /* do not notify subscribers that did not process the previous event */
+                subscriber_count -= err_subscriber_count;
             }
         } while (subscriber_count);
 
