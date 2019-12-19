@@ -1684,6 +1684,14 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
 
         sr_free_change_iter(iter);
         break;
+    case 10:
+    case 11:
+        if (st->cb_called == 10) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+        break;
     default:
         fail();
     }
@@ -1728,13 +1736,15 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_string_equal(data->schema->name, "l1");
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     lyd_free_withsiblings(data);
 
     str2 =
+    "<cont xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<interval ncwd:default=\"true\">30</interval>"
+    "</cont>"
     "<l1 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
         "<k>when-true</k>"
         "<cont1>"
@@ -1767,10 +1777,11 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* check only first node */
-    assert_string_equal(data->schema->name, "l1");
-    assert_int_equal(data->child->next->child->child->dflt, 0);
-    assert_string_equal(((struct lyd_node_leaf_list *)data->child->next->child->child)->value_str, "5");
+    /* check only second node */
+    assert_string_equal(data->schema->name, "cont");
+    assert_string_equal(data->next->schema->name, "l1");
+    assert_int_equal(data->next->child->next->child->child->dflt, 0);
+    assert_string_equal(((struct lyd_node_leaf_list *)data->next->child->next->child->child)->value_str, "5");
 
     lyd_free_withsiblings(data);
 
@@ -1791,10 +1802,11 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* check only first node */
-    assert_string_equal(data->schema->name, "l1");
-    assert_int_equal(data->child->next->child->child->dflt, 0);
-    assert_string_equal(((struct lyd_node_leaf_list *)data->child->next->child->child)->value_str, "10");
+    /* check only second first node */
+    assert_string_equal(data->schema->name, "cont");
+    assert_string_equal(data->next->schema->name, "l1");
+    assert_int_equal(data->next->child->next->child->child->dflt, 0);
+    assert_string_equal(((struct lyd_node_leaf_list *)data->next->child->next->child->child)->value_str, "10");
 
     lyd_free_withsiblings(data);
 
@@ -1815,10 +1827,11 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* check only first node */
-    assert_string_equal(data->schema->name, "l1");
-    assert_int_equal(data->child->next->child->child->dflt, 1);
-    assert_string_equal(((struct lyd_node_leaf_list *)data->child->next->child->child)->value_str, "10");
+    /* check only second node */
+    assert_string_equal(data->schema->name, "cont");
+    assert_string_equal(data->next->schema->name, "l1");
+    assert_int_equal(data->next->child->next->child->child->dflt, 1);
+    assert_string_equal(((struct lyd_node_leaf_list *)data->next->child->next->child->child)->value_str, "10");
 
     lyd_free_withsiblings(data);
 
@@ -1837,7 +1850,10 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_null(data);
+    assert_string_equal(data->schema->name, "cont");
+    assert_int_equal(data->dflt, 1);
+
+    lyd_free_withsiblings(data);
 
     pthread_barrier_wait(&st->barrier);
 
@@ -1868,6 +1884,15 @@ apply_change_done_dflt_thread(void *arg)
 
     pthread_barrier_wait(&st->barrier);
 
+    /* cleanup */
+    ret = sr_delete_item(sess, "/defaults:l2[k='key']", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    pthread_barrier_wait(&st->barrier);
+
     sr_session_stop(sess);
     return NULL;
 }
@@ -1890,11 +1915,11 @@ subscribe_change_done_dflt_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 10) && (count < 1500)) {
+    while ((st->cb_called < 12) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 10);
+    assert_int_equal(st->cb_called, 12);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
