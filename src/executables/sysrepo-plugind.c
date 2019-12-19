@@ -225,6 +225,18 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
         plugins_dir = SRPD_PLUGINS_PATH;
     }
 
+    /* create the directory if it does not exist */
+    if (access(plugins_dir, F_OK) == -1) {
+        if (errno != ENOENT) {
+            error_print(0, "Checking plugins dir existence failed (%s).", strerror(errno));
+            return -1;
+        }
+        if (mkdir(plugins_dir, 00777) == -1) {
+            error_print(0, "Creating plugins dir \"%s\" failed (%s).", plugins_dir, strerror(errno));
+            return -1;
+        }
+    }
+
     dir = opendir(plugins_dir);
     if (!dir) {
         error_print(0, "Opening \"%s\" directory failed (%s).", plugins_dir, strerror(errno));
