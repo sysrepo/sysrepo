@@ -1352,24 +1352,38 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_create_module_imps_r(const struct lys_module *ly_mod)
+sr_create_module_imps_incs_r(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
-    struct lys_module *ly_imp_mod;
+    struct lys_module *cur_mod;
     uint16_t i;
 
+    /* store all imports */
     for (i = 0; i < ly_mod->imp_size; ++i) {
-        ly_imp_mod = ly_mod->imp[i].module;
-        if (sr_ly_module_is_internal(ly_imp_mod)) {
+        cur_mod = ly_mod->imp[i].module;
+        if (sr_ly_module_is_internal(cur_mod)) {
             /* skip */
             continue;
         }
 
-        if ((err_info = sr_store_module_files(ly_imp_mod))) {
+        if ((err_info = sr_store_module_files(cur_mod))) {
             return err_info;
         }
 
-        if ((err_info = sr_create_module_imps_r(ly_imp_mod))) {
+        if ((err_info = sr_create_module_imps_incs_r(cur_mod))) {
+            return err_info;
+        }
+    }
+
+    /* store all includes */
+    for (i = 0; i < ly_mod->inc_size; ++i) {
+        cur_mod = (struct lys_module *)ly_mod->inc[i].submodule;
+
+        if ((err_info = sr_store_module_file(cur_mod))) {
+            return err_info;
+        }
+
+        if ((err_info = sr_create_module_imps_incs_r(cur_mod))) {
             return err_info;
         }
     }

@@ -1020,7 +1020,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     }
 
     /* store new module imports */
-    if ((err_info = sr_create_module_imps_r(ly_mod))) {
+    if ((err_info = sr_create_module_imps_incs_r(ly_mod))) {
         goto cleanup_unlock;
     }
 
@@ -1214,7 +1214,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     }
 
     /* store update module imports */
-    if ((err_info = sr_create_module_imps_r(upd_ly_mod))) {
+    if ((err_info = sr_create_module_imps_incs_r(upd_ly_mod))) {
         goto cleanup_unlock;
     }
 

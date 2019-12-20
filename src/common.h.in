@@ -644,12 +644,12 @@ sr_error_info_t *sr_remove_data_files(const char *mod_name);
 sr_error_info_t *sr_create_startup_file(const struct lys_module *ly_mod);
 
 /**
- * @brief Create all module import files.
+ * @brief Create all module import and include files, recursively.
  *
- * @param[in] ly_mod libyang module whose imports to create.
+ * @param[in] ly_mod libyang module whose imports and includes to create.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_create_module_imps_r(const struct lys_module *ly_mod);
+sr_error_info_t *sr_create_module_imps_incs_r(const struct lys_module *ly_mod);
 
 /**
  * @brief Get the path to a subscription SHM.
