@@ -206,6 +206,34 @@ daemon_init(int debug, sr_log_level_t log_level)
     sr_log_syslog("sysrepo-plugind", log_level);
 }
 
+/* from src/common.c */
+int
+sr_mkpath(const char *path, mode_t mode)
+{
+    char *p, *dup;
+
+    dup = strdup(path);
+    for (p = strchr(dup + 1, '/'); p; p = strchr(p + 1, '/')) {
+        *p = '\0';
+        if (mkdir(dup, mode) == -1) {
+            if (errno != EEXIST) {
+                *p = '/';
+                return -1;
+            }
+        }
+        *p = '/';
+    }
+    free(dup);
+
+    if (mkdir(path, mode) == -1) {
+        if (errno != EEXIST) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 static int
 load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
 {
@@ -231,7 +259,7 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
             error_print(0, "Checking plugins dir existence failed (%s).", strerror(errno));
             return -1;
         }
-        if (mkdir(plugins_dir, 00777) == -1) {
+        if (sr_mkpath(plugins_dir, 00777) == -1) {
             error_print(0, "Creating plugins dir \"%s\" failed (%s).", plugins_dir, strerror(errno));
             return -1;
         }
