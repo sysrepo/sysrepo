@@ -195,49 +195,42 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mod;
     const struct lys_module *cur_mod;
-    struct ly_set *set;
-    char *xpath;
+    struct ly_set *set = NULL;
+    char *xpath = NULL;
     uint8_t i, j;
 
-    /* install the module and create its startup data file */
-    if ((err_info = sr_lydmods_add_module(sr_mods, ly_mod, &sr_mod))) {
-        return err_info;
-    }
     if ((err_info = sr_store_module_files(ly_mod))) {
-        return err_info;
-    }
-    if ((err_info = sr_create_startup_file(ly_mod))) {
-        return err_info;
+        goto cleanup;
     }
 
-    /* all newly implemented modules will be added also from imports and includes */
+    if (ly_mod->implemented) {
+        /* check the module was not already added */
+        if (asprintf(&xpath, "module[name='%s']", ly_mod->name) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+        set = lyd_find_path(sr_mods, xpath);
+        if (!set) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mods)->ctx);
+            goto cleanup;
+        } else if (!set->number) {
+            /* install the module and create its startup data file */
+            if ((err_info = sr_lydmods_add_module(sr_mods, ly_mod, &sr_mod))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_create_startup_file(ly_mod))) {
+                goto cleanup;
+            }
+        } /* else module has already been added */
+    }
+
+    /* all newly implemented modules will be added also from imports and includes, recursively */
     j = 0;
     cur_mod = ly_mod;
     while (1) {
         for (i = 0; i < cur_mod->imp_size; ++i) {
-            if (cur_mod->imp[i].module->implemented) {
-                /* check the module was not added or will not be added later */
-                if (asprintf(&xpath, "*[name='%s']", cur_mod->imp[i].module->name) == -1) {
-                    SR_ERRINFO_MEM(&err_info);
-                    return err_info;
-                }
-                set = lyd_find_path(sr_mods, xpath);
-                free(xpath);
-                if (!set) {
-                    sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mods)->ctx);
-                    return err_info;
-                } else if (set->number) {
-                    ly_set_free(set);
-                    /* module has already been added/will be added separately */
-                    continue;
-                }
-                ly_set_free(set);
-
-                /* install this import module */
-                if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, cur_mod->imp[i].module))) {
-                    return err_info;
-                }
-                SR_LOG_INF("Dependency module \"%s\" was installed.", cur_mod->imp[i].module->name);
+            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, cur_mod->imp[i].module))) {
+                goto cleanup;
             }
         }
 
@@ -250,7 +243,10 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
         ++j;
     }
 
-    return NULL;
+cleanup:
+    free(xpath);
+    ly_set_free(set);
+    return err_info;
 }
 
 /**
