@@ -312,7 +312,7 @@ described in the YANG model and how would one expect an oven to behave. Here is 
 3.  Now you are going to turn the oven on and expect to be notified once it reaches the configured temperature. Also,
     the food should be inserted at that moment. So, you execute
 
-        sysrepocfg --editor=vim --datastore running
+        sysrepocfg --edit=vim --datastore running
 
     with the content
 
