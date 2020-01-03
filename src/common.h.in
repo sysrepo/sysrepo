@@ -142,6 +142,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** timeout for locking notification buffer lock, used when adding/removing notifications (ms) */
 #define SR_NOTIF_BUF_LOCK_TIMEOUT 100
 
+/** timeout for locking main SHM connection state (ms) */
+#define SR_CONN_STATE_LOCK_TIMEOUT 100
+
 /** timeout for locking main SHM and subscription SHM; maximum time an API call (sr_apply_changes()) is expected to take (s) */
 #define SR_MAIN_LOCK_TIMEOUT 15
 

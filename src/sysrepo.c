@@ -289,25 +289,29 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto cleanup;
     }
 
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(conn, SR_LOCK_WRITE_NOSTATE, 1, 0);
+
     if (conn_count && !(opts & SR_CONN_NO_SCHED_CHANGES) && !main_shm->conn_state.conn_count) {
         /* all the connections were stale so we actually can apply scheduled changes, recreate the whole connection */
         assert(!err_info);
-
-        /* SHM UNLOCK */
-        sr_shmmain_unlock(conn, SR_LOCK_WRITE_NOSTATE, 1, 0);
 
         lyd_free_withsiblings(sr_mods);
         sr_conn_free(conn);
         return sr_connect(opts, conn_p);
     }
 
+    /* CONN STATE LOCK */
+    if ((err_info = sr_mlock(&main_shm->conn_state.lock, SR_CONN_STATE_LOCK_TIMEOUT, __func__))) {
+        goto cleanup;
+    }
+
     /* add connection into state */
-    err_info = sr_shmmain_state_add_conn(conn);
+    err_info = sr_shmmain_conn_state_add(conn);
 
-    /* SHM UNLOCK */
-    sr_shmmain_unlock(conn, SR_LOCK_WRITE_NOSTATE, 1, 0);
+    /* CONN STATE UNLOCK */
+    sr_munlock(&main_shm->conn_state.lock);
 
-    /* success */
     goto cleanup;
 
 cleanup_unlock:
@@ -334,6 +338,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL, *lock_err = NULL, *tmp_err;
     uint32_t i;
+    sr_main_shm_t *main_shm;
 
     if (!conn) {
         return sr_api_ret(NULL, NULL);
@@ -357,8 +362,17 @@ sr_disconnect(sr_conn_ctx_t *conn)
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+
+    /* CONN STATE LOCK */
+    tmp_err = sr_mlock(&main_shm->conn_state.lock, SR_CONN_STATE_LOCK_TIMEOUT, __func__);
+    sr_errinfo_merge(&err_info, tmp_err);
+
     /* remove from state */
-    sr_shmmain_state_del_conn((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
+    sr_shmmain_conn_state_del(main_shm, conn->ext_shm.addr, conn, getpid());
+
+    /* CONN STATE UNLOCK */
+    sr_munlock(&main_shm->conn_state.lock);
 
     /* free cache */
     if (conn->opts & SR_CONN_CACHE_RUNNING) {

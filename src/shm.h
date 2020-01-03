@@ -229,6 +229,7 @@ typedef struct sr_main_shm_s {
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
 
     struct {
+        pthread_mutex_t lock;   /**< Process-shared lock for accessing connection state. */
         off_t conns;            /**< Array of existing connections. */
         uint32_t conn_count;    /**< Number of existing connections. */
     } conn_state;               /**< Information about connection state. */
@@ -393,7 +394,7 @@ void sr_shmmain_createunlock(int shm_lock);
  * @param[in] conn Connection to add.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_state_add_conn(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_conn_state_add(sr_conn_ctx_t *conn);
 
 /**
  * @brief Remove a connection from main SHM state.
@@ -404,7 +405,7 @@ sr_error_info_t *sr_shmmain_state_add_conn(sr_conn_ctx_t *conn);
  * @param[in] conn Connection context to delete.
  * @param[in] pid Connection PID to delete.
  */
-void sr_shmmain_state_del_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
+void sr_shmmain_conn_state_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
 
 /**
  * @brief Find a connection in main SHM state.
@@ -416,7 +417,7 @@ void sr_shmmain_state_del_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_c
  * @param[in] pid Connection PID to find.
  * @return Matching connection state, NULL if not found.
  */
-sr_conn_state_t *sr_shmmain_state_find_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
+sr_conn_state_t *sr_shmmain_conn_state_find(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
 
 /**
  * @brief Add an event pipe into main SHM state.

@@ -356,14 +356,22 @@ sr_shmmod_conn_state_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_data
     uint32_t shm_mod_idx;
     sr_conn_state_lock_t (*mod_locks)[3];
     sr_conn_state_t *conn_s;
+    sr_main_shm_t *main_shm;
 
     assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
 
-    conn_s = sr_shmmain_state_find_conn((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
-    if (!conn_s) {
-        SR_ERRINFO_INT(&err_info);
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+
+    /* CONN STATE LOCK */
+    if ((err_info = sr_mlock(&main_shm->conn_state.lock, SR_CONN_STATE_LOCK_TIMEOUT, __func__))) {
         sr_errinfo_free(&err_info);
         return;
+    }
+
+    conn_s = sr_shmmain_conn_state_find(main_shm, conn->ext_shm.addr, conn, getpid());
+    if (!conn_s) {
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup_unlock;
     }
 
     mod_locks = (sr_conn_state_lock_t (*)[3])(conn->ext_shm.addr + conn_s->mod_locks);
@@ -397,6 +405,11 @@ sr_shmmod_conn_state_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_data
             }
         }
     }
+
+cleanup_unlock:
+    /* CONN STATE UNLOCK */
+    sr_munlock(&main_shm->conn_state.lock);
+    sr_errinfo_free(&err_info);
 }
 
 sr_error_info_t *
