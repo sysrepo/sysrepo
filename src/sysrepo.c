@@ -2096,13 +2096,22 @@ sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms)
         return sr_api_ret(session, err_info);
     }
 
-    /* collect all required modules */
-    if (!SR_IS_CONVENTIONAL_DS(session->ds)) {
-        /* all modules */
-        err_info = sr_shmmod_collect_modules(session->conn, NULL, session->ds, 0, &mod_info);
-    } else {
+    switch (session->ds) {
+    case SR_DS_STARTUP:
+    case SR_DS_RUNNING:
+        if (!session->dt[session->ds].edit) {
+            /* nothing to validate */
+            goto cleanup_shm_unlock;
+        }
+
         /* only the ones modified (other modules must be valid) */
         err_info = sr_shmmod_collect_edit(session->conn, session->dt[session->ds].edit, session->ds, &mod_info);
+        break;
+    case SR_DS_CANDIDATE:
+    case SR_DS_OPERATIONAL:
+        /* all modules */
+        err_info = sr_shmmod_collect_modules(session->conn, NULL, session->ds, 0, &mod_info);
+        break;
     }
     if (err_info) {
         goto cleanup_shm_unlock;
