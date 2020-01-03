@@ -1989,17 +1989,19 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
                             goto cleanup;
                         }
                         /* sr_mod was freed */
-                        continue;
+                        break;
                     } else if (!strcmp(node->schema->name, "updated-yang")) {
                         if ((err_info = sr_lydmods_sched_finalize_module_update(sr_mod, new_ctx))) {
                             goto cleanup;
                         }
                         /* sr_mod was freed */
-                        continue;
+                        break;
                     } else if (!strcmp(node->schema->name, "changed-feature")) {
                         if ((err_info = sr_lydmods_sched_finalize_module_change_features(sr_mod, new_ctx))) {
                             goto cleanup;
                         }
+                        /* sr_mod children were freed, iteration cannot continue */
+                        break;
                     } else if (!strcmp(node->schema->name, "data-deps")
                             || !strcmp(node->schema->name, "op-deps")
                             || !strcmp(node->schema->name, "inverse-data-deps")) {
