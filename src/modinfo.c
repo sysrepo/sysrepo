@@ -157,11 +157,11 @@ sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, struct sr_mod_info_s *mod_in
     const struct lyd_node *node;
     uint32_t i;
 
-    assert(data);
-
     if (!last) {
         node = data;
     } else {
+        assert(data);
+
         /* find the last diff node */
         for (node = data; lyd_node_module(node) != last->ly_mod; node = node->next);
 
