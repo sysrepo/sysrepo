@@ -276,11 +276,7 @@ test_create2(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
-    ret = sr_discard_changes(st->sess);
-    assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth68']", 0);
     assert_int_equal(ret, SR_ERR_OK);

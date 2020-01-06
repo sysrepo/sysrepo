@@ -3148,46 +3148,70 @@ error:
 
 /**
  * @brief Check whether a descendant operation should replace a parent operation (is superior to).
+ * Also, check whether the operation is even allowed.
  *
  * @param[in] new_op Descendant operation.
  * @param[in] cur_op Parent operation (that will be inherited by default).
- * @return 0 if not, non-zero if it should.
+ * @param[out] is_superior non-zero if the new operation is superior (replace the current operation), 0 if not.
+ * @return err_info, NULL on success.
  */
-static int
-sr_edit_is_superior_op(enum edit_op new_op, enum edit_op cur_op)
+static sr_error_info_t *
+sr_edit_is_superior_op(enum edit_op new_op, enum edit_op cur_op, int *is_superior)
 {
+    sr_error_info_t *err_info = NULL;
+    *is_superior = 0;
+
     switch (cur_op) {
     case EDIT_CREATE:
-        /* cannot be overwritten */
-        return 0;
+        if ((new_op == EDIT_DELETE) || (new_op == EDIT_REPLACE) || (new_op == EDIT_REMOVE)) {
+            goto op_error;
+        }
+        /* do not overwrite */
+        break;
     case EDIT_DELETE:
-        /* cannot be overwritten */
-        return 0;
+        /* no operation allowed */
+        goto op_error;
     case EDIT_REPLACE:
+        if ((new_op == EDIT_DELETE) || (new_op == EDIT_REMOVE)) {
+            goto op_error;
+        }
+        /* do not overwrite */
+        break;
     case EDIT_REMOVE:
-        /* cannot be overwritten */
+        if ((new_op == EDIT_CREATE) || (new_op == EDIT_DELETE) || (new_op == EDIT_REPLACE) || (new_op == EDIT_MERGE)) {
+            goto op_error;
+        }
+        /* do not overwrite */
         return 0;
     case EDIT_MERGE:
-        if (new_op == EDIT_REPLACE) {
-            return 1;
+        if ((new_op == EDIT_DELETE) || (new_op == EDIT_REPLACE) || (new_op == EDIT_REMOVE)) {
+            goto op_error;
         }
-        return 0;
+        if (new_op == EDIT_REPLACE) {
+            *is_superior = 1;
+        }
+        break;
     case EDIT_NONE:
         if ((new_op == EDIT_REPLACE) || (new_op == EDIT_MERGE)) {
-            return 1;
+            *is_superior = 1;
         }
-        return 0;
+        break;
     case EDIT_ETHER:
         if ((new_op == EDIT_REPLACE) || (new_op == EDIT_MERGE) || (new_op == EDIT_NONE)) {
-            return 1;
+            *is_superior = 1;
         }
-        return 0;
-    default:
         break;
+    default:
+        SR_ERRINFO_INT(&err_info);
+        return err_info;
     }
 
-    assert(0);
-    return 0;
+    return NULL;
+
+op_error:
+    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Operation \"%s\" cannot have children with operation \"%s\".",
+            sr_edit_op2str(cur_op), sr_edit_op2str(new_op));
+    return err_info;
 }
 
 static sr_error_info_t *
@@ -3246,7 +3270,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     struct lyd_node *node, *sibling, *parent;
     const char *attr_val, *def_origin;
     enum edit_op op;
-    int opts, own_oper, next_iter_oper;
+    int opts, own_oper, next_iter_oper, is_sup;
 
     /* merge the change into existing edit */
     opts = LYD_PATH_OPT_NOPARENTRET | (!strcmp(operation, "remove") || !strcmp(operation, "delete") ? LYD_PATH_OPT_EDIT : 0);
@@ -3320,7 +3344,10 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
             } else {
                 op = sr_edit_find_oper(parent, 1, &own_oper);
                 assert(op);
-                if (!sr_edit_is_superior_op(sr_edit_str2op(def_operation), op)) {
+                if ((err_info = sr_edit_is_superior_op(sr_edit_str2op(def_operation), op, &is_sup))) {
+                    goto error;
+                }
+                if (!is_sup) {
                     /* the parent operation stays so we are done */
                     break;
                 }
@@ -3350,7 +3377,10 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
                     next_iter_oper = 1;
                 }
 
-                if (!parent->parent || !sr_edit_is_superior_op(sr_edit_str2op(def_operation), op)) {
+                if ((err_info = sr_edit_is_superior_op(sr_edit_str2op(def_operation), op, &is_sup))) {
+                    goto error;
+                }
+                if (!parent->parent || !is_sup) {
                     /* it is not, set it on this parent and finish */
                     if ((err_info = sr_edit_set_oper(parent, def_operation))) {
                         goto error;
