@@ -1947,7 +1947,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     sr_error_info_t *err_info = NULL;
     char str[22], *str_val;
 
-    SR_CHECK_ARG_APIRET(!session || !value || (!path && !value->xpath), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || (!path && (!value || !value->xpath)), session, err_info);
 
     str_val = sr_val_sr2ly_str(session->conn->ly_ctx, value, str);
     if (!path) {
@@ -1955,7 +1955,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     }
 
     /* API function */
-    return sr_set_item_str(session, path, str_val, value->origin, opts);
+    return sr_set_item_str(session, path, str_val, value ? value->origin : NULL, opts);
 }
 
 /**
