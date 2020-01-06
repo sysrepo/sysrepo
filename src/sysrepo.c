@@ -4210,29 +4210,29 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         goto cleanup_mods_unlock;
     }
 
-    /* validate the operation */
+    /* validate the operation, must be valid only at the time of execution */
     if ((err_info = sr_modinfo_op_validate(&mod_info, input_op, shm_deps, shm_dep_count, 0, &session->sid,
-            SR_OPER_CB_TIMEOUT, &cb_err_info))) {
-        goto cleanup_mods_unlock;
-    }
-    if (cb_err_info) {
-        goto cleanup_mods_unlock;
-    }
-
-    /* publish RPC in an event and wait for a reply from the last subscriber */
-    if ((err_info = sr_shmsub_rpc_notify(mod_info.conn, op_path, input, session->sid, timeout_ms, &event_id, output,
-            &cb_err_info))) {
-        goto cleanup_mods_unlock;
-    }
-
-    if (cb_err_info) {
-        /* "rpc" event failed, publish "abort" event and finish */
-        err_info = sr_shmsub_rpc_notify_abort(mod_info.conn, op_path, input, session->sid, event_id);
+            SR_OPER_CB_TIMEOUT, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info, 0);
+
+    sr_modinfo_free(&mod_info);
+    memset(&mod_info, 0, sizeof mod_info);
+
+    /* publish RPC in an event and wait for a reply from the last subscriber */
+    if ((err_info = sr_shmsub_rpc_notify(session->conn, op_path, input, session->sid, timeout_ms, &event_id, output,
+            &cb_err_info))) {
+        goto cleanup_shm_unlock;
+    }
+
+    if (cb_err_info) {
+        /* "rpc" event failed, publish "abort" event and finish */
+        err_info = sr_shmsub_rpc_notify_abort(session->conn, op_path, input, session->sid, event_id);
+        goto cleanup_shm_unlock;
+    }
 
     /* find operation */
     if ((err_info = sr_ly_find_last_parent(output, LYS_RPC | LYS_ACTION))) {
@@ -4240,8 +4240,6 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     }
 
     /* collect all required modules for output validation */
-    sr_modinfo_free(&mod_info);
-    memset(&mod_info, 0, sizeof mod_info);
     if ((err_info = sr_shmmod_collect_op(session->conn, op_path, *output, 1, &shm_deps, &shm_dep_count, &mod_info))) {
         goto cleanup_shm_unlock;
     }
