@@ -106,6 +106,7 @@ test_install_module(void **state)
 {
     struct state *st = (struct state *)*state;
     int ret;
+    const char *en_feat = "feat";
     uint32_t conn_count;
 
     /* install test-module */
@@ -126,6 +127,30 @@ test_install_module(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_remove_module(st->conn, "test-module");
     assert_int_equal(ret, SR_ERR_EXISTS);
+
+    /* install main-mod */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/main-mod.yang", TESTS_DIR "/files", &en_feat, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current internal data */
+    cmp_int_data(st->conn, "main-mod",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>main-mod</name>"
+        "<enabled-feature>feat</enabled-feature>"
+    "</module>"
+    );
+
+    ret = sr_remove_module(st->conn, "main-mod");
+    assert_int_equal(ret, SR_ERR_OK);
 }
 
 static void
