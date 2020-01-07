@@ -3456,6 +3456,7 @@ dm_record_errors(int rc, sr_error_info_t **errors, size_t *err_cnt, dm_data_info
 static void
 dm_invalidate_leaf_refs(struct lyd_node *root)
 {
+#ifdef LYD_VAL_LEAFREF
     struct lyd_node *data = NULL, *next = NULL, *iter = NULL;
     LY_TREE_FOR(root, data) {
         LY_TREE_DFS_BEGIN(data, next, iter) {
@@ -3472,6 +3473,9 @@ dm_invalidate_leaf_refs(struct lyd_node *root)
             LY_TREE_DFS_END(data, next, iter)
         }
     }
+#else
+    (void)root;
+#endif
 }
 
 static int
