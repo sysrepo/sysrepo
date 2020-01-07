@@ -184,6 +184,13 @@ if(NOT APPLE)
     target_link_libraries(sysrepo rt)
 endif()
 
+# atomic
+include(CheckLibraryExists)
+check_library_exists(atomic __atomic_fetch_add_4 "" HAVE_ATOMIC)
+if(HAVE_ATOMIC)
+    target_link_libraries(sysrepo atomic)
+endif()
+
 # libdl
 target_link_libraries(sysrepo-plugind sysrepo dl)
 
