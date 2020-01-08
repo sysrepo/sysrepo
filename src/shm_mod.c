@@ -1007,10 +1007,25 @@ sr_error_info_t *
 sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid_t del_pid)
 {
     sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_s mod_info;
+    sr_sid_t sid = {0};
     const struct lys_module *ly_mod;
     sr_mod_t *shm_mod;
     struct lyd_node *diff = NULL;
     char *path = NULL;
+    int lock_upgraded = 0;
+
+    memset(&mod_info, 0, sizeof mod_info);
+
+    /* collect all modules */
+    if ((err_info = sr_shmmod_collect_modules(conn, NULL, SR_DS_OPERATIONAL, 0, &mod_info))) {
+        goto cleanup;
+    }
+
+    /* MODULES READ LOCK (but setting flag for guaranteed later upgrade success) */
+    if ((err_info = sr_shmmod_modinfo_rdlock(&mod_info, 1, sid))) {
+        goto cleanup;
+    }
 
     SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
         ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->ext_shm.addr + shm_mod->name, NULL, 1);
@@ -1019,7 +1034,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
         /* check we have permissions to open operational file */
         free(path);
         if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_OPERATIONAL, 1, &path))) {
-            goto cleanup;
+            goto cleanup_unlock;
         }
         errno = 0;
         if (eaccess(path, R_OK) == -1) {
@@ -1030,27 +1045,40 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
 
             /* error */
             SR_ERRINFO_SYSERRNO(&err_info, "eaccess");
-            goto cleanup;
+            goto cleanup_unlock;
         }
 
         /* trim diff of the module */
         if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_OPERATIONAL, &diff))) {
-            goto cleanup;
+            goto cleanup_unlock;
         }
 
         if (diff) {
+            if (!lock_upgraded) {
+                /* MODULES WRITE LOCK (upgrade) */
+                if ((err_info = sr_shmmod_modinfo_rdlock_upgrade(&mod_info, sid))) {
+                    goto cleanup_unlock;
+                }
+
+                lock_upgraded = 1;
+            }
             if ((err_info = sr_diff_del_conn(&diff, del_conn, del_pid))) {
-                goto cleanup;
+                goto cleanup_unlock;
             }
             if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
-                goto cleanup;
+                goto cleanup_unlock;
             }
             lyd_free_withsiblings(diff);
             diff = NULL;
         }
     }
 
+cleanup_unlock:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info, 1);
+
 cleanup:
+    sr_modinfo_free(&mod_info);
     free(path);
     lyd_free_withsiblings(diff);
     return err_info;
