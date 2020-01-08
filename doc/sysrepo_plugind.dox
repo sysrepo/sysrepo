@@ -16,7 +16,8 @@ that then handle events on their own. Cleanup usually stops these subscriptions.
 
 @ref plugin_api
 
-## Plugins Path @anchor plugins_path
+## Plugins Path
+@anchor plugins_path
 
 This is the path where plugins should be stored and nothing else. The default one can be changed during compilation
 (`PLUGINS_PATH` option) but `$SRPD_PLUGINS_PATH` environment variable will always overwrite this default path, if set.

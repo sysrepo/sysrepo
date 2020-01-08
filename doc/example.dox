@@ -5,7 +5,8 @@ This page includes a guide on how to write a simple YANG module and then get Sys
 as a [plugin](@ref sysrepo_plugind) or a stand-alone daemon. It is best to have at least a [basic understanding](@ref about)
 of Sysrepo before continuing.
 
-# Simple YANG module @anchor yang_module
+# Simple YANG module
+@anchor yang_module
 
 For any device you want to manage with Sysrepo you will need a [YANG](@ref rfcs) module of the device. The language
 is quite rich and allows for description of almost any system. As an example, an **oven** will be fully managed by Sysrepo.
@@ -98,7 +99,8 @@ module oven {
 }
 ~~~~~~~~~~~~~~
 
-# Oven Plugin @anchor oven_plugin
+# Oven Plugin
+@anchor oven_plugin
 
 Here it will be step-by-step explained how to write a proper [plugin](@ref sysrepo_plugind) that will manage the oven.
 All code snippets are taken from the actual implementation.
