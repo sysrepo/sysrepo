@@ -4,6 +4,7 @@ set(SYSREPO_DESC "YANG-based system repository for all-around configuration mana
 include(GNUInstallDirs)
 include(CheckSymbolExists)
 include(CheckFunctionExists)
+include(CheckLibraryExists)
 include(CheckIncludeFile)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
@@ -185,6 +186,12 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 # librt (shm_open, shm_unlink, not required on OSX)
 if(NOT APPLE)
     target_link_libraries(sysrepo rt)
+endif()
+
+# atomic
+check_library_exists(atomic __atomic_fetch_add_4 "" HAVE_ATOMIC)
+if(HAVE_ATOMIC)
+    target_link_libraries(sysrepo atomic)
 endif()
 
 # libyang
