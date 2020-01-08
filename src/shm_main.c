@@ -1947,12 +1947,15 @@ error_remap_unlock:
 void
 sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods)
 {
+    sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
 
     assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_NOSTATE));
 
     /* update information about the held lock */
-    sr_shmmain_conn_state_lock_update(conn, mode, 0);
+    if ((err_info = sr_shmmain_conn_state_lock_update(conn, mode, 0))) {
+        sr_errinfo_free(&err_info);
+    }
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
     assert(main_shm);
