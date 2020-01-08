@@ -289,25 +289,29 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto cleanup;
     }
 
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(conn, SR_LOCK_WRITE_NOSTATE, 1, 0);
+
     if (conn_count && !(opts & SR_CONN_NO_SCHED_CHANGES) && !main_shm->conn_state.conn_count) {
         /* all the connections were stale so we actually can apply scheduled changes, recreate the whole connection */
         assert(!err_info);
-
-        /* SHM UNLOCK */
-        sr_shmmain_unlock(conn, SR_LOCK_WRITE_NOSTATE, 1, 0);
 
         lyd_free_withsiblings(sr_mods);
         sr_conn_free(conn);
         return sr_connect(opts, conn_p);
     }
 
+    /* CONN STATE LOCK */
+    if ((err_info = sr_mlock(&main_shm->conn_state.lock, SR_CONN_STATE_LOCK_TIMEOUT, __func__))) {
+        goto cleanup;
+    }
+
     /* add connection into state */
-    err_info = sr_shmmain_state_add_conn(conn);
+    err_info = sr_shmmain_conn_state_add(conn);
 
-    /* SHM UNLOCK */
-    sr_shmmain_unlock(conn, SR_LOCK_WRITE_NOSTATE, 1, 0);
+    /* CONN STATE UNLOCK */
+    sr_munlock(&main_shm->conn_state.lock);
 
-    /* success */
     goto cleanup;
 
 cleanup_unlock:
@@ -334,6 +338,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL, *lock_err = NULL, *tmp_err;
     uint32_t i;
+    sr_main_shm_t *main_shm;
 
     if (!conn) {
         return sr_api_ret(NULL, NULL);
@@ -357,8 +362,17 @@ sr_disconnect(sr_conn_ctx_t *conn)
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+
+    /* CONN STATE LOCK */
+    tmp_err = sr_mlock(&main_shm->conn_state.lock, SR_CONN_STATE_LOCK_TIMEOUT, __func__);
+    sr_errinfo_merge(&err_info, tmp_err);
+
     /* remove from state */
-    sr_shmmain_state_del_conn((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
+    sr_shmmain_conn_state_del(main_shm, conn->ext_shm.addr, conn, getpid());
+
+    /* CONN STATE UNLOCK */
+    sr_munlock(&main_shm->conn_state.lock);
 
     /* free cache */
     if (conn->opts & SR_CONN_CACHE_RUNNING) {
@@ -1020,7 +1034,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     }
 
     /* store new module imports */
-    if ((err_info = sr_create_module_imps_r(ly_mod))) {
+    if ((err_info = sr_create_module_imps_incs_r(ly_mod))) {
         goto cleanup_unlock;
     }
 
@@ -1214,7 +1228,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     }
 
     /* store update module imports */
-    if ((err_info = sr_create_module_imps_r(upd_ly_mod))) {
+    if ((err_info = sr_create_module_imps_incs_r(upd_ly_mod))) {
         goto cleanup_unlock;
     }
 
@@ -1839,7 +1853,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
         if (!*data) {
             *data = node;
         } else {
-            if (lyd_merge(*data, node, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+            if (lyd_merge(*data, node, LYD_OPT_DESTRUCT)) {
                 sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
                 lyd_free_withsiblings(node);
                 lyd_free_withsiblings(*data);
@@ -1933,15 +1947,15 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     sr_error_info_t *err_info = NULL;
     char str[22], *str_val;
 
-    SR_CHECK_ARG_APIRET(!session || !value || (!path && !value->xpath), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || (!path && (!value || !value->xpath)), session, err_info);
 
-    str_val = sr_val_sr2ly_str(session->conn->ly_ctx, value, str);
     if (!path) {
         path = value->xpath;
     }
+    str_val = sr_val_sr2ly_str(session->conn->ly_ctx, value, path, str);
 
     /* API function */
-    return sr_set_item_str(session, path, str_val, value->origin, opts);
+    return sr_set_item_str(session, path, str_val, value ? value->origin : NULL, opts);
 }
 
 /**
@@ -2096,13 +2110,22 @@ sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms)
         return sr_api_ret(session, err_info);
     }
 
-    /* collect all required modules */
-    if (!SR_IS_CONVENTIONAL_DS(session->ds)) {
-        /* all modules */
-        err_info = sr_shmmod_collect_modules(session->conn, NULL, session->ds, 0, &mod_info);
-    } else {
+    switch (session->ds) {
+    case SR_DS_STARTUP:
+    case SR_DS_RUNNING:
+        if (!session->dt[session->ds].edit) {
+            /* nothing to validate */
+            goto cleanup_shm_unlock;
+        }
+
         /* only the ones modified (other modules must be valid) */
         err_info = sr_shmmod_collect_edit(session->conn, session->dt[session->ds].edit, session->ds, &mod_info);
+        break;
+    case SR_DS_CANDIDATE:
+    case SR_DS_OPERATIONAL:
+        /* all modules */
+        err_info = sr_shmmod_collect_modules(session->conn, NULL, session->ds, 0, &mod_info);
+        break;
     }
     if (err_info) {
         goto cleanup_shm_unlock;
@@ -4059,7 +4082,7 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
 
     /* transform input into a data tree */
     for (i = 0; i < input_cnt; ++i) {
-        val_str = sr_val_sr2ly_str(session->conn->ly_ctx, &input[i], buf);
+        val_str = sr_val_sr2ly_str(session->conn->ly_ctx, &input[i], input[i].xpath, buf);
         if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, input[i].xpath, val_str, input[i].dflt, 0, &input_tree))) {
             goto cleanup;
         }
@@ -4187,29 +4210,29 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         goto cleanup_mods_unlock;
     }
 
-    /* validate the operation */
+    /* validate the operation, must be valid only at the time of execution */
     if ((err_info = sr_modinfo_op_validate(&mod_info, input_op, shm_deps, shm_dep_count, 0, &session->sid,
-            SR_OPER_CB_TIMEOUT, &cb_err_info))) {
-        goto cleanup_mods_unlock;
-    }
-    if (cb_err_info) {
-        goto cleanup_mods_unlock;
-    }
-
-    /* publish RPC in an event and wait for a reply from the last subscriber */
-    if ((err_info = sr_shmsub_rpc_notify(mod_info.conn, op_path, input, session->sid, timeout_ms, &event_id, output,
-            &cb_err_info))) {
-        goto cleanup_mods_unlock;
-    }
-
-    if (cb_err_info) {
-        /* "rpc" event failed, publish "abort" event and finish */
-        err_info = sr_shmsub_rpc_notify_abort(mod_info.conn, op_path, input, session->sid, event_id);
+            SR_OPER_CB_TIMEOUT, &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
 
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info, 0);
+
+    sr_modinfo_free(&mod_info);
+    memset(&mod_info, 0, sizeof mod_info);
+
+    /* publish RPC in an event and wait for a reply from the last subscriber */
+    if ((err_info = sr_shmsub_rpc_notify(session->conn, op_path, input, session->sid, timeout_ms, &event_id, output,
+            &cb_err_info))) {
+        goto cleanup_shm_unlock;
+    }
+
+    if (cb_err_info) {
+        /* "rpc" event failed, publish "abort" event and finish */
+        err_info = sr_shmsub_rpc_notify_abort(session->conn, op_path, input, session->sid, event_id);
+        goto cleanup_shm_unlock;
+    }
 
     /* find operation */
     if ((err_info = sr_ly_find_last_parent(output, LYS_RPC | LYS_ACTION))) {
@@ -4217,8 +4240,6 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     }
 
     /* collect all required modules for output validation */
-    sr_modinfo_free(&mod_info);
-    memset(&mod_info, 0, sizeof mod_info);
     if ((err_info = sr_shmmod_collect_op(session->conn, op_path, *output, 1, &shm_deps, &shm_dep_count, &mod_info))) {
         goto cleanup_shm_unlock;
     }
@@ -4503,7 +4524,7 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t 
 
     /* transform values into a data tree */
     for (i = 0; i < values_cnt; ++i) {
-        val_str = sr_val_sr2ly_str(session->conn->ly_ctx, &values[i], buf);
+        val_str = sr_val_sr2ly_str(session->conn->ly_ctx, &values[i], values[i].xpath, buf);
         if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, values[i].xpath, val_str, values[i].dflt, 0, &notif_tree))) {
             goto cleanup;
         }

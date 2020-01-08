@@ -493,14 +493,26 @@ main(int argc, char** argv)
             search_dir = optarg;
             break;
         case 'e':
+            if (operation && (operation != 'i') && (operation != 'c')) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
             features = realloc(features, (feat_count + 1) * sizeof *features);
             features[feat_count++] = optarg;
             break;
         case 'd':
+            if (operation && (operation != 'c')) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
             dis_features = realloc(dis_features, (dis_feat_count + 1) * sizeof *dis_features);
             dis_features[dis_feat_count++] = optarg;
             break;
         case 'r':
+            if (operation && (operation != 'c')) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
             if (!strcmp(optarg, "on") || !strcmp(optarg, "1")) {
                 replay = 1;
             } else if (!strcmp(optarg, "off") || !strcmp(optarg, "0")) {
@@ -511,6 +523,10 @@ main(int argc, char** argv)
             }
             break;
         case 'o':
+            if (operation && (operation != 'c')) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
             if (owner) {
                 error_print(0, "Owner already specified");
                 goto cleanup;
@@ -518,6 +534,10 @@ main(int argc, char** argv)
             owner = optarg;
             break;
         case 'g':
+            if (operation && (operation != 'c')) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
             if (group) {
                 error_print(0, "Group already specified");
                 goto cleanup;
@@ -525,6 +545,10 @@ main(int argc, char** argv)
             group = optarg;
             break;
         case 'p':
+            if (operation && (operation != 'c')) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
             if ((int)perms != -1) {
                 error_print(0, "Permissions already specified");
                 goto cleanup;

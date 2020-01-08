@@ -70,7 +70,7 @@ else ()
       ${CMAKE_INSTALL_PREFIX}/lib
   )
 
-  if ()
+  if (LIBYANG_LIBRARIES AND LIBYANG_INCLUDE_DIRS)
     set(LIBYANG_FOUND TRUE)
   else ()
     set(LIBYANG_FOUND FALSE)

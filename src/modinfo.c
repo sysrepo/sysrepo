@@ -157,11 +157,11 @@ sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, struct sr_mod_info_s *mod_in
     const struct lyd_node *node;
     uint32_t i;
 
-    assert(data);
-
     if (!last) {
         node = data;
     } else {
+        assert(data);
+
         /* find the last diff node */
         for (node = data; lyd_node_module(node) != last->ly_mod; node = node->next);
 
@@ -1809,7 +1809,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 }
 
                 /* store the new diff */
-                if (change && (err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
+                if (change && (err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
                     goto cleanup;
                 }
                 lyd_free_withsiblings(diff);
@@ -1819,7 +1819,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 mod_data = sr_module_data_unlink(&mod_info->data, mod->ly_mod);
 
                 /* store the new data */
-                if ((err_info = sr_module_file_data_set(mod->ly_mod->name, mod_info->ds, create_flags, mod_data))) {
+                if ((err_info = sr_module_file_data_set(mod->ly_mod->name, mod_info->ds, mod_data, create_flags, SR_FILE_PERM))) {
                     goto cleanup;
                 }
 
@@ -1855,7 +1855,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                     if ((err_info = sr_diff_mod_update(&diff, mod->ly_mod, mod_data))) {
                         goto cleanup;
                     }
-                    if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
+                    if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
                         goto cleanup;
                     }
                     lyd_free_withsiblings(diff);

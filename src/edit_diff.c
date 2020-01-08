@@ -37,6 +37,7 @@ enum edit_op {
     EDIT_FINISH = -1,
     EDIT_CONTINUE = 0,
     EDIT_MOVE,
+    EDIT_CASE_REMOVE,
 
     /* sysrepo-specific */
     EDIT_ETHER,
@@ -855,6 +856,54 @@ sr_edit_diff_set_origin(struct lyd_node *node, const char *origin, int overwrite
 }
 
 /**
+ * @brief Insert node into diff. We cannot use libyang insert because data from 2 cases are allowed
+ * to exist simultaneously.
+ *
+ * @param[in] node Node to insert.
+ * @param[in] diff_parent Current sysrepo diff parent.
+ * @param[in,out] diff_root Current sysrepo diff root node.
+ */
+static void
+sr_diff_insert(struct lyd_node *node, struct lyd_node *diff_parent, struct lyd_node **diff_root)
+{
+    /* insert node into diff, do it manually because we must allow data from 2 cases to exist in one data tree */
+    if (diff_parent) {
+        /* there is a parent, insert as the last child */
+        if (!diff_parent->child) {
+            diff_parent->child = node;
+        } else {
+            node->prev = diff_parent->child->prev;
+            node->prev->next = node;
+            diff_parent->child->prev = node;
+        }
+        node->parent = diff_parent;
+
+        /*if (lyd_insert(diff_parent, node)) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(diff_parent)->ctx);
+            goto error;
+        }*/
+    } else {
+        /* there is no parent */
+        assert(!node->parent);
+        if (!*diff_root) {
+            /* there is no sibling, just assign */
+            *diff_root = node;
+        } else {
+            /* there is a sibling, insert as the last sibling */
+            assert(!(*diff_root)->prev->next);
+            node->prev = (*diff_root)->prev;
+            node->prev->next = node;
+            (*diff_root)->prev = node;
+
+            /*if (lyd_insert_after((*diff_root)->prev, node)) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(*diff_root)->ctx);
+                goto error;
+            }*/
+        }
+    }
+}
+
+/**
  * @brief Add a node from data tree/edit into sysrepo diff.
  *
  * @param[in] node Changed node.
@@ -863,7 +912,7 @@ sr_edit_diff_set_origin(struct lyd_node *node, const char *origin, int overwrite
  * @param[in] op Diff operation.
  * @param[in] no_dup Do not duplicate the tree (handy when deleting subtree while having datastore).
  * @param[in] diff_parent Current sysrepo diff parent.
- * @param[in,out] diff_root Current sysrepo diff first sibling.
+ * @param[in,out] diff_root Current sysrepo diff root node.
  * @param[out] diff_node Created diff node.
  * @return err_info, NULL on error.
  */
@@ -899,27 +948,7 @@ sr_edit_diff_add(struct lyd_node *node, const char *attr_val, const char *prev_a
     }
 
     /* insert node into diff */
-    if (diff_parent) {
-        /* there is a parent, insert as the last child */
-        if (lyd_insert(diff_parent, node_dup)) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(diff_parent)->ctx);
-            goto error;
-        }
-    } else {
-        /* there is no parent */
-        assert(!node->parent);
-        if (!*diff_root) {
-            /* there is no sibling, just assign */
-            *diff_root = node_dup;
-        } else {
-            /* there is a sibling, insert as the last sibling */
-            assert(!(*diff_root)->prev->next);
-            if (lyd_insert_after((*diff_root)->prev, node_dup)) {
-                sr_errinfo_new_ly(&err_info, lyd_node_module(*diff_root)->ctx);
-                goto error;
-            }
-        }
-    }
+    sr_diff_insert(node_dup, diff_parent, diff_root);
 
     /* add specific attributes */
     if ((err_info = sr_diff_add_attrs(node_dup, attr_val, prev_attr_val, op))) {
@@ -1420,7 +1449,7 @@ sr_edit_apply_replace(struct lyd_node *match_node, int val_equal, const struct l
  * @param[in,out] diff_root Sysrepo diff root node.
  * @param[out] diff_node Created diff node.
  * @param[out] next_op Next operation to be performed with these nodes.
- * @param[out] change Wdether some data change occured.
+ * @param[out] change Whether some data change occured.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -1429,6 +1458,8 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
         struct lyd_node **diff_node, enum edit_op *next_op, int *change)
 {
     sr_error_info_t *err_info = NULL;
+    struct lyd_node *node;
+    struct lys_node *cur_case, *new_case;
 
     if (*match_node) {
         sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Node \"%s\" to be created already exists.", edit_node->schema->name);
@@ -1439,6 +1470,29 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
         /* handle user-ordered lists separately */
         *next_op = EDIT_MOVE;
         return NULL;
+    }
+
+    if (lys_parent(edit_node->schema) && (lys_parent(edit_node->schema)->nodetype == LYS_CASE)) {
+        new_case = lys_parent(edit_node->schema);
+
+        /* handle cases correctly, try to find other cases data */
+        LY_TREE_FOR(*first_node ? *first_node : sr_lyd_child(parent_node, 1), node) {
+            if (!lys_parent(node->schema) || (lys_parent(node->schema)->nodetype != LYS_CASE)) {
+                /* not data of a case */
+                continue;
+            }
+            cur_case = lys_parent(node->schema);
+
+            if ((cur_case == new_case) || (lys_parent(cur_case) != lys_parent(new_case))) {
+                /* either the same case or some other choice, not interesting */
+                continue;
+            }
+
+            /* data from some other case found, they need to be removed first */
+            *match_node = node;
+            *next_op = EDIT_CASE_REMOVE;
+            return NULL;
+        }
     }
 
     /* create and insert the node at the correct place */
@@ -1543,7 +1597,7 @@ sr_edit_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *match = NULL, *child, *next, *edit_match, *diff_node = NULL;
-    enum edit_op op, next_op;
+    enum edit_op op, next_op, prev_op = 0;
     enum insert_val insert;
     const char *key_or_value, *origin;
     int val_equal;
@@ -1557,6 +1611,7 @@ sr_edit_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
         return err_info;
     }
 
+reapply:
     /* find an equal node in the current data */
     if (flags & EDIT_APPLY_CHECK_OP_R) {
         /* we have no data */
@@ -1608,6 +1663,9 @@ sr_edit_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
                 goto op_error;
             }
             break;
+        case EDIT_CASE_REMOVE:
+            prev_op = next_op;
+            /* fallthrough */
         case EDIT_REMOVE:
             if ((err_info = sr_edit_apply_remove(first_node, parent_node, match, diff_parent, diff_root, &diff_node,
                     &next_op, &flags, change))) {
@@ -1643,7 +1701,12 @@ sr_edit_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
         return err_info;
     }
 
-    if (next_op == EDIT_FINISH) {
+    if (prev_op == EDIT_CASE_REMOVE) {
+        /* we have removed one subtree of data from another case, try this whole edit again */
+        prev_op = 0;
+        diff_node = NULL;
+        goto reapply;
+    } else if (next_op == EDIT_FINISH) {
         return NULL;
     }
 
@@ -2132,7 +2195,7 @@ sr_diff_merge_delete(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
  *
  * @param[in] src_node Source diff node.
  * @param[in] diff_parent Current sysrepo diff parent.
- * @param[in,out] diff_root Current sysrepo diff first sibling.
+ * @param[in,out] diff_root Current sysrepo diff root node.
  * @param[out] diff_node Created diff node.
  * @return err_info, NULL on error.
  */
@@ -2151,27 +2214,7 @@ sr_diff_add(const struct lyd_node *src_node, struct lyd_node *diff_parent, struc
     }
 
     /* insert node into diff */
-    if (diff_parent) {
-        /* there is a parent, insert as the last child */
-        if (lyd_insert(diff_parent, node_dup)) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(diff_parent)->ctx);
-            return err_info;
-        }
-    } else {
-        /* there is no parent */
-        assert(!src_node->parent);
-        if (!*diff_root) {
-            /* there is no sibling, just assign */
-            *diff_root = node_dup;
-        } else {
-            /* there is a sibling, insert as the last sibling */
-            assert(!(*diff_root)->prev->next);
-            if (lyd_insert_after((*diff_root)->prev, node_dup)) {
-                sr_errinfo_new_ly(&err_info, lyd_node_module(*diff_root)->ctx);
-                return err_info;
-            }
-        }
-    }
+    sr_diff_insert(node_dup, diff_parent, diff_root);
 
     *diff_node = node_dup;
     return NULL;
@@ -3105,46 +3148,70 @@ error:
 
 /**
  * @brief Check whether a descendant operation should replace a parent operation (is superior to).
+ * Also, check whether the operation is even allowed.
  *
  * @param[in] new_op Descendant operation.
  * @param[in] cur_op Parent operation (that will be inherited by default).
- * @return 0 if not, non-zero if it should.
+ * @param[out] is_superior non-zero if the new operation is superior (replace the current operation), 0 if not.
+ * @return err_info, NULL on success.
  */
-static int
-sr_edit_is_superior_op(enum edit_op new_op, enum edit_op cur_op)
+static sr_error_info_t *
+sr_edit_is_superior_op(enum edit_op new_op, enum edit_op cur_op, int *is_superior)
 {
+    sr_error_info_t *err_info = NULL;
+    *is_superior = 0;
+
     switch (cur_op) {
     case EDIT_CREATE:
-        /* cannot be overwritten */
-        return 0;
+        if ((new_op == EDIT_DELETE) || (new_op == EDIT_REPLACE) || (new_op == EDIT_REMOVE)) {
+            goto op_error;
+        }
+        /* do not overwrite */
+        break;
     case EDIT_DELETE:
-        /* cannot be overwritten */
-        return 0;
+        /* no operation allowed */
+        goto op_error;
     case EDIT_REPLACE:
+        if ((new_op == EDIT_DELETE) || (new_op == EDIT_REMOVE)) {
+            goto op_error;
+        }
+        /* do not overwrite */
+        break;
     case EDIT_REMOVE:
-        /* cannot be overwritten */
+        if ((new_op == EDIT_CREATE) || (new_op == EDIT_DELETE) || (new_op == EDIT_REPLACE) || (new_op == EDIT_MERGE)) {
+            goto op_error;
+        }
+        /* do not overwrite */
         return 0;
     case EDIT_MERGE:
-        if (new_op == EDIT_REPLACE) {
-            return 1;
+        if ((new_op == EDIT_DELETE) || (new_op == EDIT_REPLACE) || (new_op == EDIT_REMOVE)) {
+            goto op_error;
         }
-        return 0;
+        if (new_op == EDIT_REPLACE) {
+            *is_superior = 1;
+        }
+        break;
     case EDIT_NONE:
         if ((new_op == EDIT_REPLACE) || (new_op == EDIT_MERGE)) {
-            return 1;
+            *is_superior = 1;
         }
-        return 0;
+        break;
     case EDIT_ETHER:
         if ((new_op == EDIT_REPLACE) || (new_op == EDIT_MERGE) || (new_op == EDIT_NONE)) {
-            return 1;
+            *is_superior = 1;
         }
-        return 0;
-    default:
         break;
+    default:
+        SR_ERRINFO_INT(&err_info);
+        return err_info;
     }
 
-    assert(0);
-    return 0;
+    return NULL;
+
+op_error:
+    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Operation \"%s\" cannot have children with operation \"%s\".",
+            sr_edit_op2str(cur_op), sr_edit_op2str(new_op));
+    return err_info;
 }
 
 static sr_error_info_t *
@@ -3203,7 +3270,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     struct lyd_node *node, *sibling, *parent;
     const char *attr_val, *def_origin;
     enum edit_op op;
-    int opts, own_oper, next_iter_oper;
+    int opts, own_oper, next_iter_oper, is_sup;
 
     /* merge the change into existing edit */
     opts = LYD_PATH_OPT_NOPARENTRET | (!strcmp(operation, "remove") || !strcmp(operation, "delete") ? LYD_PATH_OPT_EDIT : 0);
@@ -3277,7 +3344,10 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
             } else {
                 op = sr_edit_find_oper(parent, 1, &own_oper);
                 assert(op);
-                if (!sr_edit_is_superior_op(sr_edit_str2op(def_operation), op)) {
+                if ((err_info = sr_edit_is_superior_op(sr_edit_str2op(def_operation), op, &is_sup))) {
+                    goto error;
+                }
+                if (!is_sup) {
                     /* the parent operation stays so we are done */
                     break;
                 }
@@ -3307,7 +3377,10 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
                     next_iter_oper = 1;
                 }
 
-                if (!parent->parent || !sr_edit_is_superior_op(sr_edit_str2op(def_operation), op)) {
+                if ((err_info = sr_edit_is_superior_op(sr_edit_str2op(def_operation), op, &is_sup))) {
+                    goto error;
+                }
+                if (!parent->parent || !is_sup) {
                     /* it is not, set it on this parent and finish */
                     if ((err_info = sr_edit_set_oper(parent, def_operation))) {
                         goto error;
@@ -3430,7 +3503,7 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
 
             /* in case of lists we want to also skip all their keys */
             if ((*node)->schema->nodetype == LYS_LIST) {
-                *idx += ((struct lys_node_list *)*node)->keys_size;
+                *idx += ((struct lys_node_list *)(*node)->schema)->keys_size;
             }
             continue;
         } else if (attr->value_str[0] == 'c') {

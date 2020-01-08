@@ -1204,7 +1204,7 @@ sr_ly_module_is_internal(const struct lys_module *ly_mod)
         return 1;
     } else if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->rev[0].date, "2017-08-17")) {
         return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-yang-library") && !strcmp(ly_mod->rev[0].date, "2018-01-17")) {
+    } else if (!strcmp(ly_mod->name, "ietf-yang-library") && !strcmp(ly_mod->rev[0].date, "2019-01-04")) {
         return 1;
     }
 
@@ -1278,12 +1278,45 @@ sr_remove_data_files(const char *mod_name)
     return NULL;
 }
 
+/**
+ * @brief Check whether a module is internal libyang or sysrepo module.
+ *
+ * @param[in] ly_mod Module to check.
+ * @return 0 if not, non-zero if it is.
+ */
+static int
+sr_module_is_internal(const struct lys_module *ly_mod)
+{
+    if (!ly_mod->rev_size) {
+        return 0;
+    }
+
+    if (sr_ly_module_is_internal(ly_mod)) {
+        return 1;
+    }
+
+    if (!strcmp(ly_mod->name, "ietf-netconf")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-netconf-with-defaults") && !strcmp(ly_mod->rev[0].date, "2011-06-01")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-origin") && !strcmp(ly_mod->rev[0].date, "2018-02-14")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-netconf-notifications") && !strcmp(ly_mod->rev[0].date, "2012-02-06")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "sysrepo")) {
+        return 1;
+    }
+
+    return 0;
+}
+
 sr_error_info_t *
 sr_create_startup_file(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *root = NULL;
     char *path = NULL;
+    mode_t mode;
 
     /* check whether the files does not exist (valid when the module was just updated) */
     if ((err_info = sr_path_startup_file(ly_mod->name, &path))) {
@@ -1300,8 +1333,14 @@ sr_create_startup_file(const struct lys_module *ly_mod)
         goto cleanup;
     }
 
+    if (sr_module_is_internal(ly_mod)) {
+        mode = SR_INT_FILE_PERM;
+    } else {
+        mode = SR_FILE_PERM;
+    }
+
     /* print them into the startup file */
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, O_CREAT | O_EXCL, root))) {
+    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, root, O_CREAT | O_EXCL, mode))) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create startup file of \"%s\".", ly_mod->name);
         goto cleanup;
     }
@@ -1313,24 +1352,38 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_create_module_imps_r(const struct lys_module *ly_mod)
+sr_create_module_imps_incs_r(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
-    struct lys_module *ly_imp_mod;
+    struct lys_module *cur_mod;
     uint16_t i;
 
+    /* store all imports */
     for (i = 0; i < ly_mod->imp_size; ++i) {
-        ly_imp_mod = ly_mod->imp[i].module;
-        if (sr_ly_module_is_internal(ly_imp_mod)) {
+        cur_mod = ly_mod->imp[i].module;
+        if (sr_ly_module_is_internal(cur_mod)) {
             /* skip */
             continue;
         }
 
-        if ((err_info = sr_store_module_files(ly_imp_mod))) {
+        if ((err_info = sr_store_module_files(cur_mod))) {
             return err_info;
         }
 
-        if ((err_info = sr_create_module_imps_r(ly_imp_mod))) {
+        if ((err_info = sr_create_module_imps_incs_r(cur_mod))) {
+            return err_info;
+        }
+    }
+
+    /* store all includes */
+    for (i = 0; i < ly_mod->inc_size; ++i) {
+        cur_mod = (struct lys_module *)ly_mod->inc[i].submodule;
+
+        if ((err_info = sr_store_module_file(cur_mod))) {
+            return err_info;
+        }
+
+        if ((err_info = sr_create_module_imps_incs_r(cur_mod))) {
             return err_info;
         }
     }
@@ -2796,7 +2849,7 @@ error:
 }
 
 char *
-sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, char *buf)
+sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, char *buf)
 {
     struct lys_node_leaf *sleaf;
 
@@ -2820,7 +2873,7 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, char *buf)
         return sr_val->data.bool_val ? "true" : "false";
     case SR_DECIMAL64_T:
         /* get fraction-digits */
-        sleaf = (struct lys_node_leaf *)ly_ctx_get_node(ctx, NULL, sr_val->xpath, 0);
+        sleaf = (struct lys_node_leaf *)ly_ctx_get_node(ctx, NULL, xpath, 0);
         if (!sleaf) {
             return NULL;
         }
@@ -3739,7 +3792,7 @@ sr_module_file_data_append(const struct lys_module *ly_mod, sr_datastore_t ds, s
 
 retry_open:
     /* prepare correct file path */
-    if (ds ==  SR_DS_STARTUP) {
+    if (ds == SR_DS_STARTUP) {
         err_info = sr_path_startup_file(ly_mod->name, &path);
     } else {
         err_info = sr_path_ds_shm(ly_mod->name, ds, 0, &path);
@@ -3799,7 +3852,8 @@ error:
 }
 
 sr_error_info_t *
-sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, int create_flags, struct lyd_node *mod_data)
+sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data, int create_flags,
+        mode_t create_mode)
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
@@ -3826,9 +3880,9 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, int create_flag
 
     /* open */
     if (ds == SR_DS_STARTUP) {
-        fd = open(path, O_WRONLY | O_TRUNC | create_flags, SR_FILE_PERM);
+        fd = open(path, O_WRONLY | O_TRUNC | create_flags, create_mode);
     } else {
-        fd = shm_open(path, O_WRONLY | O_TRUNC | create_flags, SR_FILE_PERM);
+        fd = shm_open(path, O_WRONLY | O_TRUNC | create_flags, create_mode);
     }
     umask(um);
     if (fd == -1) {
@@ -3895,7 +3949,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     if ((err_info = sr_diff_mod_update(&diff, ly_mod, mod_info.data))) {
         goto cleanup;
     }
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
+    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
         goto cleanup;
     }
 

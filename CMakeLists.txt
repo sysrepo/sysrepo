@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 2.8.12)
 project(sysrepo)
-set(SYSREPO_DESC "YANG-based system repository")
+set(SYSREPO_DESC "YANG-based system repository for all-around configuration management.")
 include(GNUInstallDirs)
 include(CheckSymbolExists)
 include(CheckFunctionExists)
+include(CheckLibraryExists)
 include(CheckIncludeFile)
-include(CheckStructHasMember)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
 endif()
@@ -31,7 +31,7 @@ endif()
 # micro version is changed with a set of small changes or bugfixes anywhere in the project.
 set(SYSREPO_MAJOR_VERSION 1)
 set(SYSREPO_MINOR_VERSION 3)
-set(SYSREPO_MICRO_VERSION 21)
+set(SYSREPO_MICRO_VERSION 36)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # Version of the library
@@ -39,9 +39,12 @@ set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_
 # with backward compatible change and micro version is connected with any internal change of the library.
 set(SYSREPO_MAJOR_SOVERSION 4)
 set(SYSREPO_MINOR_SOVERSION 1)
-set(SYSREPO_MICRO_SOVERSION 8)
+set(SYSREPO_MICRO_SOVERSION 22)
 set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
+
+# Version of libyang library that this sysrepo depends on
+set(LIBYANG_DEP_VERSION 1.0.109)
 
 # options
 if((CMAKE_BUILD_TYPE_LOWER STREQUAL debug) OR (CMAKE_BUILD_TYPE_LOWER STREQUAL package))
@@ -157,7 +160,7 @@ set (SYSREPOCFG_SRC
 set (SYSREPOPLUGIND_SRC
     src/executables/sysrepo-plugind.c)
 
-# libsysrepo
+# sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_library(srobj OBJECT ${LIB_SRC})
 set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
@@ -166,14 +169,15 @@ set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVER
 
 # sysrepoctl tool
 add_executable(sysrepoctl ${SYSREPOCTL_SRC})
-target_link_libraries(sysrepoctl sysrepo ${LIBYANG_LIBRARIES})
+target_link_libraries(sysrepoctl sysrepo)
 
 # sysrepocfg tool
 add_executable(sysrepocfg ${SYSREPOCFG_SRC})
-target_link_libraries(sysrepocfg sysrepo ${LIBYANG_LIBRARIES})
+target_link_libraries(sysrepocfg sysrepo)
 
 # sysrepo-plugind daemon
 add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC})
+target_link_libraries(sysrepo-plugind sysrepo dl)
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
@@ -185,14 +189,10 @@ if(NOT APPLE)
 endif()
 
 # atomic
-include(CheckLibraryExists)
 check_library_exists(atomic __atomic_fetch_add_4 "" HAVE_ATOMIC)
 if(HAVE_ATOMIC)
     target_link_libraries(sysrepo atomic)
 endif()
-
-# libdl
-target_link_libraries(sysrepo-plugind sysrepo dl)
 
 # libyang
 find_package(YANG REQUIRED)
@@ -214,19 +214,11 @@ if(NOT SR_HAVE_EACCESS)
         "change results of access control checks!")
 endif()
 check_include_file("stdatomic.h" SR_HAVE_STDATOMIC)
-check_struct_has_member(pthread_mutex_t __align pthread.h SR_MUTEX_HAS_ALIGN LANGUAGE C)
-if(NOT SR_MUTEX_HAS_ALIGN)
-    set(SR_MUTEX_HAS_ALIGN 0)
-endif()
-check_struct_has_member(pthread_cond_t __align pthread.h SR_COND_HAS_ALIGN LANGUAGE C)
-if(NOT SR_COND_HAS_ALIGN)
-    set(SR_COND_HAS_ALIGN 0)
-endif()
 
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJECT_BINARY_DIR}/bin_common.h" ESCAPE_QUOTES @ONLY)
-configure_file("${PROJECT_SOURCE_DIR}/libsysrepo.pc.in" "${PROJECT_BINARY_DIR}/libsysrepo.pc" @ONLY)
+configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysrepo.pc" @ONLY)
 include_directories(${PROJECT_BINARY_DIR})
 include_directories("${PROJECT_SOURCE_DIR}/src")
 
@@ -237,7 +229,7 @@ install(FILES ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
 install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-install(FILES "${PROJECT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+install(FILES "${PROJECT_BINARY_DIR}/sysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
 # doxygen documentation
 find_package(Doxygen)

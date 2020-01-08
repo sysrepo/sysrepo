@@ -64,14 +64,31 @@ $ make
 
 ### Documentation
 
-The library documentation can be generated directly from the source codes using
-Doxygen tool:
+The library documentation is available online ([docs](http://www.sysrepo.org/static/doc/html/)) or can be generated
+locally from the source code using Doxygen tool:
 ```
 $ make doc
 $ google-chrome ../doc/html/index.html
 ```
 
-### Useful CMake Options
+### Useful CMake sysrepo Options
+
+Generate C++ and Python3 bindings:
+```
+-DGEN_LANGUAGE_BINDINGS=ON
+```
+
+Set custom repository path:
+```
+-DREPO_PATH=/opt/sysrepo/my_repository
+```
+
+Set custom `sysrepo-plugind` plugins path:
+```
+-DPLUGINS_PATH=/opt/sysrepo-plugind/plugins
+```
+
+### Useful CMake Build Options
 
 #### Changing Compiler
 
@@ -139,7 +156,7 @@ following linker parameters:
 
 Note, that it may be necessary to call `ldconfig(8)` after library installation and if the
 library was installed into a non-standard path, the path to libyang must be specified to the
-linker. To help with setting all the compiler's options, there is `libsysrepo.pc` file for
+linker. To help with setting all the compiler's options, there is `sysrepo.pc` file for
 `pkg-config(1)` available in the source tree. The file is installed with the library.
 
 ## Examples
