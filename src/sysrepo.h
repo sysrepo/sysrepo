@@ -935,8 +935,6 @@ int sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const 
  *
  * Provides only YANG validation, apply-changes **subscribers will not be notified** in this case.
  *
- * @see Use ::sr_get_error to retrieve error information if the operation returned an error.
- *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
@@ -945,14 +943,11 @@ int sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms);
 
 /**
  * @brief Apply changes made in the current session.
- *
- * @note In case the changes could not be applied successfully for any reason,
+ * In case the changes could not be applied successfully for any reason,
  * they remain intact in the session.
  *
  * @note Note that in case that you are changing the _running_ datastore, you also
  * need to copy the config to _startup_ to make the changes persistent.
- *
- * @see Use ::sr_get_error to retrieve error information if the operation returned an error.
  *
  * Required WRITE access.
  *
@@ -1139,7 +1134,7 @@ typedef enum sr_subscr_flag_e {
      * cause deadlock but with this flag it is possible. But, there are some **limitations**. The callback
      * MUST not subscribe to the same RPC/module DS changes it is processing (would change subscription count
      * and cause invalid memory access) and MUST not subscribe on the same ::sr_subscription_ctx_t
-     * `subscription` (would cause a deadlock). Accepted **only** for RPC/action and configuration subscriptions,
+     * `subscription` (would cause a deadlock). Accepted **only** for RPC/action and change subscriptions,
      * it makes no sense for others.
      */
     SR_SUBSCR_UNLOCKED = 64,
@@ -1177,8 +1172,8 @@ int sr_get_event_pipe(sr_subscription_ctx_t *subscription, int *event_pipe);
  *
  * @param[in] subscription Subscription without a listening thread with some new events.
  * @param[in] session Optional session for storing errors.
- * @param[out] stop_time_in Optional seconds until the nearest notification subscription stop time is elapsed.
- * If there are no subscriptions with stop time in future, it is set to 0.
+ * @param[out] stop_time_in Optional seconds until the nearest notification subscription stop time is elapsed
+ * and this function should be called. If there are no subscriptions with stop time in future, it is set to 0.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, time_t *stop_time_in);
