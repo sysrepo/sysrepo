@@ -188,8 +188,6 @@ typedef enum sr_lock_mode_e {
     SR_LOCK_NONE = 0,           /**< Not locked. */
     SR_LOCK_READ,               /**< Read lock. */
     SR_LOCK_WRITE,              /**< Write lock. */
-    SR_LOCK_WRITE_NOSTATE,      /**< Write lock without information in connection state (used only when the connection
-                                     state itself will be created/deleted). */
 } sr_lock_mode_t;
 
 /**
@@ -524,15 +522,16 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const
 
 /**
  * @brief Lock main/ext SHM and its mapping and remap it if needed (it was changed). Also, store information
- * about held locks into SHM.
+ * about held locks into SHM (a few function names are exceptions).
  *
  * @param[in] conn Connection to use.
  * @param[in] mode Whether to WRITE or READ lock main SHM.
  * @param[in] remap Whether to WRITE (ext SHM may be remapped) or READ (just protect from remapping) remap lock.
  * @param[in] lydmods Whether to lydmods LOCK.
+ * @param[in] func Caller function name.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods);
+sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods, const char *func);
 
 /**
  * @brief Unlock main SHM and update information about held locks in SHM.
@@ -541,8 +540,9 @@ sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode,
  * @param[in] mode Whether to WRITE or READ unlock main SHM.
  * @param[in] remap Whether to WRITE or READ remap unlock.
  * @param[in] lydmods Whether to lydmods UNLOCK.
+ * @param[in] func Caller function name.
  */
-void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods);
+void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods, const char *func);
 
 /**
  * @brief Add main SHM RPC/action subscription.

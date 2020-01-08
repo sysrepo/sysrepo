@@ -1841,12 +1841,6 @@ sr_shmmain_conn_state_lock_update(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int 
     sr_conn_state_t *conn_s;
     sr_main_shm_t *main_shm;
 
-    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_NOSTATE));
-
-    if (mode == SR_LOCK_WRITE_NOSTATE) {
-        return NULL;
-    }
-
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
     /* CONN STATE LOCK */
@@ -1891,23 +1885,20 @@ cleanup_unlock:
 }
 
 sr_error_info_t *
-sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods)
+sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
 
-    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_NOSTATE));
-
     /* REMAP READ/WRITE LOCK */
     if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000,
-            remap ? SR_LOCK_WRITE : SR_LOCK_READ, __func__))) {
+            remap ? SR_LOCK_WRITE : SR_LOCK_READ, func))) {
         return err_info;
     }
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
     /* MAIN SHM READ/WRITE LOCK */
-    if ((err_info = sr_rwlock_with_recovery(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000,
-            mode == SR_LOCK_WRITE_NOSTATE ? SR_LOCK_WRITE : mode, conn, __func__))) {
+    if ((err_info = sr_rwlock_with_recovery(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, conn, func))) {
         goto error_remap_unlock;
     }
 
@@ -1921,13 +1912,15 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int l
     }
 
     /* LYDMODS LOCK */
-    if (lydmods && (err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if (lydmods && (err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, func))) {
         goto error_remap_shm_unlock;
     }
 
-    /* store information about the held lock */
-    if ((err_info = sr_shmmain_conn_state_lock_update(conn, mode, 1))) {
-        goto error_remap_shm_lydmods_unlock;
+    if (strcmp(func, "sr_connect") && strcmp(func, "sr_disconnect")) {
+        /* store information about the held lock */
+        if ((err_info = sr_shmmain_conn_state_lock_update(conn, mode, 1))) {
+            goto error_remap_shm_lydmods_unlock;
+        }
     }
 
     return NULL;
@@ -1938,33 +1931,33 @@ error_remap_shm_lydmods_unlock:
         sr_munlock(&main_shm->lydmods_lock);
     }
 error_remap_shm_unlock:
-    sr_rwunlock(&main_shm->lock, mode == SR_LOCK_WRITE_NOSTATE ? SR_LOCK_WRITE : mode, __func__);
+    sr_rwunlock(&main_shm->lock, mode, func);
 error_remap_unlock:
-    sr_rwunlock(&conn->ext_remap_lock, remap ? SR_LOCK_WRITE : SR_LOCK_READ, __func__);
+    sr_rwunlock(&conn->ext_remap_lock, remap ? SR_LOCK_WRITE : SR_LOCK_READ, func);
     return err_info;
 }
 
 void
-sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods)
+sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
 
-    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_NOSTATE));
-
-    /* update information about the held lock */
-    if ((err_info = sr_shmmain_conn_state_lock_update(conn, mode, 0))) {
-        sr_errinfo_free(&err_info);
+    if (strcmp(func, "sr_connect") && strcmp(func, "sr_disconnect")) {
+        /* update information about the held lock */
+        if ((err_info = sr_shmmain_conn_state_lock_update(conn, mode, 0))) {
+            sr_errinfo_free(&err_info);
+        }
     }
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
     assert(main_shm);
 
     /* MAIN SHM UNLOCK */
-    sr_rwunlock(&main_shm->lock, mode == SR_LOCK_WRITE_NOSTATE ? SR_LOCK_WRITE : mode, __func__);
+    sr_rwunlock(&main_shm->lock, mode, func);
 
     /* REMAP UNLOCK */
-    sr_rwunlock(&conn->ext_remap_lock, remap ? SR_LOCK_WRITE : SR_LOCK_READ, __func__);
+    sr_rwunlock(&conn->ext_remap_lock, remap ? SR_LOCK_WRITE : SR_LOCK_READ, func);
 
     if (lydmods) {
         /* LYDMODS UNLOCK */

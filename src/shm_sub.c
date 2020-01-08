@@ -786,7 +786,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
                 ext_shm_addr = ext_shm_buf;
 
                 /* SHM UNLOCK */
-                sr_shmmain_unlock(mod_info->conn, SR_LOCK_READ, 0, 0);
+                sr_shmmain_unlock(mod_info->conn, SR_LOCK_READ, 0, 0, __func__);
             }
 
             /* SUB WRITE LOCK */
@@ -842,7 +842,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             ext_shm_buf = NULL;
             ext_shm_addr = mod_info->conn->ext_shm.addr;
             /* SHM LOCK */
-            err_info = sr_shmmain_lock_remap(mod_info->conn, SR_LOCK_READ, 0, 0);
+            err_info = sr_shmmain_lock_remap(mod_info->conn, SR_LOCK_READ, 0, 0, __func__);
         }
     }
 
@@ -854,7 +854,7 @@ cleanup:
     if (ext_shm_buf) {
         free(ext_shm_buf);
         /* SHM LOCK */
-        err_info = sr_shmmain_lock_remap(mod_info->conn, SR_LOCK_READ, 0, 0);
+        err_info = sr_shmmain_lock_remap(mod_info->conn, SR_LOCK_READ, 0, 0, __func__);
     }
     return err_info;
 }
@@ -1384,7 +1384,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
             assert(shm_rpc);
 
             /* SHM UNLOCK */
-            sr_shmmain_unlock(conn, SR_LOCK_READ, 0, 0);
+            sr_shmmain_unlock(conn, SR_LOCK_READ, 0, 0, __func__);
         }
 
         /* SUB WRITE LOCK */
@@ -1472,7 +1472,7 @@ cleanup:
     if (ext_shm_buf) {
         free(ext_shm_buf);
         /* SHM LOCK */
-        err_info = sr_shmmain_lock_remap(conn, SR_LOCK_READ, 0, 0);
+        err_info = sr_shmmain_lock_remap(conn, SR_LOCK_READ, 0, 0, __func__);
     }
     return err_info;
 }
