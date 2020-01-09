@@ -272,12 +272,6 @@ test_create2(void **state)
     const char *str2;
     int ret;
 
-    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
-            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
-    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
-
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth68']", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
@@ -453,6 +447,53 @@ test_move1(void **state)
     lyd_free_withsiblings(data);
 }
 
+static void
+test_replace(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *subtree;
+    char *str, *str2;
+    int ret;
+
+    /* create some data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* remove and create some other data, internally transformed into replace */
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth32']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth32']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check final datastore contents */
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, subtree, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free(subtree);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth32</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str, str2);
+    free(str);
+}
+
 int
 main(void)
 {
@@ -463,6 +504,7 @@ main(void)
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
         cmocka_unit_test_teardown(test_create2, clear_interfaces),
         cmocka_unit_test_teardown(test_move1, clear_test),
+        cmocka_unit_test_teardown(test_replace, clear_test),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

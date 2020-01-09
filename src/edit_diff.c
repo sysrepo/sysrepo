@@ -3150,20 +3150,20 @@ error:
  * @brief Check whether a descendant operation should replace a parent operation (is superior to).
  * Also, check whether the operation is even allowed.
  *
- * @param[in] new_op Descendant operation.
+ * @param[in,out] new_op Descendant operation, may be rewritten for the actual updated operation if @p is_superior is 1.
  * @param[in] cur_op Parent operation (that will be inherited by default).
  * @param[out] is_superior non-zero if the new operation is superior (replace the current operation), 0 if not.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_is_superior_op(enum edit_op new_op, enum edit_op cur_op, int *is_superior)
+sr_edit_is_superior_op(enum edit_op *new_op, enum edit_op cur_op, int *is_superior)
 {
     sr_error_info_t *err_info = NULL;
     *is_superior = 0;
 
     switch (cur_op) {
     case EDIT_CREATE:
-        if ((new_op == EDIT_DELETE) || (new_op == EDIT_REPLACE) || (new_op == EDIT_REMOVE)) {
+        if ((*new_op == EDIT_DELETE) || (*new_op == EDIT_REPLACE) || (*new_op == EDIT_REMOVE)) {
             goto op_error;
         }
         /* do not overwrite */
@@ -3172,32 +3172,35 @@ sr_edit_is_superior_op(enum edit_op new_op, enum edit_op cur_op, int *is_superio
         /* no operation allowed */
         goto op_error;
     case EDIT_REPLACE:
-        if ((new_op == EDIT_DELETE) || (new_op == EDIT_REMOVE)) {
+        if ((*new_op == EDIT_DELETE) || (*new_op == EDIT_REMOVE)) {
             goto op_error;
         }
         /* do not overwrite */
         break;
     case EDIT_REMOVE:
-        if ((new_op == EDIT_CREATE) || (new_op == EDIT_DELETE) || (new_op == EDIT_REPLACE) || (new_op == EDIT_MERGE)) {
+        if ((*new_op == EDIT_DELETE) || (*new_op == EDIT_REPLACE)) {
             goto op_error;
+        } else if ((*new_op == EDIT_CREATE) || (*new_op == EDIT_MERGE)) {
+            /* remove + create/merge = replace */
+            *new_op = EDIT_REPLACE;
+            *is_superior = 1;
         }
-        /* do not overwrite */
-        return 0;
+        break;
     case EDIT_MERGE:
-        if ((new_op == EDIT_DELETE) || (new_op == EDIT_REPLACE) || (new_op == EDIT_REMOVE)) {
+        if ((*new_op == EDIT_DELETE) || (*new_op == EDIT_REPLACE) || (*new_op == EDIT_REMOVE)) {
             goto op_error;
         }
-        if (new_op == EDIT_REPLACE) {
+        if (*new_op == EDIT_REPLACE) {
             *is_superior = 1;
         }
         break;
     case EDIT_NONE:
-        if ((new_op == EDIT_REPLACE) || (new_op == EDIT_MERGE)) {
+        if ((*new_op == EDIT_REPLACE) || (*new_op == EDIT_MERGE)) {
             *is_superior = 1;
         }
         break;
     case EDIT_ETHER:
-        if ((new_op == EDIT_REPLACE) || (new_op == EDIT_MERGE) || (new_op == EDIT_NONE)) {
+        if ((*new_op == EDIT_REPLACE) || (*new_op == EDIT_MERGE) || (*new_op == EDIT_NONE)) {
             *is_superior = 1;
         }
         break;
@@ -3210,7 +3213,7 @@ sr_edit_is_superior_op(enum edit_op new_op, enum edit_op cur_op, int *is_superio
 
 op_error:
     sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Operation \"%s\" cannot have children with operation \"%s\".",
-            sr_edit_op2str(cur_op), sr_edit_op2str(new_op));
+            sr_edit_op2str(cur_op), sr_edit_op2str(*new_op));
     return err_info;
 }
 
@@ -3269,7 +3272,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     sr_error_info_t *err_info = NULL;
     struct lyd_node *node, *sibling, *parent;
     const char *attr_val, *def_origin;
-    enum edit_op op;
+    enum edit_op op, def_op;
     int opts, own_oper, next_iter_oper, is_sup;
 
     /* merge the change into existing edit */
@@ -3344,7 +3347,9 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
             } else {
                 op = sr_edit_find_oper(parent, 1, &own_oper);
                 assert(op);
-                if ((err_info = sr_edit_is_superior_op(sr_edit_str2op(def_operation), op, &is_sup))) {
+
+                def_op = sr_edit_str2op(def_operation);
+                if ((err_info = sr_edit_is_superior_op(&def_op, op, &is_sup))) {
                     goto error;
                 }
                 if (!is_sup) {
@@ -3377,12 +3382,13 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
                     next_iter_oper = 1;
                 }
 
-                if ((err_info = sr_edit_is_superior_op(sr_edit_str2op(def_operation), op, &is_sup))) {
+                def_op = sr_edit_str2op(def_operation);
+                if ((err_info = sr_edit_is_superior_op(&def_op, op, &is_sup))) {
                     goto error;
                 }
                 if (!parent->parent || !is_sup) {
                     /* it is not, set it on this parent and finish */
-                    if ((err_info = sr_edit_set_oper(parent, def_operation))) {
+                    if ((err_info = sr_edit_set_oper(parent, sr_edit_op2str(def_op)))) {
                         goto error;
                     }
                     break;
