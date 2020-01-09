@@ -916,39 +916,78 @@ sr_get_module_name_format(const char *schema_path, char **module_name, LYS_INFOR
  * @param[in] ly_ctx Context to use.
  * @param[in] schema_path Path to the module file.
  * @param[in] format Module format.
- * @param[in] search_dir Optional search directory.
+ * @param[in] search_dirs Optional search dirs, in format <dir>[:<dir>]*.
  * @return err_info, NULL on success.
  */
 static const struct lys_module *
-sr_parse_module(struct ly_ctx *ly_ctx, const char *schema_path, LYS_INFORMAT format, const char *search_dir)
+sr_parse_module(struct ly_ctx *ly_ctx, const char *schema_path, LYS_INFORMAT format, const char *search_dirs)
 {
-    const struct lys_module *ly_mod;
-    const char * const *search_dirs;
-    int index;
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod = NULL;
+    const char * const *cur_dirs;
+    char *sdirs_str = NULL, *ptr, *ptr2 = NULL;
+    struct {
+        char *dir;
+        int index;
+    } *sdirs = NULL;
+    size_t i, j, sdir_count = 0;
+
+    if (search_dirs) {
+        sdirs_str = strdup(search_dirs);
+        if (!sdirs_str) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+
+        /* parse search dirs */
+        for (ptr = strtok_r(sdirs_str, ":", &ptr2); ptr; ptr = strtok_r(NULL, ":", &ptr2)) {
+            sdirs = sr_realloc(sdirs, (sdir_count + 1) * sizeof *sdirs);
+            if (!sdirs) {
+                SR_ERRINFO_MEM(&err_info);
+                goto cleanup;
+            }
+
+            sdirs[sdir_count].dir = ptr;
+            sdirs[sdir_count].index = -1;
+            ++sdir_count;
+        }
+    }
 
     /* add searchdir if not already there */
-    if (search_dir) {
-        search_dirs = ly_ctx_get_searchdirs(ly_ctx);
-        for (index = 0; search_dirs[index]; ++index) {
-            if (!strcmp(search_dirs[index], search_dir)) {
+    cur_dirs = ly_ctx_get_searchdirs(ly_ctx);
+    for (i = 0; i < sdir_count; ++i) {
+        for (j = 0; cur_dirs[j]; ++j) {
+            if (!strcmp(cur_dirs[j], sdirs[i].dir)) {
                 break;
             }
         }
-        if (!search_dirs[index]) {
-            ly_ctx_set_searchdir(ly_ctx, search_dir);
+        if (!cur_dirs[j]) {
+            ly_ctx_set_searchdir(ly_ctx, sdirs[i].dir);
+            sdirs[i].index = j;
+
             /* it could have been moved on realloc */
-            search_dirs = ly_ctx_get_searchdirs(ly_ctx);
+            cur_dirs = ly_ctx_get_searchdirs(ly_ctx);
         }
     }
 
     /* parse the module */
     ly_mod = lys_parse_path(ly_ctx, schema_path, format);
 
-    /* remove search dir */
-    if (search_dir && search_dirs[index]) {
-        ly_ctx_unset_searchdirs(ly_ctx, index);
+    if (sdir_count) {
+        /* remove search dirs in descending order for the libyang searchdir indices to be correct */
+        i = sdir_count;
+        do {
+            --i;
+            if (sdirs[i].index > -1) {
+                ly_ctx_unset_searchdirs(ly_ctx, sdirs[i].index);
+            }
+        } while (i);
     }
 
+cleanup:
+    free(sdirs_str);
+    free(sdirs);
+    sr_errinfo_free(&err_info);
     return ly_mod;
 }
 
@@ -998,7 +1037,7 @@ cleanup:
 }
 
 API int
-sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dir,
+sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs,
         const char **features, int feat_count)
 {
     sr_error_info_t *err_info = NULL;
@@ -1029,7 +1068,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
     if (ly_mod && ly_mod->implemented) {
         /* it is currently in the context, try to parse it again to check revisions */
-        ly_mod = sr_parse_module(tmp_ly_ctx, schema_path, format, search_dir);
+        ly_mod = sr_parse_module(tmp_ly_ctx, schema_path, format, search_dirs);
         if (!ly_mod) {
             sr_errinfo_new_ly_first(&err_info, tmp_ly_ctx);
             sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" is already in sysrepo.", mod_name);
@@ -1047,7 +1086,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     }
 
     /* parse the module */
-    if (!(ly_mod = sr_parse_module(tmp_ly_ctx, schema_path, format, search_dir))) {
+    if (!(ly_mod = sr_parse_module(tmp_ly_ctx, schema_path, format, search_dirs))) {
         sr_errinfo_new_ly(&err_info, tmp_ly_ctx);
         goto cleanup_unlock;
     }
@@ -1204,7 +1243,7 @@ cleanup_unlock:
 }
 
 API int
-sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dir)
+sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *tmp_ly_ctx = NULL;
@@ -1243,7 +1282,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     }
 
     /* try to parse the update module */
-    if (!(upd_ly_mod = sr_parse_module(tmp_ly_ctx, schema_path, format, search_dir))) {
+    if (!(upd_ly_mod = sr_parse_module(tmp_ly_ctx, schema_path, format, search_dirs))) {
         sr_errinfo_new_ly(&err_info, tmp_ly_ctx);
         goto cleanup_unlock;
     }
