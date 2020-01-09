@@ -1728,12 +1728,9 @@ reapply:
             if ((err_info = sr_edit_find(edit_node->child, child, EDIT_DELETE, 0, NULL, &edit_match, NULL))) {
                 return err_info;
             }
-            if (!edit_match) {
-                assert(diff_parent);
-                err_info = sr_edit_apply_r(&match->child, match, child, EDIT_DELETE, diff_parent, diff_root, flags, change);
-                if (err_info) {
-                    return err_info;
-                }
+            if (!edit_match && (err_info = sr_edit_apply_r(&match->child, match, child, EDIT_DELETE, diff_parent,
+                    diff_root, flags, change))) {
+                return err_info;
             }
         }
     }
