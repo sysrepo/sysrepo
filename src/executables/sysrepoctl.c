@@ -126,21 +126,11 @@ static void
 srctl_list_collect_import(const struct lys_module *ly_mod, struct list_item **list, size_t *list_count)
 {
     struct list_item *cur_item;
-    const struct lys_module *ly_iter;
     uint32_t i;
 
     if (ly_mod->implemented) {
         /* must be added from sysrepo data */
         return;
-    }
-
-    /* skip internal modules */
-    i = 0;
-    while (i < ly_ctx_internal_modules_count(ly_mod->ctx)) {
-        ly_iter = ly_ctx_get_module_iter(ly_mod->ctx, &i);
-        if (ly_iter == ly_mod) {
-            return;
-        }
     }
 
     /* check for duplicates */
