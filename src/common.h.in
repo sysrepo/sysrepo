@@ -639,6 +639,14 @@ sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
 sr_error_info_t *sr_remove_data_files(const char *mod_name);
 
 /**
+ * @brief Check whether a module is internal libyang or sysrepo module.
+ *
+ * @param[in] ly_mod Module to check.
+ * @return 0 if not, non-zero if it is.
+ */
+int sr_module_is_internal(const struct lys_module *ly_mod);
+
+/**
  * @brief Create startup file for a module.
  *
  * @param[in] ly_mod Module to create startup file for.

@@ -1180,6 +1180,11 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
         goto cleanup_unlock;
     }
 
+    if (sr_module_is_internal(ly_mod)) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Internal module \"%s\" cannot be uninstalled.", module_name);
+        goto cleanup_unlock;
+    }
+
     /* check write permission */
     if ((err_info = sr_perm_check(module_name, 1))) {
         goto cleanup_unlock;

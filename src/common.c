@@ -1278,13 +1278,7 @@ sr_remove_data_files(const char *mod_name)
     return NULL;
 }
 
-/**
- * @brief Check whether a module is internal libyang or sysrepo module.
- *
- * @param[in] ly_mod Module to check.
- * @return 0 if not, non-zero if it is.
- */
-static int
+int
 sr_module_is_internal(const struct lys_module *ly_mod)
 {
     if (!ly_mod->rev_size) {
