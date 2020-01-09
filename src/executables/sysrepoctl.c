@@ -87,8 +87,8 @@ help_print(void)
         "  -R, --recover        Check current connections state and clean any non-existing ones.\n"
         "\n"
         "Available other-options:\n"
-        "  -s, --search-dir <dir-path>\n"
-        "                       Directory to search for include/import modules. Directory with already-installed\n"
+        "  -s, --search-dirs <dir-path>[:<dir-path>]*\n"
+        "                       Directories to search for include/import modules. Directory with already-installed\n"
         "                       modules is always searched (install, update op).\n"
         "  -e, --enable-feature <feature-name>\n"
         "                       Enabled specific feature. Can be specified multiple times (install, change op).\n"
@@ -377,7 +377,7 @@ int
 main(int argc, char** argv)
 {
     sr_conn_ctx_t *conn = NULL;
-    const char *file_path = NULL, *search_dir = NULL, *module_name = NULL, *owner = NULL, *group = NULL;
+    const char *file_path = NULL, *search_dirs = NULL, *module_name = NULL, *owner = NULL, *group = NULL;
     char **features = NULL, **dis_features = NULL, *ptr;
     mode_t perms = -1;
     sr_log_level_t log_level = SR_LL_ERR;
@@ -393,7 +393,7 @@ main(int argc, char** argv)
         {"update",          required_argument, NULL, 'U'},
         {"connection-count",no_argument,       NULL, 'C'},
         {"recover",         no_argument,       NULL, 'R'},
-        {"search-dir",      required_argument, NULL, 's'},
+        {"search-dirs",     required_argument, NULL, 's'},
         {"enable-feature",  required_argument, NULL, 'e'},
         {"disable-feature", required_argument, NULL, 'd'},
         {"replay",          required_argument, NULL, 'r'},
@@ -476,11 +476,11 @@ main(int argc, char** argv)
             operation = 'R';
             break;
         case 's':
-            if (search_dir) {
-                error_print(0, "Search dir already specified");
+            if (search_dirs) {
+                error_print(0, "Search dirs already specified");
                 goto cleanup;
             }
-            search_dir = optarg;
+            search_dirs = optarg;
             break;
         case 'e':
             if (operation && (operation != 'i') && (operation != 'c')) {
@@ -602,7 +602,7 @@ main(int argc, char** argv)
         break;
     case 'i':
         /* install */
-        if ((r = sr_install_module(conn, file_path, search_dir, (const char **)features, feat_count)) != SR_ERR_OK) {
+        if ((r = sr_install_module(conn, file_path, search_dirs, (const char **)features, feat_count)) != SR_ERR_OK) {
             /* succeed if the module is already installed */
             if (r != SR_ERR_EXISTS) {
                 error_print(r, "Failed to install module \"%s\"", file_path);
@@ -660,7 +660,7 @@ main(int argc, char** argv)
         break;
     case 'U':
         /* update */
-        if ((r = sr_update_module(conn, file_path, search_dir)) != SR_ERR_OK) {
+        if ((r = sr_update_module(conn, file_path, search_dirs)) != SR_ERR_OK) {
             error_print(r, "Failed to update module \"%s\"", file_path);
             goto cleanup;
         }
