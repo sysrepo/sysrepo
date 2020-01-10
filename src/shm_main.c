@@ -336,19 +336,19 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
     printed = 0;
     for (i = 0; i < item_count; ++i) {
         if (items[i].start > cur_off) {
-            printed += sr_sprintf(&msg, &msg_len, printed, "%04ld-%04ld: (wasted %ld)\n",
-                    cur_off, items[i].start, items[i].start - cur_off);
+            printed += sr_sprintf(&msg, &msg_len, printed, "%06ld-%06ld[%06lX]: (wasted %ld)\n",
+                    cur_off, items[i].start, items[i].start, items[i].start - cur_off);
             cur_off = items[i].start;
         }
-        printed += sr_sprintf(&msg, &msg_len, printed, "%04ld-%04ld: %s\n",
-                items[i].start, items[i].start + items[i].size, items[i].name);
+        printed += sr_sprintf(&msg, &msg_len, printed, "%06ld-%06ld[%06lX]: %s\n",
+                items[i].start, items[i].start + items[i].size, items[i].start + items[i].size, items[i].name);
         cur_off += items[i].size;
 
         free(items[i].name);
     }
     if ((unsigned)cur_off < ext_shm_size) {
-        printed += sr_sprintf(&msg, &msg_len, printed, "%04ld-%04ld: (wasted %ld)\n",
-                cur_off, ext_shm_size, ext_shm_size - cur_off);
+        printed += sr_sprintf(&msg, &msg_len, printed, "%06ld-%06ld[%06lX]: (wasted %ld)\n",
+                cur_off, ext_shm_size, ext_shm_size, ext_shm_size - cur_off);
     }
 
     free(items);
