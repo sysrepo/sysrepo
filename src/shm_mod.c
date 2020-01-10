@@ -23,6 +23,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <time.h>
 #include <assert.h>
 #include <sys/types.h>
@@ -383,6 +384,7 @@ sr_shmmod_conn_state_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_data
                 assert(!mod_locks[shm_mod_idx][ds].rcount);
                 mod_locks[shm_mod_idx][ds].mode = SR_LOCK_READ;
             }
+            assert(mod_locks[shm_mod_idx][ds].rcount < UINT8_MAX);
             ++mod_locks[shm_mod_idx][ds].rcount;
         } else {
             assert(mod_locks[shm_mod_idx][ds].mode != SR_LOCK_WRITE);

@@ -23,6 +23,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <pthread.h>
 #include <sys/types.h>
@@ -1858,6 +1859,7 @@ sr_shmmain_conn_state_lock_update(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int 
             assert(((conn_s->main_lock.mode == SR_LOCK_NONE) && !conn_s->main_lock.rcount)
                 || ((conn_s->main_lock.mode == SR_LOCK_READ) && conn_s->main_lock.rcount));
             conn_s->main_lock.mode = mode;
+            assert(conn_s->main_lock.rcount < UINT8_MAX);
             ++conn_s->main_lock.rcount;
         } else {
             assert(conn_s->main_lock.mode == SR_LOCK_NONE);
@@ -1866,7 +1868,7 @@ sr_shmmain_conn_state_lock_update(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int 
     } else {
         if (mode == SR_LOCK_READ) {
             /* handle recursive read locks */
-            assert(conn_s->main_lock.mode == mode);
+            assert((conn_s->main_lock.mode == mode) && conn_s->main_lock.rcount);
             --conn_s->main_lock.rcount;
             if (!conn_s->main_lock.rcount) {
                 conn_s->main_lock.mode = SR_LOCK_NONE;
