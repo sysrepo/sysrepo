@@ -978,9 +978,12 @@ sr_shmmain_state_recover(sr_conn_ctx_t *conn)
                 assert(conn_s[i].main_lock.rcount && (main_shm->lock.readers >= conn_s[i].main_lock.rcount));
                 main_shm->lock.readers -= conn_s[i].main_lock.rcount;
                 break;
-            default:
+            case SR_LOCK_WRITE:
                 /* not supported */
-                SR_ERRINFO_INT(&err_info);
+                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Client crashed while holding SHM WRITE lock, not recoverable!");
+                break;
+            case SR_LOCK_NONE:
+                /* nothing to do */
                 break;
             }
 
