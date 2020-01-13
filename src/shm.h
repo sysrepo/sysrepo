@@ -538,7 +538,8 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const
 sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods, const char *func);
 
 /**
- * @brief Unlock main SHM and update information about held locks in SHM.
+ * @brief Unlock main SHM and update information about held locks in SHM. If remap was WRITE locked,
+ * also defragment ext SHM as needed.
  *
  * @param[in] conn Connection to use.
  * @param[in] mode Whether to WRITE, READ or not unlock main (actually ext) SHM.

@@ -1999,12 +1999,35 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmo
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
+    char *buf;
 
     if (strcmp(func, "sr_connect") && strcmp(func, "sr_disconnect")) {
         /* update information about the held lock */
         if ((err_info = sr_shmmain_conn_state_lock_update(conn, mode, 0))) {
             sr_errinfo_free(&err_info);
         }
+    }
+
+    /* in case remap WRITE lock was held, it means wasted memory could have been added, defragment if needed */
+    if (remap && (*((size_t *)conn->ext_shm.addr) > SR_SHM_WASTED_MAX_MEM)) {
+        SR_LOG_DBGMSG("#SHM before defrag");
+        sr_shmmain_ext_print(&conn->main_shm, conn->ext_shm.addr, conn->ext_shm.size);
+
+        /* defrag mem into a separate memory */
+        if (!(err_info = sr_shmmain_ext_defrag(&conn->main_shm, &conn->ext_shm, &buf))) {
+            /* remap ext SHM, it does not matter if it fails, will just be kept larger than needed */
+            err_info = sr_shm_remap(&conn->ext_shm, conn->ext_shm.size - *((size_t *)conn->ext_shm.addr));
+
+            SR_LOG_INF("Ext SHM was defragmented and %u B were saved.", *((size_t *)conn->ext_shm.addr));
+
+            /* copy the defragmented memory into ext SHM (has wasted set to 0) */
+            memcpy(conn->ext_shm.addr, buf, conn->ext_shm.size);
+            free(buf);
+
+            SR_LOG_DBGMSG("#SHM after defrag");
+            sr_shmmain_ext_print(&conn->main_shm, conn->ext_shm.addr, conn->ext_shm.size);
+        }
+        sr_errinfo_free(&err_info);
     }
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;

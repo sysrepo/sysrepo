@@ -961,51 +961,6 @@ cleanup:
     return ly_mod;
 }
 
-/**
- * @brief Defragment ext SHM if needed.
- *
- * @param[in] conn Connection to use.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_check_ext_shm_defrag(sr_conn_ctx_t *conn)
-{
-    sr_error_info_t *err_info = NULL;
-    char *buf;
-
-    if (*((size_t *)conn->ext_shm.addr) <= SR_SHM_WASTED_MAX_MEM) {
-        /* not enough wasted memory, leave it as it is */
-        return NULL;
-    }
-
-    SR_LOG_DBGMSG("#SHM before defrag");
-    sr_shmmain_ext_print(&conn->main_shm, conn->ext_shm.addr, conn->ext_shm.size);
-
-    /* defrag mem into a separate memory */
-    if ((err_info = sr_shmmain_ext_defrag(&conn->main_shm, &conn->ext_shm, &buf))) {
-        return err_info;
-    }
-
-    /* remap ext SHM */
-    if ((err_info = sr_shm_remap(&conn->ext_shm, conn->ext_shm.size - *((size_t *)conn->ext_shm.addr)))) {
-        goto cleanup;
-    }
-
-    SR_LOG_INF("Ext SHM was defragmented and %u B were saved.", *((size_t *)conn->ext_shm.addr));
-
-    /* copy the defragmented memory into ext SHM (has wasted set to 0) */
-    memcpy(conn->ext_shm.addr, buf, conn->ext_shm.size);
-
-    SR_LOG_DBGMSG("#SHM after defrag");
-    sr_shmmain_ext_print(&conn->main_shm, conn->ext_shm.addr, conn->ext_shm.size);
-
-    /* success */
-
-cleanup:
-    free(buf);
-    return err_info;
-}
-
 API int
 sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs,
         const char **features, int feat_count)
@@ -2926,7 +2881,7 @@ sr_process_events_notif_replay_stop(sr_subscription_ctx_t *subscription)
     uint32_t i;
     int mod_finished;
 
-    /* SHM LOCK */
+    /* SHM LOCK (modifyng subscriptions) */
     if ((err_info = sr_shmmain_lock_remap(subscription->conn, SR_LOCK_WRITE, 1, 0, __func__))) {
         return err_info;
     }
@@ -3096,12 +3051,6 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
 
     /* remove subscription from main SHM state */
     sr_shmmain_state_del_evpipe(subscription->conn, subscription->evpipe_num);
-
-    /* defrag ext SHM if needed */
-    if ((tmp_err = sr_check_ext_shm_defrag(subscription->conn))) {
-        /* continue */
-        sr_errinfo_merge(&err_info, tmp_err);
-    }
 
     /* unlink event pipe */
     if ((tmp_err = sr_path_evpipe(subscription->evpipe_num, &path))) {
@@ -3399,11 +3348,6 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_change_add(session, module_name, xpath, callback, private_data, priority, sub_opts,
             *subscription))) {
-        goto error_unlock_unsub_unmod;
-    }
-
-    /* defrag ext SHM if needed */
-    if ((err_info = sr_check_ext_shm_defrag(conn))) {
         goto error_unlock_unsub_unmod;
     }
 
@@ -3989,11 +3933,6 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_rpc_add(session, op_path, xpath, callback, tree_callback, private_data, priority, *subscription))) {
-        goto error_unlock_unsub_unrpc;
-    }
-
-    /* defrag ext SHM if needed */
-    if ((err_info = sr_check_ext_shm_defrag(conn))) {
         goto error_unlock_unsub_unrpc;
     }
 
@@ -4717,11 +4656,6 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_oper_add(session, module_name, path, callback, private_data, *subscription))) {
-        goto error_unlock_unsub_unmod;
-    }
-
-    /* defrag ext SHM if needed */
-    if ((err_info = sr_check_ext_shm_defrag(conn))) {
         goto error_unlock_unsub_unmod;
     }
 
