@@ -3315,17 +3315,27 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         return sr_api_ret(session, err_info);
     }
 
+    /* call the callback with the current running configuration so that it is properly applied */
+    if ((session->ds == SR_DS_RUNNING) && (opts & SR_SUBSCR_ENABLED)) {
+        /* SHM LOCK (accessing ext SHM) */
+        if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_NONE, 0, 0, __func__))) {
+            return sr_api_ret(session, err_info);
+        }
+
+        /* do not hold write lock here, would block callback from calling API functions */
+        err_info = sr_module_change_subscribe_running_enable(session, ly_mod, xpath, callback, private_data, opts);
+
+        /* SHM UNLOCK */
+        sr_shmmain_unlock(conn, SR_LOCK_NONE, 0, 0, __func__);
+
+        if (err_info) {
+            return sr_api_ret(session, err_info);
+        }
+    }
+
     /* SHM LOCK (modifying subscriptions) */
     if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_WRITE, 1, 0, __func__))) {
         return sr_api_ret(session, err_info);
-    }
-
-    /* call the callback with the current running configuration so that it is properly applied */
-    if ((session->ds == SR_DS_RUNNING) && (opts & SR_SUBSCR_ENABLED)) {
-        /* do not hold write lock here, would block callback from calling API functions */
-        if ((err_info = sr_module_change_subscribe_running_enable(session, ly_mod, xpath, callback, private_data, opts))) {
-            goto error_unlock;
-        }
     }
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
