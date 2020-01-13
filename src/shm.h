@@ -216,7 +216,9 @@ typedef struct sr_conn_state_s {
  * @brief Main SHM.
  */
 typedef struct sr_main_shm_s {
-    sr_rwlock_t lock;           /**< Process-shared lock for accessing main and ext SHM. */
+    sr_rwlock_t lock;           /**< Process-shared lock for accessing main and ext SHM. It is required only when
+                                     accessing attributes that can be changed (subscriptions, replay support) and do
+                                     not have their own lock (conn state), otherwise not needed. */
     pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
     uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
 
@@ -524,8 +526,10 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const
  * @brief Lock main/ext SHM and its mapping and remap it if needed (it was changed). Also, store information
  * about held locks into SHM (a few function names are exceptions).
  *
+ * !! Every API function that accesses ext SHM must call this function !!
+ *
  * @param[in] conn Connection to use.
- * @param[in] mode Whether to WRITE or READ lock main SHM.
+ * @param[in] mode Whether to WRITE, READ or not lock main (actually ext) SHM.
  * @param[in] remap Whether to WRITE (ext SHM may be remapped) or READ (just protect from remapping) remap lock.
  * @param[in] lydmods Whether to lydmods LOCK.
  * @param[in] func Caller function name.
@@ -537,7 +541,7 @@ sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode,
  * @brief Unlock main SHM and update information about held locks in SHM.
  *
  * @param[in] conn Connection to use.
- * @param[in] mode Whether to WRITE or READ unlock main SHM.
+ * @param[in] mode Whether to WRITE, READ or not unlock main (actually ext) SHM.
  * @param[in] remap Whether to WRITE or READ remap unlock.
  * @param[in] lydmods Whether to lydmods UNLOCK.
  * @param[in] func Caller function name.
