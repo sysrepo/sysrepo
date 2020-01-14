@@ -1900,7 +1900,8 @@ sr_process_exists(pid_t pid)
     }
 
     if (errno != ESRCH) {
-        SR_LOG_WRN("Failed to check existence of process with PID %ld (%s).", (long)pid, strerror(errno));
+        SR_LOG_INF("Failed to check existence of process with PID %ld (%s).", (long)pid, strerror(errno));
+        return 1;
     }
 
     return 0;
