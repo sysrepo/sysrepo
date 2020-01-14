@@ -1969,7 +1969,7 @@ sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, 
 
     /* add the operation into edit */
     err_info = sr_edit_add(session, path, value, opts & SR_EDIT_STRICT ? "create" : "merge",
-            opts & SR_EDIT_NON_RECURSIVE ? "none" : "merge", NULL, NULL, NULL, origin);
+            opts & SR_EDIT_NON_RECURSIVE ? "none" : "merge", NULL, NULL, NULL, origin, opts & SR_EDIT_ISOLATE);
 
     return sr_api_ret(session, err_info);
 }
@@ -1983,7 +1983,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
 
     /* add the operation into edit */
     err_info = sr_edit_add(session, path, NULL, opts & SR_EDIT_STRICT ? "delete" : "remove",
-            opts & SR_EDIT_STRICT ? "none" : "ether", NULL, NULL, NULL, NULL);
+            opts & SR_EDIT_STRICT ? "none" : "ether", NULL, NULL, NULL, NULL, opts & SR_EDIT_ISOLATE);
 
     return sr_api_ret(session, err_info);
 }
@@ -1997,7 +1997,7 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position
     SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
 
     /* add the operation into edit */
-    err_info = sr_edit_add(session, path, NULL, "merge", "none", &position, list_keys, leaflist_value, origin);
+    err_info = sr_edit_add(session, path, NULL, "merge", "none", &position, list_keys, leaflist_value, origin, 0);
 
     return sr_api_ret(session, err_info);
 }
@@ -2028,8 +2028,7 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     }
 
     /* validate the input data tree first */
-    if (lyd_validate(&valid_edit, LYD_OPT_EDIT, NULL)) {
-        SR_ERRINFO_VALID(&err_info);
+    if (SR_IS_CONVENTIONAL_DS(session->ds) && (err_info = sr_edit_validate(valid_edit))) {
         goto error;
     }
 

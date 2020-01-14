@@ -494,6 +494,86 @@ test_replace(void **state)
     free(str);
 }
 
+static void
+test_isolate(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *subtree;
+    char *str, *str2;
+    int ret;
+
+    /* data fails to be applied */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:softwareLoopback", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_EXISTS);
+
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* data successfully applied when not strict */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:softwareLoopback", NULL, SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, subtree, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free(subtree);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth64</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:softwareLoopback</type>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str, str2);
+    free(str);
+
+    /* try some more isolated edits */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/enabled",
+            "false", NULL, SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:other", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, subtree, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free(subtree);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth64</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:other</type>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str, str2);
+    free(str);
+}
+
 int
 main(void)
 {
@@ -504,7 +584,8 @@ main(void)
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
         cmocka_unit_test_teardown(test_create2, clear_interfaces),
         cmocka_unit_test_teardown(test_move1, clear_test),
-        cmocka_unit_test_teardown(test_replace, clear_test),
+        cmocka_unit_test_teardown(test_replace, clear_interfaces),
+        cmocka_unit_test_teardown(test_isolate, clear_interfaces),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

@@ -59,6 +59,9 @@ enum insert_val {
     INSERT_AFTER
 };
 
+static sr_error_info_t *sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, void *oper_conn,
+        struct lyd_node *diff_parent, struct lyd_node **diff_root, int *change);
+
 /**
  * @brief Find a previous (leaf-)list instance.
  *
@@ -947,13 +950,13 @@ sr_edit_diff_add(struct lyd_node *node, const char *attr_val, const char *prev_a
         }
     }
 
-    /* insert node into diff */
-    sr_diff_insert(node_dup, diff_parent, diff_root);
-
     /* add specific attributes */
     if ((err_info = sr_diff_add_attrs(node_dup, attr_val, prev_attr_val, op))) {
         goto error;
     }
+
+    /* insert node into diff */
+    sr_diff_insert(node_dup, diff_parent, diff_root);
 
     *diff_node = node_dup;
     return NULL;
@@ -1772,6 +1775,7 @@ sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, 
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *root;
+    struct lyd_node *mod_diff;
 
     if (change) {
         *change = 0;
@@ -1784,8 +1788,22 @@ sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, 
         }
 
         /* apply relevant nodes from the edit datatree */
-        if ((err_info = sr_edit_apply_r(data, NULL, root, EDIT_CONTINUE, NULL, diff, 0, change))) {
+        mod_diff = NULL;
+        if ((err_info = sr_edit_apply_r(data, NULL, root, EDIT_CONTINUE, NULL, diff ? &mod_diff : NULL, 0, change))) {
+            lyd_free_withsiblings(mod_diff);
             return err_info;
+        }
+
+        if (diff && mod_diff) {
+            /* merge diffs */
+            if (!*diff) {
+                *diff = mod_diff;
+            } else {
+                if ((err_info = sr_diff_merge_r(mod_diff, EDIT_CONTINUE, NULL, NULL, diff, NULL))) {
+                    return err_info;
+                }
+                lyd_free_withsiblings(mod_diff);
+            }
         }
     }
 
@@ -2237,10 +2255,7 @@ sr_diff_check_pid_conn(struct lyd_node *diff_node, pid_t cur_pid, void *cur_conn
     int attr_own;
     char pid_str[21], conn_str[21];
 
-    if (!conn_ptr) {
-        /* nothing to check */
-        return NULL;
-    }
+    assert(conn_ptr);
 
     if ((!cur_pid && !cur_conn_ptr) || (cur_pid != getpid()) || (cur_conn_ptr != conn_ptr)) {
         if (cur_attr_own) {
@@ -2292,7 +2307,7 @@ sr_diff_check_pid_conn(struct lyd_node *diff_node, pid_t cur_pid, void *cur_conn
  *
  * @param[in] src_node Source diff node.
  * @param[in] parent_op Parent operation.
- * @param[in] oper_conn Connection pointer of this new operational diff.
+ * @param[in] oper_conn Connection pointer in case its is operational diff. Otherwise should be NULL.
  * @param[in] diff_parent Current sysrepo diff parent.
  * @param[in,out] diff_root Sysrepo diff root node.
  * @param[out] change Set if there are some data changes.
@@ -2356,20 +2371,22 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, void *o
             return err_info;
         }
 
-        /* check PID/conn-ptr of the new node */
-        if ((err_info = sr_diff_check_pid_conn(diff_node, pid, conn_ptr, attr_own, oper_conn, 1))) {
-            return err_info;
-        }
-
-        /* fix origin of the new node, keep origin of descendants for now */
-        sr_edit_diff_get_origin(diff_node, &cur_origin, NULL);
-        sr_edit_diff_get_origin(src_node, &origin, &origin_own);
-        if ((err_info = sr_edit_diff_set_origin(diff_node, origin, 1))) {
-            return err_info;
-        }
-        LY_TREE_FOR(sr_lyd_child(diff_node, 1), child) {
-            if ((err_info = sr_edit_diff_set_origin(child, cur_origin, 0))) {
+        if (oper_conn) {
+            /* check PID/conn-ptr of the new node */
+            if ((err_info = sr_diff_check_pid_conn(diff_node, pid, conn_ptr, attr_own, oper_conn, 1))) {
                 return err_info;
+            }
+
+            /* fix origin of the new node, keep origin of descendants for now */
+            sr_edit_diff_get_origin(diff_node, &cur_origin, NULL);
+            sr_edit_diff_get_origin(src_node, &origin, &origin_own);
+            if ((err_info = sr_edit_diff_set_origin(diff_node, origin, 1))) {
+                return err_info;
+            }
+            LY_TREE_FOR(sr_lyd_child(diff_node, 1), child) {
+                if ((err_info = sr_edit_diff_set_origin(child, cur_origin, 0))) {
+                    return err_info;
+                }
             }
         }
 
@@ -2403,15 +2420,17 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, void *o
             return err_info;
         }
 
-        /* check PID/conn-ptr of the new node */
-        if ((err_info = sr_diff_check_pid_conn(diff_node, pid, conn_ptr, attr_own, oper_conn, 0))) {
-            return err_info;
-        }
+        if (oper_conn) {
+            /* check PID/conn-ptr of the new node */
+            if ((err_info = sr_diff_check_pid_conn(diff_node, pid, conn_ptr, attr_own, oper_conn, 0))) {
+                return err_info;
+            }
 
-        /* fix origin of the new node */
-        sr_edit_diff_get_origin(src_node, &origin, &origin_own);
-        if ((err_info = sr_edit_diff_set_origin(diff_node, origin, 1))) {
-            return err_info;
+            /* fix origin of the new node */
+            sr_edit_diff_get_origin(src_node, &origin, &origin_own);
+            if ((err_info = sr_edit_diff_set_origin(diff_node, origin, 1))) {
+                return err_info;
+            }
         }
 
         /* update diff parent */
@@ -3263,8 +3282,55 @@ sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, con
 }
 
 sr_error_info_t *
+sr_edit_validate(struct lyd_node *edit)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *first, *prev, *next;
+
+    /* remember first sibling */
+    first = edit;
+
+    while (edit && !err_info) {
+        prev = NULL;
+        next = NULL;
+
+        /* split previous siblings */
+        if (edit->prev->next) {
+            prev = edit->prev;
+            sr_ly_split(edit);
+        }
+
+        /* split following siblings */
+        if (edit->next) {
+            next = edit->next;
+            sr_ly_split(next);
+        }
+
+        /* validate isolated subtree */
+        if (lyd_validate(&edit, LYD_OPT_EDIT, NULL)) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(edit)->ctx);
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid datastore edit.");
+        }
+
+        /* put edit back in order */
+        if (prev) {
+            sr_ly_link(first, edit);
+        }
+        if (next) {
+            sr_ly_link(first, next);
+        }
+
+        /* next iter */
+        edit = edit->next;
+    }
+
+    return err_info;
+}
+
+sr_error_info_t *
 sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, const char *operation,
-        const char *def_operation, const sr_move_position_t *position, const char *keys, const char *val, const char *origin)
+        const char *def_operation, const sr_move_position_t *position, const char *keys, const char *val,
+        const char *origin, int isolate)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *node, *sibling, *parent;
@@ -3274,7 +3340,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 
     /* merge the change into existing edit */
     opts = LYD_PATH_OPT_NOPARENTRET | (!strcmp(operation, "remove") || !strcmp(operation, "delete") ? LYD_PATH_OPT_EDIT : 0);
-    node = lyd_new_path(session->dt[session->ds].edit, session->conn->ly_ctx, xpath, (void *)value, 0, opts);
+    node = lyd_new_path(isolate ? NULL : session->dt[session->ds].edit, session->conn->ly_ctx, xpath, (void *)value, 0, opts);
     if (!node) {
         /* check whether it is an error */
         if ((err_info = sr_edit_add_check_same_node_op(session, xpath, value, sr_edit_str2op(operation)))) {
@@ -3282,6 +3348,17 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         }
         /* node with the same operation already exists, silently ignore */
         return NULL;
+    }
+
+    if (isolate) {
+        for (parent = node; parent->parent; parent = parent->parent);
+
+        /* connect into one edit */
+        if (session->dt[session->ds].edit) {
+            sr_ly_link(session->dt[session->ds].edit, parent);
+        } else {
+            session->dt[session->ds].edit = parent;
+        }
     }
 
     /* check arguments */
@@ -3438,9 +3515,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 
    if (SR_IS_CONVENTIONAL_DS(session->ds)) {
         /* validate (only configuration datastores) */
-        if (lyd_validate(&session->dt[session->ds].edit, LYD_OPT_EDIT, NULL)) {
-            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid datastore edit.");
+        if ((err_info = sr_edit_validate(session->dt[session->ds].edit))) {
             goto error;
         }
     } else {

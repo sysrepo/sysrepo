@@ -818,9 +818,13 @@ typedef enum sr_edit_flag_e {
     SR_EDIT_DEFAULT = 0,        /**< Default behavior - non-strict. */
     SR_EDIT_NON_RECURSIVE = 1,  /**< Non-recursive behavior:
                                      by ::sr_set_item, all preceding nodes (parents) of the identified element must exist. */
-    SR_EDIT_STRICT = 2          /**< Strict behavior:
+    SR_EDIT_STRICT = 2,         /**< Strict behavior:
                                      by ::sr_set_item the identified element must not exist (similar to NETCONF create operation),
                                      by ::sr_delete_item the identified element must exist (similar to NETCONF delete operation). */
+    SR_EDIT_ISOLATE = 4,        /**< Create new operation separately, independent of all the previous operations. Since all the
+                                     operations are concatenated into one edit tree, it may happen that 2 incompatible operations
+                                     are set and an error is observed. This flag can in those cases be used. However, note that
+                                     it can adversely affect edit performance. */
 } sr_edit_flag_t;
 
 /**

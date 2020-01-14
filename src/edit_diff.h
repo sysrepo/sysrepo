@@ -144,6 +144,14 @@ sr_error_info_t *sr_ly_val_diff_merge(struct lyd_node **diff, LYD_DIFFTYPE type,
 sr_error_info_t *sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **diff_p);
 
 /**
+ * @brief Validate sysrepo edit to the required extent.
+ *
+ * @param[in] edit Edit to validate.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_edit_validate(struct lyd_node *edit);
+
+/**
  * @brief Add change into sysrepo edit.
  *
  * @param[in] session Session to use.
@@ -155,10 +163,12 @@ sr_error_info_t *sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **d
  * @param[in] keys Optional relative list instance keys predicate for move change.
  * @param[in] val Optional relative leaf-list value for move change.
  * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL.
+ * @param[in] isolate Whether to create the new operation separately (isolated) from the others.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, const char *operation,
-        const char *def_operation, const sr_move_position_t *position, const char *keys, const char *val, const char *origin);
+        const char *def_operation, const sr_move_position_t *position, const char *keys, const char *val,
+        const char *origin, int isolate);
 
 /**
  * @brief Get next change from a sysrepo diff set.
