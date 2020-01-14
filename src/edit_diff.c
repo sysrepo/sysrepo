@@ -1051,14 +1051,10 @@ sr_edit_is_redundant(struct lyd_node *edit)
     enum edit_op op;
     struct lyd_attr *attr, *orig_val_attr = NULL, *val_attr = NULL;
     struct lyd_node *child;
-    int presence = 0;
 
     assert(edit);
 
     child = sr_lyd_child(edit, 1);
-    if ((edit->schema->nodetype == LYS_CONTAINER) && ((struct lys_node_container *)edit->schema)->presence) {
-        presence = 1;
-    }
 
     /* get node operation */
     op = sr_edit_find_oper(edit, 1, NULL);
@@ -1107,10 +1103,8 @@ sr_edit_is_redundant(struct lyd_node *edit)
         }
     }
 
-    if (!child) {
-        if ((op == EDIT_NONE) && !presence) {
-            return 1;
-        }
+    if (!child && (op == EDIT_NONE)) {
+        return 1;
     }
 
     return 0;
