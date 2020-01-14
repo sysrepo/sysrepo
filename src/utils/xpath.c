@@ -24,8 +24,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "xpath.h"
 #include "common.h"
+#include "xpath.h"
 
 static char *
 sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, bool skip_namespace)
