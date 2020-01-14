@@ -3138,7 +3138,7 @@ sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count, 
 
         /* merge into the final result */
         if (*new_data) {
-            if (lyd_merge(*new_data, root, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+            if (lyd_merge(*new_data, root, LYD_OPT_DESTRUCT)) {
                 lyd_free_withsiblings(root);
                 sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
                 goto error;

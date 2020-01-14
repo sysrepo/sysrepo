@@ -617,7 +617,7 @@ sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *
     /* merge into one data tree */
     if (!*data) {
         *data = oper_data;
-    } else if (oper_data && lyd_merge(*data, oper_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+    } else if (oper_data && lyd_merge(*data, oper_data, LYD_OPT_DESTRUCT)) {
         lyd_free_withsiblings(oper_data);
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         return err_info;

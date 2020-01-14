@@ -3131,7 +3131,7 @@ sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **diff_p)
         if (!diff) {
             diff = node;
         } else {
-            if (lyd_merge(diff, node, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+            if (lyd_merge(diff, node, LYD_OPT_DESTRUCT)) {
                 sr_errinfo_new_ly(&err_info, ly_ctx);
                 goto error;
             }
