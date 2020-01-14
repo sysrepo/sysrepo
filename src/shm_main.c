@@ -909,8 +909,7 @@ sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
     conn_s = sr_shmmain_conn_state_find(main_shm, conn->ext_shm.addr, conn, getpid());
     if (!conn_s) {
         SR_ERRINFO_INT(&err_info);
-        sr_errinfo_free(&err_info);
-        return;
+        goto cleanup_unlock;
     }
 
     /* find the evpipe */
@@ -922,8 +921,7 @@ sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
     }
     if (i == conn_s->evpipe_count) {
         SR_ERRINFO_INT(&err_info);
-        sr_errinfo_free(&err_info);
-        return;
+        goto cleanup_unlock;
     }
 
     /* add wasted memory keeping alignment in mind */
@@ -939,8 +937,10 @@ sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
         evpipes[i] = evpipes[conn_s->evpipe_count];
     }
 
+cleanup_unlock:
     /* CONN STATE UNLOCK */
     sr_munlock(&main_shm->conn_state.lock);
+    sr_errinfo_free(&err_info);
 }
 
 sr_error_info_t *
