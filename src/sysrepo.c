@@ -1978,12 +1978,29 @@ API int
 sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
+    const char *operation;
+    const struct lys_node *snode;
+    int ly_log_opts;
 
     SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
 
+    /* turn off logging */
+    ly_log_opts = ly_log_options(0);
+
+    if ((path[strlen(path) - 1] != ']') && (snode = ly_ctx_get_node(session->conn->ly_ctx, NULL, path, 0)) &&
+            (snode->nodetype & (LYS_LEAFLIST | LYS_LIST)) && !strcmp((path + strlen(path)) - strlen(snode->name), snode->name)) {
+        operation = "purge";
+    } else if (opts & SR_EDIT_STRICT) {
+        operation = "delete";
+    } else {
+        operation = "remove";
+    }
+
+    ly_log_options(ly_log_opts);
+
     /* add the operation into edit */
-    err_info = sr_edit_add(session, path, NULL, opts & SR_EDIT_STRICT ? "delete" : "remove",
-            opts & SR_EDIT_STRICT ? "none" : "ether", NULL, NULL, NULL, NULL, opts & SR_EDIT_ISOLATE);
+    err_info = sr_edit_add(session, path, NULL, operation, opts & SR_EDIT_STRICT ? "none" : "ether", NULL, NULL, NULL,
+            NULL, opts & SR_EDIT_ISOLATE);
 
     return sr_api_ret(session, err_info);
 }
@@ -2006,7 +2023,7 @@ API int
 sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char *default_operation)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *valid_edit = NULL, *node;
+    struct lyd_node *dup_edit = NULL, *node;
 
     SR_CHECK_ARG_APIRET(!session || !edit || !default_operation, session, err_info);
     SR_CHECK_ARG_APIRET(strcmp(default_operation, "merge") && strcmp(default_operation, "replace")
@@ -2021,19 +2038,14 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
         return sr_api_ret(session, err_info);
     }
 
-    valid_edit = lyd_dup_withsiblings(edit, LYD_DUP_OPT_RECURSIVE);
-    if (!valid_edit) {
+    dup_edit = lyd_dup_withsiblings(edit, LYD_DUP_OPT_RECURSIVE);
+    if (!dup_edit) {
         sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
         goto error;
     }
 
-    /* validate the input data tree first */
-    if (SR_IS_CONVENTIONAL_DS(session->ds) && (err_info = sr_edit_validate(valid_edit))) {
-        goto error;
-    }
-
     /* add default operation and default origin */
-    LY_TREE_FOR(valid_edit, node) {
+    LY_TREE_FOR(dup_edit, node) {
         if ((err_info = sr_edit_set_oper(node, default_operation))) {
             goto error;
         }
@@ -2042,11 +2054,11 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
         }
     }
 
-    session->dt[session->ds].edit = valid_edit;
+    session->dt[session->ds].edit = dup_edit;
     return sr_api_ret(session, NULL);
 
 error:
-    lyd_free_withsiblings(valid_edit);
+    lyd_free_withsiblings(dup_edit);
     return sr_api_ret(session, err_info);
 }
 

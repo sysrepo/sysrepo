@@ -889,8 +889,8 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  * after calling ::sr_apply_changes. The accepted values are the same as for ::sr_set_item_str.
  *
  * If ::SR_EDIT_STRICT flag is set the specified node must must exist in the datastore.
- * If the xpath includes the list keys, the specified list instance is deleted.
- * If the xpath to list does not include keys, all instances of the list are deleted.
+ * If the @p path includes the list keys/leaf-list value, the specified instance is deleted.
+ * If the @p path of list/leaf-list does not include keys/value, all instances are deleted.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be deleted.

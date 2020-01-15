@@ -41,6 +41,7 @@ enum edit_op {
 
     /* sysrepo-specific */
     EDIT_ETHER,
+    EDIT_PURGE,
 
     /* NETCONF */
     EDIT_NONE,
@@ -240,7 +241,7 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
                 val_equal = 1;
                 break;
             case LYS_LEAF:
-                if ((op == EDIT_REMOVE) || (op == EDIT_DELETE)) {
+                if ((op == EDIT_REMOVE) || (op == EDIT_DELETE) || (op == EDIT_PURGE)) {
                     /* we do not care about the value in this case */
                     val_equal = 1;
                 } else {
@@ -271,7 +272,7 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
                 break;
             case LYS_ANYXML:
             case LYS_ANYDATA:
-                if ((op == EDIT_REMOVE) || (op == EDIT_DELETE)) {
+                if ((op == EDIT_REMOVE) || (op == EDIT_DELETE) || (op == EDIT_PURGE)) {
                     /* we do not care about the value in this case */
                     val_equal = 1;
                 } else {
@@ -283,6 +284,13 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
                 match = iter;
                 break;
             case LYS_LIST:
+                if (op == EDIT_PURGE) {
+                    /* we do not care about the value or order in this case */
+                    val_equal = 1;
+                    match = iter;
+                    break;
+                }
+
                 slist = (struct lys_node_list *)iter->schema;
 
                 /* compare keys */
@@ -315,6 +323,13 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
                 /* fallthrough */
             case LYS_LEAFLIST:
                 if (edit_node->schema->nodetype == LYS_LEAFLIST) {
+                    if (op == EDIT_PURGE) {
+                        /* we do not care about the value or order in this case */
+                        val_equal = 1;
+                        match = iter;
+                        break;
+                    }
+
                     /* compare values */
                     if (sr_ly_leaf_value_str(iter) != sr_ly_leaf_value_str(edit_node)) {
                         break;
@@ -424,6 +439,10 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
                 case 'e':
                     assert(!strcmp(attr->value_str, "ether"));
                     *op = EDIT_ETHER;
+                    break;
+                case 'p':
+                    assert(!strcmp(attr->value_str, "purge"));
+                    *op = EDIT_PURGE;
                     break;
                 default:
                     SR_ERRINFO_INT(&err_info);
@@ -659,6 +678,8 @@ sr_edit_op2str(enum edit_op op)
     switch (op) {
     case EDIT_ETHER:
         return "ether";
+    case EDIT_PURGE:
+        return "purge";
     case EDIT_NONE:
         return "none";
     case EDIT_MERGE:
@@ -713,6 +734,9 @@ sr_edit_str2op(const char *str)
     case 'd':
         assert(!strcmp(str, "delete"));
         return EDIT_DELETE;
+    case 'p':
+        assert(!strcmp(str, "purge"));
+        return EDIT_PURGE;
     default:
         break;
     }
@@ -1661,6 +1685,7 @@ reapply:
             }
             break;
         case EDIT_CASE_REMOVE:
+        case EDIT_PURGE:
             prev_op = next_op;
             /* fallthrough */
         case EDIT_REMOVE:
@@ -1698,8 +1723,8 @@ reapply:
         return err_info;
     }
 
-    if (prev_op == EDIT_CASE_REMOVE) {
-        /* we have removed one subtree of data from another case, try this whole edit again */
+    if ((prev_op == EDIT_CASE_REMOVE) || ((prev_op == EDIT_PURGE) && diff_node)) {
+        /* we have removed one subtree of data from another case/one instance, try this whole edit again */
         prev_op = 0;
         diff_node = NULL;
         goto reapply;
@@ -3171,18 +3196,23 @@ sr_edit_is_superior_op(enum edit_op *new_op, enum edit_op cur_op, int *is_superi
     sr_error_info_t *err_info = NULL;
     *is_superior = 0;
 
+    /* actually, cur_op cannot be purge because that would mean a descendant node was created and
+     * since this can happen only for lists without keys, there is no way to address them (and create descendants),
+     * but whatever, be robust */
+
     switch (cur_op) {
     case EDIT_CREATE:
-        if ((*new_op == EDIT_DELETE) || (*new_op == EDIT_REPLACE) || (*new_op == EDIT_REMOVE)) {
+        if ((*new_op == EDIT_DELETE) || (*new_op == EDIT_REPLACE) || (*new_op == EDIT_REMOVE) || (*new_op == EDIT_PURGE)) {
             goto op_error;
         }
         /* do not overwrite */
         break;
     case EDIT_DELETE:
+    case EDIT_PURGE:
         /* no operation allowed */
         goto op_error;
     case EDIT_REPLACE:
-        if ((*new_op == EDIT_DELETE) || (*new_op == EDIT_REMOVE)) {
+        if ((*new_op == EDIT_DELETE) || (*new_op == EDIT_REMOVE) || (*new_op == EDIT_PURGE)) {
             goto op_error;
         }
         /* do not overwrite */
@@ -3197,7 +3227,7 @@ sr_edit_is_superior_op(enum edit_op *new_op, enum edit_op cur_op, int *is_superi
         }
         break;
     case EDIT_MERGE:
-        if ((*new_op == EDIT_DELETE) || (*new_op == EDIT_REPLACE) || (*new_op == EDIT_REMOVE)) {
+        if ((*new_op == EDIT_DELETE) || (*new_op == EDIT_REPLACE) || (*new_op == EDIT_REMOVE) || (*new_op == EDIT_PURGE)) {
             goto op_error;
         }
         if (*new_op == EDIT_REPLACE) {
@@ -3276,52 +3306,6 @@ sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, con
 }
 
 sr_error_info_t *
-sr_edit_validate(struct lyd_node *edit)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *first, *prev, *next;
-
-    /* remember first sibling */
-    first = edit;
-
-    while (edit && !err_info) {
-        prev = NULL;
-        next = NULL;
-
-        /* split previous siblings */
-        if (edit->prev->next) {
-            prev = edit->prev;
-            sr_ly_split(edit);
-        }
-
-        /* split following siblings */
-        if (edit->next) {
-            next = edit->next;
-            sr_ly_split(next);
-        }
-
-        /* validate isolated subtree */
-        if (lyd_validate(&edit, LYD_OPT_EDIT, NULL)) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(edit)->ctx);
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid datastore edit.");
-        }
-
-        /* put edit back in order */
-        if (prev) {
-            sr_ly_link(first, edit);
-        }
-        if (next) {
-            sr_ly_link(first, next);
-        }
-
-        /* next iter */
-        edit = edit->next;
-    }
-
-    return err_info;
-}
-
-sr_error_info_t *
 sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, const char *operation,
         const char *def_operation, const sr_move_position_t *position, const char *keys, const char *val,
         const char *origin, int isolate)
@@ -3329,11 +3313,15 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     sr_error_info_t *err_info = NULL;
     struct lyd_node *node, *sibling, *parent;
     const char *attr_val, *def_origin;
+    const struct lys_module *ly_mod;
     enum edit_op op, def_op;
     int opts, own_oper, next_iter_oper, is_sup;
 
     /* merge the change into existing edit */
-    opts = LYD_PATH_OPT_NOPARENTRET | (!strcmp(operation, "remove") || !strcmp(operation, "delete") ? LYD_PATH_OPT_EDIT : 0);
+    opts = LYD_PATH_OPT_NOPARENTRET;
+    if (!strcmp(operation, "remove") || !strcmp(operation, "delete") || !strcmp(operation, "purge")) {
+        opts |= LYD_PATH_OPT_EDIT;
+    }
     node = lyd_new_path(isolate ? NULL : session->dt[session->ds].edit, session->conn->ly_ctx, xpath, (void *)value, 0, opts);
     if (!node) {
         /* check whether it is an error */
@@ -3466,7 +3454,12 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     }
 
     /* add the operation of the node */
-    if (!lyd_insert_attr(node, NULL, "ietf-netconf:operation", operation)) {
+    if (!strcmp(operation, "purge")) {
+        ly_mod = ly_ctx_get_module(session->conn->ly_ctx, SR_YANG_MOD, NULL, 1);
+    } else {
+        ly_mod = ly_ctx_get_module(session->conn->ly_ctx, "ietf-netconf", NULL, 1);
+    }
+    if (!ly_mod || !lyd_insert_attr(node, ly_mod, "operation", operation)) {
         sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
         goto error;
     }
@@ -3507,12 +3500,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         }
     }
 
-   if (SR_IS_CONVENTIONAL_DS(session->ds)) {
-        /* validate (only configuration datastores) */
-        if ((err_info = sr_edit_validate(session->dt[session->ds].edit))) {
-            goto error;
-        }
-    } else {
+    if (session->ds == SR_DS_OPERATIONAL) {
         /* add node origin */
         if ((err_info = sr_edit_diff_set_origin(node, origin, 1))) {
             goto error;

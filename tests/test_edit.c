@@ -195,25 +195,6 @@ test_delete(void **state)
 }
 
 static void
-test_delete_invalid(void **state)
-{
-    struct state *st = (struct state *)*state;
-    int ret;
-
-    /* no keys */
-    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface/type", 0);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
-    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface", 0);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
-    ret = sr_delete_item(st->sess, "/test:l1", 0);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
-
-    /* no leaf-list value */
-    ret = sr_delete_item(st->sess, "/test:ll1", 0);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
-}
-
-static void
 test_create1(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -574,18 +555,73 @@ test_isolate(void **state)
     free(str);
 }
 
+static void
+test_purge(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *subtree;
+    int ret;
+
+    /* create some list instances */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth65']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth66']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth67']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* delete all instances */
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(subtree->dflt, 1);
+    lyd_free(subtree);
+
+    /* repeat with leaf-list */
+    ret = sr_set_item_str(st->sess, "/test:ll1", "12", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:ll1", "13", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:ll1", "14", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_delete_item(st->sess, "/test:ll1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_subtree(st->sess, "/test:ll1", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(subtree);
+}
+
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_edit_item),
         cmocka_unit_test_teardown(test_delete, clear_interfaces),
-        cmocka_unit_test(test_delete_invalid),
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
         cmocka_unit_test_teardown(test_create2, clear_interfaces),
         cmocka_unit_test_teardown(test_move1, clear_test),
         cmocka_unit_test_teardown(test_replace, clear_interfaces),
         cmocka_unit_test_teardown(test_isolate, clear_interfaces),
+        cmocka_unit_test(test_purge),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

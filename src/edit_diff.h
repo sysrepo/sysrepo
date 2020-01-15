@@ -144,14 +144,6 @@ sr_error_info_t *sr_ly_val_diff_merge(struct lyd_node **diff, LYD_DIFFTYPE type,
 sr_error_info_t *sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **diff_p);
 
 /**
- * @brief Validate sysrepo edit to the required extent.
- *
- * @param[in] edit Edit to validate.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_edit_validate(struct lyd_node *edit);
-
-/**
  * @brief Add change into sysrepo edit.
  *
  * @param[in] session Session to use.
