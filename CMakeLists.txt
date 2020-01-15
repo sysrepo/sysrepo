@@ -200,7 +200,7 @@ find_package(YANG REQUIRED)
 target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
 include_directories(${LIBYANG_INCLUDE_DIRS})
 
-find_path(LY_HEADER_PATH "libyang/libyang.h")
+find_path(LY_HEADER_PATH "libyang/libyang.h" HINTS ${LIBYANG_INCLUDE_DIR})
 file(READ "${LY_HEADER_PATH}/libyang/libyang.h" LY_HEADER)
 string(REGEX MATCH "#define LY_VERSION \"[0-9]+\\.[0-9]+\\.[0-9]+\"" LY_VERSION_MACRO "${LY_HEADER}")
 string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" LY_VERSION "${LY_VERSION_MACRO}")
