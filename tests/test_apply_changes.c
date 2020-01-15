@@ -2950,18 +2950,15 @@ module_change_timeout_cb(sr_session_ctx_t *session, const char *module_name, con
     case 0:
         assert_int_equal(event, SR_EV_CHANGE);
 
-        /* time out */
+        /* time out, twice */
+        pthread_barrier_wait(&st->barrier2);
         pthread_barrier_wait(&st->barrier2);
         break;
     case 1:
         assert_int_equal(event, SR_EV_CHANGE);
-
-        /* do not time out now */
         break;
     case 2:
         assert_int_equal(event, SR_EV_DONE);
-
-        /* do not time out now */
         break;
     default:
         fail();
@@ -2981,25 +2978,30 @@ apply_change_timeout_thread(void *arg)
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_set_item_str(sess, "/test:l1[k='subscr']/v", "28", NULL, 0);
+    ret = sr_set_item_str(sess, "/test:l1[k='subscr']/v", "30", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for subscription before applying changes */
     pthread_barrier_wait(&st->barrier);
 
-    /* perform the change, time out butgive it some time so that the callback is at least called) */
+    /* perform the change, time out but give it some time so that the callback is at least called) */
     ret = sr_apply_changes(sess, 10);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
     pthread_barrier_wait(&st->barrier2);
 
-    /* signal that we have tried first time */
+    /* try again while the first callback is still executing (waiting) */
+    ret = sr_apply_changes(sess, 10);
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    pthread_barrier_wait(&st->barrier2);
+
+    /* signal that we have timeouted twice */
     pthread_barrier_wait(&st->barrier);
 
-    /* try again, will succeed now */
+    /* finally apply changes successfully */
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* signal that we have finished applying changes */
+    /* signal that we have finished applying the changes */
     pthread_barrier_wait(&st->barrier);
 
     sr_session_stop(sess);
@@ -3030,7 +3032,7 @@ subscribe_change_timeout_thread(void *arg)
     }
     assert_int_equal(st->cb_called, 1);
 
-    /* wait for the other thread to try first time */
+    /* wait for the other thread to report timeout */
     pthread_barrier_wait(&st->barrier);
 
     count = 0;

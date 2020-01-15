@@ -1782,7 +1782,8 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
             multi_sub_shm->event = SR_SUB_EV_NONE;
             break;
         default:
-            /* no longer a listener event, we could have timeouted */
+            /* no longer a listener event, timeout was supposed to be handled before but since then the shared memory
+             * was briefly unlocked so that is when the timeout may have occured (extremely small chance) */
             sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Unable to finish processing event with ID %u priority %u "
                     "(timeout probably).", multi_sub_shm->request_id, multi_sub_shm->priority);
             return err_info;
@@ -1933,7 +1934,13 @@ process_event:
         if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
             goto cleanup;
         }
-        assert(request_id == multi_sub_shm->request_id);
+
+        /* check that SHM is valid even after the callback returned */
+        if ((event != multi_sub_shm->event) || (request_id != multi_sub_shm->request_id)) {
+            sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Unable to finish processing event \"%s\" with ID %u "
+                    "(timeout probably).", sr_ev2str(event), request_id);
+            goto cleanup_rdunlock;
+        }
 
         if ((event == SR_SUB_EV_UPDATE) || (event == SR_SUB_EV_CHANGE)) {
             if (ret == SR_ERR_CALLBACK_SHELVE) {
@@ -1983,8 +1990,13 @@ process_event:
             }
         }
         break;
-    default:
+    case SR_SUB_EV_DONE:
+    case SR_SUB_EV_ABORT:
+        /* nothing to do */
         break;
+    default:
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup_rdunlock;
     }
 
     if (data_len) {
@@ -2052,7 +2064,7 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t d
         }
         break;
     default:
-        /* no longer a listener event, we could have timeouted */
+        /* no longer a listener event, we could have timeouted (handled before, this is an extreme corner-case) */
         sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Unable to finish processing event with ID %u (timeout probably).",
                 sub_shm->request_id);
         return err_info;
@@ -2163,7 +2175,13 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
             goto error;
         }
-        assert(request_id == sub_shm->request_id);
+
+        /* check that SHM is valid even after the callback returned */
+        if ((SR_SUB_EV_OPER != sub_shm->event) || (request_id != sub_shm->request_id)) {
+            sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Unable to finish processing event \"operational\" with"
+                    " ID %u (timeout probably).", request_id);
+            goto error_wrunlock;
+        }
 
         /* remember request ID so that we do not process it again */
         oper_sub->request_id = sub_shm->request_id;
@@ -2475,7 +2493,13 @@ process_event:
         if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
             goto cleanup;
         }
-        assert(request_id == multi_sub_shm->request_id);
+
+        /* check that SHM is valid even after the callback returned */
+        if ((event != multi_sub_shm->event) || (request_id != multi_sub_shm->request_id)) {
+            sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Unable to finish processing event \"%s\" with ID %u "
+                    "(timeout probably).", sr_ev2str(event), request_id);
+            goto cleanup_rdunlock;
+        }
 
         if (event == SR_SUB_EV_RPC) {
             if (ret == SR_ERR_CALLBACK_SHELVE) {
