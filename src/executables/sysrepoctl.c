@@ -59,7 +59,7 @@ static void
 version_print(void)
 {
     printf(
-        "sysrepocfg - sysrepo YANG schema manipulation tool, compiled with libsysrepo v%s (SO v%s)\n"
+        "sysrepoctl - sysrepo YANG schema manipulation tool, compiled with libsysrepo v%s (SO v%s)\n"
         "\n",
         SR_VERSION, SR_SOVERSION
     );
