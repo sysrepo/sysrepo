@@ -31,7 +31,8 @@ RUN \
       swig \
       libcmocka0 \
       libcmocka-dev \
-      cmake
+      cmake \
+      supervisor
 
 # Adding netconf user
 RUN adduser --system netconf
@@ -43,8 +44,8 @@ RUN echo "netconf:netconf" | chpasswd && adduser netconf sudo
 RUN \
 	echo '' > /home/netconf/.ssh/authorized_keys && \
 	ssh-keygen -A && \
-	ssh-keygen -t dsa -P '' -f /home/netconf/.ssh/id_dsa && \
-	cat /home/netconf/.ssh/id_dsa.pub >> /home/netconf/.ssh/authorized_keys
+	ssh-keygen -t rsa -b 4096 -P '' -f /home/netconf/.ssh/id_rsa && \
+	cat /home/netconf/.ssh/id_rsa.pub >> /home/netconf/.ssh/authorized_keys
 
 
 # Updating shell to bash
