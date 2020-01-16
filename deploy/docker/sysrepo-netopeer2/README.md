@@ -1,16 +1,21 @@
 # Docker image with Sysrepo & Netopeer2 setup
 
-Run `sysrepod` and `netopeer2-server` in the container:
+Run `netopeer2-server` in the container:
 ```
 docker run -it --name sysrepo -p 830:830 --rm sysrepo/sysrepo-netopeer2:latest
 ```
 
 Connect to the NETCONF server via SSH to port `830` (username / password is `netconf`):
 ```
-ssh netconf@localhost -p 830 -s netconf
+ssh netconf@<docker_container_ip> -p 830 -s netconf
 ```
 
-In order to get running config via the SSH session use the following snippet:
+You can get the IP from the docker container with:
+```
+docker inspect sysrepo | grep -w "IPAddress"
+```
+
+In order to get running config via the SSH session use the following snippet. Paste this into the terminal where the ssh connection was esstablished:
 ```
 <?xml version="1.0" encoding="UTF-8"?>
 <hello xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
@@ -38,14 +43,10 @@ To access `sysrepoctl` or `sysrepocfg` exec bash in the container:
 ```
 docker exec -it sysrepo /bin/bash
 sysrepoctl -l
-sysrepocfg turing-machine
+sysrepocfg -E -f xml -d running -m <module_to_configure>
 ```
 
 You can also connect to the NETCONF server via [testconf](https://hub.docker.com/r/sysrepo/testconf/):
 ```
 docker run -it --link sysrepo --rm sysrepo/testconf:latest
 ```
-
-asciinema demo:
-
-[![demo](https://asciinema.org/a/05cdmz78fhcl5jeo4xyiqqr33.png)](https://asciinema.org/a/05cdmz78fhcl5jeo4xyiqqr33?autoplay=1)
