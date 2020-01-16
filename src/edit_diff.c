@@ -1212,6 +1212,9 @@ sr_edit_apply_remove(struct lyd_node **first_node, struct lyd_node *parent_node,
     struct lyd_node *parent;
     sr_error_info_t *err_info = NULL;
 
+    /* just use the value because it is only in an assert */
+    (void)parent_node;
+
     if (match_node) {
         if ((match_node == *first_node) && !match_node->parent) {
             assert(!parent_node);

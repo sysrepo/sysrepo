@@ -249,15 +249,15 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
             if (!cur_item->revision) {
                 cur_item->revision = strdup("");
             }
+
+            /* add all import modules as well */
+            for (i = 0; i < ly_mod->imp_size; ++i) {
+                srctl_list_collect_import(ly_mod->imp[i].module, list, list_count);
+            }
         } else {
             cur_item->change_flag = "N";
             cur_item->owner = strdup("");
             cur_item->revision = strdup("");
-        }
-
-        /* add all import modules as well */
-        for (i = 0; i < ly_mod->imp_size; ++i) {
-            srctl_list_collect_import(ly_mod->imp[i].module, list, list_count);
         }
     }
 

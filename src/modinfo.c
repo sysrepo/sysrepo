@@ -694,7 +694,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
         if ((shm_msub->sub_type == SR_OPER_SUB_CONFIG) || (shm_msub->sub_type == SR_OPER_SUB_MIXED)) {
             /* remove any present data */
             if ((err_info = sr_lyd_xpath_complement(data, sub_xpath))) {
-                goto error;
+                return err_info;
             }
         }
 
