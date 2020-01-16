@@ -40,10 +40,11 @@ RUN echo "netconf:netconf" | chpasswd && adduser netconf sudo
 
 
 # Clearing and setting authorized ssh keys
-RUN echo '' > /home/netconf/.ssh/authorized_keys
-RUN ssh-keygen -A
-RUN ssh-keygen -t dsa -P '' -f /home/netconf/.ssh/id_dsa
-RUN cat /home/netconf/.ssh/id_dsa.pub >> /home/netconf/.ssh/authorized_keys
+RUN \
+	echo '' > /home/netconf/.ssh/authorized_keys && \
+	ssh-keygen -A && \
+	ssh-keygen -t dsa -P '' -f /home/netconf/.ssh/id_dsa && \
+	cat /home/netconf/.ssh/id_dsa.pub >> /home/netconf/.ssh/authorized_keys
 
 
 # Updating shell to bash
@@ -56,13 +57,11 @@ RUN echo "root:root" | chpasswd
 
 # libyang
 RUN \
-      cd /opt/dev && \
-      git clone https://github.com/CESNET/libyang.git && cd libyang && \
-      git checkout master && \
-      mkdir build && cd build && \
-      cmake -DCMAKE_BUILD_TYPE:String="Release" -DCMAKE_INSTALL_PREFIX:PATH=/usr -DENABLE_BUILD_TESTS=OFF .. && \
-      make -j2 && \
-      make install
+      sh -c "echo 'deb http://download.opensuse.org/repositories/home:/liberouter/xUbuntu_18.04/ /' > /etc/apt/sources.list.d/home:liberouter.list" && \
+      wget -nv https://download.opensuse.org/repositories/home:liberouter/xUbuntu_18.04/Release.key -O Release.key && \
+      apt-key add - < Release.key && \
+      apt-get update && \
+      apt-get install libyang libyang-dev
 
 # libnetconf2
 RUN \
