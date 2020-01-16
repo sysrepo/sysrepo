@@ -184,8 +184,9 @@ sr_shmsub_notify_finish_wrunlock(sr_sub_shm_t *sub_shm, size_t shm_struct_size, 
             }
 
             /* event timeout */
+            sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, NULL, "Callback event \"%s\" with ID %u processing timed out.",
+                    sr_ev2str(sub_shm->event), sub_shm->request_id);
             sub_shm->event = SR_SUB_EV_ERROR;
-            sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, NULL, "Callback event processing timed out.");
         } else {
             /* other error */
             SR_ERRINFO_COND(&err_info, __func__, ret);
