@@ -2955,9 +2955,15 @@ module_change_timeout_cb(sr_session_ctx_t *session, const char *module_name, con
         pthread_barrier_wait(&st->barrier2);
         break;
     case 1:
-        assert_int_equal(event, SR_EV_CHANGE);
+        /* we timeouted before, but returned success so now we get abort */
+        assert_int_equal(event, SR_EV_ABORT);
+
+        pthread_barrier_wait(&st->barrier2);
         break;
     case 2:
+        assert_int_equal(event, SR_EV_CHANGE);
+        break;
+    case 3:
         assert_int_equal(event, SR_EV_DONE);
         break;
     default:
@@ -2994,7 +3000,10 @@ apply_change_timeout_thread(void *arg)
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
     pthread_barrier_wait(&st->barrier2);
 
-    /* signal that we have timeouted twice */
+    /* process abort */
+    pthread_barrier_wait(&st->barrier2);
+
+    /* signal that the commit is finished (by timeout) */
     pthread_barrier_wait(&st->barrier);
 
     /* finally apply changes successfully */
@@ -3026,21 +3035,21 @@ subscribe_change_timeout_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 1) && (count < 1500)) {
+    while ((st->cb_called < 2) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(st->cb_called, 2);
 
     /* wait for the other thread to report timeout */
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 3) && (count < 1500)) {
+    while ((st->cb_called < 4) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 3);
+    assert_int_equal(st->cb_called, 4);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
