@@ -229,7 +229,7 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
     struct lys_node_list *slist;
     struct lyd_node *data_key, *edit_key, *anchor_node;
     const struct lyd_node *iter, *match = NULL;
-    int val_equal = 0, ret;
+    int val_equal = 0;
     uint16_t i;
 
     /* find the edit node in data */
@@ -244,29 +244,12 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
                 if ((op == EDIT_REMOVE) || (op == EDIT_DELETE) || (op == EDIT_PURGE)) {
                     /* we do not care about the value in this case */
                     val_equal = 1;
+                } else if ((iter->dflt != edit_node->dflt) || strcmp(sr_ly_leaf_value_str(iter), sr_ly_leaf_value_str(edit_node))) {
+                    /* check whether the value or at least dflt flag is different */
+                    val_equal = 0;
                 } else {
-                    /* duplicate the leaf for testing the value */
-                    data_key = lyd_dup(iter, 0);
-                    if (!data_key) {
-                        sr_errinfo_new_ly(&err_info, lyd_node_module(iter)->ctx);
-                        return err_info;
-                    }
-
-                    /* try modifying the node */
-                    ret = lyd_change_leaf((struct lyd_node_leaf_list *)data_key, sr_ly_leaf_value_str(edit_node));
-                    lyd_free(data_key);
-
-                    if (ret < 0) {
-                        /* error */
-                        sr_errinfo_new_ly(&err_info, lyd_node_module(iter)->ctx);
-                        return err_info;
-                    } else if (!ret) {
-                        /* values actually differ */
-                        val_equal = 0;
-                    } else {
-                        /* canonical values are the same */
-                        val_equal = 1;
-                    }
+                    /* canonical values are the same */
+                    val_equal = 1;
                 }
                 match = iter;
                 break;
@@ -2007,7 +1990,8 @@ sr_diff_merge_create(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
     switch (cur_op) {
     case EDIT_REMOVE:
     case EDIT_DELETE:
-        if (val_equal) {
+        /* consider only dflt flag change as val_equal */
+        if (val_equal || !strcmp(sr_ly_leaf_value_str(diff_match), sr_ly_leaf_value_str(src_node))) {
             /* deleted + created -> operation NONE */
             if (cur_own_op) {
                 sr_edit_del_attr(diff_match, "operation");
