@@ -1377,7 +1377,7 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_int_equal(new_val->dflt, 1);
+        assert_int_equal(new_val->dflt, 0);
         assert_string_equal(new_val->xpath, "/defaults:l1[k='when-true']/cont1");
 
         sr_free_val(new_val);
@@ -1389,8 +1389,8 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_int_equal(new_val->dflt, 1);
-        assert_string_equal(new_val->xpath, "/defaults:l1[k='when-true']/cont1/cont2");
+        assert_int_equal(new_val->dflt, 0);
+        assert_string_equal(new_val->xpath, "/defaults:l1[k='when-true']/cont1/ll");
 
         sr_free_val(new_val);
 
@@ -1402,11 +1402,23 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
         assert_null(old_val);
         assert_non_null(new_val);
         assert_int_equal(new_val->dflt, 1);
-        assert_string_equal(new_val->xpath, "/defaults:l1[k='when-true']/cont1/cont2/dflt1");
+        assert_string_equal(new_val->xpath, "/defaults:l1[k='when-true']/cont1/cont2");
 
         sr_free_val(new_val);
 
         /* 6th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 1);
+        assert_string_equal(new_val->xpath, "/defaults:l1[k='when-true']/cont1/cont2/dflt1");
+
+        sr_free_val(new_val);
+
+        /* 7th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -1440,6 +1452,35 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_null(new_val);
+        assert_string_equal(old_val->xpath, "/defaults:l1[k='when-true']/cont1/ll");
+
+        sr_free_val(old_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 4:
+    case 5:
+        if (st->cb_called == 4) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/defaults:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
         assert_int_equal(op, SR_OP_MODIFIED);
         assert_non_null(old_val);
         assert_int_equal(old_val->dflt, 1);
@@ -1459,9 +1500,9 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
 
         sr_free_change_iter(iter);
         break;
-    case 4:
-    case 5:
-        if (st->cb_called == 4) {
+    case 6:
+    case 7:
+        if (st->cb_called == 6) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -1494,9 +1535,9 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
 
         sr_free_change_iter(iter);
         break;
-    case 6:
-    case 7:
-        if (st->cb_called == 6) {
+    case 8:
+    case 9:
+        if (st->cb_called == 8) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -1584,9 +1625,9 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
 
         sr_free_change_iter(iter);
         break;
-    case 8:
-    case 9:
-        if (st->cb_called == 8) {
+    case 10:
+    case 11:
+        if (st->cb_called == 10) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -1638,9 +1679,9 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
 
         sr_free_change_iter(iter);
         break;
-    case 10:
-    case 11:
-        if (st->cb_called == 10) {
+    case 12:
+    case 13:
+        if (st->cb_called == 12) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -1740,9 +1781,9 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
 
         sr_free_change_iter(iter);
         break;
-    case 12:
-    case 13:
-        if (st->cb_called == 12) {
+    case 14:
+    case 15:
+        if (st->cb_called == 14) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -1774,17 +1815,57 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_set_item_str(sess, "/defaults:l1[k='when-true']", NULL, NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
     /* wait for subscription before applying changes */
     pthread_barrier_wait(&st->barrier);
 
     /*
      * perform 1st change
      *
-     * (create list that will cause other 2 containers with 1 default value and another default value to be created)
+     * (create list that will cause another container with a default value and another default value to be created)
      */
+    ret = sr_set_item_str(sess, "/defaults:l1[k='when-true']/cont1/ll", "val", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<cont xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<interval ncwd:default=\"true\">30</interval>"
+    "</cont>"
+    "<l1 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<k>when-true</k>"
+        "<cont1>"
+            "<ll>val</ll>"
+            "<cont2>"
+                "<dflt1 ncwd:default=\"true\">10</dflt1>"
+            "</cont2>"
+        "</cont1>"
+    "</l1>"
+    "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+        "I exist!"
+    "</dflt2>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    pthread_barrier_wait(&st->barrier);
+
+    /*
+     * perform 2nd change
+     *
+     * (remove explicit container with a default container and default value)
+     */
+    ret = sr_delete_item(sess, "/defaults:l1[k='when-true']/cont1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1819,7 +1900,7 @@ apply_change_done_dflt_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /*
-     * perform 2nd change
+     * perform 3rd change
      *
      * (change default leaf from default to explicitly set with different value)
      */
@@ -1844,7 +1925,7 @@ apply_change_done_dflt_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /*
-     * perform 3rd change
+     * perform 4th change
      *
      * (change leaf value to be equal to the default but should not behave as default)
      */
@@ -1869,7 +1950,7 @@ apply_change_done_dflt_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /*
-     * perform 4th change (empty diff, no callbacks called)
+     * perform 5th change (empty diff, no callbacks called)
      *
      * (remove the explicitly set leaf so that it is default but with the same value)
      */
@@ -1892,7 +1973,7 @@ apply_change_done_dflt_thread(void *arg)
     lyd_free_withsiblings(data);
 
     /*
-     * perform 5th change
+     * perform 6th change
      *
      * (remove the list instance and so also the top-level default leaf should be automatically removed)
      */
@@ -1914,7 +1995,7 @@ apply_change_done_dflt_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /*
-     * perform 6th change
+     * perform 7th change
      *
      * (add another case data, the default should be removed)
      */
@@ -1938,7 +2019,7 @@ apply_change_done_dflt_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /*
-     * perform 7th change
+     * perform 8th change
      *
      * (add another list instance and get children, all default)
      */
@@ -1997,11 +2078,11 @@ subscribe_change_done_dflt_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 14) && (count < 1500)) {
+    while ((st->cb_called < 16) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 14);
+    assert_int_equal(st->cb_called, 16);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);

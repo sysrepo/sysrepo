@@ -15,6 +15,10 @@ module defaults {
                     default "10";
                 }
             }
+
+            leaf ll {
+                type string;
+            }
         }
     }
 
