@@ -183,6 +183,10 @@ target_link_libraries(sysrepo-plugind sysrepo dl)
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
+# include repository files with highest priority
+include_directories("${PROJECT_SOURCE_DIR}/src")
+include_directories(${PROJECT_BINARY_DIR})
+
 # dependencies
 # librt (shm_open, shm_unlink, not required on OSX)
 if(NOT APPLE)
@@ -229,8 +233,6 @@ check_include_file("stdatomic.h" SR_HAVE_STDATOMIC)
 configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJECT_BINARY_DIR}/bin_common.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysrepo.pc" @ONLY)
-include_directories(${PROJECT_BINARY_DIR})
-include_directories("${PROJECT_SOURCE_DIR}/src")
 
 # installation
 install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
