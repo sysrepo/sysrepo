@@ -1769,24 +1769,55 @@ cleanup:
 }
 
 /**
- * @brief Finalize applying scheduled module removal.
+ * @brief Finalize applying scheduled module removal. Meaning remove its data files
+ * and module file in case it is not imported by other modules.
  *
  * @param[in] sr_mod Sysrepo module to remove. Will be freed.
+ * @param[in] new_ctx Context with the new modules.
+ * @param[in] update Whether this function is called from module update or module removal.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_sched_finalize_module_remove(struct lyd_node *sr_mod)
+sr_lydmods_sched_finalize_module_remove(struct lyd_node *sr_mod, const struct ly_ctx *new_ctx, int update)
 {
     sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    const char *mod_name, *mod_rev;
+    uint32_t idx;
+    uint8_t i;
 
     assert(!strcmp(sr_mod->child->schema->name, "name"));
+    mod_name = sr_ly_leaf_value_str(sr_mod->child);
+    if (sr_mod->child->next && !strcmp(sr_mod->child->next->schema->name, "revision")) {
+        mod_rev = sr_ly_leaf_value_str(sr_mod->child->next);
+    } else {
+        mod_rev = NULL;
+    }
 
     /* remove data files */
-    if ((err_info = sr_remove_data_files(sr_ly_leaf_value_str(sr_mod->child)))) {
+    if (!update && (err_info = sr_remove_data_files(mod_name))) {
         return err_info;
     }
 
-    SR_LOG_INF("Module \"%s\" was removed.", sr_ly_leaf_value_str(sr_mod->child));
+    /* check whether it is imported by other modules */
+    idx = ly_ctx_internal_modules_count((struct ly_ctx *)new_ctx);
+    while ((ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
+        for (i = 0; i < ly_mod->imp_size; ++i) {
+            if (!strcmp(ly_mod->imp[i].module->name, mod_name)) {
+                break;
+            }
+        }
+    }
+    if (!ly_mod) {
+        /* no module imports the removed one, remove the YANG as well */
+        if ((err_info = sr_remove_module_file(mod_name, mod_rev))) {
+            return err_info;
+        }
+    }
+
+    if (!update) {
+        SR_LOG_INF("Module \"%s\" was removed.", mod_name);
+    }
 
     /* remove module list instance */
     lyd_free(sr_mod);
@@ -1809,12 +1840,15 @@ sr_lydmods_sched_finalize_module_update(struct lyd_node *sr_mod, const struct ly
 
     sr_mods = sr_mod->parent;
 
+    /* find the updated module in the new context */
     assert(!strcmp(sr_mod->child->schema->name, "name"));
     ly_mod = ly_ctx_get_module(new_ctx, sr_ly_leaf_value_str(sr_mod->child), NULL, 1);
     assert(ly_mod);
 
-    /* remove module list instance */
-    lyd_free(sr_mod);
+    /* remove module */
+    if ((err_info = sr_lydmods_sched_finalize_module_remove(sr_mod, new_ctx, 1))) {
+        return err_info;
+    }
 
     /* re-add it (only the data files are kept) */
     if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod))) {
@@ -1999,7 +2033,7 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
                 assert(!strcmp(sr_mod->child->schema->name, "name"));
                 LY_TREE_FOR_SAFE(sr_mod->child->next, next2, node) {
                     if (!strcmp(node->schema->name, "removed")) {
-                        if ((err_info = sr_lydmods_sched_finalize_module_remove(sr_mod))) {
+                        if ((err_info = sr_lydmods_sched_finalize_module_remove(sr_mod, new_ctx, 0))) {
                             goto cleanup;
                         }
                         /* sr_mod was freed */

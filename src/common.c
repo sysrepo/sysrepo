@@ -1181,6 +1181,28 @@ cleanup:
     return err_info;
 }
 
+sr_error_info_t *
+sr_remove_module_file(const char *name, const char *revision)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path;
+
+    if ((err_info = sr_path_yang_file(name, revision, &path))) {
+        return err_info;
+    }
+
+    if (unlink(path) == -1) {
+        SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
+    } else {
+        SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
+    }
+
+    /* we are not able to remove submodule files, unfortunately */
+
+    free(path);
+    return NULL;
+}
+
 /**
  * @brief Check whether a module is internal libyang module.
  *

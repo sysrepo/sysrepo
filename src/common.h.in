@@ -623,6 +623,15 @@ void sr_clear_sess(sr_session_ctx_t *tmp_sess);
 sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
 
 /**
+ * @brief Remove module YANG file.
+ *
+ * @param[in] name Module name.
+ * @param[in] revision Module revision, NULL if none.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_remove_module_file(const char *name, const char *revision);
+
+/**
  * @brief Create (print) YANG module file and all of its submodules.
  *
  * @param[in] ly_mod Module to print.
