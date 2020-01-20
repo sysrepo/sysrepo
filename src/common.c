@@ -2848,17 +2848,25 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, 
         sprintf(buf, "%.*f", sleaf->type.info.dec64.dig, sr_val->data.decimal64_val);
         return buf;
     case SR_UINT8_T:
+        sprintf(buf, "%"PRIu8, sr_val->data.uint8_val);
+        return buf;
     case SR_UINT16_T:
+        sprintf(buf, "%"PRIu16, sr_val->data.uint16_val);
+        return buf;
     case SR_UINT32_T:
-        sprintf(buf, "%u", sr_val->data.uint32_val);
+        sprintf(buf, "%"PRIu32, sr_val->data.uint32_val);
         return buf;
     case SR_UINT64_T:
         sprintf(buf, "%"PRIu64, sr_val->data.uint64_val);
         return buf;
     case SR_INT8_T:
+        sprintf(buf, "%"PRId8, sr_val->data.int8_val);
+        return buf;
     case SR_INT16_T:
+        sprintf(buf, "%"PRId16, sr_val->data.int16_val);
+        return buf;
     case SR_INT32_T:
-        sprintf(buf, "%d", sr_val->data.int32_val);
+        sprintf(buf, "%"PRId32, sr_val->data.int32_val);
         return buf;
     case SR_INT64_T:
         sprintf(buf, "%"PRId64, sr_val->data.int64_val);
