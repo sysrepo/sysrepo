@@ -364,6 +364,12 @@ sr_log_stderr(sr_log_level_t log_level)
     stderr_ll = log_level;
 }
 
+API sr_log_level_t
+sr_log_get_stderr(void)
+{
+    return stderr_ll;
+}
+
 API void
 sr_log_syslog(const char *app_name, sr_log_level_t log_level)
 {
@@ -381,6 +387,12 @@ sr_log_syslog(const char *app_name, sr_log_level_t log_level)
 
         syslog_open = 0;
     }
+}
+
+API sr_log_level_t
+sr_log_get_syslog(void)
+{
+    return syslog_ll;
 }
 
 API void

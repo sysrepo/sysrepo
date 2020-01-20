@@ -106,6 +106,13 @@ typedef enum {
 void sr_log_stderr(sr_log_level_t log_level);
 
 /**
+ * @brief Learn current standard error output log level.
+ *
+ * @return stderr log level.
+ */
+sr_log_level_t sr_log_get_stderr(void);
+
+/**
  * @brief Enables / disables / changes log level (verbosity) of logging to system log.
  *
  * By default, logging into syslog is disabled. Setting log level to any value
@@ -123,6 +130,13 @@ void sr_log_stderr(sr_log_level_t log_level);
  * @param[in] log_level Requested log level (verbosity).
  */
 void sr_log_syslog(const char *app_name, sr_log_level_t log_level);
+
+/**
+ * @brief Learn current system log log level.
+ *
+ * @return syslog log level.
+ */
+sr_log_level_t sr_log_get_syslog(void);
 
 /**
  * @brief Sets callback that will be called when a log entry would be populated.
