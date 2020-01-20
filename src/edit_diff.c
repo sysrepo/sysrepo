@@ -3042,8 +3042,14 @@ sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **diff_p)
             break;
         case LYD_DIFF_CHANGED:
 
-            /* duplicate leaf */
             assert(ly_diff->second[i]->schema->nodetype != LYS_LIST);
+            if (!strcmp(sr_ly_leaf_value_str(ly_diff->second[i]), sr_ly_leaf_value_str(ly_diff->first[i]))) {
+                /* only dflt flag was changed, not a diff change */
+                assert(ly_diff->second[i]->dflt != ly_diff->first[i]->dflt);
+                continue;
+            }
+
+            /* duplicate leaf */
             node = lyd_dup(ly_diff->second[i], LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_NO_ATTR);
             if (!node) {
                 sr_errinfo_new_ly(&err_info, ly_ctx);
