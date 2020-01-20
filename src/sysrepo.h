@@ -99,7 +99,7 @@ typedef enum {
  * back to ::SR_LL_NONE disables the logging to stderr.
  *
  * @note Please note that this will overwrite your libyang logging settings.
- * Alos, only libyang errors are printed, if enabled.
+ * Also, only libyang errors are printed, if enabled.
  *
  * @param[in] log_level Requested log level (verbosity).
  */
