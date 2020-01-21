@@ -1143,7 +1143,8 @@ typedef enum sr_subscr_flag_e {
 
     /**
      * @brief The subscriber will be called before any other subscribers for the particular module
-     * and is allowed to modify the new module data.
+     * and is allowed to modify the new module data. Be careful, you cannot subscribe with this flag more times
+     * for the same (set of) data node, it will not work!
      */
     SR_SUBSCR_UPDATE = 32,
 
