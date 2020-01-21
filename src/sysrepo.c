@@ -3153,8 +3153,10 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
                 goto cleanup_mods_unlock;
             }
         } else {
-            enabled_data = mod_info.data;
-            mod_info.data = NULL;
+            if (!(enabled_data = lyd_dup_withsiblings(mod_info.data, LYD_DUP_OPT_RECURSIVE))) {
+                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+                goto cleanup_mods_unlock;
+            }
         }
     }
 
