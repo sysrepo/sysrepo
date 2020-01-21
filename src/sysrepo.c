@@ -77,9 +77,15 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     conn->main_shm.fd = -1;
     conn->ext_shm.fd = -1;
 
+    if ((conn->opts & SR_CONN_CACHE_RUNNING) && (err_info = sr_rwlock_init(&conn->mod_cache.lock, 0))) {
+        goto error5;
+    }
+
     *conn_p = conn;
     return NULL;
 
+error5:
+    sr_rwlock_destroy(&conn->ext_remap_lock);
 error4:
     close(conn->main_create_lock);
 error3:
@@ -108,6 +114,14 @@ sr_conn_free(sr_conn_ctx_t *conn)
         sr_rwlock_destroy(&conn->ext_remap_lock);
         sr_shm_clear(&conn->main_shm);
         sr_shm_clear(&conn->ext_shm);
+
+        /* free cache */
+        if (conn->opts & SR_CONN_CACHE_RUNNING) {
+            sr_rwlock_destroy(&conn->mod_cache.lock);
+            lyd_free_withsiblings(conn->mod_cache.data);
+            free(conn->mod_cache.mods);
+        }
+
         free(conn);
     }
 }
@@ -394,13 +408,6 @@ sr_disconnect(sr_conn_ctx_t *conn)
         } else {
             sr_shmmain_unlock(conn, SR_LOCK_NONE, 1, 0, __func__);
         }
-    }
-
-    /* free cache */
-    if (conn->opts & SR_CONN_CACHE_RUNNING) {
-        sr_rwlock_destroy(&conn->mod_cache.lock);
-        lyd_free_withsiblings(conn->mod_cache.data);
-        free(conn->mod_cache.mods);
     }
 
     /* free attributes */
