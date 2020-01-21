@@ -106,6 +106,13 @@ static void
 sr_conn_free(sr_conn_ctx_t *conn)
 {
     if (conn) {
+        /* free cache before context */
+        if (conn->opts & SR_CONN_CACHE_RUNNING) {
+            sr_rwlock_destroy(&conn->mod_cache.lock);
+            lyd_free_withsiblings(conn->mod_cache.data);
+            free(conn->mod_cache.mods);
+        }
+
         ly_ctx_destroy(conn->ly_ctx, NULL);
         pthread_mutex_destroy(&conn->ptr_lock);
         if (conn->main_create_lock > -1) {
@@ -114,13 +121,6 @@ sr_conn_free(sr_conn_ctx_t *conn)
         sr_rwlock_destroy(&conn->ext_remap_lock);
         sr_shm_clear(&conn->main_shm);
         sr_shm_clear(&conn->ext_shm);
-
-        /* free cache */
-        if (conn->opts & SR_CONN_CACHE_RUNNING) {
-            sr_rwlock_destroy(&conn->mod_cache.lock);
-            lyd_free_withsiblings(conn->mod_cache.data);
-            free(conn->mod_cache.mods);
-        }
 
         free(conn);
     }
