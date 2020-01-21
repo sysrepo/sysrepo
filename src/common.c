@@ -2194,9 +2194,12 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *
     struct timespec timeout_ts;
     int ret;
 
-    assert(timeout_ms > 0);
-    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
+    if (mode == SR_LOCK_NONE) {
+        /* nothing to do */
+        return NULL;
+    }
 
+    assert(timeout_ms > 0);
     sr_time_get(&timeout_ts, timeout_ms);
 
     /* MUTEX LOCK */
@@ -2239,7 +2242,10 @@ sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
     struct timespec timeout_ts;
     int ret;
 
-    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
+    if (mode == SR_LOCK_NONE) {
+        /* nothing to do */
+        return;
+    }
 
     if (mode == SR_LOCK_READ) {
         sr_time_get(&timeout_ts, SR_RWLOCK_READ_TIMEOUT);

@@ -1854,6 +1854,11 @@ sr_shmmain_conn_state_lock_update(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int 
     sr_conn_state_t *conn_s;
     sr_main_shm_t *main_shm;
 
+    if (mode == SR_LOCK_NONE) {
+        /* nothing to store */
+        return NULL;
+    }
+
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
     /* CONN STATE LOCK */
@@ -1962,11 +1967,9 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int l
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
-    if (mode != SR_LOCK_NONE) {
-        /* MAIN SHM READ/WRITE LOCK */
-        if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, func))) {
-            goto error_remap_unlock;
-        }
+    /* MAIN SHM LOCK */
+    if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, func))) {
+        goto error_remap_unlock;
     }
 
     /* LYDMODS LOCK */
@@ -1988,10 +1991,10 @@ error_remap_shm_lydmods_unlock:
         /* LYDMODS UNLOCK */
         sr_munlock(&main_shm->lydmods_lock);
     }
+
 error_remap_shm_unlock:
-    if (mode != SR_LOCK_NONE) {
-        sr_rwunlock(&main_shm->lock, mode, func);
-    }
+    sr_rwunlock(&main_shm->lock, mode, func);
+
 error_remap_unlock:
     sr_rwunlock(&conn->ext_remap_lock, remap ? SR_LOCK_WRITE : SR_LOCK_READ, func);
     return err_info;
@@ -2036,10 +2039,8 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmo
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
     assert(main_shm);
 
-    if (mode != SR_LOCK_NONE) {
-        /* MAIN SHM UNLOCK */
-        sr_rwunlock(&main_shm->lock, mode, func);
-    }
+    /* MAIN SHM UNLOCK */
+    sr_rwunlock(&main_shm->lock, mode, func);
 
     /* REMAP UNLOCK */
     sr_rwunlock(&conn->ext_remap_lock, remap ? SR_LOCK_WRITE : SR_LOCK_READ, func);
