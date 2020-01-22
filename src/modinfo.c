@@ -926,7 +926,7 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
 
             /* CACHE WRITE LOCK */
             if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
-                return err_info;
+                goto error_rlock;
             }
 
             /* data needs to be updated, remove old data */
@@ -941,7 +941,7 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
 
         /* CACHE WRITE LOCK */
         if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
-            return err_info;
+            goto error_rlock;
         }
 
         /* module is not in cache yet, add an item */
@@ -967,14 +967,16 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
         } else {
             /* we need to load current data from persistent storage */
             if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_RUNNING, &mod_cache->data))) {
-                return err_info;
+                goto error_wrunlock;
             }
         }
         mod_cache->mods[i].ver = mod->shm_mod->ver;
 
+error_wrunlock:
         /* CACHE WRITE UNLOCK */
         sr_rwunlock(&mod_cache->lock, SR_LOCK_WRITE, __func__);
 
+error_rlock:
         if (read_locked) {
             /* CACHE READ LOCK */
             if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
@@ -983,7 +985,7 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
         }
     }
 
-    return NULL;
+    return err_info;
 }
 
 /**
