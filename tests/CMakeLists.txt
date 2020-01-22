@@ -82,7 +82,7 @@ if(ENABLE_COVERAGE)
             --quiet --output-file "${COVERAGE_FILE_CLEAN}"
         # Generate HTML report
         COMMAND "${PATH_GENHTML}"
-            --branch-coverage --function-coverage --quiet --title "libyang"
+            --branch-coverage --function-coverage --quiet --title "sysrepo"
             --legend --show-details --output-directory "${COVERAGE_DIR}"
             "${COVERAGE_FILE_CLEAN}"
         # Delete the counters
