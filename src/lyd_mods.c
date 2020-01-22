@@ -1625,7 +1625,7 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     if ((err_info = sr_ly_ctx_new(&old_ctx))) {
         goto cleanup;
     }
-    if ((err_info = sr_lydmods_ctx_load_modules(sr_mods, old_ctx, 0, 1, NULL))) {
+    if ((err_info = sr_lydmods_ctx_load_modules(sr_mods, old_ctx, 1, 1, NULL))) {
         goto cleanup;
     }
 
@@ -1674,13 +1674,13 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         goto cleanup;
     }
 
-    /* try to load it into the new updated context */
+    /* try to load it into the new updated context skipping any unknown nodes */
     ly_errno = 0;
     new_start_data = lyd_parse_mem((struct ly_ctx *)new_ctx, start_data_json, LYD_JSON,
-            LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
+            LYD_OPT_CONFIG | LYD_OPT_TRUSTED);
     if (!ly_errno) {
         new_run_data = lyd_parse_mem((struct ly_ctx *)new_ctx, run_data_json, LYD_JSON,
-            LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
+            LYD_OPT_CONFIG | LYD_OPT_TRUSTED);
     }
     if (ly_errno) {
         /* it failed, some of the scheduled changes are not compatible with the stored data, abort them all */

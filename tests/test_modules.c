@@ -453,6 +453,48 @@ test_inv_deps(void **state)
 }
 
 static void
+test_remove_module(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+    uint32_t conn_count;
+
+    /* install modules with one depending on the other */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-ip.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* remove module with augments */
+    ret = sr_remove_module(st->conn, "ietf-ip");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* close connection so that changes are applied */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+
+    /* recreate connection, apply changes */
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "ietf-interfaces");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
 test_remove_dep_module(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -589,6 +631,7 @@ test_change_feature(void **state)
     struct state *st = (struct state *)*state;
     sr_session_ctx_t *sess;
     const char *en_feat = "feat1";
+    sr_val_t *val;
     int ret;
     uint32_t conn_count;
 
@@ -651,38 +694,6 @@ test_change_feature(void **state)
     ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* check that the feature was not disabled */
-    cmp_int_data(st->conn, "features",
-    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
-        "<name>features</name>"
-        "<enabled-feature>feat1</enabled-feature>"
-        "<changed-feature>"
-            "<name>feat1</name>"
-            "<change>disable</change>"
-        "</changed-feature>"
-        "<data-deps><module>test</module></data-deps>"
-    "</module>"
-    );
-
-    /* remove the conditional data */
-    ret = sr_delete_item(sess, "/features:l2", 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* close connection (also frees session) so that changes are applied */
-    sr_disconnect(st->conn);
-    st->conn = NULL;
-    ret = sr_connection_count(&conn_count);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(conn_count, 0);
-
-    /* recreate connection and session */
-    ret = sr_connect(0, &st->conn);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
-    assert_int_equal(ret, SR_ERR_OK);
-
     /* check that the feature was disabled and dependency removed */
     cmp_int_data(st->conn, "features",
     "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
@@ -696,6 +707,10 @@ test_change_feature(void **state)
         "<name>test</name>"
     "</module>"
     );
+
+    /* check that the conditional data were removed */
+    ret = sr_get_item(sess, "/features:l2", 0, &val);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
     /* cleanup */
     ret = sr_delete_item(sess, "/test:test-leaf", 0);
@@ -877,11 +892,23 @@ test_empty_invalid(void **state)
     assert_string_equal(tree->child->schema->name, "l1");
     assert_null(tree->next);
 
-    /* cleanup */
+    /* cleanup, remove its data so that it can be uninstalled */
     lyd_free_withsiblings(tree);
     sr_session_stop(sess);
+
+    /* actually remove the module */
     ret = sr_remove_module(st->conn, "mandatory");
     assert_int_equal(ret, SR_ERR_OK);
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_remove_module(st->conn, "mandatory");
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
 }
 
 int
@@ -892,6 +919,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_data_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_op_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_inv_deps, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_remove_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_remove_dep_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_feature, setup_f, teardown_f),
