@@ -126,7 +126,7 @@ test_install_module(void **state)
     ret = sr_remove_module(st->conn, "test-module");
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_remove_module(st->conn, "test-module");
-    assert_int_equal(ret, SR_ERR_EXISTS);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
     /* install main-mod */
     ret = sr_install_module(st->conn, TESTS_DIR "/files/main-mod.yang", TESTS_DIR "/files", &en_feat, 1);

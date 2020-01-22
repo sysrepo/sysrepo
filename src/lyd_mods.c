@@ -2182,7 +2182,7 @@ sr_lydmods_unsched_add_module(struct ly_ctx *ly_ctx, const char *module_name)
     set = lyd_find_path(sr_mods, path);
     SR_CHECK_INT_GOTO(!set, err_info, cleanup);
     if (!set->number) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" not scheduled for installation.", module_name);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" not scheduled for installation.", module_name);
         goto cleanup;
     }
 
