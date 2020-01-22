@@ -3150,44 +3150,44 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
 
     /* get the current running datastore data */
     if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, NULL, NULL, 0, 0, NULL))) {
-        goto cleanup_mods_unlock;
+        goto error_mods_unlock;
     }
 
     /* select only the subscribed-to subtree */
     if (mod_info.data) {
         if (xpath) {
             if ((err_info = sr_lyd_xpath_dup(mod_info.data, (char **)&xpath, 1, ly_mod, &enabled_data))) {
-                goto cleanup_mods_unlock;
+                goto error_mods_unlock;
             }
         } else {
             if (!(enabled_data = lyd_dup_withsiblings(mod_info.data, LYD_DUP_OPT_RECURSIVE))) {
                 sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
-                goto cleanup_mods_unlock;
+                goto error_mods_unlock;
             }
         }
     }
 
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info, 0);
+
+    sr_modinfo_free(&mod_info);
+
     /* these data will be presented as newly created, make such a diff */
-    if (enabled_data) {
-        mod_info.diff = enabled_data;
-        mod_info.mods[0].state |= MOD_INFO_CHANGED;
+    LY_TREE_FOR(enabled_data, node) {
+        /* top-level "create" operation that is inherited */
+        if ((err_info = sr_edit_set_oper(node, "create"))) {
+            goto cleanup;
+        }
 
-        LY_TREE_FOR(enabled_data, node) {
-            /* top-level "create" operation that is inherited */
-            if ((err_info = sr_edit_set_oper(node, "create"))) {
-                goto cleanup_mods_unlock;
-            }
-
-            /* user-ordered lists need information about position */
-            if ((err_info = sr_edit_created_subtree_apply_move(node))) {
-                goto cleanup_mods_unlock;
-            }
+        /* user-ordered lists need information about position */
+        if ((err_info = sr_edit_created_subtree_apply_move(node))) {
+            goto cleanup;
         }
     }
 
     tmp_sess.conn = session->conn;
-    tmp_sess.ds = mod_info.ds;
-    tmp_sess.dt[tmp_sess.ds].diff = mod_info.diff;
+    tmp_sess.ds = SR_DS_RUNNING;
+    tmp_sess.dt[tmp_sess.ds].diff = enabled_data;
 
     if (!(opts & SR_SUBSCR_DONE_ONLY)) {
         tmp_sess.ev = SR_SUB_EV_ENABLED;
@@ -3202,7 +3202,7 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
                 /* remember callback error info */
                 sr_errinfo_merge(&err_info, tmp_sess.err_info);
             }
-            goto cleanup_mods_unlock;
+            goto cleanup;
         }
     }
 
@@ -3211,9 +3211,11 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
     SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(tmp_sess.ev));
     callback(&tmp_sess, ly_mod->name, xpath, sr_ev2api(tmp_sess.ev), 0, private_data);
 
-    /* success */
+cleanup:
+    lyd_free_withsiblings(enabled_data);
+    return NULL;
 
-cleanup_mods_unlock:
+error_mods_unlock:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info, 0);
 

@@ -1,0 +1,17 @@
+module simple {
+    namespace s;
+    prefix s;
+
+    container ac1 {
+        leaf acd1 {
+            type boolean;
+            default true;
+        }
+        list acl1 {
+            key acs1;
+            leaf acs1 {
+                type string;
+            }
+        }
+    }
+}
