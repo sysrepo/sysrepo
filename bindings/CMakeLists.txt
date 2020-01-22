@@ -4,9 +4,6 @@ if(GEN_PYTHON_BINDINGS AND NOT GEN_CPP_BINDINGS)
     set(GEN_CPP_BINDINGS ON)
 endif()
 
-# bugfix for old GCC 4.8.4; 4.8.5 (and maybe some other close versions)
-add_compile_options(-std=c++11)
-
 # C++ bindings
 if(GEN_CPP_BINDINGS)
     if(NOT LIBYANG_CPP_FOUND)

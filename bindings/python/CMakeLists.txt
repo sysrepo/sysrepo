@@ -8,6 +8,8 @@ set(CMAKE_SWIG_FLAGS "-threads")
 set(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR})
 
 set_source_files_properties(${PYTHON_SWIG_BINDING}.i PROPERTIES CPLUSPLUS ON)
+# C++11 must be also used here because C++ sources are being compiled
+set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} -std=c++11")
 
 if(${CMAKE_VERSION} VERSION_LESS "3.8.0")
     swig_add_module(${PYTHON_SWIG_BINDING} python ${PYTHON_SWIG_BINDING}.i)
