@@ -70,6 +70,9 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-ip.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/list-case.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -84,6 +87,7 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "list-case");
     sr_remove_module(st->conn, "ietf-ip");
     sr_remove_module(st->conn, "iana-if-type");
     sr_remove_module(st->conn, "ietf-interfaces");
@@ -1555,15 +1559,6 @@ replace_dflt_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* prepare some ietf-interfaces config */
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/ietf-ip:ipv4/enabled", "true", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/ietf-ip:ipv4/mtu", "1400", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/ietf-ip:ipv6/enabled", "true", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/ietf-ip:ipv6/mtu", "1400", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
@@ -1638,10 +1633,6 @@ subscribe_replace_dflt_thread(void *arg)
     /* set some running ietf-interfaces data */
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    /*ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/description", "WAN", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/enabled", "true", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);*/
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/ietf-ip:ipv4/enabled", "true", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/ietf-ip:ipv4/mtu", "1500", NULL, 0);
@@ -1694,6 +1685,196 @@ test_replace_dflt(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST 6 */
+static int
+module_replace_case_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_ctx)
+{
+    struct state *st = (struct state *)private_ctx;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    sr_val_t *old_val, *new_val;
+    struct lyd_node *data;
+    int ret;
+
+    assert_string_equal(module_name, "list-case");
+    assert_null(xpath);
+
+    (void)event;
+    (void)request_id;
+
+    switch (st->cb_called) {
+    case 0:
+    case 1:
+        if (st->cb_called == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/list-case:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/list-case:ac1/acl1[acs1='key']/acl1ch1cs1lf1");
+        assert_null(new_val);
+
+        sr_free_val(old_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/list-case:ac1/acl1[acs1='key']/acl1ch1cs2lf1");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    default:
+        fail();
+    }
+
+    /* test getting items */
+    ret = sr_get_data(session, "/list-case:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(data->child->child->next->schema->name, "acl1ch1cs2lf1");
+    lyd_free_withsiblings(data);
+
+    if (event == SR_EV_DONE) {
+        /* let other thread now even done event was handled */
+        pthread_barrier_wait(&st->barrier);
+    }
+
+    ++st->cb_called;
+    return SR_ERR_OK;
+}
+
+static void *
+replace_case_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    struct lyd_node *config, *node;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before replacing */
+    pthread_barrier_wait(&st->barrier);
+
+    /* prepare some list-case config */
+    str2 =
+    "<ac1 xmlns=\"urn:lc\">"
+        "<acl1>"
+            "<acs1>key</acs1>"
+            "<acl1ch1cs2lf1>case</acl1ch1cs2lf1>"
+        "</acl1>"
+    "</ac1>";
+    config = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str2, LYD_XML, LYD_OPT_CONFIG | LYD_OPT_STRICT);
+    assert_non_null(config);
+
+    /* perform replace-config */
+    ret = sr_replace_config(sess, "list-case", config, SR_DS_RUNNING, 0);
+    config = NULL;
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for DONE */
+    pthread_barrier_wait(&st->barrier);
+
+    /* check current data tree */
+    ret = sr_get_data(sess, "/list-case:*", 0, 0, 0, &node);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, node, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    lyd_free_withsiblings(node);
+
+    str2 =
+    "<ac1 xmlns=\"urn:lc\">"
+        "<acl1>"
+            "<acs1>key</acs1>"
+            "<acl1ch1cs2lf1>case</acl1ch1cs2lf1>"
+        "</acl1>"
+    "</ac1>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* signal that we have finished */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_replace_case_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int count, ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some running ietf-interfaces data */
+    ret = sr_set_item_str(sess, "/list-case:ac1/acl1[acs1='key']/acl1ch1cs1lf1", "case", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ret = sr_module_change_subscribe(sess, "list-case", NULL, module_replace_case_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscriptions were created */
+    pthread_barrier_wait(&st->barrier);
+
+    count = 0;
+    while ((st->cb_called < 2) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 2);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_replace_case(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, replace_case_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_replace_case_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1704,6 +1885,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_replace, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_replace_dflt, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_replace_case, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

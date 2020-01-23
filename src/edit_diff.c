@@ -3145,23 +3145,20 @@ sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **diff_p)
             node = node->parent;
         }
 
+        /* add top-level operation */
+        if (!sr_edit_find_oper(node, 0, NULL) && (err_info = sr_edit_set_oper(node, "none"))) {
+            goto error;
+        }
+
         /* merge into diff */
         if (!diff) {
             diff = node;
         } else {
-            if (lyd_merge(diff, node, LYD_OPT_DESTRUCT)) {
-                sr_errinfo_new_ly(&err_info, ly_ctx);
+            if ((err_info = sr_diff_mod_merge(node, NULL, lyd_node_module(node), &diff, NULL))) {
                 goto error;
             }
-        }
-    }
-
-    /* add top-level none operations */
-    LY_TREE_FOR(diff, node) {
-        if (!sr_edit_find_oper(node, 0, NULL)) {
-            if ((err_info = sr_edit_set_oper(node, "none"))) {
-                goto error;
-            }
+            lyd_free_withsiblings(node);
+            node = NULL;
         }
     }
 
