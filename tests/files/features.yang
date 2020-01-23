@@ -8,6 +8,14 @@ module features {
 
     feature feat1;
 
+    feature feat2 {
+        if-feature feat1;
+    }
+
+    feature feat3 {
+        if-feature feat2;
+    }
+
     leaf l1 {
         type string;
     }

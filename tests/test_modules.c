@@ -662,6 +662,35 @@ test_change_feature(void **state)
     "</module>"
     );
 
+    /* enable feat3, its if-feature is disabled */
+    ret = sr_enable_module_feature(st->conn, "features", "feat3");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "features",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>features</name>"
+        "<enabled-feature>feat1</enabled-feature>"
+        "<changed-feature>"
+            "<name>feat3</name>"
+            "<change>enable</change>"
+        "</changed-feature>"
+        "<data-deps><module>test</module></data-deps>"
+    "</module>"
+    );
+
+    /* disable the feature back */
+    ret = sr_disable_module_feature(st->conn, "features", "feat3");
+    assert_int_equal(ret, SR_ERR_OK);
+
     ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 

@@ -1387,7 +1387,11 @@ sr_lydmods_sched_ctx_change_features(const struct lyd_node *sr_mods, struct ly_c
             enable = !strcmp(sr_ly_leaf_value_str(set->set.d[i]->child->next), "enable") ? 1 : 0;
 
             if ((enable && lys_features_enable(ly_mod, feat_name)) || (!enable && lys_features_disable(ly_mod, feat_name))) {
-                sr_errinfo_new_ly(&err_info, new_ctx);
+                sr_log_wrn_ly(ly_mod->ctx);
+                SR_LOG_WRN("Cannot %s feature \"%s\" in module \"%s\".", enable ? "enable" : "disable", feat_name, ly_mod->name);
+
+                /* we failed, do not apply any scheduled changes */
+                *fail = 1;
                 goto cleanup;
             }
         }
