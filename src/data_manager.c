@@ -5299,7 +5299,7 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
     ll_node = module->inv_deps->first;
     while (ll_node) {
         dep = (md_dep_t *) ll_node->data;
-        if (dep->type == MD_DEP_EXTENSION && dep->dest->implemented) {
+        if (((dep->type == MD_DEP_EXTENSION) || (dep->type == MD_DEP_IMPORT)) && dep->dest->implemented) {
             lookup.module_name = (char *) dep->dest->name;
             si = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
             if (NULL != si && NULL != si->ly_ctx) {
