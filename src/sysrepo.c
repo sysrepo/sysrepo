@@ -1479,7 +1479,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* mark the change (if any) in LY data tree */
-    if ((err_info = sr_lydmods_deferred_change_feature(conn->ly_ctx, ly_mod->name, feature_name, enable, ret))) {
+    if ((err_info = sr_lydmods_deferred_change_feature(conn->ly_ctx, ly_mod, feature_name, enable, ret))) {
         goto cleanup;
     }
 

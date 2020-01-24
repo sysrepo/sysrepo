@@ -171,14 +171,14 @@ sr_error_info_t *sr_lydmods_unsched_upd_module(struct ly_ctx *ly_ctx, const char
  * @brief Schedule a feature change (enable/disable) into sysrepo module data.
  *
  * @param[in] ly_ctx Context to use for parsing the data.
- * @param[in] mod_name Module name.
+ * @param[in] ly_mod Module with the feature.
  * @param[in] feat_name Feature name.
  * @param[in] to_enable Whether the feature should be enabled or disabled.
  * @param[in] is_enabled Whether the feature is currently enabled or disabled.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lydmods_deferred_change_feature(struct ly_ctx *ly_ctx, const char *mod_name, const char *feat_name,
-        int to_enable, int is_enabled);
+sr_error_info_t *sr_lydmods_deferred_change_feature(struct ly_ctx *ly_ctx, const struct lys_module *ly_mod,
+        const char *feat_name, int to_enable, int is_enabled);
 
 /**
  * @brief Update reply support in sysrepo module data.
