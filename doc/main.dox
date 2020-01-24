@@ -84,8 +84,8 @@ Specifically, _startup_, _running_, _candidate_, and _operational_ datastores ar
 to the definitions. Following is a brief description and purpose of each datastore.
 
 _Startup_ datastore is the only persistent datastore. It includes the configuration of devices at time of their boot.
-This configuration is copied into _running_ when the first Sysrepo connection (shared memory) is created after
-system boot.
+This configuration is __copied__ into _running_ when the first Sysrepo connection (shared memory) is created __after
+system boot__.
 
 _Running_ datastore holds the current system configuration. This datastore is edited when a configuration change
 occured and a device should reconfigure itself. It does not persist across reboots. If desired, it can be copied
