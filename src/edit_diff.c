@@ -2023,7 +2023,7 @@ sr_diff_merge_create(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
         }
 
         assert(diff_match->schema->nodetype == LYS_LEAF);
-        /* we deleted it, but validation created it with different value -> operation REPLACE */
+        /* we deleted it, but it was created with a different value -> operation REPLACE */
         if (cur_own_op) {
             sr_edit_del_attr(diff_match, "operation");
         }
@@ -2321,7 +2321,7 @@ sr_diff_check_pid_conn(struct lyd_node *diff_node, pid_t cur_pid, void *cur_conn
  *
  * @param[in] src_node Source diff node.
  * @param[in] parent_op Parent operation.
- * @param[in] oper_conn Connection pointer in case its is operational diff. Otherwise should be NULL.
+ * @param[in] oper_conn Connection pointer in case it is operational diff. Otherwise should be NULL.
  * @param[in] diff_parent Current sysrepo diff parent.
  * @param[in,out] diff_root Sysrepo diff root node.
  * @param[out] change Set if there are some data changes.

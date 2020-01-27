@@ -88,7 +88,8 @@ sr_error_info_t *sr_edit_mod_apply(const struct lyd_node *edit, const struct lys
  * @brief Merge sysrepo diff of a specific module into another diff.
  *
  * @param[in] src_diff Diff to merge.
- * @param[in] oper_conn Connection pointer of the owner of \p src_diff.
+ * @param[in] oper_conn Connection pointer of the owner of \p src_diff in case it is an operational diff.
+ * Otherwise should be NULL.
  * @param[in] ly_mod Diff module.
  * @param[in,out] diff Diff to merge into.
  * @param[out] change Optional, set if there were some diff changes.
