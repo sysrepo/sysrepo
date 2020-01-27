@@ -888,6 +888,14 @@ sr_diff_insert(struct lyd_node *node, struct lyd_node *diff_parent, struct lyd_n
         }
         node->parent = diff_parent;
 
+        if (!node->dflt) {
+            /* remove the dflt flag from all parents */
+            while (diff_parent && diff_parent->dflt) {
+                diff_parent->dflt = 0;
+                diff_parent = diff_parent->parent;
+            }
+        }
+
         /*if (lyd_insert(diff_parent, node)) {
             sr_errinfo_new_ly(&err_info, lyd_node_module(diff_parent)->ctx);
             goto error;
