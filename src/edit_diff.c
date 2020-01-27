@@ -157,55 +157,25 @@ sr_edit_userord_is_moved(const struct lyd_node *match_node, enum insert_val inse
  * @param[in] llist Arbitrary instance of the (leaf-)list.
  * @param[in] key_or_value List instance keys or leaf-list value of the searched instance.
  * @param[out] match Matching instance in the data tree.
+ * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_edit_find_userord_predicate(const struct lyd_node *sibling, const struct lyd_node *llist, const char *key_or_value,
         struct lyd_node **match)
 {
     sr_error_info_t *err_info = NULL;
-    int top_level;
-    char *expr;
-    const char *fmt;
-    struct ly_set *set;
 
-    if (!sibling->parent) {
-        top_level = 1;
-    } else {
-        top_level = 0;
-    }
-
-    /* predicate is different for list and leaf-list */
-    if (llist->schema->nodetype == LYS_LIST) {
-        fmt = top_level ? "/%s%s" : "%s%s";
-    } else {
-        fmt = top_level ? "/%s[.='%s']" : "%s[.='%s']";
-    }
-    if (asprintf(&expr, fmt, llist->schema->name, key_or_value) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    if (lyd_find_sibling_val(sibling, llist->schema, key_or_value, match)) {
+        sr_errinfo_new_ly(&err_info, lyd_node_module(llist)->ctx);
         return err_info;
     }
 
-    /* find the affected node */
-    set = lyd_find_path(top_level ? sibling : sibling->parent, expr);
-    free(expr);
-    if (!set || (set->number > 1)) {
-        ly_set_free(set);
-        if (!set) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(sibling)->ctx);
-        } else {
-            SR_ERRINFO_INT(&err_info);
-        }
-        return err_info;
-    }
-    if (set->number == 0) {
-        ly_set_free(set);
+    if (!*match) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Node \"%s\" instance to insert next to not found.",
                 llist->schema->name);
         return err_info;
     }
 
-    *match = set->set.d[0];
-    ly_set_free(set);
     return NULL;
 }
 
@@ -226,32 +196,42 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
         const char *key_or_value, struct lyd_node **match_p, int *val_equal_p)
 {
     sr_error_info_t *err_info = NULL;
-    struct lys_node_list *slist;
-    struct lyd_node *data_key, *edit_key, *anchor_node;
+    struct lyd_node *anchor_node;
     const struct lyd_node *iter, *match = NULL;
     int val_equal = 0;
-    uint16_t i;
 
-    /* find the edit node in data */
-    LY_TREE_FOR(first_node, iter) {
-        if (iter->schema == edit_node->schema) {
+    if ((op == EDIT_PURGE) && (edit_node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST))) {
+        LY_TREE_FOR(first_node, iter) {
+            if (iter->schema == edit_node->schema) {
+                /* first found instance */
+                val_equal = 1;
+                match = iter;
+                break;
+            }
+        }
+    } else {
+        /* find the edit node efficiently in data */
+        if (lyd_find_sibling(first_node, edit_node, (struct lyd_node **)&match)) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(edit_node)->ctx);
+            return err_info;
+        }
+
+        if (match) {
             switch (edit_node->schema->nodetype) {
             case LYS_CONTAINER:
-                match = iter;
                 val_equal = 1;
                 break;
             case LYS_LEAF:
                 if ((op == EDIT_REMOVE) || (op == EDIT_DELETE) || (op == EDIT_PURGE)) {
                     /* we do not care about the value in this case */
                     val_equal = 1;
-                } else if ((iter->dflt != edit_node->dflt) || strcmp(sr_ly_leaf_value_str(iter), sr_ly_leaf_value_str(edit_node))) {
+                } else if ((match->dflt != edit_node->dflt) || strcmp(sr_ly_leaf_value_str(match), sr_ly_leaf_value_str(edit_node))) {
                     /* check whether the value or at least dflt flag is different */
                     val_equal = 0;
                 } else {
                     /* canonical values are the same */
                     val_equal = 1;
                 }
-                match = iter;
                 break;
             case LYS_ANYXML:
             case LYS_ANYDATA:
@@ -260,67 +240,13 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
                     val_equal = 1;
                 } else {
                     /* compare values */
-                    if ((err_info = sr_lyd_anydata_equal(iter, edit_node, &val_equal))) {
+                    if ((err_info = sr_lyd_anydata_equal(match, edit_node, &val_equal))) {
                         return err_info;
                     }
                 }
-                match = iter;
                 break;
             case LYS_LIST:
-                if (op == EDIT_PURGE) {
-                    /* we do not care about the value or order in this case */
-                    val_equal = 1;
-                    match = iter;
-                    break;
-                }
-
-                slist = (struct lys_node_list *)iter->schema;
-
-                /* compare keys */
-                for (data_key = iter->child, edit_key = edit_node->child, i = 0;
-                     data_key && edit_key && (i < slist->keys_size);
-                     data_key = data_key->next, edit_key = edit_key->next, ++i) {
-
-                    assert((struct lys_node_leaf *)data_key->schema == slist->keys[i]);
-                    if (data_key->schema != edit_key->schema) {
-                        sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL,
-                                "Unexpected node \"%s\" instead of a key \"%s\".", edit_key->schema->name, data_key->schema->name);
-                        return err_info;
-                    }
-                    if (sr_ly_leaf_value_str(data_key) != sr_ly_leaf_value_str(edit_key)) {
-                        /* non-matching keys */
-                        break;
-                    }
-                }
-                assert((i == slist->keys_size) || data_key);
-                if (i < slist->keys_size) {
-                    if (!edit_key) {
-                        sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "List node \"%s\" is missing some keys.",
-                                edit_node->schema->name);
-                        return err_info;
-                    }
-
-                    /* a different instance */
-                    break;
-                }
-                /* fallthrough */
             case LYS_LEAFLIST:
-                if (edit_node->schema->nodetype == LYS_LEAFLIST) {
-                    if (op == EDIT_PURGE) {
-                        /* we do not care about the value or order in this case */
-                        val_equal = 1;
-                        match = iter;
-                        break;
-                    }
-
-                    /* compare values */
-                    if (sr_ly_leaf_value_str(iter) != sr_ly_leaf_value_str(edit_node)) {
-                        break;
-                    }
-                }
-
-                /* a match */
-                match = iter;
                 if (sr_ly_is_userord(edit_node)) {
                     /* check if even the order matches for user-ordered (leaf-)lists */
                     anchor_node = NULL;
@@ -343,11 +269,6 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
             default:
                 SR_ERRINFO_INT(&err_info);
                 return err_info;
-            }
-
-            /* found our match */
-            if (match) {
-                break;
             }
         }
     }
