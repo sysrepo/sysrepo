@@ -3278,7 +3278,9 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
     sr_subscr_options_t sub_opts;
+    sr_mod_change_sub_t *shm_sub;
     sr_mod_t *shm_mod;
+    uint16_t i;
 
     SR_CHECK_ARG_APIRET(!session || !module_name || !callback
             || ((opts & SR_SUBSCR_PASSIVE) && (opts & SR_SUBSCR_ENABLED)) || !subscription, session, err_info);
@@ -3327,16 +3329,28 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         return sr_api_ret(session, err_info);
     }
 
+    /* find module */
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, module_name, 0);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, error_unlock);
+
+    if (opts & SR_SUBSCR_UPDATE) {
+        /* check that there is not already an update subscription with the same priority */
+        shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[session->ds].subs);
+        for (i = 0; i < shm_mod->change_sub[session->ds].sub_count; ++i) {
+            if ((shm_sub[i].opts & SR_SUBSCR_UPDATE) && (shm_sub[i].priority == priority)) {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "There already is an \"update\" subscription on"
+                        " module \"%s\" with priority %u for %s DS.", module_name, priority, sr_ds2str(session->ds));
+                goto error_unlock;
+            }
+        }
+    }
+
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
         if ((err_info = sr_subs_new(conn, opts, subscription))) {
             goto error_unlock;
         }
     }
-
-    /* find module */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, module_name, 0);
-    SR_CHECK_INT_GOTO(!shm_mod, err_info, error_unlock_unsub);
 
     /* add module subscription into main SHM */
     if ((err_info = sr_shmmod_change_subscription_add(&conn->ext_shm, shm_mod, xpath, session->ds, priority, sub_opts,

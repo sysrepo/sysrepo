@@ -540,6 +540,9 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
                 cur_priority + 1, &cur_priority, &subscriber_count, NULL);
 
         do {
+            /* there cannot be more subscribers on one module with the same priority */
+            assert(subscriber_count == 1);
+
             /* SUB WRITE LOCK */
             if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, mod->ly_mod->name, 0))) {
                 goto cleanup;

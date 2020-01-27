@@ -788,9 +788,13 @@ subscribe_update_thread(void *arg)
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* it should subscribe to "running" as well */
     ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_update_cb, st, 0, SR_SUBSCR_UPDATE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
+
+    /* test invalid subscription */
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_update_cb, st, 0,
+            SR_SUBSCR_UPDATE | SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
 
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
