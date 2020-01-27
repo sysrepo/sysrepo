@@ -2045,25 +2045,8 @@ sr_diff_merge_create(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
         }
         diff_match->dflt = src_node->dflt;
         break;
-    case EDIT_CREATE:
-        assert(diff_match->schema->nodetype == LYS_LEAF);
-        if (val_equal) {
-            /* the exact same ndoes were created twice - impossible */
-            SR_ERRINFO_INT(&err_info);
-            return err_info;
-        }
-
-        /* just update the new value */
-        ret = lyd_change_leaf((struct lyd_node_leaf_list *)diff_match, sr_ly_leaf_value_str(src_node));
-        assert(ret < 1);
-        if (ret < 0) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(diff_match)->ctx);
-            return err_info;
-        }
-        diff_match->dflt = src_node->dflt;
-        break;
     default:
-        /* replace operation is not valid */
+        /* create and replace operations are not valid */
         SR_ERRINFO_INT(&err_info);
         return err_info;
     }
