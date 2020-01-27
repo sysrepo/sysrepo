@@ -211,7 +211,7 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
 }
 
 sr_error_info_t *
-sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_node *orig_diff)
+sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new_diff)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -221,7 +221,8 @@ sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_node *orig_diff
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
             /* merge relevant diff part */
-            if ((err_info = sr_diff_mod_merge(mod_info->diff, mod_info->conn, mod->ly_mod, &orig_diff, NULL))) {
+            if ((err_info = sr_diff_mod_merge(new_diff, mod_info->ds == SR_DS_OPERATIONAL ? mod_info->conn : NULL,
+                    mod->ly_mod, &mod_info->diff, NULL))) {
                 return err_info;
             }
         }

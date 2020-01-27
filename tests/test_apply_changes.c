@@ -553,6 +553,9 @@ module_update_cb(sr_session_ctx_t *session, const char *module_name, const char 
     sr_change_oper_t op;
     sr_change_iter_t *iter;
     sr_val_t *old_val, *new_val;
+    struct lyd_node *subtree;
+    char *str1;
+    const char *str2;
     int ret;
 
     (void)request_id;
@@ -618,12 +621,39 @@ module_update_cb(sr_session_ctx_t *session, const char *module_name, const char 
 
         sr_free_change_iter(iter);
 
-        /* let's create another interface */
+        /* let's create an interface and change existing interface type */
         ret = sr_set_item_str(session, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
                 "iana-if-type:ethernetCsmacd", NULL, 0);
         assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_set_item_str(session, "/ietf-interfaces:interfaces/interface[name='eth52']/type",
+                "iana-if-type:l3ipvlan", NULL, 0);
         break;
     case 1:
+        assert_int_equal(event, SR_EV_CHANGE);
+
+        /* try getting data for change event */
+        ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", 0, &subtree);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
+        assert_int_equal(ret, 0);
+        lyd_free(subtree);
+
+        str2 =
+        "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "<interface>"
+                "<name>eth52</name>"
+                "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:l3ipvlan</type>"
+            "</interface>"
+            "<interface>"
+                "<name>eth64</name>"
+                "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "</interface>"
+        "</interfaces>";
+
+        assert_string_equal(str1, str2);
+        free(str1);
+        break;
     case 4:
         /* not interested in other events */
         assert_int_equal(event, SR_EV_CHANGE);
@@ -743,7 +773,7 @@ apply_update_thread(void *arg)
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
             "<name>eth52</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:l3ipvlan</type>"
         "</interface>"
         "<interface>"
             "<name>eth64</name>"

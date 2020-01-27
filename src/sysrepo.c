@@ -2163,7 +2163,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *update_edit = NULL, *diff = NULL;
+    struct lyd_node *update_edit = NULL, *old_diff = NULL, *new_diff = NULL;
     const char *err_msg = NULL, *err_xpath = NULL;
     int ret;
 
@@ -2218,16 +2218,16 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
 
         /* create new diff if we have an update edit */
         if (update_edit) {
-            /* keep the old diff */
-            diff = mod_info->diff;
+            /* backup the old diff */
+            old_diff = mod_info->diff;
             mod_info->diff = NULL;
 
-            /* get updated diff */
+            /* get new diff using the updated edit */
             if ((err_info = sr_modinfo_edit_apply(mod_info, update_edit, 1))) {
                 goto cleanup;
             }
 
-            /* validate updated data trees */
+            /* validate updated data trees and finish new diff */
             switch (session->ds) {
             case SR_DS_STARTUP:
             case SR_DS_RUNNING:
@@ -2243,12 +2243,15 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
                 break;
             }
 
+            /* put the old diff back */
+            new_diff = mod_info->diff;
+            mod_info->diff = old_diff;
+            old_diff = NULL;
+
             /* merge diffs into one */
-            if ((err_info = sr_modinfo_diff_merge(mod_info, diff))) {
+            if ((err_info = sr_modinfo_diff_merge(mod_info, new_diff))) {
                 goto cleanup;
             }
-            lyd_free_withsiblings(diff);
-            diff = NULL;
         }
 
         if (mod_info->diff) {
@@ -2294,7 +2297,8 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
 
 cleanup:
     lyd_free_withsiblings(update_edit);
-    lyd_free_withsiblings(diff);
+    lyd_free_withsiblings(old_diff);
+    lyd_free_withsiblings(new_diff);
     return err_info;
 }
 
