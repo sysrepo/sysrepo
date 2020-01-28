@@ -904,22 +904,25 @@ sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t 
     sr_mod_notif_sub_t *shm_sub;
     size_t new_ext_size;
 
-    /* moving all existing subscriptions (if any) and adding a new one */
-    notif_subs_off = shm_ext->size;
-    new_ext_size = notif_subs_off + (shm_mod->notif_sub_count + 1) * sizeof *shm_sub;
+    /* we may not even need to resize ext SHM because of the alignment */
+    if (SR_SHM_SIZE((shm_mod->notif_sub_count + 1) * sizeof *shm_sub) > SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof shm_sub)) {
+        /* moving all existing subscriptions (if any) and adding a new one */
+        notif_subs_off = shm_ext->size;
+        new_ext_size = notif_subs_off + SR_SHM_SIZE((shm_mod->notif_sub_count + 1) * sizeof *shm_sub);
 
-    /* remap ext SHM */
-    if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
-        return err_info;
+        /* remap ext SHM */
+        if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
+            return err_info;
+        }
+
+        /* add wasted memory */
+        *((size_t *)shm_ext->addr) += SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof *shm_sub);
+
+        /* move subscriptions */
+        memcpy(shm_ext->addr + notif_subs_off, shm_ext->addr + shm_mod->notif_subs,
+                shm_mod->notif_sub_count * sizeof *shm_sub);
+        shm_mod->notif_subs = notif_subs_off;
     }
-
-    /* add wasted memory */
-    *((size_t *)shm_ext->addr) += shm_mod->notif_sub_count * sizeof *shm_sub;
-
-    /* move subscriptions */
-    memcpy(shm_ext->addr + notif_subs_off, shm_ext->addr + shm_mod->notif_subs,
-            shm_mod->notif_sub_count * sizeof *shm_sub);
-    shm_mod->notif_subs = notif_subs_off;
 
     /* fill new subscription */
     shm_sub = (sr_mod_notif_sub_t *)(shm_ext->addr + shm_mod->notif_subs);
@@ -953,8 +956,9 @@ sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t
         return 1;
     }
 
-    /* add wasted memory */
-    *((size_t *)ext_shm_addr) += sizeof *shm_sub;
+    /* add wasted memory keeping alignment in mind */
+    *((size_t *)ext_shm_addr) += SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof *shm_sub)
+            - SR_SHM_SIZE((shm_mod->notif_sub_count - 1) * sizeof *shm_sub);
 
     --shm_mod->notif_sub_count;
     if (!shm_mod->notif_sub_count) {
