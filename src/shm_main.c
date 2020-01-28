@@ -152,7 +152,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
         /* add connection state */
         items = sr_realloc(items, (item_count + 1) * sizeof *items);
         items[item_count].start = main_shm->conn_state.conns;
-        items[item_count].size = SR_SHM_SIZE(main_shm->conn_state.conn_count * sizeof *conn_s);
+        items[item_count].size = main_shm->conn_state.conn_count * sizeof *conn_s;
         asprintf(&(items[item_count].name), "connections (%u)", main_shm->conn_state.conn_count);
         ++item_count;
     }
@@ -180,7 +180,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
         /* add RPCs */
         items = sr_realloc(items, (item_count + 1) * sizeof *items);
         items[item_count].start = main_shm->rpc_subs;
-        items[item_count].size = SR_SHM_SIZE(main_shm->rpc_sub_count * sizeof *shm_rpc);
+        items[item_count].size = main_shm->rpc_sub_count * sizeof *shm_rpc;
         asprintf(&(items[item_count].name), "rpcs (%u)", main_shm->rpc_sub_count);
         ++item_count;
 
@@ -197,7 +197,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
                 /* add RPC subscriptions */
                 items = sr_realloc(items, (item_count + 1) * sizeof *items);
                 items[item_count].start = shm_rpc[i].subs;
-                items[item_count].size = SR_SHM_SIZE(shm_rpc[i].sub_count * sizeof *rpc_subs);
+                items[item_count].size = shm_rpc[i].sub_count * sizeof *rpc_subs;
                 asprintf(&(items[item_count].name), "rpc subs (%u, op_path \"%s\")", shm_rpc[i].sub_count,
                         ext_shm_addr + shm_rpc[i].op_path);
                 ++item_count;
@@ -228,7 +228,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
             /* add features array */
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
             items[item_count].start = shm_mod->features;
-            items[item_count].size = SR_SHM_SIZE(shm_mod->feat_count * sizeof(off_t));
+            items[item_count].size = shm_mod->feat_count * sizeof(off_t);
             asprintf(&(items[item_count].name), "features (%u, mod \"%s\")", shm_mod->feat_count,
                     ext_shm_addr + shm_mod->name);
             ++item_count;
@@ -253,7 +253,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
             /* add inverse data deps */
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
             items[item_count].start = shm_mod->inv_data_deps;
-            items[item_count].size = SR_SHM_SIZE(shm_mod->inv_data_dep_count * sizeof(off_t));
+            items[item_count].size = shm_mod->inv_data_dep_count * sizeof(off_t);
             asprintf(&(items[item_count].name), "inv data deps (%u, mod \"%s\")", shm_mod->inv_data_dep_count,
                     ext_shm_addr + shm_mod->name);
             ++item_count;
@@ -263,7 +263,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
             /* add op deps array */
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
             items[item_count].start = shm_mod->op_deps;
-            items[item_count].size = SR_SHM_SIZE(shm_mod->op_dep_count * sizeof(sr_mod_op_dep_t));
+            items[item_count].size = shm_mod->op_dep_count * sizeof(sr_mod_op_dep_t);
             asprintf(&(items[item_count].name), "op deps (%u, mod \"%s\")", shm_mod->op_dep_count,
                     ext_shm_addr + shm_mod->name);
             ++item_count;
@@ -294,7 +294,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
                 /* add change subscriptions */
                 items = sr_realloc(items, (item_count + 1) * sizeof *items);
                 items[item_count].start = shm_mod->change_sub[ds].subs;
-                items[item_count].size = SR_SHM_SIZE(shm_mod->change_sub[ds].sub_count * sizeof *change_subs);
+                items[item_count].size = shm_mod->change_sub[ds].sub_count * sizeof *change_subs;
                 asprintf(&(items[item_count].name), "%s change subs (%u, mod \"%s\")", sr_ds2str(ds),
                         shm_mod->change_sub[ds].sub_count, ext_shm_addr + shm_mod->name);
                 ++item_count;
@@ -318,7 +318,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
             /* add DP subscriptions */
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
             items[item_count].start = shm_mod->oper_subs;
-            items[item_count].size = SR_SHM_SIZE(shm_mod->oper_sub_count * sizeof *oper_subs);
+            items[item_count].size = shm_mod->oper_sub_count * sizeof *oper_subs;
             asprintf(&(items[item_count].name), "oper subs (%u, mod \"%s\")", shm_mod->oper_sub_count,
                     ext_shm_addr + shm_mod->name);
             ++item_count;
@@ -354,6 +354,10 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
     printed = 0;
     wasted = 0;
     for (i = 0; i < item_count; ++i) {
+        /* check alignment */
+        assert(items[i].size == SR_SHM_SIZE(items[i].size));
+        assert((unsigned)items[i].start == SR_SHM_SIZE(items[i].start));
+
         if (items[i].start > cur_off) {
             printed += sr_sprintf(&msg, &msg_len, printed, "%06ld-%06ld [%6ld]: (wasted %ld)\n",
                     cur_off, items[i].start, items[i].start - cur_off, items[i].start - cur_off);
