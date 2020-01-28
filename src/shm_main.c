@@ -108,7 +108,14 @@ sr_shmmain_print_cmp(const void *ptr1, const void *ptr2)
     return 1;
 }
 
-void
+/**
+ * @brief Debug print the contents of Ext SHM.
+ *
+ * @param[in] shm_main Main SHM.
+ * @param[in] ext_shm_addr Ext SHM mapping address.
+ * @param[in] ext_shm_size Ext SHM mapping size.
+ */
+static void
 sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size)
 {
     sr_mod_t *shm_mod;
@@ -500,7 +507,15 @@ sr_shmmain_defrag_copy_array_with_string(char *ext_shm_addr, off_t array, size_t
     return ret;
 }
 
-sr_error_info_t *
+/**
+ * @brief Defragment Ext SHM.
+ *
+ * @param[in] shm_main Main SHM.
+ * @param[in] shm_ext Ext SHM.
+ * @param[out] defrag_ext_buf Defragmented Ext SHM memory copy.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
 sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_buf)
 {
     sr_error_info_t *err_info = NULL;

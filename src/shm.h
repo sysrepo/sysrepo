@@ -338,25 +338,6 @@ typedef struct sr_multi_sub_shm_s {
  */
 
 /**
- * @brief Debug print the contents of Ext SHM.
- *
- * @param[in] shm_main Main SHM.
- * @param[in] ext_shm_addr Ext SHM mapping address.
- * @param[in] ext_shm_size Ext SHM mapping size.
- */
-void sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size);
-
-/**
- * @brief Defragment Ext SHM.
- *
- * @param[in] shm_main Main SHM.
- * @param[in] shm_ext Ext SHM.
- * @param[out] defrag_ext_buf Defragmented Ext SHM memory copy.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_buf);
-
-/**
  * @brief Check all used directories and create them if any are missing.
  *
  * @return err_info, NULL on success.
