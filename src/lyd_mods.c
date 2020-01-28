@@ -150,8 +150,8 @@ sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod,
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mod;
-    const struct lys_submodule *submod;
-    uint8_t i, j;
+    struct lys_feature *feat;
+    uint32_t i;
 
     sr_mod = lyd_new(sr_mods, NULL, "module");
     if (!sr_mod) {
@@ -167,24 +167,13 @@ sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod,
         return err_info;
     }
 
-    for (i = 0; i < ly_mod->features_size; ++i) {
-        if (ly_mod->features[i].flags & LYS_FENABLED) {
-            if (!lyd_new_leaf(sr_mod, NULL, "enabled-feature", ly_mod->features[i].name)) {
+    /* enable all the features */
+    feat = NULL;
+    while ((feat = sr_lys_next_feature(feat, ly_mod, &i))) {
+        if (feat->flags & LYS_FENABLED) {
+            if (!lyd_new_leaf(sr_mod, NULL, "enabled-feature", feat->name)) {
                 sr_errinfo_new_ly(&err_info, ly_mod->ctx);
                 return err_info;
-            }
-        }
-    }
-
-    /* also add enabled features from all the submodules */
-    for (i = 0; i < ly_mod->inc_size; ++i) {
-        submod = ly_mod->inc[i].submodule;
-        for (j = 0; j < submod->features_size; ++j) {
-            if (submod->features[j].flags & LYS_FENABLED) {
-                if (!lyd_new_leaf(sr_mod, NULL, "enabled-feature", submod->features[j].name)) {
-                    sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-                    return err_info;
-                }
             }
         }
     }
