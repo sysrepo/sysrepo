@@ -1,0 +1,9 @@
+submodule features-sub {
+    belongs-to features {
+        prefix feat;
+    }
+
+    feature feat2 {
+        if-feature feat1;
+    }
+}

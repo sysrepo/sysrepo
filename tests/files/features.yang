@@ -2,15 +2,13 @@ module features {
     namespace "urn:features";
     prefix feat;
 
+    include features-sub;
+
     import test {
         prefix t;
     }
 
     feature feat1;
-
-    feature feat2 {
-        if-feature feat1;
-    }
 
     feature feat3 {
         if-feature feat2;

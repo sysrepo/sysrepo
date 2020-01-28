@@ -2562,18 +2562,18 @@ sr_lydmods_deferred_change_feature_find_before(const struct lys_module *ly_mod, 
         const struct lyd_node *sr_feat_change)
 {
     struct lyd_node *iter, *dep_iter = NULL;
-    struct lys_feature *feat;
+    struct lys_feature *feat, *f;
     uint32_t i, j;
 
     assert(sr_feat_change->prev->next);
 
-    for (i = 0; i < ly_mod->features_size; ++i) {
-        if (!strcmp(ly_mod->features[i].name, feat_name)) {
+    feat = NULL;
+    while ((feat = sr_lys_next_feature(feat, ly_mod, &i))) {
+        if (!strcmp(feat->name, feat_name)) {
             break;
         }
     }
-    assert(i < ly_mod->features_size);
-    feat = &ly_mod->features[i];
+    assert(feat);
 
     if (to_enable) {
         /* find all scheduled features that depend on this feature */
@@ -2603,22 +2603,23 @@ sr_lydmods_deferred_change_feature_find_before(const struct lys_module *ly_mod, 
             }
             assert(!strcmp(iter->child->schema->name, "name"));
             /* we must search all features and look for their dependent features because we do not know
-             * the size of feat->iffeature[i]->fature */
-            for (i = 0; i < ly_mod->features_size; ++i) {
-                if (!ly_mod->features[i].depfeatures) {
+             * the size of feat->iffeature[i]->feature */
+            f = NULL;
+            while ((f = sr_lys_next_feature(f, ly_mod, &i))) {
+                if (!f->depfeatures) {
                     continue;
                 }
 
-                for (j = 0; j < ly_mod->features[i].depfeatures->number; ++j) {
-                    if (!strcmp(((struct lys_feature *)ly_mod->features[i].depfeatures->set.g[j])->name, feat->name)) {
+                for (j = 0; j < f->depfeatures->number; ++j) {
+                    if (!strcmp(((struct lys_feature *)f->depfeatures->set.g[j])->name, feat->name)) {
                         break;
                     }
                 }
-                if (j == ly_mod->features[i].depfeatures->number) {
+                if (j == f->depfeatures->number) {
                     continue;
                 }
 
-                if (!strcmp(sr_ly_leaf_value_str(iter->child), ly_mod->features[i].name)) {
+                if (!strcmp(sr_ly_leaf_value_str(iter->child), f->name)) {
                     dep_iter = iter;
                     break;
                 }

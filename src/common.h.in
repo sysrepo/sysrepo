@@ -1291,4 +1291,14 @@ sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds
  */
 sr_error_info_t *sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name);
 
+/**
+ * @brief Get next feature of a module.
+ *
+ * @param[in] last Last returned feature, NULL on first call,
+ * @param[in] ly_mod Module with the features.
+ * @param[in,out] idx Internal index fo the feature, arbitrary value can be passed but must not be changed in between calls.
+ * @return Next found feature, NULL if last was previously returned.
+ */
+struct lys_feature *sr_lys_next_feature(struct lys_feature *last, const struct lys_module *ly_mod, uint32_t *idx);
+
 #endif

@@ -3940,3 +3940,55 @@ cleanup:
     sr_modinfo_free(&mod_info);
     return err_info;
 }
+
+struct lys_feature *
+sr_lys_next_feature(struct lys_feature *last, const struct lys_module *ly_mod, uint32_t *idx)
+{
+    uint8_t i;
+
+    assert(ly_mod);
+
+    /* find the (sub)module of the last feature */
+    if (last) {
+        for (i = 0; i < ly_mod->inc_size; ++i) {
+            if (*idx >= ly_mod->inc[i].submodule->features_size) {
+                /* not a feature from this submodule, skip */
+                continue;
+            }
+            if (last != ly_mod->inc[i].submodule->features + *idx) {
+                /* feature is not from this submodule */
+                continue;
+            }
+
+            /* we have found the submodule */
+            break;
+        }
+
+        /* feature not found in submodules, it must be in the main module */
+        assert((i < ly_mod->inc_size) || ((*idx < ly_mod->features_size) && (last == ly_mod->features + *idx)));
+
+        /* we want the next feature */
+        ++(*idx);
+    } else {
+        i = 0;
+        *idx = 0;
+    }
+
+    /* find the (sub)module of the next feature */
+    while ((i < ly_mod->inc_size) && (*idx == ly_mod->inc[i].submodule->features_size)) {
+        /* next submodule */
+        ++i;
+        *idx = 0;
+    }
+
+    /* get the next feature */
+    if (i < ly_mod->inc_size) {
+        last = ly_mod->inc[i].submodule->features + *idx;
+    } else if (*idx < ly_mod->features_size) {
+        last = ly_mod->features + *idx;
+    } else {
+        last = NULL;
+    }
+
+    return last;
+}
