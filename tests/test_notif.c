@@ -321,7 +321,7 @@ static void
 test_simple(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr, *subscr2, *subscr3;
     const sr_error_info_t *err_info = NULL;
     sr_val_t input[2];
     int ret;
@@ -366,7 +366,7 @@ test_simple(void **state)
     assert_null(err_info->err[1].xpath);
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send the first notif again, still fails */
@@ -381,7 +381,7 @@ test_simple(void **state)
     assert_null(err_info->err[1].xpath);
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr3);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send the first notif for the last time, should succeed */
@@ -423,6 +423,8 @@ test_simple(void **state)
     assert_int_equal(st->cb_called, 2);
 
     sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr2);
+    sr_unsubscribe(subscr3);
 }
 
 /* TEST 2 */

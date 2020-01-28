@@ -334,6 +334,16 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
                 ++item_count;
             }
         }
+
+        if (shm_mod->notif_sub_count) {
+            /* add notif subscriptions */
+            items = sr_realloc(items, (item_count + 1) * sizeof *items);
+            items[item_count].start = shm_mod->notif_subs;
+            items[item_count].size = SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof(sr_mod_notif_sub_t));
+            asprintf(&(items[item_count].name), "notif subs (%u, mod \"%s\")", shm_mod->notif_sub_count,
+                    ext_shm_addr + shm_mod->name);
+            ++item_count;
+        }
     }
 
     /* sort all items */
@@ -533,6 +543,7 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
     char *ext_buf, *ext_buf_cur, *mod_name;
     sr_conn_state_t *conn_s;
     sr_main_shm_t *main_shm;
+    sr_mod_notif_sub_t *notif_subs;
     sr_conn_state_lock_t (*mod_locks)[3];
     uint32_t *evpipes;
     uint16_t i;
@@ -591,6 +602,10 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
         /* copy operational subscriptions */
         shm_mod->oper_subs = sr_shmmain_defrag_copy_array_with_string(shm_ext->addr, shm_mod->oper_subs,
                 sizeof(sr_mod_oper_sub_t), shm_mod->oper_sub_count, ext_buf, &ext_buf_cur);
+
+        /* copy notification subscriptions */
+        notif_subs = (sr_mod_notif_sub_t *)(shm_ext->addr + shm_mod->notif_subs);
+        shm_mod->notif_subs = sr_shmcpy(ext_buf, notif_subs, SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof *notif_subs), &ext_buf_cur);
     }
 
     main_shm = (sr_main_shm_t *)shm_main->addr;
