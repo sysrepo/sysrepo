@@ -148,7 +148,7 @@ typedef void (*sr_log_cb)(sr_log_level_t level, const char *message);
 
 /**
  * @brief Sets callback that will be called when a log entry would be populated.
- * Callback will be called for each message with any log level.
+ * Callback will be called for every message __regardless__ of any log level.
  *
  * @param[in] log_callback Callback to be called when a log entry would populated.
  */

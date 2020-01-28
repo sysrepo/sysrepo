@@ -126,7 +126,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
     int msg_len = 0;
     char *msg;
 
-    if ((stderr_ll < SR_LL_DBG) && (syslog_ll < SR_LL_DBG)) {
+    if ((stderr_ll < SR_LL_DBG) && (syslog_ll < SR_LL_DBG) && !log_cb) {
         /* nothing to print */
         return;
     }
