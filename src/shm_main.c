@@ -2201,11 +2201,9 @@ sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const c
             }
             free(path);
 
-            /* delete also RPC */
-            if ((err_info = sr_shmmain_del_rpc((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, NULL,
-                    shm_rpc->op_path))) {
-                break;
-            }
+            /* delete also RPC, we must break because shm_rpc was removed */
+            err_info = sr_shmmain_del_rpc((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, NULL, shm_rpc->op_path);
+            break;
         }
     } while (all_evpipe);
 
