@@ -1962,7 +1962,7 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int l
     if (remap) {
         /* we have WRITE lock, it is safe */
         if ((err_info = sr_shm_remap(&conn->ext_shm, 0))) {
-            goto error_remap_shm_unlock;
+            goto error_remap_unlock;
         }
     } else {
         /*
@@ -1972,7 +1972,7 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int l
          * write into ext SHM and make it larger, infinitely many times
          */
         if ((err_info = sr_file_get_size(conn->ext_shm.fd, &shm_file_size))) {
-            goto error_remap_shm_unlock;
+            goto error_remap_unlock;
         }
         while (shm_file_size > conn->ext_shm.size) {
             /* ext SHM is larger now and we need to remap it */
@@ -1986,7 +1986,7 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int l
 
             if ((err_info = sr_shm_remap(&conn->ext_shm, shm_file_size))) {
                 remap = 1;
-                goto error_remap_shm_unlock;
+                goto error_remap_unlock;
             }
 
             /* REMAP WRITE UNLOCK */
@@ -1997,19 +1997,19 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int l
             }
 
             if ((err_info = sr_file_get_size(conn->ext_shm.fd, &shm_file_size))) {
-                goto error_remap_shm_unlock;
+                goto error_remap_unlock;
             }
         } /* else no remapping needed */
     }
 
     /* check that all connections still exist */
     if ((err_info = sr_shmmain_state_recover(conn))) {
-        goto error_remap_shm_unlock;
+        goto error_remap_unlock;
     }
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
-    /* MAIN SHM LOCK */
+    /* SHM LOCK */
     if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, func))) {
         goto error_remap_unlock;
     }
