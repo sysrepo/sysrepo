@@ -3200,11 +3200,13 @@ module_change_order_cb(sr_session_ctx_t *session, const char *module_name, const
     switch (st->cb_called) {
     case 0:
     case 5:
+    case 9:
         assert_string_equal(module_name, "test");
         assert_int_equal(event, SR_EV_CHANGE);
         break;
     case 1:
     case 4:
+    case 8:
         assert_string_equal(module_name, "ietf-interfaces");
         assert_int_equal(event, SR_EV_CHANGE);
         break;
@@ -3212,6 +3214,8 @@ module_change_order_cb(sr_session_ctx_t *session, const char *module_name, const
     case 3:
     case 6:
     case 7:
+    case 10:
+    case 11:
         /* we cannot rely on any order for DONE event */
         assert_int_equal(event, SR_EV_DONE);
         break;
@@ -3258,6 +3262,18 @@ apply_change_order_thread(void *arg)
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
+    pthread_barrier_wait(&st->barrier);
+
+    /* cleanup edit */
+    ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(sess, "/test:l1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* perform the third change */
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
     /* signal that we have finished applying changes */
     pthread_barrier_wait(&st->barrier);
 
@@ -3292,7 +3308,6 @@ subscribe_change_order_thread(void *arg)
     }
     assert_int_equal(st->cb_called, 4);
 
-    /* wait for the other thread to try first time */
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
@@ -3301,6 +3316,15 @@ subscribe_change_order_thread(void *arg)
         ++count;
     }
     assert_int_equal(st->cb_called, 8);
+
+    pthread_barrier_wait(&st->barrier);
+
+    count = 0;
+    while ((st->cb_called < 12) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 12);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -3322,6 +3346,261 @@ test_change_order(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST 11 */
+static int
+module_change_userord_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    sr_val_t *old_val, *new_val;
+    size_t val_count;
+    int ret;
+
+    (void)request_id;
+    (void)xpath;
+
+    assert_string_equal(module_name, "test");
+
+    switch (st->cb_called) {
+    case 0:
+    case 1:
+        if (st->cb_called == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l1[k='k1']");
+
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l1[k='k1']/k");
+
+        sr_free_val(new_val);
+
+        /* 3rd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l1[k='k1']/v");
+
+        sr_free_val(new_val);
+
+        /* 4th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l1[k='k1']/ll12[.='ahoy']");
+
+        sr_free_val(new_val);
+
+        /* 5th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/test:l1[k='k1']");
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l1[k='k2']");
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+
+        /* 6th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l1[k='k2']/k");
+
+        sr_free_val(new_val);
+
+        /* 7th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l1[k='k2']/v");
+
+        sr_free_val(new_val);
+
+        /* 8th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l1[k='k2']/ll12[.='mate']");
+
+        sr_free_val(new_val);
+
+        /* 9th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/test:l1[k='k2']");
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l1[k='k3']");
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+
+        /* 10th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l1[k='k3']/k");
+
+        sr_free_val(new_val);
+
+        /* 11th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l1[k='k3']/v");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+
+        /* check data */
+        ret = sr_get_items(session, "/test:l1//.", 0, &new_val, &val_count);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(val_count, 11);
+
+        sr_free_values(new_val, val_count);
+        break;
+    default:
+        fail();
+    }
+
+    ++st->cb_called;
+    return SR_ERR_OK;
+}
+
+static void *
+apply_change_userord_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/test:l1[k='k1']/v", "25", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:l1[k='k1']/ll12", "ahoy", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:l1[k='k2']/v", "52", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:l1[k='k2']/ll12", "mate", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:l1[k='k3']/v", "52", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform 1st change */
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_change_userord_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int count, ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_change_userord_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscription was created */
+    pthread_barrier_wait(&st->barrier);
+
+    count = 0;
+    while ((st->cb_called < 2) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 2);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_change_userord(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_change_userord_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_change_userord_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
 /* MAIN */
 int
 main(void)
@@ -3337,6 +3616,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_unlocked, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_timeout, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

@@ -405,7 +405,7 @@ sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struc
         enum insert_val insert, const char *key_or_value)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *sibling;
+    struct lyd_node *anchor;
     int user_ordered = 0;
 
     assert(new_node);
@@ -435,6 +435,8 @@ sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struc
         return NULL;
     }
 
+    assert(!(*first_node)->parent || ((*first_node)->parent == parent_node));
+
     /* insert last or first */
     if ((insert == INSERT_DEFAULT) || (insert == INSERT_LAST)) {
         if (lyd_insert_after((*first_node)->prev, new_node)) {
@@ -443,40 +445,55 @@ sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struc
         }
         return NULL;
     } else if (insert == INSERT_FIRST) {
-        if (lyd_insert_before(*first_node, new_node)) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(*first_node)->ctx);
-            return err_info;
+        if (lys_is_key((struct lys_node_leaf *)(*first_node)->schema, NULL)) {
+            assert(parent_node && (parent_node->schema->nodetype == LYS_LIST));
+
+            /* find last key */
+            anchor = *first_node;
+            while (anchor->next && lys_is_key((struct lys_node_leaf *)anchor->next->schema, NULL)) {
+                anchor = anchor->next;
+            }
+            /* insert after the last key */
+            if (lyd_insert_after(anchor, new_node)) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(*first_node)->ctx);
+                return err_info;
+            }
+        } else {
+            /* insert at the very beginning */
+            if (lyd_insert_before(*first_node, new_node)) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(*first_node)->ctx);
+                return err_info;
+            }
+            *first_node = new_node;
         }
-        assert((*first_node)->prev == new_node);
-        *first_node = new_node;
         return NULL;
     }
 
     assert(user_ordered && key_or_value);
 
     /* find the anchor sibling */
-    if ((err_info = sr_edit_find_userord_predicate(*first_node, new_node, key_or_value, &sibling))) {
+    if ((err_info = sr_edit_find_userord_predicate(*first_node, new_node, key_or_value, &anchor))) {
         return err_info;
     }
 
     /* insert before or after */
     if (insert == INSERT_BEFORE) {
-        if (lyd_insert_before(sibling, new_node)) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(sibling)->ctx);
+        if (lyd_insert_before(anchor, new_node)) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(anchor)->ctx);
             return err_info;
         }
-        assert(sibling->prev == new_node);
-        if (*first_node == sibling) {
+        assert(anchor->prev == new_node);
+        if (*first_node == anchor) {
             *first_node = new_node;
         }
     } else if (insert == INSERT_AFTER) {
-        if (lyd_insert_after(sibling, new_node)) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(sibling)->ctx);
+        if (lyd_insert_after(anchor, new_node)) {
+            sr_errinfo_new_ly(&err_info, lyd_node_module(anchor)->ctx);
             return err_info;
         }
-        assert(new_node->prev == sibling);
+        assert(new_node->prev == anchor);
         if (*first_node == new_node) {
-            *first_node = sibling;
+            *first_node = anchor;
         }
     }
 
@@ -2511,35 +2528,16 @@ sr_diff_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
             }
         }
 
-        /* find the anchor */
+        /* insert/move the node */
         if (key_or_value[0]) {
-            if ((err_info = sr_edit_find_userord_predicate(*first_node, match, key_or_value, &anchor_node))) {
-                return err_info;
-            }
+            err_info = sr_edit_insert(first_node, parent_node, match, INSERT_AFTER, key_or_value);
         } else {
-            anchor_node = NULL;
+            err_info = sr_edit_insert(first_node, parent_node, match, INSERT_FIRST, NULL);
         }
-
-        /* move/insert the node */
-        if (anchor_node) {
-            ret = lyd_insert_after(anchor_node, match);
-        } else {
-            if (*first_node) {
-                ret = lyd_insert_before(*first_node, match);
-                if (ret) {
-                    sr_errinfo_new_ly(&err_info, ly_ctx);
-                    return err_info;
-                }
-                *first_node = match;
-            } else if (parent_node) {
-                ret = lyd_insert(parent_node, match);
-            } else {
-                *first_node = match;
-                ret = 0;
+        if (err_info) {
+            if (op == EDIT_CREATE) {
+                lyd_free(match);
             }
-        }
-        if (ret) {
-            sr_errinfo_new_ly(&err_info, ly_ctx);
             return err_info;
         }
 
