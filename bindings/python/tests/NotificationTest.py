@@ -40,7 +40,7 @@ class NotificationTester(SysrepoTester):
             ['python3','NotificationTestApp.py', module_name, xpath, self.filename])
         self.report_pid(self.process.pid)
         # wait for running data file to be copied
-        time.sleep(0.1)
+        time.sleep(1)
 
     def cancelSubscriptionStep(self):
         os.kill(self.process.pid, signal.SIGINT)
