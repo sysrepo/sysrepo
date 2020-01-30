@@ -35,6 +35,8 @@ if(ENABLE_PYTHON_TESTS)
         )
         set_property(TEST python_${TEST_NAME} PROPERTY ENVIRONMENT TESTS_DIR=${PROJECT_SOURCE_DIR}/tests)
         set_property(TEST python_${TEST_NAME} APPEND PROPERTY ENVIRONMENT PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR})
+		# just not to pollute the repository, WARNING if PYTHONDONTWRITEBYTECODE is set the test do NOT work
+        # set_property(TEST python_${TEST_NAME} APPEND PROPERTY ENVIRONMENT PYTHONDONTWRITEBYTECODE=1)
     endmacro(ADD_PYTHON_TEST)
 
     ADD_PYTHON_TEST(SysrepoBasicTest)
