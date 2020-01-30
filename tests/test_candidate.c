@@ -268,8 +268,8 @@ test_invalid(void **state)
     ret = sr_validate(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
-    /* copy-config to running, should also reset candidate */
-    ret = sr_copy_config(st->sess, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING, 0);
+    /* copy-config to candidate, should reset it */
+    ret = sr_copy_config(st->sess, NULL, SR_DS_RUNNING, SR_DS_CANDIDATE, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
@@ -332,8 +332,12 @@ test_when(void **state)
     ret = sr_validate(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
-    /* copy-config to running, should also reset candidate */
-    ret = sr_copy_config(st->sess, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING, 0);
+    /* copy-config to running, should fail */
+    /*ret = sr_copy_config(st->sess, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING, 0);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);*/
+
+    /* copy-config to candidate, should reset it */
+    ret = sr_copy_config(st->sess, NULL, SR_DS_RUNNING, SR_DS_CANDIDATE, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
