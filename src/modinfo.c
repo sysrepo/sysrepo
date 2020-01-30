@@ -1409,10 +1409,12 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
         }
     }
 
-    /* just add default values, the validation can fail */
-    flags = (mod_info->ds == SR_DS_OPERATIONAL ? LYD_OPT_DATA : LYD_OPT_CONFIG) | LYD_OPT_TRUSTED | LYD_OPT_WHENAUTODEL
-            | LYD_OPT_VAL_DIFF;
-    lyd_validate_modules(&mod_info->data, valid_mods, valid_mod_count, flags, &diff);
+    /* just add default values and generate diff */
+    flags = (mod_info->ds == SR_DS_OPERATIONAL ? LYD_OPT_DATA : LYD_OPT_CONFIG) | LYD_OPT_TRUSTED | LYD_OPT_VAL_DIFF;
+    if (lyd_validate_modules(&mod_info->data, valid_mods, valid_mod_count, flags, &diff)) {
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        goto cleanup;
+    }
 
     if (finish_diff) {
         /* merge the changes made by the validation into our diff */

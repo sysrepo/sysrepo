@@ -2774,8 +2774,7 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
             break;
         case LYD_ANYDATA_LYB:
             /* try to convert into a data tree */
-            tree = lyd_parse_mem(node->schema->module->ctx, any->value.mem, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT
-                                 | LYD_OPT_TRUSTED, NULL);
+            tree = lyd_parse_mem(node->schema->module->ctx, any->value.mem, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT, NULL);
             if (!tree) {
                 sr_errinfo_new_ly(&err_info, node->schema->module->ctx);
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Failed to convert LYB anyxml/anydata into XML.");
@@ -3407,7 +3406,7 @@ sr_ly_anydata_value_str(const struct lyd_node *any, char **value_str)
     case LYD_ANYDATA_LYB:
         /* parse into a data tree */
         ly_errno = 0;
-        tree = lyd_parse_mem(a->schema->module->ctx, a->value.mem, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT | LYD_OPT_TRUSTED, NULL);
+        tree = lyd_parse_mem(a->schema->module->ctx, a->value.mem, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT, NULL);
         if (ly_errno) {
             sr_errinfo_new_ly(&err_info, a->schema->module->ctx);
             return err_info;
@@ -3801,10 +3800,17 @@ retry_open:
 
     /* load the data */
     ly_errno = 0;
-    if (ds == SR_DS_OPERATIONAL) {
+    switch (ds) {
+    case SR_DS_OPERATIONAL:
         flags = LYD_OPT_EDIT | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS;
-    } else {
+        break;
+    case SR_DS_CANDIDATE:
         flags = LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS;
+        break;
+    case SR_DS_STARTUP:
+    case SR_DS_RUNNING:
+        flags = LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_TRUSTED;
+        break;
     }
     mod_data = lyd_parse_fd(ly_mod->ctx, fd, LYD_LYB, flags);
     if (ly_errno) {

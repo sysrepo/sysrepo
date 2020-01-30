@@ -66,6 +66,9 @@ setup_f(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/when1.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -84,6 +87,7 @@ teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "when1");
     sr_remove_module(st->conn, "ietf-interfaces");
     sr_remove_module(st->conn, "iana-if-type");
     sr_remove_module(st->conn, "test");
@@ -263,6 +267,76 @@ test_invalid(void **state)
     /* is not valid */
     ret = sr_validate(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
+
+    /* copy-config to running, should also reset candidate */
+    ret = sr_copy_config(st->sess, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
+test_when(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    char *str;
+    const char *str2 = "<l3 xmlns=\"urn:when1\">hi</l3>";
+    int ret;
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* modify candidate */
+    ret = sr_set_item_str(st->sess, "/when1:l3", "hi", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(st->sess, "/when1:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free_withsiblings(data);
+    assert_string_equal(str, str2);
+    free(str);
+
+    /* is not valid */
+    ret = sr_validate(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
+
+    ret = sr_delete_item(st->sess, "/when1:l3", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* should be valid again (empty) */
+    ret = sr_validate(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* the same change but with replace config */
+    data = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str2, LYD_XML, LYD_OPT_CONFIG | LYD_OPT_TRUSTED | LYD_OPT_STRICT);
+    assert_non_null(data);
+    ret = sr_replace_config(st->sess, "when1", data, SR_DS_CANDIDATE, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(st->sess, "/when1:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free_withsiblings(data);
+    assert_string_equal(str, str2);
+    free(str);
+
+    /* is not valid */
+    ret = sr_validate(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
+
+    /* copy-config to running, should also reset candidate */
+    ret = sr_copy_config(st->sess, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
 }
 
 int
@@ -270,7 +344,8 @@ main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_teardown(test_basic, clear_interfaces),
-        cmocka_unit_test(test_invalid),
+        cmocka_unit_test_teardown(test_invalid, clear_interfaces),
+        cmocka_unit_test(test_when),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

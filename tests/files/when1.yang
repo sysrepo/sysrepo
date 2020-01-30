@@ -9,4 +9,9 @@ module when1 {
     leaf l2 {
         type string;
     }
+
+    leaf l3 {
+        when "../l1";
+        type string;
+    }
 }

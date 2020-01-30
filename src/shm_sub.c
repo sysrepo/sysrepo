@@ -1170,7 +1170,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
 
     /* parse returned data */
     ly_errno = 0;
-    *data = lyd_parse_mem(ly_mod->ctx, shm_sub.addr + sizeof *sub_shm, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
+    *data = lyd_parse_mem(ly_mod->ctx, shm_sub.addr + sizeof *sub_shm, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT);
     if (ly_errno) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse returned \"operational\" data.");
@@ -2165,7 +2165,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         /* parse data parent */
         ly_errno = 0;
         parent = lyd_parse_mem(conn->ly_ctx, oper_sub->sub_shm.addr + sizeof(sr_sub_shm_t) + sr_strshmlen(request_xpath),
-                LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
+                LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
         SR_CHECK_INT_GOTO(ly_errno, err_info, error_rdunlock);
         /* go to the actual parent, not the root */
         if ((err_info = sr_ly_find_last_parent(&parent, 0))) {
@@ -2480,7 +2480,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
                 ly_errno = 0;
                 /* parse RPC/action input */
                 input = lyd_parse_mem(conn->ly_ctx, rpc_subs->sub_shm.addr + sizeof *multi_sub_shm, LYD_LYB,
-                        LYD_OPT_RPC | LYD_OPT_NOEXTDEPS | LYD_OPT_STRICT, NULL);
+                        LYD_OPT_RPC | LYD_OPT_STRICT | LYD_OPT_TRUSTED, NULL);
                 if (ly_errno) {
                     sr_errinfo_new_ly(&err_info, conn->ly_ctx);
                     SR_ERRINFO_INT(&err_info);
@@ -2687,7 +2687,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     /* parse notification */
     ly_errno = 0;
     notif = lyd_parse_mem(conn->ly_ctx, notif_subs->sub_shm.addr + sizeof *multi_sub_shm + sizeof notif_ts, LYD_LYB,
-            LYD_OPT_NOTIF | LYD_OPT_NOEXTDEPS | LYD_OPT_STRICT, NULL);
+            LYD_OPT_NOTIF | LYD_OPT_STRICT | LYD_OPT_TRUSTED, NULL);
     SR_CHECK_INT_GOTO(ly_errno, err_info, cleanup_rdunlock);
 
     /* remember request ID so that we do not process it again */

@@ -223,11 +223,6 @@ step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format,
         }
     }
 
-    /* do not validate candidate data */
-    if (sr_session_get_ds(sess) == SR_DS_CANDIDATE) {
-        flags |= LYD_OPT_TRUSTED;
-    }
-
     /* parse import data */
     if (file_path) {
         *data = lyd_parse_path(ly_ctx, file_path, format, flags, NULL);
