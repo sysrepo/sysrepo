@@ -85,7 +85,7 @@ public:
     /** Wrapper for [sr_get_item](@ref sr_get_item) */
     S_Val get_item(const char *path, uint32_t timeout_ms = 0);
     /** Wrapper for [sr_get_items](@ref sr_get_items) */
-    S_Vals get_items(const char *xpath, uint32_t timeout_ms = 0);
+    S_Vals get_items(const char *xpath, uint32_t timeout_ms = 0, const sr_get_oper_options_t opts = OPER_DEFAULT);
     /** Wrapper for [sr_get_subtree](@ref sr_get_subtree) */
     libyang::S_Data_Node get_subtree(const char *path, uint32_t timeout_ms = 0);
     /** Wrapper for [sr_get_data](@ref sr_get_data) */
@@ -101,7 +101,7 @@ public:
     void delete_item(const char *path, const sr_edit_options_t opts = EDIT_DEFAULT);
     /** Wrapper for [sr_move_item](@ref sr_move_item) */
     void move_item(const char *path, const sr_move_position_t position, const char *list_keys = nullptr, \
-            const char *leaflist_value = nullptr, const char *origin = nullptr);
+            const char *leaflist_value = nullptr, const char *origin = nullptr, const sr_edit_options_t opts = EDIT_DEFAULT);
     /** Wrapper for [sr_edit_batch](@ref sr_edit_batch) */
     void edit_batch(const libyang::S_Data_Node edit, const char *default_operation);
     /** Wrapper for [sr_validate](@ref sr_validate) */
@@ -111,11 +111,9 @@ public:
     /** Wrapper for [sr_discard_changes](@ref sr_discard_changes) */
     void discard_changes();
     /** Wrapper for [sr_replace_config](@ref sr_replace_config) */
-    void replace_config(const libyang::S_Data_Node src_config, sr_datastore_t trg_datastore, \
-            const char *module_name = nullptr, uint32_t timeout_ms = 0);
+    void replace_config(const libyang::S_Data_Node src_config, const char *module_name = nullptr, uint32_t timeout_ms = 0);
     /** Wrapper for [sr_copy_config](@ref sr_copy_config) */
-    void copy_config(sr_datastore_t src_datastore, sr_datastore_t trg_datastore, const char *module_name = nullptr, \
-            uint32_t timeout_ms = 0);
+    void copy_config(sr_datastore_t src_datastore, const char *module_name = nullptr, uint32_t timeout_ms = 0);
 
     /** Wrapper for [sr_lock](@ref sr_lock) */
     void lock(const char *module_name = nullptr);

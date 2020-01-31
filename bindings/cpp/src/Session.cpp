@@ -162,11 +162,11 @@ S_Val Session::get_item(const char *path, uint32_t timeout_ms)
     throw_exception(ret);
 }
 
-S_Vals Session::get_items(const char *xpath, uint32_t timeout_ms)
+S_Vals Session::get_items(const char *xpath, uint32_t timeout_ms, const sr_get_oper_options_t opts)
 {
     S_Vals values(new Vals());
 
-    int ret = sr_get_items(_sess, xpath, timeout_ms, &values->_vals, &values->_cnt);
+    int ret = sr_get_items(_sess, xpath, timeout_ms, opts, &values->_vals, &values->_cnt);
     if (SR_ERR_OK == ret) {
         values->_deleter = std::make_shared<Deleter>(values->_vals, values->_cnt);
         return values;
@@ -232,9 +232,9 @@ void Session::delete_item(const char *path, const sr_edit_options_t opts)
 }
 
 void Session::move_item(const char *path, const sr_move_position_t position, const char *list_keys, \
-        const char *leaflist_value, const char *origin)
+        const char *leaflist_value, const char *origin, const sr_edit_options_t opts)
 {
-    int ret = sr_move_item(_sess, path, position, list_keys, leaflist_value, origin);
+    int ret = sr_move_item(_sess, path, position, list_keys, leaflist_value, origin, opts);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
@@ -272,8 +272,7 @@ void Session::discard_changes()
     }
 }
 
-void Session::replace_config(const libyang::S_Data_Node src_config, sr_datastore_t trg_datastore, const char *module_name, \
-        uint32_t timeout_ms)
+void Session::replace_config(const libyang::S_Data_Node src_config, const char *module_name, uint32_t timeout_ms)
 {
     int ret;
     struct lyd_node *src;
@@ -283,17 +282,16 @@ void Session::replace_config(const libyang::S_Data_Node src_config, sr_datastore
         throw_exception(SR_ERR_NOMEM);
     }
 
-    ret = sr_replace_config(_sess, module_name, src, trg_datastore, timeout_ms);
+    ret = sr_replace_config(_sess, module_name, src, timeout_ms);
     if (ret != SR_ERR_OK) {
         lyd_free_withsiblings(src);
         throw_exception(ret);
     }
 }
 
-void Session::copy_config(sr_datastore_t src_datastore, sr_datastore_t trg_datastore, const char *module_name, \
-        uint32_t timeout_ms)
+void Session::copy_config(sr_datastore_t src_datastore, const char *module_name, uint32_t timeout_ms)
 {
-    int ret = sr_copy_config(_sess, module_name, src_datastore, trg_datastore, timeout_ms);
+    int ret = sr_copy_config(_sess, module_name, src_datastore, timeout_ms);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
