@@ -3508,7 +3508,7 @@ module_change_userord_cb(sr_session_ctx_t *session, const char *module_name, con
         sr_free_change_iter(iter);
 
         /* check data */
-        ret = sr_get_items(session, "/test:l1//.", 0, &new_val, &val_count);
+        ret = sr_get_items(session, "/test:l1//.", 0, 0, &new_val, &val_count);
         assert_int_equal(ret, SR_ERR_OK);
         assert_int_equal(val_count, 11);
 

@@ -286,7 +286,7 @@ perf_data_provide_test(void **state, int op_num, int *items)
         val_cnt = 0;
         value = NULL;
 
-        rc = sr_get_items(dp_setup->session, "/ietf-interfaces:interfaces-state/interface/statistics//*", 0, &value, &val_cnt);
+        rc = sr_get_items(dp_setup->session, "/ietf-interfaces:interfaces-state/interface/statistics//*", 0, 0, &value, &val_cnt);
         assert_int_equal(SR_ERR_OK, rc);
 
         sr_free_values(value, val_cnt);
@@ -413,7 +413,7 @@ perf_get_items_test(void **state, int op_num, int *items)
     /* perform a get-items request */
     for (int i = 0; i<op_num; i++){
         /* existing leaf */
-        rc = sr_get_items(session, "/example-module:container/list/leaf", 0, &values, &count);
+        rc = sr_get_items(session, "/example-module:container/list/leaf", 0, 0, &values, &count);
         assert_int_equal(SR_ERR_OK, rc);
         sr_free_values(values, count);
     }

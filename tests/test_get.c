@@ -105,7 +105,7 @@ enable_cached_get_cb(sr_session_ctx_t *session, const char *module_name, const c
 
     /* get current config */
     asprintf(&xp, "/%s:*//.", module_name);
-    ret = sr_get_items(session, xp, 0, &values, &count);
+    ret = sr_get_items(session, xp, 0, 0, &values, &count);
     free(xp);
     assert_int_equal(ret, SR_ERR_OK);
 

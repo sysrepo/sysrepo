@@ -1623,14 +1623,16 @@ cleanup_shm_unlock:
 }
 
 API int
-sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, sr_val_t **values, size_t *value_cnt)
+sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, const sr_get_oper_options_t opts,
+        sr_val_t **values, size_t *value_cnt)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct ly_set *set = NULL;
     struct sr_mod_info_s mod_info;
     uint32_t i;
 
-    SR_CHECK_ARG_APIRET(!session || !xpath || !values || !value_cnt, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !xpath || !values || !value_cnt || ((session->ds != SR_DS_OPERATIONAL) && opts),
+            session, err_info);
 
     if (!timeout_ms) {
         timeout_ms = SR_OPER_CB_TIMEOUT;
@@ -1660,7 +1662,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     }
 
     /* load modules data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, xpath, timeout_ms, 0, &cb_err_info))
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 1, &session->sid, xpath, timeout_ms, opts, &cb_err_info))
             || cb_err_info) {
         goto cleanup_mods_unlock;
     }
