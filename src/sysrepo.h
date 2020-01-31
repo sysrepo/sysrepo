@@ -57,10 +57,7 @@ typedef enum sr_error_e {
     SR_ERR_NOT_FOUND,          /**< Item not found. */
     SR_ERR_EXISTS,             /**< Item already exists. */
     SR_ERR_INTERNAL,           /**< Other internal error. */
-    SR_ERR_INIT_FAILED,        /**< Sysrepo initialization failed. */
     SR_ERR_UNSUPPORTED,        /**< Unsupported operation requested. */
-    SR_ERR_UNKNOWN_MODEL,      /**< Request includes unknown schema */
-    SR_ERR_BAD_ELEMENT,        /**< Unknown element in existing schema */
     SR_ERR_VALIDATION_FAILED,  /**< Validation of the changes failed. */
     SR_ERR_OPERATION_FAILED,   /**< An operation failed. */
     SR_ERR_UNAUTHORIZED,       /**< Operation not authorized. */

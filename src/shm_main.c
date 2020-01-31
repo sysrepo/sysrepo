@@ -1307,7 +1307,7 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace)
     return NULL;
 
 error:
-    sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Copying module \"%s\" data from <startup> to <running> failed.", mod_name);
+    sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Copying module \"%s\" data from <startup> to <running> failed.", mod_name);
     return err_info;
 }
 

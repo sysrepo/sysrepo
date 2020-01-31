@@ -2056,24 +2056,24 @@ sr_mutex_init(pthread_mutex_t *lock, int shared)
     if (shared) {
         /* init attr */
         if ((ret = pthread_mutexattr_init(&attr))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
         if ((ret = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
             pthread_mutexattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Changing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
 
         if ((ret = pthread_mutex_init(lock, &attr))) {
             pthread_mutexattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
             return err_info;
         }
         pthread_mutexattr_destroy(&attr);
     } else {
         if ((ret = pthread_mutex_init(lock, NULL))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
             return err_info;
         }
     }
@@ -2138,24 +2138,24 @@ sr_cond_init(pthread_cond_t *cond, int shared)
     if (shared) {
         /* init attr */
         if ((ret = pthread_condattr_init(&attr))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
         if ((ret = pthread_condattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
             pthread_condattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Changing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
 
         if ((ret = pthread_cond_init(cond, &attr))) {
             pthread_condattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
             return err_info;
         }
         pthread_condattr_destroy(&attr);
     } else {
         if ((ret = pthread_cond_init(cond, NULL))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
             return err_info;
         }
     }

@@ -908,7 +908,7 @@ rpc_multi_fail2_cb(sr_session_ctx_t *session, const char *xpath, const struct ly
         assert_int_equal(event, SR_EV_RPC);
         assert_int_equal(st->cb_called, 1);
         /* callback fails, last callback (but there is no callback for abort, synchronizing would block) */
-        ret = SR_ERR_BAD_ELEMENT;
+        ret = SR_ERR_LOCKED;
         ++call_no;
         break;
     case 4:
