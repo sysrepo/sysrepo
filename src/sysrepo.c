@@ -172,6 +172,11 @@ sr_conn_lydmods_ctx_update(sr_conn_ctx_t *conn, int apply_sched, struct lyd_node
                     goto cleanup_unlock;
                 }
                 if (fail) {
+                    if (conn->opts & SR_CONN_ERR_ON_SCHED_FAIL) {
+                        sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, NULL, "Applying scheduled changes failed.");
+                        goto cleanup_unlock;
+                    }
+
                     /* the context is not valid anymore, we have to create it from scratch in the connection
                      * but also update sr_mods, because it was parsed with the context */
                     lyd_free_withsiblings(*sr_mods);
