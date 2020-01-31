@@ -929,9 +929,9 @@ copy_userord_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform some startup changes */
-    ret = sr_move_item(sess, "/test:l1[k='a']", SR_MOVE_AFTER, "[k='b']", NULL, NULL);
+    ret = sr_move_item(sess, "/test:l1[k='a']", SR_MOVE_AFTER, "[k='b']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(sess, "/test:cont/ll2[.='1']", SR_MOVE_AFTER, NULL, "2", NULL);
+    ret = sr_move_item(sess, "/test:cont/ll2[.='1']", SR_MOVE_AFTER, NULL, "2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -982,9 +982,9 @@ copy_userord_thread(void *arg)
     lyd_free_withsiblings(data);
 
     /* perform some startup changes (no actual changes) */
-    ret = sr_move_item(sess, "/test:ll1[.='1']", SR_MOVE_BEFORE, NULL, "2", NULL);
+    ret = sr_move_item(sess, "/test:ll1[.='1']", SR_MOVE_BEFORE, NULL, "2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(sess, "/test:cont/l2[k='a']", SR_MOVE_BEFORE, "[k='b']", NULL, NULL);
+    ret = sr_move_item(sess, "/test:cont/l2[k='a']", SR_MOVE_BEFORE, "[k='b']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);

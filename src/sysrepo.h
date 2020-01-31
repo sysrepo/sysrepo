@@ -928,10 +928,11 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
  * @param[in] leaflist_value Value of the relative leaf-list instance (example input `val1`) used
  * to determine relative position, needed only if position argument is ::SR_MOVE_BEFORE or ::SR_MOVE_AFTER.
  * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits.
+ * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
-        const char *leaflist_value, const char *origin);
+        const char *leaflist_value, const char *origin, const sr_edit_options_t opts);
 
 /**
  * @brief Provide a prepared edit data tree to be applied.

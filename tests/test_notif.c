@@ -958,7 +958,7 @@ test_notif_config_change(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(st->cb_called, 2);
 
-    ret = sr_move_item(st->sess, "/test:cont/l2[k='one']", SR_MOVE_AFTER, "[k='two']", NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='one']", SR_MOVE_AFTER, "[k='two']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ops-ref:l1", "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);

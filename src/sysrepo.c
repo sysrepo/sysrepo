@@ -2019,14 +2019,15 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
 
 API int
 sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
-        const char *leaflist_value, const char *origin)
+        const char *leaflist_value, const char *origin, const sr_edit_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
 
     /* add the operation into edit */
-    err_info = sr_edit_add(session, path, NULL, "merge", "none", &position, list_keys, leaflist_value, origin, 0);
+    err_info = sr_edit_add(session, path, NULL, "merge", "none", &position, list_keys, leaflist_value, origin,
+            opts & SR_EDIT_ISOLATE);
 
     return sr_api_ret(session, err_info);
 }
