@@ -190,10 +190,12 @@ sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod,
  *
  * @param[in] sr_mods Internal sysrepo data.
  * @param[in] ly_mod Module with implemented imports to add.
+ * @param[in] log_first If set to 0, nothing will be logged on success. Set to 2 to log installing module
+ * and its dependencies.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_module *ly_mod)
+sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_module *ly_mod, int log_first)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mod;
@@ -224,6 +226,14 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
             if ((err_info = sr_create_startup_file(ly_mod))) {
                 goto cleanup;
             }
+            if (log_first == 2) {
+                SR_LOG_INF("Module \"%s\" was installed.", ly_mod->name);
+
+                /* the rest of the modules will be dependencies */
+                --log_first;
+            } else if (log_first == 1) {
+                SR_LOG_INF("Dependency module \"%s\" was installed.", ly_mod->name);
+            }
         } /* else module has already been added */
     }
 
@@ -232,7 +242,7 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
     cur_mod = ly_mod;
     while (1) {
         for (i = 0; i < cur_mod->imp_size; ++i) {
-            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, cur_mod->imp[i].module))) {
+            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, cur_mod->imp[i].module, log_first))) {
                 goto cleanup;
             }
         }
@@ -879,7 +889,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     while ((i < ly_ctx_internal_modules_count(ly_ctx)) && (ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
         /* module must be implemented */
         if (ly_mod->implemented) {
-            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod))) {
+            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
                 goto error;
             }
             SR_LOG_INF("Libyang internal module \"%s\" was installed.", ly_mod->name);
@@ -891,7 +901,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto error;
     }
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod))) {
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
         goto error;
     }
     SR_LOG_INF("Sysrepo internal dependency module \"%s\" was installed.", ly_mod->name);
@@ -900,7 +910,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto error;
     }
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod))) {
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
         goto error;
     }
     SR_LOG_INF("Sysrepo internal module \"%s\" was installed.", ly_mod->name);
@@ -910,7 +920,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto error;
     }
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod))) {
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
         goto error;
     }
     SR_LOG_INF("Sysrepo internal module \"%s\" was installed.", ly_mod->name);
@@ -920,7 +930,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto error;
     }
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod))) {
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
         goto error;
     }
     SR_LOG_INF("Sysrepo internal module \"%s\" was installed.", ly_mod->name);
@@ -1891,7 +1901,7 @@ sr_lydmods_sched_finalize_module_update(struct lyd_node *sr_mod, const struct ly
     }
 
     /* re-add it (only the data files are kept) */
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod))) {
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
         return err_info;
     }
 
@@ -2009,11 +2019,10 @@ sr_lydmods_sched_finalize_module_install(struct lyd_node *sr_mod, const struct l
     assert(ly_mod);
     lyd_free(sr_mod);
 
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod))) {
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 2))) {
         return err_info;
     }
 
-    SR_LOG_INF("Module \"%s\" was installed.", ly_mod->name);
     return NULL;
 }
 
