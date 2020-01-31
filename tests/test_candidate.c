@@ -194,12 +194,13 @@ test_basic(void **state)
     ret = sr_lock(st->sess, NULL);
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
 
-    /* copy-config to running, should also reset candidate */
-    ret = sr_copy_config(st->sess, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
+
+    /* copy-config to running, should also reset candidate */
+    ret = sr_copy_config(st->sess, NULL, SR_DS_CANDIDATE, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -269,7 +270,7 @@ test_invalid(void **state)
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     /* copy-config to candidate, should reset it */
-    ret = sr_copy_config(st->sess, NULL, SR_DS_RUNNING, SR_DS_CANDIDATE, 0);
+    ret = sr_copy_config(st->sess, NULL, SR_DS_RUNNING, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
@@ -317,7 +318,7 @@ test_when(void **state)
     /* the same change but with replace config */
     data = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str2, LYD_XML, LYD_OPT_CONFIG | LYD_OPT_TRUSTED | LYD_OPT_STRICT);
     assert_non_null(data);
-    ret = sr_replace_config(st->sess, "when1", data, SR_DS_CANDIDATE, 0);
+    ret = sr_replace_config(st->sess, "when1", data, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_get_data(st->sess, "/when1:*", 0, 0, 0, &data);
@@ -333,11 +334,15 @@ test_when(void **state)
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     /* copy-config to running, should fail */
-    /*ret = sr_copy_config(st->sess, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING, 0);
-    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);*/
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_copy_config(st->sess, NULL, SR_DS_CANDIDATE, 0);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     /* copy-config to candidate, should reset it */
-    ret = sr_copy_config(st->sess, NULL, SR_DS_RUNNING, SR_DS_CANDIDATE, 0);
+    ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_copy_config(st->sess, NULL, SR_DS_RUNNING, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);

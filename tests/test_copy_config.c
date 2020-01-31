@@ -389,7 +389,7 @@ copy_empty_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform 1st copy-config */
-    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, SR_DS_RUNNING, 0);
+    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -428,7 +428,7 @@ copy_empty_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform 2nd copy-config */
-    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, SR_DS_RUNNING, 0);
+    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -706,7 +706,11 @@ copy_simple_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform 1st copy-config */
-    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, SR_DS_RUNNING, 0);
+    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_switch_ds(sess, SR_DS_STARTUP);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -743,7 +747,11 @@ copy_simple_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform 2nd copy-config */
-    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, SR_DS_RUNNING, 0);
+    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_STARTUP, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_switch_ds(sess, SR_DS_STARTUP);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -929,8 +937,11 @@ copy_userord_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform 1st copy-config */
-    ret = sr_copy_config(sess, "test", SR_DS_STARTUP, SR_DS_RUNNING, 0);
+    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_copy_config(sess, "test", SR_DS_STARTUP, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_switch_ds(sess, SR_DS_STARTUP);
 
     /* check current data tree */
     ret = sr_get_data(sess, "/test:*", 0, 0, 0, &data);
@@ -979,7 +990,11 @@ copy_userord_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform 2nd copy-config (no changes) */
-    ret = sr_copy_config(sess, "test", SR_DS_STARTUP, SR_DS_RUNNING, 0);
+    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_copy_config(sess, "test", SR_DS_STARTUP, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_switch_ds(sess, SR_DS_STARTUP);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree (should be the same) */
@@ -1060,7 +1075,9 @@ subscribe_userord_thread(void *arg)
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_copy_config(sess, "test", SR_DS_RUNNING, SR_DS_STARTUP, 0);
+    ret = sr_session_switch_ds(sess, SR_DS_STARTUP);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_copy_config(sess, "test", SR_DS_RUNNING, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe */
@@ -1315,7 +1332,7 @@ replace_thread(void *arg)
     assert_non_null(node);
 
     /* perform 1st replace-config */
-    ret = sr_replace_config(sess, "ietf-interfaces", config, SR_DS_RUNNING, 0);
+    ret = sr_replace_config(sess, "ietf-interfaces", config, 0);
     config = NULL;
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1361,7 +1378,7 @@ replace_thread(void *arg)
     assert_non_null(node);
 
     /* perform 2nd replace-config */
-    ret = sr_replace_config(sess, "test", config, SR_DS_RUNNING, 0);
+    ret = sr_replace_config(sess, "test", config, 0);
     config = NULL;
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1578,7 +1595,7 @@ replace_dflt_thread(void *arg)
     assert_non_null(config);
 
     /* perform replace-config */
-    ret = sr_replace_config(sess, "ietf-interfaces", config, SR_DS_RUNNING, 0);
+    ret = sr_replace_config(sess, "ietf-interfaces", config, 0);
     config = NULL;
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1791,7 +1808,7 @@ replace_case_thread(void *arg)
     assert_non_null(config);
 
     /* perform replace-config */
-    ret = sr_replace_config(sess, "list-case", config, SR_DS_RUNNING, 0);
+    ret = sr_replace_config(sess, "list-case", config, 0);
     config = NULL;
     assert_int_equal(ret, SR_ERR_OK);
 

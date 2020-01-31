@@ -286,7 +286,7 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* replace config (always spends data) */
-    r = sr_replace_config(sess, module_name, data, sr_session_get_ds(sess), timeout_s * 1000);
+    r = sr_replace_config(sess, module_name, data, timeout_s * 1000);
     if (r) {
         error_print(r, "Replace config failed");
         return EXIT_FAILURE;
@@ -500,8 +500,8 @@ op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_
 }
 
 static int
-op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds, sr_datastore_t target_ds,
-        const char *module_name, LYD_FORMAT format, int not_strict, int timeout_s)
+op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds, const char *module_name,
+        LYD_FORMAT format, int not_strict, int timeout_s)
 {
     int r, flags;
     struct lyd_node *data;
@@ -514,14 +514,14 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
         }
 
         /* replace data */
-        r = sr_replace_config(sess, module_name, data, target_ds, timeout_s * 1000);
+        r = sr_replace_config(sess, module_name, data, timeout_s * 1000);
         if (r) {
             error_print(r, "Replace config failed");
             return EXIT_FAILURE;
         }
     } else {
         /* copy config */
-        r = sr_copy_config(sess, module_name, source_ds, target_ds, timeout_s * 1000);
+        r = sr_copy_config(sess, module_name, source_ds, timeout_s * 1000);
         if (r) {
             error_print(r, "Copy config failed");
             return EXIT_FAILURE;
@@ -803,7 +803,7 @@ main(int argc, char** argv)
         rc = op_notif(sess, file_path, editor, format, not_strict);
         break;
     case 'C':
-        rc = op_copy(sess, file_path, source_ds, ds, module_name, format, not_strict, timeout);
+        rc = op_copy(sess, file_path, source_ds, module_name, format, not_strict, timeout);
         break;
     case 0:
         error_print(0, "No operation specified");

@@ -2405,13 +2405,12 @@ sr_discard_changes(sr_session_ctx_t *session)
  * @param[in] session Session to use.
  * @param[in] ly_mod Optional specific module.
  * @param[in] src_config Source data for the replace, they are spent.
- * @param[in] trg_datastore Destination datastore.
  * @param[in] timeout_ms Change callback timeout in milliseconds.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, struct lyd_node **src_config,
-        sr_datastore_t trg_datastore, uint32_t timeout_ms)
+        uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -2420,7 +2419,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
     memset(&mod_info, 0, sizeof mod_info);
 
     /* collect all required modules */
-    if ((err_info = sr_shmmod_collect_modules(session->conn, ly_mod, trg_datastore, MOD_INFO_DEP | MOD_INFO_INV_DEP, &mod_info))) {
+    if ((err_info = sr_shmmod_collect_modules(session->conn, ly_mod, session->ds, MOD_INFO_DEP | MOD_INFO_INV_DEP, &mod_info))) {
         return err_info;
     }
 
@@ -2461,13 +2460,12 @@ cleanup_mods_unlock:
 }
 
 API int
-sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
-        sr_datastore_t trg_datastore, uint32_t timeout_ms)
+sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(trg_datastore), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(session->ds), session, err_info);
     if (src_config && (session->conn->ly_ctx != src_config->schema->module->ctx)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Data trees must be created using the session connection libyang context.");
         return sr_api_ret(session, err_info);
@@ -2495,7 +2493,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     }
 
     /* replace the data */
-    if ((err_info = _sr_replace_config(session, ly_mod, &src_config, trg_datastore, timeout_ms))) {
+    if ((err_info = _sr_replace_config(session, ly_mod, &src_config, timeout_ms))) {
         goto cleanup_shm_unlock;
     }
 
@@ -2510,17 +2508,16 @@ cleanup_shm_unlock:
 }
 
 API int
-sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore,
-        sr_datastore_t trg_datastore, uint32_t timeout_ms)
+sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
     const struct lys_module *ly_mod = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(src_datastore) || !SR_IS_CONVENTIONAL_DS(trg_datastore),
+    SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(src_datastore) || !SR_IS_CONVENTIONAL_DS(session->ds),
             session, err_info);
 
-    if (src_datastore == trg_datastore) {
+    if (src_datastore == session->ds) {
         /* nothing to do */
         return sr_api_ret(session, NULL);
     }
@@ -2554,7 +2551,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         goto cleanup_shm_unlock;
     }
 
-    if ((src_datastore == SR_DS_RUNNING) && (trg_datastore == SR_DS_CANDIDATE)) {
+    if ((src_datastore == SR_DS_RUNNING) && (session->ds == SR_DS_CANDIDATE)) {
         /* special case, just reset candidate */
         err_info = sr_modinfo_candidate_reset(&mod_info);
 
@@ -2574,11 +2571,11 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     }
 
     /* replace the data */
-    if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, trg_datastore, timeout_ms))) {
+    if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, timeout_ms))) {
         goto cleanup_shm_unlock;
     }
 
-    if ((src_datastore == SR_DS_CANDIDATE) && (trg_datastore == SR_DS_RUNNING)) {
+    if ((src_datastore == SR_DS_CANDIDATE) && (session->ds == SR_DS_RUNNING)) {
         /* reset candidate after it was applied in running */
         if ((err_info = sr_modinfo_candidate_reset(&mod_info))) {
             goto cleanup_shm_unlock;

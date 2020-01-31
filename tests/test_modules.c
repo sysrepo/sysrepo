@@ -790,6 +790,8 @@ test_change_feature(void **state)
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
     /* cleanup */
+    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/test:test-leaf", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/features:l1", 0);
@@ -798,7 +800,7 @@ test_change_feature(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_copy_config(sess, NULL, SR_DS_STARTUP, SR_DS_RUNNING, 0);
+    ret = sr_copy_config(sess, NULL, SR_DS_STARTUP, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_session_stop(sess);
 
