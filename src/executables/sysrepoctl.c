@@ -84,7 +84,6 @@ help_print(void)
         "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
         "  -C, --connection-count\n"
         "                       Print the number of sysrepo connections to STDOUT.\n"
-        "  -R, --recover        Check current connections state and clean any non-existing ones.\n"
         "\n"
         "Available other-options:\n"
         "  -s, --search-dirs <dir-path>[:<dir-path>]*\n"
@@ -417,7 +416,6 @@ main(int argc, char** argv)
         {"change",          required_argument, NULL, 'c'},
         {"update",          required_argument, NULL, 'U'},
         {"connection-count",no_argument,       NULL, 'C'},
-        {"recover",         no_argument,       NULL, 'R'},
         {"search-dirs",     required_argument, NULL, 's'},
         {"enable-feature",  required_argument, NULL, 'e'},
         {"disable-feature", required_argument, NULL, 'd'},
@@ -437,7 +435,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:CRs:e:d:r:o:g:p:av:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:Cs:e:d:r:o:g:p:av:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -493,13 +491,6 @@ main(int argc, char** argv)
                 goto cleanup;
             }
             operation = 'C';
-            break;
-        case 'R':
-            if (operation) {
-                error_print(0, "Operation already specified");
-                goto cleanup;
-            }
-            operation = 'R';
             break;
         case 's':
             if (search_dirs) {
@@ -700,13 +691,6 @@ main(int argc, char** argv)
             goto cleanup;
         }
         fprintf(stdout, "%u\n", conn_count);
-        break;
-    case 'R':
-        /* recover */
-        if ((r = sr_connection_recover(conn)) != SR_ERR_OK) {
-            error_print(r, "Failed to recover stale connections");
-            goto cleanup;
-        }
         break;
     case 0:
         error_print(0, "No operation specified");

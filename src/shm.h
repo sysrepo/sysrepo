@@ -420,15 +420,6 @@ sr_error_info_t *sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpip
 void sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
 
 /**
- * @brief Recover (properly unsubscribe and close) all connections whose process no longer exists.
- * Main SHM lock is expected to be held.
- *
- * @param[in] conn Connection to use.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_state_recover(sr_conn_ctx_t *conn);
-
-/**
  * @brief Initialize libyang context with only the internal sysrepo module.
  *
  * @param[out] ly_ctx Initialized context.

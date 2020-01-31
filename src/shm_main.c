@@ -985,7 +985,14 @@ cleanup_unlock:
     sr_errinfo_free(&err_info);
 }
 
-sr_error_info_t *
+/**
+ * @brief Recover (properly unsubscribe and close) all connections whose process no longer exists.
+ * Main SHM lock is expected to be held.
+ *
+ * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
 sr_shmmain_state_recover(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;

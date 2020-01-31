@@ -473,25 +473,6 @@ cleanup:
     return sr_api_ret(NULL, err_info);
 }
 
-API int
-sr_connection_recover(sr_conn_ctx_t *conn)
-{
-    sr_error_info_t *err_info = NULL;
-
-    /* SHM LOCK */
-    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_WRITE, 1, 0, __func__))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* clear all stale connections */
-    err_info = sr_shmmain_state_recover(conn);
-
-    /* SHM UNLOCK */
-    sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, 0, __func__);
-
-    return sr_api_ret(NULL, err_info);
-}
-
 API const struct ly_ctx *
 sr_get_context(sr_conn_ctx_t *conn)
 {
