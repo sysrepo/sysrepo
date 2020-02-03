@@ -167,6 +167,10 @@ library was installed into a non-standard path, the path to libyang must be spec
 linker. To help with setting all the compiler's options, there is `sysrepo.pc` file for
 `pkg-config(1)` available in the source tree. The file is installed with the library.
 
+### Used run-time enviromental variables
+
+It is possible to change the repository path by setting `SYSREPO_REPOSITORY_PATH` variable.
+
 ## Examples
 
 See [examples](examples) directory, which contains an example for basic API functions.
