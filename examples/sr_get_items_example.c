@@ -155,7 +155,7 @@ main(int argc, char **argv)
     }
 
     /* get the values */
-    rc = sr_get_items(session, xpath, 0, &vals, &val_count);
+    rc = sr_get_items(session, xpath, 0, 0, &vals, &val_count);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }

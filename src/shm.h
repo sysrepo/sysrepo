@@ -188,8 +188,6 @@ typedef enum sr_lock_mode_e {
     SR_LOCK_NONE = 0,           /**< Not locked. */
     SR_LOCK_READ,               /**< Read lock. */
     SR_LOCK_WRITE,              /**< Write lock. */
-    SR_LOCK_WRITE_NOSTATE,      /**< Write lock without information in connection state (used only when the connection
-                                     state itself will be created/deleted). */
 } sr_lock_mode_t;
 
 /**
@@ -218,7 +216,9 @@ typedef struct sr_conn_state_s {
  * @brief Main SHM.
  */
 typedef struct sr_main_shm_s {
-    sr_rwlock_t lock;           /**< Process-shared lock for accessing main and ext SHM. */
+    sr_rwlock_t lock;           /**< Process-shared lock for accessing main and ext SHM. It is required only when
+                                     accessing attributes that can be changed (subscriptions, replay support) and do
+                                     not have their own lock (conn state), otherwise not needed. */
     pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
     uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
 
@@ -229,6 +229,7 @@ typedef struct sr_main_shm_s {
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
 
     struct {
+        pthread_mutex_t lock;   /**< Process-shared lock for accessing connection state. */
         off_t conns;            /**< Array of existing connections. */
         uint32_t conn_count;    /**< Number of existing connections. */
     } conn_state;               /**< Information about connection state. */
@@ -254,7 +255,7 @@ typedef enum sr_sub_event_e {
 
 /** Whether an event is one to be processed by the listeners (subscribers). */
 #define SR_IS_LISTEN_EVENT(ev) ((ev == SR_SUB_EV_UPDATE) || (ev == SR_SUB_EV_CHANGE) || (ev == SR_SUB_EV_DONE) \
-        || (ev == SR_SUB_EV_ABORT) || (ev == SR_SUB_EV_ENABLED) || (ev == SR_SUB_EV_OPER) || (ev == SR_SUB_EV_RPC) \
+        || (ev == SR_SUB_EV_ABORT) || (ev == SR_SUB_EV_OPER) || (ev == SR_SUB_EV_RPC) \
         || (ev == SR_SUB_EV_NOTIF))
 
 /** Whether an event is one to be processed by the originators. */
@@ -337,25 +338,6 @@ typedef struct sr_multi_sub_shm_s {
  */
 
 /**
- * @brief Debug print the contents of Ext SHM.
- *
- * @param[in] shm_main Main SHM.
- * @param[in] ext_shm_addr Ext SHM mapping address.
- * @param[in] ext_shm_size Ext SHM mapping size.
- */
-void sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size);
-
-/**
- * @brief Defragment Ext SHM.
- *
- * @param[in] shm_main Main SHM.
- * @param[in] shm_ext Ext SHM.
- * @param[out] defrag_ext_buf Defragmented Ext SHM memory copy.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_buf);
-
-/**
  * @brief Check all used directories and create them if any are missing.
  *
  * @return err_info, NULL on success.
@@ -393,7 +375,7 @@ void sr_shmmain_createunlock(int shm_lock);
  * @param[in] conn Connection to add.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_state_add_conn(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_conn_state_add(sr_conn_ctx_t *conn);
 
 /**
  * @brief Remove a connection from main SHM state.
@@ -404,7 +386,7 @@ sr_error_info_t *sr_shmmain_state_add_conn(sr_conn_ctx_t *conn);
  * @param[in] conn Connection context to delete.
  * @param[in] pid Connection PID to delete.
  */
-void sr_shmmain_state_del_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
+void sr_shmmain_conn_state_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
 
 /**
  * @brief Find a connection in main SHM state.
@@ -416,7 +398,7 @@ void sr_shmmain_state_del_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_c
  * @param[in] pid Connection PID to find.
  * @return Matching connection state, NULL if not found.
  */
-sr_conn_state_t *sr_shmmain_state_find_conn(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
+sr_conn_state_t *sr_shmmain_conn_state_find(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
 
 /**
  * @brief Add an event pipe into main SHM state.
@@ -436,15 +418,6 @@ sr_error_info_t *sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpip
  * @param[in] evpipe_num Event pipe number.
  */
 void sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
-
-/**
- * @brief Recover (properly unsubscribe and close) all connections whose process no longer exists.
- * Main SHM lock is expected to be held.
- *
- * @param[in] conn Connection to use.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_state_recover(sr_conn_ctx_t *conn);
 
 /**
  * @brief Initialize libyang context with only the internal sysrepo module.
@@ -523,25 +496,30 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const
 
 /**
  * @brief Lock main/ext SHM and its mapping and remap it if needed (it was changed). Also, store information
- * about held locks into SHM.
+ * about held locks into SHM (a few function names are exceptions).
+ *
+ * !! Every API function that accesses ext SHM must call this function !!
  *
  * @param[in] conn Connection to use.
- * @param[in] mode Whether to WRITE or READ lock main SHM.
+ * @param[in] mode Whether to WRITE, READ or not lock main (actually ext) SHM.
  * @param[in] remap Whether to WRITE (ext SHM may be remapped) or READ (just protect from remapping) remap lock.
  * @param[in] lydmods Whether to lydmods LOCK.
+ * @param[in] func Caller function name.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods);
+sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods, const char *func);
 
 /**
- * @brief Unlock main SHM and update information about held locks in SHM.
+ * @brief Unlock main SHM and update information about held locks in SHM. If remap was WRITE locked,
+ * also defragment ext SHM as needed.
  *
  * @param[in] conn Connection to use.
- * @param[in] mode Whether to WRITE or READ unlock main SHM.
+ * @param[in] mode Whether to WRITE, READ or not unlock main (actually ext) SHM.
  * @param[in] remap Whether to WRITE or READ remap unlock.
  * @param[in] lydmods Whether to lydmods UNLOCK.
+ * @param[in] func Caller function name.
  */
-void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods);
+void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods, const char *func);
 
 /**
  * @brief Add main SHM RPC/action subscription.

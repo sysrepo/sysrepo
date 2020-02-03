@@ -3,5 +3,5 @@ set(examples cpp_get_item_example cpp_set_item_example cpp_get_items_example cpp
 
 foreach(example IN LISTS examples)
     add_executable(${example} ${example}.cpp)
-    target_link_libraries(${example} Sysrepo-cpp)
+    target_link_libraries(${example} sysrepo-cpp)
 endforeach(example)

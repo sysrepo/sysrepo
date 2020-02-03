@@ -1918,7 +1918,7 @@ test_stored_diff_merge_userord(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some operational data (move list and create list) */
-    ret = sr_move_item(st->sess, "/test:cont/l2[k='key2']", SR_MOVE_BEFORE, "[k='key1']", NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='key2']", SR_MOVE_BEFORE, "[k='key1']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key3']/v", "27", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1951,7 +1951,7 @@ test_stored_diff_merge_userord(void **state)
     free(str1);
 
     /* merge some operational data (merge move into move) */
-    ret = sr_move_item(st->sess, "/test:cont/l2[k='key2']", SR_MOVE_AFTER, "[k='key1']", NULL, "learned");
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='key2']", SR_MOVE_AFTER, "[k='key1']", NULL, "learned", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key2']/v", "20", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1984,7 +1984,7 @@ test_stored_diff_merge_userord(void **state)
     free(str1);
 
     /* merge some operational data (merge move into none) */
-    ret = sr_move_item(st->sess, "/test:cont/l2[k='key2']", SR_MOVE_BEFORE, "[k='key1']", NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='key2']", SR_MOVE_BEFORE, "[k='key1']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2015,7 +2015,7 @@ test_stored_diff_merge_userord(void **state)
     free(str1);
 
     /* merge some operational data (merge move into create) */
-    ret = sr_move_item(st->sess, "/test:cont/l2[k='key3']", SR_MOVE_BEFORE, "[k='key2']", NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='key3']", SR_MOVE_BEFORE, "[k='key2']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);

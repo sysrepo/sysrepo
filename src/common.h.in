@@ -30,6 +30,7 @@
 #include <pthread.h>
 #include <stdarg.h>
 #include <errno.h>
+#include <time.h>
 
 #include <libyang/libyang.h>
 
@@ -75,18 +76,10 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 #endif
 
 /** macro for mutex align check */
-#if @SR_MUTEX_HAS_ALIGN@
-# define SR_MUTEX_ALIGN_CHECK(mutex) ((uintptr_t)mutex % sizeof mutex->__align)
-#else
-# define SR_MUTEX_ALIGN_CHECK(mutex) ((uintptr_t)mutex % 2)
-#endif
+#define SR_MUTEX_ALIGN_CHECK(mutex) ((uintptr_t)mutex % sizeof(void *))
 
 /** macro for cond align check */
-#if @SR_COND_HAS_ALIGN@
-# define SR_COND_ALIGN_CHECK(cond) ((uintptr_t)cond % sizeof cond->__align)
-#else
-# define SR_COND_ALIGN_CHECK(cond) ((uintptr_t)cond % 2)
-#endif
+#define SR_COND_ALIGN_CHECK(cond) ((uintptr_t)cond % sizeof(void *))
 
 /** macro for checking datastore type */
 #define SR_IS_CONVENTIONAL_DS(ds) ((ds == SR_DS_STARTUP) || (ds == SR_DS_RUNNING) || (ds == SR_DS_CANDIDATE))
@@ -149,6 +142,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** timeout for locking notification buffer lock, used when adding/removing notifications (ms) */
 #define SR_NOTIF_BUF_LOCK_TIMEOUT 100
 
+/** timeout for locking main SHM connection state (ms) */
+#define SR_CONN_STATE_LOCK_TIMEOUT 100
+
 /** timeout for locking main SHM and subscription SHM; maximum time an API call (sr_apply_changes()) is expected to take (s) */
 #define SR_MAIN_LOCK_TIMEOUT 15
 
@@ -184,6 +180,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 
 /** permissions of stored notifications and data files */
 #define SR_FILE_PERM 00600
+
+/** permissions of data files of internal modules */
+#define SR_INT_FILE_PERM 00666
 
 /** initial length of message buffer (B) */
 #define SR_MSG_LEN_START 128
@@ -624,6 +623,15 @@ void sr_clear_sess(sr_session_ctx_t *tmp_sess);
 sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
 
 /**
+ * @brief Remove module YANG file.
+ *
+ * @param[in] name Module name.
+ * @param[in] revision Module revision, NULL if none.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_remove_module_file(const char *name, const char *revision);
+
+/**
  * @brief Create (print) YANG module file and all of its submodules.
  *
  * @param[in] ly_mod Module to print.
@@ -640,6 +648,14 @@ sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
 sr_error_info_t *sr_remove_data_files(const char *mod_name);
 
 /**
+ * @brief Check whether a module is internal libyang or sysrepo module.
+ *
+ * @param[in] ly_mod Module to check.
+ * @return 0 if not, non-zero if it is.
+ */
+int sr_module_is_internal(const struct lys_module *ly_mod);
+
+/**
  * @brief Create startup file for a module.
  *
  * @param[in] ly_mod Module to create startup file for.
@@ -648,12 +664,12 @@ sr_error_info_t *sr_remove_data_files(const char *mod_name);
 sr_error_info_t *sr_create_startup_file(const struct lys_module *ly_mod);
 
 /**
- * @brief Create all module import files.
+ * @brief Create all module import and include files, recursively.
  *
- * @param[in] ly_mod libyang module whose imports to create.
+ * @param[in] ly_mod libyang module whose imports and includes to create.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_create_module_imps_r(const struct lys_module *ly_mod);
+sr_error_info_t *sr_create_module_imps_incs_r(const struct lys_module *ly_mod);
 
 /**
  * @brief Get the path to a subscription SHM.
@@ -911,19 +927,6 @@ void sr_rwlock_destroy(sr_rwlock_t *rwlock);
 sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func);
 
 /**
- * @brief Lock a sysrepo RW lock and in case there are any readers, try to recover state.
- *
- * @param[in] rwlock RW lock to lock.
- * @param[in] timeout_ms Timeout in ms for locking.
- * @param[in] mode Whether to write-lock or read-lock.
- * @param[in] conn Connection to use for recovering.
- * @param[in] func Name of the calling function for logging.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_rwlock_with_recovery(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_conn_ctx_t *conn,
-        const char *func);
-
-/**
  * @brief Unlock a sysrepo RW lock.
  *
  * @param[in] rwlock RW lock to unlock.
@@ -1064,10 +1067,11 @@ sr_error_info_t *sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val);
  *
  * @param[in] ctx libyang context.
  * @param[in] sr_val sysrepo value to transform.
+ * @param[in] xpath XPath of the sysrepo value.
  * @param[in] buf Function buffer, must be of size at least 22 bytes.
  * @return String value.
  */
-char *sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, char *buf);
+char *sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, char *buf);
 
 /**
  * @brief Transform a sysrepo value into libyang node.
@@ -1269,13 +1273,14 @@ sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, sr_
  *
  * @param[in] mod_name Module name.
  * @param[in] ds Target datastore
+ * @param[in] mod_data Module data.
  * @param[in] create_flags Additional flags that will be used for opening the file,
  * any of O_CREATE and O_EXCL are expected.
- * @param[in] mod_data Module data.
+ * @param[in] create_mode In case the file can be created, set these permissions (mode).
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, int create_flags,
-        struct lyd_node *mod_data);
+sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data,
+        int create_flags, mode_t create_mode);
 
 /**
  * @brief Update sysrepo stored operational diff of a module.
@@ -1285,5 +1290,15 @@ sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name);
+
+/**
+ * @brief Get next feature of a module.
+ *
+ * @param[in] last Last returned feature, NULL on first call,
+ * @param[in] ly_mod Module with the features.
+ * @param[in,out] idx Internal index fo the feature, arbitrary value can be passed but must not be changed in between calls.
+ * @return Next found feature, NULL if last was previously returned.
+ */
+struct lys_feature *sr_lys_next_feature(struct lys_feature *last, const struct lys_module *ly_mod, uint32_t *idx);
 
 #endif

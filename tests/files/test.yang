@@ -17,6 +17,11 @@ module test {
         leaf v {
             type uint8;
         }
+
+        leaf-list ll12 {
+            ordered-by user;
+            type string;
+        }
     }
 
     leaf-list ll1 {

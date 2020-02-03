@@ -44,17 +44,14 @@ static const char *const sr_errlist[] = {
         "Item not found",                       /* SR_ERR_NOT_FOUND */
         "Item already exists",                  /* SR_ERR_EXISTS */
         "Internal error",                       /* SR_ERR_INTERNAL */
-        "Initialization failed",                /* SR_ERR_INIT_FAILED */
         "Operation not supported",              /* SR_ERR_UNSUPPORTED */
-        "Unknown schema model",                 /* SR_ERR_UNKNOWN_MODEL */
-        "Unknown element",                      /* SR_ERR_BAD_ELEMENT */
         "Validation failed",                    /* SR_ERR_VALIDATION_FAILED */
         "Operation failed",                     /* SR_ERR_OPERATION_FAILED */
         "Operation not authorized",             /* SR_ERR_UNAUTHORIZED */
         "Requested resource already locked",    /* SR_ERR_LOCKED */
         "Timeout expired",                      /* SR_ERR_TIME_OUT */
         "User callback failed",                 /* SR_ERR_CALLBACK_FAILED */
-        "User callback shelved",                /** SR_ERR_CALLBACK_SHELVE */
+        "User callback shelved",                /* SR_ERR_CALLBACK_SHELVE */
 };
 
 struct sr_error_info_err_s {
@@ -364,6 +361,12 @@ sr_log_stderr(sr_log_level_t log_level)
     stderr_ll = log_level;
 }
 
+API sr_log_level_t
+sr_log_get_stderr(void)
+{
+    return stderr_ll;
+}
+
 API void
 sr_log_syslog(const char *app_name, sr_log_level_t log_level)
 {
@@ -381,6 +384,12 @@ sr_log_syslog(const char *app_name, sr_log_level_t log_level)
 
         syslog_open = 0;
     }
+}
+
+API sr_log_level_t
+sr_log_get_syslog(void)
+{
+    return syslog_ll;
 }
 
 API void

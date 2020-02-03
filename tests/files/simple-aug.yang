@@ -1,0 +1,25 @@
+module simple-aug {
+    namespace sa;
+    prefix sa;
+    import simple {prefix s;}
+
+    container bc1 {
+        leaf bcd1 {
+            type boolean;
+            default true;
+        }
+        list bcl1 {
+            key bcs1;
+            leaf bcs1 {
+                type string;
+            }
+        }
+    }
+
+    augment '/s:ac1' {
+        leaf bauga1 {
+            type boolean;
+            default true;
+        }
+    }
+}

@@ -57,10 +57,7 @@ typedef enum sr_error_e {
     SR_ERR_NOT_FOUND,          /**< Item not found. */
     SR_ERR_EXISTS,             /**< Item already exists. */
     SR_ERR_INTERNAL,           /**< Other internal error. */
-    SR_ERR_INIT_FAILED,        /**< Sysrepo initialization failed. */
     SR_ERR_UNSUPPORTED,        /**< Unsupported operation requested. */
-    SR_ERR_UNKNOWN_MODEL,      /**< Request includes unknown schema */
-    SR_ERR_BAD_ELEMENT,        /**< Unknown element in existing schema */
     SR_ERR_VALIDATION_FAILED,  /**< Validation of the changes failed. */
     SR_ERR_OPERATION_FAILED,   /**< An operation failed. */
     SR_ERR_UNAUTHORIZED,       /**< Operation not authorized. */
@@ -99,11 +96,18 @@ typedef enum {
  * back to ::SR_LL_NONE disables the logging to stderr.
  *
  * @note Please note that this will overwrite your libyang logging settings.
- * Alos, only libyang errors are printed, if enabled.
+ * Also, only libyang errors are printed, if enabled.
  *
  * @param[in] log_level Requested log level (verbosity).
  */
 void sr_log_stderr(sr_log_level_t log_level);
+
+/**
+ * @brief Learn current standard error output log level.
+ *
+ * @return stderr log level.
+ */
+sr_log_level_t sr_log_get_stderr(void);
 
 /**
  * @brief Enables / disables / changes log level (verbosity) of logging to system log.
@@ -125,6 +129,13 @@ void sr_log_stderr(sr_log_level_t log_level);
 void sr_log_syslog(const char *app_name, sr_log_level_t log_level);
 
 /**
+ * @brief Learn current system log log level.
+ *
+ * @return syslog log level.
+ */
+sr_log_level_t sr_log_get_syslog(void);
+
+/**
  * @brief Sets callback that will be called when a log entry would be populated.
  *
  * @param[in] level Verbosity level of the log entry.
@@ -134,7 +145,7 @@ typedef void (*sr_log_cb)(sr_log_level_t level, const char *message);
 
 /**
  * @brief Sets callback that will be called when a log entry would be populated.
- * Callback will be called for each message with any log level.
+ * Callback will be called for every message __regardless__ of any log level.
  *
  * @param[in] log_callback Callback to be called when a log entry would populated.
  */
@@ -170,6 +181,8 @@ typedef enum sr_conn_flag_e {
                                          much faster. Affects all sessions created on this connection. */
     SR_CONN_NO_SCHED_CHANGES = 2,   /**< Do not parse internal modules data and apply any scheduled changes. Makes
                                          creating the connection faster but, obviously, scheduled changes are not applied. */
+    SR_CONN_ERR_ON_SCHED_FAIL = 4,  /**< If applying any of the scheduled changes fails, do not create a connection
+                                         and return an error. */
 } sr_conn_flag_t;
 
 /**
@@ -240,17 +253,6 @@ int sr_disconnect(sr_conn_ctx_t *conn);
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_connection_count(uint32_t *conn_count);
-
-/**
- * @brief Try to recover (clean up) any stale connections of clients that no longer exist.
- *
- * @note It should not even be needed to call this function manually because it
- * is automatically called for almost every API call.
- *
- * @param[in] conn Connection acquired with ::sr_connect call.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_connection_recover(sr_conn_ctx_t *conn);
 
 /**
  * @brief Get the _libyang_ context used by a connection. Can be used in an application for working with data
@@ -454,12 +456,12 @@ const char *sr_get_repo_path(void);
  *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
- * @param[in] search_dir Optional search dir for import schemas.
+ * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
  * @param[in] features Array of enabled features.
  * @param[in] feat_count Number of enabled features.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dir, const char **features,
+int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features,
         int feat_count);
 
 /**
@@ -494,10 +496,10 @@ int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
  *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the updated schema. Can have either YANG or YIN extension/format.
- * @param[in] search_dir Optional search dir for import schemas.
+ * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dir);
+int sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs);
 
 /**
  * @brief Cancel scheduled update of a module.
@@ -732,11 +734,13 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) of the data elements to be retrieved.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
+ * @param[in] opts Options overriding default get behaviour.
  * @param[out] values Array of requested nodes, allocated dynamically (free using ::sr_free_values).
  * @param[out] value_cnt Number of returned elements in the values array.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, sr_val_t **values, size_t *value_cnt);
+int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, const sr_get_oper_options_t opts,
+        sr_val_t **values, size_t *value_cnt);
 
 /**
  * @brief Retrieve a single subtree whose root node is selected by the provided path.
@@ -818,9 +822,13 @@ typedef enum sr_edit_flag_e {
     SR_EDIT_DEFAULT = 0,        /**< Default behavior - non-strict. */
     SR_EDIT_NON_RECURSIVE = 1,  /**< Non-recursive behavior:
                                      by ::sr_set_item, all preceding nodes (parents) of the identified element must exist. */
-    SR_EDIT_STRICT = 2          /**< Strict behavior:
+    SR_EDIT_STRICT = 2,         /**< Strict behavior:
                                      by ::sr_set_item the identified element must not exist (similar to NETCONF create operation),
                                      by ::sr_delete_item the identified element must exist (similar to NETCONF delete operation). */
+    SR_EDIT_ISOLATE = 4,        /**< Create new operation separately, independent of all the previous operations. Since all the
+                                     operations are concatenated into one edit tree, it may happen that 2 incompatible operations
+                                     are set and an error is observed. This flag can in those cases be used. However, note that
+                                     it can adversely affect edit performance. */
 } sr_edit_flag_t;
 
 /**
@@ -885,8 +893,8 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  * after calling ::sr_apply_changes. The accepted values are the same as for ::sr_set_item_str.
  *
  * If ::SR_EDIT_STRICT flag is set the specified node must must exist in the datastore.
- * If the xpath includes the list keys, the specified list instance is deleted.
- * If the xpath to list does not include keys, all instances of the list are deleted.
+ * If the @p path includes the list keys/leaf-list value, the specified instance is deleted.
+ * If the @p path of list/leaf-list does not include keys/value, all instances are deleted.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be deleted.
@@ -911,10 +919,11 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
  * @param[in] leaflist_value Value of the relative leaf-list instance (example input `val1`) used
  * to determine relative position, needed only if position argument is ::SR_MOVE_BEFORE or ::SR_MOVE_AFTER.
  * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits.
+ * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
-        const char *leaflist_value, const char *origin);
+        const char *leaflist_value, const char *origin, const sr_edit_options_t opts);
 
 /**
  * @brief Provide a prepared edit data tree to be applied.
@@ -935,8 +944,6 @@ int sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const 
  *
  * Provides only YANG validation, apply-changes **subscribers will not be notified** in this case.
  *
- * @see Use ::sr_get_error to retrieve error information if the operation returned an error.
- *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
@@ -945,14 +952,11 @@ int sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms);
 
 /**
  * @brief Apply changes made in the current session.
- *
- * @note In case the changes could not be applied successfully for any reason,
+ * In case the changes could not be applied successfully for any reason,
  * they remain intact in the session.
  *
  * @note Note that in case that you are changing the _running_ datastore, you also
  * need to copy the config to _startup_ to make the changes persistent.
- *
- * @see Use ::sr_get_error to retrieve error information if the operation returned an error.
  *
  * Required WRITE access.
  *
@@ -976,15 +980,13 @@ int sr_discard_changes(sr_session_ctx_t *session);
  *
  * Required WRITE access.
  *
- * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific - target datastore) to use.
  * @param[in] module_name If specified, limits the replace operation only to this module.
- * @param[in] src_config Source data to replace the datastore. Is ALWAYS spent and cannot be used by the application!
- * @param[in] trg_datastore Target datastore.
+ * @param[in] src_config Source data to replace the datastore. Is ALWAYS spent and cannot be further used by the application!
  * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
-        sr_datastore_t trg_datastore, uint32_t timeout_ms);
+int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms);
 
 /**
  * @brief Replaces a conventional datastore with the contents of
@@ -997,15 +999,13 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
  *
  * Required WRITE access.
  *
- * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific - target datastore) to use.
  * @param[in] module_name Optional module name that limits the copy operation only to this module.
  * @param[in] src_datastore Source datastore.
- * @param[in] trg_datastore Target datastore.
  * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore,
-        sr_datastore_t trg_datastore, uint32_t timeout_ms);
+int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms);
 
 /** @} editdata */
 
@@ -1130,7 +1130,9 @@ typedef enum sr_subscr_flag_e {
 
     /**
      * @brief The subscriber will be called before any other subscribers for the particular module
-     * and is allowed to modify the new module data.
+     * with an additional ::SR_EV_UPDATE event and is then allowed to modify the new module data. It can add new changes
+     * by calling standard set functions (such as ::sr_set_item_str) on the implicit callback session and returning.
+     * Note that you cannot subscribe more callbacks with this flags on one module with the same priority.
      */
     SR_SUBSCR_UPDATE = 32,
 
@@ -1139,7 +1141,7 @@ typedef enum sr_subscr_flag_e {
      * cause deadlock but with this flag it is possible. But, there are some **limitations**. The callback
      * MUST not subscribe to the same RPC/module DS changes it is processing (would change subscription count
      * and cause invalid memory access) and MUST not subscribe on the same ::sr_subscription_ctx_t
-     * `subscription` (would cause a deadlock). Accepted **only** for RPC/action and configuration subscriptions,
+     * `subscription` (would cause a deadlock). Accepted **only** for RPC/action and change subscriptions,
      * it makes no sense for others.
      */
     SR_SUBSCR_UNLOCKED = 64,
@@ -1177,8 +1179,8 @@ int sr_get_event_pipe(sr_subscription_ctx_t *subscription, int *event_pipe);
  *
  * @param[in] subscription Subscription without a listening thread with some new events.
  * @param[in] session Optional session for storing errors.
- * @param[out] stop_time_in Optional seconds until the nearest notification subscription stop time is elapsed.
- * If there are no subscriptions with stop time in future, it is set to 0.
+ * @param[out] stop_time_in Optional seconds until the nearest notification subscription stop time is elapsed
+ * and this function should be called. If there are no subscriptions with stop time in future, it is set to 0.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, time_t *stop_time_in);

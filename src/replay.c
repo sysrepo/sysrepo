@@ -663,7 +663,7 @@ sr_replay_read_notif(int notif_fd, struct ly_ctx *ly_ctx, struct lyd_node **noti
 
     /* parse the notification */
     ly_errno = 0;
-    *notif = lyd_parse_mem(ly_ctx, notif_lyb, LYD_LYB, LYD_OPT_NOTIF | LYD_OPT_NOEXTDEPS | LYD_OPT_STRICT, NULL);
+    *notif = lyd_parse_mem(ly_ctx, notif_lyb, LYD_LYB, LYD_OPT_NOTIF | LYD_OPT_STRICT | LYD_OPT_TRUSTED, NULL);
     if (ly_errno) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto cleanup;

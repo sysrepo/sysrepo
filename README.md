@@ -156,7 +156,7 @@ following linker parameters:
 
 Note, that it may be necessary to call `ldconfig(8)` after library installation and if the
 library was installed into a non-standard path, the path to libyang must be specified to the
-linker. To help with setting all the compiler's options, there is `libsysrepo.pc` file for
+linker. To help with setting all the compiler's options, there is `sysrepo.pc` file for
 `pkg-config(1)` available in the source tree. The file is installed with the library.
 
 ## Examples

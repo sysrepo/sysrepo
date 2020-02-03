@@ -23,6 +23,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <time.h>
 #include <assert.h>
 #include <sys/types.h>
@@ -356,14 +357,22 @@ sr_shmmod_conn_state_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_data
     uint32_t shm_mod_idx;
     sr_conn_state_lock_t (*mod_locks)[3];
     sr_conn_state_t *conn_s;
+    sr_main_shm_t *main_shm;
 
     assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
 
-    conn_s = sr_shmmain_state_find_conn((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
-    if (!conn_s) {
-        SR_ERRINFO_INT(&err_info);
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+
+    /* CONN STATE LOCK */
+    if ((err_info = sr_mlock(&main_shm->conn_state.lock, SR_CONN_STATE_LOCK_TIMEOUT, __func__))) {
         sr_errinfo_free(&err_info);
         return;
+    }
+
+    conn_s = sr_shmmain_conn_state_find(main_shm, conn->ext_shm.addr, conn, getpid());
+    if (!conn_s) {
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup_unlock;
     }
 
     mod_locks = (sr_conn_state_lock_t (*)[3])(conn->ext_shm.addr + conn_s->mod_locks);
@@ -375,6 +384,7 @@ sr_shmmod_conn_state_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_data
                 assert(!mod_locks[shm_mod_idx][ds].rcount);
                 mod_locks[shm_mod_idx][ds].mode = SR_LOCK_READ;
             }
+            assert(mod_locks[shm_mod_idx][ds].rcount < UINT8_MAX);
             ++mod_locks[shm_mod_idx][ds].rcount;
         } else {
             assert(mod_locks[shm_mod_idx][ds].mode != SR_LOCK_WRITE);
@@ -397,6 +407,11 @@ sr_shmmod_conn_state_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_data
             }
         }
     }
+
+cleanup_unlock:
+    /* CONN STATE UNLOCK */
+    sr_munlock(&main_shm->conn_state.lock);
+    sr_errinfo_free(&err_info);
 }
 
 sr_error_info_t *
@@ -889,22 +904,25 @@ sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t 
     sr_mod_notif_sub_t *shm_sub;
     size_t new_ext_size;
 
-    /* moving all existing subscriptions (if any) and adding a new one */
-    notif_subs_off = shm_ext->size;
-    new_ext_size = notif_subs_off + (shm_mod->notif_sub_count + 1) * sizeof *shm_sub;
+    /* we may not even need to resize ext SHM because of the alignment */
+    if (SR_SHM_SIZE((shm_mod->notif_sub_count + 1) * sizeof *shm_sub) > SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof shm_sub)) {
+        /* moving all existing subscriptions (if any) and adding a new one */
+        notif_subs_off = shm_ext->size;
+        new_ext_size = notif_subs_off + SR_SHM_SIZE((shm_mod->notif_sub_count + 1) * sizeof *shm_sub);
 
-    /* remap ext SHM */
-    if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
-        return err_info;
+        /* remap ext SHM */
+        if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
+            return err_info;
+        }
+
+        /* add wasted memory */
+        *((size_t *)shm_ext->addr) += SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof *shm_sub);
+
+        /* move subscriptions */
+        memcpy(shm_ext->addr + notif_subs_off, shm_ext->addr + shm_mod->notif_subs,
+                shm_mod->notif_sub_count * sizeof *shm_sub);
+        shm_mod->notif_subs = notif_subs_off;
     }
-
-    /* add wasted memory */
-    *((size_t *)shm_ext->addr) += shm_mod->notif_sub_count * sizeof *shm_sub;
-
-    /* move subscriptions */
-    memcpy(shm_ext->addr + notif_subs_off, shm_ext->addr + shm_mod->notif_subs,
-            shm_mod->notif_sub_count * sizeof *shm_sub);
-    shm_mod->notif_subs = notif_subs_off;
 
     /* fill new subscription */
     shm_sub = (sr_mod_notif_sub_t *)(shm_ext->addr + shm_mod->notif_subs);
@@ -938,8 +956,9 @@ sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t
         return 1;
     }
 
-    /* add wasted memory */
-    *((size_t *)ext_shm_addr) += sizeof *shm_sub;
+    /* add wasted memory keeping alignment in mind */
+    *((size_t *)ext_shm_addr) += SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof *shm_sub)
+            - SR_SHM_SIZE((shm_mod->notif_sub_count - 1) * sizeof *shm_sub);
 
     --shm_mod->notif_sub_count;
     if (!shm_mod->notif_sub_count) {
@@ -997,10 +1016,30 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
     const struct lys_module *ly_mod;
     sr_mod_t *shm_mod;
     struct lyd_node *diff = NULL;
+    char *path = NULL;
+
+    /* we do not need to lock the modules because we do not work with RUNNING data */
 
     SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
         ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->ext_shm.addr + shm_mod->name, NULL, 1);
         SR_CHECK_INT_RET(!ly_mod, err_info);
+
+        /* check we have permissions to open operational file */
+        free(path);
+        if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_OPERATIONAL, 1, &path))) {
+            goto cleanup;
+        }
+        errno = 0;
+        if (eaccess(path, R_OK) == -1) {
+            if ((errno == EACCES) || (errno == ENOENT)) {
+                /* file does not exist or we cannot access it, there cannot be any data of this connection stored anyway */
+                continue;
+            }
+
+            /* error */
+            SR_ERRINFO_SYSERRNO(&err_info, "eaccess");
+            goto cleanup;
+        }
 
         /* trim diff of the module */
         if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_OPERATIONAL, &diff))) {
@@ -1011,7 +1050,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
             if ((err_info = sr_diff_del_conn(&diff, del_conn, del_pid))) {
                 goto cleanup;
             }
-            if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
+            if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
                 goto cleanup;
             }
             lyd_free_withsiblings(diff);
@@ -1020,6 +1059,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
     }
 
 cleanup:
+    free(path);
     lyd_free_withsiblings(diff);
     return err_info;
 }

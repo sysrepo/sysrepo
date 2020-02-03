@@ -14,7 +14,8 @@ the [subscription event pipe](@ref ::sr_get_event_pipe) being ready for reading.
 
 @ref subs_api
 
-## Change Subscriptions @anchor change_subs
+## Change Subscriptions
+@anchor change_subs
 
 These are the most common kinds of subscriptions. A callback can be set to be called when specific data
 changes occur so that it can appropriately react and adjust the system or whatever it manages accordingly. There can
@@ -55,7 +56,8 @@ It is important to be aware of the effect of subscribing to _running_ data on [o
 
 @ref change_subs_api
 
-## RPC/Action Subscriptions @anchor rpc_subs
+## RPC/Action Subscriptions
+@anchor rpc_subs
 
 All the functions can be used for both RPCs and actions. If there are no matching subscriptions, the RPC/action
 cannot even be sent. Callbacks work as one would expect, on _rpc_ event they are provided each with the input and
@@ -71,7 +73,8 @@ RPC subscriptions can also return ::SR_ERR_CALLBACK_SHELVE on _rpc_ event.
 
 @ref rpc_subs_api
 
-## Notification Subscriptions @anchor notif_subs
+## Notification Subscriptions
+@anchor notif_subs
 
 Notifications are supported by specific subscriptions that allow them to be sent and received. Sent notification are
 also stored for possible future replay if the particular module was configued that way (mentioned in [schemas](@ref schema)).
@@ -84,7 +87,8 @@ time was reached, _stop_ is received before removing the subscription.
 
 @ref notif_subs_api
 
-## Operational Subscriptions @anchor oper_subs
+## Operational Subscriptions
+@anchor oper_subs
 
 Operational subscriptions allow providing data that are requested by clients. Commonly, these can be used
 to read the current state of a device, for example, and then return them as _state_ data nodes. However,

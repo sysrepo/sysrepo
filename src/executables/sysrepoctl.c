@@ -59,7 +59,7 @@ static void
 version_print(void)
 {
     printf(
-        "sysrepocfg - sysrepo YANG schema manipulation tool, compiled with libsysrepo v%s (SO v%s)\n"
+        "sysrepoctl - sysrepo YANG schema manipulation tool, compiled with libsysrepo v%s (SO v%s)\n"
         "\n",
         SR_VERSION, SR_SOVERSION
     );
@@ -84,21 +84,21 @@ help_print(void)
         "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
         "  -C, --connection-count\n"
         "                       Print the number of sysrepo connections to STDOUT.\n"
-        "  -R, --recover        Check current connections state and clean any non-existing ones.\n"
         "\n"
         "Available other-options:\n"
-        "  -s, --search-dir <dir-path>\n"
-        "                       Directory to search for include/import modules. Directory with already-installed\n"
+        "  -s, --search-dirs <dir-path>[:<dir-path>]*\n"
+        "                       Directories to search for include/import modules. Directory with already-installed\n"
         "                       modules is always searched (install, update op).\n"
         "  -e, --enable-feature <feature-name>\n"
         "                       Enabled specific feature. Can be specified multiple times (install, change op).\n"
         "  -d, --disable-feature <feature-name>\n"
         "                       Disable specific feature. Can be specified multiple times (change op).\n"
         "  -r, --replay <state> Change replay support (storing notifications) for this module to on/off or 1/0 (change op).\n"
-        "  -o, --owner <user>   Set filesystem owner of a module (change op).\n"
-        "  -g, --group <group>  Set filesystem group of a module (change op).\n"
+        "  -o, --owner <user>   Set filesystem owner of a module (change op, if \"apply\" even install op).\n"
+        "  -g, --group <group>  Set filesystem group of a module (change op, if \"apply\" even install op).\n"
         "  -p, --permissions <permissions>\n"
-        "                       Set filesystem permissions of a module (chmod format) (change op).\n"
+        "                       Set filesystem permissions of a module (chmod format) (change op, if \"apply\" even install op).\n"
+        "  -a, --apply          Apply schema changes immediately, not only schedule them.\n"
         "  -v, --verbosity <level>\n"
         "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
         "\n"
@@ -126,21 +126,11 @@ static void
 srctl_list_collect_import(const struct lys_module *ly_mod, struct list_item **list, size_t *list_count)
 {
     struct list_item *cur_item;
-    const struct lys_module *ly_iter;
     uint32_t i;
 
     if (ly_mod->implemented) {
         /* must be added from sysrepo data */
         return;
-    }
-
-    /* skip internal modules */
-    i = 0;
-    while (i < ly_ctx_internal_modules_count(ly_mod->ctx)) {
-        ly_iter = ly_ctx_get_module_iter(ly_mod->ctx, &i);
-        if (ly_iter == ly_mod) {
-            return;
-        }
     }
 
     /* check for duplicates */
@@ -259,15 +249,15 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
             if (!cur_item->revision) {
                 cur_item->revision = strdup("");
             }
+
+            /* add all import modules as well */
+            for (i = 0; i < ly_mod->imp_size; ++i) {
+                srctl_list_collect_import(ly_mod->imp[i].module, list, list_count);
+            }
         } else {
             cur_item->change_flag = "N";
             cur_item->owner = strdup("");
             cur_item->revision = strdup("");
-        }
-
-        /* add all import modules as well */
-        for (i = 0; i < ly_mod->imp_size; ++i) {
-            srctl_list_collect_import(ly_mod->imp[i].module, list, list_count);
         }
     }
 
@@ -383,15 +373,39 @@ cleanup:
     return ret;
 }
 
+/* can be changed by log_cb */
+char *inst_module_name;
+
+static void
+log_cb(sr_log_level_t level, const char *message)
+{
+    const char *end;
+
+    if (level != SR_LL_INF) {
+        return;
+    }
+    if (strncmp(message, "Module \"", 8)) {
+        return;
+    }
+    if ((strlen(message) < 16) || strcmp(message + strlen(message) - 16, "\" was installed.")) {
+        return;
+    }
+
+    /* store the newly installed module name */
+    free(inst_module_name);
+    end = strchr(message + 8, '\"');
+    inst_module_name = strndup(message + 8, end - (message + 8));
+}
+
 int
 main(int argc, char** argv)
 {
     sr_conn_ctx_t *conn = NULL;
-    const char *file_path = NULL, *search_dir = NULL, *module_name = NULL, *owner = NULL, *group = NULL;
+    const char *file_path = NULL, *search_dirs = NULL, *module_name = NULL, *owner = NULL, *group = NULL;
     char **features = NULL, **dis_features = NULL, *ptr;
     mode_t perms = -1;
     sr_log_level_t log_level = SR_LL_ERR;
-    int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1;
+    int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1, apply = 0;
     uint32_t conn_count;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
@@ -402,14 +416,14 @@ main(int argc, char** argv)
         {"change",          required_argument, NULL, 'c'},
         {"update",          required_argument, NULL, 'U'},
         {"connection-count",no_argument,       NULL, 'C'},
-        {"recover",         no_argument,       NULL, 'R'},
-        {"search-dir",      required_argument, NULL, 's'},
+        {"search-dirs",     required_argument, NULL, 's'},
         {"enable-feature",  required_argument, NULL, 'e'},
         {"disable-feature", required_argument, NULL, 'd'},
         {"replay",          required_argument, NULL, 'r'},
         {"owner",           required_argument, NULL, 'o'},
         {"group",           required_argument, NULL, 'g'},
         {"permissions",     required_argument, NULL, 'p'},
+        {"apply",           no_argument,       NULL, 'a'},
         {"verbosity",       required_argument, NULL, 'v'},
         {NULL,              0,                 NULL, 0},
     };
@@ -421,7 +435,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:CRs:e:d:r:o:g:p:v:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:Cs:e:d:r:o:g:p:av:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -478,29 +492,34 @@ main(int argc, char** argv)
             }
             operation = 'C';
             break;
-        case 'R':
-            if (operation) {
-                error_print(0, "Operation already specified");
-                goto cleanup;
-            }
-            operation = 'R';
-            break;
         case 's':
-            if (search_dir) {
-                error_print(0, "Search dir already specified");
+            if (search_dirs) {
+                error_print(0, "Search dirs already specified");
                 goto cleanup;
             }
-            search_dir = optarg;
+            search_dirs = optarg;
             break;
         case 'e':
+            if (operation && (operation != 'i') && (operation != 'c')) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
             features = realloc(features, (feat_count + 1) * sizeof *features);
             features[feat_count++] = optarg;
             break;
         case 'd':
+            if (operation && (operation != 'c')) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
             dis_features = realloc(dis_features, (dis_feat_count + 1) * sizeof *dis_features);
             dis_features[dis_feat_count++] = optarg;
             break;
         case 'r':
+            if (operation && (operation != 'c')) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
             if (!strcmp(optarg, "on") || !strcmp(optarg, "1")) {
                 replay = 1;
             } else if (!strcmp(optarg, "off") || !strcmp(optarg, "0")) {
@@ -511,6 +530,10 @@ main(int argc, char** argv)
             }
             break;
         case 'o':
+            if (operation && (operation != 'c') && ((operation != 'i') || !apply)) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
             if (owner) {
                 error_print(0, "Owner already specified");
                 goto cleanup;
@@ -518,6 +541,10 @@ main(int argc, char** argv)
             owner = optarg;
             break;
         case 'g':
+            if (operation && (operation != 'c') && ((operation != 'i') || !apply)) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
             if (group) {
                 error_print(0, "Group already specified");
                 goto cleanup;
@@ -525,6 +552,10 @@ main(int argc, char** argv)
             group = optarg;
             break;
         case 'p':
+            if (operation && (operation != 'c') && ((operation != 'i') || !apply)) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
             if ((int)perms != -1) {
                 error_print(0, "Permissions already specified");
                 goto cleanup;
@@ -534,6 +565,9 @@ main(int argc, char** argv)
                 error_print(0, "Invalid permissions \"%s\"", optarg);
                 goto cleanup;
             }
+            break;
+        case 'a':
+            apply = 1;
             break;
         case 'v':
             if (!strcmp(optarg, "none")) {
@@ -568,6 +602,9 @@ main(int argc, char** argv)
     /* set logging */
     sr_log_stderr(log_level);
 
+    /* set callback */
+    sr_log_set_cb(log_cb);
+
     if (operation != 'C') {
         /* create connection */
         if ((r = sr_connect(0, &conn)) != SR_ERR_OK) {
@@ -584,18 +621,16 @@ main(int argc, char** argv)
             error_print(r, "Failed to list modules");
             goto cleanup;
         }
-        rc = EXIT_SUCCESS;
         break;
     case 'i':
         /* install */
-        if ((r = sr_install_module(conn, file_path, search_dir, (const char **)features, feat_count)) != SR_ERR_OK) {
+        if ((r = sr_install_module(conn, file_path, search_dirs, (const char **)features, feat_count)) != SR_ERR_OK) {
             /* succeed if the module is already installed */
             if (r != SR_ERR_EXISTS) {
                 error_print(r, "Failed to install module \"%s\"", file_path);
                 goto cleanup;
             }
         }
-        rc = EXIT_SUCCESS;
         break;
     case 'u':
         /* uninstall */
@@ -606,7 +641,6 @@ main(int argc, char** argv)
                 goto cleanup;
             }
         }
-        rc = EXIT_SUCCESS;
         break;
     case 'c':
         /* change */
@@ -642,15 +676,13 @@ main(int argc, char** argv)
                 goto cleanup;
             }
         }
-        rc = EXIT_SUCCESS;
         break;
     case 'U':
         /* update */
-        if ((r = sr_update_module(conn, file_path, search_dir)) != SR_ERR_OK) {
+        if ((r = sr_update_module(conn, file_path, search_dirs)) != SR_ERR_OK) {
             error_print(r, "Failed to update module \"%s\"", file_path);
             goto cleanup;
         }
-        rc = EXIT_SUCCESS;
         break;
     case 'C':
         /* connection-count */
@@ -659,25 +691,56 @@ main(int argc, char** argv)
             goto cleanup;
         }
         fprintf(stdout, "%u\n", conn_count);
-        rc = EXIT_SUCCESS;
-        break;
-    case 'R':
-        /* recover */
-        if ((r = sr_connection_recover(conn)) != SR_ERR_OK) {
-            error_print(r, "Failed to recover stale connections");
-            goto cleanup;
-        }
-        rc = EXIT_SUCCESS;
         break;
     case 0:
         error_print(0, "No operation specified");
-        break;
+        goto cleanup;
     default:
         error_print(0, "Internal");
+        goto cleanup;
+    }
+
+    /* apply changes */
+    switch (operation) {
+    case 'i':
+    case 'u':
+    case 'c':
+    case 'U':
+        if (apply) {
+            sr_disconnect(conn);
+            conn = NULL;
+            /* get connection count */
+            if ((r = sr_connection_count(&conn_count)) != SR_ERR_OK) {
+                error_print(r, "Failed to get connection count");
+                goto cleanup;
+            }
+            if (conn_count) {
+                error_print(0, "Cannot apply changes because of existing connections");
+                goto cleanup;
+            }
+            if ((r = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &conn)) != SR_ERR_OK) {
+                error_print(r, "Failed to apply changes");
+                goto cleanup;
+            }
+        }
+        break;
+    default:
+        /* nothing to do */
         break;
     }
 
+    /* change permissions for a newly installed module */
+    if ((operation == 'i') && (owner || group || ((int)perms != -1))) {
+        if ((r = sr_set_module_access(conn, inst_module_name, owner, group, perms)) != SR_ERR_OK) {
+            error_print(r, "Failed to change module \"%s\" access", inst_module_name);
+            goto cleanup;
+        }
+    }
+
+    rc = EXIT_SUCCESS;
+
 cleanup:
+    free(inst_module_name);
     sr_disconnect(conn);
     free(features);
     free(dis_features);

@@ -59,16 +59,6 @@ libyang::S_Context Connection::get_context()
     return std::make_shared<libyang::Context>(const_cast<struct ly_ctx *>(sr_get_context(_conn)), nullptr);
 }
 
-void Connection::connection_recover()
-{
-    int ret;
-
-    ret = sr_connection_recover(_conn);
-    if (ret != SR_ERR_OK) {
-        throw_exception(ret);
-    }
-}
-
 void Connection::install_module(const char *schema_path, const char *search_dir, std::vector<std::string> features)
 {
     int ret, feat_count;

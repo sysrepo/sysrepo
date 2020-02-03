@@ -1181,6 +1181,28 @@ cleanup:
     return err_info;
 }
 
+sr_error_info_t *
+sr_remove_module_file(const char *name, const char *revision)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path;
+
+    if ((err_info = sr_path_yang_file(name, revision, &path))) {
+        return err_info;
+    }
+
+    if (unlink(path) == -1) {
+        SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
+    } else {
+        SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
+    }
+
+    /* we are not able to remove submodule files, unfortunately */
+
+    free(path);
+    return NULL;
+}
+
 /**
  * @brief Check whether a module is internal libyang module.
  *
@@ -1204,7 +1226,7 @@ sr_ly_module_is_internal(const struct lys_module *ly_mod)
         return 1;
     } else if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->rev[0].date, "2017-08-17")) {
         return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-yang-library") && !strcmp(ly_mod->rev[0].date, "2018-01-17")) {
+    } else if (!strcmp(ly_mod->name, "ietf-yang-library") && !strcmp(ly_mod->rev[0].date, "2019-01-04")) {
         return 1;
     }
 
@@ -1278,12 +1300,39 @@ sr_remove_data_files(const char *mod_name)
     return NULL;
 }
 
+int
+sr_module_is_internal(const struct lys_module *ly_mod)
+{
+    if (!ly_mod->rev_size) {
+        return 0;
+    }
+
+    if (sr_ly_module_is_internal(ly_mod)) {
+        return 1;
+    }
+
+    if (!strcmp(ly_mod->name, "ietf-netconf")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-netconf-with-defaults") && !strcmp(ly_mod->rev[0].date, "2011-06-01")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-origin") && !strcmp(ly_mod->rev[0].date, "2018-02-14")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-netconf-notifications") && !strcmp(ly_mod->rev[0].date, "2012-02-06")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "sysrepo")) {
+        return 1;
+    }
+
+    return 0;
+}
+
 sr_error_info_t *
 sr_create_startup_file(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *root = NULL;
     char *path = NULL;
+    mode_t mode;
 
     /* check whether the files does not exist (valid when the module was just updated) */
     if ((err_info = sr_path_startup_file(ly_mod->name, &path))) {
@@ -1300,8 +1349,14 @@ sr_create_startup_file(const struct lys_module *ly_mod)
         goto cleanup;
     }
 
+    if (sr_module_is_internal(ly_mod)) {
+        mode = SR_INT_FILE_PERM;
+    } else {
+        mode = SR_FILE_PERM;
+    }
+
     /* print them into the startup file */
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, O_CREAT | O_EXCL, root))) {
+    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, root, O_CREAT | O_EXCL, mode))) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create startup file of \"%s\".", ly_mod->name);
         goto cleanup;
     }
@@ -1313,24 +1368,38 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_create_module_imps_r(const struct lys_module *ly_mod)
+sr_create_module_imps_incs_r(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
-    struct lys_module *ly_imp_mod;
+    struct lys_module *cur_mod;
     uint16_t i;
 
+    /* store all imports */
     for (i = 0; i < ly_mod->imp_size; ++i) {
-        ly_imp_mod = ly_mod->imp[i].module;
-        if (sr_ly_module_is_internal(ly_imp_mod)) {
+        cur_mod = ly_mod->imp[i].module;
+        if (sr_ly_module_is_internal(cur_mod)) {
             /* skip */
             continue;
         }
 
-        if ((err_info = sr_store_module_files(ly_imp_mod))) {
+        if ((err_info = sr_store_module_files(cur_mod))) {
             return err_info;
         }
 
-        if ((err_info = sr_create_module_imps_r(ly_imp_mod))) {
+        if ((err_info = sr_create_module_imps_incs_r(cur_mod))) {
+            return err_info;
+        }
+    }
+
+    /* store all includes */
+    for (i = 0; i < ly_mod->inc_size; ++i) {
+        cur_mod = (struct lys_module *)ly_mod->inc[i].submodule;
+
+        if ((err_info = sr_store_module_file(cur_mod))) {
+            return err_info;
+        }
+
+        if ((err_info = sr_create_module_imps_incs_r(cur_mod))) {
             return err_info;
         }
     }
@@ -1853,7 +1922,8 @@ sr_process_exists(pid_t pid)
     }
 
     if (errno != ESRCH) {
-        SR_LOG_WRN("Failed to check existence of process with PID %ld (%s).", (long)pid, strerror(errno));
+        SR_LOG_INF("Failed to check existence of process with PID %ld (%s).", (long)pid, strerror(errno));
+        return 1;
     }
 
     return 0;
@@ -1986,24 +2056,24 @@ sr_mutex_init(pthread_mutex_t *lock, int shared)
     if (shared) {
         /* init attr */
         if ((ret = pthread_mutexattr_init(&attr))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
         if ((ret = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
             pthread_mutexattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Changing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
 
         if ((ret = pthread_mutex_init(lock, &attr))) {
             pthread_mutexattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
             return err_info;
         }
         pthread_mutexattr_destroy(&attr);
     } else {
         if ((ret = pthread_mutex_init(lock, NULL))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
             return err_info;
         }
     }
@@ -2068,24 +2138,24 @@ sr_cond_init(pthread_cond_t *cond, int shared)
     if (shared) {
         /* init attr */
         if ((ret = pthread_condattr_init(&attr))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
         if ((ret = pthread_condattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
             pthread_condattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Changing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
 
         if ((ret = pthread_cond_init(cond, &attr))) {
             pthread_condattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
             return err_info;
         }
         pthread_condattr_destroy(&attr);
     } else {
         if ((ret = pthread_cond_init(cond, NULL))) {
-            sr_errinfo_new(&err_info, SR_ERR_INIT_FAILED, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
             return err_info;
         }
     }
@@ -2124,9 +2194,12 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *
     struct timespec timeout_ts;
     int ret;
 
-    assert(timeout_ms > 0);
-    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
+    if (mode == SR_LOCK_NONE) {
+        /* nothing to do */
+        return NULL;
+    }
 
+    assert(timeout_ms > 0);
     sr_time_get(&timeout_ts, timeout_ms);
 
     /* MUTEX LOCK */
@@ -2134,58 +2207,6 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *
     if (ret) {
         SR_ERRINFO_LOCK(&err_info, func, ret);
         return err_info;
-    }
-
-    if (mode == SR_LOCK_WRITE) {
-        /* write lock */
-        ret = 0;
-        while (!ret && rwlock->readers) {
-            /* COND WAIT */
-            ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
-        }
-
-        if (ret) {
-            /* MUTEX UNLOCK */
-            pthread_mutex_unlock(&rwlock->mutex);
-
-            SR_ERRINFO_COND(&err_info, func, ret);
-            return err_info;
-        }
-    } else {
-        /* read lock */
-        ++rwlock->readers;
-
-        /* MUTEX UNLOCK */
-        pthread_mutex_unlock(&rwlock->mutex);
-    }
-
-    return NULL;
-}
-
-sr_error_info_t *
-sr_rwlock_with_recovery(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_conn_ctx_t *conn, const char *func)
-{
-    sr_error_info_t *err_info = NULL;
-    struct timespec timeout_ts;
-    int ret;
-
-    assert(timeout_ms > 0);
-    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
-
-    sr_time_get(&timeout_ts, timeout_ms);
-
-    /* MUTEX LOCK */
-    ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
-    if (ret) {
-        SR_ERRINFO_LOCK(&err_info, func, ret);
-        return err_info;
-    }
-
-    if (rwlock->readers) {
-        /* check that all connections still exist */
-        if ((err_info = sr_shmmain_state_recover(conn))) {
-            sr_errinfo_free(&err_info);
-        }
     }
 
     if (mode == SR_LOCK_WRITE) {
@@ -2221,7 +2242,10 @@ sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
     struct timespec timeout_ts;
     int ret;
 
-    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
+    if (mode == SR_LOCK_NONE) {
+        /* nothing to do */
+        return;
+    }
 
     if (mode == SR_LOCK_READ) {
         sr_time_get(&timeout_ts, SR_RWLOCK_READ_TIMEOUT);
@@ -2750,8 +2774,7 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
             break;
         case LYD_ANYDATA_LYB:
             /* try to convert into a data tree */
-            tree = lyd_parse_mem(node->schema->module->ctx, any->value.mem, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT
-                                 | LYD_OPT_TRUSTED, NULL);
+            tree = lyd_parse_mem(node->schema->module->ctx, any->value.mem, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT, NULL);
             if (!tree) {
                 sr_errinfo_new_ly(&err_info, node->schema->module->ctx);
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Failed to convert LYB anyxml/anydata into XML.");
@@ -2796,7 +2819,7 @@ error:
 }
 
 char *
-sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, char *buf)
+sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, char *buf)
 {
     struct lys_node_leaf *sleaf;
 
@@ -2820,7 +2843,7 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, char *buf)
         return sr_val->data.bool_val ? "true" : "false";
     case SR_DECIMAL64_T:
         /* get fraction-digits */
-        sleaf = (struct lys_node_leaf *)ly_ctx_get_node(ctx, NULL, sr_val->xpath, 0);
+        sleaf = (struct lys_node_leaf *)ly_ctx_get_node(ctx, NULL, xpath, 0);
         if (!sleaf) {
             return NULL;
         }
@@ -2830,17 +2853,25 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, char *buf)
         sprintf(buf, "%.*f", sleaf->type.info.dec64.dig, sr_val->data.decimal64_val);
         return buf;
     case SR_UINT8_T:
+        sprintf(buf, "%"PRIu8, sr_val->data.uint8_val);
+        return buf;
     case SR_UINT16_T:
+        sprintf(buf, "%"PRIu16, sr_val->data.uint16_val);
+        return buf;
     case SR_UINT32_T:
-        sprintf(buf, "%u", sr_val->data.uint32_val);
+        sprintf(buf, "%"PRIu32, sr_val->data.uint32_val);
         return buf;
     case SR_UINT64_T:
         sprintf(buf, "%"PRIu64, sr_val->data.uint64_val);
         return buf;
     case SR_INT8_T:
+        sprintf(buf, "%"PRId8, sr_val->data.int8_val);
+        return buf;
     case SR_INT16_T:
+        sprintf(buf, "%"PRId16, sr_val->data.int16_val);
+        return buf;
     case SR_INT32_T:
-        sprintf(buf, "%d", sr_val->data.int32_val);
+        sprintf(buf, "%"PRId32, sr_val->data.int32_val);
         return buf;
     case SR_INT64_T:
         sprintf(buf, "%"PRId64, sr_val->data.int64_val);
@@ -3142,7 +3173,7 @@ sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count, 
 
         /* merge into the final result */
         if (*new_data) {
-            if (lyd_merge(*new_data, root, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+            if (lyd_merge(*new_data, root, LYD_OPT_DESTRUCT)) {
                 lyd_free_withsiblings(root);
                 sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
                 goto error;
@@ -3375,7 +3406,7 @@ sr_ly_anydata_value_str(const struct lyd_node *any, char **value_str)
     case LYD_ANYDATA_LYB:
         /* parse into a data tree */
         ly_errno = 0;
-        tree = lyd_parse_mem(a->schema->module->ctx, a->value.mem, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT | LYD_OPT_TRUSTED, NULL);
+        tree = lyd_parse_mem(a->schema->module->ctx, a->value.mem, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT, NULL);
         if (ly_errno) {
             sr_errinfo_new_ly(&err_info, a->schema->module->ctx);
             return err_info;
@@ -3739,7 +3770,7 @@ sr_module_file_data_append(const struct lys_module *ly_mod, sr_datastore_t ds, s
 
 retry_open:
     /* prepare correct file path */
-    if (ds ==  SR_DS_STARTUP) {
+    if (ds == SR_DS_STARTUP) {
         err_info = sr_path_startup_file(ly_mod->name, &path);
     } else {
         err_info = sr_path_ds_shm(ly_mod->name, ds, 0, &path);
@@ -3769,10 +3800,17 @@ retry_open:
 
     /* load the data */
     ly_errno = 0;
-    if (ds == SR_DS_OPERATIONAL) {
+    switch (ds) {
+    case SR_DS_OPERATIONAL:
         flags = LYD_OPT_EDIT | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS;
-    } else {
+        break;
+    case SR_DS_CANDIDATE:
         flags = LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_NOEXTDEPS;
+        break;
+    case SR_DS_STARTUP:
+    case SR_DS_RUNNING:
+        flags = LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_TRUSTED;
+        break;
     }
     mod_data = lyd_parse_fd(ly_mod->ctx, fd, LYD_LYB, flags);
     if (ly_errno) {
@@ -3799,7 +3837,8 @@ error:
 }
 
 sr_error_info_t *
-sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, int create_flags, struct lyd_node *mod_data)
+sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data, int create_flags,
+        mode_t create_mode)
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
@@ -3826,9 +3865,9 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, int create_flag
 
     /* open */
     if (ds == SR_DS_STARTUP) {
-        fd = open(path, O_WRONLY | O_TRUNC | create_flags, SR_FILE_PERM);
+        fd = open(path, O_WRONLY | O_TRUNC | create_flags, create_mode);
     } else {
-        fd = shm_open(path, O_WRONLY | O_TRUNC | create_flags, SR_FILE_PERM);
+        fd = shm_open(path, O_WRONLY | O_TRUNC | create_flags, create_mode);
     }
     umask(um);
     if (fd == -1) {
@@ -3895,7 +3934,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     if ((err_info = sr_diff_mod_update(&diff, ly_mod, mod_info.data))) {
         goto cleanup;
     }
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
+    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
         goto cleanup;
     }
 
@@ -3906,4 +3945,56 @@ cleanup:
     lyd_free_withsiblings(diff);
     sr_modinfo_free(&mod_info);
     return err_info;
+}
+
+struct lys_feature *
+sr_lys_next_feature(struct lys_feature *last, const struct lys_module *ly_mod, uint32_t *idx)
+{
+    uint8_t i;
+
+    assert(ly_mod);
+
+    /* find the (sub)module of the last feature */
+    if (last) {
+        for (i = 0; i < ly_mod->inc_size; ++i) {
+            if (*idx >= ly_mod->inc[i].submodule->features_size) {
+                /* not a feature from this submodule, skip */
+                continue;
+            }
+            if (last != ly_mod->inc[i].submodule->features + *idx) {
+                /* feature is not from this submodule */
+                continue;
+            }
+
+            /* we have found the submodule */
+            break;
+        }
+
+        /* feature not found in submodules, it must be in the main module */
+        assert((i < ly_mod->inc_size) || ((*idx < ly_mod->features_size) && (last == ly_mod->features + *idx)));
+
+        /* we want the next feature */
+        ++(*idx);
+    } else {
+        i = 0;
+        *idx = 0;
+    }
+
+    /* find the (sub)module of the next feature */
+    while ((i < ly_mod->inc_size) && (*idx == ly_mod->inc[i].submodule->features_size)) {
+        /* next submodule */
+        ++i;
+        *idx = 0;
+    }
+
+    /* get the next feature */
+    if (i < ly_mod->inc_size) {
+        last = ly_mod->inc[i].submodule->features + *idx;
+    } else if (*idx < ly_mod->features_size) {
+        last = ly_mod->features + *idx;
+    } else {
+        last = NULL;
+    }
+
+    return last;
 }

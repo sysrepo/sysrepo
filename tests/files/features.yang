@@ -2,11 +2,17 @@ module features {
     namespace "urn:features";
     prefix feat;
 
+    include features-sub;
+
     import test {
         prefix t;
     }
 
     feature feat1;
+
+    feature feat3 {
+        if-feature feat2;
+    }
 
     leaf l1 {
         type string;

@@ -908,7 +908,7 @@ rpc_multi_fail2_cb(sr_session_ctx_t *session, const char *xpath, const struct ly
         assert_int_equal(event, SR_EV_RPC);
         assert_int_equal(st->cb_called, 1);
         /* callback fails, last callback (but there is no callback for abort, synchronizing would block) */
-        ret = SR_ERR_BAD_ELEMENT;
+        ret = SR_ERR_LOCKED;
         ++call_no;
         break;
     case 4:
@@ -1165,6 +1165,93 @@ test_action_deps(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST 9 */
+static int
+action_change_config_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+        uint32_t request_id, struct lyd_node *output, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    struct lyd_node *node;
+    int ret;
+
+    (void)xpath;
+    (void)input;
+    (void)event;
+    (void)request_id;
+
+    /* change some running configuration */
+    ret = sr_session_switch_ds(session, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(session, "/ops:cont/list1[k='val2']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(session, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ++st->cb_called;
+
+    /* create some output data */
+    node = lyd_new_path(output, NULL, "l8", "/ops:cont", 0, LYD_PATH_OPT_OUTPUT);
+    assert_non_null(node);
+
+    return SR_ERR_OK;
+}
+
+static void
+test_action_change_config(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr1, *subscr2;
+    struct lyd_node *input_op, *output_op, *data;
+    int ret;
+
+    /* subscribe */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", action_change_config_cb, st, 0, 0, &subscr1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create the data in running and subscribe to them */
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='val']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr2);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create the action */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='val']/cont2/act1",
+            NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+
+    /* send the action */
+    st->cb_called = 0;
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
+    while (output_op->parent) {
+        output_op = output_op->parent;
+    }
+    lyd_free_withsiblings(output_op);
+
+    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    while (input_op->parent) {
+        input_op = input_op->parent;
+    }
+    lyd_free_withsiblings(input_op);
+
+    /* check that the data were changed */
+    ret = sr_get_data(st->sess, "/ops:cont", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_string_equal(data->child->schema->name, "cont3");
+    assert_string_equal(data->child->next->schema->name, "list1");
+    assert_string_equal(((struct lyd_node_leaf_list *)data->child->next->child)->value_str, "val");
+    assert_string_equal(data->child->next->next->schema->name, "list1");
+    assert_string_equal(((struct lyd_node_leaf_list *)data->child->next->next->child)->value_str, "val2");
+    lyd_free_withsiblings(data);
+
+    sr_unsubscribe(subscr1);
+    sr_unsubscribe(subscr2);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1178,6 +1265,7 @@ main(void)
         cmocka_unit_test(test_multi_fail),
         cmocka_unit_test(test_unlocked),
         cmocka_unit_test(test_action_deps),
+        cmocka_unit_test_teardown(test_action_change_config, clear_ops),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

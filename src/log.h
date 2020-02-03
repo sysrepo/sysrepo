@@ -51,6 +51,7 @@
 
 extern sr_log_level_t stderr_ll;  /**< stderr log level */
 extern sr_log_level_t syslog_ll;  /**< syslog log level */
+extern sr_log_cb log_cb;          /**< logging callback */
 
 /**
  * @brief Set error info to a session and return corresponding error code, if any.

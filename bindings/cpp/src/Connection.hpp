@@ -53,8 +53,6 @@ public:
 
     /** Wrapper for [sr_get_contect](@ref sr_get_context) */
     libyang::S_Context get_context();
-    /** Wrapper for [sr_connection_recover](@ref sr_connection_recover) */
-    void connection_recover();
 
     /** Wrapper for [sr_install_module](@ref sr_install_module) */
     void install_module(const char *schema_path, const char *search_dir, std::vector<std::string> features);

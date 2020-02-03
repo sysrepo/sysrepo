@@ -9,13 +9,6 @@ get_filename_component(TESTS_DIR "${CMAKE_SOURCE_DIR}/tests" REALPATH)
 include_directories(SYSTEM ${CMOCKA_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-# get notification directory
-if(NOTIFICATION_PATH)
-    set(TESTS_NOTIF_DIR "${NOTIFICATION_PATH}")
-else()
-    set(TESTS_NOTIF_DIR "${REPO_PATH}/data/notif")
-endif()
-
 # check for pthread_barrier existence
 check_function_exists(pthread_barrier_init SR_HAVE_PTHREAD_BARRIER)
 if(SR_HAVE_PTHREAD_BARRIER)
@@ -29,7 +22,7 @@ configure_file("${PROJECT_SOURCE_DIR}/tests/config.h.in" "${PROJECT_BINARY_DIR}/
 
 # lists of all the tests
 set(tests test_modules test_validation test_edit test_candidate test_operational test_lock test_apply_changes
-    test_copy_config test_rpc_action test_notif)
+    test_copy_config test_rpc_action test_notif test_get)
 
 foreach(test_name IN LISTS tests)
     add_executable(${test_name} ${test_sources} ${test_name}.c)
@@ -37,7 +30,7 @@ endforeach(test_name)
 
 # set common attributes of all tests
 foreach(test_name IN LISTS tests)
-    target_link_libraries(${test_name} ${CMOCKA_LIBRARIES} sysrepo yang)
+    target_link_libraries(${test_name} ${CMOCKA_LIBRARIES} sysrepo)
     add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
     set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT "MALLOC_CHECK_=3 CMOCKA_TEST_ABORT=1")
 endforeach(test_name)
@@ -45,7 +38,7 @@ endforeach(test_name)
 # measure_performance benchmark binary
 set(SR_PERF measure_performance)
 add_executable(${SR_PERF} ${SR_PERF}.c)
-target_link_libraries(${SR_PERF} ${CMOCKA_LIBRARIES} sysrepo yang)
+target_link_libraries(${SR_PERF} ${CMOCKA_LIBRARIES} sysrepo)
 
 # valgrind tests
 find_program(VALGRIND_FOUND valgrind)
@@ -89,7 +82,7 @@ if(ENABLE_COVERAGE)
             --quiet --output-file "${COVERAGE_FILE_CLEAN}"
         # Generate HTML report
         COMMAND "${PATH_GENHTML}"
-            --branch-coverage --function-coverage --quiet --title "libyang"
+            --branch-coverage --function-coverage --quiet --title "sysrepo"
             --legend --show-details --output-directory "${COVERAGE_DIR}"
             "${COVERAGE_FILE_CLEAN}"
         # Delete the counters

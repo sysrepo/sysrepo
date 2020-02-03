@@ -146,7 +146,7 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
 
     asprintf(&xpath, "/%s:*//.", module_name);
 
-    rc = sr_get_items(session, xpath, 0, &values, &count);
+    rc = sr_get_items(session, xpath, 0, 0, &values, &count);
     free(xpath);
     if (rc != SR_ERR_OK) {
         return;

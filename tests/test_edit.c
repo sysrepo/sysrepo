@@ -195,25 +195,6 @@ test_delete(void **state)
 }
 
 static void
-test_delete_invalid(void **state)
-{
-    struct state *st = (struct state *)*state;
-    int ret;
-
-    /* no keys */
-    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface/type", 0);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
-    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface", 0);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
-    ret = sr_delete_item(st->sess, "/test:l1", 0);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
-
-    /* no leaf-list value */
-    ret = sr_delete_item(st->sess, "/test:ll1", 0);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
-}
-
-static void
 test_create1(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -271,16 +252,6 @@ test_create2(void **state)
     char *str;
     const char *str2;
     int ret;
-
-    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
-            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
-    ret = sr_discard_changes(st->sess);
-    assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth68']", 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -346,13 +317,13 @@ test_move1(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform some move operations */
-    ret = sr_move_item(st->sess, "/test:l1[k='key3']", SR_MOVE_FIRST, NULL, NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:l1[k='key3']", SR_MOVE_FIRST, NULL, NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:l1[k='key1']", SR_MOVE_AFTER, "[k='key2']", NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:l1[k='key1']", SR_MOVE_AFTER, "[k='key2']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:ll1[.='-3']", SR_MOVE_FIRST, NULL, NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:ll1[.='-3']", SR_MOVE_FIRST, NULL, NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:ll1[.='-1']", SR_MOVE_AFTER, NULL, "-2", NULL);
+    ret = sr_move_item(st->sess, "/test:ll1[.='-1']", SR_MOVE_AFTER, NULL, "-2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -425,13 +396,13 @@ test_move1(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform some move operations */
-    ret = sr_move_item(st->sess, "/test:cont/l2[k='key1']", SR_MOVE_LAST, NULL, NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='key1']", SR_MOVE_LAST, NULL, NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:cont/l2[k='key3']", SR_MOVE_BEFORE, "[k='key2']", NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='key3']", SR_MOVE_BEFORE, "[k='key2']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:cont/ll2[.='-1']", SR_MOVE_LAST, NULL, NULL, NULL);
+    ret = sr_move_item(st->sess, "/test:cont/ll2[.='-1']", SR_MOVE_LAST, NULL, NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:cont/ll2[.='-3']", SR_MOVE_BEFORE, NULL, "-2", NULL);
+    ret = sr_move_item(st->sess, "/test:cont/ll2[.='-3']", SR_MOVE_BEFORE, NULL, "-2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -457,16 +428,200 @@ test_move1(void **state)
     lyd_free_withsiblings(data);
 }
 
+static void
+test_replace(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *subtree;
+    char *str, *str2;
+    int ret;
+
+    /* create some data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* remove and create some other data, internally transformed into replace */
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth32']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth32']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check final datastore contents */
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, subtree, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free(subtree);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth32</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str, str2);
+    free(str);
+}
+
+static void
+test_isolate(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *subtree;
+    char *str, *str2;
+    int ret;
+
+    /* data fails to be applied */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:softwareLoopback", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_EXISTS);
+
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* data successfully applied when not strict */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:softwareLoopback", NULL, SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, subtree, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free(subtree);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth64</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:softwareLoopback</type>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str, str2);
+    free(str);
+
+    /* try some more isolated edits */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/enabled",
+            "false", NULL, SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:other", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, subtree, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free(subtree);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth64</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:other</type>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str, str2);
+    free(str);
+}
+
+static void
+test_purge(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *subtree;
+    int ret;
+
+    /* create some list instances */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth65']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth66']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth67']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* delete all instances */
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(subtree->dflt, 1);
+    lyd_free(subtree);
+
+    /* repeat with leaf-list */
+    ret = sr_set_item_str(st->sess, "/test:ll1", "12", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:ll1", "13", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:ll1", "14", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_delete_item(st->sess, "/test:ll1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_subtree(st->sess, "/test:ll1", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(subtree);
+}
+
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_edit_item),
         cmocka_unit_test_teardown(test_delete, clear_interfaces),
-        cmocka_unit_test(test_delete_invalid),
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
         cmocka_unit_test_teardown(test_create2, clear_interfaces),
         cmocka_unit_test_teardown(test_move1, clear_test),
+        cmocka_unit_test_teardown(test_replace, clear_interfaces),
+        cmocka_unit_test_teardown(test_isolate, clear_interfaces),
+        cmocka_unit_test(test_purge),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

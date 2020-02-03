@@ -286,7 +286,7 @@ perf_data_provide_test(void **state, int op_num, int *items)
         val_cnt = 0;
         value = NULL;
 
-        rc = sr_get_items(dp_setup->session, "/ietf-interfaces:interfaces-state/interface/statistics//*", 0, &value, &val_cnt);
+        rc = sr_get_items(dp_setup->session, "/ietf-interfaces:interfaces-state/interface/statistics//*", 0, 0, &value, &val_cnt);
         assert_int_equal(SR_ERR_OK, rc);
 
         sr_free_values(value, val_cnt);
@@ -413,7 +413,7 @@ perf_get_items_test(void **state, int op_num, int *items)
     /* perform a get-items request */
     for (int i = 0; i<op_num; i++){
         /* existing leaf */
-        rc = sr_get_items(session, "/example-module:container/list/leaf", 0, &values, &count);
+        rc = sr_get_items(session, "/example-module:container/list/leaf", 0, 0, &values, &count);
         assert_int_equal(SR_ERR_OK, rc);
         sr_free_values(values, count);
     }
@@ -974,7 +974,7 @@ createDataTreeExampleModule(sr_session_ctx_t *sess)
     root = lyd_new_path(NULL, ctx, XPATH, "Leaf value", 0, 0);
     assert_non_null(root);
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, SR_DS_RUNNING, 0));
+    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, 0));
 }
 
 static void
@@ -1003,7 +1003,7 @@ createDataTreeLargeExampleModule(sr_session_ctx_t *sess, int list_count)
     lyd_new_path(root, ctx, "/example-module:container/list[key1='key1'][key2='key2']/leaf", "Leaf value", 0, 0);
 
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, SR_DS_RUNNING, 0));
+    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, 0));
 }
 
 static void
@@ -1056,7 +1056,7 @@ createDataTreeLargeIETFinterfacesModule(sr_session_ctx_t *sess, size_t if_count)
 
 
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "ietf-interfaces", root, SR_DS_RUNNING, 0));
+    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "ietf-interfaces", root, 0));
 }
 
 int

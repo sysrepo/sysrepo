@@ -157,11 +157,11 @@ sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, struct sr_mod_info_s *mod_in
     const struct lyd_node *node;
     uint32_t i;
 
-    assert(data);
-
     if (!last) {
         node = data;
     } else {
+        assert(data);
+
         /* find the last diff node */
         for (node = data; lyd_node_module(node) != last->ly_mod; node = node->next);
 
@@ -211,7 +211,7 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
 }
 
 sr_error_info_t *
-sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_node *orig_diff)
+sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new_diff)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -221,7 +221,8 @@ sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_node *orig_diff
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
             /* merge relevant diff part */
-            if ((err_info = sr_diff_mod_merge(mod_info->diff, mod_info->conn, mod->ly_mod, &orig_diff, NULL))) {
+            if ((err_info = sr_diff_mod_merge(new_diff, mod_info->ds == SR_DS_OPERATIONAL ? mod_info->conn : NULL,
+                    mod->ly_mod, &mod_info->diff, NULL))) {
                 return err_info;
             }
         }
@@ -617,7 +618,7 @@ sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *
     /* merge into one data tree */
     if (!*data) {
         *data = oper_data;
-    } else if (oper_data && lyd_merge(*data, oper_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+    } else if (oper_data && lyd_merge(*data, oper_data, LYD_OPT_DESTRUCT)) {
         lyd_free_withsiblings(oper_data);
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         return err_info;
@@ -694,7 +695,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
         if ((shm_msub->sub_type == SR_OPER_SUB_CONFIG) || (shm_msub->sub_type == SR_OPER_SUB_MIXED)) {
             /* remove any present data */
             if ((err_info = sr_lyd_xpath_complement(data, sub_xpath))) {
-                goto error;
+                return err_info;
             }
         }
 
@@ -926,7 +927,7 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
 
             /* CACHE WRITE LOCK */
             if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
-                return err_info;
+                goto error_rlock;
             }
 
             /* data needs to be updated, remove old data */
@@ -941,7 +942,7 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
 
         /* CACHE WRITE LOCK */
         if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
-            return err_info;
+            goto error_rlock;
         }
 
         /* module is not in cache yet, add an item */
@@ -967,14 +968,16 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
         } else {
             /* we need to load current data from persistent storage */
             if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_RUNNING, &mod_cache->data))) {
-                return err_info;
+                goto error_wrunlock;
             }
         }
         mod_cache->mods[i].ver = mod->shm_mod->ver;
 
+error_wrunlock:
         /* CACHE WRITE UNLOCK */
         sr_rwunlock(&mod_cache->lock, SR_LOCK_WRITE, __func__);
 
+error_rlock:
         if (read_locked) {
             /* CACHE READ LOCK */
             if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
@@ -983,7 +986,7 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
         }
     }
 
-    return NULL;
+    return err_info;
 }
 
 /**
@@ -1406,10 +1409,12 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
         }
     }
 
-    /* just add default values, the validation can fail */
-    flags = (mod_info->ds == SR_DS_OPERATIONAL ? LYD_OPT_DATA : LYD_OPT_CONFIG) | LYD_OPT_TRUSTED | LYD_OPT_WHENAUTODEL
-            | LYD_OPT_VAL_DIFF;
-    lyd_validate_modules(&mod_info->data, valid_mods, valid_mod_count, flags, &diff);
+    /* just add default values and generate diff */
+    flags = (mod_info->ds == SR_DS_OPERATIONAL ? LYD_OPT_DATA : LYD_OPT_CONFIG) | LYD_OPT_TRUSTED | LYD_OPT_VAL_DIFF;
+    if (lyd_validate_modules(&mod_info->data, valid_mods, valid_mod_count, flags, &diff)) {
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        goto cleanup;
+    }
 
     if (finish_diff) {
         /* merge the changes made by the validation into our diff */
@@ -1809,7 +1814,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 }
 
                 /* store the new diff */
-                if (change && (err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
+                if (change && (err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
                     goto cleanup;
                 }
                 lyd_free_withsiblings(diff);
@@ -1819,7 +1824,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 mod_data = sr_module_data_unlink(&mod_info->data, mod->ly_mod);
 
                 /* store the new data */
-                if ((err_info = sr_module_file_data_set(mod->ly_mod->name, mod_info->ds, create_flags, mod_data))) {
+                if ((err_info = sr_module_file_data_set(mod->ly_mod->name, mod_info->ds, mod_data, create_flags, SR_FILE_PERM))) {
                     goto cleanup;
                 }
 
@@ -1855,7 +1860,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                     if ((err_info = sr_diff_mod_update(&diff, mod->ly_mod, mod_data))) {
                         goto cleanup;
                     }
-                    if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, 0, diff))) {
+                    if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
                         goto cleanup;
                     }
                     lyd_free_withsiblings(diff);

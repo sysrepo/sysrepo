@@ -1,0 +1,11 @@
+submodule sub-mod {
+    belongs-to main-mod {
+        prefix mm;
+    }
+
+    feature feat;
+
+    leaf sub-leaf {
+        type empty;
+    }
+}

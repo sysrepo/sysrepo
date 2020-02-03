@@ -1,0 +1,26 @@
+module list-case {
+    namespace "urn:lc";
+    prefix lc;
+
+    container ac1 {
+        list acl1 {
+            key acs1;
+            leaf acs1 {
+                type string;
+            }
+
+            choice acl1ch1 {
+                case acl1ch1cs1 {
+                    leaf acl1ch1cs1lf1 {
+                        type string;
+                    }
+                }
+                case acl1ch1cs2 {
+                    leaf acl1ch1cs2lf1 {
+                        type string;
+                    }
+                }
+            }
+        }
+    }
+}

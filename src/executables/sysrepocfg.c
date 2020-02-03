@@ -86,6 +86,7 @@ help_print(void)
         "  -l, --lock                   Lock the specified datastore for the whole operation (edit op).\n"
         "  -n, --not-strict             Silently ignore any unknown data (import, edit, rpc, notification, copy-from op).\n"
         "  -p, --depth <number>         Limit the depth of returned subtrees, 0 so unlimited by default (export op).\n"
+        "  -t, --timeout <seconds>      Set the timeout for the operation, otherwise the default one is used.\n"
         "  -v, --verbosity <level>      Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
         "\n"
     );
@@ -222,11 +223,6 @@ step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format,
         }
     }
 
-    /* do not validate candidate data */
-    if (sr_session_get_ds(sess) == SR_DS_CANDIDATE) {
-        flags |= LYD_OPT_TRUSTED;
-    }
-
     /* parse import data */
     if (file_path) {
         *data = lyd_parse_path(ly_ctx, file_path, format, flags, NULL);
@@ -278,7 +274,8 @@ step_create_input_file(LYD_FORMAT format, char *tmp_file)
 }
 
 static int
-op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name, LYD_FORMAT format, int not_strict)
+op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name, LYD_FORMAT format, int not_strict,
+        int timeout_s)
 {
     struct lyd_node *data;
     int r, flags;
@@ -289,7 +286,7 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* replace config (always spends data) */
-    r = sr_replace_config(sess, module_name, data, sr_session_get_ds(sess), 0);
+    r = sr_replace_config(sess, module_name, data, timeout_s * 1000);
     if (r) {
         error_print(r, "Replace config failed");
         return EXIT_FAILURE;
@@ -300,7 +297,7 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
 
 static int
 op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name, const char *xpath, LYD_FORMAT format,
-        uint32_t max_depth)
+        uint32_t max_depth, int timeout_s)
 {
     struct lyd_node *data;
     FILE *file = NULL;
@@ -322,12 +319,12 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     /* get subtrees */
     if (module_name) {
         asprintf(&str, "/%s:*", module_name);
-        r = sr_get_data(sess, str, max_depth, 0, 0, &data);
+        r = sr_get_data(sess, str, max_depth, timeout_s * 1000, 0, &data);
         free(str);
     } else if (xpath) {
-        r = sr_get_data(sess, xpath, max_depth, 0, 0, &data);
+        r = sr_get_data(sess, xpath, max_depth, timeout_s * 1000, 0, &data);
     } else {
-        r = sr_get_data(sess, "/*", max_depth, 0, 0, &data);
+        r = sr_get_data(sess, "/*", max_depth, timeout_s * 1000, 0, &data);
     }
     if (r != SR_ERR_OK) {
         error_print(r, "Getting data failed");
@@ -350,7 +347,7 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
 
 static int
 op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const char *module_name, LYD_FORMAT format,
-        int lock, int not_strict)
+        int lock, int not_strict, int timeout_s)
 {
     char tmp_file[22];
     int r, flags, rc = EXIT_FAILURE;
@@ -370,7 +367,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
             return EXIT_FAILURE;
         }
 
-        r = sr_apply_changes(sess, 0);
+        r = sr_apply_changes(sess, timeout_s * 1000);
         if (r != SR_ERR_OK) {
             error_print(r, "Failed to merge edit data");
             return EXIT_FAILURE;
@@ -391,7 +388,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
     }
 
     /* use export operation to get data to edit */
-    if (op_export(sess, tmp_file, module_name, NULL, format, 0)) {
+    if (op_export(sess, tmp_file, module_name, NULL, format, 0, timeout_s)) {
         goto cleanup_unlock;
     }
 
@@ -401,7 +398,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
     }
 
     /* use import operation to store edited data */
-    if (op_import(sess, tmp_file, module_name, format, not_strict)) {
+    if (op_import(sess, tmp_file, module_name, format, not_strict, timeout_s)) {
         goto cleanup_unlock;
     }
 
@@ -416,7 +413,7 @@ cleanup_unlock:
 }
 
 static int
-op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format, int not_strict)
+op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format, int not_strict, int timeout_s)
 {
     char tmp_file[22];
     int r, flags;
@@ -443,7 +440,7 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
     }
 
     /* send rpc/action */
-    r = sr_rpc_send_tree(sess, input, 0, &output);
+    r = sr_rpc_send_tree(sess, input, timeout_s * 1000, &output);
     lyd_free_withsiblings(input);
     if (r) {
         error_print(r, "Sending RPC/action failed");
@@ -503,8 +500,8 @@ op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_
 }
 
 static int
-op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds, sr_datastore_t target_ds,
-        const char *module_name, LYD_FORMAT format, int not_strict)
+op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds, const char *module_name,
+        LYD_FORMAT format, int not_strict, int timeout_s)
 {
     int r, flags;
     struct lyd_node *data;
@@ -517,14 +514,14 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
         }
 
         /* replace data */
-        r = sr_replace_config(sess, module_name, data, target_ds, 0);
+        r = sr_replace_config(sess, module_name, data, timeout_s * 1000);
         if (r) {
             error_print(r, "Replace config failed");
             return EXIT_FAILURE;
         }
     } else {
         /* copy config */
-        r = sr_copy_config(sess, module_name, source_ds, target_ds, 0);
+        r = sr_copy_config(sess, module_name, source_ds, timeout_s * 1000);
         if (r) {
             error_print(r, "Copy config failed");
             return EXIT_FAILURE;
@@ -569,7 +566,7 @@ main(int argc, char** argv)
     const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL;
     char *ptr;
     sr_log_level_t log_level = SR_LL_ERR;
-    int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0;
+    int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0, timeout = 0;
     uint32_t max_depth = 0;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
@@ -587,6 +584,7 @@ main(int argc, char** argv)
         {"lock",            no_argument,       NULL, 'l'},
         {"not-strict",      no_argument,       NULL, 'n'},
         {"depth",           required_argument, NULL, 'p'},
+        {"timeout",         required_argument, NULL, 't'},
         {"verbosity",       required_argument, NULL, 'v'},
         {NULL,              0,                 NULL, 0},
     };
@@ -598,7 +596,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:d:m:x:f:lnp:v:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:d:m:x:f:lnp:t:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -735,6 +733,13 @@ main(int argc, char** argv)
                 goto cleanup;
             }
             break;
+        case 't':
+            timeout = strtoul(optarg, &ptr, 10);
+            if (ptr[0]) {
+                error_print(0, "Invalid timeout \"%s\"", optarg);
+                goto cleanup;
+            }
+            break;
         case 'v':
             if (!strcmp(optarg, "none")) {
                 log_level = SR_LL_NONE;
@@ -783,22 +788,22 @@ main(int argc, char** argv)
     /* perform the operation */
     switch (operation) {
     case 'I':
-        rc = op_import(sess, file_path, module_name, format, not_strict);
+        rc = op_import(sess, file_path, module_name, format, not_strict, timeout);
         break;
     case 'X':
-        rc = op_export(sess, file_path, module_name, xpath, format, max_depth);
+        rc = op_export(sess, file_path, module_name, xpath, format, max_depth, timeout);
         break;
     case 'E':
-        rc = op_edit(sess, file_path, editor, module_name, format, lock, not_strict);
+        rc = op_edit(sess, file_path, editor, module_name, format, lock, not_strict, timeout);
         break;
     case 'R':
-        rc = op_rpc(sess, file_path, editor, format, not_strict);
+        rc = op_rpc(sess, file_path, editor, format, not_strict, timeout);
         break;
     case 'N':
         rc = op_notif(sess, file_path, editor, format, not_strict);
         break;
     case 'C':
-        rc = op_copy(sess, file_path, source_ds, ds, module_name, format, not_strict);
+        rc = op_copy(sess, file_path, source_ds, module_name, format, not_strict, timeout);
         break;
     case 0:
         error_print(0, "No operation specified");
