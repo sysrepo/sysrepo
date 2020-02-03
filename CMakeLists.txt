@@ -282,6 +282,9 @@ if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(bindings)
 endif()
 
+# packages
+add_subdirectory(packages)
+
 # phony target for clearing sysrepo SHM
 add_custom_target(shm_clean
     COMMAND rm -rf /dev/shm/sr_*
