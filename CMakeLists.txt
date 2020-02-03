@@ -98,6 +98,7 @@ option(ENABLE_PYTHON_TESTS "Enable Python tests." ON)
 # compilation flags
 set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_COVERAGE} -Wall -Wextra -Wpedantic -std=c99")
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
+set(CMAKE_C_FLAGS_PACKAGE "-g -O2 -DNDEBUG")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
 
 # paths
