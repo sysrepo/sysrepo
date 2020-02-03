@@ -329,7 +329,8 @@ int sr_session_notif_buffer(sr_session_ctx_t *session);
 
 /**
  * @brief Change datastore which the session operates on. All subsequent
- * calls will be issued on the chosen datastore.
+ * calls will be issued on the chosen datastore. Previous calls are not
+ * affected.
  *
  * @param[in] session Session to modify.
  * @param[in] ds New datastore that will be operated on.
