@@ -378,13 +378,14 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
     }
     free(items);
 
+    /* print all the information about SHM */
+    SR_LOG_DBG("#SHM:\n%s", msg);
+    free(msg);
+
     /* check that no item exists after the mapped segment */
     assert((unsigned)cur_off <= ext_shm_size);
     /* check that wasted memory is correct */
     assert(*((size_t *)ext_shm_addr) == wasted);
-
-    SR_LOG_DBG("#SHM:\n%s", msg);
-    free(msg);
 }
 
 /**
