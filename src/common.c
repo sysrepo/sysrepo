@@ -2351,8 +2351,8 @@ cleanup:
 sr_error_info_t *
 sr_mkpath(char *path, mode_t mode)
 {
-    char *p;
     sr_error_info_t *err_info = NULL;
+    char *p;
 
     assert(path[0] == '/');
 
@@ -2360,8 +2360,8 @@ sr_mkpath(char *path, mode_t mode)
         *p = '\0';
         if (mkdir(path, mode) == -1) {
             if (errno != EEXIST) {
+                sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
                 *p = '/';
-                SR_ERRINFO_SYSERRNO(&err_info, "mkdir");
                 return err_info;
             }
         }
@@ -2370,7 +2370,7 @@ sr_mkpath(char *path, mode_t mode)
 
     if (mkdir(path, mode) == -1) {
         if (errno != EEXIST) {
-            SR_ERRINFO_SYSERRNO(&err_info, "mkdir");
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
             return err_info;
         }
     }
