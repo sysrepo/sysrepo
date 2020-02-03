@@ -168,7 +168,7 @@ sr_shmsub_notify_finish_wrunlock(sr_sub_shm_t *sub_shm, size_t shm_struct_size, 
 
     /* wait until this event was processed */
     ret = 0;
-    while (!ret && (sub_shm->lock.readers || !SR_IS_NOTIFY_EVENT(sub_shm->event))) {
+    while (!ret && (sub_shm->lock.readers || (!SR_IS_NOTIFY_EVENT(sub_shm->event) && (sub_shm->event != SR_SUB_EV_NONE)))) {
         /* COND WAIT */
         ret = pthread_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, &timeout_ts);
     }
@@ -186,7 +186,9 @@ sr_shmsub_notify_finish_wrunlock(sr_sub_shm_t *sub_shm, size_t shm_struct_size, 
             /* event timeout */
             sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, NULL, "Callback event \"%s\" with ID %u processing timed out.",
                     sr_ev2str(sub_shm->event), sub_shm->request_id);
-            sub_shm->event = SR_SUB_EV_ERROR;
+            if ((sub_shm->event != SR_SUB_EV_DONE) && (sub_shm->event != SR_SUB_EV_ABORT)) {
+                sub_shm->event = SR_SUB_EV_ERROR;
+            }
         } else {
             /* other error */
             SR_ERRINFO_COND(&err_info, __func__, ret);
@@ -864,9 +866,9 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid)
+sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
     struct sr_mod_info_mod_s *mod = NULL;
     uint32_t cur_priority, subscriber_count, diff_lyb_len;
@@ -925,8 +927,21 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
                 goto cleanup_wrunlock;
             }
 
-            /* SUB WRITE UNLOCK */
-            sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
+            if (timeout_ms) {
+                /* wait until the event is processed if there is a timeout */
+
+                /* SUB WRITE UNLOCK */
+                if ((err_info = sr_shmsub_notify_finish_wrunlock((sr_sub_shm_t *)multi_sub_shm, sizeof *multi_sub_shm,
+                        timeout_ms, &cb_err_info))) {
+                    goto cleanup;
+                }
+
+                /* we do not care about an error */
+                sr_errinfo_free(&cb_err_info);
+            } else {
+                /* SUB WRITE UNLOCK */
+                sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
+            }
 
             /* find out what is the next priority and how many subscribers have it */
             sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
@@ -949,9 +964,9 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid)
+sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
     struct lyd_node *abort_diff;
     struct sr_mod_info_mod_s *mod = NULL;
@@ -1049,14 +1064,27 @@ clear_shm:
             sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->request_id, cur_priority, SR_SUB_EV_ABORT, &sid,
                     subscriber_count, 0, diff_lyb, diff_lyb_len);
 
-            /* notify using event pipe and do not wait for subscribers */
+            /* notify using event pipe */
             if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
                     SR_SUB_EV_ABORT, cur_priority))) {
                 goto cleanup_wrunlock;
             }
 
-            /* SUB WRITE UNLOCK */
-            sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
+            if (timeout_ms) {
+                /* wait until the event is processed if there is a timeout */
+
+                /* SUB WRITE UNLOCK */
+                if ((err_info = sr_shmsub_notify_finish_wrunlock((sr_sub_shm_t *)multi_sub_shm, sizeof *multi_sub_shm,
+                        timeout_ms, &cb_err_info))) {
+                    goto cleanup;
+                }
+
+                /* we do not care about an error */
+                sr_errinfo_free(&cb_err_info);
+            } else {
+                /* SUB WRITE UNLOCK */
+                sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
+            }
 
             if (last_subscr && (err_priority == cur_priority)) {
                 /* last priority subscribers handled */

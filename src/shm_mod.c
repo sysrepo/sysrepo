@@ -454,7 +454,8 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_
             shm_lock->write_locked = 1;
             shm_lock->sid = sid;
 
-            /* remember this lock in SHM (fake WRITE lock) */
+            /* remember this lock in SHM (fake WRITE lock - write_locked is set to 1
+             * but actual module lock is only SR_LOCK_READ) */
             sr_shmmod_conn_state_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 1);
 
             /* MOD WRITE UNLOCK */
@@ -521,6 +522,57 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
                 return err_info;
             }
             mod->state |= MOD_INFO_WLOCK;
+        }
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    sr_datastore_t ds;
+    struct sr_mod_info_mod_s *mod;
+    struct sr_mod_lock_s *shm_lock;
+
+    switch (mod_info->ds) {
+    case SR_DS_STARTUP:
+    case SR_DS_RUNNING:
+    case SR_DS_CANDIDATE:
+        ds = mod_info->ds;
+        break;
+    case SR_DS_OPERATIONAL:
+        /* will use running DS */
+        ds = SR_DS_RUNNING;
+        break;
+    }
+
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        shm_lock = &mod->shm_mod->data_lock_info[ds];
+
+        /* downgrade only required modules */
+        if ((mod->state & MOD_INFO_REQ) && (mod->state & MOD_INFO_WLOCK)) {
+            assert(shm_lock->write_locked);
+            assert(!memcmp(&shm_lock->sid, &sid, sizeof sid));
+
+            /* MOD WRITE UNLOCK */
+            sr_rwunlock(&shm_lock->lock, SR_LOCK_WRITE, __func__);
+
+            /* remove flag for correct error recovery */
+            mod->state &= ~MOD_INFO_WLOCK;
+
+            /* update this lock in SHM (we have again a fake WRITE lock) */
+            sr_shmmod_conn_state_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 1);
+            sr_shmmod_conn_state_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 1);
+
+            /* MOD READ LOCK */
+            if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_READ, sid))) {
+                return err_info;
+            }
+            mod->state |= MOD_INFO_RLOCK;
         }
     }
 
