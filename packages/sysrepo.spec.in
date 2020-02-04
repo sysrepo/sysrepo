@@ -2,7 +2,7 @@ Name: @PACKAGE@
 Version: @SYSREPO_VERSION@
 Release: 0
 Summary: @PACKAGE_BRIEF@
-Url: @GIT_URL@
+Url: @GITHUB_URL@
 Source: @GITHUB_URL@/archive/master.tar.gz
 Source1: @PACKAGE@.rpmlintrc
 License: Apache-2.0
