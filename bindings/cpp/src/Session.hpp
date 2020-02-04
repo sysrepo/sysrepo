@@ -107,13 +107,14 @@ public:
     /** Wrapper for [sr_validate](@ref sr_validate) */
     void validate(uint32_t timeout_ms = 0);
     /** Wrapper for [sr_apply_changes](@ref sr_apply_changes) */
-    void apply_changes(uint32_t timeout_ms = 0);
+    void apply_changes(uint32_t timeout_ms = 0, int wait = 0);
     /** Wrapper for [sr_discard_changes](@ref sr_discard_changes) */
     void discard_changes();
     /** Wrapper for [sr_replace_config](@ref sr_replace_config) */
-    void replace_config(const libyang::S_Data_Node src_config, const char *module_name = nullptr, uint32_t timeout_ms = 0);
+    void replace_config(const libyang::S_Data_Node src_config, const char *module_name = nullptr, uint32_t timeout_ms = 0, \
+            int wait = 0);
     /** Wrapper for [sr_copy_config](@ref sr_copy_config) */
-    void copy_config(sr_datastore_t src_datastore, const char *module_name = nullptr, uint32_t timeout_ms = 0);
+    void copy_config(sr_datastore_t src_datastore, const char *module_name = nullptr, uint32_t timeout_ms = 0, int wait = 0);
 
     /** Wrapper for [sr_lock](@ref sr_lock) */
     void lock(const char *module_name = nullptr);
