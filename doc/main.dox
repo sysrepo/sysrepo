@@ -168,7 +168,7 @@ Because Sysrepo uses shared memory, no automatic OS cleanup is performed in case
 [properly terminate](@ref ::sr_disconnect) all its connections. Hence the current state of each connection is
 continuously updated and stored so that other applications are able to perform the cleanup after a corrupt application.
 
-This cleanup is performed mostly automatically but may also be [requested manually](@ref ::sr_connection_recover). Note
+This cleanup is performed automatically as part of almost every API function. Note
 that this mechanism is not foolproof and cannot cover all the cases. So, only the most common ones are covered, namely
 when an application crashes **while not executing any Sysrepo function** or in an **application callback** called
 by Sysrepo. In other words, if the applications crashes in its own code. In case a crash occurs in Sysrepo code,
