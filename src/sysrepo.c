@@ -4568,19 +4568,136 @@ cleanup_shm_unlock:
     return sr_api_ret(session, err_info);
 }
 
+/**
+ * @brief Learn what kinds (config) of nodes are provided by an operational subscription
+ * to determine its type.
+ *
+ * @param[in] ly_mod Module with the nodes.
+ * @param[in] path Subscription path.
+ * @param[out] sub_type Learned subscription type.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_oper_sub_get_type(const struct lys_module *ly_mod, const char *path, sr_mod_oper_sub_type_t *sub_type)
+{
+    sr_error_info_t *err_info = NULL;
+    char *schema_path;
+    struct lys_node *next, *elem;
+    struct ly_set *set = NULL;
+    uint16_t i;
+
+    schema_path = ly_path_data2schema(ly_mod->ctx, path);
+    set = lys_find_path(ly_mod, NULL, schema_path);
+    free(schema_path);
+    if (!set) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        goto cleanup;
+    } else if (!set->number) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "XPath \"%s\" does not point to any nodes.", path);
+        goto cleanup;
+    }
+
+    *sub_type = SR_OPER_SUB_NONE;
+    for (i = 0; i < set->number; ++i) {
+        LY_TREE_DFS_BEGIN(set->set.s[i], next, elem) {
+            switch (elem->nodetype) {
+            case LYS_CONTAINER:
+            case LYS_LEAF:
+            case LYS_LEAFLIST:
+            case LYS_LIST:
+            case LYS_ANYXML:
+            case LYS_ANYDATA:
+                /* data node - check config */
+                if ((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_R) {
+                    if (*sub_type == SR_OPER_SUB_CONFIG) {
+                        *sub_type = SR_OPER_SUB_MIXED;
+                    } else {
+                        *sub_type = SR_OPER_SUB_STATE;
+                    }
+                } else {
+                    assert((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_W);
+                    if (*sub_type == SR_OPER_SUB_STATE) {
+                        *sub_type = SR_OPER_SUB_MIXED;
+                    } else {
+                        *sub_type = SR_OPER_SUB_CONFIG;
+                    }
+                }
+                break;
+            case LYS_CHOICE:
+            case LYS_CASE:
+            case LYS_USES:
+                /* go into */
+                break;
+            case LYS_NOTIF:
+            case LYS_RPC:
+            case LYS_ACTION:
+            case LYS_GROUPING:
+                /* skip */
+                goto next_sibling;
+            default:
+                /* should not be reachable */
+                SR_ERRINFO_INT(&err_info);
+                goto cleanup;
+            }
+
+            if ((*sub_type == SR_OPER_SUB_STATE) || (*sub_type == SR_OPER_SUB_MIXED)) {
+                /* redundant to look recursively */
+                break;
+            }
+
+            /* LY_TREE_DFS_END(set->set.s[i], next, elem); */
+            if (elem->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA)) {
+                next = NULL;
+            } else {
+                next = elem->child;
+            }
+
+            if (!next) {
+next_sibling:
+                /* no children */
+                if (elem == set->set.s[i]) {
+                    /* we are done, (START) has no children */
+                    break;
+                }
+                /* try siblings */
+                next = elem->next;
+            }
+            while (!next) {
+                /* parent is already processed, go to its sibling */
+                if (elem->parent->nodetype == LYS_AUGMENT) {
+                    elem = elem->parent->prev;
+                } else {
+                    elem = elem->parent;
+                }
+                /* no siblings, go back through parents */
+                if (lys_parent(elem) == lys_parent(set->set.s[i])) {
+                    /* we are done, no next element to process */
+                    break;
+                }
+                next = elem->next;
+            }
+        }
+
+        if (*sub_type == SR_OPER_SUB_MIXED) {
+            /* we found both config type nodes, nothing more to look for */
+            break;
+        }
+    }
+
+cleanup:
+    ly_set_free(set);
+    return err_info;
+}
+
 API int
 sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path,
         sr_oper_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn;
-    char *schema_path = NULL;
-    const struct lys_module *mod;
-    struct lys_node *next, *elem;
-    struct ly_set *set = NULL;
+    const struct lys_module *ly_mod;
     sr_mod_oper_sub_type_t sub_type;
     sr_mod_t *shm_mod;
-    uint16_t i;
 
     SR_CHECK_ARG_APIRET(!session || !module_name || !path || !callback || !subscription, session, err_info);
 
@@ -4591,8 +4708,8 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
 
     conn = session->conn;
 
-    mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!mod) {
+    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+    if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
         return sr_api_ret(session, err_info);
     }
@@ -4602,47 +4719,9 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
         return sr_api_ret(session, err_info);
     }
 
-    schema_path = ly_path_data2schema(conn->ly_ctx, path);
-    set = lys_find_path(mod, NULL, schema_path);
-    if (!set) {
-        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        return sr_api_ret(session, err_info);
-    } else if (!set->number) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "XPath \"%s\" does not point to any nodes.", path);
-        return sr_api_ret(session, err_info);
-    }
-
     /* find out what kinds of nodes are provided */
-    sub_type = SR_OPER_SUB_NONE;
-    for (i = 0; i < set->number; ++i) {
-        LY_TREE_DFS_BEGIN(set->set.s[i], next, elem) {
-            if ((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_R) {
-                if (sub_type == SR_OPER_SUB_CONFIG) {
-                    sub_type = SR_OPER_SUB_MIXED;
-                } else {
-                    sub_type = SR_OPER_SUB_STATE;
-                }
-            } else {
-                assert((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_W);
-                if (sub_type == SR_OPER_SUB_STATE) {
-                    sub_type = SR_OPER_SUB_MIXED;
-                } else {
-                    sub_type = SR_OPER_SUB_CONFIG;
-                }
-            }
-
-            if ((sub_type == SR_OPER_SUB_STATE) || (sub_type == SR_OPER_SUB_MIXED)) {
-                /* redundant to look recursively */
-                break;
-            }
-
-            LY_TREE_DFS_END(set->set.s[i], next, elem);
-        }
-
-        if (sub_type == SR_OPER_SUB_MIXED) {
-            /* we found both config type nodes, nothing more to look for */
-            break;
-        }
+    if ((err_info = sr_oper_sub_get_type(ly_mod, path, &sub_type))) {
+        return sr_api_ret(session, err_info);
     }
 
     /* SHM LOCK (modifying subscriptions) */
@@ -4695,7 +4774,5 @@ cleanup_unlock:
     /* SHM UNLOCK */
     sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, 0, __func__);
 
-    free(schema_path);
-    ly_set_free(set);
     return sr_api_ret(session, err_info);
 }
