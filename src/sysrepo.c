@@ -1848,7 +1848,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
         if (!*data) {
             *data = node;
         } else {
-            if (lyd_merge(*data, node, LYD_OPT_DESTRUCT)) {
+            if (lyd_merge(*data, node, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
                 sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
                 lyd_free_withsiblings(node);
                 lyd_free_withsiblings(*data);

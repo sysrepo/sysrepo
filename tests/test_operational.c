@@ -82,6 +82,9 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/act3.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -106,6 +109,7 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "defaults");
     sr_remove_module(st->conn, "act3");
     sr_remove_module(st->conn, "act2");
     sr_remove_module(st->conn, "act");
@@ -2080,6 +2084,90 @@ test_default_when(void **state)
     free(str1);
 }
 
+/* TEST 19 */
+static int
+nested_default_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *node;
+
+    (void)request_id;
+    (void)private_data;
+
+    ly_ctx = sr_get_context(sr_session_get_connection(session));
+
+    assert_string_equal(request_xpath, "/defaults:*");
+    assert_string_equal(module_name, "defaults");
+    assert_non_null(parent);
+
+    if (!strcmp(xpath, "/defaults:l1/cont1/ll")) {
+        assert_non_null(*parent);
+
+        node = lyd_new_path(*parent, NULL, "ll", "valuee", 0, 0);
+        assert_non_null(node);
+    } else if (!strcmp(xpath, "/defaults:l1")) {
+        assert_null(*parent);
+
+        node = lyd_new_path(NULL, ly_ctx, "/defaults:l1[k='val']/cont1/cont2/dflt1", "64", 0, 0);
+        assert_non_null(node);
+        *parent = node;
+    } else {
+        fail();
+    }
+
+    return SR_ERR_OK;
+}
+
+static void
+test_nested_default(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    sr_subscription_ctx_t *subscr;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* subscribe as state data provider and listen */
+    ret = sr_oper_get_items_subscribe(st->sess, "defaults", "/defaults:l1", nested_default_oper_cb, NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_get_items_subscribe(st->sess, "defaults", "/defaults:l1/cont1/ll",
+            nested_default_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from operational */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(st->sess, "/defaults:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_ALL_TAG);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<cont xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<interval ncwd:default=\"true\">30</interval>"
+    "</cont>"
+    "<l1 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"unknown\">"
+        "<k>val</k>"
+        "<cont1>"
+            "<cont2>"
+                "<dflt1>64</dflt1>"
+            "</cont2>"
+            "<ll>valuee</ll>"
+        "</cont1>"
+    "</l1>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    sr_unsubscribe(subscr);
+}
+
 int
 main(void)
 {
@@ -2102,6 +2190,7 @@ main(void)
         cmocka_unit_test_teardown(test_stored_diff_merge_replace, clear_up),
         cmocka_unit_test_teardown(test_stored_diff_merge_userord, clear_up),
         cmocka_unit_test(test_default_when),
+        cmocka_unit_test(test_nested_default),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
