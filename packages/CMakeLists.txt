@@ -28,6 +28,8 @@ configure_file(${PROJECT_SOURCE_DIR}/packages/debian.control.in ${PROJECT_BINARY
 configure_file(${PROJECT_SOURCE_DIR}/packages/debian.rules.in ${PROJECT_BINARY_DIR}/build-packages/debian.rules)
 configure_file(${PROJECT_SOURCE_DIR}/packages/debian.compat
                ${PROJECT_BINARY_DIR}/build-packages/debian.compat COPYONLY)
+configure_file(${PROJECT_SOURCE_DIR}/packages/debian.copyright
+               ${PROJECT_BINARY_DIR}/build-packages/debian.copyright COPYONLY)
 configure_file(${PROJECT_SOURCE_DIR}/packages/${PACKAGE}.rpmlintrc
                ${PROJECT_BINARY_DIR}/build-packages/${PACKAGE}.rpmlintrc COPYONLY)
 configure_file(${PROJECT_SOURCE_DIR}/packages/debian.${PACKAGE}.install
