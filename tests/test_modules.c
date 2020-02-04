@@ -722,7 +722,7 @@ test_change_feature(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/features:l3", "val3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* disable feature, there are some dependent features enabled */
@@ -798,9 +798,9 @@ test_change_feature(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/features:l3", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_copy_config(sess, NULL, SR_DS_STARTUP, 0);
+    ret = sr_copy_config(sess, NULL, SR_DS_STARTUP, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_session_stop(sess);
 

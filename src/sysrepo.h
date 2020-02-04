@@ -329,7 +329,8 @@ int sr_session_notif_buffer(sr_session_ctx_t *session);
 
 /**
  * @brief Change datastore which the session operates on. All subsequent
- * calls will be issued on the chosen datastore.
+ * calls will be issued on the chosen datastore. Previous calls are not
+ * affected.
  *
  * @param[in] session Session to modify.
  * @param[in] ds New datastore that will be operated on.
@@ -962,9 +963,12 @@ int sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms);
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to apply changes of.
  * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
+ * @param[in] wait Whether to wait until all callbacks on all events are finished (even ::SR_EV_DONE or ::SR_EV_ABORT).
+ * If not set, these events may not yet be processed after the function returns. Note that all ::SR_EV_CHANGE events
+ * are always waited for.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
+int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms, int wait);
 
 /**
  * @brief Discard prepared changes made in the current session.
@@ -984,9 +988,13 @@ int sr_discard_changes(sr_session_ctx_t *session);
  * @param[in] module_name If specified, limits the replace operation only to this module.
  * @param[in] src_config Source data to replace the datastore. Is ALWAYS spent and cannot be further used by the application!
  * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
+ * @param[in] wait Whether to wait until all callbacks on all events are finished (even ::SR_EV_DONE or ::SR_EV_ABORT).
+ * If not set, these events may not yet be processed after the function returns. Note that all ::SR_EV_CHANGE events
+ * are always waited for.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms);
+int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
+        uint32_t timeout_ms, int wait);
 
 /**
  * @brief Replaces a conventional datastore with the contents of
@@ -1003,9 +1011,13 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
  * @param[in] module_name Optional module name that limits the copy operation only to this module.
  * @param[in] src_datastore Source datastore.
  * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
+ * @param[in] wait Whether to wait until all callbacks on all events are finished (even ::SR_EV_DONE or ::SR_EV_ABORT).
+ * If not set, these events may not yet be processed after the function returns. Note that all ::SR_EV_CHANGE events
+ * are always waited for.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms);
+int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms,
+        int wait);
 
 /** @} editdata */
 

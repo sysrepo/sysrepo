@@ -689,6 +689,16 @@ sr_error_info_t *sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int up
 sr_error_info_t *sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid);
 
 /**
+ * @brief Downgrade WRITE lock on modules in mod info to READ lock.
+ * Works only for upgraded READ lock.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] sid Sysrepo session ID.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid);
+
+/**
  * @brief Unlock mod info.
  *
  * @param[in] mod_info Mod info to use.
@@ -906,18 +916,20 @@ sr_error_info_t *sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, 
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] sid Originator sysrepo session ID.
+ * @param[in] timeout_ms Change callback timeout in milliseconds. Set to 0 if the event should not be waited for.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid);
+sr_error_info_t *sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms);
 
 /**
  * @brief Notify about (generate) a change "abort" event.
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] sid Originator sysrepo session ID.
+ * @param[in] timeout_ms Change callback timeout in milliseconds. Set to 0 if the event should not be waited for.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid);
+sr_error_info_t *sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms);
 
 /**
  * @brief Notify about (generate) an operational event.

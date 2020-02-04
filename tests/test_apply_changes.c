@@ -438,7 +438,7 @@ apply_change_done_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform 1st change */
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -469,7 +469,7 @@ apply_change_done_thread(void *arg)
     /* perform 2nd change */
     ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -758,7 +758,7 @@ apply_update_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform 1st change */
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -787,7 +787,7 @@ apply_update_thread(void *arg)
     /* perform 2nd change */
     ret = sr_delete_item(sess, "/ietf-interfaces:interfaces/interface[name='eth52']", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -911,7 +911,7 @@ apply_update_fail_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform the change (it should fail) */
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
     ret = sr_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1226,7 +1226,7 @@ apply_change_fail_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform the change (it should fail) */
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     /* no custom error message set */
@@ -1255,7 +1255,7 @@ apply_change_fail_thread(void *arg)
     /* perform a single change (it should fail) */
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     ret = sr_discard_changes(sess);
@@ -1294,7 +1294,7 @@ subscribe_change_fail_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/test:l1[k='key2']/v", "2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_ifc_change_fail_cb, st, 0, 0, &subscr);
@@ -1332,7 +1332,7 @@ subscribe_change_fail_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/test:l1[k='key2']", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     sr_session_stop(sess);
@@ -1827,11 +1827,6 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
         fail();
     }
 
-    if (event == SR_EV_DONE) {
-        /* let other thread now even done event was handled */
-        pthread_barrier_wait(&st->barrier);
-    }
-
     ++st->cb_called;
     return SR_ERR_OK;
 }
@@ -1859,7 +1854,7 @@ apply_change_done_dflt_thread(void *arg)
      */
     ret = sr_set_item_str(sess, "/defaults:l1[k='when-true']/cont1/ll", "val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -1891,8 +1886,6 @@ apply_change_done_dflt_thread(void *arg)
     assert_string_equal(str1, str2);
     free(str1);
 
-    pthread_barrier_wait(&st->barrier);
-
     /*
      * perform 2nd change
      *
@@ -1900,7 +1893,7 @@ apply_change_done_dflt_thread(void *arg)
      */
     ret = sr_delete_item(sess, "/defaults:l1[k='when-true']/cont1", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -1931,8 +1924,6 @@ apply_change_done_dflt_thread(void *arg)
     assert_string_equal(str1, str2);
     free(str1);
 
-    pthread_barrier_wait(&st->barrier);
-
     /*
      * perform 3rd change
      *
@@ -1940,8 +1931,7 @@ apply_change_done_dflt_thread(void *arg)
      */
     ret = sr_set_item_str(sess, "/defaults:l1[k='when-true']/cont1/cont2/dflt1", "5", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -1956,8 +1946,6 @@ apply_change_done_dflt_thread(void *arg)
 
     lyd_free_withsiblings(data);
 
-    pthread_barrier_wait(&st->barrier);
-
     /*
      * perform 4th change
      *
@@ -1965,8 +1953,7 @@ apply_change_done_dflt_thread(void *arg)
      */
     ret = sr_set_item_str(sess, "/defaults:l1[k='when-true']/cont1/cont2/dflt1", "10", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -1981,8 +1968,6 @@ apply_change_done_dflt_thread(void *arg)
 
     lyd_free_withsiblings(data);
 
-    pthread_barrier_wait(&st->barrier);
-
     /*
      * perform 5th change (empty diff, no callbacks called)
      *
@@ -1990,8 +1975,7 @@ apply_change_done_dflt_thread(void *arg)
      */
     ret = sr_delete_item(sess, "/defaults:l1[k='when-true']/cont1/cont2/dflt1", 0);
     assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -2014,7 +1998,7 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_delete_item(sess, "/defaults:l1[k='when-true']", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -2026,8 +2010,6 @@ apply_change_done_dflt_thread(void *arg)
 
     lyd_free_withsiblings(data);
 
-    pthread_barrier_wait(&st->barrier);
-
     /*
      * perform 7th change
      *
@@ -2036,7 +2018,7 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_set_item_str(sess, "/defaults:cont/daily", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -2050,8 +2032,6 @@ apply_change_done_dflt_thread(void *arg)
 
     lyd_free_withsiblings(data);
 
-    pthread_barrier_wait(&st->barrier);
-
     /*
      * perform 8th change
      *
@@ -2060,7 +2040,7 @@ apply_change_done_dflt_thread(void *arg)
     ret = sr_set_item_str(sess, "/defaults:l2[k='key']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -2077,18 +2057,14 @@ apply_change_done_dflt_thread(void *arg)
 
     lyd_free_withsiblings(data);
 
-    pthread_barrier_wait(&st->barrier);
-
     /* cleanup */
     ret = sr_delete_item(sess, "/defaults:cont", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/defaults:l2[k='key']", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-
-    pthread_barrier_wait(&st->barrier);
 
     sr_session_stop(sess);
     return NULL;
@@ -2413,7 +2389,7 @@ apply_change_done_when_thread(void *arg)
      *
      * (create container with a leaf and false when)
      */
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_discard_changes(sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2434,7 +2410,7 @@ apply_change_done_when_thread(void *arg)
     ret = sr_set_item_str(sess, "/when1:l1", "good", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -2457,7 +2433,7 @@ apply_change_done_when_thread(void *arg)
     ret = sr_set_item_str(sess, "/when1:l2", "night", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -2478,7 +2454,7 @@ apply_change_done_when_thread(void *arg)
      */
     ret = sr_delete_item(sess, "/when1:l2", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
@@ -2867,7 +2843,7 @@ apply_change_done_xpath_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform 1st change */
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform 2nd change */
@@ -2879,7 +2855,7 @@ apply_change_done_xpath_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/test:cont", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that we have finished applying changes */
@@ -2993,7 +2969,7 @@ apply_change_unlocked_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform 1st change */
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that we have finished applying changes */
@@ -3106,12 +3082,12 @@ apply_change_timeout_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform the change, time out but give it some time so that the callback is at least called) */
-    ret = sr_apply_changes(sess, 10);
+    ret = sr_apply_changes(sess, 10, 0);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
     pthread_barrier_wait(&st->barrier2);
 
     /* try again while the first callback is still executing (waiting) */
-    ret = sr_apply_changes(sess, 10);
+    ret = sr_apply_changes(sess, 10, 0);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
     pthread_barrier_wait(&st->barrier2);
 
@@ -3122,7 +3098,7 @@ apply_change_timeout_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* finally apply changes successfully */
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that we have finished applying the changes */
@@ -3247,7 +3223,7 @@ apply_change_order_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform the change */
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     pthread_barrier_wait(&st->barrier);
@@ -3259,7 +3235,7 @@ apply_change_order_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform the second change */
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     pthread_barrier_wait(&st->barrier);
@@ -3271,7 +3247,7 @@ apply_change_order_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform the third change */
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that we have finished applying changes */
@@ -3547,7 +3523,7 @@ apply_change_userord_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform 1st change */
-    ret = sr_apply_changes(sess, 0);
+    ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that we have finished applying changes */

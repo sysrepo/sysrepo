@@ -99,7 +99,7 @@ clear_interfaces(void **state)
     struct state *st = (struct state *)*state;
 
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
-    sr_apply_changes(st->sess, 0);
+    sr_apply_changes(st->sess, 0, 0);
 
     return 0;
 }
@@ -116,7 +116,7 @@ clear_test(void **state)
     sr_delete_item(st->sess, "/test:ll1[.='-2']", SR_EDIT_STRICT);
     sr_delete_item(st->sess, "/test:ll1[.='-3']", SR_EDIT_STRICT);
     sr_delete_item(st->sess, "/test:cont", 0);
-    sr_apply_changes(st->sess, 0);
+    sr_apply_changes(st->sess, 0, 0);
 
     return 0;
 }
@@ -163,13 +163,13 @@ test_delete(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* delete on no data */
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -177,12 +177,12 @@ test_delete(void **state)
     /* delete a leaf without exact value */
     ret = sr_set_item_str(st->sess, "/test:test-leaf", "16", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_delete_item(st->sess, "/test:test-leaf", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check final datastore contents */
@@ -209,7 +209,7 @@ test_create1(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
@@ -231,14 +231,14 @@ test_create1(void **state)
 
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* create with non-existing parents */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_NON_RECURSIVE);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -258,7 +258,7 @@ test_create2(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
@@ -280,7 +280,7 @@ test_create2(void **state)
 
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
@@ -313,7 +313,7 @@ test_move1(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:ll1", "-3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform some move operations */
@@ -325,7 +325,7 @@ test_move1(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_move_item(st->sess, "/test:ll1[.='-1']", SR_MOVE_AFTER, NULL, "-2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
@@ -392,7 +392,7 @@ test_move1(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/ll2", "-3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform some move operations */
@@ -404,7 +404,7 @@ test_move1(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_move_item(st->sess, "/test:cont/ll2[.='-3']", SR_MOVE_BEFORE, NULL, "-2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_get_data(st->sess, "/test:cont", 0, 0, 0, &data);
@@ -442,7 +442,7 @@ test_replace(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* remove and create some other data, internally transformed into replace */
@@ -453,7 +453,7 @@ test_replace(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth32']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check final datastore contents */
@@ -490,7 +490,7 @@ test_isolate(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:softwareLoopback", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_EXISTS);
 
     ret = sr_discard_changes(st->sess);
@@ -503,7 +503,7 @@ test_isolate(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:softwareLoopback", NULL, SR_EDIT_ISOLATE);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check datastore contents */
@@ -533,7 +533,7 @@ test_isolate(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:other", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check datastore contents */
@@ -575,13 +575,13 @@ test_purge(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth67']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* delete all instances */
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check datastore contents */
@@ -597,12 +597,12 @@ test_purge(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:ll1", "14", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_delete_item(st->sess, "/test:ll1", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_get_subtree(st->sess, "/test:ll1", 0, &subtree);

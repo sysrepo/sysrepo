@@ -31,7 +31,7 @@ endif()
 # micro version is changed with a set of small changes or bugfixes anywhere in the project.
 set(SYSREPO_MAJOR_VERSION 1)
 set(SYSREPO_MINOR_VERSION 4)
-set(SYSREPO_MICRO_VERSION 0)
+set(SYSREPO_MICRO_VERSION 2)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # Version of the library
@@ -39,7 +39,7 @@ set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_
 # with backward compatible change and micro version is connected with any internal change of the library.
 set(SYSREPO_MAJOR_SOVERSION 5)
 set(SYSREPO_MINOR_SOVERSION 0)
-set(SYSREPO_MICRO_SOVERSION 0)
+set(SYSREPO_MICRO_SOVERSION 2)
 set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
@@ -281,6 +281,9 @@ endif(ENABLE_TESTS)
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(bindings)
 endif()
+
+# packages
+add_subdirectory(packages)
 
 # phony target for clearing sysrepo SHM
 add_custom_target(shm_clean
