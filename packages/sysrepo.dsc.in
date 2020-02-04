@@ -7,4 +7,4 @@ Architecture: any
 Standards-Version: 3.8.2
 Homepage: @GITHUB_URL@
 Vcs-Git: @GITHUB_URL@
-Build-Depends: debhelper (>= 9), make, gcc, doxygen, cmake, pkg-config, libyang-dev (>= @LIBYANG_DEP_VERSION@), libyang-cpp-dev (>= @LIBYANG_DEP_VERSION@) libcmocka-dev, g++
+Build-Depends: debhelper (>= 9), make, gcc, doxygen, cmake, pkg-config, libyang-dev (>= @LIBYANG_DEP_VERSION@), libyang-cpp-dev (>= @LIBYANG_DEP_VERSION@), libcmocka-dev, g++
