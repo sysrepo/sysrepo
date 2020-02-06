@@ -151,6 +151,20 @@ clear_up(void **state)
     return 0;
 }
 
+static int
+dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    return SR_ERR_OK;
+}
+
 /* TEST 1 (no threads) */
 static int
 enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
@@ -861,6 +875,75 @@ test_nested(void **state)
 
 /* TEST 7 */
 static int
+invalid_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    const struct ly_ctx *ly_ctx;
+
+    (void)request_id;
+    (void)private_data;
+
+    ly_ctx = sr_get_context(sr_session_get_connection(session));
+
+    assert_string_equal(xpath, "/test:test-leafref");
+    assert_string_equal(request_xpath, "/test:*");
+    assert_string_equal(module_name, "test");
+    assert_non_null(parent);
+
+    *parent = lyd_new_path(NULL, ly_ctx, "/test:test-leafref", "25", 0, 0);
+    assert_non_null(*parent);
+
+    return SR_ERR_OK;
+}
+
+static void
+test_invalid(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    sr_subscription_ctx_t *subscr;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "25", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to all configuration data just to enable them */
+    ret = sr_module_change_subscribe(st->sess, "test", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe as state data provider and listen, it should be called only 2x */
+    ret = sr_oper_get_items_subscribe(st->sess, "test", "/test:test-leafref", invalid_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from operational */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(st->sess, "/test:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<test-leaf xmlns=\"urn:test\">25</test-leaf>"
+    "<test-leafref xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"unknown\">25</test-leafref>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST 8 */
+static int
 mixed_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
@@ -963,7 +1046,7 @@ test_mixed(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 8 */
+/* TEST 9 */
 static int
 xpath_check_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -1036,7 +1119,7 @@ test_xpath_check(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 9 */
+/* TEST 10 */
 static int
 state_only_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -1078,20 +1161,6 @@ state_only_oper_cb(sr_session_ctx_t *session, const char *module_name, const cha
     }
 
     ++st->cb_called;
-    return SR_ERR_OK;
-}
-
-static int
-dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
-{
-    (void)session;
-    (void)module_name;
-    (void)xpath;
-    (void)event;
-    (void)request_id;
-    (void)private_data;
-
     return SR_ERR_OK;
 }
 
@@ -1222,7 +1291,7 @@ test_state_only(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 10 */
+/* TEST 11 */
 static void
 test_config_only(void **state)
 {
@@ -1276,7 +1345,7 @@ test_config_only(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 11 */
+/* TEST 12 */
 static void
 test_conn_owner1(void **state)
 {
@@ -1336,7 +1405,7 @@ test_conn_owner1(void **state)
     lyd_free_withsiblings(data);
 }
 
-/* TEST 12 */
+/* TEST 13 */
 static void
 test_conn_owner2(void **state)
 {
@@ -1452,7 +1521,7 @@ test_conn_owner2(void **state)
     free(str1);
 }
 
-/* TEST 13 */
+/* TEST 14 */
 static int
 oper_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -1595,7 +1664,7 @@ test_stored_state(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 14 */
+/* TEST 15 */
 static void
 test_stored_state_list(void **state)
 {
@@ -1646,7 +1715,7 @@ test_stored_state_list(void **state)
     free(str1);
 }
 
-/* TEST 15 */
+/* TEST 16 */
 static void
 test_stored_config(void **state)
 {
@@ -1736,7 +1805,7 @@ test_stored_config(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 16 */
+/* TEST 17 */
 static void
 test_stored_diff_merge_leaf(void **state)
 {
@@ -1838,7 +1907,7 @@ test_stored_diff_merge_leaf(void **state)
     free(str1);
 }
 
-/* TEST 17 */
+/* TEST 18 */
 static void
 test_stored_diff_merge_replace(void **state)
 {
@@ -1948,7 +2017,7 @@ test_stored_diff_merge_replace(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 18 */
+/* TEST 19 */
 static void
 test_stored_diff_merge_userord(void **state)
 {
@@ -2106,7 +2175,7 @@ test_stored_diff_merge_userord(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 19 */
+/* TEST 20 */
 static void
 test_default_when(void **state)
 {
@@ -2138,7 +2207,7 @@ test_default_when(void **state)
     free(str1);
 }
 
-/* TEST 20 */
+/* TEST 21 */
 static int
 nested_default_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -2232,6 +2301,7 @@ main(void)
         cmocka_unit_test_teardown(test_config, clear_up),
         cmocka_unit_test_teardown(test_list, clear_up),
         cmocka_unit_test_teardown(test_nested, clear_up),
+        cmocka_unit_test_teardown(test_invalid, clear_up),
         cmocka_unit_test_teardown(test_mixed, clear_up),
         cmocka_unit_test_teardown(test_xpath_check, clear_up),
         cmocka_unit_test_teardown(test_state_only, clear_up),

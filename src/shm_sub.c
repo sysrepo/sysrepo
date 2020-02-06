@@ -1198,7 +1198,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
 
     /* parse returned data */
     ly_errno = 0;
-    *data = lyd_parse_mem(ly_mod->ctx, shm_sub.addr + sizeof *sub_shm, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT);
+    *data = lyd_parse_mem(ly_mod->ctx, shm_sub.addr + sizeof *sub_shm, LYD_LYB, LYD_OPT_DATA | LYD_OPT_TRUSTED | LYD_OPT_STRICT);
     if (ly_errno) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse returned \"operational\" data.");

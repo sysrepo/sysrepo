@@ -6,6 +6,13 @@ module test {
         type uint8;
     }
 
+    leaf test-leafref {
+        type leafref {
+            path "../test-leaf";
+        }
+        config false;
+    }
+
     list l1 {
         ordered-by user;
         key "k";
