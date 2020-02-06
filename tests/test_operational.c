@@ -1733,6 +1733,9 @@ test_stored_diff_merge_leaf(void **state)
     free(str1);
 
     /* set some other operational data, should be merged with the previous data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
             "oper-description2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);

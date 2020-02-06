@@ -1649,10 +1649,12 @@ reapply:
         }
     } while ((next_op != EDIT_CONTINUE) && (next_op != EDIT_FINISH));
 
-    /* fix origin */
-    sr_edit_diff_get_origin(edit_node, &origin, NULL);
-    if (origin && (err_info = sr_edit_diff_set_origin(diff_node, origin, 1))) {
-        return err_info;
+    if (diff_node) {
+        /* fix origin */
+        sr_edit_diff_get_origin(edit_node, &origin, NULL);
+        if (origin && (err_info = sr_edit_diff_set_origin(diff_node, origin, 1))) {
+            return err_info;
+        }
     }
 
     if ((prev_op == EDIT_CASE_REMOVE) || ((prev_op == EDIT_PURGE) && diff_node)) {
