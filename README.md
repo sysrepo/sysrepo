@@ -72,8 +72,8 @@ $ make
 
 ### Documentation
 
-The library documentation is available online ([docs](http://www.sysrepo.org/static/doc/html/), note that it does
-not have to be completely up-to-date) or can be generated locally from the source code using Doxygen tool:
+The library documentation is available online ([docs](https://netopeer.liberouter.org/doc/sysrepo/)),
+or can be generated locally from the source code using Doxygen tool:
 ```
 $ make doc
 $ google-chrome ../doc/html/index.html
