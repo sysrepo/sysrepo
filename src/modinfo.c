@@ -649,7 +649,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
     const char *sub_xpath;
     char *parent_xpath = NULL;
     uint16_t i, j;
-    struct ly_set *set;
+    struct ly_set *set = NULL;
     struct lyd_node *diff = NULL;
 
     if (!(opts & SR_OPER_NO_STORED)) {
@@ -705,8 +705,6 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
         }
 
         if (parent_xpath) {
-            set = NULL;
-
             if (!*data) {
                 /* parent does not exist for sure */
                 goto next_iter;
@@ -735,6 +733,7 @@ next_iter:
             /* cleanup for next iteration */
             free(parent_xpath);
             ly_set_free(set);
+            set = NULL;
         } else {
             /* top-level data */
             if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, NULL, *sid,
