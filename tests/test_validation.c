@@ -217,12 +217,30 @@ test_instid(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_operational(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+
+    /* just validate operational */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_validate(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_teardown(test_leafref, clear_test_refs),
         cmocka_unit_test_teardown(test_instid, clear_test_refs),
+        cmocka_unit_test(test_operational),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

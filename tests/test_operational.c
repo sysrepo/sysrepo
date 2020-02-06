@@ -1115,7 +1115,7 @@ test_state_only(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     st->cb_called = 0;
-    ret = sr_get_data(st->sess, "/*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(st->cb_called, 1);
 
@@ -1163,7 +1163,7 @@ test_state_only(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     st->cb_called = 0;
-    ret = sr_get_data(st->sess, "/*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(st->cb_called, 1);
 

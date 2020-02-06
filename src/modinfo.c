@@ -1130,6 +1130,17 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
         }
 
         if (mod_info->ds == SR_DS_OPERATIONAL) {
+            if (!strcmp(mod->ly_mod->name, "ietf-yang-library")) {
+                /* append ietf-yang-library state data - internal */
+                mod_data = ly_ctx_info(mod_info->conn->ly_ctx);
+                assert(!strcmp(mod_data->schema->name, "yang-library") && !strcmp(mod_data->next->schema->name, "modules-state"));
+                if (mod_info->data) {
+                    sr_ly_link(mod_info->data, mod_data);
+                } else {
+                    mod_info->data = mod_data;
+                }
+            }
+
             /* append any operational data provided by clients */
             if ((err_info = sr_module_oper_data_update(mod, sid, request_xpath, conn->ext_shm.addr,
                         timeout_ms, opts, &mod_info->data, cb_error_info))) {
@@ -1355,7 +1366,11 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *s
     assert(j == valid_mod_count);
 
     /* validate */
-    flags = LYD_OPT_CONFIG | LYD_OPT_WHENAUTODEL | LYD_OPT_VAL_DIFF;
+    if (SR_IS_CONVENTIONAL_DS(mod_info->ds)) {
+        flags = LYD_OPT_CONFIG | LYD_OPT_WHENAUTODEL | LYD_OPT_VAL_DIFF;
+    } else {
+        flags = LYD_OPT_DATA | LYD_OPT_WHENAUTODEL | LYD_OPT_VAL_DIFF;
+    }
     if (lyd_validate_modules(&mod_info->data, valid_mods, valid_mod_count, flags, &diff)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         SR_ERRINFO_VALID(&err_info);
