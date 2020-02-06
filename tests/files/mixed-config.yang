@@ -30,5 +30,17 @@ module mixed-config {
                 config false;
             }
         }
+
+        list l {
+            config false;
+            leaf l1 {
+                type string;
+            }
+        }
+
+        leaf-list ll {
+            type string;
+            config false;
+        }
     }
 }

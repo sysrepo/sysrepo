@@ -1597,6 +1597,57 @@ test_stored_state(void **state)
 
 /* TEST 14 */
 static void
+test_stored_state_list(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some operational data */
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/l[1]/l1", "val1", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/l[2]/l1", "val2", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data */
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<l or:origin=\"unknown\">"
+            "<l1>val1</l1>"
+        "</l>"
+        "<l or:origin=\"unknown\">"
+            "<l1>val2</l1>"
+        "</l>"
+        "<ll or:origin=\"unknown\">val1</ll>"
+        "<ll or:origin=\"unknown\">val2</ll>"
+    "</test-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+}
+
+/* TEST 15 */
+static void
 test_stored_config(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -1685,7 +1736,7 @@ test_stored_config(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 15 */
+/* TEST 16 */
 static void
 test_stored_diff_merge_leaf(void **state)
 {
@@ -1787,7 +1838,7 @@ test_stored_diff_merge_leaf(void **state)
     free(str1);
 }
 
-/* TEST 16 */
+/* TEST 17 */
 static void
 test_stored_diff_merge_replace(void **state)
 {
@@ -1897,7 +1948,7 @@ test_stored_diff_merge_replace(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 17 */
+/* TEST 18 */
 static void
 test_stored_diff_merge_userord(void **state)
 {
@@ -2055,7 +2106,7 @@ test_stored_diff_merge_userord(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 18 */
+/* TEST 19 */
 static void
 test_default_when(void **state)
 {
@@ -2087,7 +2138,7 @@ test_default_when(void **state)
     free(str1);
 }
 
-/* TEST 19 */
+/* TEST 20 */
 static int
 nested_default_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -2188,6 +2239,7 @@ main(void)
         cmocka_unit_test_teardown(test_conn_owner1, clear_up),
         cmocka_unit_test_teardown(test_conn_owner2, clear_up),
         cmocka_unit_test_teardown(test_stored_state, clear_up),
+        cmocka_unit_test_teardown(test_stored_state_list, clear_up),
         cmocka_unit_test_teardown(test_stored_config, clear_up),
         cmocka_unit_test_teardown(test_stored_diff_merge_leaf, clear_up),
         cmocka_unit_test_teardown(test_stored_diff_merge_replace, clear_up),

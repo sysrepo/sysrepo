@@ -197,6 +197,7 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *anchor_node;
+    struct ly_set *set;
     const struct lyd_node *iter, *match = NULL;
     int val_equal = 0;
 
@@ -211,10 +212,23 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
         }
     } else {
         /* find the edit node efficiently in data */
-        if (lyd_find_sibling(first_node, edit_node, (struct lyd_node **)&match)) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(edit_node)->ctx);
-            return err_info;
+        if ((edit_node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) && (edit_node->schema->flags & LYS_CONFIG_R)) {
+            if (lyd_find_sibling_set(first_node, edit_node, &set)) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(edit_node)->ctx);
+                return err_info;
+            }
+            if (set->number) {
+                /* just take the first instance */
+                match = set->set.d[0];
+            }
+            ly_set_free(set);
+        } else {
+            if (lyd_find_sibling(first_node, edit_node, (struct lyd_node **)&match)) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(edit_node)->ctx);
+                return err_info;
+            }
         }
+
 
         if (match) {
             switch (edit_node->schema->nodetype) {
@@ -3269,20 +3283,8 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     op = sr_edit_find_oper(node, 1, &own_oper);
     if (!op) {
         parent = node;
-        if (parent->parent) {
-            do {
-                parent = parent->parent;
-
-                /* add origin */
-                if (parent->schema->flags & LYS_CONFIG_R) {
-                    def_origin = SR_OPER_ORIGIN;
-                } else {
-                    def_origin = SR_CONFIG_ORIGIN;
-                }
-                if ((session->ds == SR_DS_OPERATIONAL) && (err_info = sr_edit_diff_set_origin(parent, def_origin, 1))) {
-                    goto error;
-                }
-            } while (parent->parent);
+        while (parent->parent) {
+            parent = parent->parent;
         }
 
         /* add default operation if a new subtree was created */
@@ -3403,6 +3405,19 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     }
 
     if (session->ds == SR_DS_OPERATIONAL) {
+        /* add parent origin */
+        for (parent = node->parent; parent; parent = parent->parent) {
+            /* add origin */
+            if (parent->schema->flags & LYS_CONFIG_R) {
+                def_origin = SR_OPER_ORIGIN;
+            } else {
+                def_origin = SR_CONFIG_ORIGIN;
+            }
+            if ((err_info = sr_edit_diff_set_origin(parent, def_origin, 0))) {
+                goto error;
+            }
+        }
+
         /* add node origin */
         if ((err_info = sr_edit_diff_set_origin(node, origin, 1))) {
             goto error;
