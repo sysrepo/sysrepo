@@ -893,9 +893,11 @@ module_userord_cb(sr_session_ctx_t *session, const char *module_name, const char
 
         assert_int_equal(op, SR_OP_MOVED);
         assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/test:cont/ll2[.='2']");
+        assert_string_equal(old_val->xpath, "/test:cont/ll2");
+        assert_int_equal(old_val->data.uint16_val, 2);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/test:cont/ll2[.='1']");
+        assert_string_equal(new_val->xpath, "/test:cont/ll2");
+        assert_int_equal(new_val->data.uint16_val, 1);
 
         sr_free_val(old_val);
         sr_free_val(new_val);
@@ -1279,8 +1281,10 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
         assert_int_equal(op, SR_OP_MOVED);
         assert_non_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(old_val->xpath, "/test:cont/ll2[.='2']");
-        assert_string_equal(new_val->xpath, "/test:cont/ll2[.='1']");
+        assert_string_equal(old_val->xpath, "/test:cont/ll2");
+        assert_int_equal(old_val->data.uint16_val, 2);
+        assert_string_equal(new_val->xpath, "/test:cont/ll2");
+        assert_int_equal(new_val->data.uint16_val, 1);
 
         sr_free_val(old_val);
         sr_free_val(new_val);

@@ -3507,30 +3507,16 @@ sr_lyd_node2sr_val(const struct lyd_node *node, const char *llist_value_str, con
         sr_val->type = SR_ANYDATA_T;
         break;
     case LYS_LEAFLIST:
-        /* fix the xpath if needed */
-        if (llist_value_str) {
-            end = strlen(sr_val->xpath) - 1;
-            assert(((sr_val->xpath[end - 1] == '\'') || (sr_val->xpath[end - 1] == '\"')) && (sr_val->xpath[end] == ']'));
+        /* fix the xpath, we do not want the value in the predicate */
+        end = strlen(sr_val->xpath) - 1;
+        assert(((sr_val->xpath[end - 1] == '\'') || (sr_val->xpath[end - 1] == '\"')) && (sr_val->xpath[end] == ']'));
 
-            for (ptr = sr_val->xpath + end - 2; ptr[0] != sr_val->xpath[end - 1]; --ptr) {
-                SR_CHECK_INT_GOTO(ptr == sr_val->xpath, err_info, error);
-            }
-            start = ptr - sr_val->xpath;
-
-            /* enlarge string if needed */
-            if (strlen(llist_value_str) + 2 > end - start) {
-                /* original length + the difference + ending 0 */
-                sr_val->xpath = sr_realloc(sr_val->xpath, (end + 1) + ((strlen(llist_value_str) + 2) - (end - start)) + 1);
-                SR_CHECK_MEM_GOTO(!sr_val->xpath, err_info, error);
-            }
-
-            /* replace the value */
-            if (strchr(llist_value_str, '\'')) {
-                sprintf(sr_val->xpath + start, "\"%s\"]", llist_value_str);
-            } else {
-                sprintf(sr_val->xpath + start, "'%s']", llist_value_str);
-            }
+        for (ptr = sr_val->xpath + end - 2; ptr[0] != sr_val->xpath[end - 1]; --ptr) {
+            SR_CHECK_INT_GOTO(ptr == sr_val->xpath, err_info, error);
         }
+        assert((ptr[-1] == '=') && (ptr[-2] == '.') && (ptr[-3] == '['));
+        ptr[-3] = '\0';
+
         /* fallthrough */
     case LYS_LEAF:
         leaf = (const struct lyd_node_leaf_list *)node;

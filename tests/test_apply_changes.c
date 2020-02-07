@@ -2661,7 +2661,7 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/test:cont/ll2[.='3210']");
+        assert_string_equal(new_val->xpath, "/test:cont/ll2");
 
         sr_free_val(new_val);
 
@@ -2798,7 +2798,7 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
         assert_int_equal(op, SR_OP_DELETED);
         assert_non_null(old_val);
         assert_null(new_val);
-        assert_string_equal(old_val->xpath, "/test:cont/ll2[.='3210']");
+        assert_string_equal(old_val->xpath, "/test:cont/ll2");
 
         sr_free_val(old_val);
 
@@ -3392,7 +3392,7 @@ module_change_userord_cb(sr_session_ctx_t *session, const char *module_name, con
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/test:l1[k='k1']/ll12[.='ahoy']");
+        assert_string_equal(new_val->xpath, "/test:l1[k='k1']/ll12");
 
         sr_free_val(new_val);
 
@@ -3438,7 +3438,7 @@ module_change_userord_cb(sr_session_ctx_t *session, const char *module_name, con
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/test:l1[k='k2']/ll12[.='mate']");
+        assert_string_equal(new_val->xpath, "/test:l1[k='k2']/ll12");
 
         sr_free_val(new_val);
 
