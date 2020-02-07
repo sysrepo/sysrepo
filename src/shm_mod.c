@@ -123,10 +123,11 @@ sr_modinfo_qsort_cmp(const void *ptr1, const void *ptr2)
 sr_error_info_t *
 sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_datastore_t ds, struct sr_mod_info_s *mod_info)
 {
+    sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     const struct lys_module *mod;
     const struct lyd_node *root;
-    sr_error_info_t *err_info = NULL;
+    char *str;
 
     mod_info->ds = ds;
     mod_info->conn = conn;
@@ -136,6 +137,11 @@ sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_data
     LY_TREE_FOR(edit, root) {
         if (lyd_node_module(root) == mod) {
             continue;
+        } else if (!strcmp(lyd_node_module(root)->name, SR_YANG_MOD)) {
+            str = lyd_path(root);
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, str, "Data of internal module \"%s\" cannot be modified.", SR_YANG_MOD);
+            free(str);
+            return err_info;
         }
 
         /* remember last mod, good chance it will also be the module of some next data nodes */
@@ -158,12 +164,12 @@ sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_data
 sr_error_info_t *
 sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t ds, struct sr_mod_info_s *mod_info)
 {
+    sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     char *module_name;
     const struct lys_module *ly_mod;
     const struct lys_node *ctx_node;
     struct ly_set *set = NULL;
-    sr_error_info_t *err_info = NULL;
     uint32_t i;
 
     mod_info->ds = ds;

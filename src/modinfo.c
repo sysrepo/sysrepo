@@ -162,15 +162,15 @@ sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, struct sr_mod_info_s *mod_in
     } else {
         assert(data);
 
-        /* find the last diff node */
+        /* find the last edit node */
         for (node = data; lyd_node_module(node) != last->ly_mod; node = node->next);
 
-        /* skip all diff nodes from this module */
+        /* skip all edit nodes from this module */
         for (; node && (lyd_node_module(node) == last->ly_mod); node = node->next);
     }
 
     if (node) {
-        /* find mod of this diff node */
+        /* find mod of this edit node */
         for (i = 0; i < mod_info->mod_count; ++i) {
             if (mod_info->mods[i].ly_mod == lyd_node_module(node)) {
                 mod = &mod_info->mods[i];
@@ -189,9 +189,20 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod = NULL;
+    const struct lyd_node *node;
+    char *str;
     int change;
 
     assert(!mod_info->data_cached);
+
+    LY_TREE_FOR(edit, node) {
+        if (!strcmp(lyd_node_module(node)->name, SR_YANG_MOD)) {
+            str = lyd_path(node);
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, str, "Data of internal module \"%s\" cannot be modified.", SR_YANG_MOD);
+            free(str);
+            return err_info;
+        }
+    }
 
     while ((mod = sr_modinfo_next_mod(mod, mod_info, edit))) {
         assert(mod->state & MOD_INFO_REQ);
