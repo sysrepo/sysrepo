@@ -87,6 +87,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** macro for all datastore types count */
 #define SR_DS_COUNT 4
 
+/** macro for checking session type */
+#define SR_IS_EVENT_SESS(session) (session->ev != SR_SUB_EV_NONE)
+
 /** macro for getting the first SHM module */
 #define SR_FIRST_SHM_MOD(main_shm_addr) ((sr_mod_t *)(main_shm_addr + sizeof(sr_main_shm_t)))
 

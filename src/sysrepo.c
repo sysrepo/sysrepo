@@ -3288,7 +3288,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     sr_mod_t *shm_mod;
     uint16_t i;
 
-    SR_CHECK_ARG_APIRET(!session || !module_name || !callback
+    SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !module_name || !callback
             || ((opts & SR_SUBSCR_PASSIVE) && (opts & SR_SUBSCR_ENABLED)) || !subscription, session, err_info);
 
     if ((opts & SR_SUBSCR_CTX_REUSE) && !*subscription) {
@@ -3405,7 +3405,7 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ev == SR_SUB_EV_NONE) || !xpath || !iter, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !SR_IS_EVENT_SESS(session) || !xpath || !iter, session, err_info);
 
     if ((session->ev != SR_SUB_EV_ENABLED) && (session->ev != SR_SUB_EV_DONE) && !session->dt[session->ds].diff) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Session without changes.");
@@ -3867,7 +3867,8 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     off_t shm_rpc_off;
     int last_removed;
 
-    SR_CHECK_ARG_APIRET(!session || !xpath || (!callback && !tree_callback) || !subscription, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !xpath || (!callback && !tree_callback) || !subscription,
+            session, err_info);
 
     if ((opts & SR_SUBSCR_CTX_REUSE) && !*subscription) {
         /* invalid option, remove */
@@ -4253,7 +4254,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     uint32_t i;
     sr_mod_t *shm_mod;
 
-    SR_CHECK_ARG_APIRET(!session || !mod_name || (start_time && (start_time > cur_ts)) || (stop_time
+    SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !mod_name || (start_time && (start_time > cur_ts)) || (stop_time
             && (!start_time || (stop_time < start_time))) || (!callback && !tree_callback) || !subscription, session, err_info);
 
     /* is the module name valid? */
@@ -4692,7 +4693,8 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     sr_mod_oper_sub_type_t sub_type;
     sr_mod_t *shm_mod;
 
-    SR_CHECK_ARG_APIRET(!session || !module_name || !path || !callback || !subscription, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !module_name || !path || !callback || !subscription,
+            session, err_info);
 
     if ((opts & SR_SUBSCR_CTX_REUSE) && !*subscription) {
         /* invalid option, remove */

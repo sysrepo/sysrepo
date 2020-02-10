@@ -2921,9 +2921,11 @@ module_change_unlocked_cb(sr_session_ctx_t *session, const char *module_name, co
         uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
+    sr_session_ctx_t *sess;
     sr_subscription_ctx_t *tmp;
     int ret;
 
+    (void)session;
     (void)request_id;
 
     assert_string_equal(module_name, "test");
@@ -2939,9 +2941,11 @@ module_change_unlocked_cb(sr_session_ctx_t *session, const char *module_name, co
         }
 
         /* subscribe to something and then unsubscribe */
-        sr_session_switch_ds(session, SR_DS_STARTUP);
-        ret = sr_module_change_subscribe(session, "test", "/test:cont", module_change_unlocked_cb, st, 0, 0, &tmp);
+        ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
         assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_module_change_subscribe(sess, "test", "/test:cont", module_change_unlocked_cb, st, 0, 0, &tmp);
+        assert_int_equal(ret, SR_ERR_OK);
+        sr_session_stop(sess);
         sr_unsubscribe(tmp);
         break;
     default:
