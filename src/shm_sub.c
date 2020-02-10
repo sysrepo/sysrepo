@@ -442,6 +442,7 @@ sr_shmsub_notify_evpipe(uint32_t evpipe_num)
 
     /* open pipe for writing */
     if ((fd = open(path, O_WRONLY | O_NONBLOCK)) == -1) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" for writing failed (%s).", path, strerror(errno));
         goto cleanup;
     }
 
