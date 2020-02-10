@@ -169,8 +169,8 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** permissions of all subscription SHMs */
 #define SR_SUB_SHM_PERM 00666
 
-/** permissions of all event pipes */
-#define SR_EVPIPE_PERM 00666
+/** permissions of all event pipes (only owner read, anyone else write */
+#define SR_EVPIPE_PERM 00622
 
 /** permissions of directories for sysrepo files */
 #define SR_DIR_PERM 00777
