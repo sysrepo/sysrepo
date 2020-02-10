@@ -3205,6 +3205,7 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t
     sr_main_shm_t *main_shm;
     char *path = NULL;
     int ret;
+    mode_t um;
 
     /* allocate new subscription */
     *subs_p = calloc(1, sizeof **subs_p);
@@ -3226,8 +3227,13 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t
         goto error;
     }
 
+    /* set umask so that the correct permissions are really set */
+    um = umask(00000);
+
     /* create the event pipe */
-    if (mkfifo(path, SR_EVPIPE_PERM) == -1) {
+    ret = mkfifo(path, SR_EVPIPE_PERM);
+    umask(um);
+    if (ret == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "mkfifo");
         goto error;
     }
