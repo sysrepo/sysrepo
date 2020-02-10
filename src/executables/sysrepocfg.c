@@ -564,7 +564,7 @@ main(int argc, char** argv)
     sr_session_ctx_t *sess = NULL;
     sr_datastore_t ds = SR_DS_RUNNING, source_ds;
     LYD_FORMAT format = LYD_UNKNOWN;
-    const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL;
+    const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL, *op_str;
     char *ptr;
     sr_log_level_t log_level = SR_LL_ERR;
     int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0, timeout = 0, wait = 0;
@@ -773,6 +773,29 @@ main(int argc, char** argv)
     if (optind < argc) {
         error_print(0, "Redundant parameters (%s)", argv[optind]);
         goto cleanup;
+    }
+
+    /* check if operation on the datastore is supported */
+    if (ds == SR_DS_OPERATIONAL) {
+        switch (operation) {
+        case 'I':
+            op_str = "Import";
+            break;
+        case 'E':
+            op_str = "Edit";
+            break;
+        case 'C':
+            op_str = "Copy-config";
+            break;
+        default:
+            op_str = NULL;
+            break;
+        }
+
+        if (op_str) {
+            error_print(0, "%s operation on operational DS not supported, changes would be lost after session is terminated", op_str);
+            goto cleanup;
+        }
     }
 
     /* set logging */
