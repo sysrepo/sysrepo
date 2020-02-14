@@ -1071,7 +1071,7 @@ sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char 
     struct lyd_node *sr_mods = NULL, *mod_data = NULL, *next, *node;
     const struct lys_module *ly_mod;
 
-    SR_CHECK_ARG_APIRET(!conn || !module_name || (data && data_path) || (!data && !data_path), NULL, err_info);
+    SR_CHECK_ARG_APIRET(!conn || !module_name || (data && data_path) || (!data && !data_path) || !format, NULL, err_info);
 
     /* create new temporary context */
     if ((err_info = sr_shmmain_ly_ctx_init(&tmp_ly_ctx))) {
