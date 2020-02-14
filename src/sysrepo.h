@@ -1227,7 +1227,8 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  *
  * @note Each change is normally announced twice: first as ::SR_EV_CHANGE event and then as ::SR_EV_DONE or ::SR_EV_ABORT
  * event. If the subscriber does not support verification, it can subscribe only to ::SR_EV_DONE event by providing
- * ::SR_SUBSCR_DONE_ONLY subscription flag.
+ * ::SR_SUBSCR_DONE_ONLY subscription flag. The general rule is that in case the operation fails, only if the subscriber
+ * has __successfully__ processed the first event (::SR_EV_CHANGE/::SR_EV_RPC), it will get the second ::SR_EV_ABORT event.
  */
 typedef enum sr_event_e {
     SR_EV_UPDATE,  /**< Occurs before any other events and the subscriber can update the apply-changes diff.
@@ -1244,7 +1245,7 @@ typedef enum sr_event_e {
                         has denied the change (returned an error). The subscriber is supposed to return the managed
                         application to the state before the commit. Any returned errors are just logged and ignored.
                         This event is also generated for RPC subscriptions when a later callback has failed and
-                        this one has already successfully processed ::SR_EV_RPC. The callback that failed will never
+                        this one has already successfully processed ::SR_EV_RPC. The callback that failed will __never__
                         get this event! */
     SR_EV_ENABLED, /**< Occurs for subscriptions with the flag ::SR_SUBSCR_ENABLED and is normally followed by
                         ::SR_EV_DONE. It can fail and will also be triggered even when there is no startup configuration
