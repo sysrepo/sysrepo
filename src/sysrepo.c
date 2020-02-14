@@ -960,10 +960,10 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *tmp_ly_ctx = NULL;
-    const struct lys_module *ly_mod;
+    const struct lys_module *ly_mod, *ly_iter, *ly_iter2;
     LYS_INFORMAT format;
     char *mod_name = NULL;
-    int i;
+    uint32_t i;
 
     SR_CHECK_ARG_APIRET(!conn || !schema_path, NULL, err_info);
 
@@ -1010,10 +1010,32 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     }
 
     /* enable all features to check their existence */
-    for (i = 0; i < feat_count; ++i) {
+    for (i = 0; i < (unsigned)feat_count; ++i) {
         if (lys_features_enable(ly_mod, features[i])) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" does not define feature \"%s\".",
                     ly_mod->name, features[i]);
+            goto cleanup_unlock;
+        }
+    }
+
+    /* check that the module does not implement some other modules in different revisions than already in the context */
+    i = 0;
+    while ((ly_iter = ly_ctx_get_module_iter(tmp_ly_ctx, &i))) {
+        if (!ly_iter->implemented) {
+            continue;
+        }
+
+        ly_iter2 = ly_ctx_get_module(conn->ly_ctx, ly_iter->name, NULL, 1);
+        if (!ly_iter2) {
+            continue;
+        }
+
+        /* modules are implemented in both contexts, compare revisions */
+        if ((!ly_iter->rev_size && ly_iter2->rev_size) || (ly_iter->rev_size && !ly_iter2->rev_size)
+                || (ly_iter->rev_size && ly_iter2->rev_size && strcmp(ly_iter->rev[0].date, ly_iter2->rev[0].date))) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Module \"%s\" implements module \"%s@%s\" that is already"
+                    " in sysrepo in revision %s.", ly_mod->name, ly_iter->name,
+                    ly_iter->rev_size ? ly_iter->rev[0].date : "<none>", ly_iter2->rev_size ? ly_iter2->rev[0].date : "<none>");
             goto cleanup_unlock;
         }
     }
