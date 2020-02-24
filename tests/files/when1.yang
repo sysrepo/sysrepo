@@ -14,4 +14,10 @@ module when1 {
         when "../l1";
         type string;
     }
+
+    container cont {
+        leaf l4 {
+            type string;
+        }
+    }
 }

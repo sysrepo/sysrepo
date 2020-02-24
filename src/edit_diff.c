@@ -2097,18 +2097,23 @@ sr_diff_find_oper(struct lyd_node *diff, int *op_own, pid_t *pid, void **conn_pt
  * @param[in] diff_match Node from the diff.
  * @param[in] cur_op Current operation of the diff node.
  * @param[in] cur_own_op Whether \p cur_op is owned or inherited.
+ * @param[in] val_equal Whether even values of the nodes match.
  * @param[out] change Set if there are some data changes.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_diff_merge_delete(struct lyd_node *diff_match, enum edit_op cur_op, int cur_own_op, int *change)
+sr_diff_merge_delete(struct lyd_node *diff_match, enum edit_op cur_op, int cur_own_op, int val_equal, int *change)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *next, *child;
+    int op_own;
+
+    /* we can delete only exact existing nodes */
+    SR_CHECK_INT_RET(!val_equal, err_info);
 
     switch (cur_op) {
     case EDIT_CREATE:
-        /* it was created, but validation deleted it -> set NONE operation */
+        /* it was created, but then deleted -> set NONE operation */
         if (cur_own_op) {
             sr_edit_del_attr(diff_match, "operation");
         }
@@ -2118,7 +2123,7 @@ sr_diff_merge_delete(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
 
         /* keep operation for all descendants (for now) */
         LY_TREE_FOR(sr_lyd_child(diff_match, 1), child) {
-            if (!sr_diff_find_oper(child, NULL, NULL, NULL, NULL)) {
+            if (!sr_diff_find_oper(child, &op_own, NULL, NULL, NULL) || !op_own) {
                 if ((err_info = sr_edit_set_oper(child, sr_edit_op2str(cur_op)))) {
                     return err_info;
                 }
@@ -2308,7 +2313,7 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, void *o
             }
             break;
         case EDIT_DELETE:
-            if ((err_info = sr_diff_merge_delete(diff_node, cur_op, op_own, change))) {
+            if ((err_info = sr_diff_merge_delete(diff_node, cur_op, op_own, val_equal, change))) {
                 goto op_error;
             }
             break;

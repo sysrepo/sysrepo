@@ -18,4 +18,13 @@ module when2 {
         type string;
         default "zzZZzz";
     }
+
+    augment /w1:cont {
+        when "starts-with(l4,'sri')";
+        container cont2 {
+            leaf bl {
+                type string;
+            }
+        }
+    }
 }

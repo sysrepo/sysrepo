@@ -73,6 +73,12 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/list-case.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/when1.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/when2.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -87,6 +93,8 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "when2");
+    sr_remove_module(st->conn, "when1");
     sr_remove_module(st->conn, "list-case");
     sr_remove_module(st->conn, "ietf-ip");
     sr_remove_module(st->conn, "iana-if-type");
@@ -120,6 +128,7 @@ teardown_f(void **state)
     sr_delete_item(sess, "/test:l1", 0);
     sr_delete_item(sess, "/test:ll1", 0);
     sr_delete_item(sess, "/test:cont", 0);
+    sr_delete_item(sess, "/when1:cont", 0);
     sr_apply_changes(sess, 0, 0);
 
     sr_session_switch_ds(sess, SR_DS_STARTUP);
@@ -128,6 +137,7 @@ teardown_f(void **state)
     sr_delete_item(sess, "/test:l1", 0);
     sr_delete_item(sess, "/test:ll1", 0);
     sr_delete_item(sess, "/test:cont", 0);
+    sr_delete_item(sess, "/when1:cont", 0);
     sr_apply_changes(sess, 0, 0);
 
     sr_session_stop(sess);
@@ -1896,6 +1906,190 @@ test_replace_case(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST 7 */
+static int
+module_replace_when_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_ctx)
+{
+    struct state *st = (struct state *)private_ctx;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    sr_val_t *old_val, *new_val;
+    struct lyd_node *data;
+    int ret;
+
+    assert_null(xpath);
+
+    (void)event;
+    (void)request_id;
+
+    switch (st->cb_called) {
+    case 0:
+    case 1:
+        assert_string_equal(module_name, "when1");
+        if (st->cb_called == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/when1:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/when1:cont");
+
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/when1:cont/l4");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    default:
+        fail();
+    }
+
+    /* test getting items */
+    ret = sr_get_data(session, "/when1:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(data->schema->name, "cont");
+    assert_string_equal(data->child->schema->name, "l4");
+    lyd_free_withsiblings(data);
+
+    if (event == SR_EV_DONE) {
+        /* let other thread now even done event was handled */
+        pthread_barrier_wait(&st->barrier);
+    }
+
+    ++st->cb_called;
+    return SR_ERR_OK;
+}
+
+static void *
+replace_when_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    struct lyd_node *config, *node;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before replacing */
+    pthread_barrier_wait(&st->barrier);
+
+    /* prepare some when1/when2 config */
+    str2 =
+    "<cont xmlns=\"urn:when1\">"
+        "<l4>ri</l4>"
+        "<cont2 xmlns=\"urn:when2\">"
+            "<bl>sri</bl>"
+        "</cont2>"
+    "</cont>";
+    config = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str2, LYD_XML, LYD_OPT_CONFIG | LYD_OPT_TRUSTED | LYD_OPT_STRICT);
+    assert_non_null(config);
+
+    /* perform replace-config */
+    ret = sr_replace_config(sess, "when1", config, 0, 0);
+    config = NULL;
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for DONE */
+    pthread_barrier_wait(&st->barrier);
+
+    /* check current data tree */
+    ret = sr_get_data(sess, "/when1:*", 0, 0, 0, &node);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, node, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    lyd_free_withsiblings(node);
+
+    str2 =
+    "<cont xmlns=\"urn:when1\">"
+        "<l4>ri</l4>"
+    "</cont>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* signal that we have finished */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_replace_when_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int count, ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ret = sr_module_change_subscribe(sess, "when1", NULL, module_replace_when_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "when2", NULL, module_replace_when_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscriptions were created */
+    pthread_barrier_wait(&st->barrier);
+
+    count = 0;
+    while ((st->cb_called < 2) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 2);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_replace_when(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, replace_when_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_replace_when_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1907,6 +2101,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_replace, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_replace_dflt, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_replace_case, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_replace_when, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
