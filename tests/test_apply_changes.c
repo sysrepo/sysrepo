@@ -2542,7 +2542,7 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
         }
 
         /* get changes iter */
-        ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+        ret = sr_get_changes_iter(session, "/test:l1[k='subscr']//.", &iter);
         assert_int_equal(ret, SR_ERR_OK);
 
         /* 1st change */
@@ -2594,7 +2594,7 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
         }
 
         /* get changes iter */
-        ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+        ret = sr_get_changes_iter(session, "/test:cont//.", &iter);
         assert_int_equal(ret, SR_ERR_OK);
 
         /* 1st change */
@@ -2681,7 +2681,7 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
         }
 
         /* get changes iter */
-        ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+        ret = sr_get_changes_iter(session, "/test:l1[k='subscr']//.", &iter);
         assert_int_equal(ret, SR_ERR_OK);
 
         /* 1st change */
@@ -2733,7 +2733,7 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
         }
 
         /* get changes iter */
-        ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+        ret = sr_get_changes_iter(session, "/test:cont//.", &iter);
         assert_int_equal(ret, SR_ERR_OK);
 
         /* 1st change */

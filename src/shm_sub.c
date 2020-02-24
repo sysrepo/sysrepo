@@ -1698,46 +1698,6 @@ cleanup:
  */
 
 /**
- * @brief Prepare temporary callback session for a change event callback.
- *
- * @param[in] change_subs Module change subscriptions.
- * @param[in] change_sub Change subscription.
- * @param[in] conn Connection to use.
- * @param[in] diff Diff from the event.
- * @param[in,out] tmp_sess Temporary callback session.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_shmsub_change_listen_prepare_sess(struct modsub_change_s *change_subs, struct modsub_changesub_s *change_sub,
-        sr_conn_ctx_t *conn, struct lyd_node *diff, sr_session_ctx_t *tmp_sess)
-{
-    sr_error_info_t *err_info = NULL;
-
-    assert(diff);
-
-    tmp_sess->conn = conn;
-    tmp_sess->ds = change_subs->ds;
-    tmp_sess->ev = ((sr_multi_sub_shm_t *)change_subs->sub_shm.addr)->event;
-    tmp_sess->sid = ((sr_multi_sub_shm_t *)change_subs->sub_shm.addr)->sid;
-    lyd_free_withsiblings(tmp_sess->dt[tmp_sess->ds].diff);
-
-    /* duplicate (filtered) diff */
-    if (change_sub->xpath) {
-        if ((err_info = sr_lyd_xpath_dup(diff, &change_sub->xpath, 1, NULL, &tmp_sess->dt[tmp_sess->ds].diff))) {
-            return err_info;
-        }
-    } else {
-        tmp_sess->dt[tmp_sess->ds].diff = lyd_dup_withsiblings(diff, 0);
-        if (!tmp_sess->dt[tmp_sess->ds].diff) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-            return err_info;
-        }
-    }
-
-    return NULL;
-}
-
-/**
  * @brief Whether there is a new event for the subscription.
  *
  * @param[in] multi_sub_shm Multi subscription SHM.
@@ -1773,6 +1733,33 @@ sr_shmsub_change_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct m
     }
 
     return 1;
+}
+
+/**
+ * @brief Whether there is a change (some diff) for the subscription.
+ *
+ * @param[in] sub Change subscription.
+ * @param[in] diff Full diff for the module.
+ * @return 0 if not, non-zero if there is.
+ */
+static int
+sr_shmsub_change_listen_is_diff(struct modsub_changesub_s *sub, const struct lyd_node *diff)
+{
+    struct ly_set *set = NULL;
+    int ret;
+
+    if (sub->xpath) {
+        set = lyd_find_path(diff, sub->xpath);
+        assert(set);
+    }
+    if (set && !set->number) {
+        ret = 0;
+    } else {
+        ret = 1;
+    }
+    ly_set_free(set);
+
+    return ret;
 }
 
 /**
@@ -1894,8 +1881,8 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     sr_error_info_t *err_info = NULL, *tmp_err;
     uint32_t i, data_len = 0, valid_subscr_count, request_id;
     char *data = NULL;
-    int ret, timed_out = 0;
-    struct lyd_node *diff = NULL, *abort_diff;
+    int ret = SR_ERR_OK, timed_out = 0;
+    struct lyd_node *diff, *abort_diff;
     sr_error_t err_code = SR_ERR_OK;
     struct modsub_changesub_s *change_sub;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -1932,6 +1919,13 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     diff = lyd_parse_mem(conn->ly_ctx, change_subs->sub_shm.addr + sizeof *multi_sub_shm, LYD_LYB, LYD_OPT_EDIT | LYD_OPT_STRICT);
     SR_CHECK_INT_GOTO(!diff, err_info, cleanup_rdunlock);
 
+    /* prepare implicit session */
+    tmp_sess.conn = conn;
+    tmp_sess.ds = change_subs->ds;
+    tmp_sess.ev = multi_sub_shm->event;
+    tmp_sess.sid = multi_sub_shm->sid;
+    tmp_sess.dt[tmp_sess.ds].diff = diff;
+
     /* process event */
     SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (remaining %u subscribers).", change_subs->module_name,
             sr_ev2str(multi_sub_shm->event), multi_sub_shm->request_id, multi_sub_shm->priority, multi_sub_shm->subscriber_count);
@@ -1951,14 +1945,8 @@ process_event:
         /* SUB READ UNLOCK */
         sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
 
-        /* prepare callback session */
-        if ((err_info = sr_shmsub_change_listen_prepare_sess(change_subs, change_sub, conn, diff, &tmp_sess))) {
-            goto cleanup;
-        }
-
-        ret = 0;
-        /* whole diff may have been filtered out */
-        if (tmp_sess.dt[tmp_sess.ds].diff) {
+        /* call callback if there are some changes */
+        if (sr_shmsub_change_listen_is_diff(change_sub, diff)) {
             ret = change_sub->cb(&tmp_sess, change_subs->module_name, change_sub->xpath, sr_ev2api(event), request_id,
                     change_sub->private_data);
         }
@@ -2093,7 +2081,6 @@ cleanup:
     /* clear callback session */
     sr_clear_sess(&tmp_sess);
 
-    lyd_free_withsiblings(diff);
     free(data);
     return err_info;
 }

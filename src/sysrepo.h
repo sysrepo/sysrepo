@@ -1316,8 +1316,10 @@ int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_nam
  * @see ::sr_get_change_next for iterating over the changeset using this iterator.
  *
  * @param[in] session Implicit session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
- * @param[in] xpath [XPath](@ref paths) selecting the requested changes. Be careful, you must select all the changes,
- * not just subtrees! To get a full change subtree `//.` can be appended to the XPath.
+ * @param[in] xpath [XPath](@ref paths) selecting the changes. Note that you must select all the changes specifically,
+ * not just subtrees (to get a full change subtree `//.` can be appended to the XPath)! Also note that if you use
+ * an XPath that selects more changes than subscribed to, you may actually get them because all the changes of a module
+ * are available in every callback!
  * @param[out] iter Iterator context that can be used to retrieve individual changes using
  * ::sr_get_change_next calls. Allocated by the function, should be freed with ::sr_free_change_iter.
  * @return Error code (::SR_ERR_OK on success).
